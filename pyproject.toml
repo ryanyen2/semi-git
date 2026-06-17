@@ -1,0 +1,20 @@
+[project]
+name = "semi-git"
+version = "0.1.0"
+description = "Semantic feature-level version control over git"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["sgt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
