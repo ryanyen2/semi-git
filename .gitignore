@@ -5,6 +5,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Secrets / environment
+.env
+.env.*
+
 # Environments
 .venv/
 venv/
