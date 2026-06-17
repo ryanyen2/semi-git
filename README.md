@@ -23,6 +23,21 @@ uv pip install -e ".[dev]"
 uv run pytest
 ```
 
+## Usage
+
+```bash
+sgt init                                  # bind .sgt + git
+sgt "add a function shorten(url) ..."     # intent -> feature (classifier-routed)
+sgt graph                                 # the semantic DAG
+sgt revert <feature>                      # plug a feature out (by dependency closure)
+sgt switch <feature> off|on               # suspend / restore
+sgt modify <feature> "<change>"           # iterate on a feature
+```
+
+The OpenAI key is read from `.env` (`OPENAI_API_KEY`, optional `OPENAI_MODEL`).
+
 ## Status
 
-Early v1. Building the semantic core (Phase A): `.sgt` store + graph model + git binding.
+v1 vertical slice complete and verified end-to-end (47 tests + live OpenAI run).
+Intent-level versioning and clean feature plug-in/out work. See `FINDINGS.md` for
+what's verified and the deferred items.
