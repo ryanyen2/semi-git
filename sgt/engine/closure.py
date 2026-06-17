@@ -9,7 +9,12 @@ reverted but survives when a dashboard still needs it (origin AE2).
 
 from __future__ import annotations
 
-from sgt.store.graph import EdgeType, SemanticGraph
+from sgt.store.graph import EdgeType, NodeKind, SemanticGraph
+
+# Only "support" kinds are cascade-GC'd when orphaned. A capability the user added
+# on purpose is not collected just because the feature using it was reverted; a
+# concept/infra node introduced to serve others is.
+_GC_KINDS = {NodeKind.CONCEPT, NodeKind.INFRASTRUCTURE}
 
 
 def dependents_closure(graph: SemanticGraph, node_id: str) -> set[str]:
@@ -48,6 +53,8 @@ def revert_set(graph: SemanticGraph, node_id: str) -> set[str]:
         for n in to_remove:
             deps.update(_depends_on(graph, n))
         for dep in deps - to_remove:
+            if graph.get(dep).kind not in _GC_KINDS:
+                continue  # capabilities/fixes are intentional — never auto-GC'd
             remaining_dependents = [p for p in graph.predecessors(dep) if p not in to_remove]
             if not remaining_dependents:
                 to_remove.add(dep)
