@@ -17,6 +17,12 @@ def cap(id_: str, intent: str = "x") -> Node:
     return Node(id=id_, kind=NodeKind.CAPABILITY, intent=intent)
 
 
+def test_quarantined_status_round_trips():
+    n = Node(id="q", kind=NodeKind.CAPABILITY, intent="held work",
+             status=NodeStatus.QUARANTINED)
+    assert Node.from_dict(n.to_dict()).status is NodeStatus.QUARANTINED
+
+
 def test_add_and_get_node():
     g = SemanticGraph()
     g.add_node(cap("a", "add login"))

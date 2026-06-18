@@ -5,7 +5,7 @@ the git history reflect intent-level versioning."""
 from sgt.effects.model import Effect
 from sgt.lifecycle.algebra import revert_feature, switch_feature
 from sgt.project import Project
-from sgt.store.graph import Node, NodeKind
+from sgt.store.graph import Node, NodeKind, NodeStatus
 
 
 def _add(project, nid, kind, intent, effects):
@@ -111,6 +111,64 @@ def test_replace_def_introduced_dependency_is_closure_correct(tmp_path):
     assert out.ok
     assert set(out.removed) == {"helper", "calc"}
     assert proj.valid()
+
+
+def test_quarantine_excluded_from_materialize_until_resolved(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "base", NodeKind.CAPABILITY, "base",
+         [Effect.add_def("app.py", "base", "def base():\n    return 1")])
+
+    qnode = Node(id="q1", kind=NodeKind.CAPABILITY, intent="held feature")
+    held = [Effect.add_def("app.py", "extra", "def extra():\n    return base()")]
+    proj.quarantine(qnode, held, reason="invariant_violated",
+                    held_descs=["add_def extra (app.py)"], against_ids=["base"])
+
+    # held effects are NOT materialized while quarantined
+    assert "extra" not in proj.materialize().get("app.py", "")
+    assert proj.graph.get("q1").status is NodeStatus.QUARANTINED
+    # witness + dependency edge recorded
+    assert proj.witnesses["q1"]["reason"] == "invariant_violated"
+    assert "base" in proj.graph.successors("q1")
+
+    # resolving flips it ACTIVE and its effects join the replay
+    proj.resolve_quarantine("q1", held)
+    cb = proj.materialize()
+    assert "def extra" in cb["app.py"]
+    assert proj.graph.get("q1").status is NodeStatus.ACTIVE
+    assert "q1" not in proj.witnesses
+    assert proj.valid()
+
+
+def test_quarantine_persists_and_reloads(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "base", NodeKind.CAPABILITY, "base",
+         [Effect.add_def("a.py", "base", "def base():\n    return 1")])
+    qnode = Node(id="q1", kind=NodeKind.FIX, intent="held")
+    proj.quarantine(qnode, [Effect.add_def("a.py", "x", "def x():\n    return 1")],
+                    reason="non_commuting_with:base", held_descs=["add_def x (a.py)"],
+                    against_ids=["base"])
+    proj.save()
+
+    re = Project.open(tmp_path)
+    assert re.graph.get("q1").status is NodeStatus.QUARANTINED
+    assert re.witnesses["q1"]["reason"] == "non_commuting_with:base"
+    assert "x" not in re.materialize().get("a.py", "")
+
+
+def test_reverting_against_node_gcs_quarantine(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "base", NodeKind.CAPABILITY, "base",
+         [Effect.add_def("a.py", "base", "def base():\n    return 1")])
+    qnode = Node(id="q1", kind=NodeKind.CAPABILITY, intent="held")
+    proj.quarantine(qnode, [Effect.add_def("a.py", "x", "def x():\n    return base()")],
+                    reason="invariant_violated", held_descs=["add_def x (a.py)"],
+                    against_ids=["base"])
+
+    # q1 depends on base, so reverting base takes q1 with it (R35)
+    out = revert_feature(proj, "base")
+    assert out.ok
+    assert set(out.removed) == {"base", "q1"}
+    assert "q1" not in proj.witnesses
 
 
 def test_reopen_persists_state(tmp_path):

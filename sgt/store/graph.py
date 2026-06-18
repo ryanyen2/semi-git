@@ -24,10 +24,16 @@ class NodeKind(str, Enum):
 
 
 class NodeStatus(str, Enum):
-    """Append-only lifecycle: `switch off` suspends rather than deletes (origin R16)."""
+    """Append-only lifecycle: `switch off` suspends rather than deletes (origin R16).
+
+    ``QUARANTINED`` marks held work whose effects do not yet commute with the landed
+    codebase (R32): the node is durable and visible in the graph, but its effects are
+    excluded from materialization until it is reconciled to ``ACTIVE``.
+    """
 
     ACTIVE = "active"
     SUSPENDED = "suspended"
+    QUARANTINED = "quarantined"
 
 
 class EdgeType(str, Enum):

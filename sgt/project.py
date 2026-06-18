@@ -31,6 +31,8 @@ class Project:
         self.order: list[str] = []
         self.bundles: dict[str, list[Effect]] = {}
         self.managed_files: set[str] = set()
+        # node_id -> {"reason": str, "held": [str], "against": [node_id]} (R32)
+        self.witnesses: dict[str, dict] = {}
 
     # -- lifecycle ---------------------------------------------------------
     @property
@@ -59,6 +61,7 @@ class Project:
                 for nid, effs in d.get("bundles", {}).items()
             }
             proj.managed_files = set(d.get("managed_files", []))
+            proj.witnesses = dict(d.get("witnesses", {}))
         return proj
 
     def save(self) -> None:
@@ -70,6 +73,7 @@ class Project:
                     "order": self.order,
                     "bundles": {nid: [e.to_dict() for e in effs] for nid, effs in self.bundles.items()},
                     "managed_files": sorted(self.managed_files),
+                    "witnesses": self.witnesses,
                 },
                 indent=2,
             ),
@@ -130,7 +134,40 @@ class Project:
             if self.graph.has(nid):
                 self.graph.remove_node(nid)
             self.bundles.pop(nid, None)
+            self.witnesses.pop(nid, None)
         self.order = [n for n in self.order if n not in node_ids]
+
+    # -- quarantine (R32/R33/R35) -----------------------------------------
+    def quarantine(self, node: Node, effects: list[Effect], reason: str,
+                   held_descs: list[str], against_ids: list[str]) -> None:
+        """Record held effects as a durable QUARANTINED node + witness.
+
+        The node's effects live in the bundle store but are excluded from
+        materialization by its QUARANTINED status, and it depends on the nodes it was
+        meant to integrate with so reverting them GCs the quarantine too (R35).
+        """
+        node.status = NodeStatus.QUARANTINED
+        node.effect_bundle_id = node.id
+        self.graph.add_node(node)
+        self.order.append(node.id)
+        self.bundles[node.id] = list(effects)
+        self.witnesses[node.id] = {
+            "reason": reason, "held": list(held_descs), "against": list(against_ids),
+        }
+        for dep in against_ids:
+            if dep != node.id and self.graph.has(dep) and not self.graph.would_create_cycle(node.id, dep):
+                self.graph.add_edge(node.id, dep, EdgeType.DEPENDS_ON)
+
+    def resolve_quarantine(self, node_id: str, effects: list[Effect]) -> None:
+        """Reconcile a quarantine: replace its effects and flip it ACTIVE (R33)."""
+        self.bundles[node_id] = list(effects)
+        self.graph.get(node_id).status = NodeStatus.ACTIVE
+        self.witnesses.pop(node_id, None)
+        deps = self._infer_dependencies(effects)
+        for dep in deps:
+            if (dep != node_id and self.graph.has(dep)
+                    and not self.graph.would_create_cycle(node_id, dep)):
+                self.graph.add_edge(node_id, dep, EdgeType.DEPENDS_ON)
 
     def commit(self, message: str, node_id: str | None = None) -> str:
         self.write_working_tree()
