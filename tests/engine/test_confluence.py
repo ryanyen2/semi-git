@@ -2,10 +2,14 @@
 
 from sgt.effects.model import Effect
 from sgt.engine.confluence import (
+    INVARIANT_VIOLATED,
+    NON_COMMUTING_PREFIX,
+    PRECONDITION_FAILED,
     can_land,
     commute,
     is_invariant_confluent,
     max_coordination_free_batch,
+    max_coordination_free_batch_explained,
 )
 
 
@@ -71,3 +75,47 @@ def test_max_batch_admits_safe_holds_conflicting():
     names = {e.target for e in admitted}
     assert "f" in names and "h" in names
     assert dup in held
+
+
+def test_explained_all_confluent_has_no_reasons():
+    cb = {"a.py": ""}
+    batch = [
+        Effect.add_def("a.py", "f", "def f():\n    return 1"),
+        Effect.add_def("a.py", "g", "def g():\n    return 2"),
+    ]
+    admitted, held = max_coordination_free_batch_explained(cb, batch)
+    assert len(admitted) == 2 and held == []
+
+
+def test_explained_duplicate_name_reason():
+    cb = {"a.py": ""}
+    good = Effect.add_def("a.py", "f", "def f():\n    return 1")
+    dup = Effect.add_def("a.py", "f", "def f():\n    return 2")
+    admitted, held = max_coordination_free_batch_explained(cb, [good, dup])
+    assert [e.target for e in admitted] == ["f"]
+    assert len(held) == 1
+    held_effect, reason = held[0]
+    assert held_effect is dup
+    # second add of `f` fails its precondition once the first has landed
+    assert reason in (PRECONDITION_FAILED, f"{NON_COMMUTING_PREFIX}f")
+
+
+def test_explained_invariant_violation_reason():
+    cb = {"a.py": ""}
+    # a lone def calling an undefined name -> the combined result is invariant-invalid,
+    # but its precondition holds and nothing pairwise-conflicts
+    bad = Effect.add_def("a.py", "g", "def g():\n    return missing()")
+    admitted, held = max_coordination_free_batch_explained(cb, [bad])
+    assert admitted == []
+    assert len(held) == 1 and held[0][1] == INVARIANT_VIOLATED
+
+
+def test_explained_non_commuting_reason_names_counterpart():
+    # two replace_defs on the same existing function: order-sensitive, non-commuting
+    cb = {"a.py": "def f():\n    return 0\n"}
+    e1 = Effect.replace_def("a.py", "f", "def f():\n    return 1")
+    e2 = Effect.replace_def("a.py", "f", "def f():\n    return 2")
+    admitted, held = max_coordination_free_batch_explained(cb, [e1, e2])
+    assert [e.target for e in admitted] == ["f"]
+    held_effect, reason = held[0]
+    assert reason == f"{NON_COMMUTING_PREFIX}f"

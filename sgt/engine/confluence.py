@@ -79,11 +79,43 @@ def max_coordination_free_batch(cb: Codebase, candidates: list[Effect]) -> tuple
     max-coordination-free batch; the held-back effects are quarantined for serial
     resolution. (The exact/RL planner is deferred — see plan KTD7.)
     """
+    admitted, held_explained = max_coordination_free_batch_explained(cb, candidates)
+    return admitted, [e for e, _ in held_explained]
+
+
+# Hold-reason tags (the witness substrate — see plan U1/R32).
+PRECONDITION_FAILED = "precondition_failed"
+INVARIANT_VIOLATED = "invariant_violated"
+NON_COMMUTING_PREFIX = "non_commuting_with:"  # suffixed with the conflicting target
+
+
+def max_coordination_free_batch_explained(
+    cb: Codebase, candidates: list[Effect]
+) -> tuple[list[Effect], list[tuple[Effect, str]]]:
+    """Like ``max_coordination_free_batch`` but each held effect carries *why*.
+
+    The reason is one of ``precondition_failed`` / ``non_commuting_with:<target>`` /
+    ``invariant_violated`` — enough to render a human-readable quarantine witness
+    without a second diagnosis pass.
+    """
     admitted: list[Effect] = []
-    held: list[Effect] = []
+    held: list[tuple[Effect, str]] = []
     for e in candidates:
         if is_invariant_confluent(cb, admitted + [e]):
             admitted.append(e)
         else:
-            held.append(e)
+            held.append((e, _hold_reason(cb, admitted, e)))
     return admitted, held
+
+
+def _hold_reason(cb: Codebase, admitted: list[Effect], e: Effect) -> str:
+    """Diagnose why ``e`` cannot join ``admitted`` on ``cb`` (mirrors the gate's checks)."""
+    src = cb.get(e.file, "")
+    if not precondition_holds(src, e):
+        return PRECONDITION_FAILED
+    for f in admitted:
+        if f.file == e.file and not commute(src, e, f):
+            return f"{NON_COMMUTING_PREFIX}{f.target}"
+    # Preconditions hold and nothing pairwise-conflicts, so the combined application
+    # is what breaks: an invariant on the merged result (or a mid-sequence collision).
+    return INVARIANT_VIOLATED

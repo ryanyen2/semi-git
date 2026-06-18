@@ -136,6 +136,117 @@ The semantic-version-management core: `.sgt` graph + effect-bundles, intake clas
 - The minimal invariant set for v1 real-code support, and how non-effect-extractable edits are conservatively gated.
 - Exact graph-verb names and the `.sgt` on-disk representation.
 
+## Refresh — 2026-06-18 — Parallel fan-out (#2) & continuous confluence (#3)
+
+This section refreshes ideation ideas #2 (plan-as-constraint-graph) and #3 (no-merge /
+continuous confluence) against the **as-built v1**, and supersedes the original
+**Execution & merge (R14–R17)** requirements where they differ. Everything else in
+this document still holds.
+
+### What drifted (as-built vs. ideated)
+
+The v1 build evolved into a **stream**, not a fan-out: `sgt "intent"` classifies one
+prompt, calls one coding agent, gates the returned effects, and lands **one** node.
+Dependencies are *discovered* (inferred from the call graph), not *declared*. The
+confluence gate is the universal mutation gate (as designed) but, with serial
+single-intent landing, it almost never sees two simultaneous edits — so quarantine and
+rewrite-to-commute were never exercised: held effects are merely reported, not made
+durable. `add_def` + `replace_def` (the latter added 2026-06-18) now exist, so a
+feature can change existing code, not only append.
+
+### Decisions (this refresh)
+
+- **D1. Resurrect parallel fan-out via a transient constraint graph (#2).** A single
+  intent may decompose into multiple concurrent coding-agent tasks. The decomposition
+  is *execution scaffolding*, kept distinct from the durable semantic DAG.
+- **D2. Mitigate the upfront-decomposition risk #2 warned about** with three defenses,
+  not by avoiding decomposition: (a) the plan is cheap to revise at the *constraint*
+  level (text, not merged code); (b) a backend that discovers a missed dependency
+  **reshapes** the graph (adds the edge, re-layers, re-dispatches) rather than failing;
+  (c) the confluence gate is the backstop — a wrong split surfaces as a quarantine,
+  never a corrupt land.
+- **D3. Automatic with a checkpoint.** `sgt "X"` decomposes, shows the plan, and pauses
+  for **one** confirmation before fanning out; a plan with ≤1 sub-task skips the
+  checkpoint and runs inline (degenerates to today's stream). Parallel token spend is
+  never incurred without a single human gate.
+- **D4. Coordination is by ordering + materialized state, not a bespoke shared-state
+  protocol.** A dependent sub-task is dispatched only after its prerequisites land, so
+  it already receives their code via `project.materialize()`. The graph enforces only
+  *ordering* (don't dispatch B before A) and *concurrency* (fire an independent layer
+  at once).
+- **D5. Continuous confluence, made real (#3): auto-reconcile, non-blocking.** Held
+  effects land nothing silently; they become durable `QUARANTINED` nodes with a
+  witness, the system attempts a bounded auto rewrite-to-commute against post-land
+  state, and if still stuck the quarantine stays *pending* while the run completes. The
+  run never hard-fails on a conflict.
+- **D6. The gardener distills, the constraint graph is discarded.** After a fan-out run
+  lands, the landed effects are distilled into durable semantic nodes (capability +
+  concept dependencies); the transient constraint graph is thrown away.
+
+### Refreshed requirements
+
+- **R28.** `sgt "X"` runs a **decomposition agent** that emits a transient *constraint
+  graph* of sub-tasks — each carrying an intent, a **declared interface** (names it will
+  define + names it needs from others), and depends-on edges. The constraint graph is
+  replayable and revisable; it is not the semantic DAG.
+- **R29.** When the plan has >1 sub-task, the system renders it and pauses for one
+  confirmation before dispatch; a ≤1-task plan runs inline without a checkpoint.
+- **R30.** Sub-tasks are topologically layered by depends-on; each independent layer is
+  dispatched to coding-agent backends **concurrently**. A dependent task is dispatched
+  only after its prerequisites land (so it sees their materialized code).
+- **R31.** When returned effects reveal a dependency the planner missed (inferred from
+  used names), the constraint graph gains the edge, re-layers, and re-dispatches the
+  affected tasks — the DAG is never pre-committed (revises the spirit of R14).
+- **R32** *(revises R16).* A held conflict becomes a durable node with status
+  **QUARANTINED**, excluded from materialization, carrying a **witness**: the held
+  effects plus the specific reason (precondition failed / a named non-commuting pair /
+  the invariant that the combined result violated). The confluence engine must report
+  **per-candidate hold reasons**, not just `(admitted, held)`.
+- **R33** *(revises R16).* The system attempts **auto rewrite-to-commute** — re-dispatch
+  the quarantined task against post-land state — up to a bounded number of attempts. On
+  success the node flips to ACTIVE and its rewritten effects join the replay; on failure
+  the quarantine stays pending and the run still completes (non-blocking). The user
+  later resolves via cascade/override or an explicit `sgt reconcile <ref>`.
+- **R34.** After a fan-out run, the gardener distills the landed effects into durable
+  semantic nodes; the transient constraint graph is discarded.
+- **R35.** Quarantine nodes participate in dependency closure: reverting the nodes a
+  quarantine was meant to integrate with GCs the quarantine too.
+
+### Refreshed flows
+
+- **F2′. Prompt → plan → checkpoint.** A capability-bearing prompt is decomposed into a
+  constraint graph; if non-trivial, it is shown and confirmed before dispatch.
+- **F3′. Layered fan-out → land.** Independent layers dispatch concurrently; each
+  backend's effects are gated; the maximal confluent set lands per layer; dependent
+  layers follow, seeing the landed code.
+- **F4′. Quarantine → auto-reconcile → (pending).** A held conflict becomes a
+  QUARANTINED node + witness; bounded rewrite-to-commute is attempted; unresolved
+  quarantines remain pending without failing the run.
+
+### Honest failure modes (stress test)
+
+- **Wrong declared interface** (planner says A provides `shorten(url)`, A ships
+  `shorten(u, n)`): B's call fails the arity/name-resolution invariant → B quarantines →
+  rewrite-to-commute re-dispatches B against A's *actual* code → B regenerates. Cost: a
+  wasted dispatch + one reconcile round. The gate makes this *safe*, not *free*.
+- **Planner over-serializes** (declares false dependencies): correctness preserved,
+  parallelism lost. Benign; a corpus (#6) could later prune false edges.
+- **Planner under-serializes** (misses a real dependency): same-layer name collision or
+  name-resolution failure → quarantine + reshape (R31). The backstop, not a crash.
+- **Reconcile thrash** (rewrite keeps conflicting): bounded retries cap it; a pending
+  quarantine is the floor, not an infinite loop.
+- **Non-deterministic rewrite** (LLM returns different code each attempt): each attempt
+  is re-gated; materialized commits are pinned; only explicit reconcile re-derives.
+- **Concurrency mechanics:** backend calls are blocking I/O; a layer dispatches via a
+  thread pool (or asyncio). This is the main *new* implementation surface over the
+  serial v1 — settle the executor choice at planning.
+
+### Still deferred
+
+Multiverse/explore (#5), the compounding confluence corpus (#6), RL-trained
+decomposition/gardener policies, additional backends, and multi-developer concurrency
+remain out of scope for this refresh.
+
 ## Sources / Research
 
 - EICO research + findings: `/Users/ryanyen2/repos/ml-intern/eico` (`DESIGN.md`, `FINDINGS.md`).
