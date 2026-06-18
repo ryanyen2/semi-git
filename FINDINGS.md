@@ -30,6 +30,25 @@ plug features in and out cleanly.
 The canonical state function is the replay of active nodes' effect-bundles from
 empty — which is what makes "drop a feature and re-materialize" sound.
 
+## Parallel fan-out + continuous confluence (verified)
+
+- **One intent fans out (#2).** `sgt "<multi-part intent>"` runs a decomposition agent
+  that emits a transient constraint graph of sub-tasks (intent + provides/needs +
+  depends-on), topo-layered into coordination-free batches. A checkpoint confirms a
+  >1-task plan (`--yes` / auto-confirm skips it); an atomic intent runs inline. Verified
+  via `scripts/e2e_fanout.py`: "validate + normalize + register email" decomposed into
+  2 parallel sub-tasks + 1 dependent, all landed as nodes, dependency edges inferred
+  from the call graph, and `register_email` composed the two correctly.
+- **Layers dispatch concurrently.** Each independent layer runs through a thread pool
+  (backend calls are blocking I/O); a dependent layer is dispatched against the
+  post-land tree, so it sees its providers' code.
+- **Continuous confluence is real (#3).** Held effects are no longer silently dropped:
+  they become durable `QUARANTINED` nodes (excluded from materialization) carrying a
+  witness (which invariant/effect, and why). A bounded, non-blocking auto
+  rewrite-to-commute re-dispatches the held task against post-land state — when the
+  conflict was an ordering issue, it lands; when not, it stays pending and the run still
+  completes. Quarantines participate in revert closure.
+
 ## Observations
 
 - The intake classifier exercises real judgment: "add `short_link` that calls
