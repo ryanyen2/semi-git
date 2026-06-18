@@ -23,18 +23,35 @@ def _print_report(rep) -> int:
     print(head + (f" — {rep.message}" if rep.message else ""))
     for d in rep.landed:
         print(f"    landed: {d}")
+    for d in getattr(rep, "quarantined", []):
+        print(f"    quarantined: {d}")
     for d in rep.held:
-        print(f"    held (quarantined): {d}")
+        print(f"    held: {d}")
     return 0 if rep.ok else 1
 
 
-def _orchestrator(repo: str):
+def confirm_plan(graph) -> bool:
+    """Render a fan-out plan and ask the user to proceed (the checkpoint, R29)."""
+    print("Proposed fan-out plan:")
+    for i, layer in enumerate(graph.layers(), 1):
+        print(f"  layer {i} (parallel):")
+        for t in layer:
+            needs = f"  [needs: {', '.join(t.needs)}]" if t.needs else ""
+            print(f"    - {t.key}: {t.intent}{needs}")
+    try:
+        return input("Proceed with fan-out? [y/N] ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def _orchestrator(repo: str, assume_yes: bool = False):
     from sgt.adapter.openai_agent import OpenAICodingAgent
     from sgt.orchestrate.loop import Orchestrator
 
     proj = Project.open(repo)
     agent = OpenAICodingAgent(repo_path=repo)
-    return Orchestrator(proj, agent, repo_path=repo)
+    confirm = (lambda graph: True) if assume_yes else confirm_plan
+    return Orchestrator(proj, agent, repo_path=repo, confirm=confirm)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -92,10 +109,12 @@ def main(argv: list[str] | None = None) -> int:
         return _print_report(_orchestrator(repo).modify(rest[0], " ".join(rest[1:])))
 
     if cmd == "do":
+        assume_yes = any(a in ("--yes", "-y") for a in rest)
+        rest = [a for a in rest if a not in ("--yes", "-y")]
         if not rest:
-            print('usage: sgt do "<prompt>"')
+            print('usage: sgt do [--yes] "<prompt>"')
             return 2
-        return _print_report(_orchestrator(repo).ingest(" ".join(rest)))
+        return _print_report(_orchestrator(repo, assume_yes).ingest(" ".join(rest)))
 
     return _help()
 
@@ -112,6 +131,9 @@ def _graph(repo: str) -> int:
         deps = proj.graph.successors(n.id)
         dep_str = f"  → depends on {', '.join(deps)}" if deps else ""
         print(f"  {n.id} [{n.kind.value}]{status}: {n.intent[:70]}{dep_str}")
+        w = proj.witnesses.get(n.id)
+        if w:
+            print(f"      ⚠ quarantined — {w.get('reason', '?')}; held: {', '.join(w.get('held', []))}")
     return 0
 
 
@@ -140,6 +162,10 @@ def _show(repo: str, ref: str) -> int:
     print(f"  depends on: {', '.join(proj.graph.successors(n.id)) or '(none)'}")
     print(f"  dependents: {', '.join(proj.graph.predecessors(n.id)) or '(none)'}")
     print(f"  commits: {', '.join(c[:8] for c in n.commit_ids) or '(none)'}")
+    w = proj.witnesses.get(n.id)
+    if w:
+        print(f"  ⚠ quarantined — reason: {w.get('reason', '?')}")
+        print(f"    held: {', '.join(w.get('held', [])) or '(none)'}")
     print("  effects:")
     for e in proj.bundles.get(n.id, []):
         print(f"    - {e.op.value} {e.target} ({e.file})")
@@ -150,7 +176,7 @@ def _help() -> int:
     print(
         "sgt — semantic feature-level version control\n\n"
         "  sgt init [path]            initialize .sgt + git\n"
-        '  sgt do "<prompt>"          add/change code by intent (classifier-routed)\n'
+        '  sgt do [--yes] "<prompt>"  add/change code by intent (--yes skips the fan-out checkpoint)\n'
         '  sgt "<prompt>"             shorthand for `sgt do`\n'
         '  sgt modify <ref> "<chg>"   iterate on an existing feature\n'
         "  sgt revert <ref>           remove a feature (by dependency closure)\n"
