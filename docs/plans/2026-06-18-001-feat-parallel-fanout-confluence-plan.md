@@ -1,7 +1,7 @@
 ---
 title: "feat: parallel fan-out + continuous confluence (semi-git #2/#3)"
 type: feat
-status: active
+status: completed
 date: 2026-06-18
 origin: docs/brainstorms/2026-06-17-semi-git-requirements.md
 ---
