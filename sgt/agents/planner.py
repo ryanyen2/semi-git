@@ -1,0 +1,100 @@
+"""Decomposition agent: turn one intent into a transient constraint graph (R28).
+
+The planner proposes coordination-free sub-tasks, each declaring the names it
+`provides` and `needs` (plus optional explicit `depends_on`), so the orchestrator can
+layer and fan them out. An atomic intent returns a single sub-task — the signal the
+orchestrator uses to skip fan-out and run the existing single-agent stream.
+
+This is a semi-git-owned policy (RL-ready later, origin R27/R23); v1 is LLM-prompted.
+"""
+
+from __future__ import annotations
+
+import json
+
+from sgt.config import get_client, get_model
+from sgt.effects.model import Codebase
+from sgt.orchestrate.constraint import ConstraintGraph, SubTask
+
+_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "subtasks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "key": {"type": "string", "description": "short kebab handle, unique in this plan"},
+                    "intent": {"type": "string", "description": "a self-contained coding request"},
+                    "provides": {"type": "array", "items": {"type": "string"},
+                                 "description": "top-level names this task will define"},
+                    "needs": {"type": "array", "items": {"type": "string"},
+                              "description": "names it requires from other sub-tasks"},
+                    "depends_on": {"type": "array", "items": {"type": "string"},
+                                   "description": "keys of sub-tasks that must land first"},
+                },
+                "required": ["key", "intent", "provides", "needs", "depends_on"],
+            },
+        }
+    },
+    "required": ["subtasks"],
+}
+
+_SYSTEM = """You are the decomposition planner for semi-git, a semantic version-control tool.
+Break the user's intent into the SMALLEST set of sub-tasks that can be implemented
+independently, then composed. Rules:
+- Each sub-task is a self-contained coding request for one coding agent.
+- Declare `provides` (the top-level function/class names the task will define) and
+  `needs` (names it calls that another sub-task provides). A task that needs another's
+  output must list that name in `needs` (or the producing key in `depends_on`).
+- Prefer coordination-free tasks (disjoint provides) so they can run in parallel.
+- If the intent is atomic — one cohesive function/behavior — return EXACTLY ONE sub-task.
+- Do not invent work beyond the intent."""
+
+
+class PlannerError(Exception):
+    """Raised when the model returns an empty or malformed decomposition."""
+
+
+def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str | None = None) -> ConstraintGraph:
+    client = get_client(repo_path)
+    user = f"Current codebase:\n{_render(codebase)}\n\nIntent to decompose:\n{intent}"
+    try:
+        resp = client.chat.completions.create(
+            model=model or get_model(),
+            messages=[{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],
+            response_format={"type": "json_schema",
+                             "json_schema": {"name": "decomposition", "schema": _SCHEMA, "strict": True}},
+            temperature=0,
+        )
+        payload = json.loads(resp.choices[0].message.content)
+    except Exception as ex:  # noqa: BLE001 - the loop degrades to single-agent on failure
+        raise PlannerError(f"decomposition failed: {type(ex).__name__}: {ex}") from ex
+
+    subtasks = payload.get("subtasks", [])
+    if not subtasks:
+        raise PlannerError("decomposition returned no sub-tasks")
+
+    graph = ConstraintGraph()
+    seen: set[str] = set()
+    for i, st in enumerate(subtasks):
+        key = st.get("key") or f"task-{i + 1}"
+        while key in seen:  # defensive: keep keys unique
+            key = f"{key}-{i + 1}"
+        seen.add(key)
+        graph.add(SubTask(
+            key=key,
+            intent=st.get("intent", "").strip() or intent,
+            provides=[n for n in st.get("provides", []) if n],
+            needs=[n for n in st.get("needs", []) if n],
+            depends_on=[k for k in st.get("depends_on", []) if k],
+        ))
+    return graph
+
+
+def _render(cb: Codebase) -> str:
+    if not cb:
+        return "(empty — new project)"
+    return "\n\n".join(f"### {p}\n```python\n{cb[p] or '(empty)'}\n```" for p in sorted(cb))
