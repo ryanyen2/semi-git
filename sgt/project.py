@@ -151,10 +151,14 @@ class Project:
         self.graph.add_node(node)
         self.order.append(node.id)
         self.bundles[node.id] = list(effects)
+        # Anchor for closure (R35): the nodes it was meant to integrate with, PLUS any
+        # node whose names the held effects reference. The union keeps the quarantine
+        # reachable by revert even when nothing landed in this run (avoids an orphan).
+        anchors = set(against_ids) | self._infer_dependencies(effects)
         self.witnesses[node.id] = {
-            "reason": reason, "held": list(held_descs), "against": list(against_ids),
+            "reason": reason, "held": list(held_descs), "against": sorted(anchors),
         }
-        for dep in against_ids:
+        for dep in anchors:
             if dep != node.id and self.graph.has(dep) and not self.graph.would_create_cycle(node.id, dep):
                 self.graph.add_edge(node.id, dep, EdgeType.DEPENDS_ON)
 

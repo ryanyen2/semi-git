@@ -50,6 +50,7 @@ class Report:
     landed: list[str] = field(default_factory=list)
     held: list[str] = field(default_factory=list)
     quarantined: list[str] = field(default_factory=list)
+    failures: list[str] = field(default_factory=list)
 
 
 def _desc(e) -> str:
@@ -144,34 +145,42 @@ class Orchestrator:
         failures: list[str] = []
 
         # Each layer dispatches concurrently; later layers see earlier layers' landed
-        # code because we re-materialize per task before gating (R30).
+        # code because we re-materialize per task before gating (R30). A task the planner
+        # under-serialized (a dependent placed in the same layer as its provider) is held
+        # here and reconciled by rewrite-to-commute against post-land state (R31) — that
+        # quarantine+rewrite path is the reshape mechanism, not explicit edge re-layering.
         for layer in graph.layers():
             cb = self.project.materialize()
             for task, result in dispatch_layer(self.agent, layer, cb, max_workers=self.max_workers):
                 if result.status is AgentStatus.FAILED:
                     failures.append(f"{task.key}: {result.error}")
                     continue
+                if not result.effects:
+                    continue  # agent produced no change — don't land a phantom empty node
                 cur = self.project.materialize()
                 if can_land(cur, result.effects):
                     nid = new_node_id()
                     self.project.add_feature(Node(id=nid, kind=kind, intent=task.intent), result.effects)
                     landed.append(nid)
-                elif result.effects:
+                else:
                     _, held_expl = max_coordination_free_batch_explained(cur, result.effects)
                     reason = held_expl[0][1] if held_expl else INVARIANT_VIOLATED
                     held_records.append((task, list(result.effects), reason))
 
         quarantined = self._resolve_or_quarantine(held_records, landed, kind)
 
-        self.project.commit(f"fanout: {len(landed)} landed, {len(quarantined)} quarantined")
-        ok = bool(landed) or not held_records
+        # Only commit when something actually changed — an all-backend-failed run leaves
+        # the tree untouched, and an empty `git commit` would error.
+        if landed or quarantined:
+            self.project.commit(f"fanout: {len(landed)} landed, {len(quarantined)} quarantined")
+        ok = bool(landed) or bool(quarantined) or not failures
         msg = f"fan-out: {len(landed)} node(s) landed"
         if quarantined:
             msg += f", {len(quarantined)} quarantined"
         if failures:
             msg += f", {len(failures)} backend failure(s)"
         return Report("fanout", ok, lane=lane, message=msg,
-                      landed=landed, quarantined=quarantined)
+                      landed=landed, quarantined=quarantined, failures=failures)
 
     def _resolve_or_quarantine(self, held_records, landed: list[str], kind) -> list[str]:
         """For each held task: attempt bounded rewrite-to-commute, else quarantine (R33)."""

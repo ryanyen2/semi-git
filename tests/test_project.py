@@ -155,6 +155,22 @@ def test_quarantine_persists_and_reloads(tmp_path):
     assert "x" not in re.materialize().get("a.py", "")
 
 
+def test_quarantine_anchors_via_inferred_deps_when_against_empty(tmp_path):
+    # A held task with against_ids=[] but whose effects reference an existing node
+    # must still be anchored to that node (no orphan), so revert closure reaches it.
+    proj = Project.init(tmp_path)
+    _add(proj, "base", NodeKind.CAPABILITY, "base",
+         [Effect.add_def("a.py", "base", "def base():\n    return 1")])
+    qnode = Node(id="q1", kind=NodeKind.CAPABILITY, intent="held")
+    proj.quarantine(qnode, [Effect.add_def("a.py", "x", "def x():\n    return base()")],
+                    reason="invariant_violated", held_descs=["add_def x (a.py)"],
+                    against_ids=[])  # nothing landed this run
+    # inferred from the held effect's call to base()
+    assert "base" in proj.graph.successors("q1")
+    out = revert_feature(proj, "base")
+    assert out.ok and set(out.removed) == {"base", "q1"}
+
+
 def test_reverting_against_node_gcs_quarantine(tmp_path):
     proj = Project.init(tmp_path)
     _add(proj, "base", NodeKind.CAPABILITY, "base",

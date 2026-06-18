@@ -14,7 +14,7 @@ import json
 
 from sgt.config import get_client, get_model
 from sgt.effects.model import Codebase
-from sgt.orchestrate.constraint import ConstraintGraph, SubTask
+from sgt.orchestrate.constraint import ConstraintError, ConstraintGraph, SubTask
 
 _SCHEMA = {
     "type": "object",
@@ -91,6 +91,13 @@ def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str 
             needs=[n for n in st.get("needs", []) if n],
             depends_on=[k for k in st.get("depends_on", []) if k],
         ))
+    # A model can emit a cyclic decomposition (explicit depends_on, or a needs<->provides
+    # loop). Validate layerability here so the caller degrades to single-agent rather than
+    # crashing on an uncaught ConstraintError downstream.
+    try:
+        graph.layers()
+    except ConstraintError as ex:
+        raise PlannerError(f"decomposition is not a DAG: {ex}") from ex
     return graph
 
 

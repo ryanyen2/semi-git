@@ -1,6 +1,7 @@
 """U6 tests: the fan-out orchestration loop (stub agent + stub decomposer)."""
 
 from sgt.adapter.base import AgentResult, AgentStatus
+from sgt.agents.planner import PlannerError
 from sgt.effects.model import Effect
 from sgt.orchestrate.constraint import ConstraintGraph, SubTask
 from sgt.orchestrate.loop import Orchestrator
@@ -101,6 +102,44 @@ def test_conflicting_task_is_quarantined_with_witness(tmp_path):
     # quarantined effects are not materialized
     assert proj.materialize()["m.py"].count("def f") == 1
     assert proj.valid()
+
+
+def test_all_failed_run_reports_not_ok_without_crashing(tmp_path):
+    g = ConstraintGraph()
+    g.add(SubTask("a", "boom one", provides=["a"]))
+    g.add(SubTask("b", "boom two", provides=["b"]))
+    agent = StubAgent({})  # nothing scripted -> both FAILED
+    orch, proj = _orch(tmp_path, agent, g)
+    rep = orch._fanout_or_add("build", "capability", "ab")
+    assert rep.ok is False          # total backend outage is not success
+    assert len(rep.failures) == 2   # surfaced structurally, not just in the message
+    assert rep.landed == [] and rep.quarantined == []
+    assert proj.graph.nodes() == []  # no empty commit, no phantom nodes
+
+
+def test_empty_effects_result_lands_no_node(tmp_path):
+    g = ConstraintGraph()
+    g.add(SubTask("real", "make real", provides=["real"]))
+    g.add(SubTask("noop", "do nothing", provides=[]))
+    agent = StubAgent({
+        "make real": [Effect.add_def("m.py", "real", "def real():\n    return 1")],
+        "do nothing": [],  # OK status but no effects
+    })
+    orch, proj = _orch(tmp_path, agent, g)
+    rep = orch._fanout_or_add("build", "capability", "x")
+    assert len(rep.landed) == 1  # only the real task became a node
+    assert proj.valid()
+
+
+def test_planner_failure_degrades_to_single_agent(tmp_path):
+    def boom(*a, **k):
+        raise PlannerError("decomposition is not a DAG")
+    proj = Project.init(tmp_path)
+    agent = StubAgent({"build x": [Effect.add_def("m.py", "x", "def x():\n    return 1")]})
+    orch = Orchestrator(proj, agent, repo_path=str(tmp_path), decomposer=boom)
+    rep = orch._fanout_or_add("build x", "capability", "x")
+    assert rep.ok  # fell back to the single-agent path
+    assert "def x" in proj.materialize()["m.py"]
 
 
 def test_failed_backend_task_leaves_rest_intact(tmp_path):

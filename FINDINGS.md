@@ -57,6 +57,26 @@ empty — which is what makes "drop a feature and re-materialize" sound.
   Both are correct; they differ only in revert granularity. This is the
   system-distilled-graph behavior working as intended.
 
+## Fan-out reliability follow-ups (from code review, deferred)
+
+These are known, lower-severity items surfaced by an adversarial review pass; the
+fan-out path is sound without them (the confluence gate is always the backstop):
+
+- **Rewrite-to-commute budget vs. transient failures.** A backend error during
+  `attempt_rewrite_to_commute` consumes a commute attempt and the witness reason can be
+  stale (gate reason, not "backend failed"). Should distinguish transient backend
+  failures from genuine non-commutation, with a small backoff.
+- **No per-task dispatch timeout / `BaseException` handling.** A hung backend call blocks
+  the layer (`ThreadPoolExecutor.shutdown(wait=True)`); `KeyboardInterrupt` is not caught
+  as a failed task. Relies on the OpenAI client's own request timeout today.
+- **Reshape (R31) is via quarantine+rewrite, not edge re-layering.** A planner
+  under-serialization (dependent placed in its provider's layer) is held and reconciled
+  against post-land state — safe, but `ConstraintGraph.add_dependency` is not invoked by
+  the loop. The explicit add-edge/re-layer path remains future work.
+- **Witness label for `add_call` conflicts** names the enclosing function, not the callee.
+- **Fan-out commit carries no node trailer** (it spans multiple landed nodes), so
+  `node_id_for_commit` returns None for fan-out commits (unlike the serial path).
+
 ## Known v1 limitations (deferred, see the plan)
 
 - **Effects are function-granular** (`add_def` / `replace_def` / `add_import` /

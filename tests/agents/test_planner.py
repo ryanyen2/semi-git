@@ -63,6 +63,16 @@ def test_malformed_payload_raises_planner_error(monkeypatch):
         decompose("x", {})
 
 
+def test_cyclic_decomposition_raises_planner_error(monkeypatch):
+    # a depends_on b and b depends_on a -> not a DAG -> degrade signal
+    _patch(monkeypatch, {"subtasks": [
+        {"key": "a", "intent": "a", "provides": [], "needs": [], "depends_on": ["b"]},
+        {"key": "b", "intent": "b", "provides": [], "needs": [], "depends_on": ["a"]},
+    ]})
+    with pytest.raises(PlannerError):
+        decompose("x", {})
+
+
 def test_duplicate_keys_are_deduped(monkeypatch):
     _patch(monkeypatch, {"subtasks": [
         {"key": "a", "intent": "one", "provides": [], "needs": [], "depends_on": []},
