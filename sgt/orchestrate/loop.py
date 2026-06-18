@@ -23,6 +23,7 @@ from sgt.engine.confluence import (
 from sgt.lifecycle.algebra import revert_feature, switch_feature
 from sgt.orchestrate.constraint import ConstraintGraph
 from sgt.orchestrate.dispatch import dispatch_layer
+from sgt.orchestrate.quarantine import attempt_rewrite_to_commute
 from sgt.project import Project
 from sgt.store.gitbind import new_node_id
 from sgt.store.graph import Node, NodeKind
@@ -173,12 +174,21 @@ class Orchestrator:
                       landed=landed, quarantined=quarantined)
 
     def _resolve_or_quarantine(self, held_records, landed: list[str], kind) -> list[str]:
-        """Quarantine each held task (U7 adds the bounded rewrite-to-commute attempt)."""
+        """For each held task: attempt bounded rewrite-to-commute, else quarantine (R33)."""
         quarantined: list[str] = []
         for task, effects, reason in held_records:
+            ok, rewritten, new_reason = attempt_rewrite_to_commute(
+                self.project, self.agent, task, self.rewrite_attempts
+            )
+            if ok and rewritten is not None:
+                nid = new_node_id()
+                self.project.add_feature(Node(id=nid, kind=kind, intent=task.intent), rewritten)
+                landed.append(nid)
+                continue
+            # reconcile exhausted -> durable quarantine carrying the latest witness
             qid = new_node_id()
             self.project.quarantine(
-                Node(id=qid, kind=kind, intent=task.intent), effects, reason,
+                Node(id=qid, kind=kind, intent=task.intent), effects, new_reason or reason,
                 [_desc(e) for e in effects], against_ids=list(landed),
             )
             quarantined.append(qid)
