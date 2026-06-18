@@ -167,6 +167,11 @@ class Project:
         self.bundles[node_id] = list(effects)
         self.graph.get(node_id).status = NodeStatus.ACTIVE
         self.witnesses.pop(node_id, None)
+        # The rewritten effects were validated against the FULL current codebase, so the
+        # node must replay last — move it to the end of the materialization order.
+        if node_id in self.order:
+            self.order.remove(node_id)
+        self.order.append(node_id)
         deps = self._infer_dependencies(effects)
         for dep in deps:
             if (dep != node_id and self.graph.has(dep)

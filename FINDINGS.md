@@ -79,6 +79,10 @@ fan-out path is sound without them (the confluence gate is always the backstop):
 
 ## Known v1 limitations (deferred, see the plan)
 
+- **On-demand reconcile shipped.** `sgt reconcile [<ref>]` retries rewrite-to-commute on
+  pending quarantines (all, or one by ref); a node that now commutes is resolved and
+  flipped ACTIVE (its rewritten effects replay last). Previously auto-reconcile ran only
+  during the original fan-out.
 - **Effects are function-granular** (`add_def` / `replace_def` / `add_import` /
   `set_const` / `rename_def` / `add_call`). `replace_def` rewrites a whole top-level
   function; sub-function edits (changing one statement, splitting a function) are

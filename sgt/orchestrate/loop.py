@@ -21,12 +21,12 @@ from sgt.engine.confluence import (
     max_coordination_free_batch_explained,
 )
 from sgt.lifecycle.algebra import revert_feature, switch_feature
-from sgt.orchestrate.constraint import ConstraintGraph
+from sgt.orchestrate.constraint import ConstraintGraph, SubTask
 from sgt.orchestrate.dispatch import dispatch_layer
 from sgt.orchestrate.quarantine import attempt_rewrite_to_commute
 from sgt.project import Project
 from sgt.store.gitbind import new_node_id
-from sgt.store.graph import Node, NodeKind
+from sgt.store.graph import Node, NodeKind, NodeStatus
 
 # Lanes that represent new work eligible for fan-out (explore stays single-agent).
 _FANOUT_LANES = {"capability", "concept", "infrastructure"}
@@ -250,6 +250,46 @@ class Orchestrator:
         self.project.commit(f"revert: remove {nid} ({', '.join(outcome.removed)})")
         return Report("revert", True, node_id=nid,
                       message=f"reverted {len(outcome.removed)} node(s)", landed=outcome.removed)
+
+    def reconcile(self, ref: str | None = None) -> Report:
+        """Retry rewrite-to-commute on pending quarantine(s) on demand (R33).
+
+        With no ref, reconciles every QUARANTINED node; with a ref, just that one. A
+        node that now commutes is resolved (flipped ACTIVE, effects join the replay);
+        the rest stay pending with a refreshed witness.
+        """
+        pending = [n.id for n in self.project.graph.nodes() if n.status is NodeStatus.QUARANTINED]
+        if ref:
+            r = resolve_ref(self.project.graph, ref)
+            if r.node_id is None:
+                return Report("reconcile", False, message=f"could not resolve {ref!r} ({r.kind})")
+            if r.matches[0] not in pending:
+                return Report("reconcile", False, node_id=r.matches[0],
+                              message=f"{r.matches[0]} is not a pending quarantine")
+            pending = [r.matches[0]]
+        if not pending:
+            return Report("reconcile", True, message="no pending quarantines")
+
+        resolved: list[str] = []
+        still: list[str] = []
+        for nid in pending:
+            node = self.project.graph.get(nid)
+            ok, effects, reason = attempt_rewrite_to_commute(
+                self.project, self.agent, SubTask(nid, node.intent), self.rewrite_attempts
+            )
+            if ok and effects is not None:
+                self.project.resolve_quarantine(nid, effects)
+                resolved.append(nid)
+            else:
+                self.project.witnesses.get(nid, {})["reason"] = reason
+                still.append(nid)
+
+        if resolved:
+            self.project.commit(f"reconcile: resolved {', '.join(resolved)}")
+        else:
+            self.project.save()
+        return Report("reconcile", True, message=f"resolved {len(resolved)}, still pending {len(still)}",
+                      landed=resolved, quarantined=still)
 
     def switch(self, ref: str, on: bool) -> Report:
         r = resolve_ref(self.project.graph, ref)

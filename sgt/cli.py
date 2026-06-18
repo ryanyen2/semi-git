@@ -12,7 +12,7 @@ import sys
 
 from sgt.project import Project
 
-_VERBS = {"init", "do", "revert", "modify", "switch", "show", "graph", "status", "help"}
+_VERBS = {"init", "do", "revert", "modify", "switch", "reconcile", "show", "graph", "status", "help"}
 
 
 def _print_report(rep) -> int:
@@ -102,6 +102,10 @@ def main(argv: list[str] | None = None) -> int:
         on = rest[-1] == "on"
         return _print_report(_orchestrator(repo).switch(" ".join(rest[:-1]), on))
 
+    if cmd == "reconcile":
+        ref = " ".join(rest) if rest else None
+        return _print_report(_orchestrator(repo, assume_yes=True).reconcile(ref))
+
     if cmd == "modify":
         if len(rest) < 2:
             print('usage: sgt modify <ref> "<change>"')
@@ -181,6 +185,7 @@ def _help() -> int:
         '  sgt modify <ref> "<chg>"   iterate on an existing feature\n'
         "  sgt revert <ref>           remove a feature (by dependency closure)\n"
         "  sgt switch <ref> on|off    suspend / restore a feature\n"
+        "  sgt reconcile [<ref>]      retry rewrite-to-commute on pending quarantine(s)\n"
         "  sgt show <ref>             inspect a node\n"
         "  sgt graph                  print the semantic DAG\n"
         "  sgt status                 summarize state\n"

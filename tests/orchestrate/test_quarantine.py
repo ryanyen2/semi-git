@@ -84,6 +84,51 @@ def test_held_task_is_rewritten_and_lands_in_fanout(tmp_path):
     assert proj.valid()
 
 
+def test_reconcile_resolves_a_now_commutable_quarantine(tmp_path):
+    proj = Project.init(tmp_path)
+    # a quarantine whose held effect calls base() — which does not exist yet
+    proj.quarantine(Node(id="q", kind=NodeKind.CAPABILITY, intent="make extra"),
+                    [Effect.add_def("m.py", "extra", "def extra():\n    return base()")],
+                    reason="invariant_violated", held_descs=["add_def extra (m.py)"],
+                    against_ids=[])
+    # now base lands, so a fresh dispatch of the same intent will commute
+    proj.add_feature(Node(id="base", kind=NodeKind.CAPABILITY, intent="base"),
+                     [Effect.add_def("m.py", "base", "def base():\n    return 1")])
+    agent = StubAgent({"make extra": [Effect.add_def("m.py", "extra", "def extra():\n    return base()")]})
+    orch = Orchestrator(proj, agent, repo_path=str(tmp_path))
+
+    rep = orch.reconcile("q")
+    assert "q" in rep.landed
+    assert proj.graph.get("q").status is NodeStatus.ACTIVE
+    assert "q" not in proj.witnesses
+    cb = proj.materialize()
+    assert "def extra" in cb["m.py"] and "def base" in cb["m.py"]
+    assert proj.valid()
+
+
+def test_reconcile_all_leaves_unresolvable_pending(tmp_path):
+    proj = Project.init(tmp_path)
+    proj.add_feature(Node(id="f", kind=NodeKind.CAPABILITY, intent="f"),
+                     [Effect.add_def("m.py", "f", "def f():\n    return 1")])
+    proj.quarantine(Node(id="q", kind=NodeKind.CAPABILITY, intent="redefine f"),
+                    [Effect.add_def("m.py", "f", "def f():\n    return 2")],
+                    reason="precondition_failed", held_descs=["add_def f (m.py)"],
+                    against_ids=["f"])
+    agent = StubAgent({"redefine f": [Effect.add_def("m.py", "f", "def f():\n    return 2")]})
+    orch = Orchestrator(proj, agent, repo_path=str(tmp_path))
+
+    rep = orch.reconcile()  # no ref -> all pending
+    assert rep.landed == [] and "q" in rep.quarantined
+    assert proj.graph.get("q").status is NodeStatus.QUARANTINED
+
+
+def test_reconcile_with_no_pending_is_a_noop(tmp_path):
+    proj = Project.init(tmp_path)
+    orch = Orchestrator(proj, StubAgent({}), repo_path=str(tmp_path))
+    rep = orch.reconcile()
+    assert rep.ok and "no pending" in rep.message
+
+
 def test_unreconcilable_task_stays_pending_non_blocking(tmp_path):
     g = ConstraintGraph()
     g.add(SubTask("a_first", "def f v1", provides=["f"]))
