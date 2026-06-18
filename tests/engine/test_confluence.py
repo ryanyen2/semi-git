@@ -29,6 +29,22 @@ def test_two_adds_of_same_name_do_not_commute():
     assert commute("", e1, e2) is False
 
 
+def test_two_replace_defs_of_same_target_do_not_commute():
+    # Two edits rewriting the same function are order-sensitive (last writer wins).
+    src = "def f():\n    return 0\n"
+    e1 = Effect.replace_def("a.py", "f", "def f():\n    return 1")
+    e2 = Effect.replace_def("a.py", "f", "def f():\n    return 2")
+    assert commute(src, e1, e2) is False
+
+
+def test_replace_def_commutes_with_add_on_disjoint_target():
+    # Rewriting f and adding g touch independent regions -> order-independent.
+    src = "def f():\n    return 0\n"
+    e1 = Effect.replace_def("a.py", "f", "def f():\n    return 1")
+    e2 = Effect.add_def("a.py", "g", "def g():\n    return 2")
+    assert commute(src, e1, e2) is True
+
+
 def test_confluent_batch_lands():
     cb = {"a.py": ""}
     batch = [

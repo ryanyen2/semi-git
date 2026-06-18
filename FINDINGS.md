@@ -19,6 +19,11 @@ plug features in and out cleanly.
   infrastructure) are garbage-collected when orphaned; capabilities are not.
 - **Never leaves broken code.** Every revert re-materializes from the remaining
   active effects and is gated by the invariant predicate before commit.
+- **Iterate on an existing feature (`modify` → `replace_def`).** `sgt modify` re-derives
+  a body change in place: the backend emits a `replace_def` that rewrites an existing
+  function (one definition, no same-named duplicate) rather than appending a new unit.
+  A `replace_def` whose new body calls another feature forms a dependency edge, so
+  revert closure stays correct. Verified via `scripts/e2e_modify.py`.
 - **Git underneath.** Each operation materializes the working tree and commits, with
   a `Sgt-Node-Id` trailer mapping commits to semantic nodes (survives amend/rebase).
 
@@ -35,9 +40,10 @@ empty — which is what makes "drop a feature and re-materialize" sound.
 
 ## Known v1 limitations (deferred, see the plan)
 
-- **Effects are additive** (`add_def` / `add_import` / `set_const` / `rename_def` /
-  `add_call`). Modifying the body of an existing function is not yet an effect op
-  (`replace_def` is future work). New behavior is composed as new units.
+- **Effects are function-granular** (`add_def` / `replace_def` / `add_import` /
+  `set_const` / `rename_def` / `add_call`). `replace_def` rewrites a whole top-level
+  function; sub-function edits (changing one statement, splitting a function) are
+  still expressed as a full-def replacement, not a finer-grained patch.
 - **Per-file invariants.** Reference integrity is checked per file; cross-module
   import resolution is shallow (an imported name is treated as defined).
 - **Single language** (Python AST), per plan KTD3.

@@ -25,12 +25,16 @@ EFFECTS on Python files. The available effect ops are:
   new literal (e.g. "6").
 - rename_def: rename a top-level function. `target` = old name, `new_name` = new name.
 - add_call: append a call to `callee` inside the body of function `target`.
+- replace_def: REPLACE an existing top-level function's body/signature. `target` =
+  the existing function's name. `source` = the COMPLETE rewritten def. Use this to
+  CHANGE how an existing function behaves (the function must already exist).
 
 Rules:
-- Prefer add_def for new behavior; keep each function self-contained.
+- For NEW behavior, prefer add_def and keep each function self-contained.
+- To CHANGE an existing function's behavior, use replace_def with the full rewritten
+  def — do NOT add_def a second function with the same name (that violates uniqueness).
 - Every name a function calls must be defined (in the codebase, added by your
   effects, imported, or a builtin). Add the imports you need.
-- Do not redefine names that already exist. Build new, composable units.
 - Leave unused payload fields as empty strings.
 Return effects that, applied in order to the current codebase, implement the intent."""
 

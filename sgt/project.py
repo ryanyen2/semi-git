@@ -113,8 +113,17 @@ class Project:
                 self.graph.add_edge(node.id, dep, EdgeType.DEPENDS_ON)
 
     def extend_feature(self, node_id: str, effects: list[Effect]) -> None:
-        """Attach more effects to an existing node (refine/fix stays in its history)."""
+        """Attach more effects to an existing node (refine/fix stays in its history).
+
+        Newly-referenced features become DEPENDS_ON edges so that a later edit (e.g.
+        a `replace_def` body that now calls another feature) is closure-correct on
+        revert, not just caught by the validity gate.
+        """
         self.bundles.setdefault(node_id, []).extend(effects)
+        for dep in self._infer_dependencies(effects):
+            if (dep != node_id and self.graph.has(dep)
+                    and not self.graph.would_create_cycle(node_id, dep)):
+                self.graph.add_edge(node_id, dep, EdgeType.DEPENDS_ON)
 
     def remove_nodes(self, node_ids: set[str]) -> None:
         for nid in node_ids:
@@ -162,6 +171,8 @@ def _used_names(effects: list[Effect]) -> set[str]:
     for e in effects:
         if e.op is EffectOp.ADD_CALL:
             used.add(e.payload.get("callee", ""))
+        if e.op is EffectOp.REPLACE_DEF:
+            used.add(e.target)  # replacing f depends on whoever defines f
         src = e.payload.get("source", "")
         if src:
             try:

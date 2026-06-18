@@ -75,6 +75,44 @@ def test_switch_off_removes_from_working_tree_then_restores(tmp_path):
     assert "def banner" in proj.materialize()["ui.py"]
 
 
+def test_modify_replaces_behavior_in_place(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "shorten", NodeKind.CAPABILITY, "url shortener",
+         [Effect.add_def("app.py", "shorten", "def shorten(u):\n    return u[:6]")])
+
+    # Iterate on the feature: rewrite its body via replace_def (the `sgt modify` shape).
+    proj.extend_feature("shorten",
+                        [Effect.replace_def("app.py", "shorten", "def shorten(u):\n    return u[:8]")])
+    proj.commit("refine: shorten uses 8 chars", node_id="shorten")
+
+    app = (tmp_path / "app.py").read_text()
+    assert "u[:8]" in app and "u[:6]" not in app
+    assert proj.valid()
+    # Reverting the feature removes the whole bundle (add + replace) cleanly.
+    out = revert_feature(proj, "shorten")
+    assert out.ok and out.removed == ["shorten"]
+
+
+def test_replace_def_introduced_dependency_is_closure_correct(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "helper", NodeKind.CONCEPT, "helper",
+         [Effect.add_def("app.py", "helper", "def helper(x):\n    return x * 2")])
+    _add(proj, "calc", NodeKind.CAPABILITY, "calc",
+         [Effect.add_def("app.py", "calc", "def calc(x):\n    return x")])
+
+    # Modify calc so its body now CALLS helper -> a new dependency edge must form.
+    proj.extend_feature("calc",
+                        [Effect.replace_def("app.py", "calc", "def calc(x):\n    return helper(x)")])
+    assert "helper" in proj.graph.successors("calc")
+    proj.commit("refine: calc uses helper", node_id="calc")
+
+    # Reverting helper must now also take calc (whose body depends on it).
+    out = revert_feature(proj, "helper")
+    assert out.ok
+    assert set(out.removed) == {"helper", "calc"}
+    assert proj.valid()
+
+
 def test_reopen_persists_state(tmp_path):
     proj = Project.init(tmp_path)
     _add(proj, "f", NodeKind.CAPABILITY, "feature f",

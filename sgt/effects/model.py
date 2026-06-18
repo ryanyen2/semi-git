@@ -16,11 +16,12 @@ Codebase = dict[str, str]  # repo-relative path -> source text
 
 
 class EffectOp(str, Enum):
-    ADD_DEF = "add_def"        # add a top-level function/class from source
-    ADD_IMPORT = "add_import"  # add an import statement
-    SET_CONST = "set_const"    # set a top-level NAME = constant
-    RENAME_DEF = "rename_def"  # rename a top-level def + update call sites
-    ADD_CALL = "add_call"      # append a call to `callee` inside `in_func`
+    ADD_DEF = "add_def"          # add a top-level function/class from source
+    ADD_IMPORT = "add_import"    # add an import statement
+    SET_CONST = "set_const"      # set a top-level NAME = constant
+    RENAME_DEF = "rename_def"    # rename a top-level def + update call sites
+    ADD_CALL = "add_call"        # append a call to `callee` inside `in_func`
+    REPLACE_DEF = "replace_def"  # replace an existing top-level def's body/signature
 
     @property
     def is_monotone(self) -> bool:
@@ -60,6 +61,10 @@ class Effect:
     @staticmethod
     def add_call(file: str, in_func: str, callee: str, eid: str = "") -> "Effect":
         return Effect(file, EffectOp.ADD_CALL, in_func, {"callee": callee}, eid)
+
+    @staticmethod
+    def replace_def(file: str, name: str, source: str, eid: str = "") -> "Effect":
+        return Effect(file, EffectOp.REPLACE_DEF, name, {"source": source}, eid)
 
     # -- serialization (persistence + LLM structured output) ---------------
     def to_dict(self) -> dict:
@@ -167,6 +172,10 @@ def precondition_holds(source: str, e: Effect) -> bool:
     if e.op is EffectOp.ADD_CALL:
         defs = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
         return e.target in defs and e.payload["callee"] in defs
+    if e.op is EffectOp.REPLACE_DEF:
+        defs = {n.name for n in tree.body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        return e.target in defs  # can only replace a def that exists
     return False
 
 
@@ -193,6 +202,22 @@ def apply_effect(source: str, e: Effect, check: bool = False) -> str:
         tree = _Renamer(e.target, e.payload["new"]).visit(tree)
     elif e.op is EffectOp.ADD_CALL:
         tree = _CallAdder(e.target, e.payload["callee"]).visit(tree)
+    elif e.op is EffectOp.REPLACE_DEF:
+        parsed = ast.parse(e.payload["source"]).body
+        if not parsed:
+            raise EffectError(f"replace_def {e.target!r}: empty source")
+        top = parsed[0]
+        if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            top.name = e.target  # keep the node's identity; only body/signature change
+        new_body, replaced = [], False
+        for n in tree.body:
+            if (not replaced and isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and n.name == e.target):
+                new_body.append(top)
+                replaced = True
+            else:
+                new_body.append(n)
+        tree.body = new_body
     else:
         raise EffectError(f"unknown op {e.op}")
     ast.fix_missing_locations(tree)

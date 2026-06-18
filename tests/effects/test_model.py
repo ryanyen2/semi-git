@@ -58,6 +58,47 @@ def test_add_call_inserts_into_target_body():
     assert "log()" in out
 
 
+def test_replace_def_rewrites_existing_function_body():
+    src = "def shorten(u):\n    return u[:6]\n"
+    e = Effect.replace_def("app.py", "shorten", "def shorten(u):\n    return u[:8].lower()")
+    assert precondition_holds(src, e) is True
+    out = apply_effect(src, e)
+    assert "u[:8].lower()" in out
+    assert "u[:6]" not in out
+    assert invariant_valid(out)
+
+
+def test_replace_def_keeps_position_and_other_defs():
+    src = "def a():\n    return 1\n\ndef b():\n    return 2\n\ndef c():\n    return 3\n"
+    out = normalize(apply_effect(src, Effect.replace_def("app.py", "b", "def b():\n    return 20")))
+    # b changed; a and c untouched and still present in order
+    assert "return 20" in out
+    assert out.index("def a") < out.index("def b") < out.index("def c")
+
+
+def test_replace_def_precondition_requires_existing_function():
+    src = "def a():\n    return 1\n"
+    e = Effect.replace_def("app.py", "missing", "def missing():\n    return 0")
+    assert precondition_holds(src, e) is False
+    with pytest.raises(EffectError):
+        apply_effect(src, e)
+
+
+def test_replace_def_in_a_bundle_replays_after_the_add():
+    # The canonical modify shape: add_def then replace_def in the same replay.
+    effects = [
+        Effect.add_def("app.py", "f", "def f():\n    return 1"),
+        Effect.replace_def("app.py", "f", "def f():\n    return 2"),
+    ]
+    cb = materialize(effects, check=True)
+    assert "return 2" in cb["app.py"]
+    assert "return 1" not in cb["app.py"]
+
+
+def test_replace_def_is_not_monotone():
+    assert EffectOp.REPLACE_DEF.is_monotone is False
+
+
 def test_materialize_replays_into_multiple_files():
     effects = [
         Effect.add_import("app.py", "import hashlib"),

@@ -46,7 +46,7 @@ EFFECT_JSON_SCHEMA = {
         },
         "source": {
             "type": "string",
-            "description": "full source for add_def (a def/class) or add_import (an import line); else empty",
+            "description": "full source for add_def (a new def/class), replace_def (the rewritten def), or add_import (an import line); else empty",
         },
         "value": {"type": "string", "description": "literal value for set_const; else empty"},
         "new_name": {"type": "string", "description": "new name for rename_def; else empty"},
@@ -93,6 +93,8 @@ def _effect_from_flat(d: dict) -> Effect:
         return Effect.rename_def(file, target, d.get("new_name", ""))
     if op is EffectOp.ADD_CALL:
         return Effect.add_call(file, target, d.get("callee", ""))
+    if op is EffectOp.REPLACE_DEF:
+        return Effect.replace_def(file, target, d.get("source", ""))
     raise ValueError(f"unknown op {op}")
 
 
