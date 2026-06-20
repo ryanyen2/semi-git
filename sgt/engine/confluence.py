@@ -12,24 +12,47 @@ from collections import defaultdict
 
 from sgt.effects.invariants import codebase_valid, invariant_valid, normalize
 from sgt.effects.model import (
+    STMT_OPS,
     Codebase,
     Effect,
     EffectError,
     apply_effect,
     apply_sequence,
+    materialize,
     precondition_holds,
 )
 
 
+def _disjoint_paths(p1: str, p2: str) -> bool:
+    """True when neither scope-qualified path is an ancestor-or-equal of the other.
+
+    ``A.foo`` / ``A.bar`` are disjoint (independent siblings); ``A`` / ``A.foo`` overlap
+    (editing the class subsumes the method), so they are NOT disjoint.
+    """
+    if p1 == p2:
+        return False
+    a, b = p1.split("."), p2.split(".")
+    n = min(len(a), len(b))
+    return a[:n] != b[:n]
+
+
 def commute(source: str, e1: Effect, e2: Effect) -> bool:
     """Do e1 and e2 commute on `source`? (Different files trivially commute.)"""
+    # Statement ops commute by their targets, not by applying (their effect is not in the
+    # source text). `static_commute` is opinionated whenever a statement op is involved and
+    # returns None for pure def-level pairs, which fall through to the apply path below.
+    from sgt.engine.commute import static_commute
+
+    verdict = static_commute(e1, e2)
+    if verdict is not None:
+        return verdict
     if e1.file != e2.file:
         return True
-    # CALM: monotone additions to disjoint names touch independent regions and
+    # CALM: monotone additions to disjoint paths touch independent regions and
     # commute by construction, even though appending them in different orders
-    # produces different *text*. Same-target adds fall through to the apply path,
-    # where the second precondition fails and they correctly do not commute.
-    if e1.op.is_monotone and e2.op.is_monotone and e1.target != e2.target:
+    # produces different *text*. Overlapping or same paths fall through to the apply
+    # path, where the order-sensitivity (or a failed precondition) is detected exactly.
+    if e1.op.is_monotone and e2.op.is_monotone and _disjoint_paths(e1.target, e2.target):
         return True
     try:
         a = normalize(apply_sequence(source, [e1, e2]))
@@ -42,8 +65,16 @@ def commute(source: str, e1: Effect, e2: Effect) -> bool:
     return a is not None and a == b
 
 
-def is_invariant_confluent(cb: Codebase, batch: list[Effect]) -> bool:
-    """Can the whole batch co-apply to `cb` order-independently and stay valid?"""
+def is_invariant_confluent(
+    cb: Codebase, batch: list[Effect], base_effects: list[Effect] | None = None
+) -> bool:
+    """Can the whole batch co-apply to `cb` order-independently and stay valid?
+
+    ``base_effects`` is the active effect history. It is required when ``batch`` contains
+    statement ops: their result is computed structurally by replaying ``base_effects + batch``
+    (so a managed function's statements are seeded from their log-resident defining effect),
+    not by applying text to ``cb``. Pure def-level batches ignore it and keep the text path.
+    """
     batch = list(batch)
     by_file: dict[str, list[Effect]] = defaultdict(list)
     for e in batch:
@@ -57,7 +88,16 @@ def is_invariant_confluent(cb: Codebase, batch: list[Effect]) -> bool:
             for j in range(i + 1, len(effects)):
                 if not commute(src, effects[i], effects[j]):
                     return False
+
     # Apply the full batch and check codebase invariants on the result.
+    if any(e.op in STMT_OPS for e in batch):
+        if base_effects is None:
+            return False  # cannot seed statement positions without the history
+        try:
+            result = materialize(list(base_effects) + batch)
+        except EffectError:
+            return False
+        return codebase_valid(result)
     try:
         result = dict(cb)
         for file, effects in by_file.items():
@@ -67,19 +107,21 @@ def is_invariant_confluent(cb: Codebase, batch: list[Effect]) -> bool:
     return codebase_valid(result)
 
 
-def can_land(cb: Codebase, batch: list[Effect]) -> bool:
+def can_land(cb: Codebase, batch: list[Effect], base_effects: list[Effect] | None = None) -> bool:
     """Alias used by the orchestrator: is this batch safe to land on `cb`?"""
-    return is_invariant_confluent(cb, batch)
+    return is_invariant_confluent(cb, batch, base_effects)
 
 
-def max_coordination_free_batch(cb: Codebase, candidates: list[Effect]) -> tuple[list[Effect], list[Effect]]:
+def max_coordination_free_batch(
+    cb: Codebase, candidates: list[Effect], base_effects: list[Effect] | None = None
+) -> tuple[list[Effect], list[Effect]]:
     """Greedily select the largest prefix-stable confluent subset.
 
     Returns (admitted, held_back). Greedy is the scalable approximation to the exact
     max-coordination-free batch; the held-back effects are quarantined for serial
     resolution. (The exact/RL planner is deferred — see plan KTD7.)
     """
-    admitted, held_explained = max_coordination_free_batch_explained(cb, candidates)
+    admitted, held_explained = max_coordination_free_batch_explained(cb, candidates, base_effects)
     return admitted, [e for e, _ in held_explained]
 
 
@@ -90,18 +132,19 @@ NON_COMMUTING_PREFIX = "non_commuting_with:"  # suffixed with the conflicting ta
 
 
 def max_coordination_free_batch_explained(
-    cb: Codebase, candidates: list[Effect]
+    cb: Codebase, candidates: list[Effect], base_effects: list[Effect] | None = None
 ) -> tuple[list[Effect], list[tuple[Effect, str]]]:
     """Like ``max_coordination_free_batch`` but each held effect carries *why*.
 
     The reason is one of ``precondition_failed`` / ``non_commuting_with:<target>`` /
     ``invariant_violated`` — enough to render a human-readable quarantine witness
-    without a second diagnosis pass.
+    without a second diagnosis pass. ``base_effects`` (the history) is threaded through so
+    statement ops gate against their log-resident definitions.
     """
     admitted: list[Effect] = []
     held: list[tuple[Effect, str]] = []
     for e in candidates:
-        if is_invariant_confluent(cb, admitted + [e]):
+        if is_invariant_confluent(cb, admitted + [e], base_effects):
             admitted.append(e)
         else:
             held.append((e, _hold_reason(cb, admitted, e)))

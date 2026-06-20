@@ -41,6 +41,21 @@ def test_two_replace_defs_of_same_target_do_not_commute():
     assert commute(src, e1, e2) is False
 
 
+def test_methods_in_same_class_commute_when_disjoint():
+    # Adding two different methods into a class touches independent regions.
+    src = "class Svc:\n    def a(self):\n        return 1\n"
+    e1 = Effect.add_def("app.py", "Svc.b", "def b(self):\n    return 2")
+    e2 = Effect.add_def("app.py", "Svc.c", "def c(self):\n    return 3")
+    assert commute(src, e1, e2)
+
+
+def test_class_and_its_method_add_do_not_fastpath_commute():
+    # Adding class A and adding A.m overlap (A.m needs A first) -> not order-free.
+    e1 = Effect.add_def("app.py", "A", "class A:\n    pass")
+    e2 = Effect.add_def("app.py", "A.m", "def m(self):\n    return 1")
+    assert commute("", e1, e2) is False
+
+
 def test_replace_def_commutes_with_add_on_disjoint_target():
     # Rewriting f and adding g touch independent regions -> order-independent.
     src = "def f():\n    return 0\n"

@@ -1,8 +1,10 @@
-"""The orchestration spine.
+"""The orchestration spine — graph-only.
 
-A freeform prompt is classified, delegated to the coding backend for typed effects,
-gated by the confluence engine, and either landed (new node, or appended to an
-existing node's history) or held back as a quarantined conflict.
+sgt does not author code: the coding agent (or a human) writes it. This module exposes the
+operations that manipulate the *semantic graph* and reconstruct the tree from it — `plan`
+(decompose an intent into reviewable PLANNED nodes), `revert`/`switch` (plug features in and
+out, gated and re-materialized), and `reconcile` (re-gate held quarantines). Recording the
+agent's edits lives in `orchestrate/sync.py` (`checkpoint`/`sync`).
 """
 
 from __future__ import annotations
@@ -10,34 +12,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from sgt.adapter.base import AgentStatus, CodingAgentAdapter
-from sgt.agents.classifier import classify
 from sgt.agents.planner import PlannerError, decompose
 from sgt.agents.resolve import resolve_ref
-from sgt.engine.confluence import (
-    INVARIANT_VIOLATED,
-    can_land,
-    max_coordination_free_batch,
-    max_coordination_free_batch_explained,
-)
 from sgt.lifecycle.algebra import revert_feature, switch_feature
-from sgt.orchestrate.constraint import ConstraintGraph, SubTask
-from sgt.orchestrate.dispatch import dispatch_layer
-from sgt.orchestrate.quarantine import attempt_rewrite_to_commute
+from sgt.orchestrate.quarantine import attempt_recommute
 from sgt.project import Project
 from sgt.store.gitbind import new_node_id
 from sgt.store.graph import Node, NodeKind, NodeStatus
-
-# Lanes that represent new work eligible for fan-out (explore stays single-agent).
-_FANOUT_LANES = {"capability", "concept", "infrastructure"}
-
-_LANE_KIND = {
-    "capability": NodeKind.CAPABILITY,
-    "concept": NodeKind.CONCEPT,
-    "infrastructure": NodeKind.INFRASTRUCTURE,
-    "explore": NodeKind.EXPLORATION,
-    "fix": NodeKind.FIX,
-}
 
 
 @dataclass
@@ -46,204 +27,116 @@ class Report:
     ok: bool
     message: str = ""
     node_id: str | None = None
-    lane: str = ""
     landed: list[str] = field(default_factory=list)
     held: list[str] = field(default_factory=list)
     quarantined: list[str] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
 
 
-def _desc(e) -> str:
-    return f"{e.op.value} {e.target} ({e.file})"
+def _codebase_delta(before: dict[str, str], after: dict[str, str]) -> str:
+    """Human summary of how a graph op would change the materialized tree (for --emit)."""
+    parts: list[str] = []
+    for f in sorted(set(before) | set(after)):
+        if f in before and f not in after:
+            parts.append(f"{f}: removed")
+        elif f in after and f not in before:
+            parts.append(f"{f}: added")
+        elif before[f] != after[f]:
+            parts.append(f"{f}: {len(before[f].splitlines())} -> {len(after[f].splitlines())} lines")
+    return "; ".join(parts) or "no file changes"
 
 
 class Orchestrator:
     def __init__(
         self,
         project: Project,
-        agent: CodingAgentAdapter,
         repo_path: str = ".",
-        confirm: Callable[[ConstraintGraph], bool] | None = None,
-        decomposer: Callable[..., ConstraintGraph] = decompose,
-        max_workers: int = 4,
-        rewrite_attempts: int = 2,
+        decomposer: Callable[..., object] = decompose,
+        force: bool = False,
     ):
         self.project = project
-        self.agent = agent
         self.repo_path = repo_path
-        # Checkpoint before fan-out (R29). Default auto-confirm for headless/tests; the
-        # CLI injects an interactive prompt.
-        self._confirm = confirm or (lambda graph: True)
         self._decompose = decomposer
-        self.max_workers = max_workers
-        self.rewrite_attempts = rewrite_attempts
+        self.force = force
 
-    # -- freeform prompt ---------------------------------------------------
-    def ingest(self, prompt: str) -> Report:
-        cls = classify(prompt, self.project.graph, repo_path=self.repo_path)
-        lane = cls.lane
+    def _guard(self, action: str) -> Report | None:
+        """Block a mutating op when the tree drifted, so we never clobber (R5)."""
+        if self.force:
+            return None
+        drift = self.project.check_drift()
+        if drift.any:
+            return Report(action, False, message=(
+                f"out-of-band changes detected ({drift.summary()}); "
+                "run `sgt checkpoint` to record them, or pass --force to overwrite"))
+        return None
 
-        if lane == "question":
-            return Report("answer", True, lane=lane,
-                          message="Classified as a question — no versioned change.")
+    # -- plan (persist a reviewable decomposition; no code authored) -------
+    def plan(self, intent: str) -> Report:
+        """Decompose an intent into durable, reviewable PLANNED nodes — and stop.
 
-        # refine/fix attach to an existing node when the target resolves
-        if lane in ("refine", "fix") and cls.target and self.project.graph.has(cls.target):
-            return self._extend(prompt, cls.target, lane)
-
-        # new capability-bearing work may fan out into a constraint graph
-        if lane in _FANOUT_LANES:
-            return self._fanout_or_add(prompt, lane, cls.name)
-
-        return self._add(prompt, lane, cls.name)
-
-    def _run_agent(self, prompt: str) -> tuple[object, Report | None]:
-        result = self.agent.execute_task(prompt, self.project.materialize())
-        if result.status is AgentStatus.FAILED:
-            return result, Report("delegate", False, message=f"coding agent failed: {result.error}")
-        return result, None
-
-    def _add(self, prompt: str, lane: str, name: str) -> Report:
-        result, err = self._run_agent(prompt)
-        if err:
-            return err
-        cb = self.project.materialize()
-        admitted, held = max_coordination_free_batch(cb, result.effects)
-        if not admitted:
-            return Report("land", False, lane=lane,
-                          message="nothing landed; all effects conflicted",
-                          held=[_desc(e) for e in held])
-        nid = new_node_id()
-        node = Node(id=nid, kind=_LANE_KIND.get(lane, NodeKind.CAPABILITY), intent=prompt)
-        dep_ids = self._resolve_deps(result.depends_on)
-        self.project.add_feature(node, admitted, dep_ids)
-        self.project.commit(f"feat: {result.summary or prompt[:60]}", node_id=nid)
-        return Report("land", True, node_id=nid, lane=lane,
-                      message=result.summary,
-                      landed=[_desc(e) for e in admitted],
-                      held=[_desc(e) for e in held])
-
-    # -- fan-out (R28-R31, R34) -------------------------------------------
-    def _fanout_or_add(self, prompt: str, lane: str, name: str) -> Report:
-        """Decompose into a constraint graph and fan out; fall back to single-agent."""
+        sgt authors no code here: the planner (graph-level LLM reasoning) proposes a
+        decomposition, each sub-task becomes a PLANNED node carrying its declared
+        provides/needs and DEPENDS_ON edges, and the coding agent later implements them
+        and lands them via `checkpoint --fulfills`. An atomic intent persists one node.
+        """
+        if (blocked := self._guard("plan")):
+            return blocked
         cb = self.project.materialize()
         try:
-            graph = self._decompose(prompt, cb, repo_path=self.repo_path)
-        except PlannerError:
-            return self._add(prompt, lane, name)  # degrade gracefully
-        if len(graph) <= 1:
-            return self._add(prompt, lane, name)  # atomic intent: inline, no checkpoint (R29)
-        if not self._confirm(graph):
-            return Report("fanout", False, lane=lane,
-                          message="plan rejected at checkpoint; nothing dispatched")
-        return self._run_plan(graph, lane)
+            graph = self._decompose(intent, cb, repo_path=self.repo_path)
+        except PlannerError as ex:
+            return Report("plan", False, message=f"could not plan: {ex}")
 
-    def _run_plan(self, graph: ConstraintGraph, lane: str) -> Report:
-        kind = _LANE_KIND.get(lane, NodeKind.CAPABILITY)
-        landed: list[str] = []
-        held_records: list[tuple[object, list, str]] = []  # (task, effects, reason)
-        failures: list[str] = []
+        key_to_id: dict[str, str] = {}
+        nodes: list[Node] = []
+        for task in graph.tasks():
+            nid = new_node_id()
+            key_to_id[task.key] = nid
+            nodes.append(Node(id=nid, kind=NodeKind.CAPABILITY, intent=task.intent,
+                              status=NodeStatus.PLANNED, provides=list(task.provides),
+                              needs=list(task.needs)))
+        edges = [(key_to_id[k], key_to_id[d])
+                 for k, ds in graph.dependencies().items() for d in ds
+                 if k in key_to_id and d in key_to_id]
+        dropped = self.project.add_plan(nodes, edges)
+        self.project.commit(f"plan: {len(nodes)} node(s) — {intent[:50]}")
+        msg = f"planned {len(nodes)} node(s)"
+        if dropped:
+            msg += f"; dropped {len(dropped)} cyclic dependency edge(s)"
+        return Report("plan", True, message=msg, landed=[n.id for n in nodes])
 
-        # Each layer dispatches concurrently; later layers see earlier layers' landed
-        # code because we re-materialize per task before gating (R30). A task the planner
-        # under-serialized (a dependent placed in the same layer as its provider) is held
-        # here and reconciled by rewrite-to-commute against post-land state (R31) — that
-        # quarantine+rewrite path is the reshape mechanism, not explicit edge re-layering.
-        for layer in graph.layers():
-            cb = self.project.materialize()
-            for task, result in dispatch_layer(self.agent, layer, cb, max_workers=self.max_workers):
-                if result.status is AgentStatus.FAILED:
-                    failures.append(f"{task.key}: {result.error}")
-                    continue
-                if not result.effects:
-                    continue  # agent produced no change — don't land a phantom empty node
-                cur = self.project.materialize()
-                if can_land(cur, result.effects):
-                    nid = new_node_id()
-                    self.project.add_feature(Node(id=nid, kind=kind, intent=task.intent), result.effects)
-                    landed.append(nid)
-                else:
-                    _, held_expl = max_coordination_free_batch_explained(cur, result.effects)
-                    reason = held_expl[0][1] if held_expl else INVARIANT_VIOLATED
-                    held_records.append((task, list(result.effects), reason))
+    # -- dry-run preview (the --emit escape hatch) -------------------------
+    def _emit(self, action: str, nid: str, *, on: bool = False) -> Report:
+        """Preview a revert/switch on a throwaway copy — never writes the tree or commits.
 
-        quarantined = self._resolve_or_quarantine(held_records, landed, kind)
-
-        # Only commit when something actually changed — an all-backend-failed run leaves
-        # the tree untouched, and an empty `git commit` would error.
-        if landed or quarantined:
-            self.project.commit(f"fanout: {len(landed)} landed, {len(quarantined)} quarantined")
-        ok = bool(landed) or bool(quarantined) or not failures
-        msg = f"fan-out: {len(landed)} node(s) landed"
-        if quarantined:
-            msg += f", {len(quarantined)} quarantined"
-        if failures:
-            msg += f", {len(failures)} backend failure(s)"
-        return Report("fanout", ok, lane=lane, message=msg,
-                      landed=landed, quarantined=quarantined, failures=failures)
-
-    def _resolve_or_quarantine(self, held_records, landed: list[str], kind) -> list[str]:
-        """For each held task: attempt bounded rewrite-to-commute, else quarantine (R33)."""
-        quarantined: list[str] = []
-        for task, effects, reason in held_records:
-            ok, rewritten, new_reason = attempt_rewrite_to_commute(
-                self.project, self.agent, task, self.rewrite_attempts
-            )
-            if ok and rewritten is not None:
-                nid = new_node_id()
-                self.project.add_feature(Node(id=nid, kind=kind, intent=task.intent), rewritten)
-                landed.append(nid)
-                continue
-            # reconcile exhausted -> durable quarantine carrying the latest witness
-            qid = new_node_id()
-            self.project.quarantine(
-                Node(id=qid, kind=kind, intent=task.intent), effects, new_reason or reason,
-                [_desc(e) for e in effects], against_ids=list(landed),
-            )
-            quarantined.append(qid)
-        return quarantined
-
-    def _extend(self, prompt: str, target: str, lane: str) -> Report:
-        result, err = self._run_agent(prompt)
-        if err:
-            return err
-        cb = self.project.materialize()
-        admitted, held = max_coordination_free_batch(cb, result.effects)
-        if not admitted:
-            return Report("extend", False, node_id=target, lane=lane,
-                          message="nothing landed; all effects conflicted",
-                          held=[_desc(e) for e in held])
-        self.project.extend_feature(target, admitted)
-        self.project.commit(f"{lane}: {result.summary or prompt[:60]}", node_id=target)
-        return Report("extend", True, node_id=target, lane=lane,
-                      message=result.summary,
-                      landed=[_desc(e) for e in admitted],
-                      held=[_desc(e) for e in held])
-
-    def modify(self, ref: str, prompt: str) -> Report:
-        r = resolve_ref(self.project.graph, ref)
-        if r.kind == "ambiguous":
-            return Report("modify", False, message=f"ambiguous ref {ref!r}: {', '.join(r.matches)}")
-        if r.node_id is None:
-            return Report("modify", False, message=f"no node matches {ref!r}")
-        return self._extend(prompt, r.matches[0], "refine")
-
-    def _resolve_deps(self, names: list[str]) -> list[str]:
-        ids: list[str] = []
-        for n in names:
-            r = resolve_ref(self.project.graph, n)
-            if r.node_id:
-                ids.append(r.node_id)
-        return ids
+        The op runs against a fresh ``Project.open`` sandbox (discarded on return), so the
+        agent can see the semantic delta + any refusal witness and apply the change itself.
+        """
+        sandbox = Project.open(self.repo_path)
+        before = sandbox.materialize()
+        if action == "revert":
+            outcome = revert_feature(sandbox, nid)
+        else:
+            outcome = switch_feature(sandbox, nid, on)
+        if not outcome.ok:
+            return Report(action, False, node_id=nid,
+                          message=f"{action} --emit: would be refused — {outcome.message}")
+        delta = _codebase_delta(before, sandbox.materialize())
+        return Report(action, True, node_id=nid, landed=outcome.removed,
+                      message=f"{action} --emit (dry-run, nothing written) — {delta}")
 
     # -- explicit graph verbs ----------------------------------------------
-    def revert(self, ref: str) -> Report:
+    def revert(self, ref: str, emit: bool = False) -> Report:
+        if not emit and (blocked := self._guard("revert")):
+            return blocked
         r = resolve_ref(self.project.graph, ref)
         if r.kind == "missing":
             return Report("revert", False, message=f"no node matches {ref!r}")
         if r.kind == "ambiguous":
             return Report("revert", False, message=f"ambiguous ref {ref!r}: {', '.join(r.matches)}")
         nid = r.matches[0]
+        if emit:
+            return self._emit("revert", nid)
         outcome = revert_feature(self.project, nid)
         if not outcome.ok:
             return Report("revert", False, node_id=nid, message=outcome.message)
@@ -252,12 +145,21 @@ class Orchestrator:
                       message=f"reverted {len(outcome.removed)} node(s)", landed=outcome.removed)
 
     def reconcile(self, ref: str | None = None) -> Report:
-        """Retry rewrite-to-commute on pending quarantine(s) on demand (R33).
+        """Retry the agent-free re-gate on pending quarantine(s) on demand (R33).
 
-        With no ref, reconciles every QUARANTINED node; with a ref, just that one. A
-        node that now commutes is resolved (flipped ACTIVE, effects join the replay);
-        the rest stay pending with a refreshed witness.
+        With no ref, reconciles every QUARANTINED node; with a ref, just that one. A node
+        whose held effects now commute (e.g. its rival was reverted/suspended) is resolved
+        (flipped ACTIVE, effects replay last); the rest stay pending with a refreshed witness.
+
+        Reconcile re-gates the *stored* held effects against current active state — it is the
+        recovery path for when a **rival changed** (reverted/suspended) and the held code now
+        fits as-is. It is *not* the path for when the **agent revised the code**: that is a
+        retry via ``checkpoint --fulfills <held-node>`` (which re-distills the new disk state).
+        The drift guard enforces this — reconcile refuses to run over un-checkpointed edits, so
+        it never replays stale held effects on top of fresh, unrecorded changes.
         """
+        if (blocked := self._guard("reconcile")):
+            return blocked
         pending = [n.id for n in self.project.graph.nodes() if n.status is NodeStatus.QUARANTINED]
         if ref:
             r = resolve_ref(self.project.graph, ref)
@@ -273,10 +175,7 @@ class Orchestrator:
         resolved: list[str] = []
         still: list[str] = []
         for nid in pending:
-            node = self.project.graph.get(nid)
-            ok, effects, reason = attempt_rewrite_to_commute(
-                self.project, self.agent, SubTask(nid, node.intent), self.rewrite_attempts
-            )
+            ok, effects, reason = attempt_recommute(self.project, nid)
             if ok and effects is not None:
                 self.project.resolve_quarantine(nid, effects)
                 resolved.append(nid)
@@ -291,10 +190,14 @@ class Orchestrator:
         return Report("reconcile", True, message=f"resolved {len(resolved)}, still pending {len(still)}",
                       landed=resolved, quarantined=still)
 
-    def switch(self, ref: str, on: bool) -> Report:
+    def switch(self, ref: str, on: bool, emit: bool = False) -> Report:
+        if not emit and (blocked := self._guard("switch")):
+            return blocked
         r = resolve_ref(self.project.graph, ref)
         if r.node_id is None:
             return Report("switch", False, message=f"could not resolve {ref!r} ({r.kind})")
+        if emit:
+            return self._emit("switch", r.matches[0], on=on)
         outcome = switch_feature(self.project, r.matches[0], on)
         if not outcome.ok:
             return Report("switch", False, node_id=r.matches[0], message=outcome.message)

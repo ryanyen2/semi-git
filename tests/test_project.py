@@ -2,15 +2,53 @@
 exercise materialize / commit / revert / switch, and verify the working tree and
 the git history reflect intent-level versioning."""
 
-from sgt.effects.model import Effect
+import pytest
+
+from sgt.effects.model import Effect, EffectError
 from sgt.lifecycle.algebra import revert_feature, switch_feature
 from sgt.project import Project
+from sgt.store.gitbind import GitError
 from sgt.store.graph import Node, NodeKind, NodeStatus
 
 
 def _add(project, nid, kind, intent, effects):
     project.add_feature(Node(id=nid, kind=kind, intent=intent), effects)
     project.commit(f"feat: {intent}", node_id=nid)
+
+
+def test_commit_rolls_back_sgt_on_git_failure(tmp_path, monkeypatch):
+    # The split-brain guard: if the git commit fails, .sgt must roll back to its prior state so
+    # the semantic record never advances past git.
+    proj = Project.init(tmp_path)
+    proj.add_feature(Node("n", NodeKind.CAPABILITY, "n"),
+                     [Effect.add_def("a.py", "n", "def n():\n    return 1")])
+    proj.commit("feat n", node_id="n")
+    sgt = tmp_path / ".sgt"
+    # The semantic state (graph + effect log) is what must roll back; the replica's monotonic
+    # counter is intentionally *not* rewound (reusing ids risks collisions, a gap is harmless).
+    semantic = ("graph.json", "effects.json")
+    before = {n: (sgt / n).read_text() for n in semantic}
+
+    proj.add_feature(Node("m", NodeKind.CAPABILITY, "m"),
+                     [Effect.add_def("b.py", "m", "def m():\n    return 2")])
+
+    def boom(*a, **k):
+        raise GitError("commit failed")
+    monkeypatch.setattr(proj.git, "commit_all", boom)
+    with pytest.raises(GitError):
+        proj.commit("feat m")
+    after = {n: (sgt / n).read_text() for n in semantic}
+    assert after == before   # graph + log restored; no half-written node 'm' persisted
+
+
+def test_write_working_tree_refuses_path_escape(tmp_path):
+    # Defense-in-depth: an effect path that escapes the repo root is refused, never written.
+    proj = Project.init(tmp_path)
+    proj.add_feature(Node("evil", NodeKind.CAPABILITY, "evil"),
+                     [Effect.add_def("../evil.py", "x", "def x():\n    return 1")])
+    with pytest.raises(EffectError):
+        proj.write_working_tree()
+    assert not (tmp_path.parent / "evil.py").exists()
 
 
 def test_add_two_features_then_revert_one(tmp_path):
@@ -185,6 +223,50 @@ def test_reverting_against_node_gcs_quarantine(tmp_path):
     assert out.ok
     assert set(out.removed) == {"base", "q1"}
     assert "q1" not in proj.witnesses
+
+
+def test_same_name_in_different_files_does_not_create_false_dependency(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "a", NodeKind.CAPABILITY, "a", [Effect.add_def("a.py", "main", "def main():\n    return 1")])
+    _add(proj, "b", NodeKind.CAPABILITY, "b", [Effect.add_def("b.py", "main", "def main():\n    return 2")])
+    # Two unrelated `main`s in different files must not be linked.
+    assert "a" not in proj.graph.successors("b")
+    assert "b" not in proj.graph.successors("a")
+
+
+def test_cross_file_import_creates_dependency(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "lib", NodeKind.CONCEPT, "lib", [Effect.add_def("lib.py", "foo", "def foo():\n    return 1")])
+    _add(proj, "user", NodeKind.CAPABILITY, "user",
+         [Effect.add_def("app.py", "use", "from lib import foo\n\ndef use():\n    return foo()")])
+    assert "lib" in proj.graph.successors("user")
+
+
+def test_method_level_feature_and_revert(tmp_path):
+    proj = Project.init(tmp_path)
+    _add(proj, "svc", NodeKind.CAPABILITY, "service class",
+         [Effect.add_def("app.py", "Svc", "class Svc:\n    def a(self):\n        return 1")])
+    # A second feature adds a METHOD to the existing class, not a whole new class.
+    proj.extend_feature("svc", [Effect.add_def("app.py", "Svc.b", "def b(self):\n    return 2")])
+    proj.commit("refine: add Svc.b", node_id="svc")
+    app = (tmp_path / "app.py").read_text()
+    assert "def a(self)" in app and "def b(self)" in app
+    assert proj.valid()
+
+
+def test_switch_off_dependency_is_refused_not_crashed(tmp_path):
+    # Suspending `helper` makes `caller`'s add_call un-applyable; this used to crash with
+    # an uncaught EffectError. It must now refuse gracefully and roll the status back.
+    proj = Project.init(tmp_path)
+    _add(proj, "helper", NodeKind.CONCEPT, "helper",
+         [Effect.add_def("m.py", "helper", "def helper():\n    return 1")])
+    _add(proj, "caller", NodeKind.CAPABILITY, "caller",
+         [Effect.add_def("m.py", "caller", "def caller():\n    return 1"),
+          Effect.add_call("m.py", "caller", "helper")])
+    out = switch_feature(proj, "helper", on=False)
+    assert out.ok is False
+    assert proj.graph.get("helper").status is NodeStatus.ACTIVE  # rolled back
+    assert proj.valid()
 
 
 def test_reopen_persists_state(tmp_path):

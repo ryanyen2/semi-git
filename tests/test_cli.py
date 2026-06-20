@@ -1,42 +1,13 @@
-"""U8 tests: CLI checkpoint prompt, quarantine visibility, and read-only verbs.
+"""CLI surface tests (graph-only): read-only verbs, report rendering, quarantine visibility.
 
-The LLM-backed `do` path is covered live by scripts/e2e_fanout.py; here we test the
-pure CLI surface (confirm prompt, report rendering, graph/show) without a backend.
+The graph-reasoning `plan` path is covered live; here we test the pure CLI surface without
+any LLM or backend.
 """
 
-import builtins
-
-from sgt.cli import confirm_plan, main
+from sgt.cli import main
 from sgt.effects.model import Effect
-from sgt.orchestrate.constraint import ConstraintGraph, SubTask
 from sgt.project import Project
 from sgt.store.graph import Node, NodeKind
-
-
-def _plan():
-    g = ConstraintGraph()
-    g.add(SubTask("a", "make a", provides=["a"]))
-    g.add(SubTask("b", "use a", needs=["a"]))
-    return g
-
-
-def test_confirm_plan_yes(monkeypatch, capsys):
-    monkeypatch.setattr(builtins, "input", lambda *a: "y")
-    assert confirm_plan(_plan()) is True
-    out = capsys.readouterr().out
-    assert "Proposed fan-out plan" in out and "layer 1" in out and "layer 2" in out
-
-
-def test_confirm_plan_no(monkeypatch):
-    monkeypatch.setattr(builtins, "input", lambda *a: "")
-    assert confirm_plan(_plan()) is False
-
-
-def test_confirm_plan_eof_is_no(monkeypatch):
-    def raise_eof(*a):
-        raise EOFError
-    monkeypatch.setattr(builtins, "input", raise_eof)
-    assert confirm_plan(_plan()) is False
 
 
 def test_init_and_graph_roundtrip(tmp_path, capsys):

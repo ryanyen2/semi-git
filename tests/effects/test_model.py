@@ -112,6 +112,50 @@ def test_materialize_replays_into_multiple_files():
     assert invariant_valid(cb["app.py"])
 
 
+def test_add_method_into_existing_class():
+    src = "class Svc:\n    def a(self):\n        return 1\n"
+    e = Effect.add_def("app.py", "Svc.b", "def b(self):\n    return 2")
+    assert precondition_holds(src, e) is True
+    out = apply_effect(src, e)
+    assert "def b(self):" in out and "def a(self):" in out
+    assert invariant_valid(out)
+
+
+def test_add_method_into_missing_class_fails_precondition():
+    e = Effect.add_def("app.py", "Missing.b", "def b(self):\n    return 2")
+    assert precondition_holds("x = 1\n", e) is False
+
+
+def test_replace_method_in_place_leaves_siblings():
+    src = "class Svc:\n    def a(self):\n        return 1\n\n    def b(self):\n        return 2\n"
+    out = apply_effect(src, Effect.replace_def("app.py", "Svc.a", "def a(self):\n    return 11"))
+    assert "return 11" in out and "return 2" in out
+
+
+def test_remove_def_top_level():
+    src = "def keep():\n    return 1\n\ndef drop():\n    return 2\n"
+    e = Effect.remove_def("app.py", "drop")
+    assert precondition_holds(src, e) is True
+    out = apply_effect(src, e)
+    assert "def keep" in out and "def drop" not in out
+
+
+def test_remove_only_method_keeps_class_parseable():
+    src = "class Svc:\n    def only(self):\n        return 1\n"
+    out = apply_effect(src, Effect.remove_def("app.py", "Svc.only"))
+    assert "class Svc" in out and "only" not in out
+    assert invariant_valid(out)  # `class Svc: pass` still valid
+
+
+def test_remove_def_precondition_requires_existing_unit():
+    assert precondition_holds("def a():\n    return 1\n",
+                              Effect.remove_def("app.py", "ghost")) is False
+
+
+def test_remove_def_is_not_monotone():
+    assert EffectOp.REMOVE_DEF.is_monotone is False
+
+
 def test_materialize_without_a_dropped_feature_is_clean():
     # Feature A (shorten) + Feature B (a redirect that calls shorten).
     feature_a = [Effect.add_def("app.py", "shorten", "def shorten(u):\n    return u[:6]")]

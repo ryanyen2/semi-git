@@ -1,7 +1,8 @@
 """Configuration: load `.env` and build the OpenAI client.
 
-semi-git's owned agents (classifier, coding backend) run on the OpenAI API. The key
-lives in `.env` at the repo root; we parse it without adding a dotenv dependency.
+semi-git's graph-reasoning agents (the planner and the distillation labeler) run on the
+OpenAI API — they reason about the graph, never author code. The key lives in `.env` at the
+repo root; we parse it without adding a dotenv dependency.
 """
 
 from __future__ import annotations

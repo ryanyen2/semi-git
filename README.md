@@ -2,11 +2,16 @@
 
 Version a codebase by its **features and concepts**, not its diffs.
 
-`sgt` maintains a living semantic DAG (`.sgt/`) over an ordinary git repo. A developer
-works through a freeform prompt stream plus explicit graph verbs; semi-git distills that
-into feature/concept nodes, delegates code-writing to an external coding agent, and runs
-every mutation through the **EICO confluence gate** so nothing lands unless it commutes
-and preserves the codebase's invariants.
+`sgt` is **git for semantics**: it maintains a living semantic DAG (`.sgt/`) over an ordinary
+git repo, and the coding agent (or a human) operates it the way it already operates `git`.
+**sgt never authors code** — your coding agent writes it; sgt plans, records, and reorganizes
+the *semantic graph* and reconstructs the tree from it. Every mutation runs through the **EICO
+confluence gate** so nothing lands unless it commutes and preserves the codebase's invariants.
+
+The loop: **`plan`** an intent into reviewable nodes → implement with your own tools →
+**`checkpoint`** to record what you built (distilled into typed effects) → **`revert`/`switch`/
+`reconcile`** to plug features in and out. The LLM is used only to reason about the graph
+(decompose a plan, label a checkpoint), never to produce code.
 
 See:
 - `docs/ideation/2026-06-17-semi-git-ideation.md` — where the idea came from
@@ -27,17 +32,30 @@ uv run pytest
 
 ```bash
 sgt init                                  # bind .sgt + git
-sgt "add a function shorten(url) ..."     # intent -> feature (classifier-routed)
+sgt plan "validate + normalize an email"  # decompose an intent into reviewable PLANNED nodes
+sgt "validate + normalize an email"       # shorthand for `sgt plan`
+# ...implement a planned node with your own editor / coding agent...
+sgt checkpoint --fulfills <node> --intent "..."   # record your edits under that node (-> ACTIVE)
+sgt checkpoint                            # or: record ad-hoc edits as a new node
 sgt graph                                 # the semantic DAG
 sgt revert <feature>                      # plug a feature out (by dependency closure)
+sgt revert <feature> --emit               # dry-run: preview the change, write nothing
 sgt switch <feature> off|on               # suspend / restore
-sgt modify <feature> "<change>"           # iterate on a feature
+sgt reconcile [<ref>]                     # re-gate held quarantines; resolve any that now commute
+sgt mcp                                   # stdio MCP server so a coding agent can drive sgt
 ```
 
-The OpenAI key is read from `.env` (`OPENAI_API_KEY`, optional `OPENAI_MODEL`).
+The graph ops (`revert`/`switch`/`reconcile`/`checkpoint --fulfills`/`checkpoint --intent`) need
+no API key. `plan` uses the OpenAI key (read from `.env`: `OPENAI_API_KEY`, optional
+`OPENAI_MODEL`) for **graph-level reasoning only** — decomposition, never code. A bare,
+no-intent `checkpoint` *prefers* the LLM to label the distilled change but **degrades to
+deterministic grouping offline**, so the whole loop works with no key.
 
 ## Status
 
-v1 vertical slice complete and verified end-to-end (47 tests + live OpenAI run).
-Intent-level versioning and clean feature plug-in/out work. See `FINDINGS.md` for
-what's verified and the deferred items.
+Graph-only pivot complete: sgt no longer authors code (the OpenAI coding backend is removed).
+The spine is `plan` → implement (your agent) → `checkpoint`/`--fulfills` → `revert`/`switch`/
+`reconcile`, all gated by the confluence check, with an `--emit` dry-run. Verified by the test
+suite + a live walkthrough (`scripts/e2e_plan_checkpoint.py`). See `FINDINGS.md` for what's
+verified and the deferred items, and `docs/design/2026-06-19-graph-only-agent-driven-sgt.md`
+for the design.

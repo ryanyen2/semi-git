@@ -29,11 +29,17 @@ class NodeStatus(str, Enum):
     ``QUARANTINED`` marks held work whose effects do not yet commute with the landed
     codebase (R32): the node is durable and visible in the graph, but its effects are
     excluded from materialization until it is reconciled to ``ACTIVE``.
+
+    ``PLANNED`` marks a tentative, reviewable node that has no effects yet (the coding
+    agent has not implemented it). Like ``QUARANTINED`` it is excluded from
+    materialization; a ``checkpoint --fulfills`` lands real effects under it and flips it
+    ``ACTIVE``.
     """
 
     ACTIVE = "active"
     SUSPENDED = "suspended"
     QUARANTINED = "quarantined"
+    PLANNED = "planned"
 
 
 class EdgeType(str, Enum):
@@ -65,6 +71,14 @@ class Node:
     effect_bundle_id: str | None = None
     invariant_ids: list[str] = field(default_factory=list)
     commit_ids: list[str] = field(default_factory=list)
+    # Declared interface from the planner: top-level names this node is meant to define
+    # (`provides`) and the names it requires (`needs`). Populated on PLANNED nodes so a
+    # plug-out can reason about *intended* dependencies the call graph cannot yet see.
+    provides: list[str] = field(default_factory=list)
+    needs: list[str] = field(default_factory=list)
+    # Append-only history of superseded intents (e.g. the planned intent kept when a
+    # `checkpoint --fulfills` adopts the agent's declared intent — reality wins, plan kept).
+    provenance: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -75,6 +89,9 @@ class Node:
             "effect_bundle_id": self.effect_bundle_id,
             "invariant_ids": list(self.invariant_ids),
             "commit_ids": list(self.commit_ids),
+            "provides": list(self.provides),
+            "needs": list(self.needs),
+            "provenance": list(self.provenance),
         }
 
     @classmethod
@@ -87,6 +104,9 @@ class Node:
             effect_bundle_id=d.get("effect_bundle_id"),
             invariant_ids=list(d.get("invariant_ids", [])),
             commit_ids=list(d.get("commit_ids", [])),
+            provides=list(d.get("provides", [])),
+            needs=list(d.get("needs", [])),
+            provenance=list(d.get("provenance", [])),
         )
 
 

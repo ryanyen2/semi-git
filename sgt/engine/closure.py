@@ -9,7 +9,7 @@ reverted but survives when a dashboard still needs it (origin AE2).
 
 from __future__ import annotations
 
-from sgt.store.graph import EdgeType, NodeKind, SemanticGraph
+from sgt.store.graph import EdgeType, NodeKind, NodeStatus, SemanticGraph
 
 # Only "support" kinds are cascade-GC'd when orphaned. A capability the user added
 # on purpose is not collected just because the feature using it was reverted; a
@@ -18,7 +18,13 @@ _GC_KINDS = {NodeKind.CONCEPT, NodeKind.INFRASTRUCTURE}
 
 
 def dependents_closure(graph: SemanticGraph, node_id: str) -> set[str]:
-    """`node_id` plus every node that transitively depends on it."""
+    """`node_id` plus every node that transitively depends on it.
+
+    A PLANNED dependent is *not* pulled in: a plan is a draft, not realized code, so it is
+    not invalidated by removing the feature it declared a dependency on (its now-dangling
+    edge is dropped with the removed node, and re-inferred when the plan is later fulfilled).
+    Reverting real code must never silently delete the user's pending plan.
+    """
     closure: set[str] = set()
     stack = [node_id]
     while stack:
@@ -26,8 +32,10 @@ def dependents_closure(graph: SemanticGraph, node_id: str) -> set[str]:
         if cur in closure:
             continue
         closure.add(cur)
-        # predecessors are nodes pointing at `cur` (i.e. they depend on it)
-        stack.extend(graph.predecessors(cur))
+        # predecessors are nodes pointing at `cur` (i.e. they depend on it); skip PLANNED
+        # drafts so reverting an active feature does not garbage-collect a pending plan.
+        stack.extend(p for p in graph.predecessors(cur)
+                     if graph.get(p).status is not NodeStatus.PLANNED)
     return closure
 
 

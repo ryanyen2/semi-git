@@ -1,10 +1,12 @@
-"""The transient constraint graph — execution scaffolding for a fan-out run.
+"""The constraint graph — a decomposition's dependency structure.
 
 A single intent decomposes into sub-tasks, each declaring the names it `provides`
-and the names it `needs`, plus optional explicit `depends_on` edges. The graph is
-*not* the durable semantic DAG (plan KTD1): it only orders and groups dispatch.
-`layers()` returns coordination-free batches (Kahn-style), so each layer can be
-dispatched concurrently and dependents run after their prerequisites land.
+and the names it `needs`, plus optional explicit `depends_on` edges. The graph itself
+is *not* the durable semantic DAG (plan KTD1) — it is the intermediate structure the
+planner produces. `dependencies()` computes the effective edges (explicit plus
+needs<->provides matching); `Orchestrator.plan` reads them to project a plan into
+persisted PLANNED-node DEPENDS_ON edges, and `layers()` reads them for Kahn-style
+coordination-free batching.
 
 Pure data + algorithm: no LLM, no git, no `SemanticGraph`.
 """
@@ -56,8 +58,10 @@ class ConstraintGraph:
         if dst_key not in dep:
             dep.append(dst_key)
 
-    def _effective_deps(self) -> dict[str, set[str]]:
-        """Explicit depends_on plus edges inferred from needs<->provides matching."""
+    def dependencies(self) -> dict[str, set[str]]:
+        """Effective deps (explicit ``depends_on`` plus needs<->provides matching), keyed by
+        task key. Read by ``layers()`` for dispatch ordering *and* by ``Orchestrator.plan`` to
+        project a plan into persisted DEPENDS_ON edges."""
         provider: dict[str, str] = {}
         for t in self._tasks.values():
             for name in t.provides:
@@ -78,7 +82,7 @@ class ConstraintGraph:
         Each returned layer contains tasks whose dependencies all resolved in earlier
         layers; tasks within a layer are independent and may dispatch concurrently.
         """
-        deps = self._effective_deps()
+        deps = self.dependencies()
         resolved: set[str] = set()
         layers: list[list[SubTask]] = []
         remaining = set(self._tasks)

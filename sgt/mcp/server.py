@@ -1,0 +1,368 @@
+"""A dependency-free MCP stdio server exposing the semi-git semantic tree.
+
+The protocol is JSON-RPC 2.0 over newline-delimited stdin/stdout (the MCP stdio transport).
+We implement only the small surface a tool server needs — ``initialize``, ``tools/list``,
+``tools/call`` — with no third-party dependency, matching the project's minimal footprint and
+keeping the dispatch (``handle_request``) a pure function that is unit-tested without a process.
+
+Tool surface (the agent-facing semantic API) — full parity with the CLI's mutating verbs:
+
+* **read** (no API key): ``sgt_graph``, ``sgt_show``, ``sgt_status``, ``sgt_conflicts`` — pull
+  the semantic tree and any open conflicts (with full witnesses) into the agent's context.
+* **write/reconcile**: ``sgt_init`` (bootstrap a workspace), ``sgt_plan`` (decompose into PLANNED
+  nodes), ``sgt_checkpoint`` — *the* tool: after the agent edits files, distill the drift into the
+  log under the agent's **declared** intent (captured live, not reverse-guessed; ``fulfills`` lands
+  it on a PLANNED node), ``sgt_revert`` / ``sgt_switch`` (graph ops), and ``sgt_reconcile`` (re-gate
+  held quarantines). A held checkpoint returns its witness so the agent can act on it.
+
+Every call opens the project fresh from disk, so it reflects whatever the agent just edited.
+``sgt_checkpoint`` uses the deterministic distiller (the agent supplies intent), so it needs no
+API key — the loop works fully offline.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from typing import Any
+
+PROTOCOL_VERSION = "2024-11-05"
+SERVER_INFO = {"name": "semi-git", "version": "0.1.0"}
+
+
+# ---------------------------------------------------------------------------
+# Tool handlers — each takes (repo_path, arguments) and returns a JSON-able dict.
+# ---------------------------------------------------------------------------
+def _open(repo_path: str):
+    from sgt.project import Project
+
+    return Project.open(repo_path)
+
+
+def _node_view(project, n) -> dict:
+    w = project.witnesses.get(n.id)
+    return {
+        "id": n.id,
+        "kind": n.kind.value,
+        "status": n.status.value,
+        "intent": n.intent,
+        "depends_on": list(project.graph.successors(n.id)),
+        "provenance": list(n.provenance),
+        "conflict": w.get("reason") if w else None,
+    }
+
+
+def tool_graph(repo_path: str, args: dict) -> dict:
+    project = _open(repo_path)
+    nodes = [_node_view(project, n) for n in project.graph.nodes()]
+    return {"nodes": nodes, "count": len(nodes)}
+
+
+def tool_show(repo_path: str, args: dict) -> dict:
+    from sgt.agents.resolve import resolve_ref
+
+    project = _open(repo_path)
+    ref = (args.get("ref") or "").strip()
+    if not ref:
+        return {"error": "missing 'ref'"}
+    r = resolve_ref(project.graph, ref)
+    if r.node_id is None:
+        return {"error": f"could not resolve {ref!r} ({r.kind})", "matches": r.matches}
+    n = project.graph.get(r.node_id)
+    view = _node_view(project, n)
+    view["dependents"] = list(project.graph.predecessors(n.id))
+    view["effects"] = [f"{e.op.value} {e.target} ({e.file})" for e in project.bundles.get(n.id, [])]
+    # Full witness (reason + held descriptions + the nodes it lost to) for a held node, so the
+    # agent has everything it needs to resolve it — not just the one-line reason.
+    if (w := project.witnesses.get(n.id)):
+        view["conflict"] = {"reason": w.get("reason"), "held": w.get("held", []),
+                            "against": w.get("against", [])}
+    return view
+
+
+def tool_status(repo_path: str, args: dict) -> dict:
+    from sgt.effects.model import EffectError
+
+    project = _open(repo_path)
+    try:
+        cb = project.materialize()
+    except EffectError as ex:
+        return {"nodes": len(project.graph.nodes()), "error": f"cannot materialize: {ex}"}
+    drift = project.check_drift()
+    return {
+        "nodes": len(project.graph.nodes()),
+        "files": sorted(cb),
+        "effects": sum(len(b) for b in project.bundles.values()),
+        "drift": drift.summary() if drift.any else "",
+    }
+
+
+def tool_conflicts(repo_path: str, args: dict) -> dict:
+    from sgt.merge import conflicts
+
+    project = _open(repo_path)
+    out = []
+    for c in conflicts(project):
+        out.append({
+            "node_id": c.held.node_id,
+            "intent": c.held.intent,
+            "reason": c.reason,
+            "against": [{"node_id": s.node_id, "intent": s.intent} for s in c.against],
+        })
+    return {"conflicts": out, "count": len(out)}
+
+
+def tool_checkpoint(repo_path: str, args: dict) -> dict:
+    """Reconcile the agent's on-disk edits into the log under a declared intent.
+
+    The intent the agent passes labels the new/extended nodes directly — better than the
+    reverse-guessing distiller — and statement-level body edits still split into their own fix
+    nodes so a later cross-agent merge stays statement-granular. Pass ``fulfills`` (a node ref)
+    to land the whole change under a PLANNED node and flip it ACTIVE.
+    """
+    from sgt.agents.distill import fallback_cluster
+    from sgt.agents.resolve import resolve_ref
+    from sgt.orchestrate.sync import run_sync
+
+    project = _open(repo_path)
+    intent = (args.get("intent") or "").strip()
+    if not intent:
+        return {"error": "missing 'intent' — declare what this change accomplishes"}
+
+    fulfills_id = None
+    if (fulfills := (args.get("fulfills") or "").strip()):
+        r = resolve_ref(project.graph, fulfills)
+        if r.node_id is None:
+            return {"error": f"could not resolve fulfills {fulfills!r} ({r.kind})", "matches": r.matches}
+        fulfills_id = r.node_id
+
+    def clusterer(effects, proj):
+        clusters = fallback_cluster(effects, proj)
+        for c in clusters:
+            c.intent = intent  # the agent's declared intent overrides the structural label
+        return clusters
+
+    rep = run_sync(project, repo_path=repo_path, clusterer=clusterer, confirm=lambda c: True,
+                   fulfills=fulfills_id, intent=intent)
+    return {
+        "ok": rep.ok,
+        "message": rep.message,
+        "landed": rep.landed,
+        "fulfilled": rep.fulfilled,
+        "extended": rep.extended,
+        "quarantined": rep.quarantined,
+        # The witness for each held node — *why* it did not commute and against what — so the
+        # agent can act (revise the code and re-checkpoint, or revert the rival) without guessing.
+        "witnesses": {q: project.witnesses.get(q, {}) for q in rep.quarantined},
+        "notes": rep.notes,
+    }
+
+
+def _orchestrator(repo_path: str):
+    from sgt.orchestrate.loop import Orchestrator
+
+    # Graph-only: no coding backend. revert/switch/reconcile need no key; plan uses the
+    # graph-reasoning LLM (the planner) only.
+    return Orchestrator(_open(repo_path), repo_path=repo_path)
+
+
+def _report(rep) -> dict:
+    return {"ok": rep.ok, "action": rep.action, "node_id": rep.node_id, "message": rep.message,
+            "landed": list(rep.landed), "held": list(rep.held),
+            "quarantined": list(rep.quarantined)}
+
+
+def tool_plan(repo_path: str, args: dict) -> dict:
+    """Decompose an intent into reviewable PLANNED nodes (no code authored)."""
+    intent = (args.get("intent") or "").strip()
+    if not intent:
+        return {"error": "missing 'intent' — describe what to plan"}
+    return _report(_orchestrator(repo_path).plan(intent))
+
+
+def tool_reconcile(repo_path: str, args: dict) -> dict:
+    """Re-gate held quarantines on demand; resolve any that now commute.
+
+    With no ``ref``, retries every pending quarantine; with one, just that node. This closes
+    the quarantine loop from MCP — the agent can observe holds via ``sgt_conflicts`` and clear
+    them here once a rival was reverted/suspended (revise-the-code retries go through
+    ``sgt_checkpoint`` with ``fulfills`` instead).
+    """
+    ref = (args.get("ref") or "").strip() or None
+    return _report(_orchestrator(repo_path).reconcile(ref))
+
+
+def tool_init(repo_path: str, args: dict) -> dict:
+    """Bind a fresh ``.sgt`` store + git to a repo so the agent can bootstrap a workspace."""
+    from sgt.project import Project
+
+    path = (args.get("path") or "").strip() or repo_path
+    Project.init(path)
+    return {"ok": True, "message": f"initialized sgt workspace at {path}"}
+
+
+def tool_revert(repo_path: str, args: dict) -> dict:
+    ref = (args.get("ref") or "").strip()
+    if not ref:
+        return {"error": "missing 'ref'"}
+    return _report(_orchestrator(repo_path).revert(ref, emit=bool(args.get("emit", False))))
+
+
+def tool_switch(repo_path: str, args: dict) -> dict:
+    ref = (args.get("ref") or "").strip()
+    if not ref:
+        return {"error": "missing 'ref'"}
+    on = bool(args.get("on", True))
+    return _report(_orchestrator(repo_path).switch(ref, on, emit=bool(args.get("emit", False))))
+
+
+# ---------------------------------------------------------------------------
+# Tool registry (name -> (description, inputSchema, handler))
+# ---------------------------------------------------------------------------
+def _schema(props: dict, required: list[str]) -> dict:
+    return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
+
+
+TOOLS: dict[str, tuple[str, dict, Any]] = {
+    "sgt_graph": (
+        "Read the semantic DAG: every node's id, kind, status, intent, dependencies, and any "
+        "open conflict. Call this before editing to see what features exist.",
+        _schema({}, []),
+        tool_graph,
+    ),
+    "sgt_show": (
+        "Inspect one node by a fuzzy ref (id, name, or intent substring): its effects, "
+        "dependencies, dependents, and conflict witness.",
+        _schema({"ref": {"type": "string", "description": "node id, name, or intent substring"}}, ["ref"]),
+        tool_show,
+    ),
+    "sgt_status": (
+        "Summarize the project: node count, managed files, effect count, and whether the "
+        "working tree has un-checkpointed drift.",
+        _schema({}, []),
+        tool_status,
+    ),
+    "sgt_conflicts": (
+        "List open conflicts: each held node, the node(s) it lost to, and the reason — so you "
+        "can decide how to resolve them.",
+        _schema({}, []),
+        tool_conflicts,
+    ),
+    "sgt_plan": (
+        "Decompose an intent into reviewable PLANNED nodes (the semantic outline) without "
+        "writing any code. Each node carries its declared provides/needs and dependency edges; "
+        "implement them with your own tools, then land each via sgt_checkpoint.",
+        _schema({"intent": {"type": "string", "description": "what to plan / decompose"}}, ["intent"]),
+        tool_plan,
+    ),
+    "sgt_checkpoint": (
+        "Reconcile your on-disk edits into the semantic log under a declared intent. Call this "
+        "after finishing a logical unit of work. Body edits land at statement granularity so a "
+        "later merge with another agent's edits stays conflict-aware. Pass 'fulfills' (a node "
+        "ref) to land the change under a PLANNED node and flip it ACTIVE.",
+        _schema({"intent": {"type": "string", "description": "what this change accomplishes"},
+                 "fulfills": {"type": "string", "description": "PLANNED node ref this change implements (optional)"}},
+                ["intent"]),
+        tool_checkpoint,
+    ),
+    "sgt_revert": (
+        "Remove a feature by dependency closure (blocked if the tree has un-checkpointed drift; "
+        "checkpoint first). Pass emit=true for a dry-run: preview the semantic delta without "
+        "writing the tree.",
+        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
+        tool_revert,
+    ),
+    "sgt_switch": (
+        "Suspend or restore a feature (on=false suspends, on=true restores). Pass emit=true for "
+        "a dry-run preview.",
+        _schema({"ref": {"type": "string"},
+                 "on": {"type": "boolean", "default": True,
+                        "description": "true restores the feature (default), false suspends it"},
+                 "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
+        tool_switch,
+    ),
+    "sgt_reconcile": (
+        "Re-gate held quarantines and resolve any that now commute (e.g. after a rival was "
+        "reverted/suspended). Omit 'ref' to retry all pending; pass one to target a single node.",
+        _schema({"ref": {"type": "string", "description": "a single quarantined node ref (optional)"}}, []),
+        tool_reconcile,
+    ),
+    "sgt_init": (
+        "Bind a fresh .sgt store + git to a repo so you can start versioning semantics. "
+        "Idempotent-ish: run once per repo before planning or checkpointing.",
+        _schema({"path": {"type": "string", "description": "repo path (defaults to the server's root)"}}, []),
+        tool_init,
+    ),
+}
+
+
+def call_tool(repo_path: str, name: str, arguments: dict | None) -> dict:
+    """Dispatch a single tool call to its handler. Raises KeyError on an unknown tool."""
+    if name not in TOOLS:
+        raise KeyError(name)
+    _, _, handler = TOOLS[name]
+    return handler(repo_path, arguments or {})
+
+
+def _tool_defs() -> list[dict]:
+    return [{"name": n, "description": d, "inputSchema": s} for n, (d, s, _) in TOOLS.items()]
+
+
+# ---------------------------------------------------------------------------
+# JSON-RPC dispatch
+# ---------------------------------------------------------------------------
+def _ok(mid, result) -> dict:
+    return {"jsonrpc": "2.0", "id": mid, "result": result}
+
+
+def handle_request(repo_path: str, msg: dict) -> dict | None:
+    """Handle one JSON-RPC message. Returns the response, or None for notifications."""
+    method = msg.get("method")
+    mid = msg.get("id")
+
+    if method == "initialize":
+        params = msg.get("params") or {}
+        return _ok(mid, {
+            "protocolVersion": params.get("protocolVersion", PROTOCOL_VERSION),
+            "capabilities": {"tools": {}},
+            "serverInfo": SERVER_INFO,
+        })
+    if method in ("notifications/initialized", "initialized"):
+        return None  # notification, no response
+    if method == "tools/list":
+        return _ok(mid, {"tools": _tool_defs()})
+    if method == "tools/call":
+        params = msg.get("params") or {}
+        name = params.get("name")
+        try:
+            data = call_tool(repo_path, name, params.get("arguments"))
+            is_error = isinstance(data, dict) and "error" in data
+        except KeyError:
+            data, is_error = {"error": f"unknown tool: {name}"}, True
+        except Exception as ex:  # noqa: BLE001 - report any handler failure as a tool error
+            data, is_error = {"error": f"{type(ex).__name__}: {ex}"}, True
+        return _ok(mid, {"content": [{"type": "text", "text": json.dumps(data, indent=2)}],
+                         "isError": is_error})
+
+    if mid is None:
+        return None  # unknown notification — ignore
+    return {"jsonrpc": "2.0", "id": mid,
+            "error": {"code": -32601, "message": f"method not found: {method}"}}
+
+
+def serve(repo_path: str = ".", stdin=None, stdout=None) -> None:
+    """Run the stdio server loop until EOF (newline-delimited JSON-RPC)."""
+    inp = stdin or sys.stdin
+    out = stdout or sys.stdout
+    for line in inp:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # skip malformed frames rather than crash the session
+        resp = handle_request(repo_path, msg)
+        if resp is not None:
+            out.write(json.dumps(resp) + "\n")
+            out.flush()
