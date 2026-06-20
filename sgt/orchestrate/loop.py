@@ -125,6 +125,35 @@ class Orchestrator:
         return Report(action, True, node_id=nid, landed=outcome.removed,
                       message=f"{action} --emit (dry-run, nothing written) — {delta}")
 
+    def emit_payload(self, action: str, ref: str, on: bool = False) -> dict:
+        """Structured dry-run for a UI: the per-file before/after of a revert/switch.
+
+        Runs the op on a throwaway ``Project.open`` sandbox (never writes the tree or commits),
+        so a client can render a real diff (revision navigation) and a refusal witness without
+        mutating anything. Returns ``{ok, files: {path: {before, after}}}`` on success, or a
+        refusal/resolution error otherwise.
+        """
+        r = resolve_ref(self.project.graph, ref)
+        if r.node_id is None:
+            return {"ok": False, "error": f"could not resolve {ref!r} ({r.kind})", "matches": r.matches}
+        nid = r.node_id
+        sandbox = Project.open(self.repo_path)
+        before = sandbox.materialize()
+        outcome = (revert_feature(sandbox, nid) if action == "revert"
+                   else switch_feature(sandbox, nid, on))
+        if not outcome.ok:
+            return {"ok": False, "action": action, "node_id": nid,
+                    "message": outcome.message}
+        after = sandbox.materialize()
+        files = {
+            f: {"before": before.get(f, ""), "after": after.get(f, "")}
+            for f in sorted(set(before) | set(after))
+            if before.get(f, "") != after.get(f, "")
+        }
+        return {"ok": True, "action": action, "node_id": nid,
+                "removed": list(getattr(outcome, "removed", [])),
+                "files": files, "message": _codebase_delta(before, after)}
+
     # -- explicit graph verbs ----------------------------------------------
     def revert(self, ref: str, emit: bool = False) -> Report:
         if not emit and (blocked := self._guard("revert")):

@@ -1,0 +1,97 @@
+{
+  "name": "semi-git",
+  "displayName": "semi-git (sgt)",
+  "description": "Read your code by feature, not by diff — semantic blame, a feature DAG, and one-click plug-in/plug-out, in-situ.",
+  "version": "0.1.0",
+  "publisher": "semi-git",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Visualization"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/.sgt/graph.json"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "semi-git",
+      "properties": {
+        "sgt.path": {
+          "type": "string",
+          "default": "sgt",
+          "description": "Path to the `sgt` executable. Defaults to `sgt` on your PATH."
+        },
+        "sgt.blame.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the current-line semantic blame annotation."
+        },
+        "sgt.heatmap.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Tint whole files by the feature that owns each line (gutter + overview ruler)."
+        },
+        "sgt.codeLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a CodeLens above each block naming the feature that owns it."
+        }
+      }
+    },
+    "commands": [
+      { "command": "sgt.refresh", "title": "Refresh", "category": "semi-git", "icon": "$(refresh)" },
+      { "command": "sgt.toggleBlame", "title": "Toggle Line Blame", "category": "semi-git" },
+      { "command": "sgt.toggleHeatmap", "title": "Toggle Feature Heatmap", "category": "semi-git" },
+      { "command": "sgt.toggleCodeLens", "title": "Toggle Feature CodeLens", "category": "semi-git" },
+      { "command": "sgt.showGraph", "title": "Open Feature Graph", "category": "semi-git", "icon": "$(type-hierarchy)" },
+      { "command": "sgt.openNode", "title": "Inspect Feature", "category": "semi-git" },
+      { "command": "sgt.previewRevert", "title": "Preview Revert (plug out)", "category": "semi-git", "icon": "$(diff)" },
+      { "command": "sgt.previewSwitchOff", "title": "Preview Suspend", "category": "semi-git" },
+      { "command": "sgt.previewSwitchOn", "title": "Preview Restore", "category": "semi-git" },
+      { "command": "sgt.revert", "title": "Revert Feature (plug out)", "category": "semi-git" },
+      { "command": "sgt.switchOff", "title": "Suspend Feature", "category": "semi-git" },
+      { "command": "sgt.switchOn", "title": "Restore Feature", "category": "semi-git" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "sgt", "title": "semi-git", "icon": "media/sgt.svg" }
+      ]
+    },
+    "views": {
+      "sgt": [
+        { "id": "sgtGraph", "name": "Feature DAG" }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        { "command": "sgt.showGraph", "when": "view == sgtGraph", "group": "navigation" },
+        { "command": "sgt.refresh", "when": "view == sgtGraph", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "sgt.openNode", "when": "view == sgtGraph && viewItem == sgtNode", "group": "inline" },
+        { "command": "sgt.previewRevert", "when": "view == sgtGraph && viewItem == sgtNode", "group": "1_preview" },
+        { "command": "sgt.previewSwitchOff", "when": "view == sgtGraph && viewItem == sgtNode", "group": "1_preview" },
+        { "command": "sgt.revert", "when": "view == sgtGraph && viewItem == sgtNode", "group": "2_apply" },
+        { "command": "sgt.switchOff", "when": "view == sgtGraph && viewItem == sgtNode", "group": "2_apply" }
+      ],
+      "editor/title": [
+        { "command": "sgt.showGraph", "when": "resourceLangId == python", "group": "navigation" }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc --noEmit && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "tsc --noEmit && node esbuild.js --production",
+    "vscode:prepublish": "npm run package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0"
+  }
+}

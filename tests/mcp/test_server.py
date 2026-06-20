@@ -76,7 +76,7 @@ def test_graph_lists_nodes(tmp_path):
 def test_show_resolves_fuzzy_ref(tmp_path):
     repo = _seed(tmp_path)
     _, payload = _call(repo, "sgt_show", {"ref": "shorten"})
-    assert payload["id"] == "shorten" and any("shorten" in e for e in payload["effects"])
+    assert payload["id"] == "shorten" and any(e["target"] == "shorten" for e in payload["effects"])
 
 
 def test_conflicts_empty_on_clean_tree(tmp_path):
@@ -97,13 +97,13 @@ def test_checkpoint_distills_disk_edit_under_declared_intent(tmp_path):
     # an external agent edits the file on disk ...
     (tmp_path / "app.py").write_text("def shorten(u):\n    return u[:8]\n")
     _, before = _call(repo, "sgt_status")
-    assert before["drift"]                                  # drift present before checkpoint
+    assert before["drift"]["any"]                           # drift present before checkpoint
     # ... then checkpoints its work with a declared intent
     _, rep = _call(repo, "sgt_checkpoint", {"intent": "shorten to 8 chars"})
     assert rep["ok"] and len(rep["landed"]) == 1            # a fix node landed
     # the tree now reproduces the edit and the drift is gone
     _, after = _call(repo, "sgt_status")
-    assert after["drift"] == ""
+    assert after["drift"]["any"] is False
     _, node = _call(repo, "sgt_show", {"ref": rep["landed"][0]})
     assert node["intent"] == "shorten to 8 chars"           # intent captured live, not guessed
     assert "shorten" in node["depends_on"]                  # anchored to the function it edits

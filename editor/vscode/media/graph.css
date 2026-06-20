@@ -1,0 +1,157 @@
+:root {
+  color-scheme: light dark;
+  /* modular type scale (minor third) + a 4px spacing rhythm */
+  --fs-sm: 11px;
+  --fs-md: 12px;
+  --fs-lg: 14px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+}
+html, body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--vscode-font-family);
+  font-size: var(--fs-md);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  overflow: hidden;
+}
+#toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+#filter {
+  flex: 0 0 220px;
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-md);
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+}
+#filter:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 0;
+}
+button.tool {
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-md);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+button.tool:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+button.tool:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+#legend {
+  display: flex;
+  gap: var(--sp-3);
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+#legend .g {
+  font-size: var(--fs-md);
+}
+#status {
+  font-size: var(--fs-sm);
+  color: var(--vscode-descriptionForeground);
+}
+#canvas {
+  flex: 1 1 auto;
+  overflow: hidden;
+  cursor: grab;
+}
+#canvas.panning {
+  cursor: grabbing;
+}
+svg#graph {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--vscode-editorIndentGuide-activeBackground, #888);
+  stroke-width: 1.2;
+  stroke-opacity: 0.55;
+  stroke-linejoin: round;
+}
+
+.node {
+  cursor: pointer;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
+}
+.node .box {
+  transition: fill-opacity 0.15s ease, stroke-width 0.12s ease;
+}
+.node:hover .box {
+  fill-opacity: 0.3;
+}
+.node.selected .box {
+  stroke-width: 2;
+}
+.node:focus {
+  outline: none;
+}
+.node:focus-visible .box {
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+.node:focus-visible {
+  outline: 1.5px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.node.suspended {
+  opacity: 0.45;
+}
+.node.dim {
+  opacity: 0.12;
+  pointer-events: none;
+}
+.node.enter {
+  opacity: 0;
+}
+
+.label {
+  fill: var(--vscode-foreground);
+  font-size: var(--fs-sm);
+  pointer-events: none;
+}
+.glyph {
+  font-size: var(--fs-md);
+  pointer-events: none;
+}
+.warn {
+  fill: var(--vscode-editorError-foreground, #f14c4c);
+  font-size: var(--fs-md);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node,
+  .node .box {
+    transition: none;
+  }
+  .node.enter {
+    opacity: 1;
+  }
+}

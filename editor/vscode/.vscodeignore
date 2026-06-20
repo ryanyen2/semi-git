@@ -1,0 +1,9 @@
+src/**
+out/**
+node_modules/**
+esbuild.js
+tsconfig.json
+.gitignore
+**/*.map
+**/*.ts
+!dist/extension.js

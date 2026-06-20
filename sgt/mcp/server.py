@@ -39,77 +39,43 @@ def _open(repo_path: str):
     return Project.open(repo_path)
 
 
-def _node_view(project, n) -> dict:
-    w = project.witnesses.get(n.id)
-    return {
-        "id": n.id,
-        "kind": n.kind.value,
-        "status": n.status.value,
-        "intent": n.intent,
-        "depends_on": list(project.graph.successors(n.id)),
-        "provenance": list(n.provenance),
-        "conflict": w.get("reason") if w else None,
-    }
-
-
+# The read tools delegate to the canonical JSON projection in ``sgt.api`` so the MCP surface
+# and the CLI's ``--json`` mode return the identical schema and never drift.
 def tool_graph(repo_path: str, args: dict) -> dict:
-    project = _open(repo_path)
-    nodes = [_node_view(project, n) for n in project.graph.nodes()]
-    return {"nodes": nodes, "count": len(nodes)}
+    from sgt.api import graph_view
+
+    return graph_view(_open(repo_path))
 
 
 def tool_show(repo_path: str, args: dict) -> dict:
-    from sgt.agents.resolve import resolve_ref
+    from sgt.api import show_view
 
-    project = _open(repo_path)
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
-    r = resolve_ref(project.graph, ref)
-    if r.node_id is None:
-        return {"error": f"could not resolve {ref!r} ({r.kind})", "matches": r.matches}
-    n = project.graph.get(r.node_id)
-    view = _node_view(project, n)
-    view["dependents"] = list(project.graph.predecessors(n.id))
-    view["effects"] = [f"{e.op.value} {e.target} ({e.file})" for e in project.bundles.get(n.id, [])]
-    # Full witness (reason + held descriptions + the nodes it lost to) for a held node, so the
-    # agent has everything it needs to resolve it — not just the one-line reason.
-    if (w := project.witnesses.get(n.id)):
-        view["conflict"] = {"reason": w.get("reason"), "held": w.get("held", []),
-                            "against": w.get("against", [])}
-    return view
+    return show_view(_open(repo_path), ref)
 
 
 def tool_status(repo_path: str, args: dict) -> dict:
-    from sgt.effects.model import EffectError
+    from sgt.api import status_view
 
-    project = _open(repo_path)
-    try:
-        cb = project.materialize()
-    except EffectError as ex:
-        return {"nodes": len(project.graph.nodes()), "error": f"cannot materialize: {ex}"}
-    drift = project.check_drift()
-    return {
-        "nodes": len(project.graph.nodes()),
-        "files": sorted(cb),
-        "effects": sum(len(b) for b in project.bundles.values()),
-        "drift": drift.summary() if drift.any else "",
-    }
+    return status_view(_open(repo_path))
 
 
 def tool_conflicts(repo_path: str, args: dict) -> dict:
-    from sgt.merge import conflicts
+    from sgt.api import conflicts_view
 
-    project = _open(repo_path)
-    out = []
-    for c in conflicts(project):
-        out.append({
-            "node_id": c.held.node_id,
-            "intent": c.held.intent,
-            "reason": c.reason,
-            "against": [{"node_id": s.node_id, "intent": s.intent} for s in c.against],
-        })
-    return {"conflicts": out, "count": len(out)}
+    return conflicts_view(_open(repo_path))
+
+
+def tool_blame(repo_path: str, args: dict) -> dict:
+    """Per-file semantic blame: which feature node owns each line of a materialized file."""
+    from sgt.api import blame_view
+
+    file = (args.get("file") or "").strip()
+    if not file:
+        return {"error": "missing 'file'"}
+    return blame_view(_open(repo_path), file)
 
 
 def tool_checkpoint(repo_path: str, args: dict) -> dict:
@@ -247,6 +213,12 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "can decide how to resolve them.",
         _schema({}, []),
         tool_conflicts,
+    ),
+    "sgt_blame": (
+        "Semantic blame for one file: the line spans of the materialized file mapped to the "
+        "feature node that owns each — the per-feature analogue of `git blame`.",
+        _schema({"file": {"type": "string", "description": "repo-relative path of a managed file"}}, ["file"]),
+        tool_blame,
     ),
     "sgt_plan": (
         "Decompose an intent into reviewable PLANNED nodes (the semantic outline) without "

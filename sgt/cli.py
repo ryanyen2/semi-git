@@ -13,7 +13,8 @@ import sys
 
 from sgt.project import Project
 
-_VERBS = {"init", "plan", "sync", "checkpoint", "revert", "switch", "reconcile", "show", "graph", "status", "mcp", "help"}
+_VERBS = {"init", "plan", "sync", "checkpoint", "revert", "switch", "reconcile",
+          "show", "graph", "status", "blame", "export", "emit", "tui", "mcp", "help"}
 
 
 def _print_report(rep) -> int:
@@ -68,6 +69,10 @@ def main(argv: list[str] | None = None) -> int:
     # `--force`/`-f` lets a mutating verb overwrite out-of-band changes intentionally.
     force = any(a in ("--force", "-f") for a in rest)
     rest = [a for a in rest if a not in ("--force", "-f")]
+    # `--json` switches the read verbs to the canonical machine-readable projection (sgt.api),
+    # which the VSCode extension and TUI consume. Stripped here so verb parsing is unaffected.
+    as_json = "--json" in rest
+    rest = [a for a in rest if a != "--json"]
 
     if cmd == "help":
         return _help()
@@ -85,16 +90,42 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if cmd == "graph":
-        return _graph(repo)
+        return _graph(repo, as_json)
 
     if cmd == "status":
-        return _status(repo)
+        return _status(repo, as_json)
+
+    if cmd == "blame":
+        if not rest:
+            print("usage: sgt blame [--json] <file>")
+            return 2
+        return _blame(repo, " ".join(rest), as_json)
+
+    if cmd == "export":
+        return _export(repo)
+
+    if cmd == "emit":
+        # `sgt emit revert <ref>` | `sgt emit switch <ref> on|off` — structured dry-run for a UI.
+        if len(rest) < 2 or rest[0] not in ("revert", "switch"):
+            print("usage: sgt emit revert|switch <ref> [on|off]")
+            return 2
+        action = rest[0]
+        on = True
+        body = rest[1:]
+        if action == "switch" and body and body[-1] in ("on", "off"):
+            on = body[-1] == "on"
+            body = body[:-1]
+        payload = _orchestrator(repo).emit_payload(action, " ".join(body), on=on)
+        return _emit_json(payload)
+
+    if cmd == "tui":
+        return _tui(repo)
 
     if cmd == "show":
         if not rest:
             print("usage: sgt show <ref>")
             return 2
-        return _show(repo, " ".join(rest))
+        return _show(repo, " ".join(rest), as_json)
 
     if cmd == "sync":
         assume_yes = any(a in ("--yes", "-y") for a in rest)
@@ -202,7 +233,18 @@ def _checkpoint(repo: str, assume_yes: bool, intent: str | None, fulfills: str |
     return _print_sync(rep, "checkpoint")
 
 
-def _graph(repo: str) -> int:
+def _emit_json(payload) -> int:
+    import json
+
+    print(json.dumps(payload, indent=2))
+    return 1 if isinstance(payload, dict) and "error" in payload else 0
+
+
+def _graph(repo: str, as_json: bool = False) -> int:
+    if as_json:
+        from sgt.api import graph_view
+
+        return _emit_json(graph_view(Project.open(repo)))
     proj = Project.open(repo)
     nodes = proj.graph.nodes()
     if not nodes:
@@ -220,9 +262,13 @@ def _graph(repo: str) -> int:
     return 0
 
 
-def _status(repo: str) -> int:
+def _status(repo: str, as_json: bool = False) -> int:
     from sgt.effects.model import EffectError
 
+    if as_json:
+        from sgt.api import status_view
+
+        return _emit_json(status_view(Project.open(repo)))
     proj = Project.open(repo)
     try:
         cb = proj.materialize()
@@ -236,9 +282,49 @@ def _status(repo: str) -> int:
     return 0
 
 
-def _show(repo: str, ref: str) -> int:
+def _blame(repo: str, file: str, as_json: bool = False) -> int:
+    from sgt.api import blame_view
+
+    view = blame_view(Project.open(repo), file)
+    if as_json:
+        return _emit_json(view)
+    if "error" in view:
+        print(f"✗ {view['error']}")
+        return 1
+    print(f"semantic blame — {file}" + ("  (⚠ working tree has drifted)" if view["drift"] else ""))
+    for s in view["spans"]:
+        nid = s["node_id"]
+        label = view["nodes"].get(nid, {}).get("intent", "")[:54] if nid else "(unattributed)"
+        rng = f"{s['start']}" if s["start"] == s["end"] else f"{s['start']}-{s['end']}"
+        print(f"  L{rng:<9} {nid or '—':<10} {label}")
+    return 0
+
+
+def _export(repo: str) -> int:
+    from sgt.api import export_view
+
+    return _emit_json(export_view(Project.open(repo)))
+
+
+def _tui(repo: str) -> int:
+    try:
+        from sgt.tui.app import run as run_tui
+    except ModuleNotFoundError as ex:
+        if ex.name and ex.name.split(".")[0] == "textual":
+            print("✗ the TUI needs Textual — install it with:  uv pip install 'semi-git[tui]'")
+            return 1
+        raise
+    run_tui(repo)
+    return 0
+
+
+def _show(repo: str, ref: str, as_json: bool = False) -> int:
     from sgt.agents.resolve import resolve_ref
 
+    if as_json:
+        from sgt.api import show_view
+
+        return _emit_json(show_view(Project.open(repo), ref))
     proj = Project.open(repo)
     r = resolve_ref(proj.graph, ref)
     if r.node_id is None:
@@ -280,6 +366,10 @@ def _help() -> int:
         "  sgt show <ref>             inspect a node\n"
         "  sgt graph                  print the semantic DAG\n"
         "  sgt status                 summarize state\n"
+        "  sgt blame <file>           which feature owns each line of a file (semantic blame)\n"
+        "  sgt export                 dump the whole graph as JSON (nodes, edges, effects)\n"
+        "  sgt tui                    open the terminal UI (needs `semi-git[tui]`)\n"
+        "  (read verbs take --json for the machine-readable projection)\n"
     )
     return 0
 

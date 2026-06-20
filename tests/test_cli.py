@@ -52,3 +52,62 @@ def test_graph_shows_quarantine_witness(tmp_path, capsys):
 def test_help_mentions_yes_flag(capsys):
     main(["help"])
     assert "--yes" in capsys.readouterr().out
+
+
+def _seed(tmp_path):
+    main(["init", str(tmp_path)])
+    proj = Project.open(tmp_path)
+    proj.add_feature(Node(id="feat", kind=NodeKind.CAPABILITY, intent="a feature"),
+                     [Effect.add_def("m.py", "feat", "def feat():\n    return 1")])
+    proj.save()
+    return proj
+
+
+def _in(tmp_path, argv):
+    import os
+    cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        return main(argv)
+    finally:
+        os.chdir(cwd)
+
+
+def test_graph_json_is_machine_readable(tmp_path, capsys):
+    import json
+    _seed(tmp_path)
+    capsys.readouterr()  # drain init output
+    assert _in(tmp_path, ["graph", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["count"] == 1 and payload["nodes"][0]["id"] == "feat"
+
+
+def test_blame_json_maps_lines_to_nodes(tmp_path, capsys):
+    import json
+    _seed(tmp_path)
+    capsys.readouterr()  # drain init output
+    assert _in(tmp_path, ["blame", "--json", "m.py"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["file"] == "m.py"
+    assert any(s["node_id"] == "feat" for s in payload["spans"])
+
+
+def test_export_dumps_graph(tmp_path, capsys):
+    import json
+    _seed(tmp_path)
+    capsys.readouterr()  # drain init output
+    assert _in(tmp_path, ["export"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["nodes"][0]["effects"][0]["op"] == "add_def"
+
+
+def test_blame_human_readable(tmp_path, capsys):
+    _seed(tmp_path)
+    assert _in(tmp_path, ["blame", "m.py"]) == 0
+    assert "semantic blame" in capsys.readouterr().out
+
+
+def test_help_mentions_new_verbs(capsys):
+    main(["help"])
+    out = capsys.readouterr().out
+    assert "blame" in out and "export" in out and "--json" in out

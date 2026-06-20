@@ -13,7 +13,11 @@ The loop: **`plan`** an intent into reviewable nodes → implement with your own
 `reconcile`** to plug features in and out. The LLM is used only to reason about the graph
 (decompose a plan, label a checkpoint), never to produce code.
 
+**New to it? Start with the [user guide](docs/guide/README.md)** — the mental model, a
+getting-started walkthrough, and the VS Code extension + terminal UI.
+
 See:
+- `docs/guide/` — user-facing guide (mental model, getting started, the two UIs)
 - `docs/ideation/2026-06-17-semi-git-ideation.md` — where the idea came from
 - `docs/brainstorms/2026-06-17-semi-git-requirements.md` — what it is (requirements)
 - `docs/plans/2026-06-17-001-feat-semi-git-core-plan.md` — how it's built (plan)
@@ -42,8 +46,15 @@ sgt revert <feature>                      # plug a feature out (by dependency cl
 sgt revert <feature> --emit               # dry-run: preview the change, write nothing
 sgt switch <feature> off|on               # suspend / restore
 sgt reconcile [<ref>]                     # re-gate held quarantines; resolve any that now commute
+sgt blame <file>                          # which feature owns each line (semantic blame)
+sgt graph --json / sgt export             # machine-readable projection for tools/UIs
+sgt tui                                    # terminal UI (needs `semi-git[tui]`)
 sgt mcp                                   # stdio MCP server so a coding agent can drive sgt
 ```
+
+A **VS Code extension** (`editor/vscode/`) and a **terminal UI** (`sgt tui`) sit on top of the
+same `sgt … --json` surface: semantic blame, a feature DAG, a per-feature heatmap, and diff
+previews of plug-outs. See the [user guide](docs/guide/README.md).
 
 The graph ops (`revert`/`switch`/`reconcile`/`checkpoint --fulfills`/`checkpoint --intent`) need
 no API key. `plan` uses the OpenAI key (read from `.env`: `OPENAI_API_KEY`, optional
@@ -59,3 +70,8 @@ The spine is `plan` → implement (your agent) → `checkpoint`/`--fulfills` →
 suite + a live walkthrough (`scripts/e2e_plan_checkpoint.py`). See `FINDINGS.md` for what's
 verified and the deferred items, and `docs/design/2026-06-19-graph-only-agent-driven-sgt.md`
 for the design.
+
+**Visual surfaces (2026-06-20).** A `sgt.api` JSON projection + line-level **semantic blame**
+(`sgt/effects/attribute.py`) feed a **VS Code extension** and a **terminal UI** — one schema, no
+drift. A feature's hue is its identity (same OKLCH color in every surface); status is a glyph, not
+a hue. See the [user guide](docs/guide/README.md) and `FINDINGS.md`.

@@ -213,6 +213,45 @@ recovery, and agent-parity issues. All resolved; suite grew to 232 tests.
 - A held fulfill keeps the declared intent + planned-intent provenance (KTD3), the same as a
   successful one.
 
+## Visual surfaces (2026-06-20) — VS Code extension, TUI, semantic blame
+
+GitLens-style views, but mapped from *commits* to *semantic nodes*. Built on one machine-readable
+projection so every surface (CLI `--json`, MCP, the extension, the TUI) reads one schema. Suite
+grew to 251 tests. See `docs/plans/2026-06-20-001-feat-sgt-vscode-tui-docs-plan.md` and the
+[user guide](docs/guide/README.md).
+
+- **One JSON projection (`sgt/api.py`).** `graph`/`node`/`show`/`status`/`conflicts`/`blame`/
+  `export` views; the MCP read tools delegate to it, so the surfaces can't drift. New CLI verbs:
+  `blame`, `export`, `emit`, `tui`, plus `--json` on `graph`/`status`/`show`.
+- **Line-level semantic blame (`sgt/effects/attribute.py`).** Each rendered line → the feature
+  that authored it, recovered from the effect log (eid→node; statement-slot LWW identity→node;
+  seed→definer) and computed against the same `materialize()`/`build_statement_seq` path the tree
+  is built from — so blame and the tree can't disagree. Statement-exact for top-level functions;
+  whole-unit for class methods/reorders (honest, not faked).
+- **VS Code extension (`editor/vscode/`).** Current-line + status-bar blame, on-demand per-feature
+  heatmap, CodeLens, rich hovers with preview command-links, a DAG sidebar + a hand-rolled graph
+  webview, and `sgt emit`-driven diff previews of plug-outs. Shells out to `sgt … --json`.
+- **Terminal UI (`sgt tui`, optional `[tui]` extra).** Browse/inspect/preview/apply, keyboard-
+  driven, in-process over `sgt.api`.
+
+### Design + simplicity review hardening (2026-06-20)
+
+A simplicity reviewer and a senior UI/UX reviewer drove a post-build pass:
+
+- **Color unified in OKLCH.** The extension and webview had been emitting *different* colors for
+  the same feature (HSV vs HSL). Now one OKLCH→sRGB generator is mirrored byte-identically in TS,
+  webview JS, and Python (a test asserts JS == Python), theme-aware and WCAG-contrast-floored.
+  **Hue is identity only**; status is a glyph + dim on every surface — the channels never collide
+  (previously the TUI used hue for status while blame used it for identity).
+- **Graph scales.** Within-layer ordering moved from alphabetical to median crossing-reduction;
+  long edges route around nodes via dummy nodes; the webview gained pan/zoom/Fit, filter debounce
+  with dim-in-place (no relayout), keyboard nav + ARIA, and CSS-transition layout animation (no
+  animation dependency; reduced-motion guarded) so `plan`/`reconcile` shows what moved.
+- **TUI responsive.** Width-derived columns, a `/` filter, narrow-mode detail modal, and uppercase
+  apply-keys (`X`/`O`/`U`) to separate mutations from safe previews.
+- **Simplicity cuts.** Dead `Sgt.graph()` and unused `EmitView.refused` removed; `ownerAt`/
+  `truncate` de-duplicated; `attribute.py` imports hoisted.
+
 ## Known v1 limitations (deferred, see the plan)
 
 - **On-demand reconcile shipped.** `sgt reconcile [<ref>]` retries rewrite-to-commute on
