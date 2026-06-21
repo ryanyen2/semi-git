@@ -117,6 +117,9 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
         "fulfilled": rep.fulfilled,
         "extended": rep.extended,
         "quarantined": rep.quarantined,
+        # Superseded (zombie) quarantines GC'd automatically — a fixed re-checkpoint that lands
+        # clean cleans up the prior hold here, so no manual revert + replan is needed.
+        "swept": rep.swept,
         # The witness for each held node — *why* it did not commute and against what — so the
         # agent can act (revise the code and re-checkpoint, or revert the rival) without guessing.
         "witnesses": {q: project.witnesses.get(q, {}) for q in rep.quarantined},
@@ -231,7 +234,13 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "Reconcile your on-disk edits into the semantic log under a declared intent. Call this "
         "after finishing a logical unit of work. Body edits land at statement granularity so a "
         "later merge with another agent's edits stays conflict-aware. Pass 'fulfills' (a node "
-        "ref) to land the change under a PLANNED node and flip it ACTIVE.",
+        "ref) to land the change under a PLANNED node and flip it ACTIVE.\n"
+        "Distillable code: top-level def/class, imports, and single-name bindings (`X = ...`, "
+        "`X: T = ...`) all round-trip. Arbitrary module-level executable statements (tuple-unpack, "
+        "bare expressions, `if __name__` blocks) are NOT captured and will be lost on "
+        "rematerialize — keep that logic inside a function. If a checkpoint is held "
+        "(invariant_violated), just fix the code on disk and checkpoint again with the same "
+        "`fulfills`: the superseded hold is reclaimed automatically (no revert/replan needed).",
         _schema({"intent": {"type": "string", "description": "what this change accomplishes"},
                  "fulfills": {"type": "string", "description": "PLANNED node ref this change implements (optional)"}},
                 ["intent"]),

@@ -48,12 +48,18 @@ sgt revert normalize                       # plug it out (by dependency closure)
 sgt switch normalize off                   # suspend instead (keeps history); `on` restores
 ```
 
-If a change is held back because it doesn't yet fit (`quarantined`), resolve it once its rival
-is gone:
+If a change is held back because it doesn't yet fit (`quarantined`), you have two recoveries:
 
 ```bash
+# the code was wrong: fix it on disk and checkpoint again — the stale hold is reclaimed
+sgt checkpoint --fulfills normalize --intent "fixed: lowercase + strip"
+
+# a rival changed (got reverted/suspended) and the held code now fits as-is:
 sgt reconcile                              # re-gate every pending quarantine
 ```
+
+Either way you never need a manual revert + re-plan: a re-checkpoint that lands the fixed code
+automatically sweeps the superseded hold it replaced.
 
 ## See it visually
 

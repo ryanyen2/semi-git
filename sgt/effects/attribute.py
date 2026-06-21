@@ -109,8 +109,8 @@ def attribute(project) -> dict[str, list[Span]]:
     for e in core:
         if e.op is EffectOp.ADD_IMPORT:
             import_owner[(e.file, _normalize_import(e.payload.get("source", "")))] = eid_node.get(e.eid)
-        elif e.op is EffectOp.SET_CONST:
-            const_owner[(e.file, e.target)] = eid_node.get(e.eid)
+        elif e.op in (EffectOp.SET_CONST, EffectOp.ADD_ASSIGN, EffectOp.REPLACE_ASSIGN):
+            const_owner[(e.file, e.target)] = eid_node.get(e.eid)  # module-level name -> owner
 
     # Slot owners per statement-managed function: a (seq, owners) pair, owners aligned with
     # seq.ordered().
@@ -196,6 +196,12 @@ def _attribute_file(file, src, definer, import_owner, const_owner, slot_owners) 
                     for ln in range(stmt.lineno, _end(stmt) + 1):
                         if 1 <= ln <= n_lines:
                             owner[ln] = who
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            if (file, stmt.target.id) in const_owner:
+                who = const_owner[(file, stmt.target.id)]
+                for ln in range(stmt.lineno, _end(stmt) + 1):
+                    if 1 <= ln <= n_lines:
+                        owner[ln] = who
     return owner
 
 

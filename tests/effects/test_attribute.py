@@ -57,6 +57,26 @@ def test_import_and_const_attribution(tmp_path):
     assert owner_of[import_line] == "cfg"
 
 
+def test_module_binding_attribution(tmp_path):
+    """A module-level `_RE = re.compile(...)` line blames to the node that authored it."""
+    proj = Project.init(tmp_path)
+    proj.add_feature(
+        Node(id="re_owner", kind=NodeKind.CAPABILITY, intent="regex"),
+        [
+            Effect.add_import("m.py", "import re"),
+            Effect.add_assign("m.py", "_RE", "_RE = re.compile('x')"),
+            Effect.add_def("m.py", "use", "def use(s):\n    return _RE.match(s)"),
+        ],
+    )
+    src = proj.materialize()["m.py"]
+    owner_of = {}
+    for s in attribute(proj)["m.py"]:
+        for ln in range(s.start, s.end + 1):
+            owner_of[ln] = s.node_id
+    assign_line = next(i for i, l in enumerate(src.splitlines(), 1) if l.startswith("_RE = "))
+    assert owner_of[assign_line] == "re_owner"
+
+
 def test_attribution_is_stable_across_calls(tmp_path):
     proj = Project.init(tmp_path)
     proj.add_feature(

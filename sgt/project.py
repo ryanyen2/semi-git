@@ -438,8 +438,8 @@ class Project:
             for e in effs:
                 if e.op is EffectOp.ADD_DEF and "." not in e.target:
                     names.add((e.file, e.target))
-                elif e.op is EffectOp.SET_CONST:
-                    names.add((e.file, e.target))
+                elif e.op in (EffectOp.SET_CONST, EffectOp.ADD_ASSIGN, EffectOp.REPLACE_ASSIGN):
+                    names.add((e.file, e.target))  # module-level bindings are referenceable
             out[nid] = names
         return out
 

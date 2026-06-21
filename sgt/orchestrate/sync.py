@@ -41,11 +41,50 @@ class SyncReport:
     extended: list[str] = field(default_factory=list)
     fulfilled: list[str] = field(default_factory=list)   # PLANNED nodes flipped ACTIVE
     quarantined: list[str] = field(default_factory=list)
+    swept: list[str] = field(default_factory=list)       # superseded quarantines GC'd this run
     notes: list[str] = field(default_factory=list)
 
 
 def _desc(e) -> str:
     return f"{e.op.value} {e.target} ({e.file})"
+
+
+def superseded_quarantines(project, touched: set[tuple[str, str]]) -> list[str]:
+    """QUARANTINED nodes made redundant by names (re-)defined in the current run — the zombies.
+
+    A freshly-held node has *passing* preconditions (it's held only because the combined batch
+    breaks an invariant). It becomes a *zombie* when the agent re-implements the same work: the
+    names it would add are now provided by what just landed, so every held effect's precondition
+    fails (``add_def X`` where X is already defined, ``add_assign Y`` where Y is bound, …).
+
+    The ``touched`` guard — `(file, target)` pairs defined by *this run* — is what keeps the sweep
+    surgical: it removes only holds the current checkpoint superseded, never a legitimately
+    recorded merge/uniqueness conflict against a pre-existing active rival (which stays recoverable
+    via suspend + ``reconcile``). Without it, an unrelated checkpoint would wrongly GC such a hold.
+    """
+    from sgt.effects.model import precondition_holds
+
+    cb = project.materialize()
+    dead: list[str] = []
+    for n in project.graph.nodes():
+        if n.status is not NodeStatus.QUARANTINED:
+            continue
+        held = project.bundles.get(n.id, [])
+        if not held:
+            continue
+        if not any((e.file, e.target) in touched for e in held):
+            continue  # nothing this run touched — not an accretion zombie, leave it
+        if all(not precondition_holds(cb.get(e.file, ""), e) for e in held):
+            dead.append(n.id)
+    return dead
+
+
+def _sweep_superseded(project, report, touched: set[tuple[str, str]]) -> None:
+    """Remove accretion (zombie) quarantines superseded by this run and record them."""
+    dead = superseded_quarantines(project, touched)
+    if dead:
+        project.remove_nodes(set(dead))  # graph + log tombstone + witness + order, all handled
+        report.swept.extend(dead)
 
 
 def _default_clusterer(repo_path: str) -> Callable[[list, Project], list[Cluster]]:
@@ -183,6 +222,12 @@ def _fulfill_drift(project, node_id: str, effects, intent: str | None, notes: li
         report.message = (f"extended {node_id} ({len(admitted)} effect(s))"
                           + (f", {len(held)} held" if held else ""))
 
+    # A successful land may have superseded an earlier hold of this same code — GC the zombie so
+    # the agent recovers without a manual revert + replan (the accretion fix).
+    if report.fulfilled or report.extended:
+        _sweep_superseded(project, report, {(e.file, e.target) for e in effects})
+    if report.swept:
+        report.message += f"; swept {len(report.swept)} superseded quarantine(s)"
     if notes:
         report.message += f"; {len(notes)} change(s) need manual review"
     project.commit(f"checkpoint: {report.message}", node_id=node_id)
@@ -262,19 +307,25 @@ def run_sync(
             _land(project, ops, NodeKind.FIX, stmt_intent,
                   extend=None, anchors=[owner] if owner else [], report=report)
 
+    # Landing new code may have superseded an earlier hold of the same names — GC the zombies.
+    if report.landed or report.extended:
+        _sweep_superseded(project, report, {(e.file, e.target) for e in effects})
+
     landed, extended, quarantined = report.landed, report.extended, report.quarantined
-    fulfilled = report.fulfilled
-    if landed or extended or fulfilled or quarantined:
+    fulfilled, swept = report.fulfilled, report.swept
+    if landed or extended or fulfilled or quarantined or swept:
         project.commit(
             f"sync: {len(landed)} new, {len(fulfilled)} fulfilled, "
-            f"{len(extended)} extended, {len(quarantined)} quarantined"
+            f"{len(extended)} extended, {len(quarantined)} quarantined, {len(swept)} swept"
         )
     msg = f"reconciled {len(landed)} new + {len(extended)} extended node(s)"
     if fulfilled:
         msg += f", {len(fulfilled)} fulfilled"
     if quarantined:
         msg += f", {len(quarantined)} quarantined"
+    if swept:
+        msg += f", {len(swept)} superseded quarantine(s) swept"
     if notes:
         msg += f"; {len(notes)} change(s) need manual review"
     return SyncReport(True, message=msg, landed=landed, extended=extended,
-                      fulfilled=fulfilled, quarantined=quarantined, notes=notes)
+                      fulfilled=fulfilled, quarantined=quarantined, swept=swept, notes=notes)
