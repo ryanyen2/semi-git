@@ -56,13 +56,23 @@ Each feature is a **row** (most-derived on top), laid out like a git graph:
 - **GRAPH column** — git-style **swim lanes**: each feature is a node circle in its identity color,
   connected by colored bezier edges down to the features it depends on. Planned nodes render hollow;
   conflicts get a red ring.
-- **INTENT column** — the feature's intent, with its dependent count.
+- **FEATURE column** — a short structured label (`add-query-knowledgebase`, ≤5 words) derived from
+  the intent; the full sentence lives in the detail pane.
 - **Minimap** — a canvas activity ribbon (effects per feature) with status-colored markers; click
   to jump to a feature.
-- **Header** — feature count + a drift chip (`✓ in sync` / `⚠ drifted`).
+- **Header** — feature count, a drift chip (`✓ in sync` / `⚠ drifted`), and **live agent presence**.
 
-**Search** in the toolbar dims non-matches in place. **Arrow keys** move the selection, `Enter`
-inspects (the inspector offers preview-revert / preview-suspend); clicking a row does the same.
+**Live presence.** When your coding agent edits files, the affected features light up in
+near-real-time — a `✎ editing` badge, a pulsing node halo, and a header indicator (`✎ agent editing
+N: …`) — so you can watch the graph being worked, multiplayer-style. A just-checkpointed feature
+flashes as it lands.
+
+**Inspect in-situ — no popups.** Selecting a row (click, arrow keys + `Enter`, or a hover/tree
+"Inspect") opens a **detail pane** beside the graph (never a modal): the full intent rendered as
+**rich text** — backtick code spans, and `@`/`#`/backtick references to other features become
+clickable cross-references — plus clickable dependency chips, the effect list, the conflict witness,
+and actions. **Preview revert/suspend** opens a read-only diff; **Revert/Suspend** apply with a
+two-click inline confirm (no modal) since they're reversible. **Search** dims non-matches in place.
 
 ### Revision navigation
 

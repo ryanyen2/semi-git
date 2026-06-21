@@ -269,6 +269,16 @@ as a dense, **row-based commit-graph**, hosted as a Webview *View* in the **bott
 - Verified with a headless-Chrome screenshot of a dev harness (`editor/vscode/dev/preview.html`)
   before shipping — the paradigm and density now match GitLens's Commit Graph.
 
+A second feedback round drove: **(1) no modal popups** — inspection (a reversible action) now opens
+an **in-situ detail pane** beside the graph instead of a `showInformationMessage` modal; apply
+actions use a two-click inline confirm. **(2) Live agent presence** — features with uncommitted
+drift (resolved to owning nodes via blame) show a `✎ editing` badge + pulsing node halo + a header
+indicator, and a `**/*.py` watcher refreshes in near-real-time so you can watch the agent work the
+graph; a just-landed feature flashes. **(3) Short labels** — the FEATURE column shows a derived
+`xxx-yyy-zzz` kebab label (≤5 words); the full intent lives in the pane. **(4) Rich text** — the
+detail intent renders backtick code spans and turns `@`/`#`/backtick references that resolve to a
+feature into clickable cross-references.
+
 ## Known v1 limitations (deferred, see the plan)
 
 - **On-demand reconcile shipped.** `sgt reconcile [<ref>]` retries rewrite-to-commute on

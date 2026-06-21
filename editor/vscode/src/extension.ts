@@ -27,7 +27,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const tree = new GraphTreeProvider(store);
   context.subscriptions.push(blame, preview);
 
-  const graphView = new GraphViewProvider(context, store);
+  const graphView = new GraphViewProvider(context, store, () => void blame.render());
   context.subscriptions.push(
     graphView,
     vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }),
@@ -41,22 +41,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.languages.registerHoverProvider(py, new SgtHoverProvider(store))
   );
 
-  registerCommands(context, store, preview, () => void blame.render());
+  registerCommands(context, store, preview, graphView, () => void blame.render());
 
-  // Refresh on .sgt changes (a checkpoint/graph op rewrites graph.json / effects.json) and
-  // when the user saves a Python file (drift may have changed).
-  const watcher = vscode.workspace.createFileSystemWatcher(
+  // Refresh on .sgt changes (a checkpoint/graph op rewrites graph.json / effects.json) and on
+  // any *.py change — the latter is how we surface live agent presence: when the agent writes
+  // files (drift appears), the graph marks the features it's editing in near-real-time.
+  const sgtWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(root, ".sgt/*.json")
   );
-  const refresh = () => store.invalidate();
-  watcher.onDidChange(refresh);
-  watcher.onDidCreate(refresh);
-  watcher.onDidDelete(refresh);
+  const pyWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(root, "**/*.py")
+  );
+  let pending: NodeJS.Timeout | undefined;
+  const refresh = () => {
+    clearTimeout(pending);
+    pending = setTimeout(() => store.invalidate(), 250); // debounce write storms
+  };
+  for (const w of [sgtWatcher, pyWatcher]) {
+    w.onDidChange(refresh);
+    w.onDidCreate(refresh);
+    w.onDidDelete(refresh);
+  }
   context.subscriptions.push(
-    watcher,
+    sgtWatcher,
+    pyWatcher,
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (doc.languageId === "python") {
-        store.invalidate();
+        refresh();
       }
     })
   );

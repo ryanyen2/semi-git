@@ -1,21 +1,19 @@
 // @ts-check
-// Feature Graph — a GitLens/GitKraken-style commit graph, but for the semantic DAG. Each feature
-// is a ROW (newest/most-derived on top); a refs column carries status+kind, a swim-lane GRAPH
-// column draws the dependency lanes (git-style lane allocation + colored bezier connectors), and
-// an intent column carries the message. A canvas minimap rides on top. Pure SVG/canvas, no deps.
+// Feature Graph — a GitLens/GitKraken-style commit graph for the semantic DAG. Each feature is a
+// ROW (most-derived on top): a KIND ref-pill column, a swim-lane GRAPH column (git-style lane
+// allocation + colored bezier edges), and a short kebab LABEL in the FEATURE column. Selecting a
+// row opens an in-situ detail pane (no modal popups) with the full intent rendered as rich text,
+// clickable cross-references, and modal-free actions. Live agent presence: features with
+// uncommitted drift pulse as "editing", and a just-landed feature flashes.
 //
-// Identity color is the same OKLCH hash used in blame and the TUI (hue = identity). Status is a
-// glyph + node shape, never the hue.
+// Identity color is the same OKLCH hash used in blame and the TUI (hue = identity; status = glyph).
 
 const vscode = acquireVsCodeApi();
 const NS = "http://www.w3.org/2000/svg";
 const GOLDEN = 0.618033988749895;
+const ROW = 26, LANE_W = 18, NODE_R = 5;
 
-const ROW = 26; // row height (px)
-const LANE_W = 18; // swim-lane pitch (px)
-const NODE_R = 5;
-
-// ---- identity color: same math as src/color.ts (OKLCH -> sRGB hex), theme-aware ----------
+// ---- identity color: same math as src/color.ts -------------------------------------------
 function themeLC() {
   const c = document.body.className;
   if (c.includes("vscode-high-contrast-light")) return { L: 0.48, C: 0.15 };
@@ -25,16 +23,11 @@ function themeLC() {
 }
 function hashId(id) {
   let h = 2166136261;
-  for (let i = 0; i < id.length; i++) {
-    h ^= id.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
+  for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); }
   return h >>> 0;
 }
 function oklchToHex(L, C, hDeg) {
-  const h = (hDeg * Math.PI) / 180;
-  const a = C * Math.cos(h);
-  const b = C * Math.sin(h);
+  const h = (hDeg * Math.PI) / 180, a = C * Math.cos(h), b = C * Math.sin(h);
   const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
   const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
   const s_ = L - 0.0894841775 * a - 1.291485548 * b;
@@ -56,17 +49,39 @@ function cssVar(name, fallback) {
   const v = getComputedStyle(document.body).getPropertyValue(name).trim();
   return v || fallback;
 }
-
 const STATUS_GLYPH = { active: "●", planned: "○", suspended: "◐", quarantined: "⚠" };
 
-// ---- layout: order rows + assign swim lanes (git-graph lane allocation) -------------------
+// ---- short structured label (XXX-YYY-ZZZ, <=5 words) -------------------------------------
+const VERBS = new Set(["add", "implement", "remove", "delete", "fix", "refactor", "update", "create",
+  "support", "handle", "make", "allow", "introduce", "expose", "wire", "render", "cache", "stream",
+  "validate", "normalize", "parse", "store", "load", "compose", "rerank", "rank", "embed", "search",
+  "query", "build", "extract", "split", "merge", "track", "compute", "resolve", "guard"]);
+const STOP = new Set(["a", "an", "the", "to", "of", "that", "for", "by", "with", "and", "or", "in",
+  "on", "into", "from", "its", "it", "this", "class", "method", "function", "each", "all", "as",
+  "back", "caller", "specific", "relevant", "using", "via"]);
+function shortLabel(intent) {
+  if (!intent) return "feature";
+  const ticks = [...intent.matchAll(/`([^`]+)`/g)].map((m) => m[1].toLowerCase().replace(/[^a-z0-9]+/g, ""));
+  const words = intent.toLowerCase().replace(/`/g, " ").split(/[^a-z0-9]+/).filter(Boolean);
+  const segs = [];
+  if (words[0] && VERBS.has(words[0])) segs.push(words[0]);
+  for (const t of ticks) { if (t && !segs.includes(t)) segs.push(t); if (segs.length >= 4) break; }
+  if (segs.length < 2) {
+    for (const w of words) {
+      if (STOP.has(w) || segs.includes(w)) continue;
+      segs.push(w);
+      if (segs.length >= 4) break;
+    }
+  }
+  const out = segs.filter(Boolean).slice(0, 5).join("-");
+  return out || words.slice(0, 3).join("-") || "feature";
+}
+
+// ---- layout: order rows + assign swim lanes ----------------------------------------------
 function computeLayout(graph) {
   const present = new Set(graph.nodes.map((n) => n.id));
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const deps = new Map(graph.nodes.map((n) => [n.id, (n.depends_on || []).filter((d) => present.has(d))]));
-
-  // depth = longest dependency chain; a dependent sits ABOVE its dependencies (like a commit
-  // above its parents). Order by depth desc, stable by original index.
   const depth = new Map();
   const seen = new Set();
   function d(id) {
@@ -78,61 +93,51 @@ function computeLayout(graph) {
     return v;
   }
   graph.nodes.forEach((n) => d(n.id));
-  const order = graph.nodes
-    .map((n, i) => ({ n, i }))
+  const order = graph.nodes.map((n, i) => ({ n, i }))
     .sort((a, b) => depth.get(b.n.id) - depth.get(a.n.id) || a.i - b.i)
     .map((x) => x.n);
-
   const rowOf = new Map(order.map((n, i) => [n.id, i]));
-
-  // Lane sweep, top -> bottom. `lanes[k]` = the node a lane is currently flowing toward (its next
-  // occupant), or null when free. A node takes the lane reserved for it (merging others), then
-  // reserves its first dependency in that lane and any extra dependencies in fresh lanes.
   const lanes = [];
   const laneOf = new Map();
-  const firstFree = () => {
-    const k = lanes.indexOf(null);
-    return k === -1 ? lanes.length : k;
-  };
+  const ff = () => { const k = lanes.indexOf(null); return k === -1 ? lanes.length : k; };
   for (const n of order) {
     let lane = lanes.indexOf(n.id);
-    if (lane === -1) lane = firstFree();
+    if (lane === -1) lane = ff();
     laneOf.set(n.id, lane);
     for (let k = 0; k < lanes.length; k++) if (lanes[k] === n.id) lanes[k] = null;
     let first = true;
     for (const dep of deps.get(n.id) || []) {
-      if (lanes.indexOf(dep) !== -1) continue; // already reserved by another dependent
-      if (first) { lanes[lane] = dep; first = false; }
-      else lanes[firstFree()] = dep;
+      if (lanes.indexOf(dep) !== -1) continue;
+      if (first) { lanes[lane] = dep; first = false; } else lanes[ff()] = dep;
     }
   }
   const laneCount = Math.max(1, ...order.map((n) => laneOf.get(n.id) + 1));
-
   const edges = [];
-  for (const n of order) {
-    for (const dep of deps.get(n.id) || []) {
-      if (rowOf.has(dep)) edges.push({ from: n.id, to: dep });
-    }
-  }
-  return { order, byId, deps, depth, rowOf, laneOf, laneCount, edges };
+  for (const n of order) for (const dep of deps.get(n.id) || []) if (rowOf.has(dep)) edges.push({ from: n.id, to: dep });
+  return { order, byId, deps, rowOf, laneOf, laneCount, edges };
 }
-
 const laneX = (lane) => lane * LANE_W + LANE_W / 2 + 4;
 const rowY = (row) => row * ROW + ROW / 2;
 
 // ---- state -------------------------------------------------------------------------------
-let graphData = null;
-let statusData = null;
-let layout = null;
-let filter = "";
-let selectedId = null;
+let graphData = null, statusData = null, layout = null;
+let filter = "", selectedId = null;
+let editing = new Set();
+let prevIds = new Set();
+let refIndex = new Map(); // ref key -> node id, for clickable cross-references
 
 window.addEventListener("message", (e) => {
   const msg = e.data;
   if (msg.type === "graph") {
     graphData = msg.graph;
     statusData = msg.status || null;
+    editing = new Set(msg.editing || []);
     render();
+    if (msg.select) select(msg.select, true);
+  } else if (msg.type === "select" && graphData) {
+    select(msg.id, true);
+  } else if (msg.type === "applyError") {
+    flashDetailError(msg.message);
   } else if (msg.type === "error") {
     document.getElementById("count").textContent = "error: " + msg.message;
   }
@@ -144,33 +149,47 @@ function render() {
   document.getElementById("empty").hidden = !empty;
   document.getElementById("rows").style.display = empty ? "none" : "";
   renderHeader();
-  if (empty) return;
+  if (empty) { document.getElementById("detail").hidden = true; return; }
   layout = computeLayout(graphData);
+  buildRefIndex();
   renderRows();
   drawLanes();
   drawMinimap();
   applyFilter();
+  if (selectedId && layout.byId.has(selectedId)) openDetail(selectedId); // refresh open pane
+  prevIds = new Set(graphData.nodes.map((n) => n.id));
 }
 
-function renderHeader() {
-  document.getElementById("count").textContent = `${graphData.count} feature${graphData.count === 1 ? "" : "s"}`;
-  const chip = document.getElementById("drift");
-  const drift = statusData && statusData.drift;
-  if (drift && drift.any) {
-    chip.textContent = `⚠ ${drift.summary || "drifted"}`;
-    chip.className = "chip warn";
-  } else if (statusData) {
-    chip.textContent = "✓ in sync";
-    chip.className = "chip ok";
-  } else {
-    chip.textContent = "";
-    chip.className = "chip";
+function buildRefIndex() {
+  refIndex = new Map();
+  for (const n of graphData.nodes) {
+    refIndex.set(n.id.toLowerCase(), n.id);
+    refIndex.set(n.id.toLowerCase().slice(0, 8), n.id);
+    refIndex.set(shortLabel(n.intent), n.id);
   }
 }
 
-function trunc(s, n) {
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+function renderHeader() {
+  const cnt = graphData.count;
+  document.getElementById("count").textContent = `${cnt} feature${cnt === 1 ? "" : "s"}`;
+  const chip = document.getElementById("drift");
+  const drift = statusData && statusData.drift;
+  if (drift && drift.any) { chip.textContent = `⚠ ${drift.summary || "drifted"}`; chip.className = "chip warn"; }
+  else if (statusData) { chip.textContent = "✓ in sync"; chip.className = "chip ok"; }
+  else { chip.textContent = ""; chip.className = "chip"; }
+
+  // live agent presence
+  const p = document.getElementById("presence");
+  if (editing.size) {
+    const labels = [...editing].map((id) => (layout && layout.byId.get(id) ? shortLabel(layout.byId.get(id).intent) : id.slice(0, 8)));
+    p.textContent = `✎ agent editing ${editing.size}: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? "…" : ""}`;
+    p.hidden = false;
+  } else {
+    p.hidden = true;
+  }
 }
+
+function trunc(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
 
 function renderRows() {
   const list = document.getElementById("rowlist");
@@ -181,17 +200,18 @@ function renderRows() {
     const ident = colorFor(n.id);
     const row = document.createElement("div");
     row.className = "row";
+    if (editing.has(n.id)) row.classList.add("editing");
+    if (!prevIds.has(n.id) && prevIds.size) row.classList.add("landed");
     row.dataset.id = n.id;
     row.tabIndex = -1;
     row.setAttribute("role", "row");
-    row.setAttribute("aria-label", `${n.intent || n.id}. ${n.kind}, ${n.status}.` + (n.conflict ? ` Conflict.` : ""));
+    row.title = n.intent || n.id;
+    row.setAttribute("aria-label", `${shortLabel(n.intent)}. ${n.kind}, ${n.status}.`);
 
     const refs = document.createElement("div");
     refs.className = "refs";
     const pill = document.createElement("span");
     pill.className = "pill" + (n.status === "suspended" ? " dim" : "");
-    // Tint the pill with the feature's identity color (a left accent bar + faint wash), so the
-    // FEATURE column reads as a colored ref pill — the GitLens branch-pill analog.
     pill.style.background = ident + "1f";
     pill.style.boxShadow = `inset 2px 0 0 ${ident}`;
     const glyph = document.createElement("i");
@@ -215,15 +235,16 @@ function renderRows() {
 
     const msg = document.createElement("div");
     msg.className = "msg";
-    const t = document.createElement("span");
-    t.className = "intent";
-    t.textContent = n.intent || n.id;
-    msg.appendChild(t);
-    const meta = document.createElement("span");
-    meta.className = "meta";
-    const dn = (n.dependents || []).length;
-    meta.textContent = dn ? `${dn} dependent${dn === 1 ? "" : "s"}` : "";
-    msg.appendChild(meta);
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = shortLabel(n.intent);
+    msg.appendChild(label);
+    if (editing.has(n.id)) {
+      const e = document.createElement("span");
+      e.className = "editing-badge";
+      e.textContent = "✎ editing";
+      msg.appendChild(e);
+    }
 
     row.appendChild(refs);
     row.appendChild(gcell);
@@ -241,8 +262,6 @@ function drawLanes() {
   svg.setAttribute("height", String(layout.order.length * ROW));
   const bg = cssVar("--vscode-editor-background", "#1e1e1e");
   const frag = document.createDocumentFragment();
-
-  // edges first (under nodes), colored by the source feature's identity hue.
   for (const e of layout.edges) {
     const x1 = laneX(layout.laneOf.get(e.from)), y1 = rowY(layout.rowOf.get(e.from));
     const x2 = laneX(layout.laneOf.get(e.to)), y2 = rowY(layout.rowOf.get(e.to));
@@ -255,29 +274,29 @@ function drawLanes() {
     path.dataset.to = e.to;
     frag.appendChild(path);
   }
-  // nodes
   for (const n of layout.order) {
     const cx = laneX(layout.laneOf.get(n.id)), cy = rowY(layout.rowOf.get(n.id));
+    const ident = colorFor(n.id);
+    if (editing.has(n.id)) {
+      const halo = document.createElementNS(NS, "circle");
+      halo.setAttribute("cx", String(cx));
+      halo.setAttribute("cy", String(cy));
+      halo.setAttribute("r", String(NODE_R + 3));
+      halo.setAttribute("class", "halo");
+      halo.setAttribute("fill", "none");
+      halo.setAttribute("stroke", ident);
+      frag.appendChild(halo);
+    }
     const c = document.createElementNS(NS, "circle");
     c.setAttribute("cx", String(cx));
     c.setAttribute("cy", String(cy));
     c.dataset.id = n.id;
-    const ident = colorFor(n.id);
     if (n.status === "planned") {
-      c.setAttribute("r", String(NODE_R - 0.5));
-      c.setAttribute("fill", bg);
-      c.setAttribute("stroke", ident);
-      c.setAttribute("stroke-width", "2");
+      c.setAttribute("r", String(NODE_R - 0.5)); c.setAttribute("fill", bg); c.setAttribute("stroke", ident); c.setAttribute("stroke-width", "2");
     } else if (n.status === "quarantined") {
-      c.setAttribute("r", String(NODE_R));
-      c.setAttribute("fill", ident);
-      c.setAttribute("stroke", "var(--vscode-errorForeground)");
-      c.setAttribute("stroke-width", "2");
+      c.setAttribute("r", String(NODE_R)); c.setAttribute("fill", ident); c.setAttribute("stroke", "var(--vscode-errorForeground)"); c.setAttribute("stroke-width", "2");
     } else {
-      c.setAttribute("r", String(NODE_R));
-      c.setAttribute("fill", ident);
-      c.setAttribute("stroke", bg);
-      c.setAttribute("stroke-width", "2");
+      c.setAttribute("r", String(NODE_R)); c.setAttribute("fill", ident); c.setAttribute("stroke", bg); c.setAttribute("stroke-width", "2");
       if (n.status === "suspended") c.setAttribute("opacity", "0.5");
     }
     c.setAttribute("class", "gnode");
@@ -286,11 +305,11 @@ function drawLanes() {
   svg.replaceChildren(frag);
 }
 
-// ---- minimap: activity spline (effects per feature) + status markers ----------------------
+// ---- minimap ------------------------------------------------------------------------------
 function drawMinimap() {
   const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("minimap"));
   const w = canvas.clientWidth || canvas.parentElement.clientWidth;
-  const h = 38;
+  const h = 34;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.floor(w * dpr));
   canvas.height = Math.floor(h * dpr);
@@ -301,14 +320,11 @@ function drawMinimap() {
   ctx.clearRect(0, 0, w, h);
   const order = layout.order;
   if (order.length < 2 || w < 8) return;
-
   const activityH = h - 8;
   const weights = order.map((n) => (n.effects ? n.effects.length : 1));
   const max = Math.max(1, ...weights);
   const xs = order.map((_, i) => (i / (order.length - 1)) * (w - 4) + 2);
   const ys = weights.map((v) => activityH - (v / max) * (activityH - 4) - 2);
-
-  // monotone-ish spline (Catmull-Rom -> bezier) in the progressBar color, like GitLens's line.
   ctx.strokeStyle = cssVar("--vscode-progressBar-background", "#cf6edf");
   ctx.lineWidth = 1.2;
   ctx.globalAlpha = 0.9;
@@ -316,86 +332,174 @@ function drawMinimap() {
   ctx.moveTo(xs[0], ys[0]);
   for (let i = 0; i < xs.length - 1; i++) {
     const x0 = xs[Math.max(0, i - 1)], y0 = ys[Math.max(0, i - 1)];
-    const x1 = xs[i], y1 = ys[i];
-    const x2 = xs[i + 1], y2 = ys[i + 1];
+    const x1 = xs[i], y1 = ys[i], x2 = xs[i + 1], y2 = ys[i + 1];
     const x3 = xs[Math.min(xs.length - 1, i + 2)], y3 = ys[Math.min(ys.length - 1, i + 2)];
     ctx.bezierCurveTo(x1 + (x2 - x0) / 6, y1 + (y2 - y0) / 6, x2 - (x3 - x1) / 6, y2 - (y3 - y1) / 6, x2, y2);
   }
   ctx.stroke();
   ctx.globalAlpha = 1;
-
-  // status markers along the bottom rail
-  const markerColor = {
+  const mc = {
     active: cssVar("--vscode-charts-green", "#89d185"),
     planned: cssVar("--vscode-charts-yellow", "#cca700"),
     suspended: cssVar("--vscode-descriptionForeground", "#888"),
     quarantined: cssVar("--vscode-errorForeground", "#f14c4c"),
   };
   for (let i = 0; i < order.length; i++) {
-    ctx.fillStyle = markerColor[order[i].status] || markerColor.active;
+    ctx.fillStyle = editing.has(order[i].id) ? mc.quarantined : (mc[order[i].status] || mc.active);
     ctx.fillRect(Math.round(xs[i]) - 1, h - 4, 2, 3);
   }
-
   canvas.onclick = (ev) => {
     const rect = canvas.getBoundingClientRect();
     const x = ev.clientX - rect.left;
     let best = 0, bd = Infinity;
-    for (let i = 0; i < xs.length; i++) {
-      const dd = Math.abs(xs[i] - x);
-      if (dd < bd) { bd = dd; best = i; }
-    }
-    select(order[best].id, false);
-    scrollToSelected();
+    for (let i = 0; i < xs.length; i++) { const dd = Math.abs(xs[i] - x); if (dd < bd) { bd = dd; best = i; } }
+    select(order[best].id, true);
   };
+}
+
+// ---- rich text + detail pane -------------------------------------------------------------
+function esc(s) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function resolveRef(token) {
+  const k = token.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  return refIndex.get(k) || refIndex.get(k.slice(0, 8)) || null;
+}
+/** Render intent as rich text: `code` spans, and @ref/#ref/backtick tokens that resolve to a
+ *  feature become clickable cross-references. */
+function renderRich(text) {
+  let html = esc(text);
+  // backtick code spans -> <code>, linked if the token resolves to a feature
+  html = html.replace(/`([^`]+)`/g, (_m, inner) => {
+    const id = resolveRef(inner);
+    const body = `<code>${inner}</code>`;
+    return id ? `<a class="xref" data-ref="${esc(id)}">${body}</a>` : body;
+  });
+  // @ref / #ref explicit references
+  html = html.replace(/(^|[\s(])([@#])([A-Za-z0-9_-]{2,})/g, (m, pre, sig, tok) => {
+    const id = resolveRef(tok);
+    return id ? `${pre}<a class="xref" data-ref="${esc(id)}">${sig}${esc(tok)}</a>` : m;
+  });
+  return html;
+}
+
+function chip(id) {
+  const n = layout.byId.get(id);
+  const ident = colorFor(id);
+  const label = n ? shortLabel(n.intent) : id.slice(0, 8);
+  return `<a class="dep-chip xref" data-ref="${esc(id)}" style="box-shadow: inset 2px 0 0 ${ident}; background:${ident}1f">${esc(label)}</a>`;
+}
+
+function openDetail(id) {
+  const n = layout.byId.get(id);
+  const detail = document.getElementById("detail");
+  if (!n) { detail.hidden = true; return; }
+  const ident = colorFor(id);
+  const glyph = STATUS_GLYPH[n.status] || "●";
+  const isOn = n.status !== "suspended";
+  const effects = (n.effects || []).map((e) => `<li><span class="op">${esc(e.op)}</span> <code>${esc(e.target)}</code> <span class="file">${esc(e.file)}</span></li>`).join("");
+  const deps = (n.depends_on || []).map(chip).join(" ") || "<span class='none'>—</span>";
+  const dependents = (n.dependents || []).map(chip).join(" ") || "<span class='none'>—</span>";
+  const conflict = n.conflict ? `<div class="conflict-box">⚠ ${esc(typeof n.conflict === "string" ? n.conflict : (n.conflict.reason || "conflict"))}</div>` : "";
+  const editingBadge = editing.has(id) ? `<span class="editing-badge big">✎ agent editing now</span>` : "";
+
+  detail.hidden = false;
+  detail.innerHTML = `
+    <div class="d-head">
+      <span class="d-glyph" style="color:${n.status === "quarantined" ? "var(--vscode-errorForeground)" : ident}">${glyph}</span>
+      <span class="d-label">${esc(shortLabel(n.intent))}</span>
+      <button class="icon-btn d-close" title="Close">✕</button>
+    </div>
+    <div class="d-sub">${esc(n.kind)} · ${esc(n.status)} · <code>${esc(id)}</code> ${editingBadge}</div>
+    <div class="d-intent">${renderRich(n.intent || "")}</div>
+    ${conflict}
+    <div class="d-section"><div class="d-k">depends on</div><div class="d-chips">${deps}</div></div>
+    <div class="d-section"><div class="d-k">dependents</div><div class="d-chips">${dependents}</div></div>
+    ${effects ? `<div class="d-section"><div class="d-k">effects</div><ul class="d-effects">${effects}</ul></div>` : ""}
+    <div class="d-actions">
+      <button class="btn" data-act="preview-revert">Preview revert</button>
+      <button class="btn" data-act="preview-switch">Preview ${isOn ? "suspend" : "restore"}</button>
+      <button class="btn danger" data-act="apply-revert" data-arm="0">Revert</button>
+      <button class="btn warn" data-act="apply-switch" data-arm="0">${isOn ? "Suspend" : "Restore"}</button>
+    </div>
+    <div class="d-msg" hidden></div>
+  `;
+
+  detail.querySelector(".d-close").addEventListener("click", () => { detail.hidden = true; selectedId = null; clearSelectionClasses(); });
+  detail.querySelectorAll(".xref").forEach((a) => a.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    select(a.getAttribute("data-ref"), true);
+  }));
+  detail.querySelectorAll(".d-actions .btn").forEach((b) => b.addEventListener("click", () => onAction(b, id, isOn)));
+}
+
+function onAction(btn, id, isOn) {
+  const act = btn.getAttribute("data-act");
+  if (act === "preview-revert") { vscode.postMessage({ type: "preview", action: "revert", id }); return; }
+  if (act === "preview-switch") { vscode.postMessage({ type: "preview", action: "switch", id, on: !isOn }); return; }
+  // apply actions: two-click inline arm (no modal popup)
+  const armed = btn.getAttribute("data-arm") === "1";
+  if (!armed) {
+    document.querySelectorAll(".d-actions .btn[data-arm]").forEach((b) => disarm(b));
+    btn.setAttribute("data-arm", "1");
+    btn.dataset.label = btn.textContent;
+    btn.textContent = "Click again to confirm";
+    btn.classList.add("armed");
+    btn._t = setTimeout(() => disarm(btn), 3500);
+    return;
+  }
+  disarm(btn);
+  if (act === "apply-revert") vscode.postMessage({ type: "apply", action: "revert", id });
+  else vscode.postMessage({ type: "apply", action: "switch", id, on: !isOn });
+}
+function disarm(btn) {
+  if (btn.getAttribute("data-arm") !== "1") return;
+  clearTimeout(btn._t);
+  btn.setAttribute("data-arm", "0");
+  btn.classList.remove("armed");
+  if (btn.dataset.label) btn.textContent = btn.dataset.label;
+}
+function flashDetailError(message) {
+  const box = document.querySelector("#detail .d-msg");
+  if (box) { box.hidden = false; box.textContent = "✗ " + message; box.className = "d-msg err"; }
 }
 
 // ---- filter / selection / keyboard -------------------------------------------------------
 function applyFilter() {
   const f = filter;
-  for (const row of document.querySelectorAll(".row")) {
-    const n = layout.byId.get(row.dataset.id);
-    const match = !f || `${n.intent} ${n.id} ${n.kind}`.toLowerCase().includes(f);
-    row.classList.toggle("dim", !match);
-  }
-  for (const c of document.querySelectorAll(".gnode")) {
-    const n = layout.byId.get(c.dataset.id);
-    const match = !f || `${n.intent} ${n.id} ${n.kind}`.toLowerCase().includes(f);
-    c.classList.toggle("dim", !match);
-  }
+  const match = (n) => !f || `${n.intent} ${n.id} ${n.kind} ${shortLabel(n.intent)}`.toLowerCase().includes(f);
+  for (const row of document.querySelectorAll(".row")) row.classList.toggle("dim", !match(layout.byId.get(row.dataset.id)));
+  for (const c of document.querySelectorAll(".gnode")) c.classList.toggle("dim", !match(layout.byId.get(c.dataset.id)));
 }
-
-function select(id, open) {
+function clearSelectionClasses() {
+  for (const row of document.querySelectorAll(".row.selected")) row.classList.remove("selected");
+  for (const c of document.querySelectorAll(".gnode.sel")) c.classList.remove("sel");
+  for (const p of document.querySelectorAll(".edge.hot")) p.classList.remove("hot");
+}
+function select(id, openPane) {
+  if (!layout || !layout.byId.has(id)) return;
   selectedId = id;
+  clearSelectionClasses();
   for (const row of document.querySelectorAll(".row")) {
     const on = row.dataset.id === id;
     row.classList.toggle("selected", on);
-    if (on) row.tabIndex = 0;
-    else row.tabIndex = -1;
+    row.tabIndex = on ? 0 : -1;
   }
-  for (const c of document.querySelectorAll(".gnode")) {
-    c.classList.toggle("sel", c.dataset.id === id);
-  }
-  for (const p of document.querySelectorAll(".edge")) {
-    const inc = p.dataset.from === id || p.dataset.to === id;
-    p.classList.toggle("hot", inc);
-  }
-  if (open) vscode.postMessage({ type: "open", id });
-}
-
-function scrollToSelected() {
-  const el = document.querySelector(`.row[data-id="${CSS.escape(selectedId)}"]`);
+  for (const c of document.querySelectorAll(".gnode")) c.classList.toggle("sel", c.dataset.id === id);
+  for (const p of document.querySelectorAll(".edge")) p.classList.toggle("hot", p.dataset.from === id || p.dataset.to === id);
+  const el = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
   if (el) el.scrollIntoView({ block: "nearest" });
+  if (openPane) openDetail(id);
 }
-
 function moveSelection(delta) {
   if (!layout || !layout.order.length) return;
   let idx = layout.order.findIndex((n) => n.id === selectedId);
   idx = idx < 0 ? 0 : Math.max(0, Math.min(layout.order.length - 1, idx + delta));
-  select(layout.order[idx].id, false);
-  const el = document.querySelector(`.row[data-id="${CSS.escape(selectedId)}"]`);
-  if (el) { el.focus(); el.scrollIntoView({ block: "nearest" }); }
+  const id = layout.order[idx].id;
+  select(id, true);
+  const el = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
+  if (el) el.focus();
 }
-
 const scroll = document.getElementById("scroll");
 scroll.addEventListener("keydown", (e) => {
   if (e.key === "ArrowDown") { e.preventDefault(); moveSelection(1); }
@@ -403,20 +507,11 @@ scroll.addEventListener("keydown", (e) => {
   else if ((e.key === "Enter" || e.key === " ") && selectedId) { e.preventDefault(); select(selectedId, true); }
 });
 
-function debounce(fn, ms) {
-  let t;
-  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-}
-document.getElementById("filter").addEventListener(
-  "input",
-  debounce((e) => { filter = e.target.value.toLowerCase().trim(); applyFilter(); }, 120)
-);
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+document.getElementById("filter").addEventListener("input", debounce((e) => { filter = e.target.value.toLowerCase().trim(); applyFilter(); }, 120));
 document.getElementById("refresh").addEventListener("click", () => vscode.postMessage({ type: "ready" }));
-
 let rsz;
 window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { if (layout) drawMinimap(); }, 120); });
-
-new MutationObserver(() => { if (graphData) render(); })
-  .observe(document.body, { attributes: true, attributeFilter: ["class"] });
+new MutationObserver(() => { if (graphData) render(); }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
 vscode.postMessage({ type: "ready" });

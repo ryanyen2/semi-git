@@ -21,10 +21,12 @@ drives `sgt`'s read and graph-op verbs.
   features depend on it.
 - **Feature Graph** — a GitLens-style, row-based graph in the **bottom panel**
   (`semi-git: Open Feature Graph`): a colored ref-pill KIND column, a git-style swim-lane GRAPH
-  column (identity-colored node circles + bezier dependency edges), an INTENT column, and a canvas
-  minimap. Hue is identity; **status is a glyph** (`●` active, `○` planned, `◐` suspended,
-  `⚠` conflict). Search dims non-matches; arrow keys + `Enter` navigate; click a row to inspect.
-  A quick-nav *Features* tree also sits in the activity bar.
+  column (identity-colored node circles + bezier dependency edges), a short-label FEATURE column,
+  and a canvas minimap. Hue is identity; **status is a glyph**. Selecting a feature opens an
+  **in-situ detail pane** (no modal popups) with the intent rendered as rich text + clickable
+  cross-references, dependency chips, effects, and two-click-confirm actions. **Live agent
+  presence** lights up features as the coding agent edits them. A quick-nav *Features* tree also
+  sits in the activity bar.
 - **Revision navigation** — *preview revert* / *preview suspend* open a read-only diff of what
   the change would do to the working tree, computed by `sgt emit` without writing anything.
 

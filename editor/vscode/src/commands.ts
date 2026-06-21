@@ -48,6 +48,7 @@ export function registerCommands(
   context: vscode.ExtensionContext,
   store: Store,
   preview: PreviewProvider,
+  graphView: GraphViewProvider,
   refreshBlame: () => void
 ): void {
   const reg = (id: string, fn: (...a: any[]) => any) =>
@@ -63,30 +64,11 @@ export function registerCommands(
   reg("sgt.toggleHeatmap", () => toggle("heatmap.enabled"));
   reg("sgt.toggleCodeLens", () => toggle("codeLens.enabled"));
 
+  // Inspect = open the in-situ detail pane in the graph panel (no modal popup).
   reg("sgt.openNode", async (id?: string) => {
     const node = id ?? (await pickNode(store));
-    if (!node) {
-      return;
-    }
-    const n = store.node(node);
-    if (!n) {
-      return;
-    }
-    const detail =
-      `${n.intent}\n\n${n.kind} · ${n.status} · ${n.id}\n` +
-      `depends on: ${n.depends_on.join(", ") || "—"}\n` +
-      `dependents: ${n.dependents.join(", ") || "—"}` +
-      (n.conflict ? `\n⚠ ${n.conflict}` : "");
-    const action = await vscode.window.showInformationMessage(
-      detail,
-      { modal: true },
-      "Preview revert",
-      "Preview suspend"
-    );
-    if (action === "Preview revert") {
-      void preview.preview("revert", node);
-    } else if (action === "Preview suspend") {
-      void preview.preview("switch", node, false);
+    if (node) {
+      graphView.selectNode(node);
     }
   });
 
