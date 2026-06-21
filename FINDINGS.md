@@ -276,7 +276,12 @@ into a dependency chain before backtracking) + nearest-free-lane assignment — 
 directly above its dependency, edges stay short and vertical, and lanes are reused. On the
 knowledge-graph CLI example this drops the graph to 3 lanes with most edges spanning 1–2 rows
 (the only long lines are the shared-base "branch lines", exactly as GitLens renders them). The
-tangle was a *layout* bug, not a planning bug — the plan is a valid (wide, shallow) DAG.
+tangle was a *layout* bug, not a planning bug — the plan is a valid (wide, shallow) DAG. A follow-up
+"gap in the middle" was a real **forest** — two weakly-connected components (the CLI-arg group vs the
+knowledge-graph engine) with no edge between them. The graph now detects components (union-find) and
+draws a subtle inset divider at each boundary so the gap reads as an intentional group separator. A
+disconnected `main` may also be a *planning* signal (a missing dependency edge) — surfaced, not
+auto-fixed.
 
 A second feedback round drove: **(1) no modal popups** — inspection (a reversible action) now opens
 an **in-situ detail pane** beside the graph instead of a `showInformationMessage` modal; apply

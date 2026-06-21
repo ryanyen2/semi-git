@@ -134,7 +134,16 @@ function computeLayout(graph) {
   const laneCount = Math.max(1, ...order.map((n) => laneOf.get(n.id) + 1));
   const edges = [];
   for (const n of order) for (const dep of deps.get(n.id) || []) if (rowOf.has(dep)) edges.push({ from: n.id, to: dep });
-  return { order, byId, deps, rowOf, laneOf, laneCount, edges };
+
+  // Weakly-connected components: the graph is often a forest (independent feature groups). A
+  // boundary between two components is a real "gap" with no connecting lane — we mark it so it
+  // reads as an intentional group divider rather than a rendering glitch.
+  const parent = new Map(graph.nodes.map((n) => [n.id, n.id]));
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  for (const n of graph.nodes) for (const dep of deps.get(n.id) || []) { const a = find(n.id), b = find(dep); if (a !== b) parent.set(a, b); }
+  const componentOf = new Map(order.map((n) => [n.id, find(n.id)]));
+
+  return { order, byId, deps, rowOf, laneOf, laneCount, edges, componentOf };
 }
 const laneX = (lane) => lane * LANE_W + LANE_W / 2 + 4;
 const rowY = (row) => row * ROW + ROW / 2;
@@ -216,10 +225,14 @@ function renderRows() {
   const graphWidth = layout.laneCount * LANE_W + LANE_W;
   document.documentElement.style.setProperty("--graph-w", `${graphWidth}px`);
   const frag = document.createDocumentFragment();
+  let prevComp = null;
   for (const n of layout.order) {
     const ident = colorFor(n.id);
     const row = document.createElement("div");
     row.className = "row";
+    const comp = layout.componentOf.get(n.id);
+    if (prevComp !== null && comp !== prevComp) row.classList.add("component-start");
+    prevComp = comp;
     if (editing.has(n.id)) row.classList.add("editing");
     if (!prevIds.has(n.id) && prevIds.size) row.classList.add("landed");
     row.dataset.id = n.id;

@@ -84,12 +84,12 @@
     count: 7, edges: [],
     nodes: [
       cap("integrate", "Integrate knowledge graph retrieval into the main flow", ["develop", "create"], []),
-      cap("main", "Implement the main integrate command entry point", ["parse", "display", "data"], []),
+      cap("main", "Implement the main integrate command entry point", ["parse", "display"], []),
       cap("create", "Create functions to populate the knowledge graph", ["data"], ["integrate"]),
       cap("develop", "Develop functions to query the `knowledge` graph for information retrieval", ["data"], ["integrate"]),
       cap("parse", "Implement parse command line arguments", [], ["main"]),
       cap("display", "Implement display help message", [], ["main"]),
-      cap("data", "Implement data structure to represent the graph", [], ["develop", "create", "main"]),
+      cap("data", "Implement data structure to represent the graph", [], ["develop", "create"]),
     ],
   };
   const status = { nodes: 7, files: [{ path: "cli.py", lines: 90 }], effects: 7, drift: { any: false, modified: [], added: [], deleted: [], summary: "no drift" } };

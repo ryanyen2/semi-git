@@ -70,6 +70,9 @@ body {
 .row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 .row:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .row.dim { opacity: 0.32; }
+/* divider between disconnected components — inset shadow, so it adds no height (keeps the
+   absolutely-positioned lane SVG aligned to ROW-height rows). */
+.row.component-start { box-shadow: inset 0 1px 0 var(--vscode-panel-border); }
 .row.editing .label { color: var(--vscode-charts-blue, #75beff); }
 .row.landed { animation: landed 1.4s ease-out 1; }
 
