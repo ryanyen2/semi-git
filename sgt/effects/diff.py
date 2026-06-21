@@ -84,10 +84,32 @@ def _import_set(tree: ast.Module) -> set[str]:
     return {ast.unparse(n).strip() for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))}
 
 
+def _assign_name(node: ast.stmt) -> str | None:
+    """The single bound name of a top-level `X = …` / `X: T = …`, or None if not one."""
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        return node.targets[0].id
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        return node.target.id
+    return None
+
+
+def _toplevel_assigns(tree: ast.Module) -> dict[str, ast.stmt]:
+    """Top-level single-name bindings, keyed by name (the ADD/REPLACE/REMOVE_ASSIGN domain)."""
+    out: dict[str, ast.stmt] = {}
+    for n in tree.body:
+        name = _assign_name(n)
+        if name is not None:
+            out[name] = n
+    return out
+
+
 def _other_toplevel(tree: ast.Module) -> str:
-    """Normalized dump of top-level statements that are neither defs nor imports."""
+    """Normalized dump of top-level statements that are not defs, imports, or single-name
+    bindings — the genuinely un-distillable remainder (tuple-unpacking, bare expressions,
+    `if __name__` blocks). Single-name bindings are now captured as assign effects."""
     others = [n for n in tree.body
-              if not isinstance(n, (*_DEF_TYPES, ast.Import, ast.ImportFrom))]
+              if not isinstance(n, (*_DEF_TYPES, ast.Import, ast.ImportFrom))
+              and _assign_name(n) is None]
     return "\n".join(normalize(ast.unparse(n)) for n in others)
 
 
@@ -133,8 +155,23 @@ def distill_file(file: str, expected_src: str, actual_src: str) -> tuple[list[Ef
     if removed_imports:
         notes.append(f"{file}: removed imports not auto-distilled: {', '.join(sorted(removed_imports))}")
 
+    # Module-level single-name bindings (e.g. `_RE = re.compile(...)`), mirroring the def diff:
+    # new -> add_assign, changed source -> replace_assign, removed -> remove_assign.
+    exp_assigns, act_assigns = _toplevel_assigns(exp), _toplevel_assigns(act)
+    for name, node in act_assigns.items():
+        src = ast.unparse(node)
+        if name not in exp_assigns:
+            effects.append(Effect.add_assign(file, name, src))
+        elif normalize(src) != normalize(ast.unparse(exp_assigns[name])):
+            effects.append(Effect.replace_assign(file, name, src))
+    for name in exp_assigns:
+        if name not in act_assigns:
+            effects.append(Effect.remove_assign(file, name))
+
     if _other_toplevel(exp) != _other_toplevel(act):
-        notes.append(f"{file}: module-level statements changed — not auto-distilled (review manually)")
+        notes.append(f"{file}: non-binding module-level statements changed — NOT captured "
+                     f"(tuple-unpack / bare expr / __main__ block); they will be lost on "
+                     f"rematerialize. Move that state into a function.")
 
     return effects, notes
 

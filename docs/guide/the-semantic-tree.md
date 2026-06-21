@@ -64,7 +64,11 @@ plug-out is clean even months later.
 
 Every mutation runs through the **confluence gate**: nothing lands unless it commutes with the
 current tree and preserves the codebase's invariants. Work that doesn't fit is *quarantined*
-(held, durable, visible) rather than silently dropped — then resolved with `reconcile`.
+(held, durable, visible) rather than silently dropped. Recover it by fixing the code and
+re-checkpointing (the superseded hold is swept automatically), or — when a *rival* changed — with
+`reconcile`. A checkpoint distills top-level defs, classes, imports, and single-name module
+bindings (`X = …`); other module-level statements are reported as needing manual review, not
+captured.
 
 ## Drift: the tree vs. your editor
 

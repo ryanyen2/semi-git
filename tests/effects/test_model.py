@@ -52,6 +52,59 @@ def test_add_import_dedups():
     assert precondition_holds(out, e) is False  # already imported
 
 
+def test_future_import_stays_first_when_another_import_is_added_later():
+    """A `from __future__` import must remain the first statement even when an ordinary import
+    is authored after it — otherwise the replay produces a SyntaxError and trips the invariant."""
+    out = apply_sequence("", [
+        Effect.add_import("app.py", "from __future__ import annotations"),
+        Effect.add_import("app.py", "import os"),  # authored later — must not displace __future__
+    ], check=True)
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert lines[0] == "from __future__ import annotations"
+    assert "import os" in out
+    assert invariant_valid(out)
+
+
+def test_future_import_goes_below_module_docstring():
+    """The docstring stays first; the future import slots in right after it (still valid)."""
+    src = '"""Module doc."""\n'
+    out = apply_effect(src, Effect.add_import("m.py", "from __future__ import annotations"))
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert lines[0] == '"""Module doc."""'
+    assert lines[1] == "from __future__ import annotations"
+    assert invariant_valid(out)
+
+
+def test_module_binding_round_trips_and_stays_valid():
+    """A module-level `X = re.compile(...)` used by a function must be captured as an effect and
+    survive rematerialization (the #2 regression: it used to be dropped, leaving a dangling ref)."""
+    seq = [
+        Effect.add_import("m.py", "import re"),
+        Effect.add_def("m.py", "tok", "def tok(s):\n    return _RE.findall(s)"),
+        Effect.add_assign("m.py", "_RE", "_RE = re.compile('\\\\w+')"),
+    ]
+    out = apply_sequence("", seq)  # invariant is checked on the final tree, as materialize does
+    # placement: binding sits after the import, before the def that uses it
+    assert out.index("import re") < out.index("_RE = ") < out.index("def tok")
+    assert invariant_valid(out)
+
+
+def test_replace_and_remove_assign():
+    src = apply_effect("", Effect.add_assign("m.py", "X", "X = 1"))
+    out = apply_effect(src, Effect.replace_assign("m.py", "X", "X = 99"))
+    assert "X = 99" in out
+    out = apply_effect(out, Effect.remove_assign("m.py", "X"))
+    assert "X" not in out
+
+
+def test_assign_preconditions():
+    assert precondition_holds("import re\n", Effect.add_assign("m.py", "X", "X = 1")) is True
+    assert precondition_holds("X = 1\n", Effect.add_assign("m.py", "X", "X = 2")) is False  # taken
+    assert precondition_holds("", Effect.replace_assign("m.py", "X", "X = 2")) is False  # missing
+    # annotated single-name assignments count as bindings
+    assert precondition_holds("Y: int = 1\n", Effect.replace_assign("m.py", "Y", "Y: int = 2")) is True
+
+
 def test_add_call_inserts_into_target_body():
     src = "def log():\n    pass\n\ndef handle():\n    return 1\n"
     out = apply_effect(src, Effect.add_call("app.py", "handle", "log"))

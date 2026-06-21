@@ -26,6 +26,12 @@ class EffectOp(str, Enum):
     ADD_CALL = "add_call"        # append a call to `callee` inside the unit at `target`
     REPLACE_DEF = "replace_def"  # replace an existing unit's body/signature (any depth)
     REMOVE_DEF = "remove_def"    # remove the unit at `target` (the deletion primitive)
+    # Module-level single-name bindings (`X = expr`, `X: T = expr`). Distinct from SET_CONST,
+    # which only mutates an existing literal value — these carry the whole statement source, so
+    # `X = re.compile(...)` round-trips instead of being dropped. target = the bound name.
+    ADD_ASSIGN = "add_assign"        # add a top-level NAME = <expr> binding
+    REPLACE_ASSIGN = "replace_assign"  # replace the statement of an existing top-level binding
+    REMOVE_ASSIGN = "remove_assign"    # remove a top-level binding
     # Statement-granular ops (target = the function path; payload carries the PosId, so two
     # edits to *different* statements of one function commute). Materialized structurally by
     # replaying a function's statement ops into a PosId-keyed sequence (see body.py).
@@ -83,6 +89,18 @@ class Effect:
     @staticmethod
     def remove_def(file: str, path: str, eid: str = "") -> "Effect":
         return Effect(file, EffectOp.REMOVE_DEF, path, {}, eid)
+
+    @staticmethod
+    def add_assign(file: str, name: str, source: str, eid: str = "") -> "Effect":
+        return Effect(file, EffectOp.ADD_ASSIGN, name, {"source": source.strip()}, eid)
+
+    @staticmethod
+    def replace_assign(file: str, name: str, source: str, eid: str = "") -> "Effect":
+        return Effect(file, EffectOp.REPLACE_ASSIGN, name, {"source": source.strip()}, eid)
+
+    @staticmethod
+    def remove_assign(file: str, name: str, eid: str = "") -> "Effect":
+        return Effect(file, EffectOp.REMOVE_ASSIGN, name, {}, eid)
 
     @staticmethod
     def insert_stmt(file: str, func: str, after: dict | None, before: dict | None,
@@ -172,7 +190,23 @@ def _names_in_body(body: list[ast.stmt]) -> set[str]:
             for t in node.targets:
                 if isinstance(t, ast.Name):
                     names.add(t.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
     return names
+
+
+def _assign_name(node: ast.stmt) -> str | None:
+    """The single bound name of a top-level `X = …` / `X: T = …`, or None if not one."""
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        return node.targets[0].id
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        return node.target.id
+    return None
+
+
+def _toplevel_assign_names(tree: ast.Module) -> set[str]:
+    """Top-level single-name assignment targets (the names ADD/REPLACE/REMOVE_ASSIGN manage)."""
+    return {n for n in (_assign_name(s) for s in tree.body) if n is not None}
 
 
 def _toplevel_names(tree: ast.Module) -> set[str]:
@@ -195,6 +229,46 @@ def _import_lines(source: str) -> set[str]:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             lines.add(ast.unparse(node).strip())
     return lines
+
+
+def _is_future_import(node: ast.stmt) -> bool:
+    return isinstance(node, ast.ImportFrom) and node.module == "__future__"
+
+
+def _docstring_offset(body: list[ast.stmt]) -> int:
+    """1 if the module opens with a docstring (which must stay first), else 0."""
+    return 1 if (body and isinstance(body[0], ast.Expr)
+                 and isinstance(body[0].value, ast.Constant)
+                 and isinstance(body[0].value.value, str)) else 0
+
+
+def _insert_imports(tree: ast.Module, imp: list[ast.stmt]) -> None:
+    """Insert imports at the top, keeping any ``from __future__`` import first.
+
+    A ``__future__`` import must be the first statement after an optional module docstring or
+    Python raises SyntaxError. Effects replay one import at a time, so a naive prepend lets a
+    later ordinary import land above an earlier ``__future__`` line and break the parse — which
+    then fails the invariant gate and quarantines the checkpoint. Anchoring future imports just
+    below the docstring, and ordinary imports just below the future block, keeps every replay
+    valid regardless of the order the import effects were authored in.
+    """
+    base = _docstring_offset(tree.body)
+    after_future = base
+    while after_future < len(tree.body) and _is_future_import(tree.body[after_future]):
+        after_future += 1
+    futures = [n for n in imp if _is_future_import(n)]
+    others = [n for n in imp if not _is_future_import(n)]
+    tree.body[after_future:after_future] = others  # ordinary imports below the future block
+    tree.body[base:base] = futures                 # future imports right after the docstring
+
+
+def _module_insert_index(tree: ast.Module) -> int:
+    """Where a module-level binding goes: after the last import (or docstring), before the defs."""
+    idx = _docstring_offset(tree.body)
+    for i, s in enumerate(tree.body):
+        if isinstance(s, (ast.Import, ast.ImportFrom)):
+            idx = i + 1
+    return idx
 
 
 class _ConstSetter(ast.NodeTransformer):
@@ -251,6 +325,10 @@ def precondition_holds(source: str, e: Effect) -> bool:
         return isinstance(us.get(e.target), _DEF_TYPES)  # can only replace a unit that exists
     if e.op is EffectOp.REMOVE_DEF:
         return e.target in us  # can only remove a unit that exists
+    if e.op is EffectOp.ADD_ASSIGN:
+        return e.target not in _names_in_body(tree.body)  # the name must be free at module scope
+    if e.op in (EffectOp.REPLACE_ASSIGN, EffectOp.REMOVE_ASSIGN):
+        return e.target in _toplevel_assign_names(tree)  # can only touch an existing binding
     if e.op in STMT_OPS:
         return isinstance(us.get(e.target), _FUNC_TYPES)  # statement ops target a function
     return False
@@ -278,8 +356,7 @@ def apply_effect(source: str, e: Effect, check: bool = False) -> str:
             top.name = leaf
         body.extend(parsed)
     elif e.op is EffectOp.ADD_IMPORT:
-        imp = ast.parse(e.payload["source"]).body
-        tree.body[0:0] = imp  # imports go to the top
+        _insert_imports(tree, ast.parse(e.payload["source"]).body)
     elif e.op is EffectOp.SET_CONST:
         tree = _ConstSetter(e.target, e.payload["value"]).visit(tree)
     elif e.op is EffectOp.RENAME_DEF:
@@ -306,6 +383,18 @@ def apply_effect(source: str, e: Effect, check: bool = False) -> str:
         parent_parts = e.target.split(".")[:-1]
         if parent_parts:
             _ensure_nonempty(units(tree).get(".".join(parent_parts)))
+    elif e.op is EffectOp.ADD_ASSIGN:
+        parsed = ast.parse(e.payload["source"]).body
+        if not parsed:
+            raise EffectError(f"add_assign {e.target!r}: empty source")
+        tree.body.insert(_module_insert_index(tree), parsed[0])  # after imports, before defs
+    elif e.op is EffectOp.REPLACE_ASSIGN:
+        parsed = ast.parse(e.payload["source"]).body
+        if not parsed:
+            raise EffectError(f"replace_assign {e.target!r}: empty source")
+        tree.body[:] = [parsed[0] if _assign_name(n) == e.target else n for n in tree.body]
+    elif e.op is EffectOp.REMOVE_ASSIGN:
+        tree.body[:] = [n for n in tree.body if _assign_name(n) != e.target]
     else:
         raise EffectError(f"unknown op {e.op}")
     ast.fix_missing_locations(tree)

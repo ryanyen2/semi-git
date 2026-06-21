@@ -10,6 +10,32 @@ def _ops(effects):
     return [(e.op, e.target, e.payload.get("new")) for e in effects]
 
 
+def test_module_binding_is_distilled_not_noted():
+    """Single-name module-level bindings now become assign effects (was: a manual-review note)."""
+    actual = ("import re\n"
+              "_WORD_RE = re.compile('\\\\w+')\n"
+              "def tok(s):\n    return _WORD_RE.findall(s)\n")
+    effects, notes = distill_file("p.py", "", actual)
+    ops = {(e.op, e.target) for e in effects}
+    assert (EffectOp.ADD_ASSIGN, "_WORD_RE") in ops
+    assert notes == []  # nothing left for manual review
+    # round-trips: replaying onto empty reproduces a valid module
+    assert "_WORD_RE = re.compile" in apply_sequence("", effects)
+
+
+def test_changed_and_removed_bindings():
+    effects, _ = distill_file("m.py", "X = 1\nY = 2\n", "X = 99\n")  # X changed, Y removed
+    assert {(e.op, e.target) for e in effects} == {
+        (EffectOp.REPLACE_ASSIGN, "X"), (EffectOp.REMOVE_ASSIGN, "Y")}
+
+
+def test_non_single_name_statements_still_noted():
+    """Tuple-unpacking / bare expressions remain uncaptured — but with an explicit note."""
+    effects, notes = distill_file("m.py", "", "a, b = 1, 2\nprint('hi')\n")
+    assert effects == []
+    assert notes and "NOT captured" in notes[0]
+
+
 def test_pure_rename_emits_single_rename_def():
     expected = "def shorten(url):\n    return url[:6]\n"
     actual = "def make_code(url):\n    return url[:6]\n"

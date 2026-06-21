@@ -188,6 +188,8 @@ def _print_sync(rep, verb: str) -> int:
         print(f"    extended: {nid}")
     for nid in rep.quarantined:
         print(f"    quarantined: {nid}")
+    for nid in getattr(rep, "swept", []):
+        print(f"    swept (superseded): {nid}")
     for note in rep.notes:
         print(f"    ⚠ {note}")
     return 0 if rep.ok else 1
