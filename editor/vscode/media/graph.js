@@ -82,33 +82,53 @@ function computeLayout(graph) {
   const present = new Set(graph.nodes.map((n) => n.id));
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const deps = new Map(graph.nodes.map((n) => [n.id, (n.depends_on || []).filter((d) => present.has(d))]));
-  const depth = new Map();
-  const seen = new Set();
-  function d(id) {
-    if (depth.has(id)) return depth.get(id);
-    if (seen.has(id)) return 0;
-    seen.add(id);
-    const v = (deps.get(id) || []).reduce((m, x) => Math.max(m, 1 + d(x)), 0);
-    depth.set(id, v);
-    return v;
+
+  // Compact, git-graph-like ordering: a depth-first topological sort (LIFO Kahn) where a node is
+  // placed only after all its dependents, and we dive into a dependency chain before backtracking.
+  // This keeps a node directly above its dependency, so edges stay short and vertical (the reason
+  // GitLens looks compact) instead of long diagonals scattered by a depth bucket sort.
+  const depCount = new Map(graph.nodes.map((n) => [n.id, 0]));
+  for (const n of graph.nodes) for (const dep of deps.get(n.id)) depCount.set(dep, depCount.get(dep) + 1);
+  const ready = [];
+  for (let i = graph.nodes.length - 1; i >= 0; i--) {
+    if (depCount.get(graph.nodes[i].id) === 0) ready.push(graph.nodes[i].id); // roots: nothing depends on them
   }
-  graph.nodes.forEach((n) => d(n.id));
-  const order = graph.nodes.map((n, i) => ({ n, i }))
-    .sort((a, b) => depth.get(b.n.id) - depth.get(a.n.id) || a.i - b.i)
-    .map((x) => x.n);
+  const order = [];
+  const placed = new Set();
+  while (ready.length) {
+    const id = ready.pop();
+    if (placed.has(id)) continue;
+    placed.add(id);
+    order.push(byId.get(id));
+    const ds = deps.get(id) || [];
+    for (let j = ds.length - 1; j >= 0; j--) {
+      const dep = ds[j];
+      depCount.set(dep, depCount.get(dep) - 1);
+      if (depCount.get(dep) === 0) ready.push(dep); // ready once all its dependents are placed
+    }
+  }
+  for (const n of graph.nodes) if (!placed.has(n.id)) order.push(n); // cycle safety (shouldn't happen)
+
   const rowOf = new Map(order.map((n, i) => [n.id, i]));
   const lanes = [];
   const laneOf = new Map();
-  const ff = () => { const k = lanes.indexOf(null); return k === -1 ? lanes.length : k; };
+  // Nearest free lane to a hint, so a branch takes the lane closest to its parent — fewer crossings.
+  const ff = (hint = 0) => {
+    let best = -1, bd = Infinity;
+    for (let k = 0; k < lanes.length; k++) {
+      if (lanes[k] == null) { const dd = Math.abs(k - hint); if (dd < bd) { bd = dd; best = k; } }
+    }
+    return best === -1 ? lanes.length : best;
+  };
   for (const n of order) {
     let lane = lanes.indexOf(n.id);
-    if (lane === -1) lane = ff();
+    if (lane === -1) lane = ff(0);
     laneOf.set(n.id, lane);
     for (let k = 0; k < lanes.length; k++) if (lanes[k] === n.id) lanes[k] = null;
     let first = true;
     for (const dep of deps.get(n.id) || []) {
       if (lanes.indexOf(dep) !== -1) continue;
-      if (first) { lanes[lane] = dep; first = false; } else lanes[ff()] = dep;
+      if (first) { lanes[lane] = dep; first = false; } else lanes[ff(lane)] = dep;
     }
   }
   const laneCount = Math.max(1, ...order.map((n) => laneOf.get(n.id) + 1));

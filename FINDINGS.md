@@ -269,6 +269,15 @@ as a dense, **row-based commit-graph**, hosted as a Webview *View* in the **bott
 - Verified with a headless-Chrome screenshot of a dev harness (`editor/vscode/dev/preview.html`)
   before shipping — the paradigm and density now match GitLens's Commit Graph.
 
+**Layout compactness (3rd round).** The first row-graph ordered nodes by dependency *depth*, which
+scattered a node far from its dependency and produced long crossing diagonals. Replaced with a
+**depth-first topological order** (LIFO Kahn: place a node only after all its dependents, diving
+into a dependency chain before backtracking) + nearest-free-lane assignment — so a node sits
+directly above its dependency, edges stay short and vertical, and lanes are reused. On the
+knowledge-graph CLI example this drops the graph to 3 lanes with most edges spanning 1–2 rows
+(the only long lines are the shared-base "branch lines", exactly as GitLens renders them). The
+tangle was a *layout* bug, not a planning bug — the plan is a valid (wide, shallow) DAG.
+
 A second feedback round drove: **(1) no modal popups** — inspection (a reversible action) now opens
 an **in-situ detail pane** beside the graph instead of a `showInformationMessage` modal; apply
 actions use a two-click inline confirm. **(2) Live agent presence** — features with uncommitted
