@@ -58,11 +58,17 @@
     "viewsContainers": {
       "activitybar": [
         { "id": "sgt", "title": "semi-git", "icon": "media/sgt.svg" }
+      ],
+      "panel": [
+        { "id": "sgtPanel", "title": "Feature Graph", "icon": "media/sgt.svg" }
       ]
     },
     "views": {
       "sgt": [
-        { "id": "sgtGraph", "name": "Feature DAG" }
+        { "id": "sgtGraph", "name": "Features" }
+      ],
+      "sgtPanel": [
+        { "id": "sgtFeatureGraph", "name": "Feature Graph", "type": "webview" }
       ]
     },
     "menus": {

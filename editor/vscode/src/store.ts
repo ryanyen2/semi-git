@@ -4,11 +4,12 @@
 
 import * as vscode from "vscode";
 import { Sgt } from "./sgt";
-import { BlameView, GraphView, NodeView } from "./types";
+import { BlameView, GraphView, NodeView, StatusView } from "./types";
 
 export class Store {
   readonly sgt: Sgt;
   private graphCache: GraphView | undefined;
+  private statusCache: StatusView | undefined;
   private nodeById = new Map<string, NodeView>();
   private blameCache = new Map<string, BlameView>();
   private _onDidChange = new vscode.EventEmitter<void>();
@@ -30,6 +31,13 @@ export class Store {
     return this.nodeById.get(id);
   }
 
+  async status(force = false): Promise<StatusView> {
+    if (!this.statusCache || force) {
+      this.statusCache = await this.sgt.status();
+    }
+    return this.statusCache;
+  }
+
   async blame(file: string, force = false): Promise<BlameView> {
     const cached = this.blameCache.get(file);
     if (cached && !force) {
@@ -43,6 +51,7 @@ export class Store {
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
     this.graphCache = undefined;
+    this.statusCache = undefined;
     this.blameCache.clear();
     this._onDidChange.fire();
   }

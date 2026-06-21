@@ -33,6 +33,14 @@ export interface GraphView {
   count: number;
 }
 
+export interface StatusView {
+  nodes: number;
+  files?: { path: string; lines: number }[];
+  effects?: number;
+  drift?: { any: boolean; modified: string[]; added: string[]; deleted: string[]; summary: string };
+  error?: string;
+}
+
 export interface BlameSpan {
   start: number; // 1-based inclusive
   end: number; // 1-based inclusive

@@ -7,6 +7,7 @@ import { BlameController } from "./blame";
 import { SgtCodeLensProvider } from "./codelens";
 import { registerCommands } from "./commands";
 import { GraphTreeProvider } from "./tree";
+import { GraphViewProvider } from "./graphView";
 import { SgtHoverProvider } from "./hover";
 import { PreviewProvider } from "./preview";
 import { findSgtRoot } from "./sgt";
@@ -26,8 +27,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const tree = new GraphTreeProvider(store);
   context.subscriptions.push(blame, preview);
 
+  const graphView = new GraphViewProvider(context, store);
   context.subscriptions.push(
-    vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree })
+    graphView,
+    vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }),
+    vscode.window.registerWebviewViewProvider(GraphViewProvider.viewId, graphView, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
   );
   const py: vscode.DocumentSelector = { language: "python" };
   context.subscriptions.push(

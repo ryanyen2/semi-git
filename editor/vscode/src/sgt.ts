@@ -5,7 +5,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
-import { BlameView, EmitView, GraphView } from "./types";
+import { BlameView, EmitView, GraphView, StatusView } from "./types";
 
 const pExecFile = promisify(execFile);
 
@@ -48,6 +48,10 @@ export class Sgt {
 
   blame(file: string): Promise<BlameView> {
     return this.json<BlameView>(["blame", "--json", file]);
+  }
+
+  status(): Promise<StatusView> {
+    return this.json<StatusView>(["status", "--json"]);
   }
 
   emit(action: "revert" | "switch", ref: string, on?: boolean): Promise<EmitView> {

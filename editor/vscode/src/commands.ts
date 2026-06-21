@@ -3,7 +3,7 @@
 // + commits — so we surface the human report and then invalidate every surface.
 
 import * as vscode from "vscode";
-import { GraphPanel } from "./graphPanel";
+import { GraphViewProvider } from "./graphView";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
 
@@ -57,7 +57,8 @@ export function registerCommands(
     store.invalidate();
     refreshBlame();
   });
-  reg("sgt.showGraph", () => GraphPanel.show(context, store));
+  // Reveal the Feature Graph panel view (auto-registered <viewId>.focus command).
+  reg("sgt.showGraph", () => vscode.commands.executeCommand(`${GraphViewProvider.viewId}.focus`));
   reg("sgt.toggleBlame", () => toggle("blame.enabled"));
   reg("sgt.toggleHeatmap", () => toggle("heatmap.enabled"));
   reg("sgt.toggleCodeLens", () => toggle("codeLens.enabled"));

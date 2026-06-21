@@ -1,0 +1,18 @@
+{
+  // F5 launches an Extension Development Host with the extension loaded. The second arg is the
+  // folder it opens — point it at any `sgt init`'d workspace so the extension finds .sgt/graph.json
+  // and activates. Adjust the path to whatever project you're testing against.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run semi-git extension (rag workspace)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "/Users/ryanyen2/repos/test-workspace/rag",
+        "--extensionDevelopmentPath=${workspaceFolder}"
+      ],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"]
+    }
+  ]
+}

@@ -1,12 +1,10 @@
 :root {
   color-scheme: light dark;
-  /* modular type scale (minor third) + a 4px spacing rhythm */
-  --fs-sm: 11px;
-  --fs-md: 12px;
-  --fs-lg: 14px;
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
+  --refs-w: 200px;
+  --graph-w: 72px;
+  --row-h: 26px;
+  --fg-secondary: color-mix(in srgb, transparent 35%, var(--vscode-foreground));
+  --fg-dim: color-mix(in srgb, transparent 60%, var(--vscode-foreground));
 }
 html, body {
   height: 100%;
@@ -16,24 +14,84 @@ body {
   display: flex;
   flex-direction: column;
   font-family: var(--vscode-font-family);
-  font-size: var(--fs-md);
+  font-size: var(--vscode-font-size, 13px);
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
   overflow: hidden;
 }
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* header / breadcrumb */
+#header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+#header .brand {
+  font-weight: 600;
+}
+#header .crumb-sep {
+  color: var(--fg-dim);
+}
+#header .crumb {
+  color: var(--fg-secondary);
+}
+#header .spacer {
+  flex: 1;
+}
+.chip {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  white-space: nowrap;
+}
+.chip.ok {
+  color: var(--vscode-charts-green, #89d185);
+  background: color-mix(in srgb, var(--vscode-charts-green, #89d185) 14%, transparent);
+}
+.chip.warn {
+  color: var(--vscode-list-warningForeground, #cca700);
+  background: color-mix(in srgb, var(--vscode-list-warningForeground, #cca700) 16%, transparent);
+}
+.icon-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  line-height: 1;
+}
+.icon-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* toolbar */
 #toolbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--vscode-editor-background);
-  border-bottom: 1px solid var(--vscode-panel-border);
+  gap: 8px;
+  padding: 4px 10px 8px;
+}
+.search-icon {
+  color: var(--fg-dim);
+  font-size: 14px;
 }
 #filter {
-  flex: 0 0 220px;
-  padding: var(--sp-1) var(--sp-2);
-  font-size: var(--fs-md);
+  flex: 0 1 280px;
+  padding: 3px 8px;
+  font-size: 12px;
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent);
@@ -41,117 +99,173 @@ body {
 }
 #filter:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 0;
-}
-button.tool {
-  padding: var(--sp-1) var(--sp-2);
-  font-size: var(--fs-md);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  background: var(--vscode-button-secondaryBackground, transparent);
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: 4px;
-  cursor: pointer;
-}
-button.tool:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-}
-button.tool:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
 }
 #legend {
   display: flex;
-  gap: var(--sp-3);
+  gap: 12px;
   margin-left: auto;
-  font-size: var(--fs-sm);
-  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  color: var(--fg-secondary);
   white-space: nowrap;
 }
-#legend .g {
-  font-size: var(--fs-md);
+#legend i.g {
+  font-style: normal;
+  margin-right: 3px;
 }
-#status {
-  font-size: var(--fs-sm);
-  color: var(--vscode-descriptionForeground);
-}
-#canvas {
-  flex: 1 1 auto;
-  overflow: hidden;
-  cursor: grab;
-}
-#canvas.panning {
-  cursor: grabbing;
-}
-svg#graph {
+
+/* minimap */
+#minimap {
+  flex: 0 0 auto;
   width: 100%;
-  height: 100%;
   display: block;
-}
-
-.edge {
-  fill: none;
-  stroke: var(--vscode-editorIndentGuide-activeBackground, #888);
-  stroke-width: 1.2;
-  stroke-opacity: 0.55;
-  stroke-linejoin: round;
-}
-
-.node {
+  border-top: 1px solid var(--vscode-panel-border);
+  border-bottom: 1px solid var(--vscode-panel-border);
   cursor: pointer;
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease;
 }
-.node .box {
-  transition: fill-opacity 0.15s ease, stroke-width 0.12s ease;
+
+/* column headers */
+#colhead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  border-bottom: 1px solid var(--vscode-panel-border);
 }
-.node:hover .box {
-  fill-opacity: 0.3;
-}
-.node.selected .box {
-  stroke-width: 2;
-}
-.node:focus {
+#colhead .c-refs { flex: 0 0 var(--refs-w); }
+#colhead .c-graph { flex: 0 0 var(--graph-w); }
+#colhead .c-msg { flex: 1; }
+
+/* rows */
+#scroll {
+  flex: 1 1 auto;
+  overflow: auto;
   outline: none;
 }
-.node:focus-visible .box {
-  stroke-width: 2;
-  stroke-dasharray: none;
+#rows {
+  position: relative;
 }
-.node:focus-visible {
-  outline: 1.5px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
-.node.suspended {
-  opacity: 0.45;
-}
-.node.dim {
-  opacity: 0.12;
+#lanes {
+  position: absolute;
+  top: 0;
+  /* rows have 10px horizontal padding, so the graph band starts after padding + refs column */
+  left: calc(10px + var(--refs-w));
   pointer-events: none;
+  z-index: 1;
 }
-.node.enter {
-  opacity: 0;
+#rowlist {
+  position: relative;
+  z-index: 0;
+}
+.row {
+  display: flex;
+  align-items: center;
+  height: var(--row-h);
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.row.selected {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+.row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+.row.dim {
+  opacity: 0.32;
+}
+.refs {
+  flex: 0 0 var(--refs-w);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 7px;
+  height: 16px;
+  font-size: 11px;
+  border-radius: 8px;
+  background: color-mix(in srgb, transparent 88%, var(--vscode-foreground));
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pill.dim {
+  opacity: 0.6;
+}
+.pill .g {
+  font-style: normal;
+  font-size: 10px;
+}
+.pill.conflict {
+  background: color-mix(in srgb, transparent 80%, var(--vscode-errorForeground));
+  color: var(--vscode-errorForeground);
+}
+.gcell {
+  flex: 0 0 auto;
+}
+.msg {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  overflow: hidden;
+}
+.msg .intent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.msg .meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-dim);
+  flex: 0 0 auto;
 }
 
-.label {
-  fill: var(--vscode-foreground);
-  font-size: var(--fs-sm);
-  pointer-events: none;
+/* lanes (SVG) */
+.edge {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-opacity: 0.55;
 }
-.glyph {
-  font-size: var(--fs-md);
-  pointer-events: none;
+.edge.hot {
+  stroke-opacity: 1;
+  stroke-width: 2.2;
 }
-.warn {
-  fill: var(--vscode-editorError-foreground, #f14c4c);
-  font-size: var(--fs-md);
-  pointer-events: none;
+.gnode {
+  transition: r 0.1s ease;
+}
+.gnode.sel {
+  stroke: var(--vscode-list-focusOutline, var(--vscode-focusBorder)) !important;
+}
+.gnode.dim {
+  opacity: 0.2;
+}
+
+#empty {
+  padding: 24px 16px;
+  color: var(--fg-dim);
+}
+#empty code {
+  font-family: var(--vscode-editor-font-family, monospace);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .node,
-  .node .box {
+  .gnode {
     transition: none;
-  }
-  .node.enter {
-    opacity: 1;
   }
 }

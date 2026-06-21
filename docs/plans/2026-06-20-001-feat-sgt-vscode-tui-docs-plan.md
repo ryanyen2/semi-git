@@ -183,11 +183,9 @@ A post-build pass by a simplicity reviewer and a senior UI/UX design reviewer dr
   (TS / JS / Python), theme-aware and contrast-floored, and the TUI no longer double-books hue
   for status. Identity colors verified byte-identical across JS and Python.
 - **Graph layout at scale.** Within-layer ordering moved from alphabetical to a median/barycenter
-  crossing-reduction sweep; long edges route around intervening nodes via dummy nodes. The webview
-  gained pan / wheel-zoom / **Fit**, a viewport `<g>` transform (canvas no longer an unbounded
-  scroll plane), filter debounce + dim-in-place (no relayout), and keyed node reconciliation so
-  `plan`/`reconcile` animates nodes to new positions (CSS transitions — no JS animation dep — with
-  a `prefers-reduced-motion` guard).
+  crossing-reduction sweep; long edges route around intervening nodes via dummy nodes; filter
+  debounce + dim-in-place (no relayout). *(Superseded the same day — see below — by a full
+  paradigm change to a GitLens-style row graph.)*
 - **Accessibility & affordances.** Graph nodes are focusable with arrow-key navigation, ARIA
   labels, and a focus ring; the hidden destructive double-click was removed (single-click inspects;
   the inspector hosts the preview/apply actions); the conflict ⚠ and the current-line `◆` now carry
@@ -197,8 +195,21 @@ A post-build pass by a simplicity reviewer and a senior UI/UX design reviewer dr
   mutations from the safe lowercase previews.
 - **Simplicity cuts.** Removed dead `Sgt.graph()` and the unused `EmitView.refused`; de-duplicated
   `ownerAt`/`truncate` into `util.ts`; hoisted `attribute.py` imports and corrected a type
-  annotation. Kept the three annotation toggles and `retainContextWhenHidden` deliberately — the
-  former map to an explicit GitLens-parity requirement, the latter now preserves pan/zoom state.
+  annotation. Kept the three annotation toggles deliberately — they map to an explicit
+  GitLens-parity requirement.
+
+### Feature Graph paradigm change — GitLens parity (2026-06-20)
+
+User feedback (with side-by-side screenshots): the node-link webview was sparse and "template-like"
+versus GitLens's Commit Graph. Studied the real GitLens source under `references/vscode-gitlens`
+and rebuilt the graph as a dense, **row-based commit-graph hosted in the bottom panel**
+(`GraphViewProvider` as a `WebviewViewProvider`, panel view container `sgtPanel`): one feature per
+row, a colored ref-pill **KIND** column, a git-style swim-lane **GRAPH** column (lane-allocation
+sweep + bezier edges in identity color), an **INTENT** column, a canvas **minimap** (activity
+spline + status markers), a breadcrumb header with a drift chip, search-dims-in-place, and
+arrow-key/click inspection. The pan/zoom node-canvas (above) was retired. Verified visually via a
+headless-Chrome screenshot of `editor/vscode/dev/preview.html` (a mock-host dev harness) before
+shipping. Identity-color contract (OKLCH, hue=identity, status=glyph) unchanged across all surfaces.
 
 ## Sources & Research
 

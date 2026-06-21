@@ -25,7 +25,7 @@ the `sgt.path` setting.
 | Git CodeLens | **Feature CodeLens** — the feature above each block + its dependent count |
 | Rich hovers | **Feature hover** — intent, deps, dependents, conflict, and *preview suspend/revert* links |
 | File heatmap | **Feature heatmap** — per-feature gutter band + overview-ruler color across the file |
-| Commit graph | **Feature DAG** — sidebar tree + a full graph webview |
+| Commit graph | **Feature Graph** — a row-based swim-lane graph in the bottom panel (+ a quick-nav sidebar tree) |
 | Revision navigation | **Preview revert / suspend** — a read-only diff of what the op would do |
 
 ### Semantic blame
@@ -42,20 +42,27 @@ feature and a matching band on the overview ruler, so you see the distribution o
 glance. Each feature's color is a stable hash of its id — the same hue in the editor, the graph,
 and everywhere else.
 
-### Feature DAG
+### Feature Graph
 
-The **semi-git** activity-bar icon opens the *Feature DAG* sidebar (a tree rooted on the features
-nothing depends on, conflicts and planned nodes surfaced first). **semi-git: Open Feature Graph**
-opens the full graph webview: dependency layers with crossing-reduced ordering, long edges routed
-around intervening nodes, and a stable identity hue per feature.
+Modeled on GitLens's Commit Graph, but mapped from commits to **semantic nodes**. It lives in the
+**bottom panel** (run **semi-git: Open Feature Graph**, or open the *Feature Graph* panel view).
+The lightweight *Features* tree in the activity bar is the quick-nav companion.
 
-- **Status** is a glyph, never the hue (hue is identity): `●` active, `○` planned, `◐` suspended
-  (dimmed), `⚠` conflict (red). A legend sits in the toolbar.
-- **Navigate** by scroll-wheel zoom, drag to pan, and **Fit** to frame the whole graph. The graph
-  also animates nodes to their new positions when you `plan`/`reconcile`, so you can see what moved.
-- **Keyboard:** `Tab`/arrow keys move between nodes, `Enter`/`Space` inspects the focused one.
-- **Click** a node to inspect it (the inspector offers preview-revert / preview-suspend). **Filter**
-  by name in the toolbar — non-matches dim in place so the layout stays put.
+Each feature is a **row** (most-derived on top), laid out like a git graph:
+
+- **KIND column** — a colored ref-pill: the feature's identity hue (left accent) + its kind, with a
+  status glyph. Status is a glyph, never the hue: `●` active, `○` planned, `◐` suspended (dimmed),
+  `⚠` conflict (red). A legend sits in the toolbar.
+- **GRAPH column** — git-style **swim lanes**: each feature is a node circle in its identity color,
+  connected by colored bezier edges down to the features it depends on. Planned nodes render hollow;
+  conflicts get a red ring.
+- **INTENT column** — the feature's intent, with its dependent count.
+- **Minimap** — a canvas activity ribbon (effects per feature) with status-colored markers; click
+  to jump to a feature.
+- **Header** — feature count + a drift chip (`✓ in sync` / `⚠ drifted`).
+
+**Search** in the toolbar dims non-matches in place. **Arrow keys** move the selection, `Enter`
+inspects (the inspector offers preview-revert / preview-suspend); clicking a row does the same.
 
 ### Revision navigation
 

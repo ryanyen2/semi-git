@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<!-- Local dev preview of the Feature Graph webview, outside VS Code. Mocks acquireVsCodeApi,
+     supplies VS Code "Dark Modern" theme tokens, and feeds sample data. Open in a browser or
+     screenshot headless. Not shipped (under dev/, .vscodeignore'd). -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link href="../media/graph.css" rel="stylesheet">
+<style>
+  /* VS Code "Dark Modern" token subset so the preview renders like the real panel. */
+  :root {
+    --vscode-font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    --vscode-font-size: 13px;
+    --vscode-editor-font-family: "SF Mono", Menlo, monospace;
+    --vscode-foreground: #cccccc;
+    --vscode-editor-background: #1f1f1f;
+    --vscode-editor-foreground: #cccccc;
+    --vscode-panel-border: #2b2b2b;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-background: #313131;
+    --vscode-input-border: #3c3c3c;
+    --vscode-focusBorder: #0078d4;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: #04395e;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-focusOutline: #0078d4;
+    --vscode-list-warningForeground: #cca700;
+    --vscode-toolbar-hoverBackground: #2a2d2e;
+    --vscode-errorForeground: #f14c4c;
+    --vscode-descriptionForeground: #9d9d9d;
+    --vscode-charts-green: #89d185;
+    --vscode-charts-yellow: #cca700;
+    --vscode-progressBar-background: #cf6edf;
+  }
+</style>
+</head>
+<body class="vscode-dark">
+<div id="app">
+  <div id="header">
+    <span class="brand">◆ Feature Graph</span>
+    <span class="crumb-sep">›</span>
+    <span id="count" class="crumb"></span>
+    <span id="drift" class="chip"></span>
+    <span class="spacer"></span>
+    <button id="refresh" class="icon-btn" title="Refresh">↻</button>
+  </div>
+  <div id="toolbar">
+    <span class="search-icon">⌕</span>
+    <input id="filter" type="text" placeholder="Search features…" aria-label="Search features" />
+    <span id="legend" aria-hidden="true">
+      <span><i class="g">●</i>active</span>
+      <span><i class="g">○</i>planned</span>
+      <span><i class="g">◐</i>suspended</span>
+      <span><i class="g">⚠</i>conflict</span>
+    </span>
+  </div>
+  <canvas id="minimap" aria-hidden="true"></canvas>
+  <div id="colhead"><span class="c-refs">KIND</span><span class="c-graph">GRAPH</span><span class="c-msg">INTENT</span></div>
+  <div id="scroll" tabindex="0">
+    <div id="rows"><svg id="lanes" aria-hidden="true"></svg><div id="rowlist"></div></div>
+    <div id="empty" hidden>No features yet — run <code>sgt plan "…"</code>.</div>
+  </div>
+</div>
+<script>
+  // Mock the VS Code webview API.
+  window.acquireVsCodeApi = () => ({ postMessage() {}, getState() {}, setState() {} });
+</script>
+<script src="../media/graph.js"></script>
+<script>
+  const E = (op) => ({ op, target: "t", file: "rag.py" });
+  const graph = {
+    count: 7,
+    edges: [],
+    nodes: [
+      { id: "knowledge", kind: "capability", status: "active", intent: "Implement a class `KnowledgeBase` that loads + chunks documents", depends_on: [], dependents: ["rag", "query", "cache"], effects: [E("add_def"), E("add_def"), E("add_import")] },
+      { id: "rag", kind: "capability", status: "active", intent: "Implement a class `RAG` that retrieves relevant chunks", depends_on: ["knowledge"], dependents: ["generate"], effects: [E("add_def"), E("add_def")] },
+      { id: "query", kind: "capability", status: "planned", intent: "Add a method `query` to embed and search the index", depends_on: ["knowledge"], dependents: ["generate"], effects: [E("add_def")] },
+      { id: "cache", kind: "infrastructure", status: "suspended", intent: "Cache embeddings on disk to avoid recompute", depends_on: ["knowledge"], dependents: [], effects: [E("set_const"), E("add_def")] },
+      { id: "generate", kind: "capability", status: "quarantined", intent: "Add a method `generate_answer` composing RAG + query", depends_on: ["rag", "query"], dependents: [], conflict: "replace_def collides with `query`", effects: [E("add_def"), E("replace_def")] },
+      { id: "rerank", kind: "fix", status: "active", intent: "Re-rank retrieved chunks by cross-encoder score", depends_on: ["rag"], dependents: [], effects: [E("replace_def")] },
+      { id: "stream", kind: "exploration", status: "active", intent: "Stream tokens from generate_answer back to the caller", depends_on: ["generate"], dependents: [], effects: [E("add_def"), E("add_call")] },
+    ],
+  };
+  const status = { nodes: 7, files: [{ path: "rag.py", lines: 120 }], effects: 12, drift: { any: false, modified: [], added: [], deleted: [], summary: "no drift" } };
+  window.dispatchEvent(new MessageEvent("message", { data: { type: "graph", graph, status } }));
+  // pre-select a row to show the selected state
+  setTimeout(() => window.dispatchEvent(new MessageEvent("message", { data: { type: "graph", graph, status } })), 50);
+</script>
+</body>
+</html>

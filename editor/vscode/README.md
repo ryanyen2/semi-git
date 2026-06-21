@@ -19,11 +19,12 @@ drives `sgt`'s read and graph-op verbs.
   color (golden-angle hash of its id), identical in the editor, the graph, and the terminal UI.
 - **Feature CodeLens** — a lens above each block naming the feature that owns it and how many
   features depend on it.
-- **Feature DAG** — a sidebar tree and a full graph webview (`semi-git: Open Feature Graph`)
-  with crossing-reduced dependency layers and routed edges. Hue is identity; **status is a glyph**
-  (`●` active, `○` planned, `◐` suspended, `⚠` conflict), with a legend in the toolbar. Scroll to
-  zoom, drag to pan, **Fit** to frame; arrow keys + `Enter` navigate; click to inspect. Nodes
-  animate to new positions on `plan`/`reconcile` (respecting reduced-motion).
+- **Feature Graph** — a GitLens-style, row-based graph in the **bottom panel**
+  (`semi-git: Open Feature Graph`): a colored ref-pill KIND column, a git-style swim-lane GRAPH
+  column (identity-colored node circles + bezier dependency edges), an INTENT column, and a canvas
+  minimap. Hue is identity; **status is a glyph** (`●` active, `○` planned, `◐` suspended,
+  `⚠` conflict). Search dims non-matches; arrow keys + `Enter` navigate; click a row to inspect.
+  A quick-nav *Features* tree also sits in the activity bar.
 - **Revision navigation** — *preview revert* / *preview suspend* open a read-only diff of what
   the change would do to the working tree, computed by `sgt emit` without writing anything.
 

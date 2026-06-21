@@ -229,8 +229,9 @@ grew to 251 tests. See `docs/plans/2026-06-20-001-feat-sgt-vscode-tui-docs-plan.
   is built from — so blame and the tree can't disagree. Statement-exact for top-level functions;
   whole-unit for class methods/reorders (honest, not faked).
 - **VS Code extension (`editor/vscode/`).** Current-line + status-bar blame, on-demand per-feature
-  heatmap, CodeLens, rich hovers with preview command-links, a DAG sidebar + a hand-rolled graph
-  webview, and `sgt emit`-driven diff previews of plug-outs. Shells out to `sgt … --json`.
+  heatmap, CodeLens, rich hovers with preview command-links, a **GitLens-style Feature Graph** in
+  the bottom panel (see below), and `sgt emit`-driven diff previews of plug-outs. Shells out to
+  `sgt … --json`.
 - **Terminal UI (`sgt tui`, optional `[tui]` extra).** Browse/inspect/preview/apply, keyboard-
   driven, in-process over `sgt.api`.
 
@@ -251,6 +252,22 @@ A simplicity reviewer and a senior UI/UX reviewer drove a post-build pass:
   apply-keys (`X`/`O`/`U`) to separate mutations from safe previews.
 - **Simplicity cuts.** Dead `Sgt.graph()` and unused `EmitView.refused` removed; `ownerAt`/
   `truncate` de-duplicated; `attribute.py` imports hoisted.
+
+### Feature Graph redesign — GitLens/GitKraken parity (2026-06-20)
+
+The first graph was a sparse, free-floating node-link diagram in an editor-tab webview — wrong
+paradigm and visually thin. Rebuilt against the actual GitLens source (`references/vscode-gitlens`)
+as a dense, **row-based commit-graph**, hosted as a Webview *View* in the **bottom panel**
+(`GraphViewProvider`):
+
+- One feature per **row** (most-derived on top), with a **KIND** ref-pill column (identity-tinted
+  pill + status glyph), a git-style **swim-lane GRAPH** column (lane-allocation sweep → identity-
+  colored node circles + bezier dependency edges, planned=hollow, conflict=red ring), and an
+  **INTENT** column with dependent counts.
+- A canvas **minimap** (activity spline over effects-per-feature + status markers), a breadcrumb
+  header with a drift chip, search-dims-in-place, arrow-key nav, and click/Enter to inspect.
+- Verified with a headless-Chrome screenshot of a dev harness (`editor/vscode/dev/preview.html`)
+  before shipping — the paradigm and density now match GitLens's Commit Graph.
 
 ## Known v1 limitations (deferred, see the plan)
 
