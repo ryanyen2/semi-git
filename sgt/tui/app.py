@@ -108,6 +108,43 @@ class DetailScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class MapScreen(ModalScreen[None]):
+    """The deterministic code-entity map (whole repo): entities colored by owning feature."""
+
+    BINDINGS = [Binding("escape,q,m", "close", "Close")]
+
+    def __init__(self, view: dict, width: int) -> None:
+        super().__init__()
+        self._view = view
+        self._width = width
+
+    def compose(self) -> ComposeResult:
+        from sgt.tui.mapview import map_columns
+
+        with Vertical(id="detail-modal"):
+            n = self._view.get("count", 0)
+            comps = len(self._view.get("components", []))
+            yield Label(f"Code-entity map — {n} entities, {comps} components", id="map-title")
+            yield DataTable(id="map-table", cursor_type="row", zebra_stripes=True)
+            yield Label("[b]esc[/b] close", id="hint")
+        self._cols = map_columns(self._width)
+
+    def on_mount(self) -> None:
+        from sgt.tui.mapview import build_map_rows, entity_marker
+
+        table = self.query_one("#map-table", DataTable)
+        table.add_columns(*self._cols)
+        for r in build_map_rows(self._view):
+            marker = entity_marker(r.node_id)
+            if "owner" in self._cols:
+                table.add_row(marker, r.kind, r.label, r.node_id or "—", str(r.component))
+            else:
+                table.add_row(marker, r.kind, r.label)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class SgtTui(App[None]):
     TITLE = "semi-git"
     CSS = """
@@ -133,6 +170,7 @@ class SgtTui(App[None]):
         Binding("X", "apply_revert", "Revert!"),
         Binding("O", "apply_switch_off", "Suspend!"),
         Binding("U", "apply_switch_on", "Restore!"),
+        Binding("m", "show_map", "Map"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -184,6 +222,13 @@ class SgtTui(App[None]):
     # -- data --------------------------------------------------------------
     def _project(self) -> Project:
         return Project.open(self.repo)
+
+    def action_show_map(self) -> None:
+        """Open the deterministic code-entity map (whole repo), colored by owning feature."""
+        from sgt.api import entity_graph_view
+
+        view = entity_graph_view(self._project())
+        self.push_screen(MapScreen(view, self.size.width or 80))
 
     def action_refresh(self) -> None:
         proj = self._project()
