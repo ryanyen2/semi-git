@@ -14,7 +14,7 @@ import sys
 from sgt.project import Project
 
 _VERBS = {"init", "plan", "sync", "checkpoint", "revert", "switch", "reconcile",
-          "show", "graph", "status", "blame", "export", "emit", "tui", "mcp", "help"}
+          "show", "graph", "status", "blame", "export", "emit", "map", "tui", "mcp", "help"}
 
 
 def _print_report(rep) -> int:
@@ -103,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "export":
         return _export(repo)
+
+    if cmd == "map":
+        return _map(repo, as_json)
 
     if cmd == "emit":
         # `sgt emit revert <ref>` | `sgt emit switch <ref> on|off` — structured dry-run for a UI.
@@ -308,6 +311,22 @@ def _export(repo: str) -> int:
     return _emit_json(export_view(Project.open(repo)))
 
 
+def _map(repo: str, as_json: bool) -> int:
+    """The deterministic code-entity map (whole-repo). `--json` emits the full projection."""
+    from sgt.api import entity_graph_view
+
+    view = entity_graph_view(Project.open(repo))
+    if as_json:
+        return _emit_json(view)
+    owned = sum(1 for e in view["entities"] if e["node_id"])
+    print(
+        f"{view['count']} entities ({owned} feature-owned), "
+        f"{len(view['components'])} components, "
+        f"{len(view['reduced_edges'])} reduced edges"
+    )
+    return 0
+
+
 def _tui(repo: str) -> int:
     try:
         from sgt.tui.app import run as run_tui
@@ -370,6 +389,7 @@ def _help() -> int:
         "  sgt status                 summarize state\n"
         "  sgt blame <file>           which feature owns each line of a file (semantic blame)\n"
         "  sgt export                 dump the whole graph as JSON (nodes, edges, effects)\n"
+        "  sgt map [--json]           the deterministic code-entity map (whole repo)\n"
         "  sgt tui                    open the terminal UI (needs `semi-git[tui]`)\n"
         "  (read verbs take --json for the machine-readable projection)\n"
     )
