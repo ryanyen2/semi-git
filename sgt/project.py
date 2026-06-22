@@ -168,6 +168,23 @@ class Project:
     def materialize(self) -> Codebase:
         return materialize(self.active_effects())
 
+    def materialize_at(self, frame: int) -> Codebase:
+        """Reconstruct the materialized tree as of checkpoint ordinal ``frame`` (tracked features).
+
+        Per-entry replay: include active entries whose ``landing`` is in ``[1, frame]``, in the
+        same canonical ``order_key`` order ``materialize()`` uses — so a node extended across
+        checkpoints shows only the effects that existed by ``frame``. ``frame >= latest`` equals
+        the live ``materialize()``. (Reverted/reconciled nodes whose entries left the log are not
+        resurrected here — the git ``tree_at`` path recovers that structure; see KTD4.)
+        """
+        active = {
+            nid for nid in self.log.node_ids()
+            if self.graph.has(nid) and self.graph.get(nid).status is NodeStatus.ACTIVE
+        }
+        entries = [e for e in self.log.live_entries(active) if 0 < e.landing <= frame]
+        entries.sort(key=lambda e: e.order_key)
+        return materialize([e.effect for e in entries])
+
     def _safe_path(self, path: str) -> Path:
         """Resolve a managed path under the repo root, refusing any escape (defense-in-depth).
 
@@ -373,6 +390,7 @@ class Project:
         # Persist `.sgt` then commit git; if the commit fails, roll `.sgt` back so the
         # semantic state never advances past git (no split-brain).
         snapshot = self._snapshot_sgt()
+        self.log.stamp_committed()  # assign this checkpoint's frame ordinal to new entries
         self.save()
         try:
             sha = self.git.commit_all(message, node_id=node_id)
