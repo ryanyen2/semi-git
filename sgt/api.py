@@ -144,11 +144,6 @@ def entity_graph_view(project) -> dict:
     from sgt.entities.graph import build_entity_graph, owning_nodes, read_entity_sources
 
     g = build_entity_graph(read_entity_sources(project.repo))
-    deps: dict[str, list[str]] = {e.id: [] for e in g.entities}
-    for e in g.reduced_edges:
-        if e.type in ("calls", "imports"):
-            deps[e.src].append(e.dst)
-
     # Feature overlay: which feature owns each entity, from semantic blame (disk-vs-materialized
     # line numbers align for tracked clean files; untracked/TS files have no blame -> None).
     spans_by_file: dict[str, list[dict]] = {}
@@ -160,14 +155,50 @@ def entity_graph_view(project) -> dict:
         except EffectError:
             spans_by_file = {}
     owners = owning_nodes(g.entities, spans_by_file)
+    return _assemble_entity_view(project, g, owners)
 
+
+def timeframe_view(project, frame: int) -> dict:
+    """The map as of checkpoint ordinal ``frame`` — the scrubber's per-frame projection.
+
+    Structure comes from ``materialize_at(frame)`` (tracked features at that frame); the overlay
+    is frame-accurate, derived from the very entries that frame replays (each carries its owning
+    ``node_id``) rather than current-state blame. Same shape as ``entity_graph_view`` plus
+    ``frame`` — so the webview can diff adjacent frames and highlight born/grown/retired regions.
+    """
+    from sgt.store.graph import NodeStatus
+    from sgt.entities.graph import build_entity_graph
+
+    g = build_entity_graph(project.materialize_at(frame))
+    active = {
+        nid for nid in project.log.node_ids()
+        if project.graph.has(nid) and project.graph.get(nid).status is NodeStatus.ACTIVE
+    }
+    # Frame overlay: the entry that produced each entity (add/replace target) owns it; last wins.
+    owners: dict[str, str | None] = {e.id: None for e in g.entities}
+    for entry in sorted(project.log.live_entries(active), key=lambda e: e.order_key):
+        if 0 < entry.landing <= frame:
+            ent_id = f"{entry.effect.file}::{entry.effect.target}"
+            if ent_id in owners:
+                owners[ent_id] = entry.node_id
+
+    view = _assemble_entity_view(project, g, owners)
+    view["frame"] = frame
+    return view
+
+
+def _assemble_entity_view(project, g, owners: dict) -> dict:
+    """Shared assembly: entity dicts (+depends_on, +node_id), edges, reduction, components, clusters."""
+    deps: dict[str, list[str]] = {e.id: [] for e in g.entities}
+    for e in g.reduced_edges:
+        if e.type in ("calls", "imports"):
+            deps[e.src].append(e.dst)
     entities = []
     for ent in g.entities:
         d = ent.to_dict()
         d["depends_on"] = deps.get(ent.id, [])
         d["node_id"] = owners.get(ent.id)
         entities.append(d)
-
     return {
         "entities": entities,
         "edges": [e.to_dict() for e in g.edges],

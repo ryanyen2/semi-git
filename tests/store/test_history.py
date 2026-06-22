@@ -59,6 +59,25 @@ def test_materialize_at_replays_per_entry(tmp_path):
     assert at2 == proj.materialize()
 
 
+def test_timeframe_view_morphs_and_attributes(tmp_path):
+    from sgt.api import timeframe_view
+
+    proj, _, _ = _two_checkpoints(tmp_path)
+    f1 = timeframe_view(proj, 1)
+    f2 = timeframe_view(proj, 2)
+    assert f1["frame"] == 1 and f2["frame"] == 2
+    # The map grows across frames.
+    assert {e["name"] for e in f1["entities"]} == {"foo"}
+    assert {e["name"] for e in f2["entities"]} == {"foo", "bar"}
+    # Frame-accurate overlay: foo is owned by its feature at frame 1.
+    foo = next(e for e in f1["entities"] if e["name"] == "foo")
+    assert foo["node_id"] == "foo"
+    # Shape parity with entity_graph_view, plus the frame ref.
+    assert set(f2) == {
+        "entities", "edges", "reduced_edges", "components", "clusters", "count", "frame"
+    }
+
+
 def test_tree_at_and_file_at_read_past_snapshots(tmp_path):
     _, sha1, sha2 = _two_checkpoints(tmp_path)
     git = GitBinding(tmp_path)

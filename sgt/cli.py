@@ -14,7 +14,8 @@ import sys
 from sgt.project import Project
 
 _VERBS = {"init", "plan", "sync", "checkpoint", "revert", "switch", "reconcile",
-          "show", "graph", "status", "blame", "export", "emit", "map", "tui", "mcp", "help"}
+          "show", "graph", "status", "blame", "export", "emit", "map", "timeframe",
+          "tui", "mcp", "help"}
 
 
 def _print_report(rep) -> int:
@@ -106,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "map":
         return _map(repo, as_json)
+
+    if cmd == "timeframe":
+        if not rest or not rest[0].lstrip("-").isdigit():
+            print("usage: sgt timeframe <frame> [--json]")
+            return 2
+        return _timeframe(repo, int(rest[0]), as_json)
 
     if cmd == "emit":
         # `sgt emit revert <ref>` | `sgt emit switch <ref> on|off` — structured dry-run for a UI.
@@ -327,6 +334,19 @@ def _map(repo: str, as_json: bool) -> int:
     return 0
 
 
+def _timeframe(repo: str, frame: int, as_json: bool) -> int:
+    """The code-entity map as of checkpoint ordinal `frame` (the scrubber's per-frame view)."""
+    from sgt.api import timeframe_view
+
+    view = timeframe_view(Project.open(repo), frame)
+    if as_json:
+        return _emit_json(view)
+    owned = sum(1 for e in view["entities"] if e["node_id"])
+    print(f"frame {frame}: {view['count']} entities ({owned} feature-owned), "
+          f"{len(view['components'])} components")
+    return 0
+
+
 def _tui(repo: str) -> int:
     try:
         from sgt.tui.app import run as run_tui
@@ -390,6 +410,7 @@ def _help() -> int:
         "  sgt blame <file>           which feature owns each line of a file (semantic blame)\n"
         "  sgt export                 dump the whole graph as JSON (nodes, edges, effects)\n"
         "  sgt map [--json]           the deterministic code-entity map (whole repo)\n"
+        "  sgt timeframe <n> [--json] the map as of checkpoint ordinal n (the scrubber frame)\n"
         "  sgt tui                    open the terminal UI (needs `semi-git[tui]`)\n"
         "  (read verbs take --json for the machine-readable projection)\n"
     )
