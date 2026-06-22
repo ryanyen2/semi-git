@@ -132,6 +132,36 @@ def blame_view(project, file: str) -> dict:
     }
 
 
+def entity_graph_view(project) -> dict:
+    """The deterministic code-entity graph parsed from the working tree (disk-canonical).
+
+    Functions/classes/methods as entities; edges are containment + calls/imports. ``edges`` is
+    the full set; ``reduced_edges`` is the transitive reduction used for layout (KTD8). Each
+    entity carries ``depends_on`` (its direct reduced calls/imports targets). Pure over a
+    freshly-opened ``Project``; no LLM/network. The ``entities`` extra (tree-sitter) is imported
+    lazily so core surfaces without it still import ``sgt.api``.
+    """
+    from sgt.entities.graph import build_entity_graph, read_entity_sources
+
+    g = build_entity_graph(read_entity_sources(project.repo))
+    deps: dict[str, list[str]] = {e.id: [] for e in g.entities}
+    for e in g.reduced_edges:
+        if e.type in ("calls", "imports"):
+            deps[e.src].append(e.dst)
+    entities = []
+    for ent in g.entities:
+        d = ent.to_dict()
+        d["depends_on"] = deps.get(ent.id, [])
+        entities.append(d)
+    return {
+        "entities": entities,
+        "edges": [e.to_dict() for e in g.edges],
+        "reduced_edges": [e.to_dict() for e in g.reduced_edges],
+        "components": g.components,
+        "count": len(g.entities),
+    }
+
+
 def export_view(project) -> dict:
     """Everything a graph view needs in one payload: nodes, edges, effects, witnesses."""
     g = graph_view(project)
