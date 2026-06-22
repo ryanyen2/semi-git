@@ -64,3 +64,41 @@ export interface EmitView {
   files?: Record<string, { before: string; after: string }>;
   error?: string;
 }
+
+// The code-entity map (sgt.api entity_graph_view / timeframe_view). `color` is added by the
+// extension from color.ts so the webview need not re-implement the OKLCH generator (kept at
+// three impls per the color contract).
+export interface EntityView {
+  id: string;
+  name: string;
+  file: string;
+  kind: string;
+  start_line: number;
+  end_line: number;
+  container: string | null;
+  depends_on: string[];
+  node_id: string | null;
+  color?: string | null;
+}
+
+export interface EntityEdgeView {
+  src: string;
+  dst: string;
+  type: string;
+}
+
+export interface ClusterView {
+  cluster_id: string;
+  label: string;
+  members: string[];
+}
+
+export interface EntityMapView {
+  entities: EntityView[];
+  edges: EntityEdgeView[];
+  reduced_edges: EntityEdgeView[];
+  components: string[][];
+  clusters: ClusterView[];
+  count: number;
+  frame?: number;
+}

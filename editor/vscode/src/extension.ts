@@ -8,6 +8,7 @@ import { SgtCodeLensProvider } from "./codelens";
 import { registerCommands } from "./commands";
 import { GraphTreeProvider } from "./tree";
 import { GraphViewProvider } from "./graphView";
+import { MapViewProvider } from "./mapView";
 import { SgtHoverProvider } from "./hover";
 import { PreviewProvider } from "./preview";
 import { findSgtRoot } from "./sgt";
@@ -32,6 +33,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     graphView,
     vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }),
     vscode.window.registerWebviewViewProvider(GraphViewProvider.viewId, graphView, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  );
+  const mapView = new MapViewProvider(context, store);
+  context.subscriptions.push(
+    mapView,
+    vscode.window.registerWebviewViewProvider(MapViewProvider.viewId, mapView, {
       webviewOptions: { retainContextWhenHidden: true },
     })
   );
