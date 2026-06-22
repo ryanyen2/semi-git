@@ -5,7 +5,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
-import { BlameView, EmitView, GraphView, StatusView } from "./types";
+import { BlameView, EmitView, EntityMapView, GraphView, StatusView } from "./types";
 
 const pExecFile = promisify(execFile);
 
@@ -52,6 +52,16 @@ export class Sgt {
 
   status(): Promise<StatusView> {
     return this.json<StatusView>(["status", "--json"]);
+  }
+
+  // The deterministic code-entity map (whole repo); `timeframe` is the same shape as of a past
+  // checkpoint ordinal — the scrubber's per-frame endpoint.
+  map(): Promise<EntityMapView> {
+    return this.json<EntityMapView>(["map", "--json"]);
+  }
+
+  timeframe(frame: number): Promise<EntityMapView> {
+    return this.json<EntityMapView>(["timeframe", String(frame), "--json"]);
   }
 
   emit(action: "revert" | "switch", ref: string, on?: boolean): Promise<EmitView> {

@@ -4,12 +4,13 @@
 
 import * as vscode from "vscode";
 import { Sgt } from "./sgt";
-import { BlameView, GraphView, NodeView, StatusView } from "./types";
+import { BlameView, EntityMapView, GraphView, NodeView, StatusView } from "./types";
 
 export class Store {
   readonly sgt: Sgt;
   private graphCache: GraphView | undefined;
   private statusCache: StatusView | undefined;
+  private mapCache: EntityMapView | undefined;
   private nodeById = new Map<string, NodeView>();
   private blameCache = new Map<string, BlameView>();
   private _onDidChange = new vscode.EventEmitter<void>();
@@ -25,6 +26,18 @@ export class Store {
       this.nodeById = new Map(this.graphCache.nodes.map((n) => [n.id, n]));
     }
     return this.graphCache;
+  }
+
+  async map(force = false): Promise<EntityMapView> {
+    if (!this.mapCache || force) {
+      this.mapCache = await this.sgt.map();
+    }
+    return this.mapCache;
+  }
+
+  /** The map as of a past checkpoint ordinal (not cached — the scrubber requests many). */
+  timeframe(frame: number): Promise<EntityMapView> {
+    return this.sgt.timeframe(frame);
   }
 
   node(id: string): NodeView | undefined {
@@ -52,6 +65,7 @@ export class Store {
   invalidate(): void {
     this.graphCache = undefined;
     this.statusCache = undefined;
+    this.mapCache = undefined;
     this.blameCache.clear();
     this._onDidChange.fire();
   }

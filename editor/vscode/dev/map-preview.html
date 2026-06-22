@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- Dev harness for the Code Map webview (media/map.js). Stubs the vscode API and answers
+     ready/scrub with sample data so the renderer can be screenshotted headless. Not shipped. -->
+<head>
+<meta charset="UTF-8">
+<link href="../media/map.css" rel="stylesheet">
+<style>body { background: #1e1e1e; } :root { --vscode-foreground:#ccc; --vscode-panel-border:#333; --vscode-descriptionForeground:#888; --vscode-badge-background:#333; --vscode-badge-foreground:#ccc; --vscode-list-hoverBackground:#2a2a2a; --vscode-editorInfo-foreground:#4fc1ff; --vscode-progressBar-background:#4fc1ff; }</style>
+<title>Code Map preview</title>
+</head>
+<body class="vscode-dark">
+<script>
+const F = (color, node) => color;
+const sampleMap = {
+  count: 5,
+  components: [["a.py::main", "a.py::helper"], ["kg.py::KnowledgeGraph", "kg.py::KnowledgeGraph.neighbors"], ["util.ts::log"]],
+  clusters: [{ cluster_id: "c-1", label: "cli", members: ["n1"] }, { cluster_id: "c-2", label: "kg", members: ["n2"] }],
+  entities: [
+    { id: "a.py::main", name: "main", file: "a.py", kind: "function", depends_on: ["a.py::helper", "kg.py::KnowledgeGraph"], node_id: "n1", color: "#4f83d6" },
+    { id: "a.py::helper", name: "helper", file: "a.py", kind: "function", depends_on: [], node_id: "n1", color: "#4f83d6" },
+    { id: "kg.py::KnowledgeGraph", name: "KnowledgeGraph", file: "kg.py", kind: "class", depends_on: [], node_id: "n2", color: "#9b6fd9" },
+    { id: "kg.py::KnowledgeGraph.neighbors", name: "KnowledgeGraph.neighbors", file: "kg.py", kind: "method", depends_on: [], node_id: "n2", color: "#9b6fd9" },
+    { id: "util.ts::log", name: "log", file: "util.ts", kind: "function", depends_on: [], node_id: null, color: null },
+  ],
+  edges: [], reduced_edges: [],
+};
+window.acquireVsCodeApi = () => ({
+  postMessage(m) {
+    if (m.type === "ready") {
+      setTimeout(() => window.dispatchEvent(new MessageEvent("message", { data: { type: "map", map: sampleMap, frames: 3 } })), 0);
+    } else if (m.type === "scrub") {
+      const frame = { ...sampleMap, count: 2, components: [["kg.py::KnowledgeGraph", "kg.py::KnowledgeGraph.neighbors"]], entities: sampleMap.entities.slice(2, 4) };
+      setTimeout(() => window.dispatchEvent(new MessageEvent("message", { data: { type: "frame", map: frame } })), 0);
+    }
+  },
+  getState() {}, setState() {},
+});
+</script>
+<div id="app">
+  <div id="header">
+    <span class="brand">◆ Code Map</span>
+    <span class="crumb-sep">›</span>
+    <span id="count" class="crumb"></span>
+    <span class="spacer"></span>
+    <span id="frame-label" class="chip">now</span>
+  </div>
+  <div id="scrubber-row">
+    <span class="scrub-icon" title="Scrub checkpoints">⏱</span>
+    <input id="scrubber" type="range" min="1" max="1" value="1" step="1" />
+    <button id="now" class="icon-btn" title="Jump to now">now</button>
+  </div>
+  <div id="scroll" tabindex="0">
+    <div id="components"></div>
+    <div id="empty" hidden>No entities yet.</div>
+  </div>
+</div>
+<script src="../media/map.js"></script>
+</body>
+</html>

@@ -98,6 +98,30 @@ class GitBinding:
     def node_id_for_commit(self, sha: str) -> str | None:
         return parse_node_id(self.commit_message(sha))
 
+    def file_at(self, sha: str, path: str) -> str | None:
+        """The text of ``path`` as recorded at ``sha``, or None (absent / binary / unreadable)."""
+        proc = self._git("show", f"{sha}:{path}", check=False)
+        return proc.stdout if proc.returncode == 0 else None
+
+    def tree_at(self, sha: str) -> dict[str, str]:
+        """Every readable text file in the tree at ``sha`` -> its contents (the past snapshot).
+
+        Powers the scrubber's untracked-code rewind: whole-repo structure at a past commit,
+        not just sgt-tracked features. Binary/unreadable blobs are skipped.
+        """
+        listing = self._git("ls-tree", "-r", "--name-only", sha, check=False)
+        if listing.returncode != 0:
+            return {}
+        out: dict[str, str] = {}
+        for name in listing.stdout.splitlines():
+            name = name.strip()
+            if not name:
+                continue
+            content = self.file_at(sha, name)
+            if content is not None:
+                out[name] = content
+        return out
+
     def stage_all(self) -> None:
         self._git("add", "-A")
 

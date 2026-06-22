@@ -78,6 +78,13 @@ def tool_blame(repo_path: str, args: dict) -> dict:
     return blame_view(_open(repo_path), file)
 
 
+def tool_map(repo_path: str, args: dict) -> dict:
+    """The deterministic code-entity map: entities + containment/calls/imports, transitive-reduced."""
+    from sgt.api import entity_graph_view
+
+    return entity_graph_view(_open(repo_path))
+
+
 def tool_checkpoint(repo_path: str, args: dict) -> dict:
     """Reconcile the agent's on-disk edits into the log under a declared intent.
 
@@ -222,6 +229,13 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "feature node that owns each — the per-feature analogue of `git blame`.",
         _schema({"file": {"type": "string", "description": "repo-relative path of a managed file"}}, ["file"]),
         tool_blame,
+    ),
+    "sgt_map": (
+        "The deterministic code-entity map of the whole repo: functions/classes/methods as "
+        "entities connected by containment + calls/imports, each tagged with its owning feature "
+        "(node_id, null if unattributed) plus the transitive-reduced edge set for layout.",
+        _schema({}, []),
+        tool_map,
     ),
     "sgt_plan": (
         "Decompose an intent into reviewable PLANNED nodes (the semantic outline) without "

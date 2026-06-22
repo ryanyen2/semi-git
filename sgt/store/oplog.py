@@ -27,6 +27,11 @@ class LogEntry:
     effect: Effect
     author: str
     vv: VersionVector
+    # The checkpoint ordinal at which this entry was committed (0 = not yet committed). The
+    # time-aware map replays entries with ``landing <= frame`` to reconstruct a past frame
+    # *per entry*, not per node — a node accretes entries across checkpoints, so node-granular
+    # gating cannot show its intermediate state.
+    landing: int = 0
 
     @property
     def order_key(self) -> tuple:
@@ -47,6 +52,7 @@ class LogEntry:
             "effect": self.effect.to_dict(),
             "author": self.author,
             "vv": self.vv.to_dict(),
+            "landing": self.landing,
         }
 
     @classmethod
@@ -57,6 +63,7 @@ class LogEntry:
             effect=Effect.from_dict(d["effect"]),
             author=d["author"],
             vv=VersionVector.from_dict(d.get("vv")),
+            landing=d.get("landing", 0),
         )
 
 
@@ -66,10 +73,23 @@ class EffectLog:
     def __init__(self) -> None:
         self.entries: list[LogEntry] = []
         self.tombstones: set[str] = set()  # node_ids removed (revert); excluded from projections
+        self.landing_seq: int = 0  # monotonic checkpoint ordinal (the scrubber's frame index)
 
     # -- append / mutate ---------------------------------------------------
     def append(self, entry: LogEntry) -> None:
         self.entries.append(entry)
+
+    def stamp_committed(self) -> int:
+        """Advance the checkpoint ordinal and stamp every not-yet-landed entry with it.
+
+        Called once per commit, so each entry carries the frame at which it first landed —
+        the basis for per-entry historical replay (``materialize_at``).
+        """
+        self.landing_seq += 1
+        for e in self.entries:
+            if e.landing == 0:
+                e.landing = self.landing_seq
+        return self.landing_seq
 
     def tombstone(self, node_ids: set[str]) -> None:
         """Mark nodes removed; their entries drop out of every projection."""
@@ -126,6 +146,7 @@ class EffectLog:
             "version": 1,
             "entries": [e.to_dict() for e in self.entries],
             "tombstones": sorted(self.tombstones),
+            "landing_seq": self.landing_seq,
         }
 
     @classmethod
@@ -133,4 +154,5 @@ class EffectLog:
         log = cls()
         log.entries = [LogEntry.from_dict(e) for e in d.get("entries", [])]
         log.tombstones = set(d.get("tombstones", []))
+        log.landing_seq = d.get("landing_seq", 0)
         return log

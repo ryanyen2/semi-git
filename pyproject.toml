@@ -11,6 +11,11 @@ sgt = "sgt.cli:main"
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 tui = ["textual>=0.60"]
+entities = [
+    "tree-sitter>=0.25",
+    "tree-sitter-python>=0.25",
+    "tree-sitter-typescript>=0.23",
+]
 
 [build-system]
 requires = ["setuptools>=61"]

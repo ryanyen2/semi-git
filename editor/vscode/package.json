@@ -68,7 +68,8 @@
         { "id": "sgtGraph", "name": "Features" }
       ],
       "sgtPanel": [
-        { "id": "sgtFeatureGraph", "name": "Feature Graph", "type": "webview" }
+        { "id": "sgtFeatureGraph", "name": "Feature Graph", "type": "webview" },
+        { "id": "sgtEntityMap", "name": "Code Map", "type": "webview" }
       ]
     },
     "menus": {
