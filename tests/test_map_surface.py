@@ -28,7 +28,7 @@ def test_map_json_lists_entities(tmp_path, capsys):
         "def callee():\n    return 1\ndef caller():\n    return callee()\n", encoding="utf-8"
     )
     data = _run_map_json(tmp_path, capsys)
-    assert set(data) == {"entities", "edges", "reduced_edges", "components", "count"}
+    assert set(data) == {"entities", "edges", "reduced_edges", "components", "clusters", "count"}
     assert data["count"] == 2
     assert {e["name"] for e in data["entities"]} == {"caller", "callee"}
 

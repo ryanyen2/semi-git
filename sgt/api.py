@@ -167,13 +167,48 @@ def entity_graph_view(project) -> dict:
         d["depends_on"] = deps.get(ent.id, [])
         d["node_id"] = owners.get(ent.id)
         entities.append(d)
+
     return {
         "entities": entities,
         "edges": [e.to_dict() for e in g.edges],
         "reduced_edges": [e.to_dict() for e in g.reduced_edges],
         "components": g.components,
+        "clusters": _clusters(project, g, owners),
         "count": len(g.entities),
     }
+
+
+def _clusters(project, g, owners: dict) -> list[dict]:
+    """Read-only capability clustering for the projection (reports persisted identity, never writes).
+
+    Adjacency = features that co-own entities in a file, plus feature-dependency edges. Identity is
+    matched against the persisted store; refreshing/relabeling (and the LLM path) happen in
+    ``sgt.entities.cluster.refresh_clusters``, not on this read.
+    """
+    members = sorted({nid for nid in owners.values() if nid})
+    if not members:
+        return []
+    from sgt.entities.cluster import cluster_features, load_cluster_store
+
+    files_of: dict[str, set[str]] = {}
+    for ent in g.entities:
+        nid = owners.get(ent.id)
+        if nid:
+            files_of.setdefault(ent.file, set()).add(nid)
+    adjacency: set[frozenset] = set()
+    for feats in files_of.values():
+        fl = sorted(feats)
+        for i in range(len(fl)):
+            for j in range(i + 1, len(fl)):
+                adjacency.add(frozenset((fl[i], fl[j])))
+    if hasattr(project, "graph"):
+        for f in members:
+            if project.graph.has(f):
+                for dep in project.graph.successors(f):
+                    if dep in members:
+                        adjacency.add(frozenset((f, dep)))
+    prior = load_cluster_store(project.sgt_dir) if hasattr(project, "sgt_dir") else {}
+    return [c.to_dict() for c in cluster_features(members, adjacency, prior)]
 
 
 def export_view(project) -> dict:
