@@ -141,17 +141,31 @@ def entity_graph_view(project) -> dict:
     freshly-opened ``Project``; no LLM/network. The ``entities`` extra (tree-sitter) is imported
     lazily so core surfaces without it still import ``sgt.api``.
     """
-    from sgt.entities.graph import build_entity_graph, read_entity_sources
+    from sgt.entities.graph import build_entity_graph, owning_nodes, read_entity_sources
 
     g = build_entity_graph(read_entity_sources(project.repo))
     deps: dict[str, list[str]] = {e.id: [] for e in g.entities}
     for e in g.reduced_edges:
         if e.type in ("calls", "imports"):
             deps[e.src].append(e.dst)
+
+    # Feature overlay: which feature owns each entity, from semantic blame (disk-vs-materialized
+    # line numbers align for tracked clean files; untracked/TS files have no blame -> None).
+    spans_by_file: dict[str, list[dict]] = {}
+    if hasattr(project, "log") and hasattr(project, "graph"):
+        try:
+            spans_by_file = {
+                f: [s.to_dict() for s in sps] for f, sps in attribute(project).items()
+            }
+        except EffectError:
+            spans_by_file = {}
+    owners = owning_nodes(g.entities, spans_by_file)
+
     entities = []
     for ent in g.entities:
         d = ent.to_dict()
         d["depends_on"] = deps.get(ent.id, [])
+        d["node_id"] = owners.get(ent.id)
         entities.append(d)
     return {
         "entities": entities,

@@ -263,6 +263,34 @@ def build_entity_graph(codebase: dict[str, str]) -> EntityGraph:
     return EntityGraph(entities, edges, reduced_edges, components)
 
 
+def owning_nodes(
+    entities: list[Entity], spans_by_file: dict[str, list[dict]]
+) -> dict[str, str | None]:
+    """Map each entity -> the feature node that owns the plurality of its lines (else None).
+
+    ``spans_by_file`` is ``attribute()``'s per-file blame spans as dicts (``start``/``end``/
+    ``node_id``). Plurality (most owned lines wins, ties broken by node id for determinism)
+    is robust to a decorator or blank line at the def boundary. Entities in files with no
+    blame — untracked code, all TypeScript — resolve to None and render dim (R3/R5).
+    """
+    out: dict[str, str | None] = {}
+    for e in entities:
+        spans = spans_by_file.get(e.file)
+        if not spans:
+            out[e.id] = None
+            continue
+        counts: dict[str, int] = {}
+        for sp in spans:
+            nid = sp.get("node_id")
+            if nid is None:
+                continue
+            lo, hi = max(sp["start"], e.start_line), min(sp["end"], e.end_line)
+            if lo <= hi:
+                counts[nid] = counts.get(nid, 0) + (hi - lo + 1)
+        out[e.id] = max(counts, key=lambda k: (counts[k], k)) if counts else None
+    return out
+
+
 def _components(node_ids: list[str], edges: list[EntityEdge]) -> list[list[str]]:
     """Weakly-connected components (union-find), each a sorted list of entity ids."""
     parent = {n: n for n in node_ids}

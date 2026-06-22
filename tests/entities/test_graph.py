@@ -5,7 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from sgt.api import entity_graph_view
-from sgt.entities.graph import build_entity_graph
+from sgt.entities import Entity
+from sgt.entities.graph import build_entity_graph, owning_nodes
 
 
 def _edges(g, type_=None):
@@ -89,3 +90,22 @@ def test_entity_graph_view_shape_is_stable(tmp_path):
     assert v1["count"] == 2
     caller = next(e for e in v1["entities"] if e["name"] == "caller")
     assert "m.py::callee" in caller["depends_on"]
+    # Bare repo has no effect log, so every entity is unowned (dim).
+    assert "node_id" in caller and caller["node_id"] is None
+
+
+def test_owning_nodes_plurality_and_unowned():
+    ent = Entity(
+        id="m.py::f", name="f", file="m.py", kind="function",
+        start_line=1, end_line=10, container=None,
+    )
+    # A owns 7 lines, B owns 3 -> A wins.
+    spans = {"m.py": [
+        {"start": 1, "end": 7, "node_id": "A"},
+        {"start": 8, "end": 10, "node_id": "B"},
+    ]}
+    assert owning_nodes([ent], spans) == {"m.py::f": "A"}
+    # No blame for the file (untracked / TS) -> None.
+    assert owning_nodes([ent], {})["m.py::f"] is None
+    # Only unattributed lines -> None.
+    assert owning_nodes([ent], {"m.py": [{"start": 1, "end": 10, "node_id": None}]})["m.py::f"] is None
