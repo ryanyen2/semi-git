@@ -55,9 +55,9 @@
     <span class="search-icon">⌕</span>
     <input id="filter" type="text" placeholder="Search features…" aria-label="Search features" />
     <span id="legend" aria-hidden="true">
-      <span><i class="g">●</i>active</span>
-      <span><i class="g">○</i>planned</span>
-      <span><i class="g">◐</i>suspended</span>
+      <span><i class="g">◆</i>active</span>
+      <span><i class="g">◇</i>planned</span>
+      <span><i class="g dim">◆</i>suspended</span>
       <span><i class="g">⚠</i>conflict</span>
     </span>
   </div>
@@ -66,14 +66,26 @@
     <div id="left">
       <div id="colhead"><span class="c-refs">KIND</span><span class="c-graph">GRAPH</span><span class="c-msg">FEATURE</span></div>
       <div id="scroll" tabindex="0">
+        <div id="ghosts"></div>
         <div id="rows"><svg id="lanes" aria-hidden="true"></svg><div id="rowlist"></div></div>
         <div id="empty" hidden>No features yet — run <code>sgt plan "…"</code>.</div>
       </div>
     </div>
-    <aside id="detail" hidden></aside>
+    <div id="divider" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize"></div>
+    <aside id="detail">
+      <div id="pane-tabs" role="tablist">
+        <button class="tab" data-tab="activity" role="tab">Activity</button>
+        <button class="tab" data-tab="inspect" role="tab">Inspect</button>
+      </div>
+      <div id="pane-body"></div>
+    </aside>
   </div>
 </div>
-<script>window.acquireVsCodeApi = () => ({ postMessage() {}, getState() {}, setState() {} });</script>
+<div id="ctxmenu" hidden role="menu"></div>
+<script>
+  let _st = { detailW: 360 };
+  window.acquireVsCodeApi = () => ({ postMessage() {}, getState: () => _st, setState: (s) => { _st = s; } });
+</script>
 <script src="../media/graph.js"></script>
 <script>
   const E = (op) => ({ op, target: "t", file: "cli.py" });
@@ -92,9 +104,15 @@
       cap("data", "Implement data structure to represent the graph", [], ["develop", "create"]),
     ],
   };
-  const status = { nodes: 7, files: [{ path: "cli.py", lines: 90 }], effects: 7, drift: { any: false, modified: [], added: [], deleted: [], summary: "no drift" } };
-  window.dispatchEvent(new MessageEvent("message", { data: { type: "graph", graph, status, editing: [] } }));
-  window.dispatchEvent(new MessageEvent("message", { data: { type: "select", id: "develop" } }));
+  const status = { nodes: 7, files: [{ path: "cli.py", lines: 90 }], effects: 7, drift: { any: true, modified: ["cli.py"], added: ["retrieval.py"], deleted: [], summary: "2 files drifting" } };
+  // editing = an existing node the agent is touching; pending = brand-new work with no node yet.
+  window.dispatchEvent(new MessageEvent("message", { data: { type: "graph", graph, status, editing: ["develop"], pending: [{ label: "retrieval.py", file: "retrieval.py" }] } }));
+  // sample live Claude Code activity (normally tailed from the session transcript)
+  window.dispatchEvent(new MessageEvent("message", { data: { type: "activity", events: [
+    { kind: "thought", text: "Need a reranker before wiring retrieval into the main flow…", seq: 1 },
+    { kind: "tool", name: "Edit", target: "retrieval.py", seq: 2 },
+    { kind: "tool", name: "Bash", target: "pytest", seq: 3 },
+  ] } }));
 </script>
 </body>
 </html>

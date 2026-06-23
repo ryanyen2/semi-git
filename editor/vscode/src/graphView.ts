@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { Store } from "./store";
+import { ActivityEvent, PendingWork } from "./types";
 
 export class GraphViewProvider implements vscode.WebviewViewProvider {
   static readonly viewId = "sgtFeatureGraph";
@@ -16,6 +17,7 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private context: vscode.ExtensionContext,
     private store: Store,
+    private root: string,
     private refreshBlame: () => void
   ) {
     this.disposables.push(this.store.onDidChange(() => void this.refresh()));
@@ -46,6 +48,11 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     void vscode.commands.executeCommand(`${GraphViewProvider.viewId}.focus`);
   }
 
+  /** Forward live Claude Code activity (ephemeral presence telemetry) to the Activity feed. */
+  postActivity(events: ActivityEvent[]): void {
+    this.view?.webview.postMessage({ type: "activity", events });
+  }
+
   private async onMessage(msg: any): Promise<void> {
     if (!msg) {
       return;
@@ -64,7 +71,71 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     } else if (msg.type === "apply" && msg.id) {
       // The webview already inline-confirmed (two-click arm), so apply directly — no modal.
       await this.apply(msg.action, msg.id, msg.on);
+    } else if (msg.type === "reveal" && msg.file) {
+      await this.reveal(msg.file, msg.target);
     }
+  }
+
+  /** Open the file an effect touched and flash the symbol's range (click-through from the effects
+   *  list). Best-effort: precise via the document-symbol provider, else a def/class text search. */
+  private async reveal(file: string, target?: string): Promise<void> {
+    try {
+      const uri = vscode.Uri.file(this.root.endsWith("/") ? this.root + file : `${this.root}/${file}`);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, { preview: true });
+      const range = (await this.symbolRange(uri, doc, target)) || new vscode.Range(0, 0, 0, 0);
+      editor.selection = new vscode.Selection(range.start, range.start);
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+      this.flashRange(editor, new vscode.Range(range.start.line, 0, range.end.line, 0));
+    } catch (e: any) {
+      vscode.window.setStatusBarMessage(`sgt: couldn't open ${file}`, 3000);
+    }
+  }
+
+  private async symbolRange(
+    uri: vscode.Uri,
+    doc: vscode.TextDocument,
+    target?: string
+  ): Promise<vscode.Range | undefined> {
+    if (!target) {
+      return undefined;
+    }
+    const leaf = target.split(/[.:]/).pop() || target; // "Class.method" -> "method"
+    try {
+      const syms = (await vscode.commands.executeCommand(
+        "vscode.executeDocumentSymbolProvider",
+        uri
+      )) as vscode.DocumentSymbol[] | undefined;
+      const hit = syms && findSymbol(syms, leaf);
+      if (hit) {
+        return hit.selectionRange;
+      }
+    } catch {
+      // provider not ready (e.g. Python extension still loading) — fall back to text search
+    }
+    const re = new RegExp(`^\\s*(?:async\\s+)?(?:def|class)\\s+${escapeRe(leaf)}\\b`);
+    for (let i = 0; i < doc.lineCount; i++) {
+      if (re.test(doc.lineAt(i).text)) {
+        const col = doc.lineAt(i).firstNonWhitespaceCharacterIndex;
+        return new vscode.Range(i, col, i, doc.lineAt(i).text.length);
+      }
+    }
+    return undefined;
+  }
+
+  /** A transient whole-line highlight + overview-ruler mark that clears itself after ~1.6s. */
+  private flashRange(editor: vscode.TextEditor, range: vscode.Range): void {
+    const deco = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      backgroundColor: new vscode.ThemeColor("editor.findMatchHighlightBackground"),
+      borderWidth: "0 0 0 2px",
+      borderStyle: "solid",
+      borderColor: new vscode.ThemeColor("focusBorder"),
+      overviewRulerColor: new vscode.ThemeColor("focusBorder"),
+      overviewRulerLane: vscode.OverviewRulerLane.Full,
+    });
+    editor.setDecorations(deco, [range]);
+    setTimeout(() => deco.dispose(), 1600);
   }
 
   private async apply(action: string, id: string, on?: boolean): Promise<void> {
@@ -86,12 +157,13 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     }
     try {
       const [graph, status] = await Promise.all([this.store.graph(true), this.store.status(true)]);
-      const editing = await this.editingNodes(status);
+      const { editing, pending } = await this.presence(status);
       this.view.webview.postMessage({
         type: "graph",
         graph,
         status,
         editing,
+        pending,
         select: this.pendingSelect,
       });
       this.pendingSelect = undefined;
@@ -100,23 +172,34 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Features with uncommitted drift in a file they own — i.e. the agent is editing them now. */
-  private async editingNodes(status: any): Promise<string[]> {
+  /** Live presence from drift, split two ways:
+   *  - `editing`: features that own a drifted line (the agent is editing an *existing* node).
+   *  - `pending`: drifted/added files that blame can't attribute to any node — brand-new work the
+   *    agent is building before its checkpoint. Surfaced as ghost rows so the graph isn't stale. */
+  private async presence(status: any): Promise<{ editing: string[]; pending: PendingWork[] }> {
     const modified: string[] = (status?.drift?.modified ?? []).concat(status?.drift?.deleted ?? []);
-    const out = new Set<string>();
+    const added: string[] = status?.drift?.added ?? [];
+    const editing = new Set<string>();
+    const pending: PendingWork[] = [];
     for (const file of modified) {
       try {
         const b = await this.store.blame(file, true);
-        for (const s of b.spans ?? []) {
-          if (s.node_id) {
-            out.add(s.node_id);
-          }
+        const owners = (b.spans ?? []).filter((s: any) => s.node_id);
+        for (const s of owners) {
+          editing.add(s.node_id as string);
+        }
+        if (!owners.length) {
+          pending.push({ label: baseName(file), file });
         }
       } catch {
-        // file may be unparseable mid-edit — skip
+        // file may be unparseable mid-edit — treat as pending work in flight
+        pending.push({ label: baseName(file), file });
       }
     }
-    return [...out];
+    for (const file of added) {
+      pending.push({ label: baseName(file), file }); // newly-created files have no node yet
+    }
+    return { editing: [...editing], pending };
   }
 
   private uri(webview: vscode.Webview, ...p: string[]): vscode.Uri {
@@ -151,9 +234,9 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     <span class="search-icon">⌕</span>
     <input id="filter" type="text" placeholder="Search features…" aria-label="Search features" />
     <span id="legend" aria-hidden="true">
-      <span><i class="g">●</i>active</span>
-      <span><i class="g">○</i>planned</span>
-      <span><i class="g">◐</i>suspended</span>
+      <span><i class="g">◆</i>active</span>
+      <span><i class="g">◇</i>planned</span>
+      <span><i class="g dim">◆</i>suspended</span>
       <span><i class="g">⚠</i>conflict</span>
     </span>
   </div>
@@ -162,13 +245,22 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
     <div id="left">
       <div id="colhead"><span class="c-refs">KIND</span><span class="c-graph">GRAPH</span><span class="c-msg">FEATURE</span></div>
       <div id="scroll" tabindex="0">
+        <div id="ghosts"></div>
         <div id="rows"><svg id="lanes" aria-hidden="true"></svg><div id="rowlist"></div></div>
         <div id="empty" hidden>No features yet — run <code>sgt plan "…"</code>.</div>
       </div>
     </div>
-    <aside id="detail" hidden></aside>
+    <div id="divider" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize"></div>
+    <aside id="detail">
+      <div id="pane-tabs" role="tablist">
+        <button class="tab" data-tab="activity" role="tab">Activity</button>
+        <button class="tab" data-tab="inspect" role="tab">Inspect</button>
+      </div>
+      <div id="pane-body"></div>
+    </aside>
   </div>
 </div>
+<div id="ctxmenu" hidden role="menu"></div>
 <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;
@@ -177,6 +269,27 @@ export class GraphViewProvider implements vscode.WebviewViewProvider {
   dispose(): void {
     this.disposables.forEach((d) => d.dispose());
   }
+}
+
+function baseName(p: string): string {
+  return p.split("/").pop() || p;
+}
+
+function findSymbol(syms: vscode.DocumentSymbol[], name: string): vscode.DocumentSymbol | undefined {
+  for (const s of syms) {
+    if (s.name === name) {
+      return s;
+    }
+    const inner = findSymbol(s.children || [], name);
+    if (inner) {
+      return inner;
+    }
+  }
+  return undefined;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function nonceStr(): string {

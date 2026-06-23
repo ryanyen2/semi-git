@@ -49,7 +49,18 @@ function cssVar(name, fallback) {
   const v = getComputedStyle(document.body).getPropertyValue(name).trim();
   return v || fallback;
 }
-const STATUS_GLYPH = { active: "●", planned: "○", suspended: "◐", quarantined: "⚠" };
+// One mark per feature: SHAPE = kind, FILL = status (filled=active, hollow=planned, dim=suspended,
+// error-hued=quarantined). Hue stays identity — the color contract is untouched. This merges the
+// old separate status-dot + kind-rhombus into a single glyph (see review note 4).
+const KIND_SHAPE = {
+  capability: ["◆", "◇"],
+  concept: ["●", "○"],
+  infrastructure: ["■", "□"],
+  fix: ["▲", "△"],
+  exploration: ["⬢", "⬡"],
+};
+const kindPair = (k) => KIND_SHAPE[k] || KIND_SHAPE.capability;
+const kindGlyph = (k, status) => kindPair(k)[status === "planned" ? 1 : 0]; // planned reads as the hollow shape
 
 // ---- short structured label (XXX-YYY-ZZZ, <=5 words) -------------------------------------
 const VERBS = new Set(["add", "implement", "remove", "delete", "fix", "refactor", "update", "create",
@@ -154,6 +165,13 @@ let filter = "", selectedId = null;
 let editing = new Set();
 let prevIds = new Set();
 let refIndex = new Map(); // ref key -> node id, for clickable cross-references
+let pendingWork = [];     // agent work with no node yet (ghost rows)
+let activityLog = [];     // ring buffer of recent Claude Code events
+let paneMode = "activity"; // "activity" | "inspect"
+const ACT_MAX = 60;
+
+const prevState = (typeof vscode.getState === "function" && vscode.getState()) || {};
+let detailW = prevState.detailW || 320;
 
 window.addEventListener("message", (e) => {
   const msg = e.data;
@@ -161,10 +179,13 @@ window.addEventListener("message", (e) => {
     graphData = msg.graph;
     statusData = msg.status || null;
     editing = new Set(msg.editing || []);
+    pendingWork = msg.pending || [];
     render();
     if (msg.select) select(msg.select, true);
   } else if (msg.type === "select" && graphData) {
     select(msg.id, true);
+  } else if (msg.type === "activity") {
+    pushActivity(msg.events || []);
   } else if (msg.type === "applyError") {
     flashDetailError(msg.message);
   } else if (msg.type === "error") {
@@ -175,18 +196,20 @@ window.addEventListener("message", (e) => {
 function render() {
   if (!graphData) return;
   const empty = !graphData.nodes.length;
-  document.getElementById("empty").hidden = !empty;
+  document.getElementById("empty").hidden = !empty || pendingWork.length > 0;
   document.getElementById("rows").style.display = empty ? "none" : "";
   renderHeader();
-  if (empty) { document.getElementById("detail").hidden = true; return; }
-  layout = computeLayout(graphData);
-  buildRefIndex();
-  renderRows();
-  drawLanes();
-  drawMinimap();
-  applyFilter();
-  if (selectedId && layout.byId.has(selectedId)) openDetail(selectedId); // refresh open pane
-  prevIds = new Set(graphData.nodes.map((n) => n.id));
+  renderGhosts();
+  if (!empty) {
+    layout = computeLayout(graphData);
+    buildRefIndex();
+    renderRows();
+    drawLanes();
+    drawMinimap();
+    applyFilter();
+    prevIds = new Set(graphData.nodes.map((n) => n.id)); // renderPane() (end of render) refreshes the open pane
+  }
+  renderPane();
 }
 
 function buildRefIndex() {
@@ -245,14 +268,15 @@ function renderRows() {
     refs.className = "refs";
     const pill = document.createElement("span");
     pill.className = "pill" + (n.status === "suspended" ? " dim" : "");
-    pill.style.background = ident + "1f";
-    pill.style.boxShadow = `inset 2px 0 0 ${ident}`;
-    const glyph = document.createElement("i");
-    glyph.className = "g";
-    glyph.textContent = STATUS_GLYPH[n.status] || "●";
-    glyph.style.color = n.status === "quarantined" ? "var(--vscode-errorForeground)" : ident;
-    pill.appendChild(glyph);
-    pill.appendChild(document.createTextNode(n.kind));
+    pill.title = `${n.kind} · ${n.status}`;
+    const kicon = document.createElement("i");
+    kicon.className = "kind-icon";
+    kicon.textContent = kindGlyph(n.kind, n.status); // shape = kind, fill = status (merged mark)
+    kicon.style.color = n.status === "quarantined" ? "var(--vscode-errorForeground)" : ident;
+    const ktext = document.createElement("span");
+    ktext.className = "kind-text";
+    ktext.textContent = n.kind;
+    pill.append(kicon, ktext);
     refs.appendChild(pill);
     if (n.conflict) {
       const c = document.createElement("span");
@@ -283,6 +307,7 @@ function renderRows() {
     row.appendChild(gcell);
     row.appendChild(msg);
     row.addEventListener("click", () => select(n.id, true));
+    row.addEventListener("contextmenu", (ev) => { ev.preventDefault(); select(n.id, false); showContextMenu(ev.clientX, ev.clientY, n.id); });
     frag.appendChild(row);
   }
   list.replaceChildren(frag);
@@ -333,9 +358,34 @@ function drawLanes() {
       if (n.status === "suspended") c.setAttribute("opacity", "0.5");
     }
     c.setAttribute("class", "gnode");
+    c.style.cursor = "pointer";
+    c.addEventListener("click", () => select(n.id, true));
+    c.addEventListener("contextmenu", (ev) => { ev.preventDefault(); select(n.id, false); showContextMenu(ev.clientX, ev.clientY, n.id); });
     frag.appendChild(c);
   }
   svg.replaceChildren(frag);
+}
+
+// ---- ghost rows: agent work that has no node yet (Image #2) -------------------------------
+function renderGhosts() {
+  const host = document.getElementById("ghosts");
+  if (!pendingWork.length) { host.replaceChildren(); return; }
+  const frag = document.createDocumentFragment();
+  // De-dupe by file; the latest activity target (if any) names what's being built right now.
+  const seen = new Set();
+  for (const p of pendingWork) {
+    if (seen.has(p.file)) continue;
+    seen.add(p.file);
+    const row = document.createElement("div");
+    row.className = "ghost-row";
+    row.title = `Uncommitted work in ${p.file} — no feature node yet. Checkpoint to land it.`;
+    const dot = document.createElement("span"); dot.className = "gdot"; dot.textContent = "◌";
+    const label = document.createElement("span"); label.className = "glabel"; label.textContent = p.label;
+    const note = document.createElement("span"); note.className = "gnote"; note.textContent = "building…";
+    row.append(dot, label, note);
+    frag.appendChild(row);
+  }
+  host.replaceChildren(frag);
 }
 
 // ---- minimap ------------------------------------------------------------------------------
@@ -420,28 +470,45 @@ function chip(id) {
   const n = layout.byId.get(id);
   const ident = colorFor(id);
   const label = n ? shortLabel(n.intent) : id.slice(0, 8);
-  return `<a class="dep-chip xref" data-ref="${esc(id)}" style="box-shadow: inset 2px 0 0 ${ident}; background:${ident}1f">${esc(label)}</a>`;
+  const glyph = n ? kindGlyph(n.kind, n.status) : "◆";
+  // Flat: a leading identity-hued glyph + label, no inset accent bar (the old bar read as a shadow).
+  return `<a class="dep-chip xref" data-ref="${esc(id)}"><i class="dep-dot" style="color:${ident}">${glyph}</i>${esc(label)}</a>`;
 }
 
-function openDetail(id) {
+// ---- right pane: Activity feed (default) | Inspect (a selected node) ----------------------
+function renderPane() {
+  const tabs = document.querySelectorAll("#pane-tabs .tab");
+  tabs.forEach((t) => t.classList.toggle("active", t.dataset.tab === paneMode));
+  // a small pulse-dot on the Activity tab when there's recent live activity and you're elsewhere
+  const actTab = document.querySelector('#pane-tabs .tab[data-tab="activity"]');
+  if (actTab) {
+    const live = editing.size > 0 || pendingWork.length > 0;
+    const has = actTab.querySelector(".tab-dot");
+    if (live && paneMode !== "activity" && !has) { const d = document.createElement("span"); d.className = "tab-dot"; d.textContent = "●"; actTab.appendChild(d); }
+    else if ((!live || paneMode === "activity") && has) has.remove();
+  }
+  if (paneMode === "inspect" && selectedId && layout && layout.byId.has(selectedId)) renderInspect(selectedId);
+  else renderActivity();
+}
+
+function setPaneMode(mode) { paneMode = mode; renderPane(); }
+
+function renderInspect(id) {
   const n = layout.byId.get(id);
-  const detail = document.getElementById("detail");
-  if (!n) { detail.hidden = true; return; }
+  const body = document.getElementById("pane-body");
+  if (!n) { renderActivity(); return; }
   const ident = colorFor(id);
-  const glyph = STATUS_GLYPH[n.status] || "●";
-  const isOn = n.status !== "suspended";
-  const effects = (n.effects || []).map((e) => `<li><span class="op">${esc(e.op)}</span> <code>${esc(e.target)}</code> <span class="file">${esc(e.file)}</span></li>`).join("");
+  const glyph = kindGlyph(n.kind, n.status);
+  const effects = (n.effects || []).map((e) => `<li class="eff" data-file="${esc(e.file)}" data-target="${esc(e.target)}" title="Go to ${esc(e.target)} in ${esc(e.file)}"><span class="op">${esc(e.op)}</span> <code>${esc(e.target)}</code> <span class="file">${esc(e.file)}</span></li>`).join("");
   const deps = (n.depends_on || []).map(chip).join(" ") || "<span class='none'>—</span>";
   const dependents = (n.dependents || []).map(chip).join(" ") || "<span class='none'>—</span>";
   const conflict = n.conflict ? `<div class="conflict-box">⚠ ${esc(typeof n.conflict === "string" ? n.conflict : (n.conflict.reason || "conflict"))}</div>` : "";
   const editingBadge = editing.has(id) ? `<span class="editing-badge big">✎ agent editing now</span>` : "";
 
-  detail.hidden = false;
-  detail.innerHTML = `
+  body.innerHTML = `
     <div class="d-head">
       <span class="d-glyph" style="color:${n.status === "quarantined" ? "var(--vscode-errorForeground)" : ident}">${glyph}</span>
       <span class="d-label">${esc(shortLabel(n.intent))}</span>
-      <button class="icon-btn d-close" title="Close">✕</button>
     </div>
     <div class="d-sub">${esc(n.kind)} · ${esc(n.status)} · <code>${esc(id)}</code> ${editingBadge}</div>
     <div class="d-intent">${renderRich(n.intent || "")}</div>
@@ -449,52 +516,173 @@ function openDetail(id) {
     <div class="d-section"><div class="d-k">depends on</div><div class="d-chips">${deps}</div></div>
     <div class="d-section"><div class="d-k">dependents</div><div class="d-chips">${dependents}</div></div>
     ${effects ? `<div class="d-section"><div class="d-k">effects</div><ul class="d-effects">${effects}</ul></div>` : ""}
-    <div class="d-actions">
-      <button class="btn" data-act="preview-revert">Preview revert</button>
-      <button class="btn" data-act="preview-switch">Preview ${isOn ? "suspend" : "restore"}</button>
-      <button class="btn danger" data-act="apply-revert" data-arm="0">Revert</button>
-      <button class="btn warn" data-act="apply-switch" data-arm="0">${isOn ? "Suspend" : "Restore"}</button>
-    </div>
+    <div class="d-hint"><span class="kbd">right-click</span> a node for revert / suspend</div>
     <div class="d-msg" hidden></div>
   `;
-
-  detail.querySelector(".d-close").addEventListener("click", () => { detail.hidden = true; selectedId = null; clearSelectionClasses(); });
-  detail.querySelectorAll(".xref").forEach((a) => a.addEventListener("click", (ev) => {
-    ev.preventDefault();
-    select(a.getAttribute("data-ref"), true);
-  }));
-  detail.querySelectorAll(".d-actions .btn").forEach((b) => b.addEventListener("click", () => onAction(b, id, isOn)));
+  // depends-on / dependents chips (and inline @refs): click to navigate, hover to locate the node
+  // in the graph — scrolling it into view if the graph has overflowed vertically.
+  body.querySelectorAll(".xref").forEach((a) => {
+    const ref = a.getAttribute("data-ref");
+    a.addEventListener("click", (ev) => { ev.preventDefault(); select(ref, true); });
+    a.addEventListener("mouseenter", () => locate(ref));
+    a.addEventListener("mouseleave", clearLocate);
+  });
+  // effects: click to jump to the symbol in code with a transient highlight
+  body.querySelectorAll(".eff").forEach((li) =>
+    li.addEventListener("click", () => vscode.postMessage({ type: "reveal", file: li.dataset.file, target: li.dataset.target }))
+  );
 }
 
-function onAction(btn, id, isOn) {
-  const act = btn.getAttribute("data-act");
-  if (act === "preview-revert") { vscode.postMessage({ type: "preview", action: "revert", id }); return; }
-  if (act === "preview-switch") { vscode.postMessage({ type: "preview", action: "switch", id, on: !isOn }); return; }
-  // apply actions: two-click inline arm (no modal popup)
-  const armed = btn.getAttribute("data-arm") === "1";
-  if (!armed) {
-    document.querySelectorAll(".d-actions .btn[data-arm]").forEach((b) => disarm(b));
-    btn.setAttribute("data-arm", "1");
-    btn.dataset.label = btn.textContent;
-    btn.textContent = "Click again to confirm";
-    btn.classList.add("armed");
-    btn._t = setTimeout(() => disarm(btn), 3500);
-    return;
+/** Briefly mark a node (row + lane dot) and scroll it into view — the hover-preview for dep chips. */
+function locate(id) {
+  if (!layout || !layout.byId.has(id)) return;
+  clearLocate();
+  const row = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
+  if (row) { row.classList.add("locate"); row.scrollIntoView({ block: "nearest" }); }
+  for (const c of document.querySelectorAll(".gnode")) if (c.dataset.id === id) c.classList.add("locate");
+  for (const p of document.querySelectorAll(".edge")) if (p.dataset.from === id || p.dataset.to === id) p.classList.add("locate");
+}
+function clearLocate() {
+  for (const el of document.querySelectorAll(".locate")) el.classList.remove("locate");
+}
+
+function renderActivity() {
+  const body = document.getElementById("pane-body");
+  const frag = document.createDocumentFragment();
+  if (pendingWork.length) {
+    const banner = document.createElement("div");
+    banner.className = "conflict-box";
+    banner.style.color = "var(--vscode-charts-blue, #75beff)";
+    banner.style.background = "color-mix(in srgb, transparent 88%, var(--vscode-charts-blue, #75beff))";
+    banner.textContent = `◌ ${pendingWork.length} file${pendingWork.length === 1 ? "" : "s"} in flight — not yet a feature node`;
+    frag.appendChild(banner);
   }
-  disarm(btn);
-  if (act === "apply-revert") vscode.postMessage({ type: "apply", action: "revert", id });
-  else vscode.postMessage({ type: "apply", action: "switch", id, on: !isOn });
+  const list = document.createElement("div");
+  list.id = "activity";
+  if (!activityLog.length) {
+    const e = document.createElement("div");
+    e.className = "act-empty";
+    e.textContent = "No active Claude Code session. Tool calls and thinking will stream here.";
+    list.appendChild(e);
+  } else {
+    for (let i = activityLog.length - 1; i >= 0; i--) list.appendChild(actLine(activityLog[i]));
+  }
+  frag.appendChild(list);
+  body.replaceChildren(frag);
 }
-function disarm(btn) {
-  if (btn.getAttribute("data-arm") !== "1") return;
-  clearTimeout(btn._t);
-  btn.setAttribute("data-arm", "0");
-  btn.classList.remove("armed");
-  if (btn.dataset.label) btn.textContent = btn.dataset.label;
+
+function actLine(ev) {
+  const row = document.createElement("div");
+  row.className = "act-line " + (ev.kind === "tool" ? "tool" : "thought");
+  if (ev.fresh) row.classList.add("fresh");
+  const g = document.createElement("span");
+  g.className = "act-glyph";
+  g.textContent = ev.kind === "tool" ? "⚙" : "✎";
+  row.appendChild(g);
+  if (ev.kind === "tool") {
+    const name = document.createElement("span"); name.className = "act-name"; name.textContent = ev.name || "tool";
+    row.appendChild(name);
+    if (ev.target) { const t = document.createElement("span"); t.className = "act-target"; t.textContent = ev.target; row.appendChild(t); }
+  } else {
+    const t = document.createElement("span"); t.textContent = ev.text || ""; row.appendChild(t);
+  }
+  return row;
 }
+
+function pushActivity(events) {
+  if (!events.length) return;
+  for (const e of events) { e.fresh = true; activityLog.push(e); }
+  if (activityLog.length > ACT_MAX) activityLog = activityLog.slice(-ACT_MAX);
+  if (paneMode === "activity") renderActivity();
+  else renderPane(); // surface the tab-dot
+  setTimeout(() => { for (const e of events) e.fresh = false; }, 600);
+}
+
 function flashDetailError(message) {
-  const box = document.querySelector("#detail .d-msg");
+  let box = document.querySelector("#pane-body .d-msg");
+  if (!box && paneMode !== "inspect") { setPaneMode("inspect"); box = document.querySelector("#pane-body .d-msg"); }
   if (box) { box.hidden = false; box.textContent = "✗ " + message; box.className = "d-msg err"; }
+}
+
+// ---- context menu + hover-preview (replaces the button row) -------------------------------
+function showContextMenu(x, y, id) {
+  const n = layout.byId.get(id);
+  if (!n) return;
+  const menu = document.getElementById("ctxmenu");
+  const isOn = n.status !== "suspended";
+  const removeN = affectedSet(id, "revert").size;
+  // No "Preview …" entries — hovering Revert/Suspend already animates the effect on the graph.
+  // Each item carries a native tooltip (title) so the verb is self-explanatory.
+  const items = [
+    { glyph: "◎", label: "Inspect", tip: "Show this feature's intent, dependencies and effects", run: () => select(id, true) },
+    { sep: true },
+    { glyph: "⊘", label: "Revert", count: removeN > 1 ? `${removeN} features` : "", danger: true, preview: "revert",
+      tip: "Plug out this feature: removes its effects (and anything depending on it) from the tree, then commits. Hover to preview the affected nodes.",
+      run: () => vscode.postMessage({ type: "apply", action: "revert", id }) },
+    { glyph: "◐", label: isOn ? "Suspend" : "Restore", preview: isOn ? "suspend" : null,
+      tip: isOn
+        ? "Temporarily exclude this feature's effects from the materialized tree (reversible). Hover to preview."
+        : "Re-include this suspended feature's effects in the tree.",
+      run: () => vscode.postMessage({ type: "apply", action: "switch", id, on: !isOn }) },
+  ];
+  const frag = document.createDocumentFragment();
+  for (const it of items) {
+    if (it.sep) { const s = document.createElement("div"); s.className = "ctx-sep"; frag.appendChild(s); continue; }
+    const el = document.createElement("div");
+    el.className = "ctx-item" + (it.danger ? " danger" : "");
+    el.setAttribute("role", "menuitem");
+    if (it.tip) el.title = it.tip;
+    el.innerHTML = `<span class="ci-glyph">${it.glyph}</span><span>${esc(it.label)}</span>${it.count ? `<span class="ci-count">${esc(it.count)}</span>` : ""}`;
+    el.addEventListener("click", () => { hideContextMenu(); it.run(); });
+    if (it.preview) {
+      el.addEventListener("mouseenter", () => previewEffect(id, it.preview));
+      el.addEventListener("mouseleave", clearPreview);
+    }
+    frag.appendChild(el);
+  }
+  menu.replaceChildren(frag);
+  menu.hidden = false;
+  // clamp into the viewport
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.min(x, window.innerWidth - r.width - 6) + "px";
+  menu.style.top = Math.min(y, window.innerHeight - r.height - 6) + "px";
+}
+function hideContextMenu() { const m = document.getElementById("ctxmenu"); m.hidden = true; clearPreview(); }
+document.addEventListener("click", (e) => { if (!e.target.closest("#ctxmenu")) hideContextMenu(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideContextMenu(); });
+window.addEventListener("blur", hideContextMenu);
+
+/** The set of nodes a destructive action would touch, so the hover preview can show its blast
+ *  radius. Revert plugs out the feature AND everything that transitively depends on it. */
+function affectedSet(id, action) {
+  const out = new Set([id]);
+  if (action === "revert") {
+    const stack = [id];
+    while (stack.length) {
+      const cur = stack.pop();
+      const node = layout.byId.get(cur);
+      for (const d of (node && node.dependents) || []) if (!out.has(d) && layout.byId.has(d)) { out.add(d); stack.push(d); }
+    }
+  } else {
+    // suspend: the node itself, plus an immediate ripple onto direct dependents (dimmed, not gone)
+    const node = layout.byId.get(id);
+    for (const d of (node && node.dependents) || []) if (layout.byId.has(d)) out.add(d);
+  }
+  return out;
+}
+function previewEffect(id, action) {
+  clearPreview();
+  const cls = action === "revert" ? "ghost-remove" : "ghost-suspend";
+  const set = affectedSet(id, action);
+  for (const row of document.querySelectorAll(".row")) if (set.has(row.dataset.id)) row.classList.add(cls);
+  for (const c of document.querySelectorAll(".gnode")) if (set.has(c.dataset.id)) c.classList.add(cls);
+  if (action === "revert") {
+    for (const p of document.querySelectorAll(".edge")) if (set.has(p.dataset.from) || set.has(p.dataset.to)) p.classList.add("ghost-remove");
+  }
+}
+function clearPreview() {
+  for (const el of document.querySelectorAll(".ghost-remove")) el.classList.remove("ghost-remove");
+  for (const el of document.querySelectorAll(".ghost-suspend")) el.classList.remove("ghost-suspend");
 }
 
 // ---- filter / selection / keyboard -------------------------------------------------------
@@ -522,7 +710,8 @@ function select(id, openPane) {
   for (const p of document.querySelectorAll(".edge")) p.classList.toggle("hot", p.dataset.from === id || p.dataset.to === id);
   const el = document.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
   if (el) el.scrollIntoView({ block: "nearest" });
-  if (openPane) openDetail(id);
+  if (openPane) paneMode = "inspect";
+  renderPane();
 }
 function moveSelection(delta) {
   if (!layout || !layout.order.length) return;
@@ -543,8 +732,63 @@ scroll.addEventListener("keydown", (e) => {
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 document.getElementById("filter").addEventListener("input", debounce((e) => { filter = e.target.value.toLowerCase().trim(); applyFilter(); }, 120));
 document.getElementById("refresh").addEventListener("click", () => vscode.postMessage({ type: "ready" }));
+
+// ---- pane tabs --------------------------------------------------------------
+for (const t of document.querySelectorAll("#pane-tabs .tab")) {
+  t.addEventListener("click", () => setPaneMode(t.dataset.tab));
+}
+
+// ---- resizable right pane + adaptive compaction -----------------------------
+const divider = document.getElementById("divider");
+const detailEl = document.getElementById("detail");
+function persist() { if (typeof vscode.setState === "function") vscode.setState({ ...(typeof vscode.getState === "function" ? vscode.getState() : {}), detailW }); }
+function applyDetailWidth(w) {
+  const main = document.getElementById("main");
+  const max = Math.max(300, (main.clientWidth || 800) * 0.7);
+  detailW = Math.round(Math.max(260, Math.min(w, max)));
+  detailEl.style.flexBasis = detailW + "px";
+  updateCompaction();
+}
+// Continuous fold: as the left column narrows, the KIND column shrinks smoothly (and the GRAPH
+// lanes slide toward it via #lanes' refs-w-based offset) and the kind text fades, rather than
+// snapping at a breakpoint. Driven every frame during a drag, so it tracks the divider directly.
+const FOLD_FULL = 168, FOLD_MIN = 30, FOLD_HI = 384, FOLD_LO = 296;
+function updateCompaction() {
+  const lw = document.getElementById("left").clientWidth || FOLD_HI;
+  const f = lw >= FOLD_HI ? 0 : lw <= FOLD_LO ? 1 : (FOLD_HI - lw) / (FOLD_HI - FOLD_LO);
+  const refsW = Math.round(FOLD_FULL - (FOLD_FULL - FOLD_MIN) * f);
+  const s = document.documentElement.style;
+  s.setProperty("--refs-w", refsW + "px");
+  s.setProperty("--kt-op", String(Math.max(0, Math.min(1, 1 - f * 1.5)))); // text gone before fully folded
+}
+divider.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  divider.setPointerCapture(e.pointerId);
+  divider.classList.add("dragging");
+  document.body.classList.add("resizing");
+  const startX = e.clientX, startW = detailW;
+  const move = (ev) => applyDetailWidth(startW + (startX - ev.clientX)); // pane grows as you drag left
+  const up = () => {
+    divider.classList.remove("dragging");
+    document.body.classList.remove("resizing");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    persist();
+    if (layout) drawMinimap();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+});
+divider.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") { e.preventDefault(); applyDetailWidth(detailW + 24); persist(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); applyDetailWidth(detailW - 24); persist(); }
+});
+applyDetailWidth(detailW);
+new ResizeObserver(() => updateCompaction()).observe(document.getElementById("left"));
+
 let rsz;
-window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { if (layout) drawMinimap(); }, 120); });
+window.addEventListener("resize", () => { clearTimeout(rsz); rsz = setTimeout(() => { applyDetailWidth(detailW); if (layout) drawMinimap(); }, 120); });
 new MutationObserver(() => { if (graphData) render(); }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
+renderPane(); // show the Activity feed immediately, before the first graph arrives
 vscode.postMessage({ type: "ready" });

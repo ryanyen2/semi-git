@@ -102,3 +102,25 @@ export interface EntityMapView {
   count: number;
   frame?: number;
 }
+
+// Live agent telemetry — NOT part of sgt.api (which projects the durable semantic graph). This is
+// an ephemeral presence sidecar tailed from the Claude Code session transcript so the graph reads
+// as "alive" while the agent works. Extension-local; never persisted.
+export interface ActivityEvent {
+  kind: "tool" | "thought";
+  /** Tool name for kind:"tool" (e.g. "Edit", "Bash"). */
+  name?: string;
+  /** Basename of the touched file, or the first token of a command/pattern. */
+  target?: string;
+  /** A short, truncated thinking/text snippet for kind:"thought". */
+  text?: string;
+  /** Monotonic sequence (host-assigned) so the webview can dedupe/order without clocks. */
+  seq: number;
+}
+
+// Work the agent is doing that has no graph node yet (uncommitted, unattributable drift). Rendered
+// as a pulsing "ghost" row so a brand-new feature being built is visible before its checkpoint.
+export interface PendingWork {
+  label: string;
+  file: string;
+}

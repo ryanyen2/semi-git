@@ -3,6 +3,7 @@
 // the tree, and the webview all refresh together.
 
 import * as vscode from "vscode";
+import { ClaudeActivityWatcher } from "./activity";
 import { BlameController } from "./blame";
 import { SgtCodeLensProvider } from "./codelens";
 import { registerCommands } from "./commands";
@@ -28,7 +29,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const tree = new GraphTreeProvider(store);
   context.subscriptions.push(blame, preview);
 
-  const graphView = new GraphViewProvider(context, store, () => void blame.render());
+  const graphView = new GraphViewProvider(context, store, root, () => void blame.render());
   context.subscriptions.push(
     graphView,
     vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }),
@@ -79,6 +80,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     })
   );
+
+  // Tail the Claude Code session transcript: stream a minimal activity feed into the graph's
+  // Activity pane, and nudge a presence refresh when the agent touches a file — so the graph
+  // updates as the agent works, not only when an editor save fires.
+  const activity = new ClaudeActivityWatcher(root, (events) => {
+    graphView.postActivity(events);
+    if (events.some((e) => e.kind === "tool" && e.target)) {
+      refresh();
+    }
+  });
+  activity.start();
+  context.subscriptions.push({ dispose: () => activity.dispose() });
 
   void blame.render();
 }
