@@ -4,13 +4,13 @@
 
 import * as vscode from "vscode";
 import { Sgt } from "./sgt";
-import { BlameView, EntityMapView, GraphView, NodeView, StatusView } from "./types";
+import { BlameView, DecisionGraphView, GraphView, NodeView, StatusView } from "./types";
 
 export class Store {
   readonly sgt: Sgt;
   private graphCache: GraphView | undefined;
   private statusCache: StatusView | undefined;
-  private mapCache: EntityMapView | undefined;
+  private decisionsCache: DecisionGraphView | undefined;
   private nodeById = new Map<string, NodeView>();
   private blameCache = new Map<string, BlameView>();
   private _onDidChange = new vscode.EventEmitter<void>();
@@ -28,16 +28,11 @@ export class Store {
     return this.graphCache;
   }
 
-  async map(force = false): Promise<EntityMapView> {
-    if (!this.mapCache || force) {
-      this.mapCache = await this.sgt.map();
+  async decisions(force = false): Promise<DecisionGraphView> {
+    if (!this.decisionsCache || force) {
+      this.decisionsCache = await this.sgt.decisions();
     }
-    return this.mapCache;
-  }
-
-  /** The map as of a past checkpoint ordinal (not cached — the scrubber requests many). */
-  timeframe(frame: number): Promise<EntityMapView> {
-    return this.sgt.timeframe(frame);
+    return this.decisionsCache;
   }
 
   node(id: string): NodeView | undefined {
@@ -65,7 +60,7 @@ export class Store {
   invalidate(): void {
     this.graphCache = undefined;
     this.statusCache = undefined;
-    this.mapCache = undefined;
+    this.decisionsCache = undefined;
     this.blameCache.clear();
     this._onDidChange.fire();
   }

@@ -242,6 +242,116 @@ def _clusters(project, g, owners: dict) -> list[dict]:
     return [c.to_dict() for c in cluster_features(members, adjacency, prior)]
 
 
+def _resolve_footprint(footprint: list[str], entity_ids: set[str]) -> set[str]:
+    """Map a decision's effect targets onto entity-graph node ids.
+
+    Exact match when the target is itself a def-level entity; otherwise the
+    longest entity id in the same file that the target sits inside (a statement-level
+    target resolves to its owning function/class). Unresolvable targets (e.g. third-party)
+    drop out, producing no false edge.
+    """
+    out: set[str] = set()
+    for key in footprint:
+        if key in entity_ids:
+            out.add(key)
+            continue
+        file = key.split("::", 1)[0]
+        cands = [eid for eid in entity_ids if eid.split("::", 1)[0] == file and key.startswith(eid + ".")]
+        if cands:
+            out.add(max(cands, key=len))
+    return out
+
+
+def decision_graph_view(project) -> dict:
+    """The decision DAG: decisions, lifecycle edges (stored), and derived dependency.
+
+    ``revises`` / ``fork`` edges are intrinsic (from each decision's lineage). ``builds-on``
+    edges and the ``clash`` set are **derived** by projecting the entity dependency graph
+    (``entity_graph_view``) through each decision's footprint — never authored — so the graph
+    is reproducible and cannot vibe. ``builds-on`` and clashes are computed among the
+    in-force (frontier) decisions, the nodes a "now" view draws. Pure, offline.
+    """
+    from sgt.decisions.store import build_decisions, load_frontier
+
+    decisions = build_decisions(project)
+    frontier = load_frontier(project, decisions)
+
+    try:
+        eg = entity_graph_view(project)
+    except Exception:
+        eg = {"entities": []}
+    entity_ids = {e["id"] for e in eg.get("entities", [])}
+    entity_dep = {e["id"]: set(e.get("depends_on", [])) for e in eg.get("entities", [])}
+    ent_of = {d.id: _resolve_footprint(d.footprint, entity_ids) for d in decisions}
+
+    edges: list[dict] = []
+    for d in decisions:
+        if d.lifecycle_of:
+            kind = "fork" if d.lifecycle_kind.value == "fork" else "revises"
+            edges.append({"src": d.id, "dst": d.lifecycle_of, "type": kind})
+
+    # builds-on / clash are derived at the LANE level: a lane owns the union of its footprints
+    # up to its in-force decision (an entity touched once and not re-touched is still owned), and
+    # the edge is drawn between the two lanes' in-force decision nodes.
+    in_force_of: dict[str, object] = {d.feature: d for d in decisions if d.id in frontier.in_force()}
+    cum_ent: dict[str, set] = {}
+    for feat, dec in in_force_of.items():
+        keys: set[str] = set()
+        for d in decisions:
+            if d.feature == feat and d.landing <= dec.landing:
+                keys |= set(d.footprint)
+        cum_ent[feat] = _resolve_footprint(list(keys), entity_ids)
+
+    clash: list[dict] = []
+    feats = sorted(in_force_of)
+    for fb in feats:
+        for fa in feats:
+            if fa == fb:
+                continue
+            if any(dep in cum_ent[fa] for eb in cum_ent[fb] for dep in entity_dep.get(eb, ())):
+                edges.append({
+                    "src": in_force_of[fb].id, "dst": in_force_of[fa].id,
+                    "type": "builds-on", "derived": True,
+                })
+            shared = cum_ent[fa] & cum_ent[fb]
+            if shared and fb < fa:
+                clash.append({
+                    "a": in_force_of[fa].id, "b": in_force_of[fb].id, "entities": sorted(shared),
+                })
+
+    return {
+        "decisions": [d.to_dict() for d in decisions],
+        "edges": edges,
+        "frontier": frontier.selection,
+        "clash": clash,
+        "count": len(decisions),
+    }
+
+
+def frontier_view(project) -> dict:
+    """The current composition: the in-force decision per lane, and the lane list."""
+    from sgt.decisions.store import build_decisions, load_frontier
+
+    decisions = build_decisions(project)
+    return {
+        "selection": load_frontier(project, decisions).selection,
+        "lanes": sorted({d.feature for d in decisions}),
+    }
+
+
+def frontier_diff(a: dict, b: dict) -> dict:
+    """Decision-level delta between two frontier selections (feature -> decision id)."""
+    added, revised, revoked = [], [], []
+    for f in sorted(set(a) | set(b)):
+        if f in b and f not in a:
+            added.append({"feature": f, "decision": b[f]})
+        elif f in a and f not in b:
+            revoked.append({"feature": f, "decision": a[f]})
+        elif a[f] != b[f]:
+            revised.append({"feature": f, "from": a[f], "to": b[f]})
+    return {"added": added, "revised": revised, "revoked": revoked}
+
+
 def export_view(project) -> dict:
     """Everything a graph view needs in one payload: nodes, edges, effects, witnesses."""
     g = graph_view(project)

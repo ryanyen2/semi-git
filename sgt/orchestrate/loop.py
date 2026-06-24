@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from sgt.agents.planner import PlannerError, decompose
 from sgt.agents.resolve import resolve_ref
+from sgt.effects.model import EffectError
 from sgt.lifecycle.algebra import revert_feature, switch_feature
 from sgt.orchestrate.quarantine import attempt_recommute
 from sgt.project import Project
@@ -233,3 +234,96 @@ class Orchestrator:
         self.project.commit(f"switch: {r.matches[0]} {'on' if on else 'off'}")
         return Report("switch", True, node_id=r.matches[0],
                       message=f"switched {'on' if on else 'off'}")
+
+    # -- decision-frontier verbs -------------------------------------------
+    def compose(self, feature: str, decision_id: str) -> Report:
+        """Pin a feature lane to a chosen decision and re-materialize the composition.
+
+        This is compose-feature-versions: hold feature-A@v3 alongside feature-B@latest. The
+        selection persists in ``.sgt/frontier.json`` and ``materialize`` then composes from it,
+        so the working tree and drift stay consistent. Guarded so it never clobbers un-checkpointed
+        edits.
+        """
+        from sgt.decisions.store import build_decisions, load_frontier, save_frontier
+
+        if (blocked := self._guard("compose")):
+            return blocked
+        decisions = build_decisions(self.project)
+        by_id = {d.id: d for d in decisions}
+        d = by_id.get(decision_id)
+        if d is None:
+            return Report("compose", False, message=f"no decision {decision_id!r}")
+        if d.feature != feature:
+            return Report("compose", False,
+                          message=f"{decision_id} is on lane {d.feature!r}, not {feature!r}")
+        frontier = load_frontier(self.project, decisions)
+        frontier.selection[feature] = decision_id
+        save_frontier(self.project, frontier)
+        try:
+            self.project.write_working_tree()
+        except EffectError as ex:
+            return Report("compose", False, message=f"composition does not materialize: {ex}")
+        return Report("compose", True, message=f"pinned {feature} -> {decision_id}")
+
+    def tag(self, name: str) -> Report:
+        """Name the current frontier — a composition manifest you can return to or diff against."""
+        from sgt.decisions.store import build_decisions, load_frontier, load_tags, save_tags
+
+        frontier = load_frontier(self.project, build_decisions(self.project))
+        tags = load_tags(self.project.sgt_dir)
+        tags[name] = dict(frontier.selection)
+        save_tags(self.project.sgt_dir, tags)
+        return Report("tag", True, message=f"tagged {name} = {len(frontier.selection)} lane(s)")
+
+    def _selection_for(self, ref: str) -> dict[str, str] | None:
+        """Resolve a frontier ref: ``HEAD`` (current) or a tag name -> selection dict."""
+        from sgt.decisions.store import build_decisions, load_frontier, load_tags
+
+        if ref in ("HEAD", "head", ""):
+            return load_frontier(self.project, build_decisions(self.project)).selection
+        return load_tags(self.project.sgt_dir).get(ref)
+
+    def diff(self, ref_a: str, ref_b: str) -> dict:
+        """Decision-level delta between two frontier refs (tag names or ``HEAD``)."""
+        from sgt.api import frontier_diff
+
+        a, b = self._selection_for(ref_a), self._selection_for(ref_b)
+        if a is None or b is None:
+            missing = ref_a if a is None else ref_b
+            return {"error": f"unknown frontier ref {missing!r}"}
+        return frontier_diff(a, b)
+
+    def blast_radius(self, decision_id: str) -> dict:
+        """Read-only: the lanes that transitively ``builds-on`` the target decision's lane.
+
+        Reverting a decision disturbs its whole lane, so the cone is computed at lane
+        granularity (R11) and returned as the in-force decision of each dependent lane.
+        Derived from the entity graph via ``decision_graph_view`` — nothing is mutated.
+        """
+        from sgt.api import decision_graph_view
+
+        view = decision_graph_view(self.project)
+        feature_of = {d["id"]: d["feature"] for d in view["decisions"]}
+        if decision_id not in feature_of:
+            return {"error": f"no decision {decision_id!r}"}
+        target = feature_of[decision_id]
+        # lane S builds-on lane D  (edge src is on S, dst on D)
+        dependents: dict[str, set[str]] = {}
+        for e in view["edges"]:
+            if e["type"] == "builds-on":
+                s, d = feature_of.get(e["src"]), feature_of.get(e["dst"])
+                if s and d and s != d:
+                    dependents.setdefault(d, set()).add(s)
+        seen: list[str] = []
+        stack = [target]
+        while stack:
+            for lane in sorted(dependents.get(stack.pop(), ())):
+                if lane not in seen:
+                    seen.append(lane)
+                    stack.append(lane)
+        frontier = view["frontier"]
+        return {
+            "decision": decision_id,
+            "lane": target,
+            "blast_radius": [frontier[lane] for lane in seen if lane in frontier],
+        }

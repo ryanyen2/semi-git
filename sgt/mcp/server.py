@@ -78,11 +78,11 @@ def tool_blame(repo_path: str, args: dict) -> dict:
     return blame_view(_open(repo_path), file)
 
 
-def tool_map(repo_path: str, args: dict) -> dict:
-    """The deterministic code-entity map: entities + containment/calls/imports, transitive-reduced."""
-    from sgt.api import entity_graph_view
+def tool_decisions(repo_path: str, args: dict) -> dict:
+    """The decision DAG: decisions, lifecycle edges, derived builds-on, clashes, and the frontier."""
+    from sgt.api import decision_graph_view
 
-    return entity_graph_view(_open(repo_path))
+    return decision_graph_view(_open(repo_path))
 
 
 def tool_checkpoint(repo_path: str, args: dict) -> dict:
@@ -230,12 +230,13 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"file": {"type": "string", "description": "repo-relative path of a managed file"}}, ["file"]),
         tool_blame,
     ),
-    "sgt_map": (
-        "The deterministic code-entity map of the whole repo: functions/classes/methods as "
-        "entities connected by containment + calls/imports, each tagged with its owning feature "
-        "(node_id, null if unattributed) plus the transitive-reduced edge set for layout.",
+    "sgt_decisions": (
+        "The decision DAG: every decision (Context/Decision/Consequence + alternatives + code "
+        "footprint + git commits), the stored lifecycle edges (revises/fork), the builds-on edges "
+        "and clashes DERIVED from the entity graph, and the current frontier (the in-force decision "
+        "per feature lane that materializes the working tree).",
         _schema({}, []),
-        tool_map,
+        tool_decisions,
     ),
     "sgt_plan": (
         "Decompose an intent into reviewable PLANNED nodes (the semantic outline) without "

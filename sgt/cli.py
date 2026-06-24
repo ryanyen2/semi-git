@@ -14,8 +14,8 @@ import sys
 from sgt.project import Project
 
 _VERBS = {"init", "plan", "sync", "checkpoint", "revert", "switch", "reconcile",
-          "show", "graph", "status", "blame", "export", "emit", "map", "timeframe",
-          "tui", "mcp", "help"}
+          "show", "graph", "status", "blame", "export", "emit",
+          "decisions", "compose", "tag", "tui", "mcp", "help"}
 
 
 def _print_report(rep) -> int:
@@ -105,14 +105,20 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "export":
         return _export(repo)
 
-    if cmd == "map":
-        return _map(repo, as_json)
+    if cmd == "decisions":
+        return _decisions(repo, rest, as_json)
 
-    if cmd == "timeframe":
-        if not rest or not rest[0].lstrip("-").isdigit():
-            print("usage: sgt timeframe <frame> [--json]")
+    if cmd == "compose":
+        if len(rest) < 2:
+            print("usage: sgt compose <feature> <decision-id>")
             return 2
-        return _timeframe(repo, int(rest[0]), as_json)
+        return _print_report(_orchestrator(repo).compose(rest[0], rest[1]))
+
+    if cmd == "tag":
+        if not rest:
+            print("usage: sgt tag <name>")
+            return 2
+        return _print_report(_orchestrator(repo).tag(rest[0]))
 
     if cmd == "emit":
         # `sgt emit revert <ref>` | `sgt emit switch <ref> on|off` — structured dry-run for a UI.
@@ -318,32 +324,37 @@ def _export(repo: str) -> int:
     return _emit_json(export_view(Project.open(repo)))
 
 
-def _map(repo: str, as_json: bool) -> int:
-    """The deterministic code-entity map (whole-repo). `--json` emits the full projection."""
-    from sgt.api import entity_graph_view
+def _decisions(repo: str, rest: list[str], as_json: bool) -> int:
+    """The decision DAG. `sgt decisions [--json]` → the graph; `decisions frontier` → the frontier."""
+    from sgt.api import decision_graph_view, frontier_view
 
-    view = entity_graph_view(Project.open(repo))
+    if rest and rest[0] == "frontier":
+        view = frontier_view(Project.open(repo))
+        if as_json:
+            return _emit_json(view)
+        print(f"{len(view['lanes'])} lanes in force: "
+              + ", ".join(f"{f}={view['selection'].get(f, '-')}" for f in view["lanes"]))
+        return 0
+
+    if rest and rest[0] == "diff":
+        if len(rest) < 3:
+            print("usage: sgt decisions diff <ref-a> <ref-b>   (ref = HEAD or a tag name)")
+            return 2
+        return _emit_json(_orchestrator(repo).diff(rest[1], rest[2]))
+
+    if rest and rest[0] == "blast":
+        if len(rest) < 2:
+            print("usage: sgt decisions blast <decision-id>")
+            return 2
+        return _emit_json(_orchestrator(repo).blast_radius(rest[1]))
+
+    view = decision_graph_view(Project.open(repo))
     if as_json:
         return _emit_json(view)
-    owned = sum(1 for e in view["entities"] if e["node_id"])
-    print(
-        f"{view['count']} entities ({owned} feature-owned), "
-        f"{len(view['components'])} components, "
-        f"{len(view['reduced_edges'])} reduced edges"
-    )
-    return 0
-
-
-def _timeframe(repo: str, frame: int, as_json: bool) -> int:
-    """The code-entity map as of checkpoint ordinal `frame` (the scrubber's per-frame view)."""
-    from sgt.api import timeframe_view
-
-    view = timeframe_view(Project.open(repo), frame)
-    if as_json:
-        return _emit_json(view)
-    owned = sum(1 for e in view["entities"] if e["node_id"])
-    print(f"frame {frame}: {view['count']} entities ({owned} feature-owned), "
-          f"{len(view['components'])} components")
+    bo = sum(1 for e in view["edges"] if e["type"] == "builds-on")
+    lc = sum(1 for e in view["edges"] if e["type"] in ("revises", "fork"))
+    print(f"{view['count']} decisions, {len(view['frontier'])} lanes in force, "
+          f"{lc} lifecycle + {bo} derived builds-on edges, {len(view['clash'])} clashes")
     return 0
 
 

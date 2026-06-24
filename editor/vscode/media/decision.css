@@ -1,0 +1,63 @@
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--vscode-font-family); font-size: 12px;
+  color: var(--vscode-foreground); background: var(--vscode-panel-background); }
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+#header { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border); }
+#header .brand { font-weight: 600; }
+#header .crumb-sep, #header .crumb { color: var(--vscode-descriptionForeground); }
+#header .chip { color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); font-size: 11px; }
+#header .spacer { flex: 1; }
+.icon-btn { background: transparent; border: none; color: var(--vscode-foreground); cursor: pointer; font-size: 14px; }
+
+#main { flex: 1; display: flex; min-height: 0; }
+#stage { flex: 1; overflow: auto; min-width: 0; }
+svg { display: block; }
+#divider { width: 5px; cursor: col-resize; background: var(--vscode-panel-border); }
+#detail { width: 320px; overflow-y: auto; padding: 12px 14px; border-left: 1px solid var(--vscode-panel-border); }
+#detail #empty, #detail i { color: var(--vscode-descriptionForeground); }
+
+/* lanes + edges */
+.lane-rule { stroke: var(--vscode-panel-border); stroke-dasharray: 2 5; }
+.lane-label { font-family: var(--vscode-editor-font-family); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; opacity: .85; }
+.edge { fill: none; stroke-width: 2; }
+.edge.builds-on { stroke: var(--vscode-descriptionForeground); opacity: .55; }
+.edge.revises { stroke-dasharray: 6 4; opacity: .8; }
+.clash { fill: var(--vscode-errorForeground); font-size: 14px; text-anchor: middle; }
+
+/* nodes */
+.node { cursor: pointer; }
+.node .halo { fill: none; stroke-width: 2.5; opacity: .9; }
+.node .disc { stroke-width: 2.5; }
+.node .hit { fill: transparent; }
+.node.selected .disc { stroke-width: 3.5; }
+
+/* detail */
+.dhead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.dhead .dot { width: 11px; height: 11px; border-radius: 50%; }
+.dhead .kind { color: var(--vscode-descriptionForeground); font-family: var(--vscode-editor-font-family); font-size: 11px; }
+.cdc { font-family: var(--vscode-editor-font-family); font-size: 11px; margin: 8px 0; }
+.cdc div { margin: 3px 0; }
+.cdc .k { color: var(--vscode-textLink-foreground); display: inline-block; width: 64px; }
+.alts { margin: 8px 0; }
+.alt { margin: 3px 0; color: var(--vscode-descriptionForeground); }
+.alt .lose { color: var(--vscode-errorForeground); }
+.alt .src { opacity: .7; }
+.sec { margin: 8px 0; }
+.sec b, .alts b { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--vscode-descriptionForeground); margin-bottom: 4px; }
+.c { font-family: var(--vscode-editor-font-family); border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px; padding: 1px 5px; }
+.arr { color: var(--vscode-descriptionForeground); margin: 0 4px; }
+.fps { display: flex; flex-direction: column; gap: 3px; }
+.fp { text-align: left; background: transparent; border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px; padding: 3px 6px; color: var(--vscode-foreground); cursor: pointer;
+  font-family: var(--vscode-editor-font-family); font-size: 11px; }
+.fp:hover { border-color: var(--vscode-focusBorder); }
+.pin { margin-top: 10px; padding: 6px 12px; cursor: pointer; border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-radius: 4px; }
+.inforce { margin-top: 10px; color: var(--vscode-charts-green, #4caf50); font-weight: 600; }
+.err { color: var(--vscode-errorForeground); }

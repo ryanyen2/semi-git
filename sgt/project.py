@@ -165,7 +165,26 @@ class Project:
         entries = sorted(self.log.live_entries(active), key=lambda e: e.order_key)
         return [e.effect for e in entries]
 
+    def _pinned_frontier(self) -> dict[str, str] | None:
+        """The persisted composition selection, or ``None`` when no lane is pinned.
+
+        Absent ``.sgt/frontier.json`` (every project that has never composed) returns ``None``,
+        so ``materialize`` keeps its exact pre-decision behavior — the frontier only takes over
+        once the user composes a specific version mix.
+        """
+        import json
+
+        from sgt.decisions.store import FRONTIER_FILE
+
+        path = self.sgt_dir / FRONTIER_FILE
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8")).get("selection") or None
+
     def materialize(self) -> Codebase:
+        pin = self._pinned_frontier()
+        if pin:
+            return self.materialize_frontier(pin)
         return materialize(self.active_effects())
 
     def materialize_at(self, frame: int) -> Codebase:
@@ -184,6 +203,40 @@ class Project:
         entries = [e for e in self.log.live_entries(active) if 0 < e.landing <= frame]
         entries.sort(key=lambda e: e.order_key)
         return materialize([e.effect for e in entries])
+
+    def materialize_frontier(self, manifest: dict[str, str]) -> Codebase:
+        """Compose the working tree from a frontier manifest ``{feature -> decision_id}``.
+
+        Each lane contributes the entries of its decisions *up to and including* the in-force
+        decision's landing, so pinning a lane to an earlier decision drops the later ones —
+        this is compose-feature-versions (feature-A@v3 alongside feature-B@latest). Lanes absent
+        from the manifest are out of force and contribute nothing. With every lane at its tip
+        this equals the live ``materialize()``; ``materialize_at(frame)`` is the special case
+        "every lane's tip as of ``frame``". Committed decisions only (uncommitted drift is not a
+        decision and is surfaced via ``status``/drift, not here).
+        """
+        from sgt.decisions.store import build_decisions
+
+        decisions = build_decisions(self)
+        cap_by_feature: dict[str, int] = {}
+        by_id = {d.id: d for d in decisions}
+        for feature, dec_id in manifest.items():
+            d = by_id.get(dec_id)
+            if d is not None:
+                cap_by_feature[feature] = d.landing
+        feature_of_group = {(d.node_id, d.landing): d.feature for d in decisions}
+        active = {
+            nid for nid in self.log.node_ids()
+            if self.graph.has(nid) and self.graph.get(nid).status is NodeStatus.ACTIVE
+        }
+        kept = []
+        for e in self.log.live_entries(active):
+            feature = feature_of_group.get((e.node_id, e.landing))
+            cap = cap_by_feature.get(feature) if feature is not None else None
+            if cap is not None and 0 < e.landing <= cap:
+                kept.append(e)
+        kept.sort(key=lambda e: e.order_key)
+        return materialize([e.effect for e in kept])
 
     def _safe_path(self, path: str) -> Path:
         """Resolve a managed path under the repo root, refusing any escape (defense-in-depth).

@@ -5,7 +5,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<link href="../media/graph.css" rel="stylesheet">
+<link href="../media/decision.css" rel="stylesheet">
 <style>
   :root {
     --vscode-font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -86,7 +86,7 @@
   let _st = { detailW: 360 };
   window.acquireVsCodeApi = () => ({ postMessage() {}, getState: () => _st, setState: (s) => { _st = s; } });
 </script>
-<script src="../media/graph.js"></script>
+<script src="../media/decision.js"></script>
 <script>
   const E = (op) => ({ op, target: "t", file: "cli.py" });
   // The user's knowledge-graph CLI plan (a wide-shallow DAG) — to compare layout compactness.

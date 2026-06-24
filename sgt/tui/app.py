@@ -108,38 +108,39 @@ class DetailScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
-class MapScreen(ModalScreen[None]):
-    """The deterministic code-entity map (whole repo): entities colored by owning feature."""
+class DecisionScreen(ModalScreen[None]):
+    """The decision graph: decisions grouped by feature lane, with the in-force frontier marked.
+
+    Status is a glyph (● in force / ◇ not), never hue; the lane keeps its feature identity color.
+    """
 
     BINDINGS = [Binding("escape,q,m", "close", "Close")]
 
-    def __init__(self, view: dict, width: int) -> None:
+    def __init__(self, view: dict) -> None:
         super().__init__()
         self._view = view
-        self._width = width
 
     def compose(self) -> ComposeResult:
-        from sgt.tui.mapview import map_columns
-
+        in_force = set(self._view.get("frontier", {}).values())
+        decisions = sorted(self._view.get("decisions", []), key=lambda d: (d["feature"], d["landing"]))
         with Vertical(id="detail-modal"):
-            n = self._view.get("count", 0)
-            comps = len(self._view.get("components", []))
-            yield Label(f"Code-entity map — {n} entities, {comps} components", id="map-title")
-            yield DataTable(id="map-table", cursor_type="row", zebra_stripes=True)
-            yield Label("[b]esc[/b] close", id="hint")
-        self._cols = map_columns(self._width)
+            yield Label(
+                f"Decision graph — {self._view.get('count', 0)} decisions, "
+                f"{len(self._view.get('frontier', {}))} lanes in force", id="map-title")
+            table = DataTable(id="map-table", cursor_type="row", zebra_stripes=True)
+            yield table
+            yield Label("[b]esc[/b] close · ● in force  ◇ not", id="hint")
+        self._rows = [(in_force, d) for d in decisions]
 
     def on_mount(self) -> None:
-        from sgt.tui.mapview import build_map_rows, entity_marker
+        from sgt.tui.color import color_for
 
         table = self.query_one("#map-table", DataTable)
-        table.add_columns(*self._cols)
-        for r in build_map_rows(self._view):
-            marker = entity_marker(r.node_id)
-            if "owner" in self._cols:
-                table.add_row(marker, r.kind, r.label, r.node_id or "—", str(r.component))
-            else:
-                table.add_row(marker, r.kind, r.label)
+        table.add_columns("", "lane", "decision", "kind", "intent")
+        for in_force, d in self._rows:
+            mark = "●" if d["id"] in in_force else "◇"
+            lane = f"[{color_for(d['feature'])}]{d['feature']}[/]"
+            table.add_row(mark, lane, d["id"], d["lifecycle"]["kind"], d["intent"]["decision"][:48])
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -170,7 +171,7 @@ class SgtTui(App[None]):
         Binding("X", "apply_revert", "Revert!"),
         Binding("O", "apply_switch_off", "Suspend!"),
         Binding("U", "apply_switch_on", "Restore!"),
-        Binding("m", "show_map", "Map"),
+        Binding("m", "show_decisions", "Decisions"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -223,12 +224,12 @@ class SgtTui(App[None]):
     def _project(self) -> Project:
         return Project.open(self.repo)
 
-    def action_show_map(self) -> None:
-        """Open the deterministic code-entity map (whole repo), colored by owning feature."""
-        from sgt.api import entity_graph_view
+    def action_show_decisions(self) -> None:
+        """Open the decision graph: decisions by feature lane with the in-force frontier marked."""
+        from sgt.api import decision_graph_view
 
-        view = entity_graph_view(self._project())
-        self.push_screen(MapScreen(view, self.size.width or 80))
+        view = decision_graph_view(self._project())
+        self.push_screen(DecisionScreen(view))
 
     def action_refresh(self) -> None:
         proj = self._project()
