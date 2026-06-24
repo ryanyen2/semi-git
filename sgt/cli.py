@@ -348,6 +348,16 @@ def _decisions(repo: str, rest: list[str], as_json: bool) -> int:
             return 2
         return _emit_json(_orchestrator(repo).blast_radius(rest[1]))
 
+    if rest and rest[0] == "distill":
+        # LLM rationale distillation (Context/Consequence/Alternatives); offline = no-op.
+        from sgt.decisions.distill import distill_all
+
+        only = rest[1] if len(rest) > 1 and not rest[1].startswith("-") else None
+        n = distill_all(Project.open(repo), only=only, overwrite="--force" in rest)
+        print(f"distilled rationale for {n} decision(s)" if n
+              else "nothing distilled (no API key, or all decisions already have rationale)")
+        return 0
+
     view = decision_graph_view(Project.open(repo))
     if as_json:
         return _emit_json(view)
