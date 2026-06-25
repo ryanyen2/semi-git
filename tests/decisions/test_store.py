@@ -1,6 +1,6 @@
 """Recovering decisions from the log: grouping, footprint, lifecycle, and frontier."""
 
-from sgt.decisions.model import Frontier, LifecycleKind
+from sgt.decisions.model import DecisionStatus, Frontier, LifecycleKind
 from sgt.decisions.store import (
     build_decisions,
     load_frontier,
@@ -127,6 +127,87 @@ def test_import_only_targets_do_not_create_a_lane(tmp_path):
     assert _is_entity_key("m.py::base") is True
     assert _is_entity_key("m.py::from x import y") is False
     assert _is_entity_key("m.py::import os") is False
+
+
+def _planned_proj(tmp_path):
+    """A freshly-planned, never-checkpointed workspace: 4 PLANNED nodes with depends_on."""
+    proj = Project.init(tmp_path)
+    proj.add_plan(
+        [
+            Node(id="retrieve", kind=NodeKind.CAPABILITY, intent="retrieve data"),
+            Node(id="preprocess", kind=NodeKind.CAPABILITY, intent="preprocess data"),
+            Node(id="generate", kind=NodeKind.CAPABILITY, intent="call the LLM"),
+            Node(id="orchestrate", kind=NodeKind.CAPABILITY, intent="run the pipeline"),
+        ],
+        # dependent -> dependency
+        edges=[
+            ("preprocess", "retrieve"),
+            ("generate", "preprocess"),
+            ("orchestrate", "preprocess"),
+            ("orchestrate", "retrieve"),
+            ("orchestrate", "generate"),
+        ],
+    )
+    proj.save()
+    return proj
+
+
+def test_planned_only_workspace_yields_planned_decisions(tmp_path):
+    decisions = {d.id: d for d in build_decisions(_planned_proj(tmp_path))}
+    assert set(decisions) == {"retrieve", "preprocess", "generate", "orchestrate"}
+    for d in decisions.values():
+        assert d.status is DecisionStatus.PLANNED
+        assert d.id == d.node_id  # no "@landing" suffix
+        assert d.feature == d.node_id  # each capability is its own lane
+        assert d.footprint == []
+        assert d.commits == []
+        assert d.alternatives == []
+        assert d.lifecycle_kind is LifecycleKind.INTRODUCE
+        assert d.lifecycle_of is None
+    # intent.decision carries the node intent
+    assert decisions["retrieve"].intent.decision == "retrieve data"
+
+
+def test_planned_landing_is_topological_deps_first(tmp_path):
+    decisions = {d.id: d for d in build_decisions(_planned_proj(tmp_path))}
+    # a dependency must sort before every dependent on the time axis
+    assert decisions["retrieve"].landing < decisions["preprocess"].landing
+    assert decisions["preprocess"].landing < decisions["generate"].landing
+    assert decisions["preprocess"].landing < decisions["orchestrate"].landing
+    assert decisions["generate"].landing < decisions["orchestrate"].landing
+    # 1..N contiguous
+    assert sorted(d.landing for d in decisions.values()) == [1, 2, 3, 4]
+
+
+def test_planned_decisions_never_enter_the_frontier(tmp_path):
+    proj = _planned_proj(tmp_path)
+    decisions = build_decisions(proj)
+    assert load_frontier(proj, decisions).selection == {}
+    assert Frontier.tip_of(decisions).selection == {}
+
+
+def test_mixed_landed_and_planned(tmp_path):
+    """A landed lane coexists with a still-planned capability."""
+    proj = _proj(tmp_path)  # base@1, user@2 landed
+    proj.add_plan([Node(id="future", kind=NodeKind.CAPABILITY, intent="not built yet")], edges=[])
+    proj.save()
+    decisions = build_decisions(proj)
+    by_id = {d.id: d for d in decisions}
+    assert by_id["base@1"].status is DecisionStatus.LANDED
+    assert by_id["user@2"].status is DecisionStatus.LANDED
+    assert by_id["future"].status is DecisionStatus.PLANNED
+    # the planned node must not pollute the (landed-only) frontier
+    f = load_frontier(proj, decisions)
+    assert f.selection == {"base": "base@1", "user": "user@2"}
+
+
+def test_landed_node_is_not_also_listed_as_planned(tmp_path):
+    """A node that landed effects must not be re-emitted as a planned decision."""
+    proj = _proj(tmp_path)
+    decisions = build_decisions(proj)
+    # exactly one decision per landed node id; no bare-id (planned) duplicate
+    assert {d.id for d in decisions} == {"base@1", "user@2"}
+    assert all(d.status is DecisionStatus.LANDED for d in decisions)
 
 
 def test_authored_metadata_merges_from_sidecar(tmp_path):

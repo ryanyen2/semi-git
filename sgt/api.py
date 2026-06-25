@@ -19,6 +19,8 @@ Shapes (stable; additive changes only):
 from __future__ import annotations
 
 from sgt.agents.resolve import resolve_ref
+from sgt.decisions.structure import decision_structure
+from sgt.decisions.structure import resolve_footprint as _resolve_footprint
 from sgt.effects.attribute import attribute
 from sgt.effects.model import EffectError
 from sgt.store.graph import EdgeType
@@ -242,26 +244,6 @@ def _clusters(project, g, owners: dict) -> list[dict]:
     return [c.to_dict() for c in cluster_features(members, adjacency, prior)]
 
 
-def _resolve_footprint(footprint: list[str], entity_ids: set[str]) -> set[str]:
-    """Map a decision's effect targets onto entity-graph node ids.
-
-    Exact match when the target is itself a def-level entity; otherwise the
-    longest entity id in the same file that the target sits inside (a statement-level
-    target resolves to its owning function/class). Unresolvable targets (e.g. third-party)
-    drop out, producing no false edge.
-    """
-    out: set[str] = set()
-    for key in footprint:
-        if key in entity_ids:
-            out.add(key)
-            continue
-        file = key.split("::", 1)[0]
-        cands = [eid for eid in entity_ids if eid.split("::", 1)[0] == file and key.startswith(eid + ".")]
-        if cands:
-            out.add(max(cands, key=len))
-    return out
-
-
 def decision_graph_view(project) -> dict:
     """The decision DAG: decisions, lifecycle edges (stored), and derived dependency.
 
@@ -272,9 +254,11 @@ def decision_graph_view(project) -> dict:
     in-force (frontier) decisions, the nodes a "now" view draws. Pure, offline.
     """
     from sgt.decisions.store import build_decisions, load_frontier
+    from sgt.store.graph import EdgeType
 
     decisions = build_decisions(project)
     frontier = load_frontier(project, decisions)
+    in_force_ids = frontier.in_force()
 
     try:
         eg = entity_graph_view(project)
@@ -289,6 +273,59 @@ def decision_graph_view(project) -> dict:
         if d.lifecycle_of:
             kind = "fork" if d.lifecycle_kind.value == "fork" else "revises"
             edges.append({"src": d.id, "dst": d.lifecycle_of, "type": kind})
+
+    # Planned dependency lineage. A planned node has no footprint, so the entity-derived builds-on
+    # below never reaches it — without help it floats as an orphan. We connect it two ways, both
+    # derived (never authored): (1) its authored `depends_on` graph edges to sibling planned nodes;
+    # (2) a *name bridge* — the names a planned node `needs`/`provides`, resolved against what every
+    # other decision (landed or planned) provides, so "update run_pipeline to use retrieve_from_graph"
+    # links to both the landed `run_pipeline` lane and the planned `retrieve_from_graph` node.
+    planned_ids = {d.id for d in decisions if d.status.value == "planned"}
+    seen_edges = {(e["src"], e["dst"], e["type"]) for e in edges}
+
+    def _add_builds_on(src: str, dst: str) -> None:
+        key = (src, dst, "builds-on")
+        if src != dst and key not in seen_edges:
+            seen_edges.add(key)
+            edges.append({"src": src, "dst": dst, "type": "builds-on", "derived": True})
+
+    if planned_ids and hasattr(project, "graph"):
+        graph = project.graph
+        for e in graph.edges():
+            if e.type is EdgeType.DEPENDS_ON and e.src in planned_ids and e.dst in planned_ids:
+                _add_builds_on(e.src, e.dst)
+
+        # name -> decision that provides it. Landed decisions provide their footprint targets
+        # (def names); planned nodes provide their declared `provides`. Match on the full target
+        # and its last dotted segment so `Class.method` and a bare `method` both resolve.
+        def _names(raw: str) -> set[str]:
+            return {raw, raw.rsplit(".", 1)[-1]}
+
+        provider_of: dict[str, str] = {}
+        for d in decisions:
+            if d.status.value == "planned":
+                node = graph.get(d.node_id) if graph.has(d.node_id) else None
+                provided = node.provides if node else []
+            else:
+                provided = [k.split("::", 1)[1] for k in d.footprint if "::" in k]
+            for raw in provided:
+                for nm in _names(raw):
+                    provider_of.setdefault(nm, d.id)  # first (deepest in time) provider wins
+
+        feature_of = {d.id: d.feature for d in decisions}
+        for d in decisions:
+            if d.status.value != "planned":
+                continue
+            node = graph.get(d.node_id) if graph.has(d.node_id) else None
+            if node is None:
+                continue
+            wanted = {nm for raw in (*node.needs, *node.provides) for nm in _names(raw)}
+            for nm in wanted:
+                owner = provider_of.get(nm)
+                # Skip a same-lane owner: a planned node that redefines an existing entity is
+                # folded into that lane as a revise (drawn as the spine), not a cross-lane edge.
+                if owner and owner != d.id and feature_of.get(owner) != d.feature:
+                    _add_builds_on(d.id, owner)
 
     # builds-on / clash are derived at the LANE level: a lane owns the union of its footprints
     # up to its in-force decision (an entity touched once and not re-touched is still owned), and
@@ -319,8 +356,22 @@ def decision_graph_view(project) -> dict:
                     "a": in_force_of[fa].id, "b": in_force_of[fb].id, "entities": sorted(shared),
                 })
 
+    # A landed decision the frontier selects is reported as in_force (a frontier property,
+    # not a log one — so it's stamped here in the projection, not in the store). Each decision
+    # also carries a deterministic `structure` (defines/uses/used_by) read from the entity graph
+    # (or, for a planned node, its declared provides/needs) — the faithful, offline description.
+    has_graph = hasattr(project, "graph")
+    out_decisions = []
+    for d in decisions:
+        dd = d.to_dict()
+        if d.id in in_force_ids:
+            dd["status"] = "in_force"
+        node = project.graph.get(d.node_id) if has_graph and project.graph.has(d.node_id) else None
+        dd["structure"] = decision_structure(node, eg, ent_of.get(d.id, set()))
+        out_decisions.append(dd)
+
     return {
-        "decisions": [d.to_dict() for d in decisions],
+        "decisions": out_decisions,
         "edges": edges,
         "frontier": frontier.selection,
         "clash": clash,

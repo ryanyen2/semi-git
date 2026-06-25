@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from sgt.agents.planner import PlannerError, decompose
 from sgt.agents.resolve import resolve_ref
+from sgt.decisions.store import load_meta, save_meta
 from sgt.effects.model import EffectError
 from sgt.lifecycle.algebra import revert_feature, switch_feature
 from sgt.orchestrate.quarantine import attempt_recommute
@@ -90,16 +91,30 @@ class Orchestrator:
 
         key_to_id: dict[str, str] = {}
         nodes: list[Node] = []
+        enrichment: dict[str, dict] = {}  # node id -> authored slug/context/consequence
         for task in graph.tasks():
             nid = new_node_id()
             key_to_id[task.key] = nid
             nodes.append(Node(id=nid, kind=NodeKind.CAPABILITY, intent=task.intent,
                               status=NodeStatus.PLANNED, provides=list(task.provides),
                               needs=list(task.needs)))
+            authored = {k: v for k, v in
+                        (("slug", task.slug), ("context", task.context),
+                         ("consequence", task.consequence)) if v}
+            if authored:
+                enrichment[nid] = authored
         edges = [(key_to_id[k], key_to_id[d])
                  for k, ds in graph.dependencies().items() for d in ds
                  if k in key_to_id and d in key_to_id]
         dropped = self.project.add_plan(nodes, edges)
+        # Persist the planner's rationale into the decisions sidecar (keyed by node id == a
+        # planned decision's id), so every surface reads the enriched plan via sgt.api with no
+        # extra LLM call. Merges, so a later distill/checkpoint can refine without clobbering.
+        if enrichment:
+            meta = load_meta(self.project.sgt_dir)
+            for nid, authored in enrichment.items():
+                meta.setdefault(nid, {}).update(authored)
+            save_meta(self.project.sgt_dir, meta)
         self.project.commit(f"plan: {len(nodes)} node(s) — {intent[:50]}")
         msg = f"planned {len(nodes)} node(s)"
         if dropped:

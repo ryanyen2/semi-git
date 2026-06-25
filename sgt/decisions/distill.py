@@ -16,10 +16,27 @@ from __future__ import annotations
 import json
 
 from sgt.config import get_client, get_model
+from sgt.decisions.structure import decision_structure, resolve_footprint, structure_phrase
+
+
+def _structure_for(project, decision) -> dict:
+    """Deterministic ``{defines, uses, used_by}`` for a decision, from the entity graph."""
+    from sgt.api import entity_graph_view
+
+    try:
+        eg = entity_graph_view(project)
+    except Exception:  # noqa: BLE001 — structure is grounding, never fatal to distillation
+        eg = {"entities": []}
+    entity_ids = {e["id"] for e in eg.get("entities", [])}
+    owned = resolve_footprint(decision.footprint, entity_ids)
+    node = (project.graph.get(decision.node_id)
+            if hasattr(project, "graph") and project.graph.has(decision.node_id) else None)
+    return decision_structure(node, eg, owned)
 
 _SCHEMA = {
     "type": "object",
     "properties": {
+        "slug": {"type": "string"},
         "context": {"type": "string"},
         "consequence": {"type": "string"},
         "alternatives": {
@@ -35,30 +52,44 @@ _SCHEMA = {
             },
         },
     },
-    "required": ["context", "consequence", "alternatives"],
+    "required": ["slug", "context", "consequence", "alternatives"],
     "additionalProperties": False,
 }
 
 _SYS = (
     "You reconstruct the rationale behind a software decision from the change it produced. "
-    "Given the stated intent and the code, infer three things and nothing else: "
+    "You are given the stated intent, the code, AND a STRUCTURE block listing — from static "
+    "analysis of the call graph — exactly what this change defines, what those definitions use, "
+    "and what uses them. Treat the STRUCTURE block as ground truth: your rationale MUST be "
+    "consistent with it and must not assert relationships it does not contain. Infer four things "
+    "and nothing else: "
+    "Slug — a human title for the decision, at most 5 words, no trailing period; "
     "Context — the situation or need that preceded this decision; "
     "Consequence — what the codebase now guarantees as a result; "
     "Alternatives — other approaches that were plausible here and, for each, why it would lose. "
-    "Ground every claim in the provided code; never invent APIs, files, or facts not present. "
+    "Ground every claim in the provided code and STRUCTURE; never invent APIs, files, or facts. "
     "Alternatives are your reasoned inference — keep each to one short clause."
 )
 
 
-def distill_rationale(project, decision, *, client=None, model: str | None = None) -> dict:
-    """Infer ``{context, consequence, alternatives}`` for one decision via the LLM (raises offline)."""
+def distill_rationale(project, decision, *, client=None, model: str | None = None,
+                      structure: dict | None = None) -> dict:
+    """Infer ``{slug, context, consequence, alternatives}`` for one decision via the LLM (raises offline).
+
+    ``structure`` is the deterministic ``{defines, uses, used_by}`` summary; when omitted it is
+    computed from the entity graph here so the prompt is always grounded (hybrid: facts pin the
+    prose). Callers that already have it (the projection) pass it in to avoid re-parsing.
+    """
     client = client or get_client(project.repo)
     cb = project.materialize()
     files = sorted({k.split("::", 1)[0] for k in decision.footprint})
     src = "\n\n".join(f"# {f}\n{cb.get(f, '')[:2000]}" for f in files) or "(no source on disk)"
+    if structure is None:
+        structure = _structure_for(project, decision)
     user = (
         f"Intent: {decision.intent.decision}\n"
-        f"Entities touched: {', '.join(decision.footprint) or '(none)'}\n\n"
+        f"Entities touched: {', '.join(decision.footprint) or '(none)'}\n"
+        f"STRUCTURE: {structure_phrase(structure) or '(no static structure)'}\n\n"
         f"Code:\n{src}"
     )
     resp = client.chat.completions.create(
@@ -96,6 +127,8 @@ def distill_all(project, *, only: str | None = None, overwrite: bool = False, cl
         except Exception:  # noqa: BLE001 — one bad decision shouldn't abort the batch
             continue
         entry = meta.setdefault(d.id, {})
+        if r.get("slug") and not entry.get("slug"):  # don't clobber a planner/human slug
+            entry["slug"] = r.get("slug")
         entry["context"] = r.get("context")
         entry["consequence"] = r.get("consequence")
         entry["alternatives"] = [

@@ -27,7 +27,13 @@ _SCHEMA = {
                 "additionalProperties": False,
                 "properties": {
                     "key": {"type": "string", "description": "short kebab handle, unique in this plan"},
+                    "slug": {"type": "string",
+                             "description": "a human title for this decision, AT MOST 5 words, no trailing period"},
                     "intent": {"type": "string", "description": "a self-contained coding request"},
+                    "context": {"type": "string",
+                                "description": "the situation or need that makes this sub-task necessary"},
+                    "consequence": {"type": "string",
+                                    "description": "what the codebase will guarantee once this lands"},
                     "provides": {"type": "array", "items": {"type": "string"},
                                  "description": "top-level names this task will define"},
                     "needs": {"type": "array", "items": {"type": "string"},
@@ -35,7 +41,8 @@ _SCHEMA = {
                     "depends_on": {"type": "array", "items": {"type": "string"},
                                    "description": "keys of sub-tasks that must land first"},
                 },
-                "required": ["key", "intent", "provides", "needs", "depends_on"],
+                "required": ["key", "slug", "intent", "context", "consequence",
+                             "provides", "needs", "depends_on"],
             },
         }
     },
@@ -50,6 +57,9 @@ independently, then composed. Rules:
   `needs` (names it calls that another sub-task provides). A task that needs another's
   output must list that name in `needs` (or the producing key in `depends_on`).
 - Prefer coordination-free tasks (disjoint provides) so they can run in parallel.
+- For each sub-task also give: `slug` (a human title, at most 5 words), `context` (the need
+  that precedes it), and `consequence` (what the codebase guarantees once it lands). Ground
+  these in the intent and current codebase; do not invent files or APIs.
 - If the intent is atomic — one cohesive function/behavior — return EXACTLY ONE sub-task.
 - Do not invent work beyond the intent."""
 
@@ -90,6 +100,9 @@ def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str 
             provides=[n for n in st.get("provides", []) if n],
             needs=[n for n in st.get("needs", []) if n],
             depends_on=[k for k in st.get("depends_on", []) if k],
+            slug=(st.get("slug") or "").strip() or None,
+            context=(st.get("context") or "").strip() or None,
+            consequence=(st.get("consequence") or "").strip() or None,
         ))
     # A model can emit a cyclic decomposition (explicit depends_on, or a needs<->provides
     # loop). Validate layerability here so the caller degrades to single-agent rather than

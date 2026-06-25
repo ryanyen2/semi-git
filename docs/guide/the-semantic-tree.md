@@ -50,7 +50,12 @@ plug-out is clean even months later.
 ```
 
 1. **`sgt plan "…"`** — decompose an intent into reviewable `planned` nodes (no code yet). Each
-   carries its declared `provides`/`needs` and dependency edges. `sgt "…"` is shorthand.
+   carries its declared `provides`/`needs` and dependency edges, plus an authored **slug** (a short
+   ~5-word title), **context**, and **consequence** — so a planned decision reads as full rationale,
+   not just a one-line intent, before any code is written. (With no API key, planning degrades to the
+   intent line only.) A planned node that `provides` a name an existing decision already owns folds
+   into that lane as a **revision** — "enhance `preprocess`" stacks on the preprocess lane rather than
+   starting a new one. `sgt "…"` is shorthand.
 2. **Implement** a planned node with your own editor/agent.
 3. **`sgt checkpoint --fulfills <node> --intent "…"`** — record your on-disk edits under that
    node and flip it `active`. A bare `sgt checkpoint` records ad-hoc edits as a new node.

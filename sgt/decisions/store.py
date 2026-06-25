@@ -11,8 +11,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sgt.decisions.model import Alternative, Decision, Frontier, Intent, LifecycleKind
-from sgt.store.graph import EdgeType
+from sgt.decisions.model import (
+    Alternative,
+    Decision,
+    DecisionStatus,
+    Frontier,
+    Intent,
+    LifecycleKind,
+)
+from sgt.store.graph import EdgeType, NodeStatus
 
 META_FILE = "decisions.json"
 FRONTIER_FILE = "frontier.json"
@@ -119,7 +126,7 @@ def build_decisions(project) -> list[Decision]:
             did, nid, lane_of.get(nid, nid), landing, footprint,
             list(node.commit_ids) if node else [],
             Intent(decision=m.get("decision") or (node.intent if node else nid),
-                   context=m.get("context"), consequence=m.get("consequence")),
+                   slug=m.get("slug"), context=m.get("context"), consequence=m.get("consequence")),
             [Alternative.from_dict(a) for a in m.get("alternatives", [])],
         ))
 
@@ -144,10 +151,102 @@ def build_decisions(project) -> list[Decision]:
             decisions.append(Decision(
                 id=did, node_id=nid, feature=feature, landing=landing, intent=intent,
                 footprint=footprint, commits=commits, alternatives=alts,
-                lifecycle_kind=kind, lifecycle_of=of,
+                lifecycle_kind=kind, lifecycle_of=of, status=DecisionStatus.LANDED,
             ))
     decisions.sort(key=lambda d: (d.landing, d.node_id))
+    base_landing = max((d.landing for d in decisions), default=0)
+    planned = _planned_decisions(
+        project, landed_nids={nid for (nid, _l) in groups}, meta=meta, base_landing=base_landing)
+    _fold_planned_revisions(planned, decisions, graph)
+    decisions.extend(planned)
     return decisions
+
+
+def _fold_planned_revisions(planned: list[Decision], landed: list[Decision], graph) -> None:
+    """Fold a planned node that *redefines* an existing entity into that entity's lane (R: revise).
+
+    A planned capability whose ``provides`` names a def a landed decision already owns (e.g.
+    "enhance ``preprocess``") is not a new feature — it is the next revision of that lane. Folding it
+    in-place (same ``feature``, ``REVISE`` of the lane's current tip) makes it stack directly above the
+    decision it enhances with a connecting spine, instead of floating as its own one-dot column. A
+    planned node that only *needs* existing names (its provides are new) stays its own lane and is
+    linked by the cross-lane builds-on bridge in ``sgt.api`` instead. ``landed`` is sorted ascending,
+    so the last footprint owner / decision seen per lane is that lane's tip.
+    """
+    name_to_lane: dict[str, str] = {}
+    tip_of_lane: dict[str, str] = {}
+    for d in landed:
+        tip_of_lane[d.feature] = d.id
+        for k in d.footprint:
+            if "::" in k:
+                name_to_lane.setdefault(k.split("::", 1)[1], d.feature)
+    for pd in planned:
+        node = graph.get(pd.node_id) if graph.has(pd.node_id) else None
+        if node is None:
+            continue
+        for nm in node.provides:
+            lane = name_to_lane.get(nm)
+            if lane and lane != pd.feature:
+                pd.feature = lane
+                pd.lifecycle_kind = LifecycleKind.REVISE
+                pd.lifecycle_of = tip_of_lane[lane]
+                break
+
+
+def _planned_decisions(project, landed_nids: set[str], meta: dict, base_landing: int = 0) -> list[Decision]:
+    """Decisions for graph nodes that haven't landed any effects yet (plan R: hollow nodes).
+
+    A node is planned when it has no landed decision and either carries ``NodeStatus.PLANNED``
+    or simply produced no effects. Each planned capability is its own lane (``feature = id``)
+    with an empty footprint and no commits. Their ``landing`` is a dependencies-first
+    topological index over ``depends_on`` *offset above the latest landed landing*
+    (``base_landing``), so a dependency still sorts before its dependents while the whole planned
+    cohort floats to the top of the time axis (newest = not-yet-built) instead of colliding with
+    landed landing integers and sinking below them.
+    """
+    graph = project.graph
+    planned_nodes = [
+        n for n in graph.nodes()
+        if n.id not in landed_nids
+        and (n.status is NodeStatus.PLANNED or not n.commit_ids)
+    ]
+    if not planned_nodes:
+        return []
+    planned_ids = {n.id for n in planned_nodes}
+
+    # dependencies-first order over the planned subgraph's depends_on edges
+    succ: dict[str, list[str]] = {nid: [] for nid in planned_ids}
+    for e in graph.edges():
+        if e.type is EdgeType.DEPENDS_ON and e.src in planned_ids and e.dst in planned_ids:
+            succ[e.src].append(e.dst)
+    order: list[str] = []
+    seen: set[str] = set()
+
+    def visit(n: str) -> None:
+        if n in seen:
+            return
+        seen.add(n)
+        for dep in sorted(succ[n]):  # deps first, deterministic
+            visit(dep)
+        order.append(n)
+
+    for nid in sorted(planned_ids):
+        visit(nid)
+    landing_of = {nid: base_landing + i + 1 for i, nid in enumerate(order)}
+
+    out: list[Decision] = []
+    for n in sorted(planned_nodes, key=lambda n: landing_of[n.id]):
+        m = meta.get(n.id, {})
+        out.append(Decision(
+            id=n.id, node_id=n.id, feature=n.id, landing=landing_of[n.id],
+            intent=Intent(decision=m.get("decision") or n.intent,
+                          slug=m.get("slug"), context=m.get("context"), consequence=m.get("consequence")),
+            footprint=[], commits=[],
+            alternatives=[Alternative.from_dict(a) for a in m.get("alternatives", [])],
+            lifecycle_kind=LifecycleKind.INTRODUCE, lifecycle_of=None,
+            status=DecisionStatus.PLANNED,
+        ))
+    return out
 
 
 # -- persistence -----------------------------------------------------------

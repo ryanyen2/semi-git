@@ -13,6 +13,21 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+class DecisionStatus(str, Enum):
+    """The lifecycle phase of a decision on the time axis.
+
+    ``PLANNED`` is a tentative capability with no effects yet (a graph node the coding
+    agent has not implemented). ``LANDED`` has real effects/commits but is not the
+    in-force composition for its lane. ``IN_FORCE`` is a landed decision the frontier
+    currently selects — what a "now" view materializes. Status is never hue; surfaces
+    render it as a glyph + dim.
+    """
+
+    PLANNED = "planned"
+    LANDED = "landed"
+    IN_FORCE = "in_force"
+
+
 class LifecycleKind(str, Enum):
     """How a decision relates to the one it descends from — the only *intrinsic* edge.
 
@@ -30,19 +45,23 @@ class LifecycleKind(str, Enum):
 @dataclass
 class Intent:
     """The ADR-style rationale of a decision. ``decision`` is always present (the choice
-    made); ``context`` (why/preconditions) and ``consequence`` (what is now guaranteed)
-    are authored from deliberation and may be ``None`` for log-recovered decisions."""
+    made); ``slug`` is a short ~5-word human handle for it (the row title); ``context``
+    (why/preconditions) and ``consequence`` (what is now guaranteed) are authored from
+    deliberation. All but ``decision`` may be ``None`` for a bare log-recovered decision."""
 
     decision: str
+    slug: str | None = None
     context: str | None = None
     consequence: str | None = None
 
     def to_dict(self) -> dict:
-        return {"context": self.context, "decision": self.decision, "consequence": self.consequence}
+        return {"context": self.context, "decision": self.decision,
+                "consequence": self.consequence, "slug": self.slug}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Intent":
-        return cls(decision=d["decision"], context=d.get("context"), consequence=d.get("consequence"))
+        return cls(decision=d["decision"], slug=d.get("slug"),
+                   context=d.get("context"), consequence=d.get("consequence"))
 
 
 @dataclass
@@ -97,6 +116,10 @@ class Decision:
     alternatives: list[Alternative] = field(default_factory=list)
     lifecycle_kind: LifecycleKind = LifecycleKind.INTRODUCE
     lifecycle_of: str | None = None
+    # PLANNED (no effects) or LANDED (has effects). A landed decision is upgraded to
+    # IN_FORCE by the projection (sgt.api) when the frontier selects it; the store only
+    # ever sets PLANNED or LANDED, since "in force" is a frontier property, not a log one.
+    status: DecisionStatus = DecisionStatus.LANDED
 
     def to_dict(self) -> dict:
         return {
@@ -104,6 +127,7 @@ class Decision:
             "node_id": self.node_id,
             "feature": self.feature,
             "landing": self.landing,
+            "status": self.status.value,
             "intent": self.intent.to_dict(),
             "footprint": list(self.footprint),
             "commits": list(self.commits),
@@ -125,6 +149,7 @@ class Decision:
             alternatives=[Alternative.from_dict(a) for a in d.get("alternatives", [])],
             lifecycle_kind=LifecycleKind(lc.get("kind", LifecycleKind.INTRODUCE.value)),
             lifecycle_of=lc.get("of"),
+            status=DecisionStatus(d.get("status", DecisionStatus.LANDED.value)),
         )
 
 
@@ -151,9 +176,16 @@ class Frontier:
 
     @classmethod
     def tip_of(cls, decisions: list[Decision]) -> "Frontier":
-        """The default frontier: each lane's latest-landing decision."""
+        """The default frontier: each lane's latest-landing *landed* decision.
+
+        Planned decisions never enter the frontier — they have no effects, so nothing
+        is materialized for them. A planned-only workspace therefore has an empty
+        frontier (and ``materialize`` sees no in-force decision to draw effects from).
+        """
         best: dict[str, Decision] = {}
         for d in decisions:
+            if d.status is DecisionStatus.PLANNED:
+                continue
             cur = best.get(d.feature)
             if cur is None or d.landing > cur.landing:
                 best[d.feature] = d

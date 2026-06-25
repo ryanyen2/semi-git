@@ -60,6 +60,27 @@ def test_plan_creates_planned_nodes_with_edges(tmp_path):
     assert proj.valid()
 
 
+def test_plan_persists_planner_enrichment_to_decisions(tmp_path):
+    # The planner now returns slug/context/consequence per sub-task; plan() must persist them so a
+    # freshly-planned decision is rich (not decision-only) on every surface, with no extra LLM call.
+    from sgt.decisions.store import build_decisions
+
+    g = ConstraintGraph()
+    g.add(SubTask("retr", "implement keyword retrieval", provides=["retrieve"],
+                  slug="Keyword retrieval", context="No retrieval path exists yet.",
+                  consequence="Callers can fetch ranked docs."))
+    orch, proj = _orch(tmp_path, g)
+    rep = orch.plan("add retrieval")
+    assert rep.ok
+
+    dec = {d.node_id: d for d in build_decisions(proj)}[rep.landed[0]]
+    assert dec.intent.slug == "Keyword retrieval"
+    assert dec.intent.context == "No retrieval path exists yet."
+    assert dec.intent.consequence == "Callers can fetch ranked docs."
+    # the long coding request stays the decision text
+    assert dec.intent.decision == "implement keyword retrieval"
+
+
 def test_plan_atomic_intent_persists_one_node(tmp_path):
     g = ConstraintGraph()
     g.add(SubTask("only", "add a 6-char url shortener", provides=["shorten"]))

@@ -18,6 +18,16 @@ def _dec(did, feature, landing, kind=LifecycleKind.INTRODUCE, of=None):
     )
 
 
+def test_intent_slug_round_trips():
+    it = Intent(decision="Switch ranking to BM25", slug="BM25 index",
+                context="scan got slow", consequence="latency drops")
+    back = Intent.from_dict(it.to_dict())
+    assert back == it
+    assert back.slug == "BM25 index"
+    # a bare (log-recovered) intent has no slug
+    assert Intent.from_dict({"decision": "x"}).slug is None
+
+
 def test_decision_round_trips():
     d = _dec("retr@2", "retr", 2, LifecycleKind.REVISE, "retr@1")
     back = Decision.from_dict(d.to_dict())

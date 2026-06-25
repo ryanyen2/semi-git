@@ -27,6 +27,9 @@ class SubTask:
     provides: list[str] = field(default_factory=list)   # names this task will define
     needs: list[str] = field(default_factory=list)      # names it requires from others
     depends_on: list[str] = field(default_factory=list)  # explicit sub-task keys
+    slug: str | None = None                    # short ~5-word human handle (row title)
+    context: str | None = None                 # the need/situation preceding this sub-task
+    consequence: str | None = None             # what the codebase will guarantee once landed
 
 
 class ConstraintGraph:

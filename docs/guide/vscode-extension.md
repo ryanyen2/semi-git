@@ -56,8 +56,8 @@ Each feature is a **row** (most-derived on top), laid out like a git graph:
 - **GRAPH column** — git-style **swim lanes**: each feature is a node circle in its identity color,
   connected by colored bezier edges down to the features it depends on. Planned nodes render hollow;
   conflicts get a red ring.
-- **FEATURE column** — a short structured label (`add-query-knowledgebase`, ≤5 words) derived from
-  the intent; the full sentence lives in the detail pane.
+- **FEATURE column** — the decision's **slug**: a short ~5-word human title (authored by `sgt plan`
+  or distilled for landed work); the full decision sentence drops to the sub-line and detail pane.
 - **Minimap** — a canvas activity ribbon (effects per feature) with status-colored markers; click
   to jump to a feature.
 - **Header** — feature count, a drift chip (`✓ in sync` / `⚠ drifted`), and **live agent presence**.
@@ -68,11 +68,21 @@ N: …`) — so you can watch the graph being worked, multiplayer-style. A just-
 flashes as it lands.
 
 **Inspect in-situ — no popups.** Selecting a row (click, arrow keys + `Enter`, or a hover/tree
-"Inspect") opens a **detail pane** beside the graph (never a modal): the full intent rendered as
-**rich text** — backtick code spans, and `@`/`#`/backtick references to other features become
-clickable cross-references — plus clickable dependency chips, the effect list, the conflict witness,
-and actions. **Preview revert/suspend** opens a read-only diff; **Revert/Suspend** apply with a
-two-click inline confirm (no modal) since they're reversible. **Search** dims non-matches in place.
+"Inspect") opens a **detail pane** beside the graph (never a modal). It carries, top to bottom:
+
+- **Rationale (ADR)** — the decision's **Context / Decision / Consequence**. For a planned node these
+  come from `sgt plan`; for landed work, a one-click **✦ Distill** button reconstructs them via the
+  LLM (no-op offline). Status shows as a glyph + label (`○ Planned`, `● In force`, `● Landed`).
+- **Structure** — a *deterministic*, analysis-derived description read straight from the entity call
+  graph: what this decision **defines**, what those defs **use**, and what **uses** them. Unlike the
+  ADR prose this can't drift or hallucinate — it's recomputed from code (or, for a planned node, its
+  declared `provides`/`needs`). Distillation is fed this block as ground truth so the prose stays
+  anchored to real structure.
+- **Alternatives weighed**, the **git transaction** (commit chips), and the **footprint** (clickable
+  entity chips that reveal the def), then the **actions**.
+
+**Preview revert/suspend** opens a read-only diff; **Revert/Suspend** apply with a two-click inline
+confirm (no modal) since they're reversible. **Search** dims non-matches in place.
 
 ### Revision navigation
 
