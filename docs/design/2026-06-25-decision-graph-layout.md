@@ -114,6 +114,11 @@ Also implemented since:
   Benchmark's "add memory to the timer" now folds into the timer lane; benchmark went 6 lanes / 2
   orphans / depth 1 → 3 lanes / 0 orphans / depth 3.
 
-Follow-ups (not yet built):
-- Lane-adjacency packing refinement (principle 3) for the non-bus spine features.
-- Capping the capability map to HEAD's transitive spines at very large scale.
+Also implemented:
+- **Lane-adjacency packing** (principle 3): among the valid (free, non-spearing) lanes, a feature is
+  placed in the one nearest the mean lane of its already-placed builds-on/revises neighbours, so a
+  dependent sits next to its dependency and the connector is short — never opening a new column to do
+  it (column count is unchanged; only the choice *among* existing valid lanes changes).
+- **Capability-map cap**: `build_plan_context(cap_features=40)` keeps the most intent-relevant in-force
+  capabilities (name/slug overlap), then by recency, and summarizes the rest as "(+N more)", so the
+  map stays bounded even on a several-hundred-lane repo.

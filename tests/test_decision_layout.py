@@ -150,6 +150,22 @@ def test_head_rooted_order_overrides_newest_landing():
     _no_cell_collisions(out)
 
 
+def test_lane_adjacency_places_a_dependent_next_to_its_dependency():
+    # fa is a 2-decision spine (rows 0,2) in lane 0; fb sits inside it in lane 1. fc (row 3) builds on
+    # fb and has TWO free lanes to choose from. Baseline takes the lowest (lane 0, far from fb);
+    # avoidCrossings adjacency puts it in fb's lane so the connector is short — without a new column.
+    g = {
+        "decisions": [_dec("a1", "fa", 5), _dec("b1", "fb", 4), _dec("a2", "fa", 3), _dec("c1", "fc", 2)],
+        "edges": [_dep("c1", "b1")], "frontier": {}, "clash": [],
+    }
+    base = _run_layout(g)
+    adj = _run_layout(g, {"avoidCrossings": True})
+    assert base["pos"]["c1"]["lane"] != base["pos"]["b1"]["lane"]   # baseline separates them
+    assert adj["pos"]["c1"]["lane"] == adj["pos"]["b1"]["lane"]     # adjacency co-locates them
+    assert adj["laneCount"] == base["laneCount"]                    # at no extra column cost
+    _no_cell_collisions(adj)
+
+
 def test_fan_bus_collapse_brackets_leaf_feeders_into_one_lane():
     # HEAD builds on three pure leaves. They must share ONE adjacent bus lane (a visible bracket),
     # neither packed into HEAD's column (which hides the edges as verticals) nor fanned into 3 columns.

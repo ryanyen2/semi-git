@@ -44,7 +44,7 @@ def _entity_source(codebase: dict[str, str], e: dict) -> str:
     return f"# {e['file']}::{e['name']}\n{body}"
 
 
-def build_plan_context(project, intent: str, *, budget_chars: int = 4000) -> str:
+def build_plan_context(project, intent: str, *, budget_chars: int = 4000, cap_features: int = 40) -> str:
     """A compact planner context: capability map (always) + call-graph-retrieved relevant code."""
     from sgt.api import entity_graph_view
     from sgt.decisions.store import build_decisions, load_frontier
@@ -56,15 +56,28 @@ def build_plan_context(project, intent: str, *, budget_chars: int = 4000) -> str
     except Exception:  # noqa: BLE001
         codebase = project.materialize()
 
-    # 1) capability map = the HEAD composition with the names each in-force decision provides.
+    # 1) capability map = the HEAD composition with the names each in-force decision provides. This
+    # is O(lanes), so at very large scale it is itself capped: keep the most intent-relevant ones
+    # (name/slug overlap with the intent), then by recency, up to `cap_features`, with a count of the
+    # rest — the planner sees what's most relevant to this intent without re-listing a 500-lane repo.
     decisions = build_decisions(project)
     in_force = load_frontier(project, decisions).in_force()
+    toks = _tokens(intent)
+
+    def _cap_score(d):
+        names = {k.split("::", 1)[1] for k in d.footprint if "::" in k}
+        rel = len(toks & _tokens(f"{d.intent.slug or d.intent.decision} {' '.join(names)}"))
+        return (rel, d.landing)
+
+    in_force_decs = sorted((d for d in decisions if d.id in in_force), key=_cap_score, reverse=True)
+    shown = in_force_decs[:cap_features]
     cap_lines = []
-    for d in decisions:
-        if d.id in in_force:
-            names = sorted({k.split("::", 1)[1] for k in d.footprint if "::" in k})
-            slug = d.intent.slug or d.intent.decision
-            cap_lines.append(f"- {slug} (provides: {', '.join(names[:6]) or '—'})")
+    for d in sorted(shown, key=lambda d: d.landing):  # display oldest→newest for readability
+        names = sorted({k.split("::", 1)[1] for k in d.footprint if "::" in k})
+        slug = d.intent.slug or d.intent.decision
+        cap_lines.append(f"- {slug} (provides: {', '.join(names[:6]) or '—'})")
+    if len(in_force_decs) > cap_features:
+        cap_lines.append(f"- (+{len(in_force_decs) - cap_features} more capabilities, not shown)")
     cap_map = "\n".join(cap_lines) or "(nothing built yet)"
 
     # 2) retrieved code: seed entities by name overlap with the intent, expand one call-graph hop.
@@ -76,7 +89,6 @@ def build_plan_context(project, intent: str, *, budget_chars: int = 4000) -> str
         body = _render_codebase(codebase) if codebase else "(empty — new project)"
         return f"Existing capabilities (HEAD):\n{cap_map}\n\nCode relevant to this intent:\n{body}"
 
-    toks = _tokens(intent)
     by_id = {e["id"]: e for e in ents}
 
     def score(e: dict) -> int:

@@ -72,6 +72,30 @@ def test_context_stays_bounded_as_the_codebase_grows(tmp_path):
     assert "feature_7" in ctx
 
 
+def test_capability_map_is_capped_at_scale(tmp_path):
+    # With 40 in-force capabilities and a cap of 5, the map lists at most 5 + a "(+N more)" note,
+    # prioritizing the ones relevant to the intent (so the planner still sees what it's enhancing).
+    proj = Project.init(tmp_path)
+    defs = []
+    for i in range(39):
+        proj.add_feature(Node(id=f"f{i}", kind=NodeKind.CAPABILITY, intent=f"widget {i}"),
+                         [Effect.add_def("big.py", f"widget_{i}", f"def widget_{i}():\n    return {i}")])
+        defs.append(f"def widget_{i}():\n    return {i}")
+    # one distinctly-named, intent-relevant capability
+    proj.add_feature(Node(id="rank", kind=NodeKind.CAPABILITY, intent="rank search results"),
+                     [Effect.add_def("big.py", "rank_results", "def rank_results(xs):\n    return xs")])
+    defs.append("def rank_results(xs):\n    return xs")
+    proj.log.stamp_committed()
+    (tmp_path / "big.py").write_text("\n".join(defs), encoding="utf-8")
+    proj.save()
+
+    ctx = build_plan_context(proj, "improve how we rank search results", budget_chars=300, cap_features=5)
+    cap_block = ctx.split("Code relevant")[0]
+    assert cap_block.count("(provides:") <= 5            # capped
+    assert "more capabilities, not shown" in cap_block   # the rest are summarized
+    assert "rank_results" in cap_block                   # the intent-relevant one survives the cap
+
+
 def test_empty_project_degrades_to_codebase_render(tmp_path):
     proj = Project.init(tmp_path)
     proj.save()

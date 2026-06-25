@@ -229,17 +229,42 @@ function computeLayout(graph, opts) {
     }
   }
 
+  // Lane-adjacency: the mean lane of f's already-placed builds-on neighbours (either direction). When
+  // several lanes are equally valid we pick the one closest to this target so a dependent sits next to
+  // its dependency and the connector is a short curve — never opening a new column to do it (column
+  // count is unchanged; only the choice *among* existing valid lanes changes).
+  function neighborLane(f) {
+    let sum = 0, n = 0;
+    for (const e of edges) {
+      if (e.type !== "builds-on" && e.type !== "revises") continue;
+      const af = featureOf[e.src], bf = featureOf[e.dst];
+      if (af === undefined || bf === undefined || af === bf) continue;
+      const other = af === f ? bf : bf === f ? af : null;
+      if (other !== null && laneOf[other] !== undefined) { sum += laneOf[other]; n++; }
+    }
+    return n ? sum / n : null;
+  }
+
   for (const f of order) {
     if (laneOf[f] !== undefined) continue; // pinned by the fan-bus pass above
     const s = span[f];
-    let lane = -1;
-    for (let L = 0; L <= laneBot.length; L++) {
-      const free = L >= laneBot.length || laneBot[L] < s.top;
-      if (!free) continue;
+    const valid = [];
+    for (let L = 0; L < laneBot.length; L++) {
+      if (laneBot[L] >= s.top) continue;            // occupied
       if (avoidCrossings && wouldSpear(L, f)) continue;
-      lane = L; break;
+      valid.push(L);
     }
-    if (lane === -1) lane = laneBot.length; // every lane spears — open a fresh, always-free column
+    const target = avoidCrossings ? neighborLane(f) : null;
+    let lane;
+    if (!valid.length) {
+      lane = laneBot.length;                        // every existing lane is taken/spears — new column
+    } else if (target !== null) {
+      lane = valid.reduce((best, L) =>
+        Math.abs(L - target) < Math.abs(best - target) ||
+        (Math.abs(L - target) === Math.abs(best - target) && L < best) ? L : best, valid[0]);
+    } else {
+      lane = valid[0];                              // baseline: lowest free lane (minimal columns)
+    }
     laneBot[lane] = s.bot;
     laneOf[f] = lane;
     if (avoidCrossings) {
