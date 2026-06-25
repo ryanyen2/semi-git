@@ -81,12 +81,18 @@ Edges route with the existing spear-avoidance (an edge never crosses an interven
 if it must). The dependency-rooted order makes most edges adjacent, so routing rarely needs extra
 columns — robustness without width.
 
-### Context (large graphs)
-The planner re-renders the whole codebase each plan; the same growth will hit any client that ships the
-full graph. The digest in `scripts/graph_stress/digest.py` (shape metrics + lane render, no raw JSON)
-is the prototype of the fix: pass the planner a **compacted** view — the head, the active spines, and
-only the entities on the path to what the new intent `needs` — i.e. graph-driven RAG over the decision
-graph rather than the raw tree. Out of scope for the first layout cut; noted as the scaling path.
+### Context (large graphs) — implemented
+The planner used to re-render the whole codebase each plan (the corpus showed it climbing 179 → ~3.7k
+chars over one run). `sgt/agents/plan_context.py` (`build_plan_context`) replaces that with a
+**graph-driven** view: a **capability map** (the HEAD composition + the names each in-force decision
+provides — O(lanes), always cheap, and it tells the planner what already exists *and what it's called*,
+reducing `provides` name drift) plus **retrieved code** — entities seeded by name overlap with the
+intent, expanded one hop over the call graph, rendered up to a char budget. `Orchestrator.plan` builds
+it and passes it to `decompose`; offline/keyword + graph structure only, no embeddings. For small repos
+the codebase fits under budget so context is unchanged; the bound bites once the tree exceeds it
+(`tests/agents/test_plan_context.py::test_context_stays_bounded_as_the_codebase_grows`). Remaining
+refinement: the capability map is itself O(lanes) — cap it to HEAD's transitive spines at very large
+scale.
 
 ## Status
 Implemented + tested:
@@ -103,5 +109,3 @@ Follow-ups (designed here, not yet built):
   rather than k lanes. Lane-adjacency packing (principle 3) refinement.
 - **Fold coverage**: the "add memory measurement to the timer" miss (planner emitted a new `provides`
   name instead of revising the timer) — a planner-grounding fix that also shrinks lanes.
-- **Graph-driven planner RAG**: feed the planner a compacted view (HEAD + active spines + only the
-  entities on the path to what the new intent needs) instead of the whole re-rendered tree.

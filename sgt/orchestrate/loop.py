@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from sgt.agents.plan_context import build_plan_context
 from sgt.agents.planner import PlannerError, decompose
 from sgt.agents.resolve import resolve_ref
 from sgt.decisions.store import load_meta, save_meta
@@ -84,8 +85,14 @@ class Orchestrator:
         if (blocked := self._guard("plan")):
             return blocked
         cb = self.project.materialize()
+        # Graph-driven context: a capability map of HEAD + only the code relevant to this intent,
+        # so the prompt stays bounded as the graph grows (instead of re-rendering the whole tree).
         try:
-            graph = self._decompose(intent, cb, repo_path=self.repo_path)
+            context = build_plan_context(self.project, intent)
+        except Exception:  # noqa: BLE001 — never let context-building block planning
+            context = None
+        try:
+            graph = self._decompose(intent, cb, repo_path=self.repo_path, context=context)
         except PlannerError as ex:
             return Report("plan", False, message=f"could not plan: {ex}")
 

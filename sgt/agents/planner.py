@@ -75,9 +75,13 @@ class PlannerError(Exception):
     """Raised when the model returns an empty or malformed decomposition."""
 
 
-def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str | None = None) -> ConstraintGraph:
+def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str | None = None,
+              context: str | None = None) -> ConstraintGraph:
     client = get_client(repo_path)
-    user = f"Current codebase:\n{_render(codebase)}\n\nIntent to decompose:\n{intent}"
+    # `context` is the compact, graph-driven view (capability map + retrieved code) built by the
+    # caller; fall back to rendering the whole codebase only when none is supplied (small/new repos).
+    rendered = context if context is not None else f"Current codebase:\n{_render(codebase)}"
+    user = f"{rendered}\n\nIntent to decompose:\n{intent}"
     try:
         resp = client.chat.completions.create(
             model=model or get_model(),

@@ -15,7 +15,7 @@ import json
 import os
 from pathlib import Path
 
-from sgt.agents.planner import _render
+from sgt.agents.plan_context import build_plan_context
 from sgt.api import decision_graph_view
 from sgt.orchestrate.loop import Orchestrator
 from sgt.orchestrate.sync import run_sync
@@ -62,8 +62,11 @@ class Driver:
     # -- moves ---------------------------------------------------------------
     def plan(self, intent: str, expect: str = "") -> None:
         proj = Project.open(self.wd)
-        ctx = f"Current codebase:\n{_render(proj.materialize())}\n\nIntent to decompose:\n{intent}"
-        ctx_chars = len(ctx)
+        # measure the REAL (graph-driven, compacted) context the planner will receive
+        try:
+            ctx_chars = len(build_plan_context(proj, intent))
+        except Exception:  # noqa: BLE001
+            ctx_chars = -1
         self.cost["planner_ctx_chars"].append(ctx_chars)
         self.cost["plan_calls"] += 1
 
