@@ -63,6 +63,11 @@ Rules:
 - Declare `provides` (the top-level names this capability defines) and `needs` (names it calls that
   ANOTHER sub-task provides). A task that needs another's output lists that name in `needs` (or the
   producing key in `depends_on`). Prefer disjoint `provides` so capabilities compose cleanly.
+- ENHANCING existing code is a REVISION, not a new capability. If the intent modifies, extends, or
+  improves something that already exists (see the capability map of what's already built), set
+  `provides` to the EXISTING name(s) being changed — do NOT invent a new name for a change to existing
+  behavior. Example: "add memory tracking to the timer" when a `measure_time` already exists →
+  `provides: [measure_time]` (it revises the timer), NOT `provides: [measure_memory]`.
 - For each sub-task also give: `slug` (a human title, at most 5 words), `context` (the need that
   precedes it), and `consequence` (what the codebase guarantees once it lands). Ground these in the
   intent and current codebase; do not invent files or APIs.

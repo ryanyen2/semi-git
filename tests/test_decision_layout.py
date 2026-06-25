@@ -150,6 +150,23 @@ def test_head_rooted_order_overrides_newest_landing():
     _no_cell_collisions(out)
 
 
+def test_fan_bus_collapse_brackets_leaf_feeders_into_one_lane():
+    # HEAD builds on three pure leaves. They must share ONE adjacent bus lane (a visible bracket),
+    # neither packed into HEAD's column (which hides the edges as verticals) nor fanned into 3 columns.
+    g = {
+        "decisions": [_dec("H@5", "H", 5), _dec("a@2", "a", 2), _dec("b@3", "b", 3), _dec("c@4", "c", 4)],
+        "edges": [_dep("H@5", "a@2"), _dep("H@5", "b@3"), _dep("H@5", "c@4")],
+        "frontier": {}, "clash": [], "head": "H@5",
+    }
+    out = _run_layout(g, {"avoidCrossings": True})
+    hlane = out["pos"]["H@5"]["lane"]
+    flanes = {out["pos"][x]["lane"] for x in ("a@2", "b@3", "c@4")}
+    assert len(flanes) == 1            # feeders share one bus lane
+    assert hlane not in flanes         # distinct from HEAD -> feeder→HEAD edges render as curves
+    assert out["laneCount"] == 2
+    _no_cell_collisions(out)
+
+
 def test_no_head_field_keeps_newest_on_top():
     # Backwards-compatible: with no `head`, ordering is the original newest-landing-first.
     g = {"decisions": [_dec("a@1", "f", 1), _dec("a@2", "f", 2)], "edges": [], "frontier": {}, "clash": []}

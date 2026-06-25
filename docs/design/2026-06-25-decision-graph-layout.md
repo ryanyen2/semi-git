@@ -70,11 +70,14 @@ OKLCH hue = feature identity, status = glyph. Lane *assignment* changes only so 
 adjacent to the dependency it most directly feeds (short vertical connectors), reusing the existing
 `avoidCrossings` forbidden-lane packer.
 
-### 4. Collapse pure fans into a bus
-When *k* leaf decisions feed one integrator and have no other edges (benchmark's sorts+timer → runner),
-don't give each a full-height lane. Render them as a compact **feeder bus**: a short stack directly
-beneath the integrator joined by one shared connector. This bounds width at `O(active spines)` instead
-of `O(decisions)`, the difference between benchmark reading as 6 columns vs. 1 trunk + a small bracket.
+### 4. Collapse pure fans into a bus — implemented
+A fan does not actually fan into many columns under interval-coloring — it *over-packs* into **one**
+column, where every feeder→HEAD edge hides as a vertical behind the intervening dots (the "straight
+line, can't see edges" failure from the live extension). So the fix is to *separate*, not merge:
+`computeLayout` pins HEAD's feature to lane 0 and gathers its **pure-leaf feeders** (single-decision
+features HEAD builds on, that nothing else builds on and that build on nothing) into ONE shared
+adjacent **bus lane**, so each feeder→HEAD connector is a visible short curve and width stays at 2
+regardless of feeder count. Benchmark: laneCount 1 (hidden fan) → 2 (HEAD + bus bracket).
 
 ### 5. Path routing
 Edges route with the existing spear-avoidance (an edge never crosses an intervening dot; open a column
@@ -104,8 +107,13 @@ Implemented + tested:
   (backwards-compatible). Validated in `tests/test_decision_layout.py`.
 - HEAD emphasis in the webview (a `HEAD` chip + accent ring on the head node).
 
-Follow-ups (designed here, not yet built):
-- **Fan-bus collapse** (principle 4): render k pure leaf feeders as one bracket into the integrator
-  rather than k lanes. Lane-adjacency packing (principle 3) refinement.
-- **Fold coverage**: the "add memory measurement to the timer" miss (planner emitted a new `provides`
-  name instead of revising the timer) — a planner-grounding fix that also shrinks lanes.
+Also implemented since:
+- **Fan-bus collapse** (principle 4, above) — HEAD's pure-leaf feeders share one bus lane.
+- **Fold coverage** — the planner now treats an *enhancement* of existing code as a revision: it sets
+  `provides` to the existing name (grounded by the RAG capability map) instead of inventing a new one.
+  Benchmark's "add memory to the timer" now folds into the timer lane; benchmark went 6 lanes / 2
+  orphans / depth 1 → 3 lanes / 0 orphans / depth 3.
+
+Follow-ups (not yet built):
+- Lane-adjacency packing refinement (principle 3) for the non-bus spine features.
+- Capping the capability map to HEAD's transitive spines at very large scale.

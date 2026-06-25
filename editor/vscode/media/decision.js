@@ -192,7 +192,45 @@ function computeLayout(graph, opts) {
 
   const laneBot = []; // laneBot[i] = bottom row currently occupying lane i
   const laneOf = {};
+
+  // Fan-bus collapse. A fan/star (many leaf capabilities feeding one integrator) otherwise gets
+  // packed by interval-coloring into ONE column, where every feeder→HEAD edge hides as a vertical
+  // behind the intervening dots (the "straight line, can't see edges" failure). When the projection
+  // names a HEAD, pin its feature to lane 0 and gather its pure-leaf feeders — single-decision
+  // features HEAD builds on, that nothing else builds on and that build on nothing — into ONE shared
+  // adjacent "bus" lane, so each feeder→HEAD connector becomes a visible short curve and width stays
+  // at O(spines)+1 regardless of how many feeders there are.
+  if (head && idSet.has(head)) {
+    const headFeat = featureOf[head];
+    const out = {}, inc = {};
+    for (const e of edges) {
+      if (e.type !== "builds-on") continue;
+      const af = featureOf[e.src], bf = featureOf[e.dst];
+      if (af === undefined || bf === undefined || af === bf) continue;
+      (out[af] ||= new Set()).add(bf);
+      (inc[bf] ||= new Set()).add(af);
+    }
+    const feeders = [];
+    for (const f of out[headFeat] || []) {
+      if (f === headFeat || (rowsByFeature[f] || []).length !== 1) continue;
+      if ((out[f] || new Set()).size !== 0) continue; // builds on nothing itself (a pure leaf)
+      const fi = inc[f] || new Set();
+      if (fi.size === 1 && fi.has(headFeat)) feeders.push(f); // only HEAD builds on it
+    }
+    if (feeders.length >= 2) {
+      laneOf[headFeat] = 0;
+      laneBot[0] = span[headFeat].bot;
+      let busBot = -Infinity;
+      for (const f of feeders) { laneOf[f] = 1; busBot = Math.max(busBot, span[f].bot); }
+      laneBot[1] = busBot;
+      if (avoidCrossings)
+        for (const f of [headFeat, ...feeders])
+          for (const r of rowsByFeature[f]) placedDots.push({ row: r, lane: laneOf[f] });
+    }
+  }
+
   for (const f of order) {
+    if (laneOf[f] !== undefined) continue; // pinned by the fan-bus pass above
     const s = span[f];
     let lane = -1;
     for (let L = 0; L <= laneBot.length; L++) {
