@@ -280,7 +280,6 @@ def decision_graph_view(project) -> dict:
     # (2) a *name bridge* — the names a planned node `needs`/`provides`, resolved against what every
     # other decision (landed or planned) provides, so "update run_pipeline to use retrieve_from_graph"
     # links to both the landed `run_pipeline` lane and the planned `retrieve_from_graph` node.
-    planned_ids = {d.id for d in decisions if d.status.value == "planned"}
     seen_edges = {(e["src"], e["dst"], e["type"]) for e in edges}
 
     def _add_builds_on(src: str, dst: str) -> None:
@@ -289,15 +288,28 @@ def decision_graph_view(project) -> dict:
             seen_edges.add(key)
             edges.append({"src": src, "dst": dst, "type": "builds-on", "derived": True})
 
-    if planned_ids and hasattr(project, "graph"):
+    feature_of = {d.id: d.feature for d in decisions}
+    if hasattr(project, "graph"):
         graph = project.graph
+        # Declared plan dependencies persist as builds-on between the *decisions* of those nodes,
+        # even after they land. The call graph alone misses compositional deps — a stats fn that
+        # consumes a loader's output without calling it — which would otherwise orphan both. Map
+        # each node to its latest decision so a revised lane keeps a single incident edge.
+        dec_of_node: dict[str, str] = {}
+        for d in sorted(decisions, key=lambda d: d.landing):
+            dec_of_node[d.node_id] = d.id
         for e in graph.edges():
-            if e.type is EdgeType.DEPENDS_ON and e.src in planned_ids and e.dst in planned_ids:
-                _add_builds_on(e.src, e.dst)
+            if e.type is EdgeType.DEPENDS_ON:
+                s, t = dec_of_node.get(e.src), dec_of_node.get(e.dst)
+                if s and t and feature_of.get(s) != feature_of.get(t):
+                    _add_builds_on(s, t)
 
-        # name -> decision that provides it. Landed decisions provide their footprint targets
-        # (def names); planned nodes provide their declared `provides`. Match on the full target
-        # and its last dotted segment so `Class.method` and a bare `method` both resolve.
+        # The declared-`needs` bridge, persisted for the life of a decision (planned OR landed). The
+        # call graph alone loses a declared data-flow dependency once code lands — a JSON writer that
+        # takes `compute_summary`'s output as an argument never *calls* it — so we link each decision
+        # to whoever provides a name its node `needs`. name -> provider decision: landed decisions
+        # provide their footprint target def names, planned ones their declared `provides`; match the
+        # full target and its last dotted segment so `Class.method` and a bare `method` both resolve.
         def _names(raw: str) -> set[str]:
             return {raw, raw.rsplit(".", 1)[-1]}
 
@@ -312,18 +324,13 @@ def decision_graph_view(project) -> dict:
                 for nm in _names(raw):
                     provider_of.setdefault(nm, d.id)  # first (deepest in time) provider wins
 
-        feature_of = {d.id: d.feature for d in decisions}
         for d in decisions:
-            if d.status.value != "planned":
-                continue
             node = graph.get(d.node_id) if graph.has(d.node_id) else None
             if node is None:
                 continue
-            wanted = {nm for raw in (*node.needs, *node.provides) for nm in _names(raw)}
+            wanted = {nm for raw in node.needs for nm in _names(raw)}
             for nm in wanted:
                 owner = provider_of.get(nm)
-                # Skip a same-lane owner: a planned node that redefines an existing entity is
-                # folded into that lane as a revise (drawn as the spine), not a cross-lane edge.
                 if owner and owner != d.id and feature_of.get(owner) != d.feature:
                     _add_builds_on(d.id, owner)
 
