@@ -1,51 +1,124 @@
 {
-  "_note": "Dev-only mock matching `sgt decisions --json`. Not loaded at runtime; used to eyeball the webview design and to feed computeLayout under node. Two scenarios below — switch FIXTURE in the dev harness.",
-
+  "_note": "Dev-only mock matching `sgt decisions --json`. Not loaded at runtime; used to eyeball the webview design and to feed computeLayout under node. Two scenarios below \u2014 switch FIXTURE in the dev harness.",
   "fresh_planned": {
     "decisions": [
       {
-        "id": "auth-core@1", "node_id": "n-auth-core", "feature": "auth-core", "landing": 1,
+        "id": "auth-core@1",
+        "node_id": "n-auth-core",
+        "feature": "auth-core",
+        "landing": 1,
         "status": "planned",
-        "intent": { "context": null, "decision": "Establish a session token model", "consequence": null },
-        "footprint": ["src/auth/session.py::SessionToken"], "commits": [],
-        "alternatives": [], "lifecycle": { "kind": "introduce", "of": null }
+        "intent": {
+          "context": null,
+          "decision": "Establish a session token model",
+          "consequence": null
+        },
+        "footprint": [
+          "src/auth/session.py::SessionToken"
+        ],
+        "commits": [],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "introduce",
+          "of": null
+        }
       },
       {
-        "id": "auth-oauth@1", "node_id": "n-auth-oauth", "feature": "auth-oauth", "landing": 1,
+        "id": "auth-oauth@1",
+        "node_id": "n-auth-oauth",
+        "feature": "auth-oauth",
+        "landing": 1,
         "status": "planned",
-        "intent": { "context": null, "decision": "Add OAuth provider exchange", "consequence": null },
-        "footprint": ["src/auth/oauth.py::exchange"], "commits": [],
-        "alternatives": [], "lifecycle": { "kind": "introduce", "of": null }
+        "intent": {
+          "context": null,
+          "decision": "Add OAuth provider exchange",
+          "consequence": null
+        },
+        "footprint": [
+          "src/auth/oauth.py::exchange"
+        ],
+        "commits": [],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "introduce",
+          "of": null
+        }
       },
       {
-        "id": "api-routes@1", "node_id": "n-api-routes", "feature": "api-routes", "landing": 1,
+        "id": "api-routes@1",
+        "node_id": "n-api-routes",
+        "feature": "api-routes",
+        "landing": 1,
         "status": "planned",
-        "intent": { "context": null, "decision": "Mount the protected route layer", "consequence": null },
-        "footprint": ["src/api/routes.py::protected"], "commits": [],
-        "alternatives": [], "lifecycle": { "kind": "introduce", "of": null }
+        "intent": {
+          "context": null,
+          "decision": "Mount the protected route layer",
+          "consequence": null
+        },
+        "footprint": [
+          "src/api/routes.py::protected"
+        ],
+        "commits": [],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "introduce",
+          "of": null
+        }
       },
       {
-        "id": "billing@1", "node_id": "n-billing", "feature": "billing", "landing": 1,
+        "id": "billing@1",
+        "node_id": "n-billing",
+        "feature": "billing",
+        "landing": 1,
         "status": "planned",
-        "intent": { "context": null, "decision": "Wire metered usage billing", "consequence": null },
-        "footprint": ["src/billing/meter.py::record"], "commits": [],
-        "alternatives": [], "lifecycle": { "kind": "introduce", "of": null }
+        "intent": {
+          "context": null,
+          "decision": "Wire metered usage billing",
+          "consequence": null
+        },
+        "footprint": [
+          "src/billing/meter.py::record"
+        ],
+        "commits": [],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "introduce",
+          "of": null
+        }
       }
     ],
     "edges": [
-      { "src": "auth-oauth@1", "dst": "auth-core@1", "type": "builds-on", "derived": true },
-      { "src": "api-routes@1", "dst": "auth-core@1", "type": "builds-on", "derived": true },
-      { "src": "billing@1", "dst": "api-routes@1", "type": "builds-on", "derived": true }
+      {
+        "src": "auth-oauth@1",
+        "dst": "auth-core@1",
+        "type": "builds-on",
+        "derived": true
+      },
+      {
+        "src": "api-routes@1",
+        "dst": "auth-core@1",
+        "type": "builds-on",
+        "derived": true
+      },
+      {
+        "src": "billing@1",
+        "dst": "api-routes@1",
+        "type": "builds-on",
+        "derived": true
+      }
     ],
     "frontier": {},
     "clash": [],
-    "count": 4
+    "count": 4,
+    "head": "billing@1"
   },
-
   "mixed": {
     "decisions": [
       {
-        "id": "search@3", "node_id": "n-search-3", "feature": "search", "landing": 6,
+        "id": "search@3",
+        "node_id": "n-search-3",
+        "feature": "search",
+        "landing": 6,
         "status": "in_force",
         "intent": {
           "slug": "BM25 inverted index",
@@ -54,62 +127,177 @@
           "consequence": "Query latency drops, writes get a per-token cost."
         },
         "structure": {
-          "defines": ["Bm25Index", "query"], "uses": ["tokenize", "Document"], "used_by": ["search_handler"]
+          "defines": [
+            "Bm25Index",
+            "query"
+          ],
+          "uses": [
+            "tokenize",
+            "Document"
+          ],
+          "used_by": [
+            "search_handler"
+          ]
         },
-        "footprint": ["src/search/rank.py::Bm25Index", "src/search/rank.py::query"],
-        "commits": ["a1b2c3d4", "e5f6a7b8"],
-        "alternatives": [
-          { "option": "Keep the linear scan", "why_rejected": "Latency unacceptable past 50k docs", "source": "distilled", "confidence": "high" },
-          { "option": "Vector embeddings", "why_rejected": "Too heavy for the current corpus", "source": "distilled", "confidence": "medium" }
+        "footprint": [
+          "src/search/rank.py::Bm25Index",
+          "src/search/rank.py::query"
         ],
-        "lifecycle": { "kind": "revise", "of": "search@2" }
+        "commits": [
+          "a1b2c3d4",
+          "e5f6a7b8"
+        ],
+        "alternatives": [
+          {
+            "option": "Keep the linear scan",
+            "why_rejected": "Latency unacceptable past 50k docs",
+            "source": "distilled",
+            "confidence": "high"
+          },
+          {
+            "option": "Vector embeddings",
+            "why_rejected": "Too heavy for the current corpus",
+            "source": "distilled",
+            "confidence": "medium"
+          }
+        ],
+        "lifecycle": {
+          "kind": "revise",
+          "of": "search@2"
+        }
       },
       {
-        "id": "search@2", "node_id": "n-search-2", "feature": "search", "landing": 3,
+        "id": "search@2",
+        "node_id": "n-search-2",
+        "feature": "search",
+        "landing": 3,
         "status": "landed",
-        "intent": { "context": null, "decision": "Add a linear keyword scan", "consequence": null },
-        "footprint": ["src/search/rank.py::scan"], "commits": ["11223344"],
-        "alternatives": [], "lifecycle": { "kind": "introduce", "of": null }
+        "intent": {
+          "context": null,
+          "decision": "Add a linear keyword scan",
+          "consequence": null
+        },
+        "footprint": [
+          "src/search/rank.py::scan"
+        ],
+        "commits": [
+          "11223344"
+        ],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "introduce",
+          "of": null
+        }
       },
       {
-        "id": "ingest@2", "node_id": "n-ingest-2", "feature": "ingest", "landing": 5,
+        "id": "ingest@2",
+        "node_id": "n-ingest-2",
+        "feature": "ingest",
+        "landing": 5,
         "status": "in_force",
         "intent": {
           "context": "The crawler dropped pages on transient network errors.",
           "decision": "Add a retry queue with backoff to the crawler",
           "consequence": "Slower worst case, no dropped pages."
         },
-        "footprint": ["src/ingest/crawl.py::RetryQueue"], "commits": ["99aa88bb"],
-        "alternatives": [], "lifecycle": { "kind": "introduce", "of": null }
+        "footprint": [
+          "src/ingest/crawl.py::RetryQueue"
+        ],
+        "commits": [
+          "99aa88bb"
+        ],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "introduce",
+          "of": null
+        }
       },
       {
-        "id": "ingest-fork@1", "node_id": "n-ingest-fork", "feature": "ingest-bulk", "landing": 4,
+        "id": "ingest-fork@1",
+        "node_id": "n-ingest-fork",
+        "feature": "ingest-bulk",
+        "landing": 4,
         "status": "planned",
-        "intent": { "slug": "Bulk-import fork", "context": "One-shot dump loads shouldn't pay per-page retry overhead.", "decision": "Fork a bulk-import path off the crawler", "consequence": "A separate code path skips the retry queue for trusted dumps." },
-        "structure": { "defines": ["import_dump"], "uses": ["Document"], "used_by": [] },
-        "footprint": ["src/ingest/bulk.py::import_dump"], "commits": [],
-        "alternatives": [], "lifecycle": { "kind": "fork", "of": "ingest@2" }
+        "intent": {
+          "slug": "Bulk-import fork",
+          "context": "One-shot dump loads shouldn't pay per-page retry overhead.",
+          "decision": "Fork a bulk-import path off the crawler",
+          "consequence": "A separate code path skips the retry queue for trusted dumps."
+        },
+        "structure": {
+          "defines": [
+            "import_dump"
+          ],
+          "uses": [
+            "Document"
+          ],
+          "used_by": []
+        },
+        "footprint": [
+          "src/ingest/bulk.py::import_dump"
+        ],
+        "commits": [],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "fork",
+          "of": "ingest@2"
+        }
       },
       {
-        "id": "schema@1", "node_id": "n-schema-1", "feature": "schema", "landing": 1,
+        "id": "schema@1",
+        "node_id": "n-schema-1",
+        "feature": "schema",
+        "landing": 1,
         "status": "in_force",
         "intent": {
           "context": "The store needed a stable document shape before search and ingest could build on it.",
           "decision": "Define the canonical Document record",
           "consequence": "Everything downstream depends on this shape."
         },
-        "footprint": ["src/store/doc.py::Document"], "commits": ["deadbeef"],
-        "alternatives": [], "lifecycle": { "kind": "introduce", "of": null }
+        "footprint": [
+          "src/store/doc.py::Document"
+        ],
+        "commits": [
+          "deadbeef"
+        ],
+        "alternatives": [],
+        "lifecycle": {
+          "kind": "introduce",
+          "of": null
+        }
       }
     ],
     "edges": [
-      { "src": "search@3", "dst": "search@2", "type": "revises" },
-      { "src": "ingest-fork@1", "dst": "ingest@2", "type": "fork" },
-      { "src": "search@2", "dst": "schema@1", "type": "builds-on", "derived": true },
-      { "src": "ingest@2", "dst": "schema@1", "type": "builds-on", "derived": true }
+      {
+        "src": "search@3",
+        "dst": "search@2",
+        "type": "revises"
+      },
+      {
+        "src": "ingest-fork@1",
+        "dst": "ingest@2",
+        "type": "fork"
+      },
+      {
+        "src": "search@2",
+        "dst": "schema@1",
+        "type": "builds-on",
+        "derived": true
+      },
+      {
+        "src": "ingest@2",
+        "dst": "schema@1",
+        "type": "builds-on",
+        "derived": true
+      }
     ],
-    "frontier": { "search": "search@3", "ingest": "ingest@2", "schema": "schema@1" },
+    "frontier": {
+      "search": "search@3",
+      "ingest": "ingest@2",
+      "schema": "schema@1"
+    },
     "clash": [],
-    "count": 5
+    "count": 5,
+    "head": "search@3"
   }
 }

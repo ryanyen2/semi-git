@@ -187,6 +187,14 @@ def test_planned_structure_uses_provides_needs(tmp_path):
     assert by_id["kg"]["structure"]["uses"] == ["base"]
 
 
+def test_primary_head_is_the_integrator_not_every_tip(tmp_path):
+    """HEAD is the one integrator a human reads as 'current', not the frontier's per-lane tips."""
+    proj = _proj(tmp_path)  # user() calls base() -> user@2 builds-on base@1
+    v = decision_graph_view(proj)
+    assert len(v["frontier"]) == 2          # two in-force tips...
+    assert v["head"] == "user@2"            # ...but the integrator (nothing builds on it) is HEAD
+
+
 def test_frontier_diff_classifies_changes():
     a = {"base": "base@1", "retr": "retr@2", "kg": "kg@3"}
     b = {"base": "base@1", "retr": "retr@5", "embed": "embed@4"}

@@ -38,9 +38,10 @@ def _run_json(tmp_path, capsys, *argv) -> dict:
 def test_decisions_json_shape(tmp_path, capsys):
     _seed(tmp_path)
     data = _run_json(tmp_path, capsys, "decisions", "--json")
-    assert set(data) == {"decisions", "edges", "frontier", "clash", "count"}
+    assert set(data) == {"decisions", "edges", "frontier", "head", "clash", "count"}
     assert data["count"] == 1
     assert data["frontier"] == {"base": "base@1"}
+    assert data["head"] == "base@1"  # the lone in-force decision is HEAD
 
 
 def test_decisions_frontier_subcommand(tmp_path, capsys):

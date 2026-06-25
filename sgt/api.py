@@ -381,9 +381,43 @@ def decision_graph_view(project) -> dict:
         "decisions": out_decisions,
         "edges": edges,
         "frontier": frontier.selection,
+        "head": _primary_head(out_decisions, edges, in_force_ids),
         "clash": clash,
         "count": len(decisions),
     }
+
+
+def _primary_head(decisions: list[dict], edges: list[dict], in_force_ids: set[str]) -> str | None:
+    """The one decision a human reads as HEAD: the integrator.
+
+    The frontier holds one tip per lane (2–6 across the stress corpus), but every project has a single
+    dominant *integrator* — an in-force decision nothing builds on (zero builds-on in-degree) that
+    itself builds on the most others. We pick it by ``(out-degree, dependency depth, landing)``. With
+    no integrator (a pure spine / single lane) we fall back to the newest in-force tip. Deterministic.
+    """
+    if not in_force_ids:
+        return None
+    landing = {d["id"]: d["landing"] for d in decisions}
+    succ: dict[str, list[str]] = {d["id"]: [] for d in decisions}
+    indeg: dict[str, int] = {d["id"]: 0 for d in decisions}
+    for e in edges:
+        if e["type"] in ("builds-on", "revises") and e["src"] in succ and e["dst"] in succ:
+            succ[e["src"]].append(e["dst"])
+            indeg[e["dst"]] = indeg.get(e["dst"], 0) + 1
+
+    memo: dict[str, int] = {}
+
+    def depth(n: str, seen: frozenset) -> int:
+        if n in memo:
+            return memo[n]
+        if n in seen:
+            return 0
+        memo[n] = max((1 + depth(m, seen | {n}) for m in succ[n]), default=0)
+        return memo[n]
+
+    integrators = [d for d in in_force_ids if indeg.get(d, 0) == 0 and succ.get(d)]
+    pool = integrators or list(in_force_ids)
+    return max(pool, key=lambda d: (len(succ.get(d, [])), depth(d, frozenset()), landing.get(d, 0)))
 
 
 def frontier_view(project) -> dict:

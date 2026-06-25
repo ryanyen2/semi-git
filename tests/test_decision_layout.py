@@ -134,6 +134,30 @@ def test_avoid_crossings_preserves_collision_free_invariant():
     _no_cell_collisions(_run_layout(g, {"avoidCrossings": True}))
 
 
+def test_head_rooted_order_overrides_newest_landing():
+    # A fan: integrator I@8 is the head, but a later leaf revise m@12 is the newest landing. Default
+    # order would float m@12 to the top; head-rooting pins the integrator at row 0 and nests the
+    # things it builds on beneath it (newest dependency first), with the unreachable leaf appended.
+    g = {
+        "decisions": [_dec("m@12", "m", 12), _dec("I@8", "I", 8), _dec("b@4", "b", 4), _dec("a@2", "a", 2)],
+        "edges": [_dep("I@8", "b@4"), _dep("I@8", "a@2")],
+        "frontier": {}, "clash": [], "head": "I@8",
+    }
+    out = _run_layout(g)
+    assert out["rowOf"]["I@8"] == 0                                   # head on top despite m@12 newer
+    assert out["rowOf"]["b@4"] == 1 and out["rowOf"]["a@2"] == 2      # deps nested newest-first
+    assert out["rowOf"]["m@12"] == 3                                  # unreachable-from-head, appended
+    _no_cell_collisions(out)
+
+
+def test_no_head_field_keeps_newest_on_top():
+    # Backwards-compatible: with no `head`, ordering is the original newest-landing-first.
+    g = {"decisions": [_dec("a@1", "f", 1), _dec("a@2", "f", 2)], "edges": [], "frontier": {}, "clash": []}
+    out = _run_layout(g)
+    assert out["rowOf"]["a@2"] == 0 and out["rowOf"]["a@1"] == 1
+    _no_cell_collisions(out)
+
+
 def test_same_landing_ties_are_stable_and_collision_free():
     g = {"decisions": [_dec("b@2", "fb", 2), _dec("a@2", "fa", 2), _dec("c@2", "fc", 2)],
          "edges": [], "frontier": {}, "clash": []}

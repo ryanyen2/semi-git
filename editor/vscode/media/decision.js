@@ -96,14 +96,39 @@ function computeLayout(graph, opts) {
   }
   for (const d of decisions) depth(d.id, new Set());
 
-  decisions.sort((a, b) =>
+  // Row order. Default: newest landing on top (depth + feature + id break ties). But the stress
+  // corpus showed fan/star graphs (many leaf capabilities feeding one integrator) read as a shuffled
+  // staircase under pure time order. When the projection names a primary `head` (the integrator a
+  // human reads as HEAD), root the order there: HEAD first, then a DFS over the things it builds on
+  // (nearest/newest dependency just beneath), then anything unreachable by landing. A fan becomes a
+  // rooted tree — HEAD on top, its feeders nested under it — while a spine graph is unchanged
+  // (its head is already the newest). See docs/design/2026-06-25-decision-graph-layout.md.
+  const byLanding = (a, b) =>
     b.landing - a.landing ||
     depthMemo[a.id] - depthMemo[b.id] ||
     (a.feature < b.feature ? -1 : a.feature > b.feature ? 1 : 0) ||
-    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  );
+    (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const head = graph.head;
+  let ordered;
+  if (head && idSet.has(head)) {
+    const landingOf = {};
+    for (const d of decisions) landingOf[d.id] = d.landing;
+    const seen = new Set();
+    ordered = [];
+    const dfs = (id) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      ordered.push(id);
+      for (const dn of deps[id].slice().sort((a, b) => landingOf[b] - landingOf[a])) dfs(dn);
+    };
+    dfs(head);
+    for (const d of decisions.slice().sort(byLanding)) if (!seen.has(d.id)) ordered.push(d.id);
+  } else {
+    ordered = decisions.slice().sort(byLanding).map((d) => d.id);
+  }
   const rowOf = {};
-  decisions.forEach((d, i) => (rowOf[d.id] = i));
+  ordered.forEach((id, i) => (rowOf[id] = i));
+  decisions.sort((a, b) => rowOf[a.id] - rowOf[b.id]);
 
   // Each feature's inclusive row-span (top = newest decision's row, bot = oldest's row). A feature
   // reserves its whole span even across rows owned by other features (the spine passes behind them).
@@ -436,9 +461,12 @@ function renderGraph() {
   applyInProcess();
 }
 
-// Paint the status glyph for a node group. Hue = feature; the glyph shape = status.
+// Paint the status glyph for a node group. Hue = feature; the glyph shape = status. The primary
+// HEAD (the integrator the projection names in `head`) gets an extra accent ring so the eye lands on
+// "what the codebase currently is" — distinct from the per-lane in-force tips.
 function paintGlyph(node, d, col) {
   const st = statusOf(d);
+  if (state && state.head === d.id) node.appendChild(circle(0, 0, NODE_R + 7, "headring", {}));
   if (st === "in_force") {
     node.appendChild(circle(0, 0, NODE_R + 4, "halo", { stroke: col }));
     node.appendChild(circle(0, 0, NODE_R, "disc", { stroke: col, fill: col }));
@@ -461,9 +489,11 @@ function renderRow(d, col) {
   const hash = (d.commits && d.commits[0] ? d.commits[0] : "").slice(0, 7);
   const lc = d.lifecycle || {};
   const tag = lc.kind && lc.kind !== "introduce" ? `<span class="lk">${esc(lc.kind)}</span>` : "";
+  const headBadge = state && state.head === d.id ? `<span class="headbadge" title="primary HEAD — the integrator">HEAD</span>` : "";
   row.innerHTML = `
     <span class="feat" style="--hue:${col}" title="${esc(d.feature)}"></span>
     <span class="title ${title ? "" : "muted"}">${esc(title || "Not distilled")}</span>
+    ${headBadge}
     ${sub ? `<span class="sub">${esc(sub)}</span>` : ""}
     ${tag}
     <span class="spacer"></span>
