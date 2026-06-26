@@ -5,7 +5,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
-import { BlameView, EmitView, EntityMapView, GraphView, StatusView } from "./types";
+import { BlameView, DecisionGraphView, EmitView, GraphView, StatusView } from "./types";
 
 const pExecFile = promisify(execFile);
 
@@ -54,22 +54,14 @@ export class Sgt {
     return this.json<StatusView>(["status", "--json"]);
   }
 
-  // The deterministic code-entity map (whole repo); `timeframe` is the same shape as of a past
-  // checkpoint ordinal — the scrubber's per-frame endpoint.
-  map(): Promise<EntityMapView> {
-    return this.json<EntityMapView>(["map", "--json"]);
+  // The decision DAG: decisions, lifecycle + derived builds-on edges, clashes, and the frontier.
+  decisions(): Promise<DecisionGraphView> {
+    return this.json<DecisionGraphView>(["decisions", "--json"]);
   }
 
-  timeframe(frame: number): Promise<EntityMapView> {
-    return this.json<EntityMapView>(["timeframe", String(frame), "--json"]);
-  }
-
-  emit(action: "revert" | "switch", ref: string, on?: boolean): Promise<EmitView> {
-    const args = ["emit", action, ref];
-    if (action === "switch") {
-      args.push(on ? "on" : "off");
-    }
-    return this.json<EmitView>(args);
+  // Structured dry-run of a recompose: `sgt revert|restore <ref> --emit --json`.
+  emit(action: "revert" | "restore", ref: string): Promise<EmitView> {
+    return this.json<EmitView>([action, ref, "--emit", "--json"]);
   }
 
   // Mutations return the human report; surface it verbatim.

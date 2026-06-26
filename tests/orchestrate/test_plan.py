@@ -60,6 +60,27 @@ def test_plan_creates_planned_nodes_with_edges(tmp_path):
     assert proj.valid()
 
 
+def test_plan_persists_planner_enrichment_to_decisions(tmp_path):
+    # The planner now returns slug/context/consequence per sub-task; plan() must persist them so a
+    # freshly-planned decision is rich (not decision-only) on every surface, with no extra LLM call.
+    from sgt.decisions.store import build_decisions
+
+    g = ConstraintGraph()
+    g.add(SubTask("retr", "implement keyword retrieval", provides=["retrieve"],
+                  slug="Keyword retrieval", context="No retrieval path exists yet.",
+                  consequence="Callers can fetch ranked docs."))
+    orch, proj = _orch(tmp_path, g)
+    rep = orch.plan("add retrieval")
+    assert rep.ok
+
+    dec = {d.node_id: d for d in build_decisions(proj)}[rep.landed[0]]
+    assert dec.intent.slug == "Keyword retrieval"
+    assert dec.intent.context == "No retrieval path exists yet."
+    assert dec.intent.consequence == "Callers can fetch ranked docs."
+    # the long coding request stays the decision text
+    assert dec.intent.decision == "implement keyword retrieval"
+
+
 def test_plan_atomic_intent_persists_one_node(tmp_path):
     g = ConstraintGraph()
     g.add(SubTask("only", "add a 6-char url shortener", provides=["shorten"]))
@@ -90,9 +111,55 @@ def test_revert_active_preserves_dependent_planned_draft(tmp_path):
     proj.commit("feat a + plan p")
 
     rep = Orchestrator(proj, repo_path=str(tmp_path)).revert("a")
-    assert rep.ok and not proj.graph.has("a")              # active feature gone
-    assert proj.graph.has("p")                              # draft preserved
+    assert rep.ok
+    assert "def a" not in proj.materialize().get("m.py", "")  # active feature out of force
+    assert proj.graph.has("a")                                 # lossless: retained, restorable
+    assert proj.graph.has("p")                                 # draft preserved (not cascaded)
     assert proj.graph.get("p").status is NodeStatus.PLANNED
+
+
+# -- intent DSL on plan ------------------------------------------------------
+def _no_planner(*a, **k):
+    raise AssertionError("the LLM planner must not run for canonical DSL")
+
+
+def test_canonical_dsl_plans_one_node_without_the_planner(tmp_path):
+    # A canonical statement parses deterministically and offline — the decomposer is never called.
+    proj = Project.init(tmp_path)
+    orch = Orchestrator(proj, repo_path=str(tmp_path), decomposer=_no_planner)
+    rep = orch.plan("ADD validate_email, normalize_email USING re")
+    assert rep.ok and len(rep.landed) == 1 and "ADD validate_email" in rep.message
+    n = proj.graph.get(rep.landed[0])
+    assert n.status is NodeStatus.PLANNED
+    assert n.provides == ["validate_email", "normalize_email"] and n.needs == ["re"]
+
+
+def test_replace_dsl_captures_high_confidence_alternative(tmp_path):
+    from sgt.decisions.store import build_decisions
+
+    proj = Project.init(tmp_path)
+    orch = Orchestrator(proj, repo_path=str(tmp_path), decomposer=_no_planner)
+    rep = orch.plan("REPLACE bubble_sort WITH quicksort BECAUSE O(n^2) too slow")
+    assert rep.ok
+    dec = {d.node_id: d for d in build_decisions(proj)}[rep.landed[0]]
+    assert len(dec.alternatives) == 1
+    a = dec.alternatives[0]
+    assert a.option == "bubble_sort" and a.source == "user" and a.confidence == "high"
+
+
+def test_extend_dsl_folds_into_existing_lane_as_revise(tmp_path):
+    from sgt.effects.model import Effect
+    from sgt.decisions.store import build_decisions
+
+    proj = Project.init(tmp_path)
+    proj.add_feature(Node("auth", NodeKind.CAPABILITY, "auth", provides=["login"]),
+                     [Effect.add_def("auth.py", "login", "def login():\n    return 1")])
+    proj.commit("feat auth")
+    orch = Orchestrator(proj, repo_path=str(tmp_path), decomposer=_no_planner)
+    rep = orch.plan("EXTEND login TO add logout")   # 'login' resolves to the auth lane
+    assert rep.ok
+    planned = next(d for d in build_decisions(proj) if d.node_id == rep.landed[0])
+    assert planned.feature == "auth" and planned.lifecycle_kind.value == "revise"
 
 
 def test_revert_planned_node_removes_just_it(tmp_path):

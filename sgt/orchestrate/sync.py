@@ -181,16 +181,15 @@ def _fulfill_drift(project, node_id: str, effects, intent: str | None, notes: li
       commutes, else stay held with a refreshed witness). This — not ``reconcile`` — is how a
       held node recovers when the *code* changed (``reconcile`` is for when a *rival* changed).
     * **ACTIVE** — extend the feature in place; any non-commuting remainder is held separately.
-    * **SUSPENDED** — refused (restore it first); nothing is written.
+
+    (A feature being out of force is a frontier state, not a node status, so it does not route
+    here — checkpointing records the edit regardless of whether its lane is currently composed.)
     """
     report = SyncReport(True, notes=notes)
     status = project.graph.get(node_id).status
     cb = project.materialize()
     base = project.active_effects()
 
-    if status is NodeStatus.SUSPENDED:
-        return SyncReport(False, message=f"cannot fulfill {node_id}: it is suspended — restore it first",
-                          notes=notes)
     if status is NodeStatus.PLANNED:
         if can_land(cb, effects, base_effects=base):
             project.fulfill(node_id, effects, intent=intent)

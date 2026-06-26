@@ -27,7 +27,13 @@ _SCHEMA = {
                 "additionalProperties": False,
                 "properties": {
                     "key": {"type": "string", "description": "short kebab handle, unique in this plan"},
+                    "slug": {"type": "string",
+                             "description": "a human title for this decision, AT MOST 5 words, no trailing period"},
                     "intent": {"type": "string", "description": "a self-contained coding request"},
+                    "context": {"type": "string",
+                                "description": "the situation or need that makes this sub-task necessary"},
+                    "consequence": {"type": "string",
+                                    "description": "what the codebase will guarantee once this lands"},
                     "provides": {"type": "array", "items": {"type": "string"},
                                  "description": "top-level names this task will define"},
                     "needs": {"type": "array", "items": {"type": "string"},
@@ -35,7 +41,8 @@ _SCHEMA = {
                     "depends_on": {"type": "array", "items": {"type": "string"},
                                    "description": "keys of sub-tasks that must land first"},
                 },
-                "required": ["key", "intent", "provides", "needs", "depends_on"],
+                "required": ["key", "slug", "intent", "context", "consequence",
+                             "provides", "needs", "depends_on"],
             },
         }
     },
@@ -43,14 +50,29 @@ _SCHEMA = {
 }
 
 _SYSTEM = """You are the decomposition planner for semi-git, a semantic version-control tool.
-Break the user's intent into the SMALLEST set of sub-tasks that can be implemented
-independently, then composed. Rules:
-- Each sub-task is a self-contained coding request for one coding agent.
-- Declare `provides` (the top-level function/class names the task will define) and
-  `needs` (names it calls that another sub-task provides). A task that needs another's
-  output must list that name in `needs` (or the producing key in `depends_on`).
-- Prefer coordination-free tasks (disjoint provides) so they can run in parallel.
-- If the intent is atomic — one cohesive function/behavior — return EXACTLY ONE sub-task.
+A sub-task is a DECISION: one coherent capability a reviewer would version, revert, or suspend as a
+unit — NOT a single function. Decompose the intent into the FEWEST such capabilities, then compose.
+Rules:
+- A capability usually defines SEVERAL top-level names (a public entry point plus its helpers). Put
+  all of them in that one sub-task's `provides`. Do NOT make a separate sub-task for a helper that
+  only exists to serve another sub-task — fold it in. Split only when a part is independently useful,
+  independently landable, or something else already needs it on its own.
+  Example: "load a CSV and compute summary statistics (mean, median)" is ONE sub-task
+  (`provides: [load_csv, compute_summary]`), not three. "add a CLI and a web API over the same core"
+  is TWO (the surfaces are independently useful), each `needs`-ing the core.
+- Declare `provides` (the top-level names this capability defines) and `needs` (names it calls that
+  ANOTHER sub-task provides). A task that needs another's output lists that name in `needs` (or the
+  producing key in `depends_on`). Prefer disjoint `provides` so capabilities compose cleanly.
+- ENHANCING existing code is a REVISION, not a new capability. If the intent modifies, extends, or
+  improves something that already exists (see the capability map of what's already built), set
+  `provides` to the EXISTING name(s) being changed — do NOT invent a new name for a change to existing
+  behavior. Example: "add memory tracking to the timer" when a `measure_time` already exists →
+  `provides: [measure_time]` (it revises the timer), NOT `provides: [measure_memory]`.
+- For each sub-task also give: `slug` (a human title, at most 5 words), `context` (the need that
+  precedes it), and `consequence` (what the codebase guarantees once it lands). Ground these in the
+  intent and current codebase; do not invent files or APIs.
+- If the intent is one cohesive capability, return EXACTLY ONE sub-task. Two or three is typical;
+  more than ~4 for a single intent almost always means you are splitting at the function level — recombine.
 - Do not invent work beyond the intent."""
 
 
@@ -58,9 +80,13 @@ class PlannerError(Exception):
     """Raised when the model returns an empty or malformed decomposition."""
 
 
-def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str | None = None) -> ConstraintGraph:
+def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str | None = None,
+              context: str | None = None) -> ConstraintGraph:
     client = get_client(repo_path)
-    user = f"Current codebase:\n{_render(codebase)}\n\nIntent to decompose:\n{intent}"
+    # `context` is the compact, graph-driven view (capability map + retrieved code) built by the
+    # caller; fall back to rendering the whole codebase only when none is supplied (small/new repos).
+    rendered = context if context is not None else f"Current codebase:\n{_render(codebase)}"
+    user = f"{rendered}\n\nIntent to decompose:\n{intent}"
     try:
         resp = client.chat.completions.create(
             model=model or get_model(),
@@ -90,6 +116,9 @@ def decompose(intent: str, codebase: Codebase, repo_path: str = ".", model: str 
             provides=[n for n in st.get("provides", []) if n],
             needs=[n for n in st.get("needs", []) if n],
             depends_on=[k for k in st.get("depends_on", []) if k],
+            slug=(st.get("slug") or "").strip() or None,
+            context=(st.get("context") or "").strip() or None,
+            consequence=(st.get("consequence") or "").strip() or None,
         ))
     # A model can emit a cyclic decomposition (explicit depends_on, or a needs<->provides
     # loop). Validate layerability here so the caller degrades to single-agent rather than

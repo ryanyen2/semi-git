@@ -9,7 +9,7 @@ the *semantic graph* and reconstructs the tree from it. Every mutation runs thro
 confluence gate** so nothing lands unless it commutes and preserves the codebase's invariants.
 
 The loop: **`plan`** an intent into reviewable nodes → implement with your own tools →
-**`checkpoint`** to record what you built (distilled into typed effects) → **`revert`/`switch`/
+**`checkpoint`** to record what you built (distilled into typed effects) → **`revert`/`restore`/
 `reconcile`** to plug features in and out. The LLM is used only to reason about the graph
 (decompose a plan, label a checkpoint), never to produce code.
 
@@ -38,13 +38,16 @@ uv run pytest
 sgt init                                  # bind .sgt + git
 sgt plan "validate + normalize an email"  # decompose an intent into reviewable PLANNED nodes
 sgt "validate + normalize an email"       # shorthand for `sgt plan`
+sgt plan "ADD validate_email USING re BECAUSE inline regex was brittle"  # canonical DSL — parses offline
+sgt split <ref> "ADD validate_email" "ADD normalize_email"   # reshape: divide a draft into pieces
+sgt merge <ref> <ref>                     # reshape: fold drafts into the first (the survivor)
 # ...implement a planned node with your own editor / coding agent...
 sgt checkpoint --fulfills <node> --intent "..."   # record your edits under that node (-> ACTIVE)
 sgt checkpoint                            # or: record ad-hoc edits as a new node
 sgt graph                                 # the semantic DAG
-sgt revert <feature>                      # plug a feature out (by dependency closure)
-sgt revert <feature> --emit               # dry-run: preview the change, write nothing
-sgt switch <feature> off|on               # suspend / restore
+sgt revert <ref>                          # plug a feature out of HEAD (lane + dependents off; lossless)
+sgt revert <ref> --emit                   # dry-run: preview the change, write nothing
+sgt restore <ref>                         # plug it back in — or `restore <decision-id>` to pin a version
 sgt reconcile [<ref>]                     # re-gate held quarantines; resolve any that now commute
 sgt blame <file>                          # which feature owns each line (semantic blame)
 sgt graph --json / sgt export             # machine-readable projection for tools/UIs
@@ -56,16 +59,19 @@ A **VS Code extension** (`editor/vscode/`) and a **terminal UI** (`sgt tui`) sit
 same `sgt … --json` surface: semantic blame, a feature DAG, a per-feature heatmap, and diff
 previews of plug-outs. See the [user guide](docs/guide/README.md).
 
-The graph ops (`revert`/`switch`/`reconcile`/`checkpoint --fulfills`/`checkpoint --intent`) need
-no API key. `plan` uses the OpenAI key (read from `.env`: `OPENAI_API_KEY`, optional
-`OPENAI_MODEL`) for **graph-level reasoning only** — decomposition, never code. A bare,
+The graph ops (`revert`/`restore`/`reconcile`/`merge`/`split`/`checkpoint --fulfills`/
+`checkpoint --intent`) need no API key, and a **canonical intent-DSL** `plan`
+(`ADD`/`EXTEND`/`REPLACE`/`REMOVE` — uppercase verb is the opt-in) parses deterministically offline
+too. *Freeform* `plan` uses the OpenAI key (read from `.env`: `OPENAI_API_KEY`, optional
+`OPENAI_MODEL`) for **graph-level reasoning only** — decomposition (and rendering freeform into the
+canonical DSL for confirmation), never code. A bare,
 no-intent `checkpoint` *prefers* the LLM to label the distilled change but **degrades to
 deterministic grouping offline**, so the whole loop works with no key.
 
 ## Status
 
 Graph-only pivot complete: sgt no longer authors code (the OpenAI coding backend is removed).
-The spine is `plan` → implement (your agent) → `checkpoint`/`--fulfills` → `revert`/`switch`/
+The spine is `plan` → implement (your agent) → `checkpoint`/`--fulfills` → `revert`/`restore`/
 `reconcile`, all gated by the confluence check, with an `--emit` dry-run. Verified by the test
 suite + a live walkthrough (`scripts/e2e_plan_checkpoint.py`). See `FINDINGS.md` for what's
 verified and the deferred items, and `docs/design/2026-06-19-graph-only-agent-driven-sgt.md`

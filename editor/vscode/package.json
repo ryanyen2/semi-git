@@ -60,7 +60,7 @@
         { "id": "sgt", "title": "semi-git", "icon": "media/sgt.svg" }
       ],
       "panel": [
-        { "id": "sgtPanel", "title": "Feature Graph", "icon": "media/sgt.svg" }
+        { "id": "sgtPanel", "title": "Decision Graph", "icon": "media/sgt.svg" }
       ]
     },
     "views": {
@@ -68,8 +68,7 @@
         { "id": "sgtGraph", "name": "Features" }
       ],
       "sgtPanel": [
-        { "id": "sgtFeatureGraph", "name": "Feature Graph", "type": "webview" },
-        { "id": "sgtEntityMap", "name": "Code Map", "type": "webview" }
+        { "id": "sgtDecisionGraph", "name": "Decision Graph", "type": "webview" }
       ]
     },
     "menus": {

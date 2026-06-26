@@ -10,9 +10,11 @@ Tool surface (the agent-facing semantic API) — full parity with the CLI's muta
 * **read** (no API key): ``sgt_graph``, ``sgt_show``, ``sgt_status``, ``sgt_conflicts`` — pull
   the semantic tree and any open conflicts (with full witnesses) into the agent's context.
 * **write/reconcile**: ``sgt_init`` (bootstrap a workspace), ``sgt_plan`` (decompose into PLANNED
-  nodes), ``sgt_checkpoint`` — *the* tool: after the agent edits files, distill the drift into the
-  log under the agent's **declared** intent (captured live, not reverse-guessed; ``fulfills`` lands
-  it on a PLANNED node), ``sgt_revert`` / ``sgt_switch`` (graph ops), and ``sgt_reconcile`` (re-gate
+  nodes; accepts canonical intent-DSL like ``ADD …``/``EXTEND …`` for a deterministic single node),
+  ``sgt_merge`` / ``sgt_split`` (reshape the plan — fold drafts together or divide one),
+  ``sgt_checkpoint`` — *the* tool: after the agent edits files, distill the drift into the log under
+  the agent's **declared** intent (captured live, not reverse-guessed; ``fulfills`` lands it on a
+  PLANNED node), ``sgt_revert`` / ``sgt_restore`` (recompose HEAD), and ``sgt_reconcile`` (re-gate
   held quarantines). A held checkpoint returns its witness so the agent can act on it.
 
 Every call opens the project fresh from disk, so it reflects whatever the agent just edited.
@@ -78,11 +80,11 @@ def tool_blame(repo_path: str, args: dict) -> dict:
     return blame_view(_open(repo_path), file)
 
 
-def tool_map(repo_path: str, args: dict) -> dict:
-    """The deterministic code-entity map: entities + containment/calls/imports, transitive-reduced."""
-    from sgt.api import entity_graph_view
+def tool_decisions(repo_path: str, args: dict) -> dict:
+    """The decision DAG: decisions, lifecycle edges, derived builds-on, clashes, and the frontier."""
+    from sgt.api import decision_graph_view
 
-    return entity_graph_view(_open(repo_path))
+    return decision_graph_view(_open(repo_path))
 
 
 def tool_checkpoint(repo_path: str, args: dict) -> dict:
@@ -94,7 +96,7 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
     to land the whole change under a PLANNED node and flip it ACTIVE.
     """
     from sgt.agents.distill import fallback_cluster
-    from sgt.agents.resolve import resolve_ref
+    from sgt.agents.resolve import resolve
     from sgt.orchestrate.sync import run_sync
 
     project = _open(repo_path)
@@ -104,7 +106,7 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
 
     fulfills_id = None
     if (fulfills := (args.get("fulfills") or "").strip()):
-        r = resolve_ref(project.graph, fulfills)
+        r = resolve(project, fulfills)
         if r.node_id is None:
             return {"error": f"could not resolve fulfills {fulfills!r} ({r.kind})", "matches": r.matches}
         fulfills_id = r.node_id
@@ -156,6 +158,25 @@ def tool_plan(repo_path: str, args: dict) -> dict:
     return _report(_orchestrator(repo_path).plan(intent))
 
 
+def tool_merge(repo_path: str, args: dict) -> dict:
+    """Fold two or more PLANNED drafts into the first — reshape the plan before any code exists."""
+    refs = args.get("refs") or []
+    if not isinstance(refs, list) or len(refs) < 2:
+        return {"error": "provide 'refs': a list of two or more draft refs to merge"}
+    return _report(_orchestrator(repo_path).merge([str(r) for r in refs]))
+
+
+def tool_split(repo_path: str, args: dict) -> dict:
+    """Replace one PLANNED draft with several pieces (each canonical intent-DSL or freeform)."""
+    ref = (args.get("ref") or "").strip()
+    pieces = args.get("intents") or []
+    if not ref:
+        return {"error": "missing 'ref'"}
+    if not isinstance(pieces, list) or len(pieces) < 2:
+        return {"error": "provide 'intents': two or more pieces (canonical DSL or freeform)"}
+    return _report(_orchestrator(repo_path).split(ref, [str(p) for p in pieces]))
+
+
 def tool_reconcile(repo_path: str, args: dict) -> dict:
     """Re-gate held quarantines on demand; resolve any that now commute.
 
@@ -184,12 +205,11 @@ def tool_revert(repo_path: str, args: dict) -> dict:
     return _report(_orchestrator(repo_path).revert(ref, emit=bool(args.get("emit", False))))
 
 
-def tool_switch(repo_path: str, args: dict) -> dict:
+def tool_restore(repo_path: str, args: dict) -> dict:
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
-    on = bool(args.get("on", True))
-    return _report(_orchestrator(repo_path).switch(ref, on, emit=bool(args.get("emit", False))))
+    return _report(_orchestrator(repo_path).restore(ref, emit=bool(args.get("emit", False))))
 
 
 # ---------------------------------------------------------------------------
@@ -230,19 +250,41 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"file": {"type": "string", "description": "repo-relative path of a managed file"}}, ["file"]),
         tool_blame,
     ),
-    "sgt_map": (
-        "The deterministic code-entity map of the whole repo: functions/classes/methods as "
-        "entities connected by containment + calls/imports, each tagged with its owning feature "
-        "(node_id, null if unattributed) plus the transitive-reduced edge set for layout.",
+    "sgt_decisions": (
+        "The decision DAG: every decision (Context/Decision/Consequence + alternatives + code "
+        "footprint + git commits), the stored lifecycle edges (revises/fork), the builds-on edges "
+        "and clashes DERIVED from the entity graph, and the current frontier (the in-force decision "
+        "per feature lane that materializes the working tree).",
         _schema({}, []),
-        tool_map,
+        tool_decisions,
     ),
     "sgt_plan": (
         "Decompose an intent into reviewable PLANNED nodes (the semantic outline) without "
         "writing any code. Each node carries its declared provides/needs and dependency edges; "
-        "implement them with your own tools, then land each via sgt_checkpoint.",
-        _schema({"intent": {"type": "string", "description": "what to plan / decompose"}}, ["intent"]),
+        "implement them with your own tools, then land each via sgt_checkpoint. A canonical "
+        "intent-DSL statement (e.g. `ADD validate_email USING re BECAUSE inline regex was brittle`, "
+        "`EXTEND auth TO support API keys`, `REPLACE bubble_sort WITH quicksort BECAUSE too slow`) "
+        "plans a single node deterministically and records a high-confidence rationale.",
+        _schema({"intent": {"type": "string", "description": "freeform, or a canonical intent-DSL statement"}}, ["intent"]),
         tool_plan,
+    ),
+    "sgt_merge": (
+        "Reshape the plan: fold two or more PLANNED drafts into the first (the survivor), which "
+        "absorbs their provides/needs and inbound/outbound dependency edges. Drafts only — realized "
+        "(ACTIVE) nodes are refused. Inert: nothing materializes differently.",
+        _schema({"refs": {"type": "array", "items": {"type": "string"},
+                          "description": "two or more draft refs; the first is the survivor"}}, ["refs"]),
+        tool_merge,
+    ),
+    "sgt_split": (
+        "Reshape the plan: replace one PLANNED draft with several pieces. Each piece is a canonical "
+        "intent-DSL statement (precise provides/needs) or freeform text. Pieces relink to the rest "
+        "of the plan by their declared interface; any of the original's provides no piece claims is "
+        "reported as unassigned. Drafts only.",
+        _schema({"ref": {"type": "string", "description": "the draft to split"},
+                 "intents": {"type": "array", "items": {"type": "string"},
+                             "description": "two or more pieces (canonical DSL or freeform)"}}, ["ref", "intents"]),
+        tool_split,
     ),
     "sgt_checkpoint": (
         "Reconcile your on-disk edits into the semantic log under a declared intent. Call this "
@@ -261,20 +303,19 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_checkpoint,
     ),
     "sgt_revert": (
-        "Remove a feature by dependency closure (blocked if the tree has un-checkpointed drift; "
-        "checkpoint first). Pass emit=true for a dry-run: preview the semantic delta without "
-        "writing the tree.",
+        "Plug a feature out of HEAD: set its lane (and every lane that builds on it) out of force "
+        "in the frontier. Lossless and reversible via sgt_restore. Blocked if the tree has "
+        "un-checkpointed drift (checkpoint first). Pass emit=true for a dry-run preview.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
         tool_revert,
     ),
-    "sgt_switch": (
-        "Suspend or restore a feature (on=false suspends, on=true restores). Pass emit=true for "
-        "a dry-run preview.",
-        _schema({"ref": {"type": "string"},
-                 "on": {"type": "boolean", "default": True,
-                        "description": "true restores the feature (default), false suspends it"},
+    "sgt_restore": (
+        "Plug a feature back into HEAD: set its lane in force at its tip, or pin it to an earlier "
+        "decision by passing that decision id as 'ref' (hold feature-A@v3 beside feature-B@latest). "
+        "Turns its out-of-force dependencies back on. Pass emit=true for a dry-run preview.",
+        _schema({"ref": {"type": "string", "description": "a lane, or a decision id (node@landing) to pin"},
                  "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
-        tool_switch,
+        tool_restore,
     ),
     "sgt_reconcile": (
         "Re-gate held quarantines and resolve any that now commute (e.g. after a rival was "

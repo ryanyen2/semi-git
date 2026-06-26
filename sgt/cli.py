@@ -2,9 +2,12 @@
 
 sgt never authors code. The verbs operate on the *semantic graph* and reconstruct the tree
 from it: `plan` (decompose an intent into reviewable PLANNED nodes; bare `sgt "..."` is its
-shorthand), `checkpoint`/`sync` (record the agent's on-disk edits), and `revert`/`switch`/
-`reconcile` (plug features in and out). Ref arguments resolve fuzzy-to-exact. Read-only verbs
-and the graph ops need no OpenAI key; `plan`/`checkpoint` use it for graph-level reasoning only.
+shorthand), `merge`/`split` (reshape the plan — fold drafts together or divide one), `checkpoint`
+(record the agent's on-disk edits; `sync` is the no-intent alias), and `revert`/`restore`/
+`reconcile` (recompose HEAD — the frontier). Ref arguments resolve through one resolver
+(id / lane / decision / entity / phrase). `plan` also accepts a canonical intent-DSL statement
+(`ADD …`/`EXTEND …`/`REPLACE …`) that parses deterministically with no key. Read-only verbs and
+the recompose ops need no OpenAI key; freeform `plan`/`checkpoint` use it for graph-level reasoning only.
 """
 
 from __future__ import annotations
@@ -13,9 +16,9 @@ import sys
 
 from sgt.project import Project
 
-_VERBS = {"init", "plan", "sync", "checkpoint", "revert", "switch", "reconcile",
-          "show", "graph", "status", "blame", "export", "emit", "map", "timeframe",
-          "tui", "mcp", "help"}
+_VERBS = {"init", "plan", "merge", "split", "checkpoint", "sync", "revert", "restore", "reconcile",
+          "show", "graph", "status", "blame", "export",
+          "decisions", "tag", "tui", "mcp", "help"}
 
 
 def _print_report(rep) -> int:
@@ -31,6 +34,21 @@ def _print_report(rep) -> int:
     for d in rep.held:
         print(f"    held: {d}")
     return 0 if rep.ok else 1
+
+
+def confirm_plan(intent: str, lines: list[str]) -> bool:
+    """Echo the canonical DSL a freeform intent normalized to, and ask to plan from it.
+
+    Seeing one's own intent rendered into the grammar is how the controlled-NL form is learned;
+    declining falls back to the rich planner. Defaults to yes (the user opted into normalization).
+    """
+    print("Freeform intent normalized to canonical DSL:")
+    for ln in lines:
+        print(f"  {ln}")
+    try:
+        return input("Plan from these statements? [Y/n] ").strip().lower() in ("", "y", "yes")
+    except EOFError:
+        return False
 
 
 def confirm_sync(clusters) -> bool:
@@ -105,28 +123,15 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "export":
         return _export(repo)
 
-    if cmd == "map":
-        return _map(repo, as_json)
+    if cmd == "decisions":
+        return _decisions(repo, rest, as_json)
 
-    if cmd == "timeframe":
-        if not rest or not rest[0].lstrip("-").isdigit():
-            print("usage: sgt timeframe <frame> [--json]")
-            return 2
-        return _timeframe(repo, int(rest[0]), as_json)
 
-    if cmd == "emit":
-        # `sgt emit revert <ref>` | `sgt emit switch <ref> on|off` — structured dry-run for a UI.
-        if len(rest) < 2 or rest[0] not in ("revert", "switch"):
-            print("usage: sgt emit revert|switch <ref> [on|off]")
+    if cmd == "tag":
+        if not rest:
+            print("usage: sgt tag <name>")
             return 2
-        action = rest[0]
-        on = True
-        body = rest[1:]
-        if action == "switch" and body and body[-1] in ("on", "off"):
-            on = body[-1] == "on"
-            body = body[:-1]
-        payload = _orchestrator(repo).emit_payload(action, " ".join(body), on=on)
-        return _emit_json(payload)
+        return _print_report(_orchestrator(repo).tag(rest[0]))
 
     if cmd == "tui":
         return _tui(repo)
@@ -137,43 +142,52 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return _show(repo, " ".join(rest), as_json)
 
-    if cmd == "sync":
-        assume_yes = any(a in ("--yes", "-y") for a in rest)
-        return _sync(repo, assume_yes)
-
-    if cmd == "checkpoint":
+    # `sync` is checkpoint without a declared intent (kept as a familiar alias).
+    if cmd in ("checkpoint", "sync"):
         assume_yes = any(a in ("--yes", "-y") for a in rest)
         intent = _opt_value(rest, "--intent")
         fulfills = _opt_value(rest, "--fulfills")
         return _checkpoint(repo, assume_yes, intent, fulfills)
 
-    if cmd == "revert":
+    if cmd in ("revert", "restore"):
+        # `--emit` previews the recompose (text); `--emit --json` returns the per-file payload.
         emit = "--emit" in rest
         rest = [a for a in rest if a != "--emit"]
         if not rest:
-            print("usage: sgt revert [--emit] <ref>")
+            print(f"usage: sgt {cmd} [--emit] [--json] <ref>")
             return 2
-        return _print_report(_orchestrator(repo, force=force).revert(" ".join(rest), emit=emit))
-
-    if cmd == "switch":
-        emit = "--emit" in rest
-        rest = [a for a in rest if a != "--emit"]
-        if len(rest) < 2 or rest[-1] not in ("on", "off"):
-            print("usage: sgt switch [--emit] <ref> on|off")
-            return 2
-        on = rest[-1] == "on"
-        return _print_report(_orchestrator(repo, force=force).switch(" ".join(rest[:-1]), on, emit=emit))
+        ref = " ".join(rest)
+        orch = _orchestrator(repo, force=force)
+        if emit and as_json:
+            return _emit_json(orch.emit_payload(cmd, ref))
+        verb = orch.revert if cmd == "revert" else orch.restore
+        return _print_report(verb(ref, emit=emit))
 
     if cmd == "reconcile":
         ref = " ".join(rest) if rest else None
         return _print_report(_orchestrator(repo).reconcile(ref))
 
     if cmd == "plan":
-        rest = [a for a in rest if a not in ("--yes", "-y")]  # reserved for a future plan checkpoint
+        # `--yes` auto-accepts the freeform->canonical normalization (skips the confirm prompt).
+        assume_yes = any(a in ("--yes", "-y") for a in rest)
+        rest = [a for a in rest if a not in ("--yes", "-y")]
         if not rest:
-            print('usage: sgt plan [--force] "<intent>"')
+            print('usage: sgt plan [--force] [--yes] "<intent>"')
             return 2
-        return _print_report(_orchestrator(repo, force=force).plan(" ".join(rest)))
+        confirm = (lambda intent, lines: True) if assume_yes else confirm_plan
+        return _print_report(_orchestrator(repo, force=force).plan(" ".join(rest), confirm=confirm))
+
+    if cmd == "merge":
+        if len(rest) < 2:
+            print("usage: sgt merge <ref> <ref> [<ref>...]   (drafts; first is the survivor)")
+            return 2
+        return _print_report(_orchestrator(repo, force=force).merge(rest))
+
+    if cmd == "split":
+        if len(rest) < 3:
+            print('usage: sgt split <ref> "<intent>" "<intent>" [...]   (each piece a draft)')
+            return 2
+        return _print_report(_orchestrator(repo, force=force).split(rest[0], rest[1:]))
 
     return _help()
 
@@ -205,24 +219,16 @@ def _print_sync(rep, verb: str) -> int:
     return 0 if rep.ok else 1
 
 
-def _sync(repo: str, assume_yes: bool) -> int:
-    from sgt.orchestrate.sync import run_sync
-
-    proj = Project.open(repo)
-    confirm = (lambda clusters: True) if assume_yes else confirm_sync
-    return _print_sync(run_sync(proj, repo_path=repo, confirm=confirm), "sync")
-
-
 def _checkpoint(repo: str, assume_yes: bool, intent: str | None, fulfills: str | None) -> int:
     """Distill on-disk edits into the graph; optionally fulfill a PLANNED node (--fulfills)."""
     from sgt.agents.distill import fallback_cluster
-    from sgt.agents.resolve import resolve_ref
+    from sgt.agents.resolve import resolve
     from sgt.orchestrate.sync import run_sync
 
     proj = Project.open(repo)
     fulfills_id = None
     if fulfills:
-        r = resolve_ref(proj.graph, fulfills)
+        r = resolve(proj, fulfills)
         if r.node_id is None:
             print(f"✗ [checkpoint] — could not resolve --fulfills {fulfills!r} ({r.kind})")
             return 1
@@ -318,32 +324,47 @@ def _export(repo: str) -> int:
     return _emit_json(export_view(Project.open(repo)))
 
 
-def _map(repo: str, as_json: bool) -> int:
-    """The deterministic code-entity map (whole-repo). `--json` emits the full projection."""
-    from sgt.api import entity_graph_view
+def _decisions(repo: str, rest: list[str], as_json: bool) -> int:
+    """The decision DAG. `sgt decisions [--json]` → the graph; `decisions frontier` → the frontier."""
+    from sgt.api import decision_graph_view, frontier_view
 
-    view = entity_graph_view(Project.open(repo))
+    if rest and rest[0] == "frontier":
+        view = frontier_view(Project.open(repo))
+        if as_json:
+            return _emit_json(view)
+        print(f"{len(view['lanes'])} lanes in force: "
+              + ", ".join(f"{f}={view['selection'].get(f, '-')}" for f in view["lanes"]))
+        return 0
+
+    if rest and rest[0] == "diff":
+        if len(rest) < 3:
+            print("usage: sgt decisions diff <ref-a> <ref-b>   (ref = HEAD or a tag name)")
+            return 2
+        return _emit_json(_orchestrator(repo).diff(rest[1], rest[2]))
+
+    if rest and rest[0] == "blast":
+        if len(rest) < 2:
+            print("usage: sgt decisions blast <decision-id>")
+            return 2
+        return _emit_json(_orchestrator(repo).blast_radius(rest[1]))
+
+    if rest and rest[0] == "distill":
+        # LLM rationale distillation (Context/Consequence/Alternatives); offline = no-op.
+        from sgt.decisions.distill import distill_all
+
+        only = rest[1] if len(rest) > 1 and not rest[1].startswith("-") else None
+        n = distill_all(Project.open(repo), only=only, overwrite="--force" in rest)
+        print(f"distilled rationale for {n} decision(s)" if n
+              else "nothing distilled (no API key, or all decisions already have rationale)")
+        return 0
+
+    view = decision_graph_view(Project.open(repo))
     if as_json:
         return _emit_json(view)
-    owned = sum(1 for e in view["entities"] if e["node_id"])
-    print(
-        f"{view['count']} entities ({owned} feature-owned), "
-        f"{len(view['components'])} components, "
-        f"{len(view['reduced_edges'])} reduced edges"
-    )
-    return 0
-
-
-def _timeframe(repo: str, frame: int, as_json: bool) -> int:
-    """The code-entity map as of checkpoint ordinal `frame` (the scrubber's per-frame view)."""
-    from sgt.api import timeframe_view
-
-    view = timeframe_view(Project.open(repo), frame)
-    if as_json:
-        return _emit_json(view)
-    owned = sum(1 for e in view["entities"] if e["node_id"])
-    print(f"frame {frame}: {view['count']} entities ({owned} feature-owned), "
-          f"{len(view['components'])} components")
+    bo = sum(1 for e in view["edges"] if e["type"] == "builds-on")
+    lc = sum(1 for e in view["edges"] if e["type"] in ("revises", "fork"))
+    print(f"{view['count']} decisions, {len(view['frontier'])} lanes in force, "
+          f"{lc} lifecycle + {bo} derived builds-on edges, {len(view['clash'])} clashes")
     return 0
 
 
@@ -360,14 +381,14 @@ def _tui(repo: str) -> int:
 
 
 def _show(repo: str, ref: str, as_json: bool = False) -> int:
-    from sgt.agents.resolve import resolve_ref
+    from sgt.agents.resolve import resolve
 
     if as_json:
         from sgt.api import show_view
 
         return _emit_json(show_view(Project.open(repo), ref))
     proj = Project.open(repo)
-    r = resolve_ref(proj.graph, ref)
+    r = resolve(proj, ref)
     if r.node_id is None:
         print(f"could not resolve {ref!r} ({r.kind}"
               + (f": {', '.join(r.matches)}" if r.matches else "") + ")")
@@ -395,12 +416,15 @@ def _help() -> int:
         "sgt — semantic feature-level version control\n\n"
         "  sgt init [path]            initialize .sgt + git\n"
         '  sgt plan "<intent>"        decompose an intent into reviewable PLANNED nodes (no code)\n'
+        '                             accepts canonical DSL: ADD/EXTEND/REPLACE/REMOVE (parses offline)\n'
         '  sgt "<intent>"             shorthand for `sgt plan`\n'
-        "  sgt sync [--yes]           distill out-of-band edits back into the graph\n"
-        '  sgt checkpoint [--intent "..."] [--fulfills <ref>]\n'
-        "                             record your edits as a node; --fulfills lands them on a PLANNED node\n"
-        "  sgt revert [--emit] <ref>  remove a feature (by closure); --emit previews, writes nothing\n"
-        "  sgt switch [--emit] <ref> on|off   suspend / restore a feature (--emit previews)\n"
+        '  sgt merge <ref> <ref>...   fold PLANNED drafts into the first (reshape the plan)\n'
+        '  sgt split <ref> "..." "..." replace a PLANNED draft with several pieces\n'
+        '  sgt checkpoint [--yes] [--intent "..."] [--fulfills <ref>]\n'
+        "                             record your edits as a decision; --fulfills lands them on a PLANNED node\n"
+        "                             (`sgt sync` is checkpoint without a declared intent)\n"
+        "  sgt revert [--emit] <ref>  plug a feature out of HEAD (lane + dependents off); --emit previews\n"
+        "  sgt restore [--emit] <ref> plug a feature back in, or pin it to a decision id (compose versions)\n"
         "  sgt reconcile [<ref>]      re-gate pending quarantine(s); resolve any that now commute\n"
         "  sgt mcp [path]             run the MCP stdio server for coding-agent clients\n"
         "  (mutating verbs take --force to overwrite out-of-band changes)\n"
