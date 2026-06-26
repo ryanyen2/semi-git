@@ -51,7 +51,7 @@ def test_tools_list_advertises_full_agent_surface(tmp_path):
     names = {t["name"] for t in resp["result"]["tools"]}
     # full parity with the CLI's mutating verbs — a regression dropping any is caught here
     assert {"sgt_graph", "sgt_show", "sgt_status", "sgt_conflicts", "sgt_plan", "sgt_checkpoint",
-            "sgt_revert", "sgt_switch", "sgt_reconcile", "sgt_init"} <= names
+            "sgt_revert", "sgt_restore", "sgt_reconcile", "sgt_init"} <= names
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -111,19 +111,20 @@ def test_checkpoint_distills_disk_edit_under_declared_intent(tmp_path):
 
 
 # -- graph verbs + the full agent loop through MCP --------------------------
-def test_revert_tool_removes_node(tmp_path):
+def test_revert_tool_plugs_a_feature_out(tmp_path):
     repo = _seed(tmp_path)
     _, payload = _call(repo, "sgt_revert", {"ref": "shorten"})
     assert payload["ok"] and "shorten" in payload["landed"]
     assert Project.open(tmp_path).materialize() == {}
 
 
-def test_switch_tool_suspends_feature(tmp_path):
+def test_restore_tool_plugs_a_feature_back_in(tmp_path):
     repo = _seed(tmp_path)
-    _, payload = _call(repo, "sgt_switch", {"ref": "shorten", "on": False})
-    assert payload["ok"]
-    from sgt.store.graph import NodeStatus
-    assert Project.open(tmp_path).graph.get("shorten").status is NodeStatus.SUSPENDED
+    _call(repo, "sgt_revert", {"ref": "shorten"})
+    assert Project.open(tmp_path).materialize() == {}  # out of force
+    _, payload = _call(repo, "sgt_restore", {"ref": "shorten"})
+    assert payload["ok"] and "shorten" in payload["landed"]
+    assert "def shorten" in Project.open(tmp_path).materialize().get("app.py", "")
 
 
 def test_reconcile_tool_no_pending(tmp_path):

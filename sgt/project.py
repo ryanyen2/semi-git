@@ -148,25 +148,42 @@ class Project:
         )
 
     # -- materialization ---------------------------------------------------
-    def active_effects(self) -> list[Effect]:
-        """Active effects in the canonical replay order — a pure function of the log.
+    def in_force_entries(self) -> list[LogEntry]:
+        """The log entries composing the current tree — in-force per the frontier, replay order.
 
-        Order is the total order ``(vv.rank, author, counter)`` (oplog ``order_key``),
-        which is a linear extension of causal happens-before. Because a use is authored
-        only after its definition is observed, that definition causally precedes the use
-        and so sorts before it — dependency order falls out of causal order, no separate
-        topological pass needed. This makes materialization replica-independent: two
-        replicas with the same effects replay identically (SEC).
+        This is the single notion of "what is in force": an OFF lane contributes nothing, a lane
+        pinned below its tip contributes less, exactly as ``materialize`` composes. The gate,
+        ``reconcile``, blame and drift all read this, so none can disagree with the tree.
         """
-        active = {
-            nid for nid in self.log.node_ids()
-            if self.graph.has(nid) and self.graph.get(nid).status is NodeStatus.ACTIVE
-        }
-        entries = sorted(self.log.live_entries(active), key=lambda e: e.order_key)
-        return [e.effect for e in entries]
+        from sgt.decisions.store import build_decisions, load_frontier
+
+        decisions = build_decisions(self)
+        selection = load_frontier(self, decisions).selection
+        return self._in_force_entries(selection, decisions)
+
+    def active_effects(self) -> list[Effect]:
+        """In-force effects in canonical replay order (``order_key``) — the effects of the tree.
+
+        Order is the total order ``(vv.rank, author, counter)``, a linear extension of causal
+        happens-before, so a definition sorts before its use and replay is replica-independent
+        (SEC). Frontier-aware (see ``in_force_entries``): reverting/pinning a lane changes this.
+        """
+        return [e.effect for e in self.in_force_entries()]
 
     def materialize(self) -> Codebase:
-        return materialize(self.active_effects())
+        """Reconstruct the working tree from the in-force composition (the frontier).
+
+        The frontier is the single in-force axis: ``materialize`` always composes from it. The
+        default selection (no ``.sgt/frontier.json``, or any lane with no explicit entry) is each
+        lane's tip, which keeps a never-recomposed project byte-identical to a plain replay of all
+        ACTIVE effects — so routing through the frontier is transparent until a lane is reverted or
+        pinned. See docs/design/2026-06-25-one-frontier-minimal-verbs.md.
+        """
+        from sgt.decisions.store import build_decisions, load_frontier
+
+        decisions = build_decisions(self)
+        selection = load_frontier(self, decisions).selection
+        return self._compose(selection, decisions)
 
     def materialize_at(self, frame: int) -> Codebase:
         """Reconstruct the materialized tree as of checkpoint ordinal ``frame`` (tracked features).
@@ -184,6 +201,68 @@ class Project:
         entries = [e for e in self.log.live_entries(active) if 0 < e.landing <= frame]
         entries.sort(key=lambda e: e.order_key)
         return materialize([e.effect for e in entries])
+
+    def materialize_frontier(self, manifest: dict[str, str]) -> Codebase:
+        """Compose the working tree from a frontier manifest ``{feature -> decision_id | OFF}``.
+
+        Thin wrapper over ``_compose`` that derives the decisions itself; callers with the
+        decision list already in hand (``materialize``) call ``_compose`` directly to avoid
+        rebuilding them.
+        """
+        from sgt.decisions.store import build_decisions
+
+        return self._compose(manifest, build_decisions(self))
+
+    def _compose(self, selection: dict[str, str], decisions: list) -> Codebase:
+        """Materialize the tree from a frontier ``selection`` over precomputed ``decisions``."""
+        return materialize([e.effect for e in self._in_force_entries(selection, decisions)])
+
+    def _in_force_entries(self, selection: dict[str, str], decisions: list) -> list[LogEntry]:
+        """In-force log entries for a frontier ``selection`` over ``decisions`` (replay order).
+
+        Each lane contributes the entries of its decisions *up to and including* the in-force
+        decision's landing, so pinning a lane to an earlier decision drops the later ones — this is
+        compose-feature-versions (feature-A@v3 alongside feature-B@latest). A lane mapped to ``OFF``
+        (or absent) contributes nothing. With every lane at its tip this equals a plain replay of
+        all ACTIVE effects; ``materialize_at(frame)`` is the special case "every lane's tip as of
+        ``frame``".
+        """
+        from sgt.decisions.store import OFF
+
+        by_id = {d.id: d for d in decisions}
+        # A lane's tip landing (max over its decisions). Uncommitted entries carry landing 0
+        # (assigned an ordinal only at commit), so they are the *newest* work on a lane and belong
+        # to its tip — they materialize when the lane is at tip, and drop out when it is pinned
+        # below tip (the old committed snapshot the pin asks for).
+        tip_landing: dict[str, int] = {}
+        for d in decisions:
+            tip_landing[d.feature] = max(tip_landing.get(d.feature, d.landing), d.landing)
+        cap_by_feature: dict[str, int] = {}
+        for feature, dec_id in selection.items():
+            if dec_id == OFF:
+                continue  # lane explicitly out of force
+            d = by_id.get(dec_id)
+            if d is not None:
+                cap_by_feature[feature] = d.landing
+        feature_of_group = {(d.node_id, d.landing): d.feature for d in decisions}
+        active = {
+            nid for nid in self.log.node_ids()
+            if self.graph.has(nid) and self.graph.get(nid).status is NodeStatus.ACTIVE
+        }
+        kept = []
+        for e in self.log.live_entries(active):
+            feature = feature_of_group.get((e.node_id, e.landing))
+            if feature is None or feature not in cap_by_feature:
+                continue  # lane OFF or absent from the composition
+            cap = cap_by_feature[feature]
+            at_tip = cap == tip_landing.get(feature, cap)
+            if e.landing == 0:
+                if at_tip:  # uncommitted work shows only when the lane is at its tip
+                    kept.append(e)
+            elif e.landing <= cap:
+                kept.append(e)
+        kept.sort(key=lambda e: e.order_key)
+        return kept
 
     def _safe_path(self, path: str) -> Path:
         """Resolve a managed path under the repo root, refusing any escape (defense-in-depth).

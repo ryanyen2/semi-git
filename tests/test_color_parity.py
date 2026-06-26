@@ -1,10 +1,9 @@
 """The color contract: the OKLCH identity generator must be byte-identical across the
-Python (`sgt/tui/color.py`) and JS (`editor/vscode/media/graph.js`) implementations.
+Python (`sgt/tui/color.py`) and JS (`editor/vscode/media/decision.js`) implementations.
 
-CLAUDE.md asserts this test exists; research found it did not. It does now. The JS side is
-driven straight from `graph.js` (the math functions are sliced out and run under node), so the
-test fails if either implementation drifts. The webview's `themeLC()` is defined but not
-called — we drive `oklchToHex` with the fixed dark L/C that `color.py` uses unconditionally.
+The JS side is driven straight from `decision.js` (the math functions are sliced out and run
+under node), so the test fails if either implementation drifts. We drive `oklchToHex` with the
+fixed dark L/C that `color.py` uses unconditionally.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ import pytest
 
 from sgt.tui.color import color_for
 
-_GRAPH_JS = pathlib.Path(__file__).resolve().parents[1] / "editor/vscode/media/graph.js"
+_GRAPH_JS = pathlib.Path(__file__).resolve().parents[1] / "editor/vscode/media/decision.js"
 _IDS = ["abc123", "feature-x", "kg-population", "", "a", "node-7f3a", "integrate-kg-rag-build"]
 
 

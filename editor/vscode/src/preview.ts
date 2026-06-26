@@ -26,10 +26,10 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
     return vscode.Uri.parse(`${SCHEME}:${side}/${token}/${path}`).with({ fragment: path });
   }
 
-  async preview(action: "revert" | "switch", ref: string, on?: boolean): Promise<void> {
+  async preview(action: "revert" | "restore", ref: string): Promise<void> {
     let res;
     try {
-      res = await this.store.sgt.emit(action, ref, on);
+      res = await this.store.sgt.emit(action, ref);
     } catch (e: any) {
       vscode.window.showErrorMessage(`sgt emit failed: ${e.message}`);
       return;
@@ -47,11 +47,11 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
     const files = res.files ?? {};
     const paths = Object.keys(files);
     if (paths.length === 0) {
-      vscode.window.showInformationMessage(`${verb(action, on)} ${ref}: no file changes.`);
+      vscode.window.showInformationMessage(`${verb(action)} ${ref}: no file changes.`);
       return;
     }
     const token = String(this.seq++);
-    const label = `${verb(action, on)}: ${res.node_id ?? ref}`;
+    const label = `${verb(action)}: ${res.node_id ?? ref}`;
     for (const path of paths) {
       const left = this.uri(token, "current", path);
       const right = this.uri(token, "predicted", path);
@@ -74,9 +74,6 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
   }
 }
 
-function verb(action: string, on?: boolean): string {
-  if (action === "revert") {
-    return "Revert";
-  }
-  return on ? "Restore" : "Suspend";
+function verb(action: string): string {
+  return action === "revert" ? "Revert" : "Restore";
 }

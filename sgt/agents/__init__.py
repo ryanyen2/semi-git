@@ -4,6 +4,6 @@ These policies are LLM/deterministic baselines architected to be RL-trainable la
 (plan KTD7). Resolution is deterministic-first; classification calls the model.
 """
 
-from sgt.agents.resolve import ResolveResult, resolve_ref
+from sgt.agents.resolve import Ref, resolve
 
-__all__ = ["ResolveResult", "resolve_ref"]
+__all__ = ["Ref", "resolve"]

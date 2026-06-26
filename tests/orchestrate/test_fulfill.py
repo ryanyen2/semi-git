@@ -76,8 +76,8 @@ def test_fulfill_atomic_node_then_revert_restores_empty(tmp_path):
     _write(tmp_path, "app.py", "def greet():\n    return 'hi'\n")
     run_sync(proj, repo_path=str(tmp_path), confirm=_YES, fulfills="n1")
 
-    from sgt.lifecycle.algebra import revert_feature
-    out = revert_feature(proj, "n1")
+    from sgt.lifecycle.algebra import revert
+    out = revert(proj, "n1")
     assert out.ok and proj.materialize() == {}
 
 

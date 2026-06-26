@@ -113,7 +113,7 @@ def test_json_roundtrip(tmp_path):
             id="a",
             kind=NodeKind.CAPABILITY,
             intent="rate limit",
-            status=NodeStatus.SUSPENDED,
+            status=NodeStatus.QUARANTINED,
             effect_bundle_id="eb1",
             invariant_ids=["ref-integrity"],
             commit_ids=["deadbeef"],
@@ -128,7 +128,7 @@ def test_json_roundtrip(tmp_path):
 
     a = loaded.get("a")
     assert a.kind is NodeKind.CAPABILITY
-    assert a.status is NodeStatus.SUSPENDED
+    assert a.status is NodeStatus.QUARANTINED
     assert a.effect_bundle_id == "eb1"
     assert a.commit_ids == ["deadbeef"]
     assert loaded.successors("a") == ["b"]

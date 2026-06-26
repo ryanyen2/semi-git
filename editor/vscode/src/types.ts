@@ -103,6 +103,42 @@ export interface EntityMapView {
   frame?: number;
 }
 
+// The decision DAG (sgt.api decision_graph_view). `color` is added by the extension from color.ts
+// (keyed on the feature/lane id) so the webview need not re-implement the OKLCH generator.
+export interface DecisionView {
+  id: string;
+  node_id: string;
+  feature: string;
+  landing: number;
+  intent: { context: string | null; decision: string; consequence: string | null };
+  footprint: string[];
+  commits: string[];
+  alternatives: { option: string; why_rejected: string; source: string; confidence: string }[];
+  lifecycle: { kind: string; of: string | null };
+  color?: string | null;
+}
+
+export interface DecisionEdge {
+  src: string;
+  dst: string;
+  type: string; // "revises" | "fork" | "builds-on"
+  derived?: boolean;
+}
+
+export interface DecisionClash {
+  a: string;
+  b: string;
+  entities: string[];
+}
+
+export interface DecisionGraphView {
+  decisions: DecisionView[];
+  edges: DecisionEdge[];
+  frontier: Record<string, string>; // feature -> in-force decision id
+  clash: DecisionClash[];
+  count: number;
+}
+
 // Live agent telemetry — NOT part of sgt.api (which projects the durable semantic graph). This is
 // an ephemeral presence sidecar tailed from the Claude Code session transcript so the graph reads
 // as "alive" while the agent works. Extension-local; never persisted.

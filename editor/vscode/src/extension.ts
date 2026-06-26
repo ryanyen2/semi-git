@@ -8,8 +8,7 @@ import { BlameController } from "./blame";
 import { SgtCodeLensProvider } from "./codelens";
 import { registerCommands } from "./commands";
 import { GraphTreeProvider } from "./tree";
-import { GraphViewProvider } from "./graphView";
-import { MapViewProvider } from "./mapView";
+import { DecisionViewProvider } from "./decisionView";
 import { SgtHoverProvider } from "./hover";
 import { PreviewProvider } from "./preview";
 import { findSgtRoot } from "./sgt";
@@ -29,18 +28,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const tree = new GraphTreeProvider(store);
   context.subscriptions.push(blame, preview);
 
-  const graphView = new GraphViewProvider(context, store, root, () => void blame.render());
+  const graphView = new DecisionViewProvider(context, store, root);
   context.subscriptions.push(
     graphView,
     vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }),
-    vscode.window.registerWebviewViewProvider(GraphViewProvider.viewId, graphView, {
-      webviewOptions: { retainContextWhenHidden: true },
-    })
-  );
-  const mapView = new MapViewProvider(context, store);
-  context.subscriptions.push(
-    mapView,
-    vscode.window.registerWebviewViewProvider(MapViewProvider.viewId, mapView, {
+    vscode.window.registerWebviewViewProvider(DecisionViewProvider.viewId, graphView, {
       webviewOptions: { retainContextWhenHidden: true },
     })
   );

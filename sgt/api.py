@@ -18,7 +18,9 @@ Shapes (stable; additive changes only):
 
 from __future__ import annotations
 
-from sgt.agents.resolve import resolve_ref
+from sgt.agents.resolve import resolve
+from sgt.decisions.structure import decision_structure
+from sgt.decisions.structure import resolve_footprint as _resolve_footprint
 from sgt.effects.attribute import attribute
 from sgt.effects.model import EffectError
 from sgt.store.graph import EdgeType
@@ -48,8 +50,8 @@ def graph_view(project) -> dict:
 
 
 def show_view(project, ref: str) -> dict:
-    r = resolve_ref(project.graph, ref)
-    if r.node_id is None:
+    r = resolve(project, ref)
+    if not r.ok or r.node_id is None:
         return {"error": f"could not resolve {ref!r} ({r.kind})", "matches": r.matches}
     n = project.graph.get(r.node_id)
     view = node_view(project, n)
@@ -240,6 +242,206 @@ def _clusters(project, g, owners: dict) -> list[dict]:
                         adjacency.add(frozenset((f, dep)))
     prior = load_cluster_store(project.sgt_dir) if hasattr(project, "sgt_dir") else {}
     return [c.to_dict() for c in cluster_features(members, adjacency, prior)]
+
+
+def decision_graph_view(project) -> dict:
+    """The decision DAG: decisions, lifecycle edges (stored), and derived dependency.
+
+    ``revises`` / ``fork`` edges are intrinsic (from each decision's lineage). ``builds-on``
+    edges and the ``clash`` set are **derived** by projecting the entity dependency graph
+    (``entity_graph_view``) through each decision's footprint — never authored — so the graph
+    is reproducible and cannot vibe. ``builds-on`` and clashes are computed among the
+    in-force (frontier) decisions, the nodes a "now" view draws. Pure, offline.
+    """
+    from sgt.decisions.store import build_decisions, load_frontier
+    from sgt.store.graph import EdgeType
+
+    decisions = build_decisions(project)
+    frontier = load_frontier(project, decisions)
+    in_force_ids = frontier.in_force()
+
+    try:
+        eg = entity_graph_view(project)
+    except Exception:
+        eg = {"entities": []}
+    entity_ids = {e["id"] for e in eg.get("entities", [])}
+    entity_dep = {e["id"]: set(e.get("depends_on", [])) for e in eg.get("entities", [])}
+    ent_of = {d.id: _resolve_footprint(d.footprint, entity_ids) for d in decisions}
+
+    edges: list[dict] = []
+    for d in decisions:
+        if d.lifecycle_of:
+            kind = "fork" if d.lifecycle_kind.value == "fork" else "revises"
+            edges.append({"src": d.id, "dst": d.lifecycle_of, "type": kind})
+
+    # Planned dependency lineage. A planned node has no footprint, so the entity-derived builds-on
+    # below never reaches it — without help it floats as an orphan. We connect it two ways, both
+    # derived (never authored): (1) its authored `depends_on` graph edges to sibling planned nodes;
+    # (2) a *name bridge* — the names a planned node `needs`/`provides`, resolved against what every
+    # other decision (landed or planned) provides, so "update run_pipeline to use retrieve_from_graph"
+    # links to both the landed `run_pipeline` lane and the planned `retrieve_from_graph` node.
+    seen_edges = {(e["src"], e["dst"], e["type"]) for e in edges}
+
+    def _add_builds_on(src: str, dst: str) -> None:
+        key = (src, dst, "builds-on")
+        if src != dst and key not in seen_edges:
+            seen_edges.add(key)
+            edges.append({"src": src, "dst": dst, "type": "builds-on", "derived": True})
+
+    feature_of = {d.id: d.feature for d in decisions}
+    if hasattr(project, "graph"):
+        graph = project.graph
+        # Declared plan dependencies persist as builds-on between the *decisions* of those nodes,
+        # even after they land. The call graph alone misses compositional deps — a stats fn that
+        # consumes a loader's output without calling it — which would otherwise orphan both. Map
+        # each node to its latest decision so a revised lane keeps a single incident edge.
+        dec_of_node: dict[str, str] = {}
+        for d in sorted(decisions, key=lambda d: d.landing):
+            dec_of_node[d.node_id] = d.id
+        for e in graph.edges():
+            if e.type is EdgeType.DEPENDS_ON:
+                s, t = dec_of_node.get(e.src), dec_of_node.get(e.dst)
+                if s and t and feature_of.get(s) != feature_of.get(t):
+                    _add_builds_on(s, t)
+
+        # The declared-`needs` bridge, persisted for the life of a decision (planned OR landed). The
+        # call graph alone loses a declared data-flow dependency once code lands — a JSON writer that
+        # takes `compute_summary`'s output as an argument never *calls* it — so we link each decision
+        # to whoever provides a name its node `needs`. name -> provider decision: landed decisions
+        # provide their footprint target def names, planned ones their declared `provides`; match the
+        # full target and its last dotted segment so `Class.method` and a bare `method` both resolve.
+        def _names(raw: str) -> set[str]:
+            return {raw, raw.rsplit(".", 1)[-1]}
+
+        provider_of: dict[str, str] = {}
+        for d in decisions:
+            if d.status.value == "planned":
+                node = graph.get(d.node_id) if graph.has(d.node_id) else None
+                provided = node.provides if node else []
+            else:
+                provided = [k.split("::", 1)[1] for k in d.footprint if "::" in k]
+            for raw in provided:
+                for nm in _names(raw):
+                    provider_of.setdefault(nm, d.id)  # first (deepest in time) provider wins
+
+        for d in decisions:
+            node = graph.get(d.node_id) if graph.has(d.node_id) else None
+            if node is None:
+                continue
+            wanted = {nm for raw in node.needs for nm in _names(raw)}
+            for nm in wanted:
+                owner = provider_of.get(nm)
+                if owner and owner != d.id and feature_of.get(owner) != d.feature:
+                    _add_builds_on(d.id, owner)
+
+    # builds-on / clash are derived at the LANE level: a lane owns the union of its footprints
+    # up to its in-force decision (an entity touched once and not re-touched is still owned), and
+    # the edge is drawn between the two lanes' in-force decision nodes.
+    in_force_of: dict[str, object] = {d.feature: d for d in decisions if d.id in frontier.in_force()}
+    cum_ent: dict[str, set] = {}
+    for feat, dec in in_force_of.items():
+        keys: set[str] = set()
+        for d in decisions:
+            if d.feature == feat and d.landing <= dec.landing:
+                keys |= set(d.footprint)
+        cum_ent[feat] = _resolve_footprint(list(keys), entity_ids)
+
+    clash: list[dict] = []
+    feats = sorted(in_force_of)
+    for fb in feats:
+        for fa in feats:
+            if fa == fb:
+                continue
+            if any(dep in cum_ent[fa] for eb in cum_ent[fb] for dep in entity_dep.get(eb, ())):
+                edges.append({
+                    "src": in_force_of[fb].id, "dst": in_force_of[fa].id,
+                    "type": "builds-on", "derived": True,
+                })
+            shared = cum_ent[fa] & cum_ent[fb]
+            if shared and fb < fa:
+                clash.append({
+                    "a": in_force_of[fa].id, "b": in_force_of[fb].id, "entities": sorted(shared),
+                })
+
+    # A landed decision the frontier selects is reported as in_force (a frontier property,
+    # not a log one — so it's stamped here in the projection, not in the store). Each decision
+    # also carries a deterministic `structure` (defines/uses/used_by) read from the entity graph
+    # (or, for a planned node, its declared provides/needs) — the faithful, offline description.
+    has_graph = hasattr(project, "graph")
+    out_decisions = []
+    for d in decisions:
+        dd = d.to_dict()
+        if d.id in in_force_ids:
+            dd["status"] = "in_force"
+        node = project.graph.get(d.node_id) if has_graph and project.graph.has(d.node_id) else None
+        dd["structure"] = decision_structure(node, eg, ent_of.get(d.id, set()))
+        out_decisions.append(dd)
+
+    return {
+        "decisions": out_decisions,
+        "edges": edges,
+        "frontier": frontier.selection,
+        "head": _primary_head(out_decisions, edges, in_force_ids),
+        "clash": clash,
+        "count": len(decisions),
+    }
+
+
+def _primary_head(decisions: list[dict], edges: list[dict], in_force_ids: set[str]) -> str | None:
+    """The one decision a human reads as HEAD: the integrator.
+
+    The frontier holds one tip per lane (2–6 across the stress corpus), but every project has a single
+    dominant *integrator* — an in-force decision nothing builds on (zero builds-on in-degree) that
+    itself builds on the most others. We pick it by ``(out-degree, dependency depth, landing)``. With
+    no integrator (a pure spine / single lane) we fall back to the newest in-force tip. Deterministic.
+    """
+    if not in_force_ids:
+        return None
+    landing = {d["id"]: d["landing"] for d in decisions}
+    succ: dict[str, list[str]] = {d["id"]: [] for d in decisions}
+    indeg: dict[str, int] = {d["id"]: 0 for d in decisions}
+    for e in edges:
+        if e["type"] in ("builds-on", "revises") and e["src"] in succ and e["dst"] in succ:
+            succ[e["src"]].append(e["dst"])
+            indeg[e["dst"]] = indeg.get(e["dst"], 0) + 1
+
+    memo: dict[str, int] = {}
+
+    def depth(n: str, seen: frozenset) -> int:
+        if n in memo:
+            return memo[n]
+        if n in seen:
+            return 0
+        memo[n] = max((1 + depth(m, seen | {n}) for m in succ[n]), default=0)
+        return memo[n]
+
+    integrators = [d for d in in_force_ids if indeg.get(d, 0) == 0 and succ.get(d)]
+    pool = integrators or list(in_force_ids)
+    return max(pool, key=lambda d: (len(succ.get(d, [])), depth(d, frozenset()), landing.get(d, 0)))
+
+
+def frontier_view(project) -> dict:
+    """The current composition: the in-force decision per lane, and the lane list."""
+    from sgt.decisions.store import build_decisions, load_frontier
+
+    decisions = build_decisions(project)
+    return {
+        "selection": load_frontier(project, decisions).selection,
+        "lanes": sorted({d.feature for d in decisions}),
+    }
+
+
+def frontier_diff(a: dict, b: dict) -> dict:
+    """Decision-level delta between two frontier selections (feature -> decision id)."""
+    added, revised, revoked = [], [], []
+    for f in sorted(set(a) | set(b)):
+        if f in b and f not in a:
+            added.append({"feature": f, "decision": b[f]})
+        elif f in a and f not in b:
+            revoked.append({"feature": f, "decision": a[f]})
+        elif a[f] != b[f]:
+            revised.append({"feature": f, "from": a[f], "to": b[f]})
+    return {"added": added, "revised": revised, "revoked": revoked}
 
 
 def export_view(project) -> dict:

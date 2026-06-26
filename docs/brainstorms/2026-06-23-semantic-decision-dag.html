@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>sgt — the semantic decision DAG</title>
+<!--
+  An interactive walkthrough of the proposed sgt model: version control whose unit is a
+  *decision*, structured as a labeled DAG bound to git's artifact DAG underneath.
+  Self-contained; D3 v7 loaded from CDN (needs network on first load).
+  Color = OKLCH golden-angle hue per feature, ported byte-faithfully from
+  editor/vscode/src/color.ts. Status is NEVER hue — it's glyph + dim (the sgt color contract).
+-->
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --border: #2a313c;
+    --text: #d7dee8;
+    --dim: #8b97a7;
+    --faint: #5c6675;
+    --accent: #6ea8fe;
+    --amber: #e0a458;
+    --danger: #e5688a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header {
+    padding: 14px 22px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
+  header h1 .dia { color: var(--accent); }
+  header .sub { color: var(--dim); font-size: 13px; }
+  header .spacer { flex: 1; }
+  header .toggle {
+    font-size: 12px; color: var(--dim); cursor: pointer; user-select: none;
+    border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; background: var(--panel);
+  }
+  header .toggle.on { color: var(--text); border-color: var(--accent); }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+
+  #stage { position: relative; min-width: 0; }
+  svg { width: 100%; height: 100%; display: block; }
+  #head-readout {
+    position: absolute; top: 12px; left: 16px; z-index: 2;
+    font: 600 12px var(--mono); color: var(--text);
+    background: #0a1020cc; border: 1px solid #243043; border-radius: 8px; padding: 7px 12px;
+    backdrop-filter: blur(3px);
+  }
+  #head-readout .lab { color: var(--faint); font-weight: 400; }
+  #head-readout b { color: var(--accent); font-weight: 600; }
+  .blast-ring { fill: none; stroke: var(--danger); stroke-width: 2.5; stroke-dasharray: 3 3; }
+
+  /* lanes */
+  .lane-band { fill: #ffffff03; }
+  .lane-label { fill: var(--faint); font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+  .lane-rule { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 5; }
+  .time-tick { fill: var(--faint); font: 11px var(--mono); }
+
+  /* edges */
+  .edge { fill: none; stroke-width: 2; }
+  .edge.builds-on { stroke: #6b7686; }
+  .edge.revises   { stroke-dasharray: 6 4; }
+  .edge.faded     { opacity: .28; }
+  .edge-label { font: 600 10px var(--mono); letter-spacing: .04em; }
+  .edge-label.builds-on { fill: #8893a3; }
+  .edge-label.revises   { fill: var(--dim); }
+  .conflict-arc { fill: none; stroke: var(--danger); stroke-width: 2; stroke-dasharray: 4 4; }
+
+  /* nodes */
+  .node { cursor: pointer; }
+  .node .halo { fill: none; stroke-width: 2.5; opacity: .9; }
+  .node .disc { stroke-width: 2.5; }
+  .node .glyph { font: 600 13px var(--mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  .node .nlabel { font: 600 12.5px var(--sans); fill: var(--text); }
+  .node .nkind  { font: 10px var(--mono); fill: var(--faint); letter-spacing: .08em; text-transform: uppercase; }
+  .node.retired .nlabel, .node.revoked .nlabel { fill: var(--dim); }
+  .node.selected .ring2 { stroke: var(--accent); stroke-width: 2; fill: none; opacity: .9; }
+
+  /* git commit dots */
+  .commit { stroke-width: 1.5; }
+  .commit-link { stroke: var(--faint); stroke-width: 1.5; }
+  .commit-sha { font: 9px var(--mono); fill: var(--faint); }
+
+  /* side panel */
+  #side { background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  #side .scroll { overflow-y: auto; padding: 18px 20px; }
+  .step-eyebrow { color: var(--accent); font: 700 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  #side h2 { font-size: 18px; margin: 6px 0 10px; }
+  #side p { font-size: 13.5px; line-height: 1.6; color: #c4cdd9; margin: 10px 0; }
+  #side code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; color: #cfe0ff; }
+  .cmd {
+    font-family: var(--mono); font-size: 12.5px; background: #0a1020; border: 1px solid #243043;
+    border-radius: 8px; padding: 10px 12px; margin: 12px 0; color: #bfe0ff; white-space: pre-wrap; line-height: 1.5;
+  }
+  .cmd .pfx { color: var(--faint); }
+  .cmd .new { color: var(--amber); }
+  .defs { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .defs h3 { font: 700 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin: 0 0 8px; }
+  .def { margin: 9px 0; font-size: 12.5px; line-height: 1.5; }
+  .def b { color: var(--text); }
+  .def span { color: var(--dim); }
+  .needs { margin: 12px 0; padding: 10px 12px; border-left: 2px solid var(--amber);
+    background: #2a210f55; border-radius: 0 6px 6px 0; font-size: 12.5px; line-height: 1.5; color: #e9d6b3; }
+  .needs span { display:block; font: 700 10px var(--mono); letter-spacing:.12em; text-transform:uppercase; color: var(--amber); margin-bottom: 4px; }
+
+  /* node detail card */
+  #detail { display: none; border-top: 1px solid var(--border); background: var(--panel-2); padding: 14px 20px; }
+  #detail.show { display: block; }
+  #detail .dhead { display: flex; align-items: center; gap: 8px; }
+  #detail .dot { width: 11px; height: 11px; border-radius: 50%; }
+  #detail .dname { font-weight: 700; font-size: 14px; }
+  #detail .close { margin-left: auto; cursor: pointer; color: var(--faint); font-size: 16px; }
+  #detail .gwt { font-family: var(--mono); font-size: 11.5px; margin: 10px 0; }
+  #detail .gwt div { margin: 3px 0; }
+  #detail .gwt .k { color: var(--accent); display: inline-block; width: 68px; }
+  #detail .alts { font-size: 12px; color: var(--dim); margin: 8px 0; }
+  #detail .alts .lose { color: var(--danger); }
+  #detail .tx { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  #detail .tx .c { font: 10px var(--mono); background: #0a1020; border: 1px solid #243043; border-radius: 5px; padding: 2px 6px; color: var(--dim); }
+  #detail .tx .arr { color: var(--faint); }
+
+  /* footer nav */
+  footer {
+    border-top: 1px solid var(--border); padding: 12px 22px; display: flex; align-items: center; gap: 16px;
+    background: var(--panel);
+  }
+  footer button {
+    font: 600 13px var(--sans); background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px; padding: 7px 16px; cursor: pointer;
+  }
+  footer button:hover:not(:disabled) { border-color: var(--accent); }
+  footer button:disabled { opacity: .4; cursor: default; }
+  .dots { display: flex; gap: 7px; flex: 1; justify-content: center; }
+  .dots .d { width: 9px; height: 9px; border-radius: 50%; background: var(--border); cursor: pointer; transition: all .2s; }
+  .dots .d.active { background: var(--accent); transform: scale(1.25); }
+  .legend { display: flex; gap: 14px; font: 11px var(--mono); color: var(--dim); align-items: center; }
+  .legend b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dia">◆</span> sgt — the semantic decision DAG</h1>
+  <span class="sub">version control whose unit is a <i>decision</i>, bound to git underneath</span>
+  <span class="spacer"></span>
+  <span class="toggle" id="gitToggle">show git commits</span>
+</header>
+
+<main>
+  <div id="stage">
+    <div id="head-readout"></div>
+    <svg id="svg" viewBox="0 0 1020 600" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <aside id="side">
+    <div class="scroll" id="sidebody"></div>
+    <div id="detail"></div>
+  </aside>
+</main>
+
+<footer>
+  <button id="prev">‹ Back</button>
+  <div class="dots" id="dots"></div>
+  <button id="next">Next ›</button>
+  <div class="legend">
+    <span>● <b>in&nbsp;force</b></span>
+    <span>◇ <b>retired</b></span>
+    <span>⊘ <b>revoked</b></span>
+    <span style="color:var(--faint)">status = glyph, never hue</span>
+  </div>
+</footer>
+
+<script>
+/* ---------- OKLCH color, ported byte-faithfully from editor/vscode/src/color.ts (Dark theme) ---------- */
+const GOLDEN = 0.618033988749895, L = 0.72, C = 0.13;
+function hashId(id){ let h=2166136261; for(let i=0;i<id.length;i++){ h^=id.charCodeAt(i); h=Math.imul(h,16777619);} return h>>>0; }
+function oklchToRgb(L,C,hDeg){
+  const h=hDeg*Math.PI/180, a=C*Math.cos(h), b=C*Math.sin(h);
+  const l_=L+0.3963377774*a+0.2158037573*b, m_=L-0.1055613458*a-0.0638541728*b, s_=L-0.0894841775*a-1.291485548*b;
+  const l=l_**3, m=m_**3, s=s_**3;
+  const lr=4.0767416621*l-3.3077115913*m+0.2309699292*s;
+  const lg=-1.2684380046*l+2.6097574011*m-0.3413193965*s;
+  const lb=-0.0041960863*l-0.7034186147*m+1.707614701*s;
+  const g=x=>{ const c=x<=0.0031308?12.92*x:1.055*Math.pow(x,1/2.4)-0.055; return Math.round(Math.max(0,Math.min(1,c))*255); };
+  return [g(lr),g(lg),g(lb)];
+}
+function colorFor(featureId){ const [r,g,b]=oklchToRgb(L,C,((hashId(featureId)*GOLDEN)%1)*360); return `#${[r,g,b].map(c=>c.toString(16).padStart(2,'0')).join('')}`; }
+
+/* ---------- model ---------- */
+const LANES = [
+  { id:'embedding',       label:'embedding',       y:130 },
+  { id:'retrieval',       label:'retrieval',       y:300 },
+  { id:'knowledge-graph', label:'knowledge-graph', y:470 },
+];
+const laneY = id => LANES.find(l=>l.id===id).y;
+
+// fixed positions; nodes never move — only status / presence / frontier change between frames
+const NODES = {
+  D1:  { label:'embedding',    feature:'embedding',       kind:'introduce', x:175, y:laneY('embedding'),
+         context:'no semantic recall yet', decision:'add an embedding model', consequence:'embed(text) → vector',
+         alts:[['bag-of-words','too weak for semantic recall']],
+         commits:[['a001','add embed module'],['a014','wire config']] },
+  D2:  { label:'retrieval',    feature:'retrieval',       kind:'introduce', x:345, y:laneY('retrieval'),
+         context:'embeddings exist (builds on D1)', decision:'build vector retrieval', consequence:'search(q) → ranked hits',
+         alts:[['BM25 keyword','no semantic match'],['hybrid','deferred — more surface']],
+         commits:[['7b13','scaffold index'],['e8a0','build index'],['1f55','query API']] },
+  D3:  { label:'entity KG',    feature:'knowledge-graph', kind:'introduce', x:345, y:laneY('knowledge-graph')-22,
+         context:'docs have latent relations', decision:'build an entity knowledge-graph', consequence:'kg.entities() → graph',
+         alts:[['no graph','loses relational recall']],
+         commits:[['4af1','kg schema'],['9c02','entity builder']] },
+  D4:  { label:'cap top-10',   feature:'retrieval',       kind:'revise · refine', x:530, y:laneY('retrieval'),
+         context:'retrieval (D2) returns unranked, oversized results', decision:'normalize vectors, cap to top-10', consequence:'search(q) → top-10 normalized',
+         alts:[['cap at 5','too lossy'],['no cap','context overflow']],
+         commits:[['c220','normalize vecs'],['c231','top-k limit']] },
+  D3p: { label:'tag-graph',    feature:'knowledge-graph', kind:'revise · fork', x:530, y:laneY('knowledge-graph')+40,
+         context:'entity KG (D3) too heavy / brittle', decision:'try a lightweight tag-graph instead', consequence:'kg.tags() → graph',
+         alts:[['entity KG (D3)','too heavy / brittle — the road we left']],
+         commits:[['b700','tag extractor'],['b711','tag-graph build'],['b733','tests']] },
+  Dg:  { label:'kg adapter',   feature:'glue', kind:'revise · reconcile', x:720, y:laneY('retrieval')+85,
+         context:'D2 wants kg.entities(), D3′ only provides kg.tags()', decision:'add an adapter (LLM-proposed glue)', consequence:'kg.entities() shims over kg.tags()',
+         alts:[['rewrite D2 retrieval','larger blast radius']],
+         commits:[['f900','entities()→tags() adapter']] },
+  Dm:  { label:'promote tag-graph', feature:'knowledge-graph', kind:'revise · merge', x:905, y:laneY('knowledge-graph'),
+         context:'tag-graph (D3′) proved out; entity-KG abandoned', decision:'fold tag-graph into the canonical KG line', consequence:'kg is now the tag-graph; adapter retired',
+         alts:[['keep both lines','ambiguous which KG is canonical']],
+         commits:[['d010','fold tag-graph into kg/'],['d011','drop adapter']] },
+};
+// only two edge kinds: builds-on (dependency backbone) · revises (with a flavor)
+const EDGES = [
+  { from:'D2',  to:'D1',  type:'builds-on' },
+  { from:'D4',  to:'D2',  type:'revises', flavor:'refine'    },
+  { from:'D3p', to:'D3',  type:'revises', flavor:'fork'      },
+  { from:'Dg',  to:'D2',  type:'revises', flavor:'reconcile' },
+  { from:'Dg',  to:'D3p', type:'builds-on' },
+  { from:'Dm',  to:'D3p', type:'builds-on' },
+];
+
+const GLYPH = { frontier:'●', retired:'◇', revoked:'⊘' };
+
+/* ---------- frames ---------- */
+const FRAMES = [
+  {
+    eyebrow:'step 1 / 10',
+    title:'A prompt decomposes into decisions',
+    status:{ D1:'frontier', D2:'frontier', D3:'frontier' },
+    cmd:[['$ ','sgt '],['plan','new'],[' "build a RAG pipeline: embeddings, retrieval, a knowledge graph"','']],
+    body:`<p>You type one intent. sgt <b>decomposes</b> it into three <b>decisions</b> — one per
+      coherent unit of work — and lays each on its own <b>lane</b> (a feature line).</p>
+      <p>Edges carry meaning, and there are only two kinds: retrieval <code>builds-on</code>
+      embeddings; the knowledge-graph is independent (its own lane, <i>no edge</i>). The
+      <b>frontier</b> — the decisions currently <i>in force</i> — is your HEAD. It is <i>not</i> a
+      single commit.</p>
+      <p>Click any node to read its <code>Context / Decision / Consequence</code> and the git
+      commits it owns.</p>`,
+    defs:[
+      ['Decision','the unit of versioning — a record (<code>Context / Decision / Consequence</code> + alternatives) plus the typed effects that realize it.'],
+      ['Lane / branch','one feature\'s line of decisions over time.'],
+      ['Frontier (HEAD)','the in-force decisions, composed and materialized into the working tree.'],
+      ['Decision = git transaction','one decision owns a <i>set</i> of commits that land or roll back atomically. Toggle “show git commits”.'],
+    ],
+  },
+  {
+    eyebrow:'step 2 / 10',
+    title:'Iterate with a “but”',
+    status:{ D1:'frontier', D2:'retired', D4:'frontier', D3:'frontier' },
+    cmd:[['$ ','sgt '],['revise','new'],[' retrieval "normalize vectors, cap to top-10"','']],
+    body:`<p>You sharpen retrieval. A new decision <b>D4</b> <code>revises</code> D2 (flavor:
+      <i>refine</i>). D2 doesn't vanish; it <b>retires</b> (◇, dim) and stays fully recoverable.
+      The frontier moves to <code>{D1, D4, D3}</code>.</p>
+      <p>Notice what you <i>didn't</i> have to label: that D4 <b>overrides</b> D2 (rather than adds
+      to it) is <b>derived</b> — the system sees both touch retrieval. You only ever write the two
+      edge verbs.</p>`,
+    defs:[
+      ['Two edge verbs','<code>builds-on</code> (dependency backbone) and <code>revises</code> (flavors: <i>refine · replace · revoke · fork</i>). That\'s the whole edge vocabulary.'],
+      ['“also” / “but” are gone','parallel = no edge; override vs. additive is <i>derived</i> from whether two decisions touch the same entity — never hand-authored.'],
+      ['Retire ≠ delete','a revised decision leaves the frontier but its commits stay in the object store.'],
+    ],
+  },
+  {
+    eyebrow:'step 3 / 10',
+    title:'Revoke by forking an alternative line',
+    status:{ D1:'frontier', D2:'retired', D4:'frontier', D3:'revoked', D3p:'frontier' },
+    cmd:[['$ ','sgt '],['revise','new'],[' D3 ','' ],['--fork','new'],[' tag-graph','']],
+    body:`<p>The heavy entity-KG isn't working. Revoking is just a <code>revises</code> edge with
+      the <i>fork</i> flavor: D3 is <b>revoked</b> (⊘) but kept, and <b>D3′</b> branches from before
+      it on a new sub-lane.</p>
+      <p>The <i>road not taken</i> survives at two levels — the revoked decision line, and its git
+      commits, both still reachable. Frontier → <code>{D1, D4, D3′}</code>.</p>`,
+    defs:[
+      ['Revoke = revise · fork','revoking spawns an alternative line; the old line is preserved, not rewritten.'],
+      ['Roads not taken','abandoned decisions stay queryable — you can always replay or restore them.'],
+    ],
+  },
+  {
+    eyebrow:'step 4 / 10',
+    title:'Compose feature versions — the thing git can\'t do',
+    status:{ D1:'frontier', D2:'frontier', D4:'retired', D3:'revoked', D3p:'frontier' },
+    cmd:[['$ ','sgt '],['compose','new'],[' D1 D2 D3p   ','']  ,['# put the *original* retrieval back, keep the new KG','']],
+    body:`<p>You hand-pick a non-contiguous mix: the <b>original</b> retrieval D2 back in force,
+      D4 set aside, and the <b>new</b> tag-graph D3′ kept. The frontier recomposes and
+      re-materializes — <i>no cherry-pick, no textual merge, no history rewrite.</i></p>
+      <p><b>This is the capability git structurally lacks:</b> feature-A at an earlier version +
+      feature-B at latest, composed into one working tree as a first-class operation. HEAD is just
+      a different <i>selection over the same DAG</i>.</p>`,
+    defs:[
+      ['HEAD = composition','the working tree is materialized from a chosen version of each feature, not from one commit.'],
+      ['Why not git','git\'s HEAD is one point in a global history; coexisting feature versions need a merge that resolves at the text level and loses independent revertability.'],
+    ],
+  },
+  {
+    eyebrow:'step 5 / 10',
+    title:'Where determinism breaks → the LLM is glue',
+    status:{ D1:'frontier', D2:'frontier', D4:'retired', D3:'revoked', D3p:'frontier', Dg:'frontier' },
+    conflict:['D2','D3p'],
+    cmd:[['$ ','sgt '],['reconcile','new'],['          ','']  ,['# frontier was inconsistent — LLM proposes one glue effect','']],
+    body:`<p>Composing <code>{D1, D2, D3p}</code> is unsafe: D2's <b>Consequence</b> expects
+      <code>kg.entities()</code>, but D3′ only provides <code>kg.tags()</code>. Two
+      <b>Consequences</b> clash on the same entity ⇒ the frontier is <b>inconsistent</b>, and the
+      confluence gate refuses to materialize. (This is the “override” case the system derives —
+      no edge label required.)</p>
+      <p>The LLM steps in as <b>glue</b> — not as an author. It proposes <b>one</b> reconciliation
+      decision <b>Dg</b> (an adapter), gated by the same confluence check and marked low-confidence.
+      No API key ⇒ you just get the conflict report and fix it yourself.</p>`,
+    defs:[
+      ['Consistency','the frontier is valid iff no two <b>Consequences</b> contradict on the same entity.'],
+      ['LLM as glue','the model never writes features — it normalizes prompts and proposes reconciliation effects to make a transaction commute.'],
+      ['Degrades deterministically','with no model available, conflicts are surfaced for you, never auto-papered-over.'],
+    ],
+  },
+  {
+    eyebrow:'step 6 / 10',
+    title:'Restore a revoked decision',
+    status:{ D1:'frontier', D2:'frontier', D4:'retired', D3:'frontier', D3p:'frontier', Dg:'frontier' },
+    conflict:['D3','D3p'],
+    cmd:[['$ ','sgt '],['restore','new'],[' D3      ','']  ,['# entity-KG was never deleted — replay it','']],
+    body:`<p>Turns out some queries really needed entity relations. <b>D3</b> was revoked, not
+      deleted — so you can <b>restore</b> it: sgt replays its transaction and it re-enters the
+      frontier. Now both KG approaches are in force at once.</p>
+      <p>That's deliberately a <b>Consequence clash</b> (both define <code>kg</code>) — handy as a
+      side-by-side <i>comparison</i>, but you can't ship both. The next step resolves it.</p>`,
+    note:'revoked decisions stay fully replayable; restore = re-add to the frontier and re-run the consistency check (which immediately flags the clash).',
+    defs:[
+      ['Restore','re-entering a revoked/retired decision into the frontier by replaying its committed transaction.'],
+      ['Comparison frontier','holding competing variants in force on purpose, to evaluate before choosing.'],
+    ],
+  },
+  {
+    eyebrow:'step 7 / 10',
+    title:'Merge a fork back — promote it to canonical',
+    status:{ D1:'frontier', D2:'frontier', D4:'retired', D3:'revoked', D3p:'retired', Dg:'retired', Dm:'frontier' },
+    cmd:[['$ ','sgt '],['promote','new'],[' D3p     ','']  ,['# tag-graph wins; fold it into the main KG line','']],
+    body:`<p>The tag-graph proved out. <b>Dm</b> <code>merges</code> it back: it folds D3′ into the
+      canonical knowledge-graph line, revokes the entity-KG for good, and <b>auto-retires the
+      adapter Dg</b> — it only existed to bridge the entity-KG that's now gone. Frontier →
+      <code>{D1, D2, Dm}</code>.</p>
+      <p>This is the "merge back to main" you originally pictured — but at the decision level, by
+      meaning, not a textual three-way merge.</p>`,
+    note:'a merge decision with parent(s) that re-canonicalizes a lane; plus cascade-cleanup — glue decisions auto-retire when the conflict they bridged disappears.',
+    defs:[
+      ['Merge / promote','a decision that folds a fork back into its feature\'s canonical line.'],
+      ['Cascade cleanup','reconciliation decisions can auto-retire once the clash they resolved is gone.'],
+    ],
+  },
+  {
+    eyebrow:'step 8 / 10',
+    title:'Revert a dependency — mind the blast radius',
+    status:{ D1:'frontier', D2:'frontier', D4:'retired', D3:'revoked', D3p:'retired', Dg:'retired', Dm:'frontier' },
+    blast:['D1','D2'],
+    cmd:[['$ ','sgt '],['revert','new'],[' D1      ','']  ,['# swap the embedding model','']],
+    body:`<p>You want to swap the embedding model — revert <b>D1</b>. But retrieval <b>D2</b>
+      <code>builds-on</code> D1 (and the cap D4 built on D2). Reverting D1 endangers everything in
+      its dependency cone — highlighted in red.</p>
+      <p>This is where your earlier choice pays off: instead of cascade-deleting dependents, sgt
+      <b>forks an alternative line</b> from D1 and lets you re-point D2 onto it. But the structure
+      has to <i>compute the cone first</i> and show it.</p>`,
+    note:'transitive traversal of builds-on to compute the blast radius; then a choice — cascade-revoke dependents, leave them dangling (flagged), or fork + re-point.',
+    defs:[
+      ['Blast radius','the transitive set of decisions that build-on the one you\'re reverting.'],
+      ['Dependency-aware revert','can\'t be made safe without walking the builds-on edges first.'],
+    ],
+  },
+  {
+    eyebrow:'step 9 / 10',
+    title:'Name a composition · diff two of them',
+    status:{ D1:'frontier', D2:'frontier', D4:'retired', D3:'revoked', D3p:'retired', Dg:'retired', Dm:'frontier' },
+    checkpoint:{ name:'release-v1', members:['D1','D2','Dm'] },
+    cmd:[['$ ','sgt '],['tag','new'],[' release-v1  ','']  ,['&&  sgt ','']  ,['diff','new'],[' release-v1 HEAD','']],
+    body:`<p>A frontier is itself an addressable object — a <b>composition manifest</b> (think
+      semantic lockfile). You can <b>name</b> the current one <code>release-v1</code> and return to
+      it any time.</p>
+      <p>Later you can <b>diff two compositions</b> at the decision level: <i>which decisions were
+      added, revised, or revoked between release-v1 and HEAD</i> — a decision diff, not a line
+      diff.</p>`,
+    note:'frontier = a first-class, nameable, hashable object (a set of decision ids); diff = set-difference over decisions, classified as add / revise / revoke.',
+    defs:[
+      ['Composition manifest','the named set of in-force decisions that materializes a specific working tree — your semantic lockfile.'],
+      ['Decision diff','the delta between two manifests, expressed as decisions changed, not text lines.'],
+    ],
+  },
+  {
+    eyebrow:'step 10 / 10',
+    title:'So what is this, vs. git + a branching skill?',
+    status:{ D1:'frontier', D2:'frontier', D4:'retired', D3:'revoked', D3p:'retired', Dg:'retired', Dm:'frontier' },
+    cmd:[['# ','']  ,['the whole graph above is the answer','']],
+    body:`<p>A git branching <i>skill</i> automates <b>where</b> you branch and <b>when</b> you
+      commit — but the substrate is still text-snapshots, the rationale is unstructured prose, and
+      reverts are textual.</p>
+      <p>Here the substrate itself is different:</p>
+      <p>• <b>Unit</b> — a decision (intent + effects), not a text diff.<br/>
+         • <b>HEAD</b> — a composition over independently-versioned features, not a commit.<br/>
+         • <b>Revert</b> — fork/recompose by meaning, not a textual rewrite.<br/>
+         • <b>Conflict</b> — a clash of <b>Consequences</b> on one entity, caught before it lands.<br/>
+         • <b>Git underneath</b> — every decision still resolves to real, hashed commits.</p>
+      <p>The query a branching skill can't answer — <i>“which decisions touched retrieval, in what
+      order, which did we revoke, and what did the code look like just before?”</i> — is this
+      structure's home turf.</p>`,
+    defs:[
+      ['Two coupled DAGs','a labeled decision DAG (the “why”) bound commit-by-commit to git\'s artifact DAG (the safely-versioned “what”).'],
+    ],
+  },
+];
+
+/* ---------- render ---------- */
+const svg = d3.select('#svg');
+const W = 1020, H = 600;
+let showGit = false, selected = null, frame = 0;
+
+// static layers
+const gLanes  = svg.append('g');
+const gEdges  = svg.append('g');
+const gGit    = svg.append('g');
+const gNodes  = svg.append('g');
+const gOverlay= svg.append('g');
+
+// lanes
+LANES.forEach(l => {
+  gLanes.append('rect').attr('class','lane-band').attr('x',0).attr('y',l.y-58).attr('width',W).attr('height',116);
+  gLanes.append('line').attr('class','lane-rule').attr('x1',120).attr('y1',l.y).attr('x2',W-20).attr('y2',l.y);
+  gLanes.append('text').attr('class','lane-label').attr('x',18).attr('y',l.y-40).text(l.label);
+});
+// arrow markers
+const defs = svg.append('defs');
+['#6b7686', '#e0a458'].forEach((c,i)=>{
+  defs.append('marker').attr('id','arr'+i).attr('viewBox','0 0 10 10').attr('refX',9).attr('refY',5)
+    .attr('markerWidth',7).attr('markerHeight',7).attr('orient','auto-start-reverse')
+    .append('path').attr('d','M0 0L10 5L0 10z').attr('fill',c);
+});
+const markerFor = () => 'url(#arr0)';
+
+function edgePath(a,b){
+  const x1=a.x, y1=a.y, x2=b.x, y2=b.y, mx=(x1+x2)/2;
+  return `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
+}
+
+function draw(){
+  const f = FRAMES[frame];
+  const present = id => f.status[id];
+  const ids = Object.keys(NODES).filter(present);
+
+  /* edges */
+  const edges = EDGES.filter(e => present(e.from) && present(e.to));
+  const ej = gEdges.selectAll('path.edge').data(edges, d=>d.from+'-'+d.to+'-'+d.type);
+  ej.exit().remove();
+  ej.enter().append('path')
+      .attr('class', d=>`edge ${d.type}`)
+      .attr('marker-end', markerFor())
+    .merge(ej)
+      .attr('stroke', d=> d.type==='revises' ? colorFor(NODES[d.from].feature) : null)
+      .classed('faded', d => f.status[d.from]==='revoked' || f.status[d.to]==='retired' || f.status[d.to]==='revoked')
+      .transition().duration(420)
+      .attr('d', d=>edgePath(NODES[d.from], NODES[d.to]));
+
+  // edge labels
+  const lj = gEdges.selectAll('text.edge-label').data(edges, d=>d.from+'-'+d.to+'-'+d.type);
+  lj.exit().remove();
+  lj.enter().append('text').attr('class', d=>`edge-label ${d.type}`).attr('text-anchor','middle')
+    .merge(lj)
+      .text(d=> d.type==='revises' ? `revises·${d.flavor}` : d.type)
+      .classed('faded', d => f.status[d.from]==='revoked')
+      .transition().duration(420)
+      .attr('x', d=>(NODES[d.from].x+NODES[d.to].x)/2)
+      .attr('y', d=>(NODES[d.from].y+NODES[d.to].y)/2 - 5);
+
+  /* conflict overlay */
+  gOverlay.selectAll('*').remove();
+  if (f.conflict){
+    const [a,b] = f.conflict.map(id=>NODES[id]);
+    gOverlay.append('path').attr('class','conflict-arc')
+      .attr('d',`M${a.x} ${a.y} Q${(a.x+b.x)/2} ${(a.y+b.y)/2-70} ${b.x} ${b.y}`);
+    gOverlay.append('text').attr('x',(a.x+b.x)/2).attr('y',(a.y+b.y)/2-58)
+      .attr('text-anchor','middle').attr('fill','var(--danger)')
+      .attr('font-size',16).text('⚠ Consequence clash');
+  }
+  if (f.blast){
+    f.blast.forEach(id=> gOverlay.append('circle').attr('class','blast-ring')
+      .attr('cx',NODES[id].x).attr('cy',NODES[id].y).attr('r',26));
+    const tail = NODES[f.blast[f.blast.length-1]];
+    gOverlay.append('text').attr('x',tail.x+30).attr('y',tail.y-30)
+      .attr('fill','var(--danger)').attr('font-size',12.5).attr('font-family','var(--mono)')
+      .text('⚠ blast radius (builds-on)');
+  }
+  if (f.checkpoint){
+    const xs = f.checkpoint.members.map(id=>NODES[id].x);
+    const cx = (Math.min(...xs)+Math.max(...xs))/2;
+    gOverlay.append('text').attr('x',cx).attr('y',42).attr('text-anchor','middle')
+      .attr('fill','var(--accent)').attr('font-size',14).attr('font-family','var(--mono)')
+      .text(`⎘ ${f.checkpoint.name} = ${f.checkpoint.members.join(' · ')}`);
+  }
+
+  /* git commit strips */
+  gGit.selectAll('*').remove();
+  if (showGit){
+    ids.forEach(id=>{
+      const n = NODES[id]; const cs = n.commits;
+      const y = n.y + 34; const gap = 26; const startX = n.x - (cs.length-1)*gap/2;
+      const col = colorFor(n.feature);
+      const dim = f.status[id]!=='frontier';
+      cs.forEach((c,i)=>{
+        const cx = startX + i*gap;
+        if (i>0) gGit.append('line').attr('class','commit-link')
+          .attr('x1',cx-gap).attr('y1',y).attr('x2',cx).attr('y2',y).attr('opacity',dim?.3:.7);
+        gGit.append('circle').attr('class','commit').attr('cx',cx).attr('cy',y).attr('r',4)
+          .attr('fill', dim?'transparent':col).attr('stroke',col).attr('opacity',dim?.4:1);
+      });
+      gGit.append('text').attr('class','commit-sha').attr('x',n.x).attr('y',y+16).attr('text-anchor','middle')
+        .attr('opacity',dim?.4:.85).text(`${cs.length}-commit txn`);
+    });
+  }
+
+  /* nodes */
+  const nj = gNodes.selectAll('g.node').data(ids, d=>d);
+  nj.exit().transition().duration(250).style('opacity',0).remove();
+  const en = nj.enter().append('g').attr('class','node')
+      .attr('transform', d=>`translate(${NODES[d].x},${NODES[d].y})`)
+      .style('opacity',0)
+      .on('click',(e,d)=>{ selected = selected===d ? null : d; renderDetail(); draw(); });
+  en.append('circle').attr('class','ring2').attr('r',24);
+  en.append('circle').attr('class','halo').attr('r',18);
+  en.append('circle').attr('class','disc').attr('r',13);
+  en.append('text').attr('class','glyph');
+  en.append('text').attr('class','nlabel').attr('x',20).attr('y',-2);
+  en.append('text').attr('class','nkind').attr('x',20).attr('y',12);
+
+  const all = en.merge(nj);
+  all.attr('class', d=>`node ${f.status[d]}${selected===d?' selected':''}`);
+  all.transition().duration(300).style('opacity',1)
+     .attr('transform', d=>`translate(${NODES[d].x},${NODES[d].y})`);
+  all.select('.halo')
+     .attr('stroke', d=> f.status[d]==='frontier' ? colorFor(NODES[d].feature) : 'none')
+     .attr('opacity', d=> f.status[d]==='frontier' ? .9 : 0);
+  all.select('.disc')
+     .attr('fill', d=> f.status[d]==='frontier' ? colorFor(NODES[d].feature) : 'transparent')
+     .attr('stroke', d=> colorFor(NODES[d].feature))
+     .attr('opacity', d=> f.status[d]==='frontier' ? 1 : .55);
+  all.select('.glyph')
+     .text(d=>GLYPH[f.status[d]])
+     .attr('fill', d=> f.status[d]==='frontier' ? '#0d1117' : colorFor(NODES[d].feature))
+     .attr('opacity', d=> f.status[d]==='frontier' ? 1 : .7);
+  all.select('.ring2').attr('stroke', d=> selected===d ? null : 'none');
+  all.select('.nlabel').text(d=>NODES[d].label);
+  all.select('.nkind').text(d=>NODES[d].kind);
+
+  renderSide();
+  renderDots();
+
+  const frontier = Object.keys(f.status).filter(id=>f.status[id]==='frontier');
+  document.getElementById('head-readout').innerHTML =
+    `<span class="lab">⌂ working tree = compose(</span> <b>${frontier.join(' · ')}</b> <span class="lab">) — these ● are your current code</span>`;
+}
+
+function renderSide(){
+  const f = FRAMES[frame];
+  const cmd = f.cmd.map(([t,cls])=>`<span class="${cls}">${t.replace('<','&lt;')}</span>`).join('');
+  const defs = (f.defs||[]).map(([t,d])=>`<div class="def"><b>${t}</b> — <span>${d}</span></div>`).join('');
+  document.getElementById('sidebody').innerHTML = `
+    <div class="step-eyebrow">${f.eyebrow}</div>
+    <h2>${f.title}</h2>
+    <div class="cmd">${cmd}</div>
+    ${f.body}
+    ${f.note ? `<div class="needs"><span>▸ data structure must support</span>${f.note}</div>` : ''}
+    <div class="defs"><h3>definitions this step</h3>${defs}</div>`;
+}
+
+function renderDetail(){
+  const el = document.getElementById('detail');
+  if (!selected){ el.className=''; el.innerHTML=''; return; }
+  const n = NODES[selected]; const col = colorFor(n.feature);
+  const alts = n.alts.map(([a,why])=>`<div>· ${a} <span class="lose">✗ ${why}</span></div>`).join('');
+  const tx = n.commits.map(([sha,msg],i)=>`${i?'<span class="arr">→</span>':''}<span class="c" title="${msg}">${sha}</span>`).join('');
+  el.className='show';
+  el.innerHTML = `
+    <div class="dhead">
+      <span class="dot" style="background:${col}"></span>
+      <span class="dname">${selected} · ${n.label}</span>
+      <span class="close" onclick="window.__close()">✕</span>
+    </div>
+    <div class="gwt">
+      <div><span class="k">Context</span> ${n.context}</div>
+      <div><span class="k">Decision</span> ${n.decision}</div>
+      <div><span class="k">Conseq.</span> ${n.consequence}</div>
+    </div>
+    <div class="alts"><b style="color:var(--text)">alternatives considered:</b>${alts}</div>
+    <div class="tx"><span style="color:var(--faint);font:10px var(--mono)">git txn:</span> ${tx}</div>`;
+}
+window.__close = ()=>{ selected=null; renderDetail(); draw(); };
+
+function renderDots(){
+  const d = d3.select('#dots').selectAll('.d').data(FRAMES);
+  d.enter().append('div').attr('class','d').on('click',(e,_,)=>{}).merge(d)
+    .attr('class',(_,i)=>'d'+(i===frame?' active':''))
+    .on('click',(e,_)=>{ frame = Array.from(document.querySelectorAll('.dots .d')).indexOf(e.currentTarget); go(); });
+  document.getElementById('prev').disabled = frame===0;
+  document.getElementById('next').disabled = frame===FRAMES.length-1;
+}
+
+function go(){ selected=null; renderDetail(); draw(); }
+
+document.getElementById('next').onclick = ()=>{ if(frame<FRAMES.length-1){frame++; go();} };
+document.getElementById('prev').onclick = ()=>{ if(frame>0){frame--; go();} };
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight') document.getElementById('next').click();
+  if(e.key==='ArrowLeft')  document.getElementById('prev').click();
+});
+document.getElementById('gitToggle').onclick = function(){
+  showGit=!showGit; this.classList.toggle('on',showGit); draw();
+};
+
+draw();
+</script>
+</body>
+</html>

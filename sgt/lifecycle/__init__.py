@@ -1,5 +1,5 @@
-"""Feature lifecycle algebra: revert (by closure + GC), switch (suspend/restore)."""
+"""Feature lifecycle algebra: revert/restore as frontier edits with builds-on closure."""
 
-from sgt.lifecycle.algebra import RevertOutcome, revert_feature, switch_feature
+from sgt.lifecycle.algebra import RecomposeOutcome, restore, revert
 
-__all__ = ["RevertOutcome", "revert_feature", "switch_feature"]
+__all__ = ["RecomposeOutcome", "restore", "revert"]
