@@ -78,16 +78,18 @@ export function registerCommands(
       void preview.preview("revert", node);
     }
   });
+  // One frontier, two recompose verbs. "switch off" was a reversible suspend — now just `revert`
+  // (lossless); "switch on" is `restore`. Command IDs are kept stable for the menus/webview.
   reg("sgt.previewSwitchOff", async (id?: string) => {
     const node = await pickNode(store, id);
     if (node) {
-      void preview.preview("switch", node, false);
+      void preview.preview("revert", node);
     }
   });
   reg("sgt.previewSwitchOn", async (id?: string) => {
     const node = await pickNode(store, id);
     if (node) {
-      void preview.preview("switch", node, true);
+      void preview.preview("restore", node);
     }
   });
 
@@ -100,13 +102,13 @@ export function registerCommands(
   reg("sgt.switchOff", async (id?: string) => {
     const node = await pickNode(store, id);
     if (node) {
-      await applyMutation(store, ["switch", node, "off"], `Suspend feature ${node}?`);
+      await applyMutation(store, ["revert", node], `Plug feature ${node} out of HEAD?`);
     }
   });
   reg("sgt.switchOn", async (id?: string) => {
     const node = await pickNode(store, id);
     if (node) {
-      await applyMutation(store, ["switch", node, "on"], `Restore feature ${node}?`);
+      await applyMutation(store, ["restore", node], `Plug feature ${node} back into HEAD?`);
     }
   });
 }

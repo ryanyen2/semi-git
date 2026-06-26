@@ -32,16 +32,12 @@ def test_recommute_blocked_while_rival_active(tmp_path):
     assert ok is False and effects is None and reason
 
 
-def test_reconcile_resolves_once_rival_suspended(tmp_path):
-    # Reverting the rival would GC the quarantine (it depends on the rival, R35); suspending
-    # it instead clears the uniqueness clash, so the held effects re-gate clean.
-    proj = _seed_conflict(tmp_path)
-    Orchestrator(proj, repo_path=str(tmp_path)).switch("a", on=False)  # suspend the rival def
-    rep = Orchestrator(proj, repo_path=str(tmp_path)).reconcile("b")
-    assert rep.ok and rep.landed == ["b"]
-    assert proj.graph.get("b").status is NodeStatus.ACTIVE
-    assert "return 2" in proj.materialize()["m.py"]
-    assert "b" not in proj.witnesses and proj.valid()
+# NOTE: the old "suspend the rival, then reconcile the held same-name def" recovery has no
+# direct analog in the one-frontier model: a quarantine and its same-name rival are the *same
+# lane* (footprint-union in `_assign_lanes`), and a lossless frontier cannot hold "a off but b on"
+# within one lane. Same-name rivalry is now a single-lane pick, not a toggle. The general reconcile
+# paths — provider-lands (test_fulfill), empty-bundle and blocked-while-active (below) — are
+# unaffected. See docs/design/2026-06-25-one-frontier-minimal-verbs.md (open questions).
 
 
 def test_reconcile_no_pending_is_ok(tmp_path):

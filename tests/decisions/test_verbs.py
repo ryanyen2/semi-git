@@ -1,4 +1,4 @@
-"""U5 — decision-frontier verbs: compose, tag, diff, blast_radius."""
+"""Decision-frontier verbs: restore (pin a lane to a decision), tag, diff, blast_radius."""
 
 from sgt.api import decision_graph_view
 from sgt.effects.model import Effect
@@ -33,9 +33,10 @@ def _orch(proj, tmp_path):
     return Orchestrator(proj, repo_path=str(tmp_path), force=True)
 
 
-def test_compose_pins_a_lane_and_rematerializes(tmp_path):
+def test_restore_pins_a_lane_and_rematerializes(tmp_path):
     proj = _proj(tmp_path)
-    rep = _orch(proj, tmp_path).compose("base", "base@1")
+    # restore to an earlier decision id pins the lane there (compose-feature-versions)
+    rep = _orch(proj, tmp_path).restore("base@1")
     assert rep.ok, rep.message
     # working tree now reflects base@1 (no helper); user lane untouched
     reopened = Project.open(tmp_path)
@@ -47,17 +48,17 @@ def test_compose_pins_a_lane_and_rematerializes(tmp_path):
     assert reopened.check_drift().any is False
 
 
-def test_compose_rejects_wrong_lane(tmp_path):
+def test_restore_unknown_ref_errors(tmp_path):
     proj = _proj(tmp_path)
-    rep = _orch(proj, tmp_path).compose("user", "base@1")
-    assert not rep.ok and "lane" in rep.message
+    rep = _orch(proj, tmp_path).restore("no-such-feature")
+    assert not rep.ok and "matches" in rep.message
 
 
 def test_tag_and_diff_report_decision_level_delta(tmp_path):
     proj = _proj(tmp_path)
     orch = _orch(proj, tmp_path)
     orch.tag("v1")                 # v1 = tip {base@3, user@2}
-    orch.compose("base", "base@1")  # HEAD now {base@1, user@2}
+    orch.restore("base@1")          # HEAD now {base@1, user@2}
     d = orch.diff("v1", "HEAD")
     assert d["revised"] == [{"feature": "base", "from": "base@3", "to": "base@1"}]
     assert d["added"] == [] and d["revoked"] == []

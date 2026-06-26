@@ -1,11 +1,15 @@
 """End-to-end runtime test WITHOUT the LLM: build features from hand-made effects,
-exercise materialize / commit / revert / switch, and verify the working tree and
-the git history reflect intent-level versioning."""
+exercise materialize / commit / revert / restore, and verify the working tree and
+the git history reflect intent-level versioning.
+
+Recompose is frontier-based and lossless: ``revert`` sets a lane (and its dependents) OFF; the log
+and graph are untouched, so ``restore`` brings it back. Closure pulls dependents down; there is no
+concept-GC and no surgical suspend-refuse (those were node-status artifacts)."""
 
 import pytest
 
 from sgt.effects.model import Effect, EffectError
-from sgt.lifecycle.algebra import revert_feature, switch_feature
+from sgt.lifecycle.algebra import restore, revert
 from sgt.project import Project
 from sgt.store.gitbind import GitError
 from sgt.store.graph import Node, NodeKind, NodeStatus
@@ -71,8 +75,8 @@ def test_add_two_features_then_revert_one(tmp_path):
     assert proj.git.node_id_for_commit(proj.git.head()) == "redirect"
 
     # Revert the dependent (redirect): shorten survives, file stays valid
-    outcome = revert_feature(proj, "redirect")
-    assert outcome.ok and outcome.removed == ["redirect"]
+    outcome = revert(proj, "redirect")
+    assert outcome.ok and outcome.changed == ["redirect"]
     proj.commit("revert: redirect")
     app = (tmp_path / "app.py").read_text()
     assert "def shorten" in app
@@ -89,27 +93,28 @@ def test_revert_dependency_takes_dependent_with_it(tmp_path):
 
     # Reverting shorten must take redirect (which depends on it) too — else the
     # remaining code would call an undefined shorten().
-    outcome = revert_feature(proj, "shorten")
+    outcome = revert(proj, "shorten")
     assert outcome.ok
-    assert set(outcome.removed) == {"shorten", "redirect"}
+    assert set(outcome.changed) == {"shorten", "redirect"}
     proj.commit("revert: shorten")
     assert "app.py" not in proj.materialize() or proj.materialize().get("app.py", "").strip() == ""
     assert proj.valid()
 
 
-def test_switch_off_removes_from_working_tree_then_restores(tmp_path):
+def test_revert_then_restore_round_trips_the_working_tree(tmp_path):
     proj = Project.init(tmp_path)
     _add(proj, "banner", NodeKind.CAPABILITY, "banner",
          [Effect.add_def("ui.py", "banner", "def banner():\n    return 'hi'")])
 
-    off = switch_feature(proj, "banner", on=False)
+    off = revert(proj, "banner")
     assert off.ok
-    proj.commit("switch: banner off")
+    proj.commit("revert: banner")
     assert "ui.py" not in proj.materialize() or "banner" not in proj.materialize().get("ui.py", "")
 
-    on = switch_feature(proj, "banner", on=True)
+    # lossless: the lane is still in the graph, restore brings it back
+    on = restore(proj, "banner")
     assert on.ok
-    proj.commit("switch: banner on")
+    proj.commit("restore: banner")
     assert "def banner" in proj.materialize()["ui.py"]
 
 
@@ -126,9 +131,10 @@ def test_modify_replaces_behavior_in_place(tmp_path):
     app = (tmp_path / "app.py").read_text()
     assert "u[:8]" in app and "u[:6]" not in app
     assert proj.valid()
-    # Reverting the feature removes the whole bundle (add + replace) cleanly.
-    out = revert_feature(proj, "shorten")
-    assert out.ok and out.removed == ["shorten"]
+    # Reverting the feature drops the whole lane (add + replace) from the tree cleanly.
+    out = revert(proj, "shorten")
+    assert out.ok and out.changed == ["shorten"]
+    assert "def shorten" not in proj.materialize().get("app.py", "")
 
 
 def test_replace_def_introduced_dependency_is_closure_correct(tmp_path):
@@ -145,9 +151,9 @@ def test_replace_def_introduced_dependency_is_closure_correct(tmp_path):
     proj.commit("refine: calc uses helper", node_id="calc")
 
     # Reverting helper must now also take calc (whose body depends on it).
-    out = revert_feature(proj, "helper")
+    out = revert(proj, "helper")
     assert out.ok
-    assert set(out.removed) == {"helper", "calc"}
+    assert set(out.changed) == {"helper", "calc"}
     assert proj.valid()
 
 
@@ -203,13 +209,16 @@ def test_quarantine_anchors_via_inferred_deps_when_against_empty(tmp_path):
     proj.quarantine(qnode, [Effect.add_def("a.py", "x", "def x():\n    return base()")],
                     reason="invariant_violated", held_descs=["add_def x (a.py)"],
                     against_ids=[])  # nothing landed this run
-    # inferred from the held effect's call to base()
+    # inferred from the held effect's call to base() — the anchor edge is recorded so closure
+    # *could* reach the quarantine, but revert only cascades to live (materializing) lanes, so a
+    # held node is left untouched (it isn't in the tree to dangle).
     assert "base" in proj.graph.successors("q1")
-    out = revert_feature(proj, "base")
-    assert out.ok and set(out.removed) == {"base", "q1"}
+    out = revert(proj, "base")
+    assert out.ok and set(out.changed) == {"base"}
+    assert proj.graph.get("q1").status is NodeStatus.QUARANTINED
 
 
-def test_reverting_against_node_gcs_quarantine(tmp_path):
+def test_reverting_a_lane_takes_its_quarantine_dependent(tmp_path):
     proj = Project.init(tmp_path)
     _add(proj, "base", NodeKind.CAPABILITY, "base",
          [Effect.add_def("a.py", "base", "def base():\n    return 1")])
@@ -218,11 +227,13 @@ def test_reverting_against_node_gcs_quarantine(tmp_path):
                     reason="invariant_violated", held_descs=["add_def x (a.py)"],
                     against_ids=["base"])
 
-    # q1 depends on base, so reverting base takes q1 with it (R35)
-    out = revert_feature(proj, "base")
+    # Reverting base sets only its live lane off; the held q1 isn't materializing, so it is not
+    # cascaded — and it is losslessly retained (node + witness), recoverable via reconcile.
+    out = revert(proj, "base")
     assert out.ok
-    assert set(out.removed) == {"base", "q1"}
-    assert "q1" not in proj.witnesses
+    assert set(out.changed) == {"base"}
+    assert proj.graph.has("q1") and proj.witnesses.get("q1")
+    assert proj.graph.get("q1").status is NodeStatus.QUARANTINED
 
 
 def test_same_name_in_different_files_does_not_create_false_dependency(tmp_path):
@@ -254,19 +265,21 @@ def test_method_level_feature_and_revert(tmp_path):
     assert proj.valid()
 
 
-def test_switch_off_dependency_is_refused_not_crashed(tmp_path):
-    # Suspending `helper` makes `caller`'s add_call un-applyable; this used to crash with
-    # an uncaught EffectError. It must now refuse gracefully and roll the status back.
+def test_revert_cascades_to_caller_rather_than_dangling(tmp_path):
+    # Reverting `helper` while `caller` calls it must take `caller` too (downward closure),
+    # so the tree never references an absent `helper` — it cascades, it does not refuse.
     proj = Project.init(tmp_path)
     _add(proj, "helper", NodeKind.CONCEPT, "helper",
          [Effect.add_def("m.py", "helper", "def helper():\n    return 1")])
     _add(proj, "caller", NodeKind.CAPABILITY, "caller",
          [Effect.add_def("m.py", "caller", "def caller():\n    return 1"),
           Effect.add_call("m.py", "caller", "helper")])
-    out = switch_feature(proj, "helper", on=False)
-    assert out.ok is False
-    assert proj.graph.get("helper").status is NodeStatus.ACTIVE  # rolled back
+    out = revert(proj, "helper")
+    assert out.ok
+    assert set(out.changed) == {"helper", "caller"}
+    proj.commit("revert: helper")
     assert proj.valid()
+    assert "def helper" not in proj.materialize().get("m.py", "")
 
 
 def test_reopen_persists_state(tmp_path):

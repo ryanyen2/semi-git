@@ -100,11 +100,9 @@ def _concurrent_conflict(node_entries: list[LogEntry], active_entries: list[LogE
 def _regate(project) -> MergeReport:
     """Recompute node statuses as a projection of the unioned log (two checks, total order)."""
     by_node = _node_entries(project)
-    # Skip user-suspended nodes (their exclusion is intentional, not a merge decision).
-    candidates = [
-        nid for nid in by_node
-        if project.graph.has(nid) and project.graph.get(nid).status is not NodeStatus.SUSPENDED
-    ]
+    # Every node with log entries is a merge candidate; whether a feature is in force is a local
+    # frontier choice (not shipped in the merged log), so it never gates the regate.
+    candidates = [nid for nid in by_node if project.graph.has(nid)]
     candidates.sort(key=lambda nid: min(e.order_key for e in by_node[nid]))
 
     active_entries: list[LogEntry] = []

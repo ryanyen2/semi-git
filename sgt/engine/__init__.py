@@ -1,8 +1,9 @@
-"""The EICO confluence gate and dependency-closure logic.
+"""The EICO confluence gate.
 
-`confluence` decides which effects co-apply (commute + preserve invariants);
-`closure` computes what must be removed when a feature is reverted (the node, its
-dependents, and dependencies that become orphaned).
+`confluence` decides which effects co-apply (commute + preserve invariants). Recompose closure
+(which lanes go off together) now lives in `sgt.lifecycle.algebra`, lifted from the graph's
+DEPENDS_ON edges to lane granularity — the destructive node-removal `closure` module is gone with
+the lossless frontier model.
 """
 
 from sgt.engine.confluence import (
@@ -11,13 +12,10 @@ from sgt.engine.confluence import (
     is_invariant_confluent,
     max_coordination_free_batch,
 )
-from sgt.engine.closure import dependents_closure, revert_set
 
 __all__ = [
     "can_land",
     "commute",
     "is_invariant_confluent",
     "max_coordination_free_batch",
-    "dependents_closure",
-    "revert_set",
 ]

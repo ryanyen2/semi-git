@@ -25,6 +25,11 @@ META_FILE = "decisions.json"
 FRONTIER_FILE = "frontier.json"
 TAGS_FILE = "frontier_tags.json"
 
+# Sentinel frontier value: a lane explicitly out of force (the suspend state). Distinct from a
+# lane simply absent from the selection, which defaults to that lane's tip — OFF is a *decision*
+# to exclude and survives ``load_frontier``'s tip-defaulting.
+OFF = "off"
+
 
 def _is_entity_key(key: str) -> bool:
     """A footprint key names a real def-level entity (``file::name``), not an import/module stmt.
@@ -278,7 +283,9 @@ def load_frontier(project, decisions: list[Decision]) -> Frontier:
     valid_ids = {d.id for d in decisions}
     selection = dict(default.selection)
     for feature, dec_id in stored.selection.items():
-        if dec_id in valid_ids:
+        # A stored OFF survives (an explicit suspend); a pinned id survives only while it still
+        # exists, else the lane falls back to its tip so HEAD can't dangle.
+        if dec_id == OFF or dec_id in valid_ids:
             selection[feature] = dec_id
     return Frontier(selection=selection)
 

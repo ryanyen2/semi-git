@@ -59,12 +59,9 @@ export class Sgt {
     return this.json<DecisionGraphView>(["decisions", "--json"]);
   }
 
-  emit(action: "revert" | "switch", ref: string, on?: boolean): Promise<EmitView> {
-    const args = ["emit", action, ref];
-    if (action === "switch") {
-      args.push(on ? "on" : "off");
-    }
-    return this.json<EmitView>(args);
+  // Structured dry-run of a recompose: `sgt revert|restore <ref> --emit --json`.
+  emit(action: "revert" | "restore", ref: string): Promise<EmitView> {
+    return this.json<EmitView>([action, ref, "--emit", "--json"]);
   }
 
   // Mutations return the human report; surface it verbatim.

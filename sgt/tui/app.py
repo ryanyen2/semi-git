@@ -166,11 +166,10 @@ class SgtTui(App[None]):
         Binding("f5", "refresh", "Refresh"),
         Binding("slash", "focus_filter", "Filter"),
         Binding("r", "preview_revert", "Preview revert"),
-        Binding("s", "preview_suspend", "Preview suspend"),
+        Binding("t", "preview_restore", "Preview restore"),
         # Apply (mutating) ops are uppercase, to set them apart from the safe previews above.
         Binding("X", "apply_revert", "Revert!"),
-        Binding("O", "apply_switch_off", "Suspend!"),
-        Binding("U", "apply_switch_on", "Restore!"),
+        Binding("U", "apply_restore", "Restore!"),
         Binding("m", "show_decisions", "Decisions"),
         Binding("q", "quit", "Quit"),
     ]
@@ -329,35 +328,33 @@ class SgtTui(App[None]):
             self.query_one("#nodes", DataTable).focus()
 
     # -- previews (dry-run, nothing written) -------------------------------
-    def _preview(self, action: str, on: bool = False) -> None:
+    def _preview(self, action: str) -> None:
         nid = self._selected_id()
         if not nid:
             return
         from sgt.orchestrate.loop import Orchestrator
 
-        res = Orchestrator(self._project(), repo_path=self.repo).emit_payload(action, nid, on=on)
+        res = Orchestrator(self._project(), repo_path=self.repo).emit_payload(action, nid)
         if not res.get("ok"):
             self.notify(res.get("message") or res.get("error") or "refused", severity="warning", title="Would be refused")
             return
         files = res.get("files", {})
         detail = "; ".join(f"{f}: {len(v['before'].splitlines())}→{len(v['after'].splitlines())} ln" for f, v in files.items()) or "no file changes"
-        removed = f"  removes: {', '.join(res.get('removed', []))}" if res.get("removed") else ""
+        removed = f"  lanes: {', '.join(res.get('removed', []))}" if res.get("removed") else ""
         self.notify(f"{detail}{removed}", title=f"Preview {action} (nothing written)")
 
     def action_preview_revert(self) -> None:
         self._preview("revert")
 
-    def action_preview_suspend(self) -> None:
-        self._preview("switch", on=False)
+    def action_preview_restore(self) -> None:
+        self._preview("restore")
 
     # -- mutations (confirm, then re-materialize + commit) -----------------
-    def _apply(self, action: str, on: bool = False) -> None:
+    def _apply(self, action: str) -> None:
         nid = self._selected_id()
         if not nid:
             return
-        verb = {"revert": "Revert (plug out)", "off": "Suspend", "on": "Restore"}[
-            "revert" if action == "revert" else ("on" if on else "off")
-        ]
+        verb = {"revert": "Revert (plug out)", "restore": "Restore (plug in)"}[action]
 
         def done(confirmed: bool | None) -> None:
             if not confirmed:
@@ -365,7 +362,7 @@ class SgtTui(App[None]):
             from sgt.orchestrate.loop import Orchestrator
 
             orch = Orchestrator(self._project(), repo_path=self.repo)
-            rep = orch.revert(nid) if action == "revert" else orch.switch(nid, on)
+            rep = orch.revert(nid) if action == "revert" else orch.restore(nid)
             self.notify(rep.message, severity="information" if rep.ok else "error",
                         title="✓ done" if rep.ok else "✗ refused")
             self.action_refresh()
@@ -375,11 +372,8 @@ class SgtTui(App[None]):
     def action_apply_revert(self) -> None:
         self._apply("revert")
 
-    def action_apply_switch_off(self) -> None:
-        self._apply("switch", on=False)
-
-    def action_apply_switch_on(self) -> None:
-        self._apply("switch", on=True)
+    def action_apply_restore(self) -> None:
+        self._apply("restore")
 
 
 def run(repo: str = ".") -> None:

@@ -24,20 +24,17 @@ class NodeKind(str, Enum):
 
 
 class NodeStatus(str, Enum):
-    """Append-only lifecycle: `switch off` suspends rather than deletes (origin R16).
+    """A node's relation to the effect log — *not* whether it is in force.
 
-    ``QUARANTINED`` marks held work whose effects do not yet commute with the landed
-    codebase (R32): the node is durable and visible in the graph, but its effects are
-    excluded from materialization until it is reconciled to ``ACTIVE``.
-
-    ``PLANNED`` marks a tentative, reviewable node that has no effects yet (the coding
-    agent has not implemented it). Like ``QUARANTINED`` it is excluded from
-    materialization; a ``checkpoint --fulfills`` lands real effects under it and flips it
-    ``ACTIVE``.
+    Whether a feature is in force is the frontier's job (a lane's selection, or ``OFF``); it is no
+    longer a node status. Status is only: ``ACTIVE`` (has landed effects in the log), ``PLANNED``
+    (a reviewable node with no effects yet — a ``checkpoint --fulfills`` lands real effects and
+    flips it ``ACTIVE``), and ``QUARANTINED`` (held effects that do not yet commute, excluded from
+    materialization until ``reconcile`` flips them ``ACTIVE``). See
+    docs/design/2026-06-25-one-frontier-minimal-verbs.md.
     """
 
     ACTIVE = "active"
-    SUSPENDED = "suspended"
     QUARANTINED = "quarantined"
     PLANNED = "planned"
 
@@ -52,6 +49,11 @@ class EdgeType(str, Enum):
     DEPENDS_ON = "depends_on"
     REVISES = "revises"
     DERIVES_FROM = "derives_from"
+
+
+def _migrate_status(value: str) -> str:
+    """Map a persisted status onto the current enum (legacy ``suspended`` -> ``active``)."""
+    return NodeStatus.ACTIVE.value if value == "suspended" else value
 
 
 class CycleError(Exception):
@@ -100,7 +102,9 @@ class Node:
             id=d["id"],
             kind=NodeKind(d["kind"]),
             intent=d["intent"],
-            status=NodeStatus(d.get("status", NodeStatus.ACTIVE.value)),
+            # Migration: a legacy "suspended" status maps to ACTIVE (suspension is now a frontier
+            # state, OFF, not a node status). The lane can be reverted again if still unwanted.
+            status=NodeStatus(_migrate_status(d.get("status", NodeStatus.ACTIVE.value))),
             effect_bundle_id=d.get("effect_bundle_id"),
             invariant_ids=list(d.get("invariant_ids", [])),
             commit_ids=list(d.get("commit_ids", [])),

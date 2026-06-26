@@ -58,8 +58,9 @@ export class DecisionViewProvider implements vscode.WebviewViewProvider {
     }
     if (msg.type === "ready") {
       void this.refresh();
-    } else if (msg.type === "compose" && msg.feature && msg.decision) {
-      await this.mutate(["compose", msg.feature, msg.decision], `composed ${msg.feature}`);
+    } else if (msg.type === "compose" && msg.decision) {
+      // Pinning a lane to a decision is `restore <decision-id>` (the decision id carries the lane).
+      await this.mutate(["restore", msg.decision], `pinned ${msg.feature ?? msg.decision}`);
     } else if (msg.type === "distill" && msg.id) {
       // LLM rationale fill for one decision; offline this is a no-op (no key) and just reports so.
       await this.mutate(["decisions", "distill", msg.id], `distilled ${msg.id}`);

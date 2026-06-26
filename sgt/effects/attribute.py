@@ -36,7 +36,6 @@ from sgt.effects.model import (
     materialize,
     units,
 )
-from sgt.store.graph import NodeStatus
 from sgt.store.replica import ReplicaIdentity
 
 
@@ -53,17 +52,12 @@ class Span:
 
 
 def _active_entries(project):
-    """Active, non-tombstoned log entries in the canonical materialization order.
+    """The in-force, non-tombstoned log entries in canonical materialization order.
 
-    Mirrors ``Project.active_effects`` exactly (same admission + ``order_key`` sort) so the
-    effect list we attribute over is byte-for-byte the one that produced ``materialize``.
+    Delegates to ``Project.in_force_entries`` so blame attributes byte-for-byte the same entries
+    that produced ``materialize`` — frontier-aware, so a reverted/pinned lane blames consistently.
     """
-    active = {
-        nid
-        for nid in project.log.node_ids()
-        if project.graph.has(nid) and project.graph.get(nid).status is NodeStatus.ACTIVE
-    }
-    return sorted(project.log.live_entries(active), key=lambda e: e.order_key)
+    return project.in_force_entries()
 
 
 def _normalize_import(src: str) -> str:

@@ -18,7 +18,7 @@ Shapes (stable; additive changes only):
 
 from __future__ import annotations
 
-from sgt.agents.resolve import resolve_ref
+from sgt.agents.resolve import resolve
 from sgt.decisions.structure import decision_structure
 from sgt.decisions.structure import resolve_footprint as _resolve_footprint
 from sgt.effects.attribute import attribute
@@ -50,8 +50,8 @@ def graph_view(project) -> dict:
 
 
 def show_view(project, ref: str) -> dict:
-    r = resolve_ref(project.graph, ref)
-    if r.node_id is None:
+    r = resolve(project, ref)
+    if not r.ok or r.node_id is None:
         return {"error": f"could not resolve {ref!r} ({r.kind})", "matches": r.matches}
     n = project.graph.get(r.node_id)
     view = node_view(project, n)

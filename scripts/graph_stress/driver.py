@@ -126,12 +126,12 @@ class Driver:
             self._snapshot(kind, selector, expect, extra={"error": f"no decision matches {selector!r}"})
             return
         orch = Orchestrator(Project.open(self.wd), repo_path=self.wd)
-        if kind == "revert":
+        # One frontier, two recompose verbs: revert plugs a lane out (lossless), restore plugs it
+        # back. "suspend" is just a reversible revert now, so it maps to the same verb.
+        if kind in ("revert", "suspend"):
             rep = orch.revert(nid)
-        elif kind == "suspend":
-            rep = orch.switch(nid, on=False)
         elif kind == "restore":
-            rep = orch.switch(nid, on=True)
+            rep = orch.restore(nid)
         else:
             rep = None
         self._snapshot(kind, selector, expect,

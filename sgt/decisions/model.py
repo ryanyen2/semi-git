@@ -165,7 +165,7 @@ class Frontier:
     selection: dict[str, str] = field(default_factory=dict)
 
     def in_force(self) -> set[str]:
-        return set(self.selection.values())
+        return {v for v in self.selection.values() if v != "off"}
 
     def to_dict(self) -> dict:
         return {"selection": dict(self.selection)}

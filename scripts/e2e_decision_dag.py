@@ -130,13 +130,13 @@ def main() -> int:
     # ---- Phase 3: compose-feature-versions — pin embedding back to its first decision ----
     orch = Orchestrator(proj, repo_path=wd, force=True)
     first_embed = min((d for d in v["decisions"] if d["feature"] == embed_lane), key=lambda d: d["landing"])
-    rep = orch.compose(embed_lane, first_embed["id"])
-    check("compose pins embedding to its original decision", rep.ok)
+    rep = orch.restore(first_embed["id"])  # restore to an earlier decision id = pin
+    check("restore pins embedding to its original decision", rep.ok)
     reopened = Project.open(wd)
     cb = reopened.materialize()
     check("working tree re-materialized to the pinned version (no 'chunk' import)",
           "chunk" not in cb.get("embedding.py", ""))
-    check("compose left no perpetual drift", reopened.check_drift().any is False)
+    check("restore left no perpetual drift", reopened.check_drift().any is False)
     v3 = decision_graph_view(reopened)
     check("frontier now pins embedding to its first decision",
           v3["frontier"].get(embed_lane) == first_embed["id"])
@@ -147,8 +147,8 @@ def main() -> int:
     check("blast radius of embedding includes its downstream lane (retrieval)",
           any(b.startswith(retr_lane) for b in blast.get("blast_radius", [])))
     orch2.tag("v-pinned")
-    orch2.compose(embed_lane, max((d for d in v["decisions"] if d["feature"] == embed_lane),
-                                  key=lambda d: d["landing"])["id"])  # back to tip
+    orch2.restore(max((d for d in v["decisions"] if d["feature"] == embed_lane),
+                      key=lambda d: d["landing"])["id"])  # back to tip
     diff = orch2.diff("v-pinned", "HEAD")
     check("diff v-pinned..HEAD reports the embedding lane revised",
           any(r["feature"] == embed_lane for r in diff.get("revised", [])))
