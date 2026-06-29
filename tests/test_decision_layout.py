@@ -30,7 +30,8 @@ def _run_layout(graph: dict, opts: dict | None = None) -> dict:
     harness = snippet + (
         f"const g = {json.dumps(graph)};\n"
         f"const L = computeLayout(g, {json.dumps(opts or {})});\n"
-        "console.log(JSON.stringify({pos: L.pos, laneCount: L.laneCount, rowOf: L.rowOf}));\n"
+        "console.log(JSON.stringify({pos: L.pos, laneCount: L.laneCount, rowOf: L.rowOf, "
+        "head: L.head, edges: L.edges.map((e) => [e.src, e.dst, e.type])}));\n"
     )
     res = subprocess.run([node, "-e", harness], capture_output=True, text=True)
     assert res.returncode == 0, res.stderr
@@ -189,6 +190,45 @@ def test_no_head_field_keeps_newest_on_top():
     out = _run_layout(g)
     assert out["rowOf"]["a@2"] == 0 and out["rowOf"]["a@1"] == 1
     _no_cell_collisions(out)
+
+
+def test_equal_landing_floats_the_integrator_to_the_top():
+    # An equal-landing cohort (e.g. the dev fixture, or a freshly-planned set with no `head`). The
+    # integrator — the node that builds on the others and that nothing builds on — must anchor the
+    # TOP. The depth tiebreak in byLanding does this; the old ascending tiebreak sank it to the
+    # bottom, which read upside-down.
+    g = {
+        "decisions": [_dec("I@1", "I", 1), _dec("a@1", "a", 1), _dec("b@1", "b", 1)],
+        "edges": [_dep("I@1", "a@1"), _dep("I@1", "b@1")], "frontier": {}, "clash": [],
+    }
+    out = _run_layout(g)
+    assert out["rowOf"]["I@1"] == 0  # the integrator is on top, not the bottom
+    _no_cell_collisions(out)
+
+
+def test_transitive_reduction_drops_an_implied_builds_on_edge():
+    # A builds on B, B builds on C, and A also builds on C directly. The A->C edge is implied by the
+    # A->B->C path, so it must be dropped from the drawn/routed edge set (git-log clean), while the two
+    # direct edges survive. revises/fork lineage is never reduced.
+    g = {
+        "decisions": [_dec("A", "fa", 3), _dec("B", "fb", 2), _dec("C", "fc", 1)],
+        "edges": [_dep("A", "B"), _dep("B", "C"), _dep("A", "C")], "frontier": {}, "clash": [],
+    }
+    out = _run_layout(g)
+    drawn = {(s, d) for s, d, _t in out["edges"]}
+    assert ("A", "C") not in drawn          # implied shortcut removed
+    assert ("A", "B") in drawn and ("B", "C") in drawn  # direct links kept
+
+
+def test_transitive_reduction_keeps_independent_parallel_edges():
+    # A builds on both B and C, but B and C are unrelated — neither edge is implied by the other, so
+    # BOTH survive reduction (the reducer must not over-prune a genuine fan).
+    g = {
+        "decisions": [_dec("A", "fa", 3), _dec("B", "fb", 2), _dec("C", "fc", 1)],
+        "edges": [_dep("A", "B"), _dep("A", "C")], "frontier": {}, "clash": [],
+    }
+    drawn = {(s, d) for s, d, _t in _run_layout(g)["edges"]}
+    assert ("A", "B") in drawn and ("A", "C") in drawn
 
 
 def test_same_landing_ties_are_stable_and_collision_free():
