@@ -54,11 +54,18 @@ def _lineage_maps(graph) -> dict[str, str]:
 def _assign_lanes(groups, graph) -> dict[str, str]:
     """Footprint-grounded lane assignment (plan R13), robust to the distiller's fix-node splitting.
 
-    A lane = a feature. Two nodes are the *same* lane when they revise the same code: they share an
-    owned entity (same ``file::def``), or a ``REVISES`` edge links them. (A ``DERIVES_FROM`` fork is
-    deliberately NOT merged — a fork is its own lane.) Union-find groups nodes accordingly; the lane
-    id is the group's earliest node, so a fix-node that rewrites an existing def folds into that
-    def's original lane as a revise rather than spawning a phantom lane + a duplicate-owner clash.
+    A lane = a feature. A node folds into an *existing* def's lane only when it introduces **no new
+    def of its own** — a pure fix/revise (the distiller's fix-node split, which re-owns a def already
+    owned elsewhere). Such a node unions with exactly **one** existing lane, its *primary*: a def it
+    declares it ``provides``, else the oldest lane it touches. A ``REVISES`` edge also unions; a
+    ``DERIVES_FROM`` fork never does (a fork is its own lane).
+
+    The "introduces a fresh def → own lane, never fold" half is the anti-weld rule. Earlier this
+    unioned a node with the owner of *every* def it touched, so a single checkpoint that co-edited two
+    functions (e.g. a ``generate`` dispatch that also forwarded through ``run_pipeline``) fused their
+    lanes — and transitively collapsed unrelated capabilities into one spine (the "flattened graph").
+    A node that adds new code is its own capability; its edits to other defs are recorded in its
+    footprint (so the projection still draws a builds-on edge) but never weld a shared lane.
     """
     node_keys: dict[str, set[str]] = {}
     first_landing: dict[str, int] = {}
@@ -67,6 +74,7 @@ def _assign_lanes(groups, graph) -> dict[str, str]:
             k for e in entries for k in [f"{e.effect.file}::{e.effect.target}"] if _is_entity_key(k)
         )
         first_landing[nid] = min(first_landing.get(nid, landing), landing)
+    provides_of = {nid: set(graph.get(nid).provides) if graph.has(nid) else set() for nid in node_keys}
 
     parent: dict[str, str] = {nid: nid for nid in node_keys}
 
@@ -81,13 +89,21 @@ def _assign_lanes(groups, graph) -> dict[str, str]:
         if ra != rb:
             parent[ra] = rb
 
+    # Process oldest-first so the earliest toucher of a def owns it; a later node sees that def as
+    # already-owned ("shared") rather than fresh.
     owner_of_key: dict[str, str] = {}
-    for nid, keys in node_keys.items():
-        for k in keys:
-            if k in owner_of_key:
-                union(nid, owner_of_key[k])
-            else:
-                owner_of_key[k] = nid
+    for nid in sorted(node_keys, key=lambda n: (first_landing[n], n)):
+        keys = node_keys[nid]
+        fresh = {k for k in keys if k not in owner_of_key}
+        shared = keys - fresh
+        if shared and not fresh:  # pure fix/revise — fold into ONE existing lane, never several
+            def _rank(k: str, _nid=nid) -> tuple:
+                owner = owner_of_key[k]
+                provided = k.split("::", 1)[1] in provides_of[_nid]
+                return (0 if provided else 1, first_landing[owner], owner, k)
+            union(nid, owner_of_key[min(shared, key=_rank)])
+        for k in fresh:  # claim newly-introduced defs
+            owner_of_key[k] = nid
     for e in graph.edges():
         if e.type is EdgeType.REVISES and e.src in parent and e.dst in parent:
             union(e.src, e.dst)

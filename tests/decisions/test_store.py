@@ -114,6 +114,54 @@ def test_fix_node_sharing_an_entity_folds_into_the_same_lane(tmp_path):
     assert decisions["fix0001@2"].lifecycle_kind is LifecycleKind.REVISE
 
 
+def test_co_editing_two_existing_defs_does_not_weld_their_lanes(tmp_path):
+    # The regression behind the "flattened graph": a checkpoint that ALSO edits a second existing def
+    # (e.g. a generate-dispatch that forwards through run_pipeline) must NOT fuse the two lanes. The
+    # node introduces a fresh helper, so it is its own lane; generate and run_pipeline stay distinct.
+    proj = Project.init(tmp_path)
+    proj.add_feature(Node(id="generate", kind=NodeKind.CAPABILITY, intent="call the LLM"),
+                     [Effect.add_def("rag.py", "generate", "def generate(c):\n    return c")])
+    proj.log.stamp_committed()  # generate@1 owns rag.py::generate
+    proj.add_feature(Node(id="run_pipeline", kind=NodeKind.CAPABILITY, intent="orchestrate"),
+                     [Effect.add_def("rag.py", "run_pipeline", "def run_pipeline(q):\n    return generate(q)")])
+    proj.log.stamp_committed()  # run_pipeline@2 owns rag.py::run_pipeline
+    # a node that adds a NEW helper and co-edits BOTH generate and run_pipeline
+    proj.add_feature(
+        Node(id="openai", kind=NodeKind.CAPABILITY, intent="dispatch to openai"),
+        [Effect.add_def("rag.py", "_generate_openai", "def _generate_openai(c):\n    return c"),
+         Effect.replace_def("rag.py", "generate", "def generate(c, p='anthropic'):\n    return c"),
+         Effect.replace_def("rag.py", "run_pipeline", "def run_pipeline(q, p='anthropic'):\n    return generate(q, p)")],
+    )
+    proj.log.stamp_committed()
+    feats = {d.id: d.feature for d in build_decisions(proj)}
+    assert feats["generate@1"] == "generate"
+    assert feats["run_pipeline@2"] == "run_pipeline"      # NOT welded into generate
+    assert feats["generate@1"] != feats["run_pipeline@2"]  # two distinct lanes survive
+    assert feats["openai@3"] == "openai"                   # fresh-def node is its own lane, no weld
+
+
+def test_pure_multi_def_revise_folds_into_one_lane_not_both(tmp_path):
+    # A node that modifies two existing defs and adds nothing new folds into a SINGLE lane (the one it
+    # declares it provides), leaving the other lane intact — one fold, never a transitive weld.
+    proj = Project.init(tmp_path)
+    proj.add_feature(Node(id="preprocess", kind=NodeKind.CAPABILITY, intent="format ctx"),
+                     [Effect.add_def("rag.py", "preprocess", "def preprocess(d):\n    return d")])
+    proj.log.stamp_committed()
+    proj.add_feature(Node(id="run_pipeline", kind=NodeKind.CAPABILITY, intent="orchestrate"),
+                     [Effect.add_def("rag.py", "run_pipeline", "def run_pipeline(q):\n    return preprocess(q)")])
+    proj.log.stamp_committed()
+    # remove-preprocess: rewrites run_pipeline (which it provides) and deletes preprocess — no new def
+    proj.add_feature(
+        Node(id="rmpre", kind=NodeKind.CAPABILITY, intent="inline preprocess", provides=["run_pipeline"]),
+        [Effect.replace_def("rag.py", "run_pipeline", "def run_pipeline(q):\n    return q"),
+         Effect.remove_def("rag.py", "preprocess")],
+    )
+    proj.log.stamp_committed()
+    feats = {d.id: d.feature for d in build_decisions(proj)}
+    assert feats["rmpre@3"] == "run_pipeline"     # folds into the lane it provides
+    assert feats["preprocess@1"] == "preprocess"  # the other lane is NOT welded in
+
+
 def test_import_only_targets_do_not_create_a_lane(tmp_path):
     proj = Project.init(tmp_path)
     proj.add_feature(
