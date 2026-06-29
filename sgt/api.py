@@ -23,7 +23,7 @@ from sgt.decisions.structure import decision_structure
 from sgt.decisions.structure import resolve_footprint as _resolve_footprint
 from sgt.effects.attribute import attribute
 from sgt.effects.model import EffectError
-from sgt.store.graph import EdgeType
+from sgt.store.graph import EdgeType, NodeStatus
 
 
 def node_view(project, n) -> dict:
@@ -74,6 +74,21 @@ def status_view(project) -> dict:
     except EffectError as ex:
         return {"nodes": len(project.graph.nodes()), "error": f"cannot materialize: {ex}"}
     drift = project.check_drift()
+    # PLANNED nodes carry no effects, so they never show as on-disk drift. A reopened session
+    # whose only outstanding work is an unimplemented plan would otherwise read as "nothing to
+    # do" — surface it here so every client (MCP/CLI/TUI/extension) can prompt the user to
+    # continue implementing rather than report a clean tree as done.
+    planned = [
+        {
+            "id": n.id,
+            "intent": n.intent,
+            "kind": n.kind.value,
+            "provides": list(n.provides),
+            "needs": list(n.needs),
+        }
+        for n in project.graph.nodes()
+        if n.status is NodeStatus.PLANNED
+    ]
     return {
         "nodes": len(project.graph.nodes()),
         "files": [{"path": p, "lines": len(cb[p].splitlines())} for p in sorted(cb)],
@@ -84,6 +99,14 @@ def status_view(project) -> dict:
             "added": drift.added,
             "deleted": drift.deleted,
             "summary": drift.summary(),
+        },
+        "pending": {
+            "count": len(planned),
+            "planned": planned,
+            "summary": (
+                f"{len(planned)} decision(s) planned but not yet implemented"
+                if planned else "no pending plan"
+            ),
         },
     }
 
