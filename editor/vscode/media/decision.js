@@ -1,8 +1,9 @@
-// Decision Graph webview — a dbt/SQL-lineage rail. Each decision is one row; the left rail draws
-// the node as a dot at its (lane, row), and dependency connectors fan out as smooth cubic Beziers
-// that bow horizontally so they curve around dots instead of spearing through them. The row body to
-// the right carries the decision title + meta, lineage-view style. The CSP forbids external scripts,
-// so the graph is hand-rolled SVG; anime.js is vendored locally and loaded with a nonce.
+// Decision Graph webview — a commit-graph rail. Each decision is one row (newest/HEAD on top); the
+// left rail draws the node as a dot at its (lane, row), and dependency connectors are STRAIGHT
+// segments — a vertical run down the child's lane plus one straight diagonal into the parent, like
+// git log — over a transitively-reduced edge set so only the most direct dependency is ever drawn.
+// The row body to the right carries the decision title + meta, lineage-view style. The CSP forbids
+// external scripts, so the graph is hand-rolled SVG; anime.js is vendored locally and loaded with a nonce.
 //
 // Status is NEVER hue — hue is the feature's identity (the color contract). Status comes from the
 // explicit `status` field and is encoded by the dot glyph: planned = soft hollow ring, landed =
@@ -13,6 +14,7 @@ const vscode = acquireVsCodeApi();
 const NS = "http://www.w3.org/2000/svg";
 
 let state = null; // the decision_graph_view payload
+let headId = null; // the anchored top node (named head, or the derived visual head) — set per render
 let selected = null; // selected decision id
 let sig = ""; // signature of the last-rendered graph (skip rebuild on selection-only changes)
 let preview = null; // { kind, drop:Set, force:Set } — client-side in-graph action preview
@@ -72,13 +74,18 @@ function colorFor(id) {
 function computeLayout(graph, opts) {
   const avoidCrossings = !!(opts && opts.avoidCrossings);
   const decisions = (graph.decisions || []).slice();
-  const edges = graph.edges || [];
+  const idSet = new Set(decisions.map((d) => d.id));
+  // Transitive reduction over the builds-on DAG: drop A→C whenever a longer A→…→C builds-on path
+  // already exists, so only the most direct dependency is ever drawn or routed. Those redundant
+  // "skip" edges are exactly the long ones that spear intervening lanes, so dropping them is what
+  // keeps the rail git-log clean. Computed once here so the layout (lane packing + spear test) and
+  // the renderer share one edge set. revises/fork lineage is never reduced — it is the stored spine.
+  const edges = reduceBuildsOn(graph.edges || [], idSet);
 
   // Topological rank within an equal-landing group: an edge src→dst means src depends on dst, so
   // dst should sit lower (older) than src. We give every node a depth = longest dependency chain
   // beneath it; deeper (more depended-upon) nodes get a higher rank so they sort toward the bottom.
   // This only ever discriminates between decisions that share a landing — landing dominates first.
-  const idSet = new Set(decisions.map((d) => d.id));
   const deps = {}; // id -> [ids it depends on]
   for (const d of decisions) deps[d.id] = [];
   for (const e of edges) {
@@ -96,16 +103,18 @@ function computeLayout(graph, opts) {
   }
   for (const d of decisions) depth(d.id, new Set());
 
-  // Row order. Default: newest landing on top (depth + feature + id break ties). But the stress
-  // corpus showed fan/star graphs (many leaf capabilities feeding one integrator) read as a shuffled
-  // staircase under pure time order. When the projection names a primary `head` (the integrator a
-  // human reads as HEAD), root the order there: HEAD first, then a DFS over the things it builds on
-  // (nearest/newest dependency just beneath), then anything unreachable by landing. A fan becomes a
-  // rooted tree — HEAD on top, its feeders nested under it — while a spine graph is unchanged
-  // (its head is already the newest). See docs/design/2026-06-25-decision-graph-layout.md.
+  // Row order. Default: newest landing on top, with dependency depth breaking ties so that within a
+  // single landing the integrator (the most-depended-upon node — what a human reads as HEAD) floats
+  // to the TOP, never sinking under the leaves it builds on. (Real planned decisions already carry
+  // distinct dependency-topological landings, so the integrator is the newest; this tiebreak is what
+  // keeps an equal-landing cohort right-side-up instead of upside-down.) Then feature, then id.
+  // When the projection names a primary `head` (the in-force integrator) the order is instead rooted
+  // there: HEAD first, then a DFS over the things it builds on (nearest/newest dependency just
+  // beneath), then anything unreachable by landing — a fan becomes a rooted tree with HEAD on top,
+  // while a spine graph is unchanged. See docs/design/2026-06-25-decision-graph-layout.md.
   const byLanding = (a, b) =>
     b.landing - a.landing ||
-    depthMemo[a.id] - depthMemo[b.id] ||
+    depthMemo[b.id] - depthMemo[a.id] ||
     (a.feature < b.feature ? -1 : a.feature > b.feature ? 1 : 0) ||
     (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const head = graph.head;
@@ -284,7 +293,35 @@ function computeLayout(graph, opts) {
 
   const pos = {};
   for (const d of decisions) pos[d.id] = { row: rowOf[d.id], lane: laneOf[d.feature] };
-  return { decisions, rowOf, laneOf, span, pos, laneCount: Math.max(1, laneBot.length) };
+  // `head` is the anchored top node; `edges` is the transitively-reduced set the renderer draws.
+  return { decisions, rowOf, laneOf, span, pos, head, edges, laneCount: Math.max(1, laneBot.length) };
+}
+
+// Transitive reduction of the builds-on DAG: keep an edge A→B only when B is NOT reachable from A
+// through some other child of A (i.e. A→B is the direct link, not a shortcut implied by A→…→B).
+// Only builds-on edges are reduced; revises/fork lineage passes through untouched. Returns a new
+// array preserving the input edges minus the redundant builds-on shortcuts.
+function reduceBuildsOn(all, idSet) {
+  const adj = {}; // builds-on adjacency among present decisions
+  for (const e of all)
+    if (e.type === "builds-on" && idSet.has(e.src) && idSet.has(e.dst) && e.src !== e.dst)
+      (adj[e.src] ||= []).push(e.dst);
+  const memo = {};
+  function reach(n) {
+    if (memo[n]) return memo[n];
+    memo[n] = new Set(); // placeholder breaks cycles (a back-edge contributes no extra reach)
+    const r = new Set();
+    for (const m of adj[n] || []) { r.add(m); for (const x of reach(m)) r.add(x); }
+    return (memo[n] = r);
+  }
+  const redundant = new Set();
+  for (const a in adj) {
+    const kids = adj[a];
+    for (const b of kids)
+      for (const c of kids)
+        if (c !== b && reach(c).has(b)) { redundant.add(a + "	" + b); break; }
+  }
+  return all.filter((e) => !(e.type === "builds-on" && redundant.has(e.src + "	" + e.dst)));
 }
 // ---- end-layout (test slice boundary) ----
 
@@ -308,16 +345,19 @@ const railWidth = (laneCount) => RAIL_PAD + (laneCount - 1) * laneW() + RAIL_PAD
 const laneX = (lane) => RAIL_PAD + lane * laneW();
 const rowY = (row) => row * rowH() + rowH() / 2;
 
-// A dependency connector between a child dot (x1,y1) and the parent it builds on (x2,y2).
-// Same lane → a dead-straight vertical line through the dots, exactly like GitKraken draws a
-// mainline (commits stacked in one column are joined by a straight line, never an arc). Different
-// lanes → a vertical S whose control points pull VERTICALLY toward the row-midpoint (never
-// sideways): it descends out of the child, sweeps gently into the parent's lane, and descends in —
-// the GitKraken branch curve, contained inside the band between its two lanes, never ballooning out.
+// A dependency connector between a child dot (x1,y1) and the parent it builds on (x2,y2). Routed
+// with STRAIGHT segments only — no Béziers — exactly like a commit graph (git log / Git Graph):
+//   • same lane → one dead-straight vertical line through the dots (a mainline);
+//   • different lanes → a straight run down the child's own lane, then a single straight diagonal
+//     into the parent. The lane change happens adjacent to the parent (one row away), so the long
+//     part of the edge is a clean vertical and only the short joint is diagonal. When the two dots
+//     are already one row apart the run collapses and it is just one straight diagonal.
 function edgePath(x1, y1, x2, y2) {
   if (Math.abs(x2 - x1) < 1) return `M${x1} ${y1} L${x2} ${y2}`;
-  const my = (y1 + y2) / 2;
-  return `M${x1} ${y1} C${x1} ${my} ${x2} ${my} ${x2} ${y2}`;
+  const down = y2 > y1;
+  const bendY = down ? y2 - rowH() / 2 : y2 + rowH() / 2; // turn one row short of the parent
+  if ((down && bendY <= y1) || (!down && bendY >= y1)) return `M${x1} ${y1} L${x2} ${y2}`;
+  return `M${x1} ${y1} L${x1} ${bendY} L${x2} ${y2}`;
 }
 
 // ─── DOM handles ──────────────────────────────────────────────────────────────────────────────
@@ -443,18 +483,23 @@ function update() {
   chip.style.display = head ? "" : "none";
 
   const newSig = JSON.stringify(decisions.map((d) => [d.id, d.feature, d.landing, statusOf(d)]))
-    + "|" + JSON.stringify(state.frontier || {}) + "|" + density + "|" + spread;
+    + "|" + JSON.stringify(state.frontier || {}) + "|" + density + "|" + spread
+    + "|" + (state.head || "") + "|" + (state.edges || []).map((e) => e.src + ">" + e.dst + e.type).join(",");
   if (newSig !== sig) { sig = newSig; renderGraph(); }
   applySelection();
 }
 
 function renderGraph() {
   const L = computeLayout(state, { avoidCrossings: spread });
+  // The anchored top node: the named in-force HEAD, or the layout's derived visual head for a graph
+  // with nothing in force (a fresh plan). Every HEAD marker reads from this, so HEAD is emphasized on
+  // top in both cases.
+  headId = state.head || L.head;
   const empty = document.getElementById("empty-state");
   empty.style.display = L.decisions.length ? "none" : "flex";
 
-  // Connectors stay inside the lanes they join (straight verticals, contained S-curves), so the rail
-  // needs no extra right-margin bulge room.
+  // Connectors stay inside the lanes they join (straight verticals + a single straight diagonal joint),
+  // so the rail needs no extra right-margin bulge room.
   const byId = new Map(L.decisions.map((d) => [d.id, d]));
   const rw = railWidth(L.laneCount);
   const totalH = Math.max(rowH(), L.decisions.length * rowH());
@@ -479,10 +524,11 @@ function renderGraph() {
     if (y2 > y1) rail.appendChild(path(`M${x} ${y1} L${x} ${y2}`, "spine", { stroke: colorFor(f) }));
   }
 
-  // 2) Dependency connectors: fork lineage across lanes and faint derived builds-on links. Each is a
-  //    vertical S routed by edgePath() — it hugs the child and parent columns and only sweeps
-  //    laterally across the mid-band, so it never balloons sideways into the rows it spans.
-  for (const e of state.edges || []) {
+  // 2) Dependency connectors: fork lineage across lanes and faint derived builds-on links, drawn from
+  //    the transitively-reduced edge set (L.edges) so only the most direct dependency shows. Each is
+  //    routed by edgePath() as straight segments — a vertical run in the child's lane plus one
+  //    straight diagonal into the parent — so it never balloons sideways into the rows it spans.
+  for (const e of L.edges || []) {
     const a = byId.get(e.src), b = byId.get(e.dst);
     if (!a || !b) continue;
     if (a.feature === b.feature) continue; // intra-feature revise lineage is the spine already
@@ -529,7 +575,7 @@ function renderGraph() {
 // "what the codebase currently is" — distinct from the per-lane in-force tips.
 function paintGlyph(node, d, col) {
   const st = statusOf(d);
-  if (state && state.head === d.id) node.appendChild(circle(0, 0, NODE_R + 7, "headring", {}));
+  if (headId === d.id) node.appendChild(circle(0, 0, NODE_R + 7, "headring", {}));
   if (st === "in_force") {
     node.appendChild(circle(0, 0, NODE_R + 4, "halo", { stroke: col }));
     node.appendChild(circle(0, 0, NODE_R, "disc", { stroke: col, fill: col }));
@@ -552,7 +598,7 @@ function renderRow(d, col) {
   const hash = (d.commits && d.commits[0] ? d.commits[0] : "").slice(0, 7);
   const lc = d.lifecycle || {};
   const tag = lc.kind && lc.kind !== "introduce" ? `<span class="lk">${esc(lc.kind)}</span>` : "";
-  const headBadge = state && state.head === d.id ? `<span class="headbadge" title="primary HEAD — the integrator">HEAD</span>` : "";
+  const headBadge = headId === d.id ? `<span class="headbadge" title="primary HEAD — the integrator">HEAD</span>` : "";
   row.innerHTML = `
     <span class="feat" style="--hue:${col}" title="${esc(d.feature)}"></span>
     <span class="title ${title ? "" : "muted"}">${esc(title || "Not distilled")}</span>
