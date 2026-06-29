@@ -233,8 +233,10 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_show,
     ),
     "sgt_status": (
-        "Summarize the project: node count, managed files, effect count, and whether the "
-        "working tree has un-checkpointed drift.",
+        "Summarize the project: node count, managed files, effect count, whether the working "
+        "tree has un-checkpointed drift, and any PLANNED decisions not yet implemented "
+        "(`pending`). On a clean tree with pending decisions, the work is to implement them — "
+        "not to report 'nothing to do'. Check this first when resuming a session.",
         _schema({}, []),
         tool_status,
     ),
