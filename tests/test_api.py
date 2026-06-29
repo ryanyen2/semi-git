@@ -3,7 +3,7 @@
 from sgt.api import blame_view, export_view, graph_view, show_view, status_view
 from sgt.effects.model import Effect
 from sgt.project import Project
-from sgt.store.graph import Node, NodeKind
+from sgt.store.graph import Node, NodeKind, NodeStatus
 
 
 def _proj(tmp_path):
@@ -48,6 +48,30 @@ def test_status_view_shape(tmp_path):
     assert s["nodes"] == 2
     assert {f["path"] for f in s["files"]} == {"m.py"}
     assert s["drift"]["any"] in (True, False)
+
+
+def test_status_view_surfaces_planned_work_without_drift(tmp_path):
+    """A reopened session with planned-but-unimplemented decisions must not read as 'nothing to do'.
+
+    PLANNED nodes carry no effects, so a clean working tree has no drift — the agent's only
+    status probe must still surface them as outstanding work, or 'continue prior session' breaks.
+    """
+    proj = _proj(tmp_path)
+    proj.graph.add_node(
+        Node(id="enhance", kind=NodeKind.CAPABILITY, intent="enhance preprocess",
+             status=NodeStatus.PLANNED, provides=["preprocess"], needs=["retrieve"])
+    )
+    proj.write_working_tree()  # the reopened-session state: tree in sync, plan pending
+    proj.save()
+
+    s = status_view(proj)
+    assert s["drift"]["any"] is False  # nothing on disk changed
+    assert s["pending"]["count"] == 1
+    planned = s["pending"]["planned"]
+    assert [n["id"] for n in planned] == ["enhance"]
+    assert planned[0]["intent"] == "enhance preprocess"
+    assert planned[0]["provides"] == ["preprocess"]
+    assert planned[0]["needs"] == ["retrieve"]
 
 
 def test_blame_view_carries_node_metadata(tmp_path):
