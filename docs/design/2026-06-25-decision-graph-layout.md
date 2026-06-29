@@ -105,6 +105,12 @@ Implemented + tested:
 - Dependency-rooted row ordering in `computeLayout` (principles 1–2): when the payload carries `head`,
   HEAD is row 0 and its feeders nest beneath; otherwise the original newest-on-top order is unchanged
   (backwards-compatible). Validated in `tests/test_decision_layout.py`.
+- **Fresh-orphan surfacing.** A decision unreachable from HEAD that landed *after* HEAD (a just-planned
+  or just-checkpointed node nothing connects to yet) is placed directly under HEAD, not appended below
+  HEAD's whole subtree — the old order buried the newest thing at the very bottom, so a fresh plan read
+  as "lost". Stale orphans (older than HEAD) still trail the tree. `computeLayout` also returns an
+  `unanchored` set (decisions with no incident builds-on/revises/fork edge), which the webview draws as
+  a dim dashed ring — "pending placement", without using hue. Validated in `tests/test_decision_layout.py`.
 - HEAD emphasis in the webview (a `HEAD` chip + accent ring on the head node).
 
 Also implemented since:
@@ -113,6 +119,29 @@ Also implemented since:
   `provides` to the existing name (grounded by the RAG capability map) instead of inventing a new one.
   Benchmark's "add memory to the timer" now folds into the timer lane; benchmark went 6 lanes / 2
   orphans / depth 1 → 3 lanes / 0 orphans / depth 3.
+- **Grounding parity for the intent-DSL `normalize` path.** The rich planner already saw the capability
+  map; the freeform→canonical `normalize` LLM saw only file *names*, so it invented abstract `USING`
+  tokens ("LLM") that no decision provides — a born-orphan plan (observed live: "add more LLM calls"
+  → `ADD … USING LLM`, disconnected). `loop._graph_grounding` now hands `normalize` the in-force
+  capabilities + the names each defines, and the prompt requires `USING` to name only real/just-added
+  capabilities, so a new plan anchors (a name-bridge builds-on edge) instead of floating. Tests in
+  `tests/agents/test_intent_dsl.py` and `tests/orchestrate/test_plan.py`.
+- **Verb by implementation shape, taught by multi-shot examples (the EXTEND→weld correction).** A first
+  cut of the grounding prompt told `normalize` to *prefer `EXTEND <lane>`* for a variant of an existing
+  capability. Live, "add OpenAI/OpenRouter/Gemini providers" became three `EXTEND generate` nodes
+  implemented as a `provider`-dispatch inside `generate()` (forwarded through `run_pipeline()`). That
+  co-edit was catastrophic: (1) `_assign_lanes` (`sgt/decisions/store.py`) is a union-find that welds
+  any two decisions sharing an owned `file::def` — editing `generate` + `run_pipeline` in one checkpoint
+  fused their lanes, and transitively collapsed 7 of 9 nodes into a single REVISE spine (the graph
+  "flattened" to one column); (2) three decisions rewriting one function body tripped the distiller's
+  statement-**union** merge → duplicate blocks + a multi-definer `invariant_violated` quarantine. The
+  *orphan it replaced was the healthy shape.* Fix: the prompt now picks the verb by **which defs change**
+  — new defs → `ADD <names> USING <existing>` (own lane + builds-on edge), `EXTEND` only for an in-place
+  body change of one def, never spread across several — taught with diverse grounded few-shot examples
+  rather than a single rule. Verified: `ADD openai_call USING generate` yields two distinct lanes + a
+  `builds-on` edge, no weld. Follow-up (not yet done): `_assign_lanes` should union only on a checkpoint's
+  *primary* owned def, not every incidentally co-edited one, so a multi-def checkpoint can't silently fuse
+  capabilities — the latent root cause the prompt currently steers around.
 
 Also implemented:
 - **Lane-adjacency packing** (principle 3): among the valid (free, non-spearing) lanes, a feature is

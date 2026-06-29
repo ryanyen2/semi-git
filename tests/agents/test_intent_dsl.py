@@ -76,3 +76,65 @@ def test_normalize_returns_empty_on_client_failure():
                     raise RuntimeError("no key")
 
     assert intent_dsl.normalize("do a thing", {}, client=_Boom(), model="gpt-4o") == []
+
+
+# -- normalize is grounded in the existing graph (anchors instead of orphaning) ---
+class _Capture:
+    """A fake client that records the messages it was called with and returns a fixed program."""
+
+    def __init__(self, statements):
+        self.statements = statements
+        self.seen = None
+        client = self
+
+        class chat:
+            class completions:
+                @staticmethod
+                def create(*, messages, **_):
+                    client.seen = messages
+                    import json as _json
+
+                    class _Msg:
+                        content = _json.dumps({"statements": client.statements})
+
+                    class _Choice:
+                        message = _Msg()
+
+                    class _Resp:
+                        choices = [_Choice()]
+
+                    return _Resp()
+
+        self.chat = chat
+
+
+def test_normalize_feeds_grounding_into_the_prompt():
+    # The existing capabilities are handed to the model so it can anchor additive work with
+    # USING <existing> (a new lane that builds on it) rather than invent a token nothing provides
+    # (the orphan root cause) or rewrite the existing def via EXTEND (which fuses the lanes).
+    cap = _Capture(["ADD openai_call, gemini_call USING generate"])
+    grounding = ["`generate` — defines generate; add generate function that calls Anthropic API"]
+    out = intent_dsl.normalize("add more LLM calls", {"rag.py": ""}, grounding=grounding,
+                               client=cap, model="gpt-4o")
+    assert out == ["ADD openai_call, gemini_call USING generate"]
+    user_msg = next(m["content"] for m in cap.seen if m["role"] == "user")
+    assert "generate" in user_msg and "Existing capabilities" in user_msg
+
+
+def test_normalize_prompt_teaches_add_using_over_extend_for_additive_work():
+    # The system prompt must steer additive "more of X" work to ADD…USING (own lane) and reserve
+    # EXTEND for in-place body changes — the discipline that avoids the lane-fusing co-edit pathology.
+    sys = intent_dsl._NORMALIZE_SYSTEM
+    assert "IMPLEMENTATION SHAPE" in sys
+    assert "USING generate" in sys                 # the worked additive example
+    assert "EXTEND preprocess" in sys              # the worked in-place example
+    assert "fus" in sys.lower()                    # warns EXTEND fuses lanes
+
+
+def test_normalize_grounding_is_optional():
+    # No grounding (or none yet) still works — the system degrades to file-name context only.
+    cap = _Capture(["ADD thing"])
+    out = intent_dsl.normalize("add a thing", {}, client=cap, model="gpt-4o")
+    assert out == ["ADD thing"]
+    user_msg = next(m["content"] for m in cap.seen if m["role"] == "user")
+    assert "(none yet)" in user_msg

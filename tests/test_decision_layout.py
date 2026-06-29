@@ -31,7 +31,7 @@ def _run_layout(graph: dict, opts: dict | None = None) -> dict:
         f"const g = {json.dumps(graph)};\n"
         f"const L = computeLayout(g, {json.dumps(opts or {})});\n"
         "console.log(JSON.stringify({pos: L.pos, laneCount: L.laneCount, rowOf: L.rowOf, "
-        "head: L.head, edges: L.edges.map((e) => [e.src, e.dst, e.type])}));\n"
+        "head: L.head, unanchored: L.unanchored, edges: L.edges.map((e) => [e.src, e.dst, e.type])}));\n"
     )
     res = subprocess.run([node, "-e", harness], capture_output=True, text=True)
     assert res.returncode == 0, res.stderr
@@ -135,19 +135,36 @@ def test_avoid_crossings_preserves_collision_free_invariant():
     _no_cell_collisions(_run_layout(g, {"avoidCrossings": True}))
 
 
-def test_head_rooted_order_overrides_newest_landing():
-    # A fan: integrator I@8 is the head, but a later leaf revise m@12 is the newest landing. Default
-    # order would float m@12 to the top; head-rooting pins the integrator at row 0 and nests the
-    # things it builds on beneath it (newest dependency first), with the unreachable leaf appended.
+def test_head_rooted_order_keeps_head_on_top_and_surfaces_fresh_orphans():
+    # A fan: integrator I@8 is the head; its feeders b@4/a@2 nest beneath it. m@12 is a fresh,
+    # unanchored decision that landed AFTER head (a just-planned/checkpointed node nothing connects
+    # to). Head stays row 0; m@12 surfaces directly under head (not buried below the whole subtree),
+    # then head's feeders, newest-first. m@12 has no incident edge, so it reports as `unanchored`.
     g = {
         "decisions": [_dec("m@12", "m", 12), _dec("I@8", "I", 8), _dec("b@4", "b", 4), _dec("a@2", "a", 2)],
         "edges": [_dep("I@8", "b@4"), _dep("I@8", "a@2")],
         "frontier": {}, "clash": [], "head": "I@8",
     }
     out = _run_layout(g)
-    assert out["rowOf"]["I@8"] == 0                                   # head on top despite m@12 newer
-    assert out["rowOf"]["b@4"] == 1 and out["rowOf"]["a@2"] == 2      # deps nested newest-first
-    assert out["rowOf"]["m@12"] == 3                                  # unreachable-from-head, appended
+    assert out["rowOf"]["I@8"] == 0                                   # head still on top
+    assert out["rowOf"]["m@12"] == 1                                  # fresh orphan surfaced under head
+    assert out["rowOf"]["b@4"] == 2 and out["rowOf"]["a@2"] == 3      # deps nested newest-first
+    assert out["unanchored"] == ["m@12"]
+    _no_cell_collisions(out)
+
+
+def test_head_rooted_order_keeps_stale_orphans_below_the_tree():
+    # An orphan that landed BEFORE head is an old disconnected lane, not fresh work — it stays below
+    # head's subtree (newest-on-top preserved for it), unlike a fresh post-head orphan.
+    g = {
+        "decisions": [_dec("I@8", "I", 8), _dec("b@4", "b", 4), _dec("old@2", "old", 2)],
+        "edges": [_dep("I@8", "b@4")],
+        "frontier": {}, "clash": [], "head": "I@8",
+    }
+    out = _run_layout(g)
+    assert out["rowOf"]["I@8"] == 0 and out["rowOf"]["b@4"] == 1      # head + its feeder
+    assert out["rowOf"]["old@2"] == 2                                # stale orphan trails the tree
+    assert out["unanchored"] == ["old@2"]
     _no_cell_collisions(out)
 
 

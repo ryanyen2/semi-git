@@ -192,27 +192,74 @@ _NORMALIZE_SYSTEM = """You translate a freeform coding intent into semi-git's ca
 Emit ONE statement per coherent capability a reviewer would version as a unit — usually 1-3, rarely
 more. Use ONLY these forms, each on its own line, verbs UPPERCASE:
 
-  ADD <names> [USING <names>] [BECAUSE <reason>]      -- a new capability; <names> are the top-level
-                                                         names it defines; USING lists names it needs
-  EXTEND <lane> TO <behavior> [BECAUSE <reason>]       -- enhance something that already exists
+  ADD <names> [USING <names>] [BECAUSE <reason>]      -- introduces NEW top-level defs; <names> are
+                                                         the names it defines; USING lists names it
+                                                         builds on
+  EXTEND <lane> TO <behavior> [BECAUSE <reason>]       -- changes the body of ONE existing def in place
   REPLACE <name> WITH <approach> [BECAUSE <reason>]    -- swap an existing approach; reason is why the
                                                          old one lost
   REMOVE <names> [FROM <lane>] [BECAUSE <reason>]      -- delete existing def(s)
 
-Rules: <names> are identifiers (snake_case/CamelCase), comma-separated. Prefer ADD for new work and
-EXTEND/REPLACE only when the codebase already has the thing. Fold helpers into their capability's
-<names> rather than emitting a statement per function. Put a genuine rationale in BECAUSE when the
-intent implies one; omit it otherwise. Do not invent capabilities beyond the intent."""
+Rules: <names> are identifiers (snake_case/CamelCase), comma-separated. Fold private helpers into
+their capability's <names> rather than emitting a statement per function. Put a genuine rationale in
+BECAUSE when the intent implies one; omit it otherwise. Do not invent capabilities beyond the intent.
+
+Pick the verb by the IMPLEMENTATION SHAPE, not the concept — semi-git versions by which defs change:
+- Work that adds NEW functions/classes is ADD, even when it's "more of" an existing capability (a new
+  backend, a parallel variant, another provider). Anchor it with USING <existing capability> so it
+  links to what it builds on while staying its OWN unit. Do NOT use EXTEND for this — EXTEND rewrites
+  the existing def's body, fusing the two and corrupting the per-feature history.
+- Use EXTEND only when the existing def's OWN behavior must change (you are editing that function's
+  body). EXTEND exactly one lane; never spread one statement across several existing defs.
+- USING / EXTEND / REPLACE / REMOVE targets must name a capability that ALREADY EXISTS (listed below)
+  or a name you ADD in the SAME program. Never invent an abstract token ("LLM", "database", "API").
+  If the work depends on nothing concrete, omit USING.
+
+Examples (each shows the existing capabilities, then the intent, then the statements):
+
+# caps: `generate` — calls the Anthropic LLM with context and query
+# intent: also let me call OpenAI and Gemini, not just Anthropic
+ADD openai_call, gemini_call USING generate
+# (new sibling functions in the LLM-call area — own lane, linked to generate, NOT a rewrite of it)
+
+# caps: `preprocess` — formats retrieved docs into LLM context
+# intent: preprocess should also include each document's author and publication date
+EXTEND preprocess TO include author and publication date
+# (the change edits preprocess's own body — a true in-place revision)
+
+# caps: `retrieve` — keyword document retrieval
+# intent: switch retrieval from keyword matching to embedding similarity
+REPLACE retrieve WITH embedding similarity search BECAUSE keyword matching missed paraphrases
+
+# caps: `preprocess`, `run_pipeline` — the orchestrator
+# intent: drop the preprocess step entirely
+REMOVE preprocess
+
+# caps: `retrieve`, `generate`
+# intent: add an evaluate step that scores generated answers against the retrieved docs, and a cache
+ADD evaluate USING retrieve, generate
+ADD result_cache
+# (evaluate builds on two existing capabilities; the cache is standalone, so no USING)
+
+# caps: (empty / new project)
+# intent: build a url shortener with encode and decode
+ADD shorten, expand"""
 
 
-def normalize(text: str, codebase=None, *, client, model: str) -> list[str]:
+def normalize(text: str, codebase=None, *, grounding=None, client, model: str) -> list[str]:
     """LLM: render freeform ``text`` into a list of canonical statements (one per capability).
 
     Returns ``[]`` on any failure so the caller degrades to the legacy planner. ``codebase`` (a
-    ``Codebase`` dict) is summarized for grounding when provided.
+    ``Codebase`` dict) names the existing files; ``grounding`` (a list of one-line capability
+    summaries, from ``loop._graph_grounding``) names the capabilities the graph already defines so
+    the model can anchor additive work with ``USING <existing>`` (a new lane that builds on it)
+    instead of emitting a node nothing connects to — without rewriting the existing def via EXTEND
+    (which would fuse the lanes; see the system prompt's implementation-shape rule).
     """
     files = ", ".join(sorted(codebase)) if codebase else "(empty / new project)"
-    user = f"Existing files: {files}\n\nFreeform intent:\n{text}"
+    caps = "\n".join(f"  {ln}" for ln in grounding) if grounding else "  (none yet)"
+    user = (f"Existing files: {files}\n\nExisting capabilities (anchor to these — see Rules):\n{caps}"
+            f"\n\nFreeform intent:\n{text}")
     try:
         resp = client.chat.completions.create(
             model=model,

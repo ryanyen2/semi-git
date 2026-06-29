@@ -147,7 +147,8 @@ class Orchestrator:
 
         # Freeform: render to a canonical program (LLM) and confirm before planning from it.
         if confirm is not None and (client := self._client()) is not None:
-            lines = intent_dsl.normalize(intent, cb, client=client, model=get_model())
+            lines = intent_dsl.normalize(
+                intent, cb, grounding=self._graph_grounding(), client=client, model=get_model())
             parsed_list = [p for ln in lines if (p := intent_dsl.parse(ln)) is not None]
             if parsed_list and confirm(intent, [p.canonical for p in parsed_list]):
                 g, alts = self._graph_from_parsed(parsed_list)
@@ -203,6 +204,37 @@ class Orchestrator:
                 if nm and not nm.startswith(("from ", "import ", "__")):
                     names.add(nm)
         return sorted(names)
+
+    def _graph_grounding(self) -> list[str]:
+        """The existing in-force capabilities and the names they define — grounding for normalize.
+
+        Freeform normalize otherwise sees only file *names* and so invents abstract `USING` tokens
+        ("LLM") that no decision provides — born-orphan plans. Given the real names, the LLM can put
+        a true provider in `USING` (a name-bridge edge) or target an `EXTEND <lane>` that already
+        exists (a revise on that lane), so a new plan anchors to the graph instead of floating.
+        Best-effort and offline; failure yields no grounding and the planner still works.
+        """
+        from sgt.decisions.store import load_frontier
+
+        try:
+            decisions = build_decisions(self.project)
+            in_force = load_frontier(self.project, decisions).in_force()
+        except Exception:  # noqa: BLE001 — grounding is best-effort; never block planning
+            return []
+        lines: list[str] = []
+        for d in sorted((d for d in decisions if d.id in in_force), key=lambda d: -d.landing):
+            if d.status.value == "planned":
+                node = self.project.graph.get(d.node_id) if self.project.graph.has(d.node_id) else None
+                names = list(node.provides) if node else []
+            else:
+                names = [k.split("::", 1)[1] for k in d.footprint
+                         if "::" in k and not k.split("::", 1)[1].startswith(("from ", "import ", "__"))]
+            names = sorted(set(names))
+            if not names:
+                continue
+            desc = (d.intent.decision or d.intent.slug or "").strip()
+            lines.append(f"`{names[0]}` — defines {', '.join(names)}" + (f"; {desc}" if desc else ""))
+        return lines
 
     def _client(self):
         """An OpenAI client, or ``None`` offline — so the DSL/plan path degrades without a key."""
