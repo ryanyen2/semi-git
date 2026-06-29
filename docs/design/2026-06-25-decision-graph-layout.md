@@ -139,9 +139,17 @@ Also implemented since:
   — new defs → `ADD <names> USING <existing>` (own lane + builds-on edge), `EXTEND` only for an in-place
   body change of one def, never spread across several — taught with diverse grounded few-shot examples
   rather than a single rule. Verified: `ADD openai_call USING generate` yields two distinct lanes + a
-  `builds-on` edge, no weld. Follow-up (not yet done): `_assign_lanes` should union only on a checkpoint's
-  *primary* owned def, not every incidentally co-edited one, so a multi-def checkpoint can't silently fuse
-  capabilities — the latent root cause the prompt currently steers around.
+  `builds-on` edge, no weld.
+- **Lane-weld fix in `_assign_lanes` (the latent root cause, now closed).** A node now folds into an
+  existing def's lane only when it introduces **no fresh def of its own** (a pure fix/revise), and even
+  then unions with exactly **one** lane — its *primary* (a def it `provides`, else the oldest lane it
+  touches) — never several. A node that adds new code is its own capability; its edits to other defs are
+  recorded in its footprint (→ a builds-on edge) but never weld a shared lane. This is processed
+  oldest-first so the earliest toucher of a def owns it. Applied to the live `rag` store, the welded
+  single spine resolved back to distinct lanes without any re-checkpoint. Preserves the fix-node fold,
+  import-only, and fork invariants; regressions in `tests/decisions/test_store.py`
+  (`test_co_editing_two_existing_defs_does_not_weld_their_lanes`,
+  `test_pure_multi_def_revise_folds_into_one_lane_not_both`).
 
 Also implemented:
 - **Lane-adjacency packing** (principle 3): among the valid (free, non-spearing) lanes, a feature is
