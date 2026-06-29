@@ -15,6 +15,7 @@ const NS = "http://www.w3.org/2000/svg";
 
 let state = null; // the decision_graph_view payload
 let headId = null; // the anchored top node (named head, or the derived visual head) — set per render
+let unanchoredSet = new Set(); // decisions with no incident lineage edge — drawn as "pending placement"
 let selected = null; // selected decision id
 let sig = ""; // signature of the last-rendered graph (skip rebuild on selection-only changes)
 let preview = null; // { kind, drop:Set, force:Set } — client-side in-graph action preview
@@ -123,15 +124,24 @@ function computeLayout(graph, opts) {
     const landingOf = {};
     for (const d of decisions) landingOf[d.id] = d.landing;
     const seen = new Set();
-    ordered = [];
+    const tree = [];
     const dfs = (id) => {
       if (seen.has(id)) return;
       seen.add(id);
-      ordered.push(id);
+      tree.push(id);
       for (const dn of deps[id].slice().sort((a, b) => landingOf[b] - landingOf[a])) dfs(dn);
     };
     dfs(head);
-    for (const d of decisions.slice().sort(byLanding)) if (!seen.has(d.id)) ordered.push(d.id);
+    // Decisions unreachable from HEAD's builds-on/revises tree. One that landed *after* HEAD is
+    // fresh, unanchored work — a just-planned or just-checkpointed node nothing connects to yet.
+    // Appending it below HEAD's whole subtree (the old order) buried the newest thing at the very
+    // bottom, where the eye never looks and a new plan reads as "lost". Surface it directly under
+    // HEAD instead; older disconnected lanes still trail the tree, keeping newest-on-top for them.
+    const rest = decisions.slice().sort(byLanding).map((d) => d.id).filter((id) => !seen.has(id));
+    const headLanding = landingOf[head];
+    const fresh = rest.filter((id) => landingOf[id] > headLanding);
+    const stale = rest.filter((id) => landingOf[id] <= headLanding);
+    ordered = [head, ...fresh, ...tree.slice(1), ...stale];
   } else {
     ordered = decisions.slice().sort(byLanding).map((d) => d.id);
   }
@@ -293,8 +303,21 @@ function computeLayout(graph, opts) {
 
   const pos = {};
   for (const d of decisions) pos[d.id] = { row: rowOf[d.id], lane: laneOf[d.feature] };
+  // Unanchored decisions: no incident builds-on/revises/fork edge in either direction — nothing in
+  // the graph relates to them yet (a fresh plan whose `needs` matched no provider, a leaf utility
+  // nothing calls). The renderer marks them so a disconnected node reads as "pending placement"
+  // rather than a silently-floating dot. Computed over the lineage edge set (pre-reduction kinds).
+  const incident = new Set();
+  for (const e of edges) {
+    if (e.type === "builds-on" || e.type === "revises" || e.type === "fork") {
+      incident.add(e.src);
+      incident.add(e.dst);
+    }
+  }
+  const unanchored = decisions.map((d) => d.id).filter((id) => !incident.has(id));
   // `head` is the anchored top node; `edges` is the transitively-reduced set the renderer draws.
-  return { decisions, rowOf, laneOf, span, pos, head, edges, laneCount: Math.max(1, laneBot.length) };
+  return { decisions, rowOf, laneOf, span, pos, head, edges, unanchored,
+           laneCount: Math.max(1, laneBot.length) };
 }
 
 // Transitive reduction of the builds-on DAG: keep an edge A→B only when B is NOT reachable from A
@@ -495,6 +518,7 @@ function renderGraph() {
   // with nothing in force (a fresh plan). Every HEAD marker reads from this, so HEAD is emphasized on
   // top in both cases.
   headId = state.head || L.head;
+  unanchoredSet = new Set(L.unanchored || []);
   const empty = document.getElementById("empty-state");
   empty.style.display = L.decisions.length ? "none" : "flex";
 
@@ -576,6 +600,10 @@ function renderGraph() {
 function paintGlyph(node, d, col) {
   const st = statusOf(d);
   if (headId === d.id) node.appendChild(circle(0, 0, NODE_R + 7, "headring", {}));
+  // A decision nothing in the graph relates to yet (no builds-on/revises/fork): a dashed ring reads
+  // as "pending placement / unanchored" without using hue (hue is feature identity, not status).
+  if (unanchoredSet.has(d.id) && headId !== d.id)
+    node.appendChild(circle(0, 0, NODE_R + 5, "unanchored", { stroke: col }));
   if (st === "in_force") {
     node.appendChild(circle(0, 0, NODE_R + 4, "halo", { stroke: col }));
     node.appendChild(circle(0, 0, NODE_R, "disc", { stroke: col, fill: col }));

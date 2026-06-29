@@ -2,6 +2,7 @@
 
 from sgt.orchestrate.constraint import ConstraintGraph, SubTask
 from sgt.orchestrate.loop import Orchestrator
+from sgt.orchestrate.sync import run_sync
 from sgt.project import Project
 from sgt.store.graph import Node, NodeKind, NodeStatus
 
@@ -10,6 +11,27 @@ def _orch(tmp_path, graph):
     proj = Project.init(tmp_path)
     orch = Orchestrator(proj, repo_path=str(tmp_path), decomposer=lambda *a, **k: graph)
     return orch, proj
+
+
+# -- grounding: existing capabilities are surfaced for the normalizer to anchor against ----
+def test_graph_grounding_lists_landed_capabilities_by_their_def_names(tmp_path):
+    # A landed capability must appear in grounding so freeform normalize can EXTEND/USING a real
+    # name instead of inventing an abstract token (the orphaned-plan root cause).
+    proj = Project.init(tmp_path)
+    proj.add_plan([Node(id="n1", kind=NodeKind.CAPABILITY,
+                        intent="add generate that calls the LLM", provides=["generate"])], edges=[])
+    (tmp_path / "rag.py").write_text("def generate(ctx):\n    return ctx\n", encoding="utf-8")
+    run_sync(proj, repo_path=str(tmp_path), confirm=lambda c: True, fulfills="n1")
+
+    orch = Orchestrator(proj, repo_path=str(tmp_path))
+    lines = orch._graph_grounding()
+    assert any("generate" in ln for ln in lines), lines
+    assert all(isinstance(ln, str) for ln in lines)
+
+
+def test_graph_grounding_is_empty_on_a_fresh_project(tmp_path):
+    orch = Orchestrator(Project.init(tmp_path), repo_path=str(tmp_path))
+    assert orch._graph_grounding() == []
 
 
 # -- node model --------------------------------------------------------------
