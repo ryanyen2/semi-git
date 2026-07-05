@@ -90,3 +90,29 @@ def test_extract_codebase_sorted_and_whole_repo():
     files = [e.file for e in ents]
     # Sorted-path order; the unsupported .txt contributes nothing.
     assert files == ["a.ts", "z.py"]
+
+
+def test_structural_hash_ignores_formatting_and_comments():
+    """The rename/move key: reformatting and comment edits leave structural_hash stable while
+    content_hash tracks the raw bytes."""
+    plain = _by_name(extract_file("m.py", "def f(x):\n    return x + 1\n"))["f"]
+    reformatted = _by_name(
+        extract_file("m.py", "def f(x):\n    # add one\n    return  x  +  1\n")
+    )["f"]
+    assert plain.structural_hash == reformatted.structural_hash  # formatting/comments don't count
+    assert plain.content_hash != reformatted.content_hash  # but the raw text did change
+
+
+def test_hashes_flip_on_real_body_change():
+    before = _by_name(extract_file("m.py", "def f(x):\n    return x + 1\n"))["f"]
+    after = _by_name(extract_file("m.py", "def f(x):\n    return x + 2\n"))["f"]
+    assert before.content_hash != after.content_hash
+    assert before.structural_hash != after.structural_hash
+
+
+def test_hashes_are_deterministic_and_populated():
+    ents = extract_file("m.py", "def a():\n    return 1\nclass C:\n    def b(self):\n        return 2\n")
+    again = extract_file("m.py", "def a():\n    return 1\nclass C:\n    def b(self):\n        return 2\n")
+    for e, e2 in zip(ents, again):
+        assert e.content_hash and e.structural_hash  # every entity carries both
+        assert e.content_hash == e2.content_hash and e.structural_hash == e2.structural_hash

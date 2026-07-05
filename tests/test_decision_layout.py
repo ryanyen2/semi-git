@@ -39,19 +39,22 @@ def _run_layout(graph: dict, opts: dict | None = None) -> dict:
 
 
 def _spears(graph: dict, out: dict) -> int:
-    """Count dots speared by an edge — a dot strictly inside an edge's (lane, row) bounding box."""
+    """Count connectors hidden behind a dot, mirroring what edgePath() actually draws: a connector is
+    a vertical run in its SOURCE's lane (`e.src`, the upper/child node) between the two endpoint rows.
+    So it is hidden exactly when some other dot sits in the source's lane strictly between those rows.
+    """
     pos = out["pos"]
     n = 0
     for e in graph["edges"]:
         a, b = pos.get(e["src"]), pos.get(e["dst"])
         if not a or not b:
             continue
-        lo, hi = sorted((a["lane"], b["lane"]))
+        src_lane = a["lane"]                       # the vertical run lives in the source's lane
         r0, r1 = sorted((a["row"], b["row"]))
         for did, p in pos.items():
             if did in (e["src"], e["dst"]):
                 continue
-            if lo < p["lane"] < hi and r0 < p["row"] < r1:
+            if p["lane"] == src_lane and r0 < p["row"] < r1:
                 n += 1
     return n
 
@@ -107,20 +110,21 @@ def _dep(src, dst):
     return {"src": src, "dst": dst, "type": "builds-on", "derived": True}
 
 
-def test_avoid_crossings_reorders_lanes_to_unspear_a_dependency():
-    # P spans the whole height (rows 0..4); Q sits inside it (rows 1..3); R is a single dot at row 2.
-    # P builds on R. Default packing assigns P=0, Q=1, R=2, so the P->R edge sweeps over Q's dot in
-    # lane 1. avoidCrossings packs R adjacent to P (its dependency), clearing the span — same columns.
+def test_a_connector_is_never_hidden_behind_a_dot_in_either_mode():
+    # Integrator I (row 0) builds on dep D (row 2); unrelated X sits at row 1. Packed into one column
+    # the I->D connector — a vertical run in I's lane — would draw straight through X's dot (hidden).
+    # The overprint rule forbids that in BOTH modes: X (or D) is branched into another lane so the
+    # connector stays visible. This is the core "no collapsed straight line" guarantee.
     g = {
-        "decisions": [_dec("p@6", "P", 6), _dec("q@5", "Q", 5), _dec("r@4", "R", 4),
-                      _dec("q@2", "Q", 2), _dec("p@1", "P", 1)],
-        "edges": [_dep("p@6", "r@4")], "frontier": {}, "clash": [],
+        "decisions": [_dec("I@3", "I", 3), _dec("X@2", "X", 2), _dec("D@1", "D", 1)],
+        "edges": [_dep("I@3", "D@1")], "frontier": {}, "clash": [],
     }
     base = _run_layout(g)
     spread = _run_layout(g, {"avoidCrossings": True})
-    assert _spears(g, base) == 1
+    assert _spears(g, base) == 0       # no hidden connector even with the compact packer
     assert _spears(g, spread) == 0
-    assert spread["laneCount"] == base["laneCount"]  # this shape costs no extra column
+    assert base["laneCount"] > 1       # the fan is spread, not collapsed onto the trunk
+    assert spread["laneCount"] > 1
     _no_cell_collisions(base)
     _no_cell_collisions(spread)
 
@@ -168,19 +172,21 @@ def test_head_rooted_order_keeps_stale_orphans_below_the_tree():
     _no_cell_collisions(out)
 
 
-def test_lane_adjacency_places_a_dependent_next_to_its_dependency():
+def test_a_dependent_co_locates_with_its_dependency_when_separating_would_hide_the_edge():
     # fa is a 2-decision spine (rows 0,2) in lane 0; fb sits inside it in lane 1. fc (row 3) builds on
-    # fb and has TWO free lanes to choose from. Baseline takes the lowest (lane 0, far from fb);
-    # avoidCrossings adjacency puts it in fb's lane so the connector is short — without a new column.
+    # fb. Putting fc in lane 0 would route the fc->fb connector (a vertical in fc's lane) straight
+    # through fa's lower dot at row 2 — a hidden edge — so the overprint rule co-locates fc with fb in
+    # lane 1 in BOTH modes. (Previously the compact packer separated them and hid the edge; not anymore.)
     g = {
         "decisions": [_dec("a1", "fa", 5), _dec("b1", "fb", 4), _dec("a2", "fa", 3), _dec("c1", "fc", 2)],
         "edges": [_dep("c1", "b1")], "frontier": {}, "clash": [],
     }
     base = _run_layout(g)
     adj = _run_layout(g, {"avoidCrossings": True})
-    assert base["pos"]["c1"]["lane"] != base["pos"]["b1"]["lane"]   # baseline separates them
-    assert adj["pos"]["c1"]["lane"] == adj["pos"]["b1"]["lane"]     # adjacency co-locates them
-    assert adj["laneCount"] == base["laneCount"]                    # at no extra column cost
+    assert base["pos"]["c1"]["lane"] == base["pos"]["b1"]["lane"]   # co-located even in compact mode
+    assert adj["pos"]["c1"]["lane"] == adj["pos"]["b1"]["lane"]
+    assert _spears(g, base) == 0 and _spears(g, adj) == 0           # the connector is never hidden
+    _no_cell_collisions(base)
     _no_cell_collisions(adj)
 
 
@@ -199,6 +205,37 @@ def test_fan_bus_collapse_brackets_leaf_feeders_into_one_lane():
     assert hlane not in flanes         # distinct from HEAD -> feeder→HEAD edges render as curves
     assert out["laneCount"] == 2
     _no_cell_collisions(out)
+
+
+def test_integrator_fan_does_not_overprint_the_trunk():
+    # The real rag-project shape: HEAD `run` builds on `ret` and `gen`; a second strand `prov` also
+    # builds on `gen`; `emb` is an unanchored island. Interval-coloring packs everything into lane 0,
+    # where HEAD's two builds-on edges draw as VERTICALS straight through every intervening dot — the
+    # "straight line, can't see the fan" failure. The avoid-crossings packer must branch the feeders
+    # out so no edge (vertical or diagonal) sweeps a foreign dot: zero spears, and more than one lane.
+    g = {
+        "decisions": [
+            _dec("ret@1", "ret", 1), _dec("gen@2", "gen", 2), _dec("run@3", "run", 3),
+            _dec("prov@4", "prov", 4),
+            {"id": "prov@8", "feature": "prov", "landing": 8, "commits": ["c"],
+             "lifecycle": {"kind": "revise", "of": "prov@4"}},
+            _dec("emb@9", "emb", 9),
+        ],
+        "edges": [
+            {"src": "prov@8", "dst": "prov@4", "type": "revises"},
+            _dep("run@3", "gen@2"), _dep("run@3", "ret@1"), _dep("prov@4", "gen@2"),
+        ],
+        "frontier": {}, "clash": [], "head": "run@3",
+    }
+    for opts in ({}, {"avoidCrossings": True}):          # honest in BOTH compact and spread modes
+        out = _run_layout(g, opts)
+        assert _spears(g, out) == 0          # no connector is hidden behind a dot
+        assert out["laneCount"] > 1          # the fan is spread across lanes, not collapsed to a line
+        assert out["unanchored"] == ["emb@9"]
+        # the lone island sits in the gutter — right of every connected (edge-bearing) lane.
+        connected = max(p["lane"] for did, p in out["pos"].items() if did != "emb@9")
+        assert out["pos"]["emb@9"]["lane"] > connected
+        _no_cell_collisions(out)
 
 
 def test_no_head_field_keeps_newest_on_top():
