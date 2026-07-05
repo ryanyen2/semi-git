@@ -10,10 +10,19 @@ deterministic and we never sort by anything but document order).
 Coverage is whole-repo by design (origin R1/R5): files in an unsupported language, and
 syntactically-broken files, yield zero entities rather than raising — the map shows them as
 honest unattributed structure, it does not choke on them.
+
+Each entity also carries two body hashes, computed here because this is the one place with the
+parsed AST in hand (ported from ``references/sem`` — reference only, not a dependency):
+``content_hash`` over the exact node bytes answers "did the text change at all", and
+``structural_hash`` over normalized AST tokens (comments stripped, whitespace trimmed) answers
+"is this the same code modulo formatting/comments" — the signal a rename/move detector needs
+and one a line-range differ cannot produce. They are in-memory identity signals, kept out of
+``to_dict`` so the read projection stays lean.
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 from tree_sitter import Language, Parser
@@ -33,8 +42,12 @@ class Entity:
     start_line: int  # 1-based inclusive
     end_line: int  # 1-based inclusive
     container: str | None  # enclosing scope-qualified name, or None for top level
+    content_hash: str = ""  # hash of the exact body bytes — "did the text change"
+    structural_hash: str = ""  # hash of normalized AST tokens — "same code modulo formatting"
 
     def to_dict(self) -> dict:
+        # Hashes are deliberately omitted: they are an in-memory diff signal, not part of
+        # the read projection (keeps the entity-graph view lean and golden fixtures stable).
         return {
             "id": self.id,
             "name": self.name,
@@ -111,6 +124,40 @@ def _language_for(path: str) -> str | None:
     return None
 
 
+# Comment node types across the supported grammars — stripped from the structural hash so a
+# comment/docstring edit doesn't read as a code change.
+_COMMENT_NODES = {"comment", "line_comment", "block_comment", "doc_comment", "tag_comment"}
+
+
+def _content_hash(node, src: bytes) -> str:
+    """Hash the entity's exact bytes: any textual change (including formatting) flips it."""
+    return hashlib.sha1(src[node.start_byte : node.end_byte]).hexdigest()
+
+
+def _structural_hash(node, src: bytes) -> str:
+    """Streaming hash of the AST — a Python port of sem's ``hash_structural_tokens``.
+
+    Interior nodes contribute their type (so ``x = f(y)`` and ``f(y) = x`` differ despite equal
+    leaves); leaves contribute their whitespace-trimmed text; comments are skipped. The result
+    is invariant to reformatting and comment edits but sensitive to real structural change."""
+    h = hashlib.sha1()
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.type in _COMMENT_NODES:
+            continue
+        if n.child_count == 0:
+            leaf = src[n.start_byte : n.end_byte].strip()
+            if leaf:
+                h.update(leaf)
+                h.update(b" ")
+        else:
+            h.update(n.type.encode("utf-8"))
+            h.update(b":")
+            stack.extend(reversed(n.children))  # pop yields children in source order
+    return h.hexdigest()
+
+
 def _def_entity(node, base_defs, path, prefix):
     """Return ``(leaf_name, base_kind, name_node)`` if ``node`` is a def, else None."""
     if node.type in base_defs:
@@ -159,6 +206,8 @@ def extract_file(path: str, source: str, *, language: str | None = None) -> list
                     start_line=span_node.start_point[0] + 1,
                     end_line=span_node.end_point[0] + 1,
                     container=container,
+                    content_hash=_content_hash(span_node, src),
+                    structural_hash=_structural_hash(span_node, src),
                 )
             )
             child_stack = [*stack, (leaf, kind)]

@@ -10,15 +10,39 @@ from __future__ import annotations
 
 import subprocess
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from sgt.store.graph import SemanticGraph
 
 TRAILER_KEY = "Sgt-Node-Id"
 
+# git's canonical empty-tree object: diffing against it makes a root commit (no parent)
+# read as "everything added".
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 
 class GitError(Exception):
     """A git command failed."""
+
+
+@dataclass(frozen=True)
+class FileChange:
+    """One path's change between two commits: its status, rename origin, and the line
+    ranges the diff touched in the *new* file.
+
+    ``status`` is git's name-status letter — ``"A"`` added, ``"M"`` modified, ``"D"``
+    deleted, ``"R"`` renamed. ``old_path`` is the pre-rename path (``None`` unless
+    renamed). ``new_ranges`` are 1-based inclusive ``(start, end)`` spans in the
+    post-commit file, so a caller can intersect them against a unit's
+    ``lineno..end_lineno`` to find which symbols the commit actually touched. A pure
+    rename or a deletion touches no new lines, so ``new_ranges`` is empty.
+    """
+
+    status: str
+    path: str
+    old_path: str | None
+    new_ranges: tuple[tuple[int, int], ...]
 
 
 def new_node_id() -> str:
@@ -37,6 +61,25 @@ def parse_node_id(commit_message: str) -> str | None:
         if stripped.startswith(f"{TRAILER_KEY}:"):
             return stripped.split(":", 1)[1].strip()
     return None
+
+
+def _hunk_new_range(header: str) -> tuple[int, int] | None:
+    """From a ``@@ -a,b +c,d @@`` hunk header, the 1-based inclusive new-file span
+    ``(c, c + d - 1)``; ``d`` defaults to 1 when omitted. A hunk whose new count is 0
+    (a pure deletion) touches no new lines, so it returns ``None``."""
+    try:
+        plus = header.split("+", 1)[1].split(" ", 1)[0]
+    except IndexError:
+        return None
+    start_s, _, count_s = plus.partition(",")
+    try:
+        start = int(start_s)
+        count = int(count_s) if count_s else 1
+    except ValueError:
+        return None
+    if count == 0:
+        return None
+    return (start, start + count - 1)
 
 
 class GitBinding:
@@ -121,6 +164,59 @@ class GitBinding:
             if content is not None:
                 out[name] = content
         return out
+
+    def diff_name_and_text(
+        self, parent: str | None, sha: str, find_renames: bool = True
+    ) -> list[FileChange]:
+        """Structured name-status + touched line ranges for ``parent..sha``.
+
+        Parses ``git diff [-M] <parent> <sha>`` twice: ``--name-status`` for the change
+        letter and rename old→new paths (git's own ``-M`` detection), and
+        ``--unified=0`` for the ``@@`` hunk ranges in the new file. ``parent=None``
+        diffs against the empty tree (a root commit). Order follows git's own.
+        """
+        base = parent if parent is not None else EMPTY_TREE
+        # git detects renames by default (diff.renames), so disabling means --no-renames,
+        # not merely omitting -M.
+        rename = ["-M"] if find_renames else ["--no-renames"]
+
+        # 1) status + paths — a rename shows as "R<score>\told\tnew".
+        by_path: dict[str, dict] = {}
+        order: list[str] = []
+        ns = self._git("diff", *rename, "--name-status", base, sha).stdout
+        for line in ns.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            letter = parts[0][0]
+            if letter == "R":
+                old_path, new_path = parts[1], parts[2]
+            else:
+                old_path, new_path = None, parts[1]
+            by_path[new_path] = {"status": letter, "old_path": old_path, "ranges": []}
+            order.append(new_path)
+
+        # 2) new-file hunk ranges (unified=0 → one hunk per contiguous change).
+        diff = self._git("diff", *rename, "--unified=0", base, sha).stdout
+        cur: str | None = None
+        for line in diff.splitlines():
+            if line.startswith("+++ "):
+                target = line[4:].strip()
+                cur = None if target == "/dev/null" else target[2:] if target.startswith("b/") else target
+            elif line.startswith("@@") and cur is not None:
+                rng = _hunk_new_range(line)
+                if rng is not None and cur in by_path:
+                    by_path[cur]["ranges"].append(rng)
+
+        return [
+            FileChange(
+                status=by_path[p]["status"],
+                path=p,
+                old_path=by_path[p]["old_path"],
+                new_ranges=tuple(by_path[p]["ranges"]),
+            )
+            for p in order
+        ]
 
     def stage_all(self) -> None:
         self._git("add", "-A")

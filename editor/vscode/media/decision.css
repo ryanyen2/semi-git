@@ -131,6 +131,8 @@ body.no-detail #detail, body.no-detail #handle { display: none; }
 
 /* ── Rail glyphs + connectors ─────────────────────────────────────────── */
 #rail .spine { fill: none; stroke-width: 2; opacity: 0.5; }
+/* Faint rule separating the connected rail from the island gutter (disconnected, edge-less nodes). */
+#rail .gutter-divider { fill: none; stroke: var(--faint); stroke-width: 1; stroke-dasharray: 2 4; }
 #rail .link { fill: none; stroke-width: 1.5; opacity: 0.5; transition: opacity 0.12s ease, stroke-width 0.12s ease; }
 #rail .link.fork { stroke-dasharray: 5 4; opacity: 0.65; }
 #rail .link.builds-on { opacity: 0.2; }

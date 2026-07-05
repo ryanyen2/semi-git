@@ -440,7 +440,9 @@ def _primary_head(decisions: list[dict], edges: list[dict], in_force_ids: set[st
 
     integrators = [d for d in in_force_ids if indeg.get(d, 0) == 0 and succ.get(d)]
     pool = integrators or list(in_force_ids)
-    return max(pool, key=lambda d: (len(succ.get(d, [])), depth(d, frozenset()), landing.get(d, 0)))
+    # `in_force_ids` is a set, so ties in the ranking key must break on the id itself —
+    # otherwise HEAD flips with set-iteration order (a fan-out with equal-rank tips).
+    return max(pool, key=lambda d: (len(succ.get(d, [])), depth(d, frozenset()), landing.get(d, 0), d))
 
 
 def frontier_view(project) -> dict:

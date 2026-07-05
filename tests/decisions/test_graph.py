@@ -195,6 +195,24 @@ def test_primary_head_is_the_integrator_not_every_tip(tmp_path):
     assert v["head"] == "user@2"            # ...but the integrator (nothing builds on it) is HEAD
 
 
+def test_primary_head_tiebreak_is_deterministic():
+    """A fan-out with equal-rank tips must not let HEAD flip with set-iteration order.
+
+    ``in_force_ids`` is a set; two symmetric integrators (``r`` and ``w`` both building on ``c``,
+    neither building on the other) tie on (out-degree, depth, landing), so without an id tiebreak
+    ``max`` returns whichever the set iterated first. The id tiebreak makes it always the same."""
+    from sgt.api import _primary_head
+
+    decisions = [{"id": "c", "landing": 0}, {"id": "r", "landing": 0}, {"id": "w", "landing": 0}]
+    edges = [
+        {"src": "r", "dst": "c", "type": "builds-on"},
+        {"src": "w", "dst": "c", "type": "builds-on"},
+    ]
+    # c has builds-on in-degree 2 (not an integrator); r and w tie -> id tiebreak picks "w".
+    assert _primary_head(decisions, edges, {"r", "w", "c"}) == "w"
+    assert _primary_head(decisions, edges, {"c", "w", "r"}) == "w"
+
+
 def test_frontier_diff_classifies_changes():
     a = {"base": "base@1", "retr": "retr@2", "kg": "kg@3"}
     b = {"base": "base@1", "retr": "retr@5", "embed": "embed@4"}

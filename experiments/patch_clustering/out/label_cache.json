@@ -1,0 +1,1306 @@
+{
+  "567230cfe746": {
+    "label": "Plan Revert",
+    "rationale": "It lets the user inspect, confirm, restore, and revert planned revisions in the repository graph."
+  },
+  "d7b469aa2cca": {
+    "label": "Capability Clusters",
+    "rationale": "Clusters extracted entities into stable overlapping groups and serializes cluster state for storage and refresh."
+  },
+  "f1f5ef3a7713": {
+    "label": "Constraint Graph Planning",
+    "rationale": "It builds and layers a constraint graph from decomposed tasks so the orchestrator can dispatch subtasks in dependency order."
+  },
+  "94ad5c456a01": {
+    "label": "AST Patch Application",
+    "rationale": "It defines and applies typed Python AST edits for adding, removing, and replacing definitions with precondition checks."
+  },
+  "6441a71794f3": {
+    "label": "Statement Merge",
+    "rationale": "It tracks, inserts, replaces, removes, and renders ordered statements while preserving concurrent edits in distinct slots."
+  },
+  "dda84c95a41f": {
+    "label": "Git Store Binding",
+    "rationale": "Provides a wrapper for initializing a repo, staging and committing changes, reading trees and files, and mapping commits to node IDs."
+  },
+  "f7653cf4f87a": {
+    "label": "Entity Map View",
+    "rationale": "Provides a terminal interface for browsing code entities, filtering and selecting them, and previewing or applying restore and revert actions."
+  },
+  "4f06694e55f7": {
+    "label": "History Replay",
+    "rationale": "It reconstructs a project at a past point by replaying ordered oplog entries and merging effect logs across frontiers."
+  },
+  "2b61ef31c0ce": {
+    "label": "Commit DAG",
+    "rationale": "Implements a directed acyclic graph for storing versioned nodes, adding and removing edges, topological ordering, and JSON persistence."
+  },
+  "57560b4e8633": {
+    "label": "Drift Sync",
+    "rationale": "It detects file drift on disk and reconciles it into planned or active nodes through sync and fulfill operations."
+  },
+  "92f034db6481": {
+    "label": "Concurrent Edit Merge",
+    "rationale": "It merges concurrent statement-level edits across replicas, keeping independent changes and surfacing conflicts for overlapping or logically duplicate edits."
+  },
+  "4a144d546d8b": {
+    "label": "Repository State Views",
+    "rationale": "This exposes JSON, CLI, and MCP views for showing graph, status, blame, conflicts, and export data from a repository."
+  },
+  "1c3a6c46b8dd": {
+    "label": "Decision Graph",
+    "rationale": "It projects decisions into a directed graph with head, planned, landed, and dependency relationships for CLI and MCP output."
+  },
+  "c3e36d23d1e1": {
+    "label": "Code Map",
+    "rationale": "It builds a VS Code panel that shows entities, their graph relationships, status, blame, and cluster views with a scrubber-backed store."
+  },
+  "74c824b967fe": {
+    "label": "MCP Tool Server",
+    "rationale": "Implements a Model Context Protocol server that advertises and dispatches workspace tools such as initialize, show, checkpoint, restore, revert, reconcile, and graph inspection."
+  },
+  "2243ff823d32": {
+    "label": "Batch Landing",
+    "rationale": "It checks whether changes commute and computes safe batches and hold reasons before landing or recommuting them."
+  },
+  "315b3b78a748": {
+    "label": "Decision DAG Versioning",
+    "rationale": "Implements commands and tests for tagging, diffing, restoring, and traversing a decision DAG in the version-control workflow."
+  },
+  "f9c5112c24e6": {
+    "label": "AST Rename Detection",
+    "rationale": "It compares Python AST bindings and emits rename, add, remove, and replace operations for code changes."
+  },
+  "eb8d9317332b": {
+    "label": "Name Resolution Checks",
+    "rationale": "Validates effect-model ASTs by enforcing scope uniqueness, resolving names and imports, and rejecting unresolved or arity-invalid calls."
+  },
+  "8ab3730a96a0": {
+    "label": "Graph Stress Harness",
+    "rationale": "It runs benchmark scenarios over a project dependency graph to exercise snapshot, restore, revert, and suspend operations."
+  },
+  "dc745a5de9f7": {
+    "label": "Statement Edit Commutation",
+    "rationale": "It makes distinct statement-level edits commute and materializes replacement statements while preserving identity and conflict detection."
+  },
+  "20695023b4f5": {
+    "label": "Decision DAG Layout",
+    "rationale": "It lays out decision graph nodes into collision-free lanes while preserving ordering, dependency adjacency, and crossing reduction."
+  },
+  "03448f4997bf": {
+    "label": "AST Edit Replay",
+    "rationale": "It models and applies typed AST edit operations such as add, remove, rename, and replace across module code."
+  },
+  "68d8377e17be": {
+    "label": "Version Vector Clock",
+    "rationale": "It tracks causality, detects concurrent versions, and provides a deterministic ordering and merge for revisions."
+  },
+  "b36e3212e472": {
+    "label": "Blame Heatmap",
+    "rationale": "It renders semantic blame information in the editor, including current-line blame annotations and heatmap coloring."
+  },
+  "430bd2024dd7": {
+    "label": "Ordered Statement Inserts",
+    "rationale": "Implements deterministic position allocation and merging for concurrent statement insertions so payloads stay in a stable order."
+  },
+  "24f7db2450f6": {
+    "label": "Decision DAG",
+    "rationale": "It models, serializes, and stores planned decisions, intents, alternatives, and lifecycle status for version-controlled decision graphs."
+  },
+  "0637d1796a6c": {
+    "label": "Decision DAG",
+    "rationale": "It stores and presents versioned decisions as a graph, including frontier views and LLM-distilled rationale text."
+  },
+  "8b5636cec475": {
+    "label": "Decision DAG View",
+    "rationale": "It provides a webview for inspecting and editing the decision DAG, including selecting nodes, revealing symbols, and handling user actions."
+  },
+  "aa1000102110": {
+    "label": "Code Map Panel",
+    "rationale": "It adds a VS Code webview preview that renders and refreshes a semantic graph view with commands for toggling, picking nodes, and applying mutations."
+  },
+  "afda38540db0": {
+    "label": "Node Attribution",
+    "rationale": "It maps imports, constants, and function definitions to stable source spans for later blame-style annotation."
+  },
+  "9750458bba7f": {
+    "label": "Checkpoint Clustering",
+    "rationale": "It distills code changes into fallback or LLM-generated clusters and uses them to drive checkpoint sync output."
+  },
+  "3303fa9e1d52": {
+    "label": "Intent Prompt DSL",
+    "rationale": "It normalizes grounding text into an intent prompt that teaches plan-editing verbs and can omit grounding when none is provided."
+  },
+  "e3f4517f867e": {
+    "label": "Activity Tracking",
+    "rationale": "It watches Claude transcript updates, converts blocks into activity events, and tracks pending work until activity settles."
+  },
+  "9b2ccd9a7f32": {
+    "label": "Plan Editing DSL",
+    "rationale": "Parses and renders structured intent strings for plan-editing actions such as add, extend, remove, replace, and revise."
+  },
+  "cff469a276e6": {
+    "label": "Decision Version Control",
+    "rationale": "It tracks decision edits in a DAG, quarantines superseded changes, and reports drift between active and stale bindings."
+  },
+  "bcea3a6bc8f1": {
+    "label": "Blame Annotations",
+    "rationale": "Displays semantic blame information in VS Code code lenses and a repository tree view."
+  },
+  "564c291a298d": {
+    "label": "Decision Frontier",
+    "rationale": "It computes and materializes the current frontier of decisions, selecting the latest landing per lane while excluding planned decisions."
+  },
+  "85f36134ab48": {
+    "label": "Planner Context Packing",
+    "rationale": "Builds a bounded plan-editing prompt context by retrieving intent-relevant code, call-graph neighbors, and a capped capability map instead of rendering the whole codebase."
+  },
+  "a4a61d7320d0": {
+    "label": "Decision Frontier",
+    "rationale": "Tracks the current decision frontier and supports applying, restoring, and reverting decisions in the decision DAG."
+  },
+  "4e5731b9a4ae": {
+    "label": "Decision Viewer",
+    "rationale": "Renders a terminal screen for browsing decision nodes with hash-based glyphs and derived colors."
+  },
+  "630a00f95d57": {
+    "label": "Replica Identity",
+    "rationale": "Persists and loads a replica's unique identifier, minting monotonic IDs and preserving compatibility with legacy formats."
+  },
+  "750bf33b034d": {
+    "label": "Statement Distillation",
+    "rationale": "It converts function body changes into statement-level edit operations, while leaving new functions and signature changes as definition replacements."
+  },
+  "20f503f34841": {
+    "label": "Plan Editing Verbs",
+    "rationale": "It exposes MCP tools to plan, merge, split, reconcile, restore, and revert work on a one-frontier graph."
+  },
+  "792906341411": {
+    "label": "Decision DAG",
+    "rationale": "It builds the decision DAG structure by resolving footprint relationships and tracking defines, uses, and used-by links for planned and landed decisions."
+  },
+  "14ca6e2d0536": {
+    "label": "Lane Assignment",
+    "rationale": "It computes lane assignments and lane dependencies for the semantic graph's lineage and edges."
+  },
+  "da1b3846e34b": {
+    "label": "Blame Hover",
+    "rationale": "Provides a VS Code hover that renders ownership information for the line under the cursor."
+  },
+  "f5c71c38925b": {
+    "label": "Blame Views",
+    "rationale": "It provides human-readable and JSON blame output that maps line content to graph nodes, along with graph export."
+  },
+  "5c55fde7f474": {
+    "label": "Position Identifiers",
+    "rationale": "Defines position-based identifiers that can be ordered and converted to and from dictionaries."
+  },
+  "2e2d1cc04e8d": {
+    "label": "Confirmation Dialog",
+    "rationale": "Prompts the user to confirm or cancel an action in the TUI."
+  },
+  "3fd69cc27510": {
+    "label": "Quarantined Status",
+    "rationale": "It adds graph node serialization and migration so quarantined node status round-trips correctly."
+  },
+  "c0489af497fa": {
+    "label": "Intent Normalization",
+    "rationale": "It normalizes intent DSL input and returns an empty result when the chat client fails."
+  },
+  "b8f7e6c40d3c": {
+    "label": "Causal Merge",
+    "rationale": "It verifies that dependent effects replay after their dependencies and that concurrent independent effects and three-replica merges converge regardless of append order."
+  },
+  "c8a1d56e25df": {
+    "label": "Blame Detail View",
+    "rationale": "It renders a TUI screen that shows the detailed semantic-blame projection for a selected item and can be closed."
+  },
+  "d6f130c3e04a": {
+    "label": "Checkpoint Sweep",
+    "rationale": "It rechecks fixed checkpoints and sweeps superseded zombies into quarantine."
+  },
+  "b50f5c52d137": {
+    "label": "Graph Edges",
+    "rationale": "Defines graph edge records and their serialization, including edge type, for the semantic graph store."
+  },
+  "96089fac1fe3": {
+    "label": "Plan Preview",
+    "rationale": "It renders restore and revert plans as previews without changing the underlying sgt files."
+  },
+  "b2fa03a343f5": {
+    "label": "Import Insertion",
+    "rationale": "It inserts new module imports at the correct location, respecting __future__ import ordering and existing docstring placement."
+  },
+  "98834bea0a0b": {
+    "label": "AST Edit Effects",
+    "rationale": "It models typed Python-AST edit operations and checks whether an effect operation is monotone, including replace_def for in-place body edits."
+  },
+  "3ebcd6078f6a": {
+    "label": "AST Renaming",
+    "rationale": "Renames function and name nodes in a Python AST to keep the effect model invariant-aware."
+  },
+  "9d0662770ac7": {
+    "label": "Merge Conflicts",
+    "rationale": "It represents merge conflicts between sides of a graph-based revision history."
+  },
+  "3363fd0e8336": {
+    "label": "Plan Distillation",
+    "rationale": "It turns the current graph and witness data into editable decisions and resolves them through the CLI and agent orchestration."
+  },
+  "3d8c0e253470": {
+    "label": "Decision Graph",
+    "rationale": "It stores semantic nodes and edges, loads and serializes the graph, and lets the orchestrator relink planned decisions by dependency reachability."
+  },
+  "36e65e1b5d0c": {
+    "label": "Task Graph Planning",
+    "rationale": "Builds a dependency graph of subtasks from a planner\u2019s decomposition and layers them for orchestrated execution."
+  },
+  "a33d2734c36a": {
+    "label": "Checkpoint Fulfillment",
+    "rationale": "Implements synchronizing planned nodes into active state by checkpointing, fulfilling, and sweeping superseded drift."
+  },
+  "dbd7e5245e20": {
+    "label": "History Replay",
+    "rationale": "It stores per-entry log data and reconstructs a project state at a given revision by replaying the recorded effects and merges."
+  },
+  "d90079d83892": {
+    "label": "Decision Graph",
+    "rationale": "It stores and renders a directed graph of decisions, revisions, landings, and declared dependencies in the version-control tool."
+  },
+  "eaf89f2c42f0": {
+    "label": "Graph Views",
+    "rationale": "It exposes JSON views for graph, show, blame, export, and status output over project state, including planned work and node metadata."
+  },
+  "9613a399a986": {
+    "label": "Plan Context Retrieval",
+    "rationale": "It builds a budget-bounded planning context by retrieving intent-relevant code, call-graph neighbors, and a capability map from the codebase."
+  },
+  "21e0b98870d0": {
+    "label": "Decision Frontier",
+    "rationale": "Implements tracking and materialization of the live decision frontier, including planned decisions that stay out of the frontier until landing."
+  },
+  "d8c8ce81fa20": {
+    "label": "Decision Frontier",
+    "rationale": "It tracks the active decision frontier and supports saving, applying, restoring, and reverting versioned decision states."
+  },
+  "2524c88585b5": {
+    "label": "Decision Versioning",
+    "rationale": "Adds tagged decision selection, diffing, and restore operations for the decision DAG."
+  },
+  "c42195d8c107": {
+    "label": "Decision Lanes",
+    "rationale": "Assigns DAG nodes to lane indices for representing version-controlled decisions."
+  },
+  "b87b2f92bb87": {
+    "label": "AST Edit Effects",
+    "rationale": "It applies typed AST-level effects to add, remove, or replace code units while enforcing preconditions such as existing names and deduplication."
+  },
+  "900ee3bb854e": {
+    "label": "Scope Resolution Checks",
+    "rationale": "It validates Python AST invariants such as unique bindings, correct call arity, and resolution of imports, attributes, methods, and names."
+  },
+  "ecabf7588d32": {
+    "label": "Code Distillation",
+    "rationale": "It distills Python files into ordered edit effects and replays them to materialize changes, including rename detection and import placement."
+  },
+  "a9c91ea4fe6b": {
+    "label": "AST Edit Effects",
+    "rationale": "Implements a typed Python AST effect model for recording and applying code edits such as adding, removing, renaming, replacing, and setting constants."
+  },
+  "14ba9209dc5f": {
+    "label": "Decision Viewer",
+    "rationale": "It provides terminal screens for browsing decisions and viewing the selected item\u2019s details with generated colors and glyphs."
+  },
+  "e51dd3460d68": {
+    "label": "Checkpoint Scrubber",
+    "rationale": "Implements a VS Code webview that lets users browse nodes, reveal selections, and apply or toggle mutations through the decision panel."
+  },
+  "3e0e3e5a35e1": {
+    "label": "Intent Preview",
+    "rationale": "It renders a VS Code text-document preview for a verb-driven projection at a custom URI."
+  },
+  "5e88d54c5e51": {
+    "label": "Statement Merge",
+    "rationale": "It models a decision body as an ordered statement sequence and computes inserts, removes, replaces, and conflicts so concurrent edits can be merged and rendered."
+  },
+  "cf78e5cb9c6a": {
+    "label": "Attribute Extraction",
+    "rationale": "It extracts and normalizes source attributes such as statement counts, import forms, and end positions into an attribute file."
+  },
+  "905cf94a92b9": {
+    "label": "Statement Edit Commutation",
+    "rationale": "It decides when statement-level edits and replacements commute so independent changes can be materialized without changing statement identity."
+  },
+  "8abb83fa3272": {
+    "label": "Change Confluence",
+    "rationale": "It determines whether candidate code changes commute and can be landed together, while explaining any reasons they are held back."
+  },
+  "db55a478f16a": {
+    "label": "Checkpoint Clustering",
+    "rationale": "It groups detected file changes into checkpoint clusters for sync and checkpoint orchestration."
+  },
+  "b0880f547a95": {
+    "label": "Decision DAG",
+    "rationale": "Implements tools and views for inspecting checkpoints, conflicts, decisions, status, and graph structure in the decision-based version-control model."
+  },
+  "b6b5010ef944": {
+    "label": "Decision DAG",
+    "rationale": "It models version-controlled decisions, intents, alternatives, and lifecycle states for plan editing and landing selection."
+  },
+  "8c2fb4bf9aac": {
+    "label": "Rationale Distillation",
+    "rationale": "It extracts LLM-generated decision rationales into the sidecar and view, while skipping already authored entries and doing nothing offline."
+  },
+  "c7b065ef42a3": {
+    "label": "Decision Frontier",
+    "rationale": "It exposes the current decision frontier from the primary head, including its depth and JSON output shape."
+  },
+  "d74708e4161e": {
+    "label": "Graph Node Statuses",
+    "rationale": "It defines graph nodes, their kinds and statuses, and migrates stored status values during deserialization."
+  },
+  "3d937877694d": {
+    "label": "Planning Graphs",
+    "rationale": "This subsystem spans plan distillation, task and decision graph workflows, checkpoint and version replay, and graph-based UI surfaces for editing and previewing plans."
+  },
+  "033ebbbf5b9d": {
+    "label": "Code Effects",
+    "rationale": "The subsystem spans AST edit effects, scope-resolution checks, code distillation, import insertion, and confluence testing."
+  },
+  "7e61bcc495ed": {
+    "label": "Terminal Interface",
+    "rationale": "It spans the TUI app, color handling, and tests for the entity map view, decision viewer, and confirmation dialog."
+  },
+  "2a9a5101b3e9": {
+    "label": "VS Code Editor",
+    "rationale": "It spans the VS Code commands, views, preview, and state used by the code map, checkpoint scrubber, and intent preview."
+  },
+  "1bf2dc14856d": {
+    "label": "Program Effects",
+    "rationale": "This subsystem spans the extraction and distillation of code effects, including statement merge and attribute extraction."
+  },
+  "8c332e0ffa45": {
+    "label": "Edit Algebra",
+    "rationale": "This subsystem spans statement edit materialization, edit commutation, and change confluence logic in the engine and effects model."
+  },
+  "7b073b13e6ac": {
+    "label": "Blame UI",
+    "rationale": "It spans the heatmap, inline annotations, and hover details used to present blame information in the VS Code editor."
+  },
+  "25ff1be69977": {
+    "label": "Agent Planning",
+    "rationale": "This subsystem spans the intent prompt DSL and the decision DAG layout used to define and render agent plans."
+  },
+  "bfba5b111390": {
+    "label": "Plan Orchestration",
+    "rationale": "This subsystem spans distilling statements, syncing and sweeping runs, and exposing plan-editing actions through the API, CLI, and MCP server."
+  },
+  "aef8ac3db83a": {
+    "label": "Agent Workflow",
+    "rationale": "It spans VS Code activity tracking and the intent DSL used for editing agent plans."
+  },
+  "0eb96b3fa958": {
+    "label": "Version Synchronization",
+    "rationale": "It spans the clocking logic in storage and the merge engine that preserves causal ordering during updates."
+  },
+  "58d93e7652d0": {
+    "label": "Statement Sequencing",
+    "rationale": "It spans ordered statement inserts and position identifiers used to place statements deterministically."
+  },
+  "6958c69ab209": {
+    "label": "Quarantine Reconciliation",
+    "rationale": "It stores semantic graph edits in quarantine, tracks witness data and status, and exposes CLI commands to reconcile or revert them."
+  },
+  "c325f8f0022f": {
+    "label": "Constraint Graph Planning",
+    "rationale": "It decomposes an intent into subtasks, builds a dependency graph, and schedules them in layered execution order."
+  },
+  "471f65242e7d": {
+    "label": "Decision DAG",
+    "rationale": "Implements storage, planning, and application of a lane-aware decision graph with frontier persistence and restore/revert operations."
+  },
+  "055c3d394a88": {
+    "label": "Planned Rewrite Graph",
+    "rationale": "Implements orchestrated planning, merging, restoring, and splitting of draft revisions in the semantic graph while emitting previews without mutating stored state."
+  },
+  "d5c5175f744f": {
+    "label": "Plan Editing Verbs",
+    "rationale": "Implements the workflow for holding, landing, fulfilling, and quarantining project effects while updating the semantic graph and effect log."
+  },
+  "b5f014f92e17": {
+    "label": "Rationale Distillation",
+    "rationale": "It turns authored decision content into concise structured rationale lines and writes them to the sidecar and view when online."
+  },
+  "ff25770a6d3f": {
+    "label": "Topological Planning",
+    "rationale": "It computes an execution order from the semantic graph and persists declared dependencies for later planning."
+  },
+  "41ebfdcf886d": {
+    "label": "Ref Resolution",
+    "rationale": "Resolves references to graph lanes and safe project paths for orchestrator operations."
+  },
+  "4b4b89c675ee": {
+    "label": "AST Change Distillation",
+    "rationale": "It distills Python modules into top-level binding and import operations, including rename, add, remove, and order-sensitive import changes."
+  },
+  "762e814941d2": {
+    "label": "AST Edit Effects",
+    "rationale": "Implements typed Python AST rewrite operations such as renaming definitions, replacing assignments, adding imports or calls, and replaying those edits into source files."
+  },
+  "7a93ffcec14f": {
+    "label": "Repository Views",
+    "rationale": "Implements read-only repository views for blame, conflicts, graph, node, show, status, and export surfaces."
+  },
+  "02e26685d0b2": {
+    "label": "Working Tree Drift",
+    "rationale": "Compares tracked sources with on-disk files, reports drift, and blocks sync or mutation when uncommitted changes are present."
+  },
+  "a2e4b3bf6bef": {
+    "label": "Plan Fulfillment",
+    "rationale": "It turns planned nodes into active nodes, materializes their contents, preserves provenance, and handles out-of-order fulfillment and quarantine."
+  },
+  "ce43e2dc33c6": {
+    "label": "Entity Map TUI",
+    "rationale": "This TUI renders a selectable code-entity map with detail, preview, and apply actions for restore and revert intents."
+  },
+  "a3470ebb71b9": {
+    "label": "Graph Browser TUI",
+    "rationale": "This TUI opens a commit graph, lets the user filter visible rows, and folds the side pane in narrow mode."
+  },
+  "81b534f28a12": {
+    "label": "Decision Browser",
+    "rationale": "It provides a TUI screen for viewing and closing decisions in the decision DAG."
+  },
+  "6dab0238d596": {
+    "label": "Decision DAG",
+    "rationale": "It renders and manipulates a graph of semantic entities and decisions, with status, blame, export, and mutation operations in the VS Code extension."
+  },
+  "e1567637a4ab": {
+    "label": "Checkpoint Scrubber",
+    "rationale": "Implements a VS Code preview and decision view for navigating checkpoints in the semantic graph."
+  },
+  "d05a48da0c9c": {
+    "label": "Decision DAG View",
+    "rationale": "It provides a VS Code webview for displaying and editing decision DAG data, including symbol ranges, mutations, reveal, and message handling."
+  },
+  "00854c6d6cfa": {
+    "label": "History Replay",
+    "rationale": "It reconstructs a project state at a past frontier by replaying ordered log entries and materializing the resulting tree."
+  },
+  "4b1ca8efac88": {
+    "label": "Causal Replay",
+    "rationale": "It ensures dependent effects replay after their prerequisites and that concurrent independent effects merge to the same result regardless of append order."
+  },
+  "fd8c49ca1228": {
+    "label": "Statement Merge",
+    "rationale": "It tracks, orders, renders, and merges statement edits with deterministic conflict handling and tombstoned removals."
+  },
+  "a9f13b2d188b": {
+    "label": "Statement Materialization",
+    "rationale": "Implements materializing statement insert and remove effects from graph history while preserving statement identity and edit order independence."
+  },
+  "954c6ac6b9f2": {
+    "label": "AST Effect Model",
+    "rationale": "It models typed Python AST edit operations and checks invariants such as monotonicity and function-body reconstruction."
+  },
+  "6f02baed6a57": {
+    "label": "Decision DAG",
+    "rationale": "It stores decision nodes and parent-child edges in an acyclic graph with reachability, topological ordering, serialization, and cycle rejection."
+  },
+  "28c85394e394": {
+    "label": "Plan Editing Verbs",
+    "rationale": "It normalizes intent text and builds grounding prompts for plan edits, including additive-work guidance and capability grounding."
+  },
+  "2e2dc8dcfa0a": {
+    "label": "Blame Views",
+    "rationale": "This code adds VS Code UI surfaces that show semantic blame information in code lenses, hover text, inline line rendering, and a tree view."
+  },
+  "df6abe748940": {
+    "label": "Blame Heatmap",
+    "rationale": "It renders semantic blame information as a heatmap and related editor decorations in VS Code."
+  },
+  "595148f000df": {
+    "label": "Confluence Gate",
+    "rationale": "It checks whether effect batches can be safely applied by commuting independent edits and rejecting conflicting or non-confluent code changes."
+  },
+  "c4f2d6574ef4": {
+    "label": "Git Binding",
+    "rationale": "Wraps Git operations for initializing repositories, staging and committing changes, reading trees and files, and detecting orphaned commits."
+  },
+  "cef880e6fde9": {
+    "label": "Name Resolution Checks",
+    "rationale": "It validates Python AST edits by rejecting duplicate definitions, unresolved or stale references, and invalid function calls or imports."
+  },
+  "25125fc2fdaa": {
+    "label": "Decision Graph",
+    "rationale": "It renders and tests a decision DAG with primary head, frontier lanes, planned dependencies, and landed status."
+  },
+  "580c8e2420ab": {
+    "label": "Decision Frontier",
+    "rationale": "It exposes the decision DAG frontier and matching JSON projections through CLI and MCP commands."
+  },
+  "f6eb72b31963": {
+    "label": "Claude Activity Tracking",
+    "rationale": "Tracks Claude transcript activity and converts it into activity events for intent parsing and plan-editing workflows."
+  },
+  "09c2e047a2a9": {
+    "label": "Plan Editing DSL",
+    "rationale": "It parses and renders edit intents with canonical add, extend, remove, replace, and revise verbs."
+  },
+  "f7d5700b4571": {
+    "label": "Graph Stress Harness",
+    "rationale": "It runs scripted snapshot, restore, and revert scenarios against graph digests while rendering lane layouts for stress testing."
+  },
+  "813028103755": {
+    "label": "Graph Stress Harness",
+    "rationale": "It runs benchmark-style stress tests over project graphs such as CLI tools, data pipelines, and web APIs."
+  },
+  "8f783b2c2d8f": {
+    "label": "Checkpoint Distillation",
+    "rationale": "It groups tracked changes into clusters to derive checkpoints, quarantine conflicts, and synchronize superseded entries."
+  },
+  "7c51db2fa45b": {
+    "label": "Plan Context Builder",
+    "rationale": "Builds a bounded planning context by retrieving intent-relevant code, call-graph neighbors, and a capped capability map instead of rendering the whole tree."
+  },
+  "fb1cea8302e2": {
+    "label": "Decision Frontier",
+    "rationale": "Represents the set of decisions currently in force and supports serialization to and from dictionaries."
+  },
+  "9730126525a4": {
+    "label": "Decision Lane Assignment",
+    "rationale": "It assigns DAG entities to lanes while keeping import-only targets from creating their own lane."
+  },
+  "f57870d5f69c": {
+    "label": "Rewrite Planning",
+    "rationale": "It spans graph-based rewrite planning, decision DAG construction, ref resolution, plan editing, and reconciliation of quarantined changes."
+  },
+  "c119ff8ce014": {
+    "label": "Code Changes",
+    "rationale": "It spans AST edit effects, AST and statement distillation, and import insertion as the mechanisms for deriving code modifications."
+  },
+  "0ecaffde16ab": {
+    "label": "Repository State",
+    "rationale": "This subsystem spans repository views, working tree drift detection, and plan fulfillment across the semantic version-control workflow."
+  },
+  "375c02f40a0a": {
+    "label": "Terminal Interface",
+    "rationale": "It spans the text-based screens for browsing graphs and decisions, mapping entities, and confirming actions in the semantic version-control tool."
+  },
+  "c3bb254936ba": {
+    "label": "Decision Browser",
+    "rationale": "It spans the VS Code commands, preview, store, and views used to inspect the Decision DAG and its checkpoint scrubber."
+  },
+  "73939781475e": {
+    "label": "Revision Log",
+    "rationale": "This subsystem spans the store-layer history replay, version vector clock, and causal replay logic."
+  },
+  "fbb11cf0702f": {
+    "label": "AST Effects",
+    "rationale": "This subsystem spans statement merging, statement materialization, and the AST effect model used by those operations."
+  },
+  "cb9f97df4976": {
+    "label": "Decision Graph",
+    "rationale": "This subsystem spans the storage and testing of the decision DAG, including node statuses, graph edges, and the oplog-backed graph store."
+  },
+  "c99010d673ca": {
+    "label": "Plan Authoring",
+    "rationale": "It spans the intent DSL, orchestration loop, and tests for laying out decision DAGs and editing plans."
+  },
+  "afd42625c310": {
+    "label": "Code Annotations",
+    "rationale": "It spans the VS Code blame views, heatmap coloring, codelens entries, hover content, and tree-based displays."
+  },
+  "929bfe47994b": {
+    "label": "Decision Graph",
+    "rationale": "It spans the decision DAG structure and the decision frontier used to model and materialize project decisions."
+  },
+  "99eec90a6e98": {
+    "label": "Decision Engine",
+    "rationale": "This subsystem spans the decision graph and decision frontier APIs and their corresponding tests."
+  },
+  "a298d70f647f": {
+    "label": "Agent Editor Loop",
+    "rationale": "This subsystem spans Claude activity tracking in the VS Code editor and the intent DSL used to edit plans for agent-driven workflows."
+  },
+  "317fccffb546": {
+    "label": "Graph Stress Testing",
+    "rationale": "This subsystem spans the scripts that drive, run, digest, and coordinate graph stress harness jobs."
+  },
+  "1a2a8bc7bcd8": {
+    "label": "Planning Engine",
+    "rationale": "This subsystem spans plan context construction and the decision-frontier model used to drive planning behavior."
+  },
+  "4a1744ce97e0": {
+    "label": "Decision Graph View",
+    "rationale": "It adds VS Code lenses and panels for inspecting the decision, effect, and blame graph for a repository."
+  },
+  "221ccc0f7c92": {
+    "label": "Blame CLI",
+    "rationale": "Implements the command-line entry point for running blame, decisions, and export subcommands."
+  },
+  "9b320db63c18": {
+    "label": "Effect Materialization",
+    "rationale": "It models and applies repository effects to the working tree, including add-def, quarantine persistence, round-tripping revert/restore, and path-escape protection."
+  },
+  "66c1b707e073": {
+    "label": "Provenance Analysis",
+    "rationale": "This subsystem spans decision-graph viewing, blame inspection in the CLI, and effect materialization across the editor and scripting tools."
+  },
+  "dd53ac842823": {
+    "label": "Plan Dependency DAG",
+    "rationale": "It builds and persists a directed dependency graph for plans so edits can add declared dependencies and cross-file imports resolve without false links."
+  },
+  "fec368eeae9e": {
+    "label": "Plan Graph",
+    "rationale": "It spans the VS Code and CLI pieces for analyzing provenance, editing plans with verbs, and working with the plan dependency DAG."
+  },
+  "fd767f6631f7": {
+    "label": "Layered Task Dispatch",
+    "rationale": "It builds a constraint graph from decomposed work and schedules subtasks into execution layers for orchestration and restoration."
+  },
+  "87025b4554d8": {
+    "label": "Decision Lanes",
+    "rationale": "It tracks decisions in lane-based revision histories with frontiers, pins, forks, merges, and planned versus landed states."
+  },
+  "2657a9700803": {
+    "label": "Plan Editing Verbs",
+    "rationale": "It lets the tool load a frontier and plan, apply, restore, or revert decision-state changes through the orchestrator and project composition."
+  },
+  "a464bd53edd9": {
+    "label": "Change Orchestration",
+    "rationale": "It spans decision storage, lifecycle algebra, the orchestration loop, project state, and oplog persistence for plan-editing and decision-lane behavior."
+  },
+  "c176bab9cb73": {
+    "label": "Planned Revision Editing",
+    "rationale": "It adds orchestration and project/store support for editing planned revisions by merging, splitting, reverting, and reconciling drafts in the semantic graph."
+  },
+  "27256bdd8320": {
+    "label": "Plan Editing",
+    "rationale": "It provides TUI and orchestrator logic for editing planned decision frontiers by merging, splitting, relinking, and persisting plan metadata."
+  },
+  "68cc50369361": {
+    "label": "Revision Planning",
+    "rationale": "It spans the CLI, orchestration loop, decision store, project and graph layers, and end-to-end tests for planned revision and plan editing."
+  },
+  "a1000de9bede": {
+    "label": "Plan Orchestration",
+    "rationale": "This subsystem spans revision planning and plan preview, coordinating the loop that prepares, previews, and emits edit plans."
+  },
+  "332238aa5da2": {
+    "label": "Quarantine Recommute",
+    "rationale": "It stores quarantined graph nodes and supports recomputing or reconciling pending plan edits against active and conflicting lanes."
+  },
+  "9129a9dcbdde": {
+    "label": "Decision Rationale Distillation",
+    "rationale": "It turns decision rationale into a structured, readable line and stores the distilled rationale in the sidecar and view."
+  },
+  "41d6683e3354": {
+    "label": "Ref Resolution",
+    "rationale": "It resolves repository refs and lane hits against safe project paths."
+  },
+  "9a6347d01de8": {
+    "label": "Planning Workflow",
+    "rationale": "This subsystem spans plan graph construction, task dispatch and orchestration, quarantine recommute, rationale distillation, and reference resolution across the editor extension and agent scripts."
+  },
+  "e1fe4665a805": {
+    "label": "AST Edit Effects",
+    "rationale": "It models typed Python AST edit operations and checks preconditions for deduplicating imports, adding definitions, and inserting methods into classes."
+  },
+  "e6df856f72a3": {
+    "label": "Function Body Replacement",
+    "rationale": "This code adds an effect that replaces an existing function or method definition body in place while preserving sibling definitions and enforcing preconditions."
+  },
+  "a309c2d3a591": {
+    "label": "Definition Deletion",
+    "rationale": "It removes a definition from the model while enforcing that the target unit exists and keeping the remaining code parseable."
+  },
+  "fbe7ae60db5b": {
+    "label": "Code Edit Operations",
+    "rationale": "This subsystem spans AST edit effects, function body replacement, and definition deletion in the version-control engine."
+  },
+  "6a785396161c": {
+    "label": "AST Effect Model",
+    "rationale": "It represents Python AST changes as typed effect units, distills statement-level operations, and materializes them while enforcing invariants."
+  },
+  "a668d661227f": {
+    "label": "Statement Distillation",
+    "rationale": "Promotes body-only changes into statement-level operations when the function signature and defining context stay compatible, and falls back to add/replace operations otherwise."
+  },
+  "b07be5b07bee": {
+    "label": "Edit Effects",
+    "rationale": "It spans code edit operations, the AST effect model, and statement distillation in the effects package."
+  },
+  "080bd4c8e6e4": {
+    "label": "AST Change Tracking",
+    "rationale": "It spans code that detects AST renames and models AST edit effects in semantic diffs."
+  },
+  "9044a4678b76": {
+    "label": "Source Edits",
+    "rationale": "This subsystem spans tracking, modeling, and distilling code changes such as edit effects, AST changes, and import insertions."
+  },
+  "fa6a3b867f00": {
+    "label": "Decision DAG",
+    "rationale": "It models decision-graph effects, checks project state for drift, and summarizes invariant violations."
+  },
+  "050030759f09": {
+    "label": "Repository Graph",
+    "rationale": "This subsystem spans repository views and the decision DAG used to derive and present repository state."
+  },
+  "cee348754d9f": {
+    "label": "Drift Detection",
+    "rationale": "It checks whether working-tree sources diverge from the last committed graph state and blocks or quarantines sync actions when drift is present."
+  },
+  "d235b3341aaa": {
+    "label": "Project Synchronization",
+    "rationale": "It covers detecting drift between recorded and actual project state and fulfilling plans to bring them back into sync."
+  },
+  "f32073e923c4": {
+    "label": "Repository Orchestration",
+    "rationale": "This subsystem spans the API, diff/model effects, MCP server, sync orchestration, project handling, and end-to-end scripts for repository graph and project synchronization."
+  },
+  "9f8b8f16e841": {
+    "label": "Entity Map View",
+    "rationale": "Provides a TUI for browsing code entities, previewing restore or revert actions, and applying the selected change."
+  },
+  "54f18ad97cd4": {
+    "label": "TUI Views",
+    "rationale": "It spans the terminal screens for browsing entity maps and inspecting blame details."
+  },
+  "9222d219f936": {
+    "label": "Decision Browser",
+    "rationale": "It adds a TUI screen and command to browse and inspect decisions with generated glyphs, hashes, and colors."
+  },
+  "154ee7364e11": {
+    "label": "Terminal UI",
+    "rationale": "This subsystem spans the terminal-based views and the decision browser in the semantic version-control tool."
+  },
+  "20c4fdcbb287": {
+    "label": "Terminal Interface",
+    "rationale": "This subsystem spans the text-based app shell, graph browser, color handling, and confirmation dialogs used in the terminal."
+  },
+  "b4a139d7913e": {
+    "label": "Code Map Panel",
+    "rationale": "Implements VS Code commands to activate the semantic graph view, pick nodes, apply mutations, and locate the repository root."
+  },
+  "b9985b6a7a1b": {
+    "label": "VS Code Extension",
+    "rationale": "This subsystem spans the VS Code command handlers, activation code, store, types, and the Code Map panel implementation."
+  },
+  "b8de24ef66f2": {
+    "label": "VS Code Editor",
+    "rationale": "It spans the VS Code extension entry points, command handling, state store, and intent preview UI under editor/vscode/src."
+  },
+  "a290ac692ed0": {
+    "label": "VS Code UI",
+    "rationale": "This subsystem spans the Visual Studio Code extension UI, including editor commands, preview, state storage, and the Decision DAG view."
+  },
+  "f162744dce00": {
+    "label": "Historical Replay",
+    "rationale": "It reconstructs a project\u2019s state at a chosen point by replaying effect-log entries and exposing live nodes, bundles, and frontier projections."
+  },
+  "a66c151374c1": {
+    "label": "Log Entry Ordering",
+    "rationale": "It serializes operation-log entries and assigns deterministic, monotonic order keys for committed history."
+  },
+  "24f9811851d5": {
+    "label": "Operation Log",
+    "rationale": "This subsystem spans the oplog storage, history replay, and merge logic that order and reapply recorded changes."
+  },
+  "8af1b9364cc7": {
+    "label": "Change History",
+    "rationale": "The subsystem spans operation logs, version-vector clocks, and causal replay used to track and rebuild repository history."
+  },
+  "fa01dfc6fc7d": {
+    "label": "Statement Merge",
+    "rationale": "Implements an ordered statement sequence with replace, remove, render, and conflict checks so concurrent edits to code bodies can commute or be detected deterministically."
+  },
+  "66cc29c76b70": {
+    "label": "Statement Diffing",
+    "rationale": "It computes edit operations between source statements, reusing existing positions for unchanged or replaced lines and tombstoning removed slots."
+  },
+  "23cc9ed50701": {
+    "label": "Statement Slots",
+    "rationale": "It represents editable slot placeholders in a statement sequence and supports serializing them to and from dictionaries."
+  },
+  "f131384da8dd": {
+    "label": "Statement Handling",
+    "rationale": "This subsystem spans statement merge, diffing, and slot distillation under the effects package."
+  },
+  "25bce1d1d03b": {
+    "label": "Effect Analysis",
+    "rationale": "It spans statement handling and the AST effect model used to represent and distill effects."
+  },
+  "b0c480b0f8e3": {
+    "label": "Program Effects",
+    "rationale": "It spans analysis, modeling, distillation, and materialization of statement effects in the version-control tool."
+  },
+  "b1bc4a7ce107": {
+    "label": "Version Graph",
+    "rationale": "This subsystem spans the persistent decision DAG and graph node status tracking used by the store and oplog."
+  },
+  "2e52d61884da": {
+    "label": "Version Store",
+    "rationale": "It spans the version graph structure and its edge relationships used to persist semantic version history."
+  },
+  "d07c1424ab06": {
+    "label": "Effect Invariants",
+    "rationale": "It validates typed Python AST effects by checking binding, scope, import, method-call, and arity invariants before a change is accepted."
+  },
+  "79776038d5dc": {
+    "label": "Decision DAG",
+    "rationale": "It tracks planned and landed decisions in a dependency graph with a frontier view and primary-head selection."
+  },
+  "ae2d5f0eabea": {
+    "label": "Plan Edit Verbs",
+    "rationale": "It converts activity transcripts into parsed intent events for edit, add, extend, remove, replace, and revise actions."
+  },
+  "2f277cb8b460": {
+    "label": "Concurrent Insert Ordering",
+    "rationale": "It assigns deterministic, comparable position IDs so concurrent statement inserts can be ordered, merged, and round-tripped without collisions."
+  },
+  "a3bbf6688713": {
+    "label": "Plan Context Builder",
+    "rationale": "Builds bounded planning context from the codebase by rendering relevant code, capability maps, and frontier state for versioned decisions."
+  },
+  "d9137d16edae": {
+    "label": "Decision Graph View",
+    "rationale": "It adds VS Code code lenses and views for inspecting blame spans, decisions, effects, and graph edges in the semantic version-control workflow."
+  },
+  "50cbeac615ea": {
+    "label": "Blame Navigation",
+    "rationale": "It spans the VS Code codelens/extension layer, the CLI and config, and the invariant and test scripts used to inspect and traverse decision graphs."
+  },
+  "45f61fb53d67": {
+    "label": "Code Dependency Graph",
+    "rationale": "It tracks definitions and import-based successor edges so materialization, quarantine, and restore operations respect dependency closure."
+  },
+  "64a0e710cb46": {
+    "label": "Quarantine Recommit",
+    "rationale": "Retries a quarantined bundle into the graph when it is empty or conflict-free, and blocks the move if a rival commit or out-of-band drift is active."
+  },
+  "61a042ccdd68": {
+    "label": "Repository Interface",
+    "rationale": "It spans the VS Code extension, CLI/configuration, and end-to-end/stress tooling for navigating blame, inspecting dependency graphs, and recommitting quarantined changes."
+  },
+  "bb5743c887a7": {
+    "label": "Dependency Layering",
+    "rationale": "Implements a dependency graph that groups tasks into executable layers, detects cycles, and supports orchestrator dispatch and restore."
+  },
+  "28ab207591fb": {
+    "label": "Intent Decomposition",
+    "rationale": "It decomposes a user intent into one or more subtasks and raises planner errors for malformed payloads."
+  },
+  "2770cba53b43": {
+    "label": "Decision DAG Planner",
+    "rationale": "It decomposes an intent into a parsed graph and generates a plan from that graph with the orchestrator."
+  },
+  "58dddd204508": {
+    "label": "Change Planning",
+    "rationale": "It spans dependency layering, intent decomposition, and decision DAG planning across the planner, orchestrate, and project modules."
+  },
+  "90e9ff3d1ed0": {
+    "label": "Plan Editing",
+    "rationale": "Implements planning and reverting of nodes and edges in the decision DAG while persisting planner enrichment for planned decisions."
+  },
+  "cdceef8ecd02": {
+    "label": "Plan Orchestration",
+    "rationale": "This subsystem spans change planning and plan editing across the planner, orchestration loop, and constraint logic."
+  },
+  "183b4e01b095": {
+    "label": "Pinned Frontier",
+    "rationale": "It saves and loads the active per-lane frontier, falling back from stale pins and keeping planned versus landed decisions separate."
+  },
+  "dd60a35f5fed": {
+    "label": "Revert and Restore",
+    "rationale": "It builds and executes plan edits for reverting or restoring a codebase delta without directly authoring code."
+  },
+  "17b910f977c3": {
+    "label": "Decision Graph",
+    "rationale": "This subsystem spans decision storage, lifecycle algebra, orchestration, project integration, and the oplog used to pin frontiers and revert or restore versions."
+  },
+  "8c15da012a64": {
+    "label": "Plan Editing Verbs",
+    "rationale": "Implements planning-time split, merge, and revert operations for drafts and planned revisions, including interface relinking and dependency preservation."
+  },
+  "9c1b3c7fc381": {
+    "label": "Rewrite Reconcile Loop",
+    "rationale": "Implements the orchestration loop that plans, emits, and reconciles rewrite previews without mutating tracked files."
+  },
+  "de65d59ef3f1": {
+    "label": "Plan Merge",
+    "rationale": "It adds merge logic that tracks planned decisions, relinks dependencies, and unions alternative branches in the decision DAG."
+  },
+  "c1d5930b0a31": {
+    "label": "Rewrite Engine",
+    "rationale": "It spans the CLI, decision store, graph store, and orchestration loop for plan editing verbs, rewrite reconciliation, and plan merge."
+  },
+  "a6c0709109c1": {
+    "label": "Plan Editing DSL",
+    "rationale": "Implements graph-backed plan editing and emission, including planned and revise nodes, provenance round-tripping, quarantine status, and cycle-drop validation."
+  },
+  "7cf4686a00d2": {
+    "label": "Plan Graph",
+    "rationale": "It adds a graph-backed planner that persists declared dependencies and materializes plans in topological order."
+  },
+  "54ff218684c2": {
+    "label": "Plan Editor",
+    "rationale": "This subsystem spans planning, plan editing, decision-graph handling, rewrite operations, and repository/ref resolution across the VS Code extension and Python agents."
+  },
+  "9a816c890726": {
+    "label": "AST Effect Application",
+    "rationale": "It models and materializes typed Python-AST effects, with invariant checks and traversal over function and statement units."
+  },
+  "1fc514e20294": {
+    "label": "AST Editing",
+    "rationale": "This subsystem spans representing, applying, and testing edit effects on ASTs, including function body replacement and definition deletion."
+  },
+  "70331e507cd4": {
+    "label": "Code Change Analysis",
+    "rationale": "It spans AST edits, rename detection, edit-effect modeling, statement distillation, and import insertion for describing source-code changes."
+  },
+  "98011f9280c5": {
+    "label": "Code Entity Graph",
+    "rationale": "It extracts Python and TypeScript code entities, resolves their references into a deterministic graph, and clusters connected entities."
+  },
+  "e75344f15727": {
+    "label": "Entity Graph",
+    "rationale": "Builds a directed graph of code entities and preserves explicit, cross-file, and cyclic references while dropping implied transitive edges."
+  },
+  "5fc6e21b13d4": {
+    "label": "Capability Clustering",
+    "rationale": "It groups adjacent entity memberships into clusters with stable identities and deterministic labeling, even when members change or revert."
+  },
+  "1780c726246f": {
+    "label": "Capability Clustering",
+    "rationale": "Groups entities into clusters with stable overlap-aware identities and persists the cluster store to disk."
+  },
+  "465afaba7a48": {
+    "label": "Code Entity Analysis",
+    "rationale": "It spans extracting code entities, building entity graphs, and clustering related capabilities."
+  },
+  "223b982721d3": {
+    "label": "Entity Graph View",
+    "rationale": "It extracts code entities and exposes them as a connected graph with timeframe projections and stable color-mapped attributes."
+  },
+  "dc3399fa5ab9": {
+    "label": "Code Entity Layer",
+    "rationale": "It spans extracting, clustering, graphing, and history tracking for code entities."
+  },
+  "a33567b57541": {
+    "label": "Drift Guard",
+    "rationale": "It detects when the working tree diverges from committed state and blocks or quarantines sync operations until the drift is resolved."
+  },
+  "eeb1f7355753": {
+    "label": "Repository Operations",
+    "rationale": "It spans repository views, drift guard, and plan fulfillment across the API, orchestration, effects, MCP server, project, and E2E UI layers."
+  },
+  "b0389613e93b": {
+    "label": "Blame Review TUI",
+    "rationale": "It provides a terminal interface for loading, filtering, selecting, and inspecting semantic blame data with responsive status and detail panes."
+  },
+  "7a6bf3539a13": {
+    "label": "Code Entity Map",
+    "rationale": "Provides a text UI for browsing code entities and previewing, applying, or reverting restore and revert actions with filtering."
+  },
+  "db8aceb296cd": {
+    "label": "Code Navigation",
+    "rationale": "This subsystem spans the blame review TUI and the code entity map for exploring repository history and structure."
+  },
+  "0b3811f047b5": {
+    "label": "Blame Detail View",
+    "rationale": "It renders a TUI screen showing the selected blame item with generated glyphs, hashes, and colors."
+  },
+  "dbcf48c10b96": {
+    "label": "Terminal UI",
+    "rationale": "It spans the interactive terminal screens used for code navigation and blame detail viewing."
+  },
+  "7a9ed734c84d": {
+    "label": "Terminal Interface",
+    "rationale": "It spans the app's text-based graph browsing, decision browsing, and confirmation dialog screens in the terminal."
+  },
+  "9064c39c2697": {
+    "label": "Decision DAG Browser",
+    "rationale": "It renders a versioned graph of decisions, code entities, and checkpoints for visual browsing and scrubbing in the editor."
+  },
+  "442bfcd65b82": {
+    "label": "Decision Graph View",
+    "rationale": "It renders and exports the decision graph, including blame, status, decisions, and JSON projections in the VS Code extension."
+  },
+  "2ee187512343": {
+    "label": "Decision Graph UI",
+    "rationale": "It spans the VS Code commands, store, and types that power the Decision DAG Browser and Decision Graph View."
+  },
+  "a7b671b9b89d": {
+    "label": "Decision Views",
+    "rationale": "It spans the VS Code interfaces for the decision graph UI, checkpoint scrubber, and decision DAG view."
+  },
+  "6ecd4e015b51": {
+    "label": "History Replay",
+    "rationale": "It rebuilds a project\u2019s state at a given version by replaying effect-log entries, tracking live nodes, frontiers, bundles, and tombstones."
+  },
+  "8ce6dedbe025": {
+    "label": "Merge Engine",
+    "rationale": "It computes and reports graph-based merges by ingesting entries, regating nodes, and producing a merge result."
+  },
+  "7ed6f39f1dff": {
+    "label": "Revision History",
+    "rationale": "It spans merge handling, project state, and ordered operation log playback for reconstructing past revisions."
+  },
+  "6cce950ac072": {
+    "label": "Revision Store",
+    "rationale": "This subsystem spans revision history, version vector clock tracking, and causal replay of stored operations."
+  },
+  "dd4525285afa": {
+    "label": "Code Effects",
+    "rationale": "It spans statement handling, statement materialization, and the AST effect model used to represent and distill effects."
+  },
+  "4eae33c724e2": {
+    "label": "Operation DAG",
+    "rationale": "Implements a directed acyclic graph of stored operations with dependency checks, topological ordering, and load/save support."
+  },
+  "82da2f571f6b": {
+    "label": "Decision Graph Store",
+    "rationale": "Implements persistence and mutation for the decision graph, including loading from dict, node lookup, edge access, and removing a node with its incident edges."
+  },
+  "1da7a0e61cd1": {
+    "label": "Graph Store",
+    "rationale": "It spans the storage and querying of the operation DAG and decision graph used by the version-control tool."
+  },
+  "db811d852b2a": {
+    "label": "Commit Graph",
+    "rationale": "This subsystem spans the stored version graph structure, including graph nodes, node statuses, and graph edges."
+  },
+  "2ae1ee372645": {
+    "label": "Confluence Gate",
+    "rationale": "It checks whether candidate changes commute and whether a batch can safely land, while collecting reasons when they do not."
+  },
+  "78ad443b678f": {
+    "label": "Statement Edit Commutation",
+    "rationale": "It decides when statement-level effects, especially replacements and edits in the same function, can commute or must conflict."
+  },
+  "7814ff54fb9b": {
+    "label": "Edit Algebra Engine",
+    "rationale": "It spans the logic for commuting statement edits and checking whether those edits remain confluent."
+  },
+  "1994eff4d553": {
+    "label": "Git History Binding",
+    "rationale": "It wraps Git operations to create commits, inspect HEAD and commit trees, and read files or node IDs from historical snapshots."
+  },
+  "4306480fc04b": {
+    "label": "Git Commit Binding",
+    "rationale": "It initializes a git-backed store, tracks known commit SHAs, and flags out-of-band commits as orphans."
+  },
+  "8c1e6f9db8ca": {
+    "label": "Git Integration",
+    "rationale": "It spans the code that connects the version-control tool to Git history and Git commit objects."
+  },
+  "396b3181ad18": {
+    "label": "Git Trailers",
+    "rationale": "It formats and parses commit message trailers that store semantic node IDs for Git-backed graph records."
+  },
+  "86f7b1adb37e": {
+    "label": "Git Bindings",
+    "rationale": "This subsystem spans the code that connects the tool to Git and handles Git trailers across store, history, and project tests."
+  },
+  "2a9f3d61f656": {
+    "label": "Merge Invariants",
+    "rationale": "It validates codebase and import invariants while checking that replica merges remain idempotent, order-independent, and conflict-detecting."
+  },
+  "0020537094d8": {
+    "label": "Statement Distillation",
+    "rationale": "This code groups and exports agents\u2019 statement-level edits as deltas, distinguishing non-conflicting edits from surface conflicts."
+  },
+  "e7766e4fc187": {
+    "label": "Merge Engine",
+    "rationale": "It spans the merge engine\u2019s invariant checks and statement distillation behavior across effects and merge tests."
+  },
+  "26a3fdbcdbb8": {
+    "label": "Blame Graph Views",
+    "rationale": "It adds VS Code and TUI views for inspecting semantic blame spans, decision graphs, effects, and related status."
+  },
+  "8d7ed40850c8": {
+    "label": "Planned Revision Revert",
+    "rationale": "It tracks planned revisions in the semantic graph and preserves dependent planned drafts when active lanes are reverted or quarantined."
+  },
+  "277038ca2cbc": {
+    "label": "AST Effect Model",
+    "rationale": "Defines typed AST-level effects, stamps them with entity IDs, and supports clean materialization and round-tripping through revert and restore."
+  },
+  "9313afdd8f0e": {
+    "label": "Revision Planning",
+    "rationale": "This subsystem spans the VS Code views, CLI, decision store, and effect-model code used to inspect, plan, and revert semantic revisions."
+  },
+  "1f5f8a28509c": {
+    "label": "Feature Dependency Graph",
+    "rationale": "It infers which project entities depend on others and extends a feature by tracking the names it uses."
+  },
+  "2c1771ae9d62": {
+    "label": "Rationale Distillation",
+    "rationale": "It converts decision context into structured, readable rationale phrases and wires that flow through the CLI, config, and orchestration loop."
+  },
+  "0dad54a94abe": {
+    "label": "Project Quarantine",
+    "rationale": "Adds project lifecycle operations that initialize, snapshot, restore, save, quarantine, and fulfill SGT state while replacing node effects in the oplog."
+  },
+  "ddf805ac6984": {
+    "label": "Change Control",
+    "rationale": "This subsystem spans the VS Code editor, CLI/configuration, and decision tools for planning revisions, tracking dependencies, distilling rationale, and quarantining projects."
+  },
+  "cd51bcfd0418": {
+    "label": "Quarantine Graph",
+    "rationale": "It adds CLI graph visibility for quarantined changes and an on-demand reconcile flow that resolves them using stored witnesses."
+  },
+  "dbed55cc44a2": {
+    "label": "Rationale Distillation",
+    "rationale": "It distills decision rationales into Context, Consequence, and Alternatives text and writes them into the sidecar and view when online."
+  },
+  "4de0fc3fc290": {
+    "label": "Plan Editing",
+    "rationale": "Adds planned-node tracking and plan-editing verbs for merging, splitting, and redirecting draft graph edges."
+  },
+  "b8258d601c55": {
+    "label": "Plan Revert Restore",
+    "rationale": "It computes and emits dry-run orchestration payloads for restoring or reverting a codebase delta."
+  },
+  "3c08af5e845e": {
+    "label": "Decision DAG Merge",
+    "rationale": "It merges authored metadata and alternative branches in the decision graph while supporting plan generation and persistence."
+  },
+  "105f3f18fb7a": {
+    "label": "Decision DAG",
+    "rationale": "Stores and loads per-lane decision frontiers for planned and landed nodes, including revise and fork behavior."
+  },
+  "b787efd591ba": {
+    "label": "Provenance Graph",
+    "rationale": "It defines graph nodes and serializes their planned, provenance, and quarantined state for round-trip storage tests."
+  },
+  "afe891f2da68": {
+    "label": "Decision DAG Planning",
+    "rationale": "It builds a topologically planned decision graph for plan edits, using declared dependencies and graph-based context selection."
+  },
+  "7217fb5e4dfc": {
+    "label": "Dependency Cycle Guard",
+    "rationale": "It prevents planned dependency edits from introducing cycles while relinking graph edges during merge orchestration."
+  },
+  "cb43f329ab13": {
+    "label": "Import Dependency Graph",
+    "rationale": "It builds and validates a semantic graph of file import dependencies, including cycle dropping and avoiding false cross-file name matches."
+  },
+  "cc298bb5f3cb": {
+    "label": "Lane Folding",
+    "rationale": "It records committed stamps and keeps related entity revisions folded into the same lane instead of merging unrelated lanes."
+  },
+  "174b29f51c1b": {
+    "label": "Rewrite Reconciliation Loop",
+    "rationale": "It drives orchestration for planning canonical DSL rewrites, selecting high-confidence replacement alternatives, and handling reconcile runs when nothing is pending."
+  },
+  "0491cc2a83b5": {
+    "label": "Frontier Pinning",
+    "rationale": "It lets the tool save, restore, and revert a pinned decision frontier while recomposing derived edges when an older pin is moved."
+  },
+  "200b050615e2": {
+    "label": "Graph Checkpointing",
+    "rationale": "It writes and checkpoints the semantic graph nodes to storage for the version-control tool."
+  },
+  "1b48f1c9b3c1": {
+    "label": "Intent Decomposition Loop",
+    "rationale": "It breaks a user intent into parsed graph lanes and drives the orchestrator client to build the corresponding plan."
+  },
+  "b8c7411cc8c8": {
+    "label": "Plan Landing",
+    "rationale": "It orchestrates holding, fulfilling drift, and landing edits to bring a plan back into sync."
+  },
+  "9e80ef1b5dae": {
+    "label": "Planning Graphs",
+    "rationale": "This subsystem spans the editor commands, CLI scripts, and agent code for building, editing, checkpointing, reverting, and reconciling decision, provenance, quarantine, and dependency graphs."
+  },
+  "bae662cb3cfc": {
+    "label": "Definition Replacement",
+    "rationale": "It adds an effect operation that rewrites an existing function or method body in place while preserving surrounding definitions and obeying preconditions."
+  },
+  "e75a1f175e2e": {
+    "label": "AST Edit Effects",
+    "rationale": "Implements an AST edit model with operations for assignments, calls, constants, and renamed definitions, plus serialization and precondition checks."
+  },
+  "6ab852d8f049": {
+    "label": "Binding Rename Detection",
+    "rationale": "It distills files into top-level bindings and matches added, removed, and renamed names between versions."
+  },
+  "782926615c82": {
+    "label": "AST Change Distillation",
+    "rationale": "It converts Python AST edits into normalized effect sequences, preserving renames, import ordering, and module bindings."
+  },
+  "f8bc02ca09f0": {
+    "label": "Definition Insertion Guards",
+    "rationale": "It checks whether adding a definition or method into a Python AST is allowed, rejecting duplicate names and missing target classes."
+  },
+  "64ad7be14fc3": {
+    "label": "Import Rewriting",
+    "rationale": "It models and applies import edits while preserving module docstring order, deduplicating imports, and replaying changes across multiple files."
+  },
+  "ec96ec46d860": {
+    "label": "Statement Unit Extraction",
+    "rationale": "It walks a function body to collect and distill statement units for graph-only analysis."
+  },
+  "8955b13c3e8e": {
+    "label": "Code Rewrite Pipeline",
+    "rationale": "It spans AST diffing, edit-effect modeling, statement distillation, and import/definition rewrite operations."
+  },
+  "fa1756faac94": {
+    "label": "Code Entity Map",
+    "rationale": "This TUI lets users browse, filter, preview, restore, and revert code entities in a semantic map view."
+  },
+  "a548772bed7b": {
+    "label": "Detail View",
+    "rationale": "Displays a detailed text panel for the currently highlighted or selected table row in the TUI."
+  },
+  "d30d7a576da1": {
+    "label": "Plan Editing",
+    "rationale": "It lets the TUI apply, restore, revert, and refresh semantic plans while updating the displayed status from the current input."
+  },
+  "cb5d90036e41": {
+    "label": "Blame Visualization",
+    "rationale": "Adds a TUI palette and glyph rendering to display semantic blame data as colored visual surfaces."
+  },
+  "282bd445311d": {
+    "label": "Terminal UI",
+    "rationale": "The terminal UI spans the application, color handling, and tests for interactive views such as the code entity map, detail view, plan editing, graph browser, blame visualization, decision browser, and confirmation dialog."
+  },
+  "aacbe13b9d8b": {
+    "label": "Decision DAG View",
+    "rationale": "Provides a webview for browsing, revealing, and editing decision nodes and their associated code ranges."
+  },
+  "38a4363e605c": {
+    "label": "Code Map View",
+    "rationale": "It adds a VS Code panel for browsing the semantic entity graph, selecting nodes, toggling overlays, and applying mutations from commands."
+  },
+  "f046f57d5a76": {
+    "label": "Editor Views",
+    "rationale": "This subsystem spans the VS Code command, view, preview, and store code that renders the Code Map, Decision DAG View, and Intent Preview."
+  },
+  "87d1c57dcdd3": {
+    "label": "History Coordination",
+    "rationale": "This subsystem spans log entry ordering, version-vector clocks, history and causal replay, and merge resolution."
+  },
+  "6731bfa6742b": {
+    "label": "Statement Effects",
+    "rationale": "It covers the AST effect model plus statement diffing, merging, materialization, and slot handling."
+  },
+  "e84b32420f06": {
+    "label": "Revision Graph",
+    "rationale": "This subsystem spans the stored operation DAG, decision graph nodes and edges, and node status handling in the graph store."
+  },
+  "b5da97df0147": {
+    "label": "Git Repository Binding",
+    "rationale": "Implements repository initialization, commits, snapshot reads, and rollback handling for the store\u2019s Git-backed history."
+  },
+  "98dcefe97144": {
+    "label": "Commit Orphan Detection",
+    "rationale": "It tracks Git commit SHAs and flags commits that are not part of the known graph."
+  },
+  "5d6a6e44625e": {
+    "label": "Git Integration",
+    "rationale": "This subsystem spans binding the tool to Git repositories, detecting orphaned commits, and reading Git trailer metadata."
+  }
+}

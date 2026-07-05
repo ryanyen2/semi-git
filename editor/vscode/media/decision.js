@@ -65,13 +65,15 @@ function colorFor(id) {
 //     the dependency edges (a node sits above the decisions it builds on), then feature, then id;
 //   • each feature occupies exactly one lane (column) across the full row-span it touches, so its
 //     decisions are a straight vertical line — and lanes are reused by features whose spans don't
-//     overlap (greedy interval-graph coloring), giving the minimum column count with no overlap.
-// `opts.avoidCrossings` switches lane assignment from minimal-column interval-coloring to the
-// crossing-reducing variant below: features are packed in dependency order (a feature and the
-// feature it builds on land in adjacent lanes, so the connector is short with nothing between), and
-// a forbidden-lane test rejects any lane that would route an edge over an intervening dot, opening
-// a fresh column instead. This trades a tidy column count for spear-free routing — the GitKraken /
-// "forbidden set" tradeoff from pvigier's commit-graph notes, ported to our feature-spine model.
+//     overlap (greedy interval-graph coloring), giving a low column count with no overlap;
+//   • a connector is NEVER hidden behind a dot. The overprint test (see wouldOverprint) rejects any
+//     lane that would draw a connector's vertical run straight through an intervening dot, opening a
+//     fresh column instead — so an integrator's fan always reads as visible branches, not a collapsed
+//     trunk. This holds in BOTH packing modes; a hidden edge is never an acceptable tradeoff.
+// `opts.avoidCrossings` (the "spread" toggle) only changes the choice *among* honest lanes: features
+// are visited in dependency order and placed in the lane nearest the dependency they connect to, so
+// connectors stay short and adjacent (the GitKraken-style tidy packing). With it off, the lowest free
+// honest lane wins (a more compact, left-packed rail). Either way no connector is hidden.
 function computeLayout(graph, opts) {
   const avoidCrossings = !!(opts && opts.avoidCrossings);
   const decisions = (graph.decisions || []).slice();
@@ -167,6 +169,26 @@ function computeLayout(graph, opts) {
   let order = Object.keys(span).sort(byTop);
   const featureOf = {};
   for (const d of decisions) featureOf[d.id] = d.feature;
+  // Island features: a *lone* decision (its feature's only one) that touches no builds-on/revises/
+  // fork edge — it relates to nothing in the graph, so packing it inline lets a disconnected node
+  // masquerade as a member of whatever lane it lands in (the `embedding_logic`-looks-like-`providers`
+  // confusion). We defer these to a reserved gutter on the right of the connected rail (placed after
+  // the loop). A multi-decision edge-less feature is NOT an island: its own revise spine is already a
+  // distinct, self-evident column, so it stays in the rail.
+  const incidentIds = new Set();
+  for (const e of edges)
+    if (e.type === "builds-on" || e.type === "revises" || e.type === "fork") {
+      incidentIds.add(e.src);
+      incidentIds.add(e.dst);
+    }
+  const featHasEdge = {}, featCount = {};
+  for (const d of decisions) {
+    featHasEdge[d.feature] ||= incidentIds.has(d.id);
+    featCount[d.feature] = (featCount[d.feature] || 0) + 1;
+  }
+  const islandFeat = new Set(
+    Object.keys(span).filter((f) => !featHasEdge[f] && featCount[f] === 1),
+  );
   if (avoidCrossings) {
     const featDeps = {}; // feature -> features it builds on
     for (const f in span) featDeps[f] = new Set();
@@ -184,33 +206,48 @@ function computeLayout(graph, opts) {
     order = dfs;
   }
 
-  // Per-feature rows, and a growing record of placed dots/edges so the forbidden-lane test can ask:
-  // would putting feature f at lane L route an existing edge over one of f's dots, or one of f's
-  // edges over an already-placed dot? A "spear" is a dot strictly inside an edge's (lane, row) box.
+  // Per-feature rows, and a growing record of placed dots + drawn connectors so the placement loop can
+  // ask: would putting feature f at lane L hide a connector behind a dot?
+  //
+  // The overprint test mirrors what edgePath() actually draws. A cross-feature connector is rendered
+  // as a VERTICAL run in its SOURCE's lane (`e.src`, the upper/child node) from the source row down to
+  // the parent, then a short diagonal joint. So a connector is hidden exactly when a dot sits in the
+  // SOURCE's lane strictly between the two endpoint rows — the geometry that lets an integrator's whole
+  // fan collapse onto the trunk and draw straight through every dot beneath it (the "straight line, no
+  // edges" failure). We reject any lane that would create such an overprint, in BOTH packing modes —
+  // a hidden connector is never acceptable; only the *choice among* honest lanes is a mode preference.
   const rowsByFeature = {};
   for (const d of decisions) (rowsByFeature[d.feature] ||= []).push(rowOf[d.id]);
-  const placedDots = [], placedEdges = [];
-  function wouldSpear(lane, f) {
+  const placedDots = [];   // { row, lane } for every dot already placed
+  const placedEdges = [];  // { lane, r0, r1 } — a connector's vertical run, in its source's lane
+  function wouldOverprint(lane, f) {
+    // (a) one of f's dots, placed in `lane`, landing on an already-drawn connector's vertical run.
     for (const r of rowsByFeature[f])
       for (const E of placedEdges)
-        if (E.lo < lane && lane < E.hi && E.r0 < r && r < E.r1) return true;
+        if (E.lane === lane && E.r0 < r && r < E.r1) return true;
+    // (b) one of f's own outgoing connectors (f is the source) running vertically in `lane` and
+    //     sweeping over an already-placed dot between its endpoints' rows. (Connectors where f is the
+    //     destination run in the *other* lane, so f's lane choice can't hide them — skipped here.)
     for (const e of edges) {
-      const af = featureOf[e.src], bf = featureOf[e.dst];
-      if (af === undefined || bf === undefined || af === bf) continue;
-      let oLane, myRow, oRow;
-      if (af === f && laneOf[bf] !== undefined) { oLane = laneOf[bf]; myRow = rowOf[e.src]; oRow = rowOf[e.dst]; }
-      else if (bf === f && laneOf[af] !== undefined) { oLane = laneOf[af]; myRow = rowOf[e.dst]; oRow = rowOf[e.src]; }
-      else continue;
-      const lo = Math.min(lane, oLane), hi = Math.max(lane, oLane);
-      const r0 = Math.min(myRow, oRow), r1 = Math.max(myRow, oRow);
+      if (featureOf[e.src] !== f || featureOf[e.dst] === f) continue;
+      const r0 = Math.min(rowOf[e.src], rowOf[e.dst]), r1 = Math.max(rowOf[e.src], rowOf[e.dst]);
       for (const D of placedDots)
-        if (lo < D.lane && D.lane < hi && r0 < D.row && D.row < r1) return true;
+        if (D.lane === lane && r0 < D.row && D.row < r1) return true;
     }
     return false;
   }
 
   const laneBot = []; // laneBot[i] = bottom row currently occupying lane i
   const laneOf = {};
+  // Record a feature's dots and the vertical runs of the connectors it sources, once its lane is set.
+  function recordPlaced(f) {
+    const L = laneOf[f];
+    for (const r of rowsByFeature[f]) placedDots.push({ row: r, lane: L });
+    for (const e of edges) {
+      if (featureOf[e.src] !== f || featureOf[e.dst] === f) continue; // vertical lives in the source's lane
+      placedEdges.push({ lane: L, r0: Math.min(rowOf[e.src], rowOf[e.dst]), r1: Math.max(rowOf[e.src], rowOf[e.dst]) });
+    }
+  }
 
   // Fan-bus collapse. A fan/star (many leaf capabilities feeding one integrator) otherwise gets
   // packed by interval-coloring into ONE column, where every feeder→HEAD edge hides as a vertical
@@ -242,9 +279,7 @@ function computeLayout(graph, opts) {
       let busBot = -Infinity;
       for (const f of feeders) { laneOf[f] = 1; busBot = Math.max(busBot, span[f].bot); }
       laneBot[1] = busBot;
-      if (avoidCrossings)
-        for (const f of [headFeat, ...feeders])
-          for (const r of rowsByFeature[f]) placedDots.push({ row: r, lane: laneOf[f] });
+      for (const f of [headFeat, ...feeders]) recordPlaced(f);
     }
   }
 
@@ -266,11 +301,12 @@ function computeLayout(graph, opts) {
 
   for (const f of order) {
     if (laneOf[f] !== undefined) continue; // pinned by the fan-bus pass above
+    if (islandFeat.has(f)) continue;       // deferred to the gutter pass below
     const s = span[f];
     const valid = [];
     for (let L = 0; L < laneBot.length; L++) {
       if (laneBot[L] >= s.top) continue;            // occupied
-      if (avoidCrossings && wouldSpear(L, f)) continue;
+      if (wouldOverprint(L, f)) continue;           // would hide a connector — never allowed (both modes)
       valid.push(L);
     }
     const target = avoidCrossings ? neighborLane(f) : null;
@@ -286,18 +322,29 @@ function computeLayout(graph, opts) {
     }
     laneBot[lane] = s.bot;
     laneOf[f] = lane;
-    if (avoidCrossings) {
-      for (const r of rowsByFeature[f]) placedDots.push({ row: r, lane });
-      for (const e of edges) {
-        const af = featureOf[e.src], bf = featureOf[e.dst];
-        if (af === undefined || bf === undefined || af === bf) continue;
-        const other = af === f ? bf : bf === f ? af : null;
-        if (other === null || laneOf[other] === undefined) continue; // record only once both ends land
-        placedEdges.push({
-          lo: Math.min(laneOf[af], laneOf[bf]), hi: Math.max(laneOf[af], laneOf[bf]),
-          r0: Math.min(rowOf[e.src], rowOf[e.dst]), r1: Math.max(rowOf[e.src], rowOf[e.dst]),
-        });
-      }
+    recordPlaced(f);
+  }
+
+  // Gutter pass. Island features go into lanes starting just right of the connected rail, so a
+  // disconnected node reads as detached rather than as part of an adjacent strand. Interval-colored
+  // among themselves (disjoint islands still share a gutter lane), in row order for determinism.
+  let gutterStart = null; // first gutter lane index — the renderer offsets these lanes by a gap
+  if (islandFeat.size) {
+    const gutterBase = laneBot.length;       // first lane past the connected lanes
+    const gutterBot = [];                    // bottoms within the gutter, indexed from gutterBase
+    for (const f of order) {
+      if (!islandFeat.has(f)) continue;
+      const s = span[f];
+      let g = 0;
+      while (g < gutterBot.length && gutterBot[g] >= s.top) g++;
+      gutterBot[g] = s.bot;
+      laneOf[f] = gutterBase + g;
+    }
+    // Only a real gutter (islands sitting beside connected lanes) gets the gap+divider; an
+    // all-islands graph has nothing to separate from, so its dots stay flush against the edge.
+    if (gutterBot.length) {
+      laneBot.length = gutterBase + gutterBot.length;
+      if (gutterBase > 0) gutterStart = gutterBase;
     }
   }
 
@@ -307,16 +354,9 @@ function computeLayout(graph, opts) {
   // the graph relates to them yet (a fresh plan whose `needs` matched no provider, a leaf utility
   // nothing calls). The renderer marks them so a disconnected node reads as "pending placement"
   // rather than a silently-floating dot. Computed over the lineage edge set (pre-reduction kinds).
-  const incident = new Set();
-  for (const e of edges) {
-    if (e.type === "builds-on" || e.type === "revises" || e.type === "fork") {
-      incident.add(e.src);
-      incident.add(e.dst);
-    }
-  }
-  const unanchored = decisions.map((d) => d.id).filter((id) => !incident.has(id));
+  const unanchored = decisions.map((d) => d.id).filter((id) => !incidentIds.has(id));
   // `head` is the anchored top node; `edges` is the transitively-reduced set the renderer draws.
-  return { decisions, rowOf, laneOf, span, pos, head, edges, unanchored,
+  return { decisions, rowOf, laneOf, span, pos, head, edges, unanchored, gutterStart,
            laneCount: Math.max(1, laneBot.length) };
 }
 
@@ -361,11 +401,15 @@ let density = (vscode.getState() || {}).density || "default";
 // avoid-crossings lane packing: spear-free routing is the better default now that planned nodes
 // carry real builds-on edges; honour a persisted off-toggle, but default ON when unset.
 let spread = (() => { const s = (vscode.getState() || {}).spread; return s === undefined ? true : s; })();
-const RAIL_PAD = 16, NODE_R = 5;
+const RAIL_PAD = 16, NODE_R = 5, GUTTER_GAP = 14;
 const rowH = () => DENSITY[density].row;
 const laneW = () => DENSITY[density].lane;
-const railWidth = (laneCount) => RAIL_PAD + (laneCount - 1) * laneW() + RAIL_PAD;
-const laneX = (lane) => RAIL_PAD + lane * laneW();
+// Lane x, with `gutterStart` lanes nudged right by GUTTER_GAP so an island reads as detached from the
+// connected rail (a faint divider is drawn in that gap). gutterStart === null means no gutter.
+const laneXG = (lane, gutterStart) =>
+  RAIL_PAD + lane * laneW() + (gutterStart != null && lane >= gutterStart ? GUTTER_GAP : 0);
+const railWidth = (laneCount, gutterStart) =>
+  RAIL_PAD + (laneCount - 1) * laneW() + RAIL_PAD + (gutterStart != null ? GUTTER_GAP : 0);
 const rowY = (row) => row * rowH() + rowH() / 2;
 
 // A dependency connector between a child dot (x1,y1) and the parent it builds on (x2,y2). Routed
@@ -525,7 +569,9 @@ function renderGraph() {
   // Connectors stay inside the lanes they join (straight verticals + a single straight diagonal joint),
   // so the rail needs no extra right-margin bulge room.
   const byId = new Map(L.decisions.map((d) => [d.id, d]));
-  const rw = railWidth(L.laneCount);
+  // Lane→x for this render, honouring the island gutter gap (see laneXG / GUTTER_GAP).
+  const lx = (lane) => laneXG(lane, L.gutterStart);
+  const rw = railWidth(L.laneCount, L.gutterStart);
   const totalH = Math.max(rowH(), L.decisions.length * rowH());
   list.style.setProperty("--rail-w", rw + "px");
   list.style.setProperty("--row-h", rowH() + "px");
@@ -539,11 +585,18 @@ function renderGraph() {
   const decsByFeature = {};
   for (const d of L.decisions) (decsByFeature[d.feature] ||= []).push(d);
 
+  // 0) Gutter divider — a faint vertical rule in the gap between the connected rail and the island
+  //    gutter, so disconnected nodes read as set apart rather than as one more lane.
+  if (L.gutterStart != null) {
+    const dx = lx(L.gutterStart) - GUTTER_GAP / 2;
+    rail.appendChild(path(`M${dx} 0 L${dx} ${totalH}`, "gutter-divider", {}));
+  }
+
   // 1) Feature spines — one straight vertical line per feature across its full row-span (a feature's
   //    own revise lineage reads as a single column, lineage-view style).
   for (const f in decsByFeature) {
     const ds = decsByFeature[f].sort((a, b) => L.pos[a.id].row - L.pos[b.id].row);
-    const x = laneX(L.pos[ds[0].id].lane);
+    const x = lx(L.pos[ds[0].id].lane);
     const y1 = rowY(L.pos[ds[0].id].row), y2 = rowY(L.pos[ds[ds.length - 1].id].row);
     if (y2 > y1) rail.appendChild(path(`M${x} ${y1} L${x} ${y2}`, "spine", { stroke: colorFor(f) }));
   }
@@ -557,7 +610,7 @@ function renderGraph() {
     if (!a || !b) continue;
     if (a.feature === b.feature) continue; // intra-feature revise lineage is the spine already
     const pa = L.pos[a.id], pb = L.pos[b.id];
-    const x1 = laneX(pa.lane), y1 = rowY(pa.row), x2 = laneX(pb.lane), y2 = rowY(pb.row);
+    const x1 = lx(pa.lane), y1 = rowY(pa.row), x2 = lx(pb.lane), y2 = rowY(pb.row);
     const d = edgePath(x1, y1, x2, y2);
     const cls = e.type === "builds-on" ? "link builds-on" : "link fork";
     const el = path(d, cls, { stroke: colorFor(a.feature) });
@@ -569,7 +622,7 @@ function renderGraph() {
   for (const c of state.clash || []) {
     const a = byId.get(c.a), b = byId.get(c.b);
     if (!a || !b) continue;
-    const t = text(laneX(L.pos[a.id].lane), (rowY(L.pos[a.id].row) + rowY(L.pos[b.id].row)) / 2, "⚠", "clash");
+    const t = text(lx(L.pos[a.id].lane), (rowY(L.pos[a.id].row) + rowY(L.pos[b.id].row)) / 2, "⚠", "clash");
     rail.appendChild(t);
   }
 
@@ -577,7 +630,7 @@ function renderGraph() {
   for (const d of L.decisions) {
     const p = L.pos[d.id];
     const col = colorFor(d.feature);
-    const node = svgGroup("node", { transform: `translate(${laneX(p.lane)},${rowY(p.row)})` });
+    const node = svgGroup("node", { transform: `translate(${lx(p.lane)},${rowY(p.row)})` });
     node.dataset.id = d.id;
     paintGlyph(node, d, col);
     node.appendChild(circle(0, 0, NODE_R + 8, "hit", {}));
