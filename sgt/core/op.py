@@ -43,6 +43,10 @@ class Op:
     provenance: tuple[str, ...] = ()  # witnessing commit SHAs; appendable; excluded from the id
     intent: str | None = None  # advisory label/rationale only; excluded from the id
     miner_version: str = MINER_VERSION
+    off_chain: bool = False  # R18: a hollow plan-intake op, not yet fulfilled. Lifecycle/storage
+    # state (which store directory holds it), not content -- excluded from the id so fulfillment
+    # (which flips this to False and splices real images) doesn't need to re-derive an identity
+    # a human's concurrent edit could have already reserved.
 
 
 def compute_id(
@@ -78,6 +82,7 @@ def make_op(
     provenance: tuple[str, ...] = (),
     intent: str | None = None,
     miner_version: str = MINER_VERSION,
+    off_chain: bool = False,
 ) -> Op:
     """Construct an Op with its id computed from its content -- the only supported way to make
     one (never hand-assign ``.id``)."""
@@ -91,4 +96,5 @@ def make_op(
         provenance=provenance,
         intent=intent,
         miner_version=miner_version,
+        off_chain=off_chain,
     )

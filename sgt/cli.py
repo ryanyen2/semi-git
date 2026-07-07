@@ -18,7 +18,7 @@ from sgt.project import Project
 
 _VERBS = {"init", "plan", "merge", "split", "checkpoint", "sync", "revert", "restore", "reconcile",
           "show", "graph", "status", "blame", "export",
-          "decisions", "tag", "tui", "mcp", "help"}
+          "decisions", "tag", "tui", "mcp", "help", "fsck"}
 
 
 def _print_report(rep) -> int:
@@ -122,6 +122,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "export":
         return _export(repo)
+
+    if cmd == "fsck":
+        return _fsck(repo, as_json)
 
     if cmd == "decisions":
         return _decisions(repo, rest, as_json)
@@ -324,6 +327,30 @@ def _export(repo: str) -> int:
     return _emit_json(export_view(Project.open(repo)))
 
 
+def _fsck(repo: str, as_json: bool = False) -> int:
+    """Verify the kernel op store's integrity (plan U3): every ``.sgt/ops/<id>`` file's content
+    hashes to its own filename. Repair (re-mining) is a follow-up step, not this verb's job."""
+    from sgt.core.store import fsck as run_fsck
+
+    report = run_fsck(repo)
+    if as_json:
+        return _emit_json(
+            {
+                "ok": report.ok,
+                "checked": report.checked,
+                "bad_hash": list(report.bad_hash),
+                "corrupt": list(report.corrupt),
+            }
+        )
+    icon = "✓" if report.ok else "✗"
+    print(f"{icon} fsck — {report.checked} op(s) checked")
+    for name in report.bad_hash:
+        print(f"    bad hash: {name}")
+    for name in report.corrupt:
+        print(f"    corrupt: {name}")
+    return 0 if report.ok else 1
+
+
 def _decisions(repo: str, rest: list[str], as_json: bool) -> int:
     """The decision DAG. `sgt decisions [--json]` → the graph; `decisions frontier` → the frontier."""
     from sgt.api import decision_graph_view, frontier_view
@@ -433,6 +460,7 @@ def _help() -> int:
         "  sgt status                 summarize state\n"
         "  sgt blame <file>           which feature owns each line of a file (semantic blame)\n"
         "  sgt export                 dump the whole graph as JSON (nodes, edges, effects)\n"
+        "  sgt fsck [--json]          verify the kernel op store's content-address integrity\n"
         "  sgt map [--json]           the deterministic code-entity map (whole repo)\n"
         "  sgt timeframe <n> [--json] the map as of checkpoint ordinal n (the scrubber frame)\n"
         "  sgt tui                    open the terminal UI (needs `semi-git[tui]`)\n"
