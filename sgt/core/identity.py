@@ -1,25 +1,26 @@
-"""Robust entity matching across a before/after snapshot — ported from sem.
+"""Robust entity matching across a before/after snapshot.
 
-sem (``references/sem/src/model/identity.rs``) taught us the one rule our miner broke:
-*never link entities by name alone*. sem's ``match_entities`` walks tiers of decreasing
-confidence — exact id, identical body (content hash), then fuzzy token-Jaccard with size
-guards — so ``foo -> bar`` with the same body is ONE renamed entity (not delete + add),
-while two unrelated ``__init__``s never link because the size + kind + threshold guards
-reject them. That last property is exactly what our name-set heuristic lacked (the
-``__init__``/``main``/``run`` collision noted in the mining findings).
+Promoted verbatim from ``experiments/patch_clustering/identity_match.py`` (plan U2) -- the
+matcher tiers and guard constants are unchanged; only the module's location and this docstring
+moved. Originally ported from sem (``references/sem/src/model/identity.rs``), which taught us
+the one rule our miner broke: *never link entities by name alone*. sem's ``match_entities``
+walks tiers of decreasing confidence -- exact id, identical body (content hash), then fuzzy
+token-Jaccard with size guards -- so ``foo -> bar`` with the same body is ONE renamed entity
+(not delete + add), while two unrelated ``__init__``s never link because the size + kind +
+threshold guards reject them. That last property is exactly what a name-set heuristic lacks
+(the ``__init__``/``main``/``run`` collision noted in the mining findings).
 
-We port sem's tiers, keyed on the hashes ``sgt.entities.extract.Entity`` now carries
+We port sem's tiers, keyed on the hashes ``sgt.entities.extract.Entity`` carries
 (``content_hash`` / ``structural_hash``, computed once at extraction from the parsed AST):
 
     tier 1   exact surface id (``file::name``)      content differs -> modified
     tier 2   identical body (content hash)          rename / move  (link)
-    tier 2b  identical structure (structural hash)  rename / move  (link)  — sem's Phase 2 fallback
+    tier 2b  identical structure (structural hash)  rename / move  (link)  -- sem's Phase 2 fallback
     tier 3   fuzzy Jaccard >= 0.80, size-guarded    rename / move  (link)
 
-Tier 2b is what the earlier port lacked: an AST structural hash catches a move/reformat whose
-raw bytes differ (reflow, comment edit) but whose code is the same — deterministically, without
-leaning on the fuzzy threshold. It cost nothing to add once the hash lives on the Entity.
-Deterministic and offline.
+Tier 2b is what an earlier port lacked: an AST structural hash catches a move/reformat whose
+raw bytes differ (reflow, comment edit) but whose code is the same -- deterministically, without
+leaning on the fuzzy threshold. Deterministic and offline.
 """
 
 from __future__ import annotations
@@ -73,9 +74,9 @@ def _link_pass(
     returns ``(old, new)`` rename/move links. Shared by the per-file and cross-file passes."""
     links: list[tuple[Snap, Snap]] = []
 
-    # tiers 2 + 2b — identical body then identical structure. Index unmatched before-entities
+    # tiers 2 + 2b -- identical body then identical structure. Index unmatched before-entities
     # by each hash; match after-entities against content_hash first (exact bytes), then
-    # structural_hash (same code modulo formatting/comments — sem's Phase 2 fallback).
+    # structural_hash (same code modulo formatting/comments -- sem's Phase 2 fallback).
     for key in ("content_hash", "structural_hash"):
         pool: dict[str, list[Snap]] = {}
         for s in before:
@@ -93,7 +94,7 @@ def _link_pass(
                 matched_a.add(a.ent.id)
                 links.append((b, a))
 
-    # tier 3 — fuzzy: only same-kind candidates, size-guarded, best strict-improving score.
+    # tier 3 -- fuzzy: only same-kind candidates, size-guarded, best strict-improving score.
     by_kind: dict[str, list[Snap]] = {}
     for s in before:
         if s.ent.id not in matched_b:
@@ -140,7 +141,7 @@ def match_pair(before: list[Snap], after: list[Snap]) -> Match:
     matched_a: set[str] = set()
     modified: list[Snap] = []
 
-    # tier 1 — exact surface id: unchanged (skip) or modified (content differs).
+    # tier 1 -- exact surface id: unchanged (skip) or modified (content differs).
     for a in after:
         b = by_id_before.get(a.ent.id)
         if b is not None:
@@ -159,7 +160,7 @@ def link_residual(
     removed: list[Snap], added: list[Snap]
 ) -> tuple[list[tuple[Snap, Snap]], set[str], set[str]]:
     """Cross-file move detection: match a commit's leftover removals against its leftover
-    additions (tiers 2 + 3 only — surface ids never coincide across files). This is the
+    additions (tiers 2 + 3 only -- surface ids never coincide across files). This is the
     safe generalization of sem's file-rename move pass: a function cut from one file and
     pasted into another links by body, not by name."""
     matched_r: set[str] = set()
@@ -179,14 +180,14 @@ def detect_splits_merges(
     """One-to-many / many-to-one body relationships among a commit's *residual* removals and
     additions (the ones 1-1 linking above didn't consume). This is the lifecycle sem's pairwise
     matcher can't express: a function that was *split* into several, or several that were *merged*
-    into one — a within-file restructuring, keyed on token containment rather than equality.
+    into one -- a within-file restructuring, keyed on token containment rather than equality.
 
         SPLIT   one removed R whose tokens are spread across >= 2 added, each mostly a subset of R,
                 and R covered by their union.        R  ->  {A1, A2, ...}
         MERGE   >= 2 removed each mostly a subset of one added A, and A covered by their union.
                 {R1, R2, ...}  ->  A
 
-    Same-file only (a split/merge is a local reshape, not a cross-file move — those already linked
+    Same-file only (a split/merge is a local reshape, not a cross-file move -- those already linked
     as 1-1 moves). Greedy and deterministic; an entity is consumed by at most one relationship.
     Returns ``(splits, merges)`` of surface ids: split ``{"from": id, "to": [ids], "file": f}``,
     merge ``{"from": [ids], "to": id, "file": f}``."""
