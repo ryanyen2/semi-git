@@ -15,6 +15,9 @@ import hashlib
 import json
 from dataclasses import dataclass
 
+BOTTOM = "⊥"  # the ADR's "removed" version/image sentinel: a symbol's after_version at the
+# tip of its chain, meaning the symbol no longer exists in code(I).
+
 MINER_VERSION = "1"  # R12: bump on any change to mining/untangling/identity logic. Part of
 # every op's content address, so an algorithm upgrade opens a new identity space rather than
 # silently colliding with -- or silently reusing -- ops minted under the old rules.
@@ -28,6 +31,11 @@ Footprint = dict[str, tuple[str | None, str]]
 # symbol id -> verbatim after-bytes, or None for a removal (the ADR's "bottom" image).
 Images = dict[str, "bytes | None"]
 
+# (symbol id, version) pairs this op's images depend on -- the exact version the op saw when
+# mined, not just the symbol name, so U4's reference edges point at the specific op that
+# produced that version rather than every op that ever touched the symbol.
+Requires = frozenset[tuple[str, str]]
+
 
 @dataclass(frozen=True)
 class Op:
@@ -38,7 +46,7 @@ class Op:
     id: str
     footprint: Footprint
     images: Images
-    requires: frozenset[str] = frozenset()
+    requires: Requires = frozenset()
     kind: str = "touched"  # add | extend | rework | prune | move | merge -- derived, not authored
     provenance: tuple[str, ...] = ()  # witnessing commit SHAs; appendable; excluded from the id
     intent: str | None = None  # advisory label/rationale only; excluded from the id
@@ -52,7 +60,7 @@ class Op:
 def compute_id(
     footprint: Footprint,
     images: Images,
-    requires: frozenset[str],
+    requires: Requires,
     kind: str,
     miner_version: str = MINER_VERSION,
 ) -> str:
@@ -65,7 +73,7 @@ def compute_id(
         "images": {
             sym: (img.hex() if img is not None else None) for sym, img in sorted(images.items())
         },
-        "requires": sorted(requires),
+        "requires": [list(r) for r in sorted(requires)],
         "kind": kind,
         "miner_version": miner_version,
     }
@@ -77,7 +85,7 @@ def make_op(
     footprint: Footprint,
     images: Images,
     *,
-    requires: frozenset[str] = frozenset(),
+    requires: Requires = frozenset(),
     kind: str = "touched",
     provenance: tuple[str, ...] = (),
     intent: str | None = None,

@@ -27,12 +27,10 @@ from pathlib import Path
 from tree_sitter import Parser
 
 from sgt.core.identity import Snap, detect_splits_merges, link_residual, match_pair, snapshot
-from sgt.core.op import Images, Op, make_op
+from sgt.core.op import BOTTOM, Images, Op, make_op
 from sgt.entities.extract import Entity, _language, _language_for, extract_file
 from sgt.entities.graph import EntityEdge, build_entity_graph
 from sgt.store.gitbind import GitBinding
-
-_BOTTOM = "⊥"  # the ADR's "removed" version/image sentinel
 
 
 class _UnionFind:
@@ -72,9 +70,18 @@ class _Touch:
     before_version: str | None
     after_version: str
     image: bytes | None
-    requires: frozenset[str]
+    requires: frozenset[tuple[str, str]]  # (required symbol id, version seen at mining time)
     via_move: bool = False
     bucket: str | None = None  # filled in after untangling; None only transiently
+
+
+def _requires_of(sym: str, calls_by_src: dict[str, set[str]], entity_version: dict[str, str]) -> frozenset[tuple[str, str]]:
+    """The (symbol id, version) pairs `sym`'s current image depends on -- pinned to the exact
+    version visible when this op is mined (R4), not just the symbol name, so U4's reference
+    edges point at the specific op that produced that version."""
+    return frozenset(
+        (dst, entity_version[dst]) for dst in calls_by_src.get(sym, ()) if dst in entity_version
+    )
 
 
 def _content_version(data: bytes) -> str:
@@ -122,16 +129,18 @@ def _layout_image(entities: list[Entity]) -> bytes:
     return "\n".join(order).encode("utf-8")
 
 
-def _emit_scope_reshape(emit_entity, old: Snap, new: Snap, new_src: str, calls_by_src) -> None:
+def _emit_scope_reshape(
+    emit_entity, old: Snap, new: Snap, new_src: str, calls_by_src, entity_version
+) -> None:
     """A link the identity matcher found by body/structure similarity, but across a *kind*
     change (function -> method or vice versa) -- a genuine scope reshape, not a rename. The
     matcher tiers stay verbatim (kind is deliberately not part of tiers 2/2b's match key), but
     mine.py refuses to weld two different scopes into one chain: both ops still land from this
     commit (split provenance), just as delete + add rather than a silent move."""
-    emit_entity(old.ent.id, old.content_hash, _BOTTOM, None, frozenset())
+    emit_entity(old.ent.id, old.content_hash, BOTTOM, None, frozenset())
     emit_entity(
         new.ent.id, None, new.content_hash,
-        _entity_bytes(new_src, new.ent), frozenset(calls_by_src.get(new.ent.id, ())),
+        _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
     )
 
 
@@ -178,6 +187,7 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
         for e in graph_after.edges:
             if e.type in ("calls", "imports"):
                 calls_by_src.setdefault(e.src, set()).add(e.dst)
+        entity_version: dict[str, str] = {e.id: e.content_hash for e in graph_after.entities}
 
         entity_touches: list[_Touch] = []
         other_touches: list[_Touch] = []
@@ -202,7 +212,7 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
                 # Whole-file pseudo-symbol (R7): unsupported language, config, docs, binary.
                 before_version = gb.blob_oid(parent, old_ref) if parent else None
                 if new_bytes is None:
-                    emit_other(fc.path, before_version, _BOTTOM, None, frozenset())
+                    emit_other(fc.path, before_version, BOTTOM, None, frozenset())
                 elif _is_binary(new_bytes):
                     after_version = gb.blob_oid(sha, fc.path) or _content_version(new_bytes)
                     emit_other(fc.path, before_version, after_version, new_bytes, frozenset())
@@ -236,16 +246,16 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
                 b = by_id_before[a.ent.id]
                 emit_entity(
                     a.ent.id, b.content_hash, a.content_hash,
-                    _entity_bytes(new_src, a.ent), frozenset(calls_by_src.get(a.ent.id, ())),
+                    _entity_bytes(new_src, a.ent), _requires_of(a.ent.id, calls_by_src, entity_version),
                 )
             for old, new in m.links:  # rename / move within one file
                 if old.ent.kind != new.ent.kind:
-                    _emit_scope_reshape(emit_entity, old, new, new_src, calls_by_src)
+                    _emit_scope_reshape(emit_entity, old, new, new_src, calls_by_src, entity_version)
                     continue
                 uf.union(old.ent.id, new.ent.id)
                 emit_entity(
                     new.ent.id, old.content_hash, new.content_hash,
-                    _entity_bytes(new_src, new.ent), frozenset(calls_by_src.get(new.ent.id, ())),
+                    _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
                     via_move=True,
                 )
 
@@ -260,7 +270,7 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
                 sym = f"{fc.path}::__layout__"
                 before_v = _content_version(old_layout) if old_entities else None
                 if new_bytes is None:
-                    emit_other(sym, before_v, _BOTTOM, None)
+                    emit_other(sym, before_v, BOTTOM, None)
                 else:
                     emit_other(sym, before_v, _content_version(new_layout), new_layout)
 
@@ -271,7 +281,7 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
                 residue_bytes = new_residue.encode("utf-8")
                 before_v = _content_version(old_residue.encode("utf-8")) if old_src else None
                 if new_bytes is None:
-                    emit_other(sym, before_v, _BOTTOM, None)
+                    emit_other(sym, before_v, BOTTOM, None)
                 else:
                     emit_other(sym, before_v, _content_version(residue_bytes), residue_bytes)
 
@@ -280,12 +290,12 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
         for old, new in cross_links:
             new_file_src = gb.file_at(sha, new.ent.file) or ""
             if old.ent.kind != new.ent.kind:
-                _emit_scope_reshape(emit_entity, old, new, new_file_src, calls_by_src)
+                _emit_scope_reshape(emit_entity, old, new, new_file_src, calls_by_src, entity_version)
                 continue
             uf.union(old.ent.id, new.ent.id)
             emit_entity(
                 new.ent.id, old.content_hash, new.content_hash,
-                _entity_bytes(new_file_src, new.ent), frozenset(calls_by_src.get(new.ent.id, ())),
+                _entity_bytes(new_file_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
                 via_move=True,
             )
         res_added = [s for s in commit_added if s.ent.id not in matched_a]
@@ -294,10 +304,10 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
             src = gb.file_at(sha, s.ent.file) or ""
             emit_entity(
                 s.ent.id, None, s.content_hash,
-                _entity_bytes(src, s.ent), frozenset(calls_by_src.get(s.ent.id, ())),
+                _entity_bytes(src, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
             )
         for s in res_removed:
-            emit_entity(s.ent.id, s.content_hash, _BOTTOM, None, frozenset())
+            emit_entity(s.ent.id, s.content_hash, BOTTOM, None, frozenset())
 
         # Untangle this commit's touched entities into def-use-connected groups (BET-A), then
         # bucket each touch by its group's deterministic anchor (lexicographically-smallest
@@ -328,7 +338,7 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
         sha = bucket.split(":", 1)[0]
         footprint: dict[str, tuple[str | None, str]] = {}
         images: Images = {}
-        requires: set[str] = set()
+        requires: set[tuple[str, str]] = set()
         any_added = False
         any_removed = False
         any_move = False
@@ -336,15 +346,15 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
             canon = uf.find(t.surface_id)
             footprint[canon] = (t.before_version, t.after_version)
             images[canon] = t.image
-            requires.update(uf.find(r) for r in t.requires)
+            requires.update((uf.find(r_id), r_ver) for r_id, r_ver in t.requires)
             any_added = any_added or t.before_version is None
-            any_removed = any_removed or t.after_version == _BOTTOM
+            any_removed = any_removed or t.after_version == BOTTOM
             any_move = any_move or t.via_move
 
-        requires -= set(footprint)  # a symbol never "requires" itself
+        requires = {(r_id, r_ver) for r_id, r_ver in requires if r_id not in footprint}  # never self
         if any_move and not any_added and not any_removed:
             kind = "move"
-        elif any_removed and all(t.after_version == _BOTTOM for t in group):
+        elif any_removed and all(t.after_version == BOTTOM for t in group):
             kind = "prune"
         elif any_added and all(t.before_version is None for t in group):
             kind = "add"

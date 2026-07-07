@@ -49,7 +49,7 @@ def _serialize(op: Op) -> bytes:
         "images": {
             k: (v.hex() if v is not None else None) for k, v in sorted(op.images.items())
         },
-        "requires": sorted(op.requires),
+        "requires": [list(r) for r in sorted(op.requires)],
         "kind": op.kind,
         "provenance": list(op.provenance),
         "intent": op.intent,
@@ -69,7 +69,7 @@ def _deserialize(data: bytes) -> Op:
         id=payload["id"],
         footprint=footprint,
         images=images,
-        requires=frozenset(payload["requires"]),
+        requires=frozenset(tuple(r) for r in payload["requires"]),
         kind=payload["kind"],
         provenance=tuple(payload["provenance"]),
         intent=payload.get("intent"),
