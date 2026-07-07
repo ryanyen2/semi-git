@@ -71,12 +71,13 @@ def test_get_put_byte_fidelity(tmp_path):
     loss regression class the plan's byte-splicing KTD exists to kill)."""
     from sgt.core.fold import code
     from sgt.core.lens import get
+    from sgt.core.store import Store
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     before = {p: (repo / p).read_bytes() for p in corpus.tracked_paths(repo)}
 
     ideal = get(repo)
-    materialized = code(ideal)
+    materialized = code(ideal, Store(repo).all_ops())
 
     for path, original_bytes in before.items():
         assert materialized.get(path) == original_bytes, f"{path} lost byte fidelity through the fold"
@@ -87,32 +88,50 @@ def test_coverage_every_path_has_an_image(tmp_path):
     """Coverage (R7): every tracked path -- parseable or not -- is in exactly one symbol's image
     set. Whole-file pseudo-symbols make config/binary paths first-class, never silently dropped."""
     from sgt.core.lens import get
+    from sgt.core.store import Store
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     tracked = set(corpus.tracked_paths(repo))
     ideal = get(repo)
-    covered = ideal.covered_paths()
+    covered = ideal.covered_paths(Store(repo).all_ops())
     assert tracked <= covered, f"uncovered paths: {tracked - covered}"
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
 def test_locality(tmp_path):
-    """Locality (07-02 S6.3): mining one commit only mints ops whose footprint touches that
-    commit's own changed paths -- an unrelated part of the tree never gets a new op. This is
-    exactly what the linear_history case's tangled commit (baz added to b.py, qux edited in
-    c.py in one commit) is built to stress: two def-use-disjoint symbols, still both local to
-    the commit's own changed paths."""
+    """Locality (07-02 S6.3): mining one commit only mints ops whose footprint touches paths
+    that commit -- or an earlier one in that same symbol's own history -- actually changed; an
+    unrelated part of the tree never gets a new op. This is exactly what the linear_history
+    case's tangled commit (baz added to b.py, qux edited in c.py in one commit) is built to
+    stress: two def-use-disjoint symbols, still both local to the commit's own changed paths.
+
+    Checked cumulatively (paths changed up to and including `cur`), not against `cur`'s own
+    diff alone: a cross-file move canonicalizes to its *original* surface path (plan U2's
+    `_UnionFind` anchors on the earlier side), so a later op on that same symbol -- e.g. its
+    eventual removal -- legitimately carries a footprint key naming the path it was born at,
+    not the path the removing commit's diff actually touched. That's a stale canonical name,
+    not an unrelated part of the tree being touched.
+    """
     from sgt.core.mine import mine
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     shas = corpus.commit_shas(repo)
+    # One full mine(), then group by witnessing commit -- since=None means "from genesis", not
+    # "just this one commit", so per-commit locality has to be checked by provenance, not by
+    # re-mining with `since` set to each commit's own predecessor in turn.
+    ops = mine(repo)
+    ops_by_sha: dict[str, list] = {}
+    for op in ops:
+        for sha in op.provenance:
+            ops_by_sha.setdefault(sha, []).append(op)
+
+    changed_so_far: set[str] = set()
     for prev, cur in zip([None, *shas], shas):
-        changed = set(corpus.changed_paths(repo, prev, cur))
-        new_ops = mine(repo, since=prev)
-        for op in new_ops:
+        changed_so_far |= set(corpus.changed_paths(repo, prev, cur))
+        for op in ops_by_sha.get(cur, []):
             touched = {sym.split("::", 1)[0] for sym in op.footprint}
-            assert touched <= changed, (
-                f"op {op.id} touched {touched - changed} outside commit {cur[:8]}'s own changes"
+            assert touched <= changed_so_far, (
+                f"op {op.id} touched {touched - changed_so_far} never changed by any commit up to {cur[:8]}"
             )
 
 

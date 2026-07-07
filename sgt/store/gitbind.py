@@ -17,6 +17,10 @@ from sgt.store.graph import SemanticGraph
 
 TRAILER_KEY = "Sgt-Node-Id"
 
+# The kernel's witness trailer (plan U6): one line per op a materializing commit's tree
+# embodies. Multi-valued like `Co-Authored-By` -- a commit can witness many ops at once.
+OP_TRAILER_KEY = "Sgt-Op"
+
 # git's canonical empty-tree object: diffing against it makes a root commit (no parent)
 # read as "everything added".
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -61,6 +65,19 @@ def parse_node_id(commit_message: str) -> str | None:
         if stripped.startswith(f"{TRAILER_KEY}:"):
             return stripped.split(":", 1)[1].strip()
     return None
+
+
+def format_op_trailers(op_ids) -> str:
+    return "\n".join(f"{OP_TRAILER_KEY}: {oid}" for oid in op_ids)
+
+
+def parse_op_ids(commit_message: str) -> list[str]:
+    """Every op id a commit's `Sgt-Op:` trailers witness, in message order."""
+    return [
+        stripped.split(":", 1)[1].strip()
+        for line in commit_message.splitlines()
+        if (stripped := line.strip()).startswith(f"{OP_TRAILER_KEY}:")
+    ]
 
 
 def _hunk_new_range(header: str) -> tuple[int, int] | None:
@@ -134,6 +151,26 @@ class GitBinding:
     def head(self) -> str | None:
         proc = self._git("rev-parse", "HEAD", check=False)
         return proc.stdout.strip() if proc.returncode == 0 else None
+
+    def symbolic_ref(self) -> str | None:
+        """The branch HEAD points at (e.g. ``refs/heads/main``), or None in detached-HEAD
+        state -- the lens's key for per-ref witness tracking (U6)."""
+        proc = self._git("symbolic-ref", "-q", "HEAD", check=False)
+        return proc.stdout.strip() if proc.returncode == 0 else None
+
+    def rev_parse(self, ref: str) -> str | None:
+        """Resolve any ref expression (branch, tag, `HEAD~N`, a short sha, ...) to a full sha,
+        or None if it doesn't resolve."""
+        proc = self._git("rev-parse", "--verify", "-q", ref, check=False)
+        return proc.stdout.strip() if proc.returncode == 0 else None
+
+    def parent_of(self, sha: str) -> str | None:
+        """`sha`'s first parent, or None if `sha` is a root commit."""
+        proc = self._git("log", "-1", "--format=%P", sha, check=False)
+        if proc.returncode != 0:
+            return None
+        parents = proc.stdout.split()
+        return parents[0] if parents else None
 
     def commit_message(self, sha: str) -> str:
         return self._git("log", "-1", "--format=%B", sha).stdout
@@ -270,10 +307,16 @@ class GitBinding:
     def stage_all(self) -> None:
         self._git("add", "-A")
 
-    def commit_all(self, message: str, node_id: str | None = None) -> str:
-        """Stage everything and commit, embedding the node-id trailer when given."""
+    def commit_all(self, message: str, node_id: str | None = None, trailers: str | None = None) -> str:
+        """Stage everything and commit, embedding the node-id trailer when given, plus any
+        additional pre-formatted trailer block (e.g. `Sgt-Op:` lines, U6's witness commits)."""
         self.stage_all()
-        full = message if node_id is None else f"{message}\n\n{format_trailer(node_id)}"
+        parts = [message]
+        if node_id is not None:
+            parts.append(format_trailer(node_id))
+        if trailers:
+            parts.append(trailers)
+        full = "\n\n".join(parts)
         self._git("commit", "-q", "-m", full)
         head = self.head()
         if head is None:

@@ -187,16 +187,21 @@ def _untangle(touched_ids: set[str], edges: list[EntityEdge]) -> list[frozenset[
     return [frozenset(g) for g in sorted(groups.values(), key=lambda g: sorted(g)[0])]
 
 
-def mine(repo: Path | str, since: str | None = None) -> list[Op]:
+def mine(repo: Path | str, since: str | None = None, treat_as_root: str | None = None) -> list[Op]:
     """Mine an ordered op stream from `repo`'s history. `since`, if given, restricts mining to
     commits after that witness SHA (`since..HEAD`) -- each commit is still diffed against its
-    own true parent, so incremental mining is exact, not an approximation."""
+    own true parent, so incremental mining is exact, not an approximation. `treat_as_root`, if
+    given, forces exactly that one commit's diff to be against the empty tree regardless of its
+    real git parent -- the genesis-horizon mechanism (R10): everything at that commit becomes
+    one add-op per symbol, and deeper history is never mined at all."""
     repo = Path(repo)
     gb = GitBinding(repo)
     uf = _UnionFind()
     touches: list[_Touch] = []
 
     for order, (sha, parent, _subject) in enumerate(gb.history(since)):
+        if sha == treat_as_root:
+            parent = None
         codebase_after = gb.tree_at(sha)
         graph_after = build_entity_graph(codebase_after)
         calls_by_src: dict[str, set[str]] = {}
@@ -224,6 +229,8 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
             )
 
         for fc in gb.diff_name_and_text(parent, sha):
+            if fc.path.startswith(".sgt/") or (fc.old_path or "").startswith(".sgt/"):
+                continue  # sgt's own state, never mined as codebase content
             lang = _language_for(fc.path)
             new_bytes = gb.blob_bytes(sha, fc.path)
             old_ref = fc.old_path or fc.path

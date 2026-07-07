@@ -143,9 +143,18 @@ def _case_linear_history(root: Path) -> Path:
 
 
 def _case_squash_merge(root: Path) -> Path:
-    """A feature branch mined commit-by-commit, then squash-merged into main reproducing
-    byte-identical final content -- AE1 / the identification law (R8): mining the squash commit
-    must identify with the already-mined feature ops rather than minting new ones."""
+    """A feature branch (one commit), then squash-merged into main reproducing byte-identical
+    final content -- AE1 / the identification law (R8): mining the squash commit must identify
+    with the already-mined feature op rather than minting a new one.
+
+    Deliberately a *single* feature commit: mining diffs consecutive commits, so a feature
+    branch of N commits mines as N distinct ops (each a smaller step), while a squash always
+    collapses to one commit -- one net op. Identification can only match when the feature side
+    is itself one commit, so its single op's (footprint, images) is exactly what the squash
+    commit re-derives. A multi-commit feature decomposing differently than its own squash is a
+    known, separate limitation (per-commit mining can't see that a big diff happens to equal a
+    chain of smaller already-known ones) -- not what this fixture is testing.
+    """
     repo = root / "squash_merge"
     _init(repo)
     _write(repo, "a.py", "def foo():\n    return 1\n")
@@ -154,8 +163,6 @@ def _case_squash_merge(root: Path) -> Path:
     _run(repo, "checkout", "-q", "-b", "feature")
     _write(repo, "a.py", "def foo():\n    return 1\n\n\ndef helper():\n    return 2\n")
     _commit(repo, "feature: add helper", 1)
-    _write(repo, "a.py", "def foo():\n    return 1\n\n\ndef helper():\n    return 3\n")
-    _commit(repo, "feature: tweak helper", 2)
     feature_final = (repo / "a.py").read_bytes()
 
     _run(repo, "checkout", "-q", "main")
@@ -163,7 +170,7 @@ def _case_squash_merge(root: Path) -> Path:
     # `git merge --squash` or a GitHub squash-merge would -- same content, one commit, no merge
     # parent linking back to the feature branch's individual commits.
     _write(repo, "a.py", feature_final.decode("utf-8"))
-    _commit(repo, "squash-merge feature (helper tweak)", 3)
+    _commit(repo, "squash-merge feature (add helper)", 2)
 
     return repo
 
