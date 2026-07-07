@@ -1,29 +1,16 @@
-"""Tests for the ported entity matcher. Runnable standalone (no pytest needed):
-
-    .venv/bin/python experiments/patch_clustering/test_identity_match.py
-
-Each test states the failure it guards: the first two are the robustness we gained
-from sem (renames/moves link), the last three are the safety sem's guards give us
-(unrelated same-name entities and size-mismatched bodies must NOT link).
+"""Tests for the tiered entity matcher (ported from
+``experiments/patch_clustering/test_identity_match.py`` per plan U2 -- no path shim needed here,
+pytest discovers it under ``testpaths`` directly). The first two guard the robustness sem gave
+us (renames/moves link); the last three guard the safety sem's guards give us (unrelated
+same-name entities and size-mismatched bodies must NOT link).
 """
 
 from __future__ import annotations
 
 import dataclasses
-import sys
-from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from sgt.entities.extract import extract_file  # noqa: E402
-from experiments.patch_clustering.identity_match import (  # noqa: E402
-    detect_splits_merges,
-    link_residual,
-    match_pair,
-    snapshot,
-)
+from sgt.core.identity import detect_splits_merges, link_residual, match_pair, snapshot
+from sgt.entities.extract import extract_file
 
 _BODY = """def {name}(nodes):
     total = 0
@@ -126,11 +113,3 @@ def test_unrelated_residuals_are_not_a_split():
     ]
     splits, merges = detect_splits_merges(removed, added)
     assert splits == [] and merges == [], (splits, merges)
-
-
-if __name__ == "__main__":
-    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
-    for t in tests:
-        t()
-        print(f"ok  {t.__name__}")
-    print(f"\n{len(tests)} passed")

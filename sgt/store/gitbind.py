@@ -142,9 +142,58 @@ class GitBinding:
         return parse_node_id(self.commit_message(sha))
 
     def file_at(self, sha: str, path: str) -> str | None:
-        """The text of ``path`` as recorded at ``sha``, or None (absent / binary / unreadable)."""
-        proc = self._git("show", f"{sha}:{path}", check=False)
+        """The text of ``path`` as recorded at ``sha``, or None (absent / binary / unreadable).
+
+        Reads raw bytes first (not through ``_git``'s ``text=True`` decode, which raises on
+        invalid UTF-8 instead of the None this method's contract promises) and decodes
+        ourselves so a binary blob degrades to None instead of crashing the caller.
+        """
+        raw = self.blob_bytes(sha, path)
+        if raw is None:
+            return None
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
+    def blob_bytes(self, sha: str, path: str) -> bytes | None:
+        """Raw bytes of ``path`` at ``sha`` (absent -> None). Unlike ``file_at``, never decodes
+        as text -- the safe way to read a path that might be binary."""
+        proc = subprocess.run(
+            ["git", "-C", str(self.repo), "show", f"{sha}:{path}"], capture_output=True
+        )
         return proc.stdout if proc.returncode == 0 else None
+
+    def blob_oid(self, sha: str, path: str) -> str | None:
+        """The git blob object id of ``path`` at ``sha`` -- the stable content address a binary
+        file's image can point at without embedding the bytes themselves."""
+        proc = self._git("ls-tree", sha, "--", path, check=False)
+        line = proc.stdout.strip()
+        if not line:
+            return None
+        # "<mode> <type> <oid>\t<path>"
+        fields = line.split()
+        return fields[2] if len(fields) >= 3 else None
+
+    def history(self, since: str | None = None) -> list[tuple[str, str | None, str]]:
+        """``(sha, first_parent, subject)`` oldest-first. ``since``, if given, restricts to
+        commits reachable from HEAD but not from ``since`` (``since..HEAD``) -- each commit's
+        own first-parent is still returned for diffing, so incremental mining diffs each commit
+        against its true predecessor regardless of where the range starts. First-parent only:
+        merges never re-attribute a whole side branch onto the merge commit (a v1
+        simplification also used by the entity miner)."""
+        rev_range = f"{since}..HEAD" if since is not None else "HEAD"
+        proc = self._git("log", "--reverse", "--format=%H%x1f%P%x1f%s", rev_range, check=False)
+        if proc.returncode != 0:
+            return []
+        rows: list[tuple[str, str | None, str]] = []
+        for line in proc.stdout.splitlines():
+            if not line:
+                continue
+            sha, parents, subject = line.split("\x1f", 2)
+            first_parent = parents.split()[0] if parents.strip() else None
+            rows.append((sha, first_parent, subject))
+        return rows
 
     def tree_at(self, sha: str) -> dict[str, str]:
         """Every readable text file in the tree at ``sha`` -> its contents (the past snapshot).

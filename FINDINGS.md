@@ -293,6 +293,36 @@ graph; a just-landed feature flashes. **(3) Short labels** — the FEATURE colum
 detail intent renders backtick code spans and turns `@`/`#`/backtick references that resolve to a
 feature into clickable cross-references.
 
+### Operation-ideal kernel — U2 mining measurement (2026-07-07)
+
+`sgt/core/mine.py` + `sgt/core/identity.py` (promoted from `experiments/patch_clustering/`,
+plan `docs/plans/2026-07-06-001-feat-operation-ideal-kernel-plan.md`) mine an op stream with
+def-use untangling, whole-file pseudo-symbols, and per-file layout/residue pseudo-symbols.
+Measured against this repo's own history (57 commits, self-clone, first-parent) and the
+synthetic `tests/laws/corpus.py` fixtures:
+
+- **BET-A (untangling precision).** The one hand-labeled tangled-commit fixture (an unrelated
+  function added in one file and an unrelated function edited in another, same commit, no
+  calls between them) untangles into exactly the 2 expected ops — 1/1 on the fixture sample.
+  Dogfooding on this repo: 56 of 57 commits produced more than one op (most commits here touch
+  several unrelated symbols/files at once), which is the expected shape for untangling to be
+  doing real work rather than a no-op.
+- **Identity churn.** Kind distribution over 1401 mined ops: `add` 631, `rework` 396, `prune`
+  322, `extend` 50, `move` 2. Only 2 ops resolved as a rename/move (fuzzy or hash-tier link)
+  across 57 commits — this repo's history has few pure renames; most restructuring reads as
+  add+prune pairs rather than linked moves, which is a fair reflection of how this codebase
+  has actually evolved (few `git mv`-style renames, several delete-and-rewrite refactors).
+  181 ops landed on whole-file (non-parseable-path) pseudo-symbols out of 1401 — this repo is
+  mostly Python, so most of that is `.md`/`.json`/`.toml`/config churn, not a red flag.
+- **Performance (BET-E precursor).** Mining is **not yet bounded**: 200s for 57 commits (~3.5s/
+  commit) because `mine()` re-extracts and rebuilds the whole-codebase entity graph
+  (`build_entity_graph`) from scratch on every commit to resolve def-use edges for untangling.
+  This is O(commits × repo size) and will not meet R10's adoption-scale bar on a real corpus;
+  it is flagged in `mine.py`'s own comments as the known thing to fix (incremental/cached
+  entity-graph reuse across consecutive commits) before the BET-E large-corpus law in
+  `tests/laws/corpus.py` (`SGT_LARGE_CORPUS_REPO`) can be run for real. Correctness first here,
+  per the unit's scope; performance is U6/U10's dogfood-run problem to close before adoption.
+
 ## Known v1 limitations (deferred, see the plan)
 
 - **On-demand reconcile shipped.** `sgt reconcile [<ref>]` retries rewrite-to-commute on
