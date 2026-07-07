@@ -3,10 +3,12 @@
 Promoted from ``experiments/patch_clustering/mine.py`` (the "kernel embryo", plan U2) and
 extended with what the experiment didn't need: whole-file pseudo-symbols for non-parseable
 paths (config, docs, binaries -- R7), one residue pseudo-symbol per file for module-level
-statements outside any entity span, one layout pseudo-symbol per file for top-level slot order,
-def-use untangling of a single commit's touched entities into separate ops (ClusterChanges-
-style -- BET-A), and content-addressed `Op` construction stamped with the miner version (R12)
-via `sgt.core.op.make_op`.
+statements outside any entity span, one anchor pseudo-symbol *per newly-added top-level entity*
+recording which entity (if any) immediately precedes it -- independent per entity, not one
+shared chain per file, so two unrelated insertions from different features never fork
+("anchor-disjoint additions commute", ADR S3.5) -- def-use untangling of a single commit's
+touched entities into separate ops (ClusterChanges-style -- BET-A), and content-addressed `Op`
+construction stamped with the miner version (R12) via `sgt.core.op.make_op`.
 
 Determinism: every dict/set iterated below is sorted or processed in a fixed insertion order;
 `GitBinding.history` gives commit order via `git log --reverse`; tree-sitter's own walk is
@@ -88,9 +90,14 @@ def _content_version(data: bytes) -> str:
     return hashlib.sha1(data).hexdigest()
 
 
-def _is_binary(data: bytes) -> bool:
-    """The same heuristic git itself uses: a NUL byte means binary."""
-    return b"\x00" in data
+def _positional_version(surface_id: str, content_hash: str) -> str:
+    """An entity's chain version ties its content to its *current surface location*, not
+    content alone -- otherwise a same-bytes cross-file move (content_hash unchanged) produces
+    a footprint entry whose before_version equals its own after_version, and a later change
+    against that same content_hash (from either side of the move) collides with it as a false
+    chain fork. Keying on (surface_id, content_hash) makes a move a genuine version advance --
+    before != after -- even when the bytes never change."""
+    return hashlib.sha1(f"{surface_id}:{content_hash}".encode()).hexdigest()
 
 
 def _parse_has_error(path: str, source: str) -> bool:
@@ -122,11 +129,20 @@ def _residue_lines(source: str, entities: list[Entity]) -> str:
     return "\n".join(line for i, line in enumerate(lines, start=1) if i not in covered)
 
 
-def _layout_image(entities: list[Entity]) -> bytes:
-    """The file's top-level slot order -- the anchor list the fold (U5) linearizes (R6). Only
-    top-level entities (no container) define slot order; nested methods follow their class."""
-    order = [e.name for e in sorted(entities, key=lambda e: e.start_line) if e.container is None]
-    return "\n".join(order).encode("utf-8")
+_ANCHOR_FIRST = "\x00FIRST\x00"  # sentinel: this entity was first in its file's top-level order
+
+
+def _top_level_anchor_facts(entities: list[Entity]) -> dict[str, str | None]:
+    """For each top-level entity (by current start_line order), the name of the top-level
+    entity immediately before it, or None if it's first. Only top-level entities (no
+    container) get an anchor; a nested method's position follows its class, not tracked here."""
+    top_level = sorted((e for e in entities if e.container is None), key=lambda e: e.start_line)
+    facts: dict[str, str | None] = {}
+    prev: str | None = None
+    for e in top_level:
+        facts[e.name] = prev
+        prev = e.name
+    return facts
 
 
 def _emit_scope_reshape(
@@ -137,9 +153,9 @@ def _emit_scope_reshape(
     matcher tiers stay verbatim (kind is deliberately not part of tiers 2/2b's match key), but
     mine.py refuses to weld two different scopes into one chain: both ops still land from this
     commit (split provenance), just as delete + add rather than a silent move."""
-    emit_entity(old.ent.id, old.content_hash, BOTTOM, None, frozenset())
+    emit_entity(old.ent.id, _positional_version(old.ent.id, old.content_hash), BOTTOM, None, frozenset())
     emit_entity(
-        new.ent.id, None, new.content_hash,
+        new.ent.id, None, _positional_version(new.ent.id, new.content_hash),
         _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
     )
 
@@ -187,12 +203,16 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
         for e in graph_after.edges:
             if e.type in ("calls", "imports"):
                 calls_by_src.setdefault(e.src, set()).add(e.dst)
-        entity_version: dict[str, str] = {e.id: e.content_hash for e in graph_after.entities}
+        entity_version: dict[str, str] = {
+            e.id: _positional_version(e.id, e.content_hash) for e in graph_after.entities
+        }
+        container_of: dict[str, str | None] = {e.id: e.container for e in graph_after.entities}
 
         entity_touches: list[_Touch] = []
         other_touches: list[_Touch] = []
         commit_added: list[Snap] = []
         commit_removed: list[Snap] = []
+        new_entities_by_file: dict[str, list[Entity]] = {}
 
         def emit_entity(sym: str, before, after, image, requires, via_move=False) -> None:
             uf.add(sym)
@@ -210,16 +230,15 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
 
             if lang is None:
                 # Whole-file pseudo-symbol (R7): unsupported language, config, docs, binary.
+                # Versioned by git blob OID uniformly (not content-hashed text vs. OID'd binary
+                # separately) -- before_version is always looked up via blob_oid, so after_version
+                # must use the same scheme or a text file's chain could never link across commits.
                 before_version = gb.blob_oid(parent, old_ref) if parent else None
                 if new_bytes is None:
                     emit_other(fc.path, before_version, BOTTOM, None, frozenset())
-                elif _is_binary(new_bytes):
+                else:
                     after_version = gb.blob_oid(sha, fc.path) or _content_version(new_bytes)
                     emit_other(fc.path, before_version, after_version, new_bytes, frozenset())
-                else:
-                    emit_other(
-                        fc.path, before_version, _content_version(new_bytes), new_bytes, frozenset()
-                    )
                 continue
 
             new_src = new_bytes.decode("utf-8", "replace") if new_bytes else ""
@@ -237,6 +256,7 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
                 )
                 continue
 
+            new_entities_by_file[fc.path] = new_entities
             old_snaps = snapshot(old_entities, old_src or "")
             new_snaps = snapshot(new_entities, new_src)
             by_id_before = {s.ent.id: s for s in old_snaps}
@@ -245,7 +265,9 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
             for a in m.modified:
                 b = by_id_before[a.ent.id]
                 emit_entity(
-                    a.ent.id, b.content_hash, a.content_hash,
+                    a.ent.id,
+                    _positional_version(a.ent.id, b.content_hash),
+                    _positional_version(a.ent.id, a.content_hash),
                     _entity_bytes(new_src, a.ent), _requires_of(a.ent.id, calls_by_src, entity_version),
                 )
             for old, new in m.links:  # rename / move within one file
@@ -254,7 +276,9 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
                     continue
                 uf.union(old.ent.id, new.ent.id)
                 emit_entity(
-                    new.ent.id, old.content_hash, new.content_hash,
+                    new.ent.id,
+                    _positional_version(old.ent.id, old.content_hash),
+                    _positional_version(new.ent.id, new.content_hash),
                     _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
                     via_move=True,
                 )
@@ -262,21 +286,13 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
             commit_added.extend(m.added)
             commit_removed.extend(m.removed)
 
-            # Layout + residue pseudo-symbols -- once per changed file per commit, only when
-            # they actually changed.
-            old_layout = _layout_image(old_entities) if old_entities else b""
-            new_layout = _layout_image(new_entities) if (new_bytes is not None) else b""
-            if old_layout != new_layout:
-                sym = f"{fc.path}::__layout__"
-                before_v = _content_version(old_layout) if old_entities else None
-                if new_bytes is None:
-                    emit_other(sym, before_v, BOTTOM, None)
-                else:
-                    emit_other(sym, before_v, _content_version(new_layout), new_layout)
-
+            # Residue pseudo-symbol -- once per changed file per commit, when the text changed
+            # OR the file's existence changed (an empty file being added/removed has identical
+            # -- empty -- residue text on both sides, but R7 coverage still needs a symbol to
+            # register that the path came into or went out of existence).
             old_residue = _residue_lines(old_src, old_entities) if old_src else ""
             new_residue = _residue_lines(new_src, new_entities) if new_src else ""
-            if old_residue != new_residue:
+            if old_residue != new_residue or (old_src is not None) != (new_bytes is not None):
                 sym = f"{fc.path}::__residue__"
                 residue_bytes = new_residue.encode("utf-8")
                 before_v = _content_version(old_residue.encode("utf-8")) if old_src else None
@@ -294,7 +310,9 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
                 continue
             uf.union(old.ent.id, new.ent.id)
             emit_entity(
-                new.ent.id, old.content_hash, new.content_hash,
+                new.ent.id,
+                _positional_version(old.ent.id, old.content_hash),
+                _positional_version(new.ent.id, new.content_hash),
                 _entity_bytes(new_file_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
                 via_move=True,
             )
@@ -303,11 +321,31 @@ def mine(repo: Path | str, since: str | None = None) -> list[Op]:
         for s in res_added:
             src = gb.file_at(sha, s.ent.file) or ""
             emit_entity(
-                s.ent.id, None, s.content_hash,
+                s.ent.id, None, _positional_version(s.ent.id, s.content_hash),
                 _entity_bytes(src, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
             )
         for s in res_removed:
-            emit_entity(s.ent.id, s.content_hash, BOTTOM, None, frozenset())
+            emit_entity(s.ent.id, _positional_version(s.ent.id, s.content_hash), BOTTOM, None, frozenset())
+
+        # Anchor facts (R6 layout): for each top-level entity freshly added this commit, an
+        # independent pseudo-symbol recording which top-level entity (if any) precedes it --
+        # never revised after the fact (this v1 doesn't track re-ordering), so its chain is
+        # always a single add. One symbol per entity, not one shared chain per file, is what
+        # makes two unrelated insertions commute instead of forking on a coincidentally-shared
+        # file-wide "before" state.
+        anchor_facts_by_file: dict[str, dict[str, str | None]] = {}
+        for t in entity_touches:
+            if t.before_version is not None or container_of.get(t.surface_id) is not None:
+                continue  # only fresh, top-level adds get an anchor
+            path, _, name = t.surface_id.partition("::")
+            file_entities = new_entities_by_file.get(path)
+            if file_entities is None:
+                continue  # defensive: no live entity list for this path (shouldn't happen)
+            if path not in anchor_facts_by_file:
+                anchor_facts_by_file[path] = _top_level_anchor_facts(file_entities)
+            predecessor = anchor_facts_by_file[path].get(name)
+            marker = (predecessor or _ANCHOR_FIRST).encode("utf-8")
+            emit_other(f"{path}::__anchor__::{name}", None, _content_version(marker), marker)
 
         # Untangle this commit's touched entities into def-use-connected groups (BET-A), then
         # bucket each touch by its group's deterministic anchor (lexicographically-smallest
