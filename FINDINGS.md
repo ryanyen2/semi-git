@@ -323,6 +323,39 @@ synthetic `tests/laws/corpus.py` fixtures:
   `tests/laws/corpus.py` (`SGT_LARGE_CORPUS_REPO`) can be run for real. Correctness first here,
   per the unit's scope; performance is U6/U10's dogfood-run problem to close before adoption.
 
+### Operation-ideal kernel — U6 lens wiring (2026-07-07)
+
+`sgt/core/lens.py` closes the round-trip loop: `get` mines what's new to the current ref since
+its last witness (tracked per-ref in `.sgt/local/witness.json`), persists via the store (whose
+provenance-merge on a content-address collision *is* the identification law), then reconstructs
+the ref's ideal as every stored op whose provenance intersects that ref's own commit ancestry.
+`put` runs `code(I)` to the working tree and commits with `Sgt-Op:` trailers. Verified against
+real git operations: squash merge, rebase, a foreign (non-sgt) commit, and diverged branches all
+behave per the ADR without special-casing any of them -- they fall out of content-addressing
+plus ref-ancestry membership.
+
+Two more real bugs surfaced wiring get/put together end to end (both fixed in this unit):
+
+- `put()`'s `git add -A` staged `.sgt/ops/*` and `.sgt/lock` themselves, and the next `get()`
+  mined them back as ordinary whole-file codebase content (since they're not `.py` files) --
+  put-get was failing because *sgt's own state* was being re-mined as if it were user code.
+  Fixed by excluding `.sgt/` from mine.py's diff loop entirely.
+- A moved-then-later-touched symbol's canonical id anchors to its *original* surface path (the
+  union-find in `_UnionFind` puts the earlier side as root), so an op on that symbol minted
+  much later can carry a footprint key naming a path a given commit's own diff didn't touch --
+  the commit changed the symbol's *current* file, not the file its canonical name still
+  references. This isn't wrong, but it means "locality" has to be checked against the
+  cumulative set of paths a symbol's whole history has touched, not just one commit's own
+  diff -- documented at length in `tests/laws/test_roundtrip.py::test_locality`.
+
+**Known, deliberately deferred gap:** `get()` only mines *committed* history, not the live
+working tree. The ADR's fuller vision ("get: diff working tree or new commits") needs mine()'s
+per-commit body decoupled from real commit SHAs to also diff HEAD's tree against the actual
+filesystem -- real, separable work. Flagging now because `put()` already overwrites the working
+tree unconditionally, and that combination becomes unsafe (silently discarding uncommitted work)
+the moment U8's verbs start calling `put()` from user-facing code. Must be closed before verbs
+ship, not before U6 -- noted here so it isn't forgotten between now and then.
+
 ## Known v1 limitations (deferred, see the plan)
 
 - **On-demand reconcile shipped.** `sgt reconcile [<ref>]` retries rewrite-to-commute on
