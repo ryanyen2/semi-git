@@ -11,11 +11,14 @@ def _ops_for_commit(ops, sha):
     return [op for op in ops if sha in op.provenance]
 
 
+_BOOKKEEPING_MARKERS = ("::__residue__", "::__anchor__::")
+
+
 def _entity_ops(ops):
-    """Ops that touch real code entities, excluding layout/residue file-level bookkeeping."""
+    """Ops that touch real code entities, excluding anchor/residue file-level bookkeeping."""
     return [
         op for op in ops
-        if not any(sym.endswith("::__layout__") or sym.endswith("::__residue__") for sym in op.footprint)
+        if not any(marker in sym for sym in op.footprint for marker in _BOOKKEEPING_MARKERS)
     ]
 
 
