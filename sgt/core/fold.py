@@ -33,21 +33,9 @@ file's bytes.
 from __future__ import annotations
 
 from sgt.core.ideal import Ideal
-from sgt.core.op import BOTTOM, Op
+from sgt.core.op import BOTTOM, Op, _symbol_kind, is_content_bearing
 
 _ANCHOR_FIRST = "\x00FIRST\x00"  # mirrors sgt.core.mine._ANCHOR_FIRST
-
-
-def _symbol_kind(sym: str) -> str:
-    """'whole_file' | 'residue' | 'anchor' | 'entity' (top-level) | 'nested' (skip for fold)."""
-    if "::" not in sym:
-        return "whole_file"
-    _, _, rest = sym.partition("::")
-    if rest == "__residue__":
-        return "residue"
-    if rest.startswith("__anchor__::"):
-        return "anchor"
-    return "nested" if "." in rest else "entity"
 
 
 def _anchor_target(sym: str) -> str:
@@ -156,11 +144,19 @@ def code(ideal: Ideal, ops: list[Op]) -> dict[str, bytes]:
     tip = ideal.frontier(ops)
 
     by_path: dict[str, dict[str, str]] = {}  # path -> {symbol: op_id}, live symbols only
+    content_paths: set[str] = set()  # paths with >=1 live content-bearing symbol -- the rest are
+    # anchor-only leftovers of a fully-pruned file and don't materialize (R7); matches covered_paths
     for sym, op_id in tip.items():
         after = by_id[op_id].footprint[sym][1]
         if after == BOTTOM:
             continue
         path = sym.split("::", 1)[0]
-        by_path.setdefault(path, {})[sym] = op_id
+        by_path.setdefault(path, {})[sym] = op_id  # anchors stay in a live path's set for ordering
+        if is_content_bearing(sym):
+            content_paths.add(path)
 
-    return {path: _fold_file(path, symbols, by_id, tip) for path, symbols in by_path.items()}
+    return {
+        path: _fold_file(path, symbols, by_id, tip)
+        for path, symbols in by_path.items()
+        if path in content_paths
+    }

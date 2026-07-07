@@ -68,6 +68,11 @@ def _write(repo: Path, path: str, content: str | bytes) -> None:
         full.write_text(content, encoding="utf-8")
 
 
+def _remove(repo: Path, path: str) -> None:
+    """Delete a tracked file; the next ``_commit``'s ``git add -A`` stages the removal."""
+    (repo / path).unlink()
+
+
 def _commit(repo: Path, message: str, when: int) -> str:
     _run(repo, "add", "-A")
     _run(
@@ -194,6 +199,42 @@ def _case_diverged_chain(root: Path) -> Path:
     return repo
 
 
+def _case_mixed_coverage(root: Path) -> Path:
+    """Two parseable Python files (each one def) plus two non-parseable paths (YAML, Markdown),
+    all added cleanly in one commit -- a mixed tree with a known, stable entity-granularity
+    coverage fraction (2 of 4 covered paths are entity-granular = 0.5). Fixture for R7 /
+    `sgt.api.state_view`: config and docs get honest whole-file coverage, code gets entity
+    coverage."""
+    repo = root / "mixed_coverage"
+    _init(repo)
+    _write(repo, "pkg.py", "def compute():\n    return 1\n")
+    _write(repo, "util.py", "def helper():\n    return 2\n")
+    _write(repo, "config.yaml", "setting: value\n")
+    _write(repo, "notes.md", "# notes\n")
+    _commit(repo, "add mixed python and non-parseable paths", 0)
+    return repo
+
+
+def _case_removed_paths(root: Path) -> Path:
+    """A file added with a single top-level entity and then fully ``git rm``'d must vanish from
+    both ``code(I)`` and coverage -- its entity's anchor pseudo-symbol is pure ordering metadata
+    that mining never revises to BOTTOM, so after the entity and residue are pruned the anchor
+    lingers alone at the frontier; it must not keep the path alive as an empty ``b''`` (R7/R20
+    get-put fidelity). A sibling file that loses *one* of two top-level entities is the positive
+    control: it stays covered and materializes only the surviving entity's exact bytes."""
+    repo = root / "removed_paths"
+    _init(repo)
+    _write(repo, "gone.py", "def gone():\n    return 1\n")
+    _write(repo, "survivor.py", "def keep():\n    return 1\n\n\ndef drop():\n    return 2\n")
+    _commit(repo, "add gone.py and survivor.py(keep, drop)", 0)
+
+    _remove(repo, "gone.py")
+    _write(repo, "survivor.py", "def keep():\n    return 1\n")
+    _commit(repo, "rm gone.py entirely; drop `drop` from survivor.py", 1)
+
+    return repo
+
+
 @dataclass(frozen=True)
 class CorpusCase:
     name: str
@@ -213,6 +254,15 @@ CORPUS: dict[str, CorpusCase] = {
     "diverged_chain": CorpusCase(
         "diverged_chain", _case_diverged_chain,
         "two branches independently edit the same symbol from a shared base -- a chain fork",
+    ),
+    "mixed_coverage": CorpusCase(
+        "mixed_coverage", _case_mixed_coverage,
+        "two Python files plus a YAML and a Markdown file -- a known entity-granularity fraction",
+    ),
+    "removed_paths": CorpusCase(
+        "removed_paths", _case_removed_paths,
+        "a file fully git-rm'd (must vanish, no anchor-only b'' phantom) alongside a sibling that "
+        "loses one of two entities (must stay covered) -- get-put fidelity for removals",
     ),
 }
 

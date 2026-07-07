@@ -70,6 +70,22 @@ def _reconstruct_ideal(gb: GitBinding, store: Store) -> Ideal:
     return Ideal.from_ops(included, all_ops)
 
 
+def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = None) -> Ideal:
+    """The ideal a given ref's committed history implies -- a *pure read*: no mining, no
+    checkout, no side effects. It projects the ops already in the store onto `ref`'s own commit
+    ancestry, exactly as `_reconstruct_ideal` does for the current ref, but for any ref. A ref
+    whose history was never mined yields an under-approximated ideal, so contact it with `get()`
+    first for completeness. The read views (U7's `state_view`/`ideal_diff_view`) use this to
+    inspect and compare refs without disturbing the working tree."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+    store = store or Store(repo)
+    ref_commits = set(gb.commit_shas(ref))
+    all_ops = store.all_ops()
+    included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
+    return Ideal.from_ops(included, all_ops)
+
+
 def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Ideal:
     gb = GitBinding(repo)
     store = Store(repo)

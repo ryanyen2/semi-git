@@ -37,6 +37,38 @@ Images = dict[str, "bytes | None"]
 Requires = frozenset[tuple[str, str]]
 
 
+def _symbol_kind(sym: str) -> str:
+    """'whole_file' | 'residue' | 'anchor' | 'entity' (top-level) | 'nested' (skip for fold).
+
+    The classifier for this kernel's symbol-id vocabulary, owned here rather than in `fold`
+    because both `fold` (which splices each kind's image) and `ideal.covered_paths` (which
+    decides which paths a given ideal materializes) must agree on it -- and `ideal` importing
+    from `fold` would be a cycle (`fold` imports `Ideal`)."""
+    if "::" not in sym:
+        return "whole_file"
+    _, _, rest = sym.partition("::")
+    if rest == "__residue__":
+        return "residue"
+    if rest.startswith("__anchor__::"):
+        return "anchor"
+    return "nested" if "." in rest else "entity"
+
+
+# The symbol kinds `fold._fold_file` splices bytes for on their own: a whole-file image, a
+# top-level entity's image, or a file's residue. `anchor` (pure ordering metadata, never revised
+# to BOTTOM) and `nested` (already subsumed by its containing top-level entity's image) emit
+# nothing standalone.
+CONTENT_BEARING_KINDS = frozenset({"whole_file", "residue", "entity"})
+
+
+def is_content_bearing(sym: str) -> bool:
+    """True iff `sym` contributes bytes to `code(I)` on its own. A path is covered / materialized
+    iff it has >=1 live content-bearing frontier symbol: an anchor left dangling after its entity
+    and residue were pruned (a fully-removed file) can't keep the path alive as an empty `b''`,
+    so `covered_paths` and `code` agree exactly on which paths exist (R7/R20)."""
+    return _symbol_kind(sym) in CONTENT_BEARING_KINDS
+
+
 @dataclass(frozen=True)
 class Op:
     """Frozen and hashable; nothing about a mined Op is mutable after minting. Correcting a

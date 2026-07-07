@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sgt.core import order
-from sgt.core.op import BOTTOM, Op
+from sgt.core.op import BOTTOM, Op, is_content_bearing
 
 
 @dataclass(frozen=True)
@@ -35,14 +35,18 @@ class Ideal:
         return order.frontier(self.op_ids, ops)
 
     def covered_paths(self, ops: list[Op]) -> frozenset[str]:
-        """Every path with a *live* (non-removed) symbol at this ideal's frontier -- R7's
+        """Every path with a *live*, content-bearing symbol at this ideal's frontier -- R7's
         coverage law. A path whose only in-ideal symbol tip is a removal (`BOTTOM`) is not
-        covered: the path doesn't exist in `code(I)`."""
+        covered: the path doesn't exist in `code(I)`. Neither is a path kept alive only by an
+        `anchor` pseudo-symbol (pure ordering metadata mining never revises to BOTTOM) after its
+        entity and residue were pruned -- an anchor produces no bytes, so `covered_paths` and
+        `code` agree exactly on which paths materialize (a fully-removed file can't resurrect as
+        an empty `b''`)."""
         by_id = {op.id: op for op in ops}
         paths: set[str] = set()
         for sym, op_id in self.frontier(ops).items():
             after = by_id[op_id].footprint[sym][1]
-            if after != BOTTOM:
+            if after != BOTTOM and is_content_bearing(sym):
                 paths.add(sym.split("::", 1)[0])
         return frozenset(paths)
 

@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sgt — the operation-ideal kernel</title>
+<style>
+  :root{
+    --bg:#FAFAF8;
+    --ink:#1B1B1A;
+    --muted:#6B6B63;
+    --faint:#9A9A90;
+    --hair:#E4E3DC;
+    --panel:#FFFFFF;
+    --accent:#C24B32;          /* the one restrained accent */
+    --accent-wash:#F6E7E0;
+    --accent-line:#D98a76;
+    /* muted multi-hue set — used ONLY on slide 10 (feature lens), where
+       colour-IS-feature-identity is the pedagogical point (repo's OKLCH hue rule). */
+    --f1:#C24B32; --f2:#4E8676; --f3:#B08641; --f4:#5A6E8C; --f5:#8A5B78;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+    line-height:1.5;
+  }
+
+  /* ---- deck chrome ---- */
+  #bar{position:fixed; top:0; left:0; height:2px; background:var(--accent);
+       width:8.3%; transition:width .45s ease; z-index:20}
+  #hud{position:fixed; right:26px; bottom:20px; z-index:20;
+       display:flex; align-items:center; gap:10px; color:var(--faint);
+       font-size:13px; letter-spacing:.04em}
+  #hud button{all:unset; cursor:pointer; width:26px; height:26px; line-height:26px;
+       text-align:center; border:1px solid var(--hair); border-radius:50%;
+       color:var(--muted); font-size:15px}
+  #hud button:hover{border-color:var(--accent); color:var(--accent)}
+  #count{font-variant-numeric:tabular-nums; min-width:52px; text-align:center}
+  #hint{position:fixed; left:26px; bottom:22px; z-index:20; color:var(--faint);
+        font-size:12.5px; letter-spacing:.03em}
+
+  /* ---- slides ---- */
+  .slide{position:fixed; inset:0; display:none; flex-direction:column;
+         justify-content:center; padding:64px clamp(40px,7vw,120px)}
+  .slide.active{display:flex; animation:fade .5s ease both}
+  @keyframes fade{from{opacity:0} to{opacity:1}}
+  .wrap{width:100%; max-width:1160px; margin:0 auto}
+
+  .kicker{font-size:13px; letter-spacing:.16em; text-transform:uppercase;
+          color:var(--faint); margin-bottom:14px; display:flex; gap:12px; align-items:baseline}
+  .kicker b{color:var(--accent); font-weight:600}
+  h1{font-size:clamp(30px,4.4vw,52px); line-height:1.14; font-weight:650;
+     letter-spacing:-.015em; margin:0 0 22px}
+  h2{font-size:clamp(23px,2.8vw,33px); line-height:1.2; font-weight:620;
+     letter-spacing:-.01em; margin:0 0 26px}
+  .lead{font-size:clamp(16px,1.5vw,19px); color:var(--muted); max-width:62ch}
+  .cap{font-size:15.5px; color:var(--muted); max-width:70ch}
+  .mono{font-family:var(--mono)}
+  .em{color:var(--accent); font-weight:600}
+  .k{font-family:var(--mono); background:var(--accent-wash); color:var(--accent);
+     padding:1px 6px; border-radius:4px; font-size:.92em}
+
+  svg{display:block; width:100%; height:auto; overflow:visible}
+  .diagram{margin:8px 0 4px}
+
+  /* stepped reveal */
+  [data-step]{opacity:0; transition:opacity .55s ease, transform .55s ease}
+  .active [data-step].shown{opacity:1}
+  .lift[data-step]{transform:translateY(8px)}
+  .active .lift[data-step].shown{transform:none}
+  @media (prefers-reduced-motion: reduce){
+    [data-step]{transition:none}
+    .lift[data-step]{transform:none}
+    .slide.active{animation:none}
+    #bar{transition:none}
+  }
+
+  /* shared SVG vocabulary */
+  .op{fill:#fff; stroke:var(--ink); stroke-width:1.6}
+  .op.dim{stroke:var(--faint); stroke-dasharray:3 3; fill:#fff}
+  .op.tip{fill:var(--accent-wash); stroke:var(--accent); stroke-width:2}
+  .op.hot{fill:var(--accent); stroke:var(--accent)}
+  .edge{stroke:#54534E; stroke-width:1.6; fill:none}
+  .edge.dim{stroke:var(--faint); stroke-dasharray:3 3}
+  .ref{stroke:var(--accent-line); stroke-width:1.5; fill:none; stroke-dasharray:5 4}
+  .lbl{font-size:13px; fill:var(--ink); font-family:var(--sans)}
+  .lbl.mut{fill:var(--muted)}
+  .lbl.sm{font-size:11.5px; fill:var(--faint)}
+  .vlabel{font-size:11px; fill:var(--faint); font-family:var(--mono)}
+  .cone-up{fill:var(--accent); fill-opacity:.11; stroke:var(--accent); stroke-width:1.4}
+  .cone-dn{fill:var(--accent); fill-opacity:.05; stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 4}
+  .band{fill:var(--accent); fill-opacity:.07}
+  .card{fill:var(--panel); stroke:var(--hair); stroke-width:1.4; rx:10}
+  .frame{fill:none; stroke:var(--accent); stroke-width:1.5; stroke-dasharray:6 5; rx:10}
+  text{font-family:var(--sans)}
+  .t-ink{fill:var(--ink)} .t-mut{fill:var(--muted)} .t-acc{fill:var(--accent)}
+  .b{font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- shared arrowhead markers (resolved document-wide by id) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arw" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#54534E"/></marker>
+  <marker id="arwA" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#C24B32"/></marker>
+  <marker id="arwM" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#9A9A90"/></marker>
+</defs></svg>
+
+<div id="bar"></div>
+
+<!-- ============================ 1 · TITLE ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>sgt</b> · semi-git · the operation-ideal kernel</div>
+    <h1>Your history as a set you can<br><span class="em">re-select</span> from.</h1>
+    <p class="lead lift" data-step="1">
+      Not commits bound to line-diffs — a graph of semantic operations on the functions,
+      classes, and methods you actually reason about. A codebase state is just
+      <span class="em">which operations are switched on</span>.
+    </p>
+    <div class="diagram" style="max-width:760px" data-step="2">
+      <svg viewBox="0 0 760 150" role="img" aria-label="a small operation DAG: three symbol chains linked by reference edges">
+        <!-- three tiny chains -->
+        <line class="edge" x1="120" y1="120" x2="120" y2="40" marker-end="url(#arw)"/>
+        <line class="edge" x1="300" y1="120" x2="300" y2="40" marker-end="url(#arw)"/>
+        <line class="edge" x1="480" y1="120" x2="480" y2="75" marker-end="url(#arw)"/>
+        <path class="ref" d="M132,80 H288" marker-end="url(#arwA)"/>
+        <path class="ref" d="M312,80 H468" marker-end="url(#arwA)"/>
+        <circle class="op" cx="120" cy="120" r="13"/><circle class="op" cx="120" cy="40" r="13"/>
+        <circle class="op" cx="300" cy="120" r="13"/><circle class="op tip" cx="300" cy="40" r="13"/>
+        <circle class="op" cx="480" cy="120" r="13"/><circle class="op" cx="480" cy="75" r="13"/>
+        <text class="lbl sm" x="150" y="132">version chain</text>
+        <text class="lbl sm t-acc" x="205" y="72">"uses" edge</text>
+        <text class="lbl mut" x="560" y="84">a state = one selection</text>
+      </svg>
+    </div>
+    <p class="lead lift" data-step="3" style="margin-top:6px">
+      Back out a feature. Roll one function back a week. Lift a fix onto a release.
+      <span class="em">Every selection materializes to real, compilable code</span> — no 3-way merge,
+      no approximation.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 2 · THE PROBLEM ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>02</b> · The problem</div>
+    <h2>git records commit-bound line-diffs.<br>You think in features and functions.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 400" role="img" aria-label="git's line-diffs on the left, the questions developers actually ask on the right, with a mismatch seam between them">
+        <!-- LEFT: git -->
+        <g data-step="1">
+          <text class="lbl b t-mut" x="60" y="40">what git stores</text>
+          <text class="lbl sm" x="60" y="58">commit → line-diff</text>
+          <line class="edge dim" x1="96" y1="90" x2="96" y2="352"/>
+          <!-- 4 commits + hunks -->
+          <g>
+            <circle class="op hot" cx="96" cy="96" r="9"/>
+            <rect class="card" x="128" y="76" width="180" height="42" rx="8"/>
+            <line x1="142" y1="90" x2="250" y2="90" stroke="#4E8676" stroke-width="3"/>
+            <line x1="142" y1="104" x2="220" y2="104" stroke="#C24B32" stroke-width="3"/>
+          </g>
+          <g>
+            <circle class="op hot" cx="96" cy="176" r="9"/>
+            <rect class="card" x="128" y="156" width="180" height="42" rx="8"/>
+            <line x1="142" y1="170" x2="236" y2="170" stroke="#4E8676" stroke-width="3"/>
+            <line x1="142" y1="184" x2="200" y2="184" stroke="#C24B32" stroke-width="3"/>
+          </g>
+          <g>
+            <circle class="op hot" cx="96" cy="256" r="9"/>
+            <rect class="card" x="128" y="236" width="180" height="42" rx="8"/>
+            <line x1="142" y1="250" x2="258" y2="250" stroke="#4E8676" stroke-width="3"/>
+            <line x1="142" y1="264" x2="180" y2="264" stroke="#C24B32" stroke-width="3"/>
+          </g>
+          <g>
+            <circle class="op hot" cx="96" cy="336" r="9"/>
+            <rect class="card" x="128" y="316" width="180" height="42" rx="8"/>
+            <line x1="142" y1="330" x2="244" y2="330" stroke="#4E8676" stroke-width="3"/>
+            <line x1="142" y1="344" x2="214" y2="344" stroke="#C24B32" stroke-width="3"/>
+          </g>
+        </g>
+        <!-- RIGHT: human questions -->
+        <g data-step="2">
+          <text class="lbl b t-mut" x="600" y="40" text-anchor="start">what you actually ask</text>
+          <text class="lbl sm" x="600" y="58">features &amp; symbols</text>
+          <g>
+            <rect class="card" x="600" y="86" width="360" height="46" rx="23"/>
+            <text class="lbl" x="620" y="114">"What does this codebase contain?"</text>
+          </g>
+          <g>
+            <rect class="card" x="600" y="176" width="360" height="46" rx="23"/>
+            <text class="lbl" x="620" y="204">"Back out the retry layer — keep the rest."</text>
+          </g>
+          <g>
+            <rect class="card" x="600" y="266" width="360" height="46" rx="23"/>
+            <text class="lbl" x="620" y="294">"Roll slugify() back to last week."</text>
+          </g>
+        </g>
+        <!-- SEAM -->
+        <g data-step="3">
+          <path d="M488,70 L470,130 L500,150 L468,210 L500,232 L470,292 L500,314 L482,360"
+                fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-dasharray="7 5"/>
+          <text class="lbl b t-acc" x="484" y="55" text-anchor="middle">mismatch</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="4">
+      Concretely: an AI agent adds a retry layer across 12 files in 40 commits, then GitHub
+      <span class="em">squash-merges</span> it to one. Now it's flaky and you want it gone — only it.
+      git's only tools are a <span class="em">3-way-merge conflict</span> and blame archaeology, because
+      the unit it tracks (a commit's diff) isn't the unit you're thinking in.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 3 · THE IDEA ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>03</b> · The idea, in one picture</div>
+    <h2>A state = which operations you've selected.<br>Each symbol has a version chain; you keep one tip per chain.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 400" role="img" aria-label="parallel version chains per symbol, linked by reference edges, with a highlighted order-ideal cross-section and its code() fold">
+        <!-- ideal band (revealed step 3) -->
+        <rect class="band" x="40" y="196" width="900" height="184" rx="8" data-step="3"/>
+        <line data-step="3" x1="40" y1="196" x2="940" y2="196" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="6 5"/>
+
+        <!-- chains: vertical arrows = later version; drawn as scaffold (step1) -->
+        <g data-step="1">
+          <!-- chain A x=200 -->
+          <line class="edge" x1="200" y1="330" x2="200" y2="240" marker-end="url(#arw)"/>
+          <line class="edge" x1="200" y1="220" x2="200" y2="130" marker-end="url(#arw)"/>
+          <!-- chain B x=490 -->
+          <line class="edge" x1="490" y1="330" x2="490" y2="240" marker-end="url(#arw)"/>
+          <line class="edge" x1="490" y1="220" x2="490" y2="130" marker-end="url(#arw)"/>
+          <!-- chain C x=780 -->
+          <line class="edge" x1="780" y1="330" x2="780" y2="240" marker-end="url(#arw)"/>
+          <circle class="op" cx="200" cy="340" r="15"/><circle class="op" cx="200" cy="120" r="15"/>
+          <circle class="op" cx="490" cy="340" r="15"/><circle class="op" cx="490" cy="120" r="15"/>
+          <circle class="op" cx="780" cy="340" r="15"/>
+          <text class="vlabel" x="222" y="345">v1</text><text class="vlabel" x="222" y="125">v3</text>
+          <text class="vlabel" x="512" y="345">v1</text><text class="vlabel" x="512" y="125">v3</text>
+          <text class="vlabel" x="802" y="345">v1</text>
+          <text class="lbl mut" x="200" y="378" text-anchor="middle">parse()</text>
+          <text class="lbl mut" x="490" y="378" text-anchor="middle">Config</text>
+          <text class="lbl mut" x="780" y="378" text-anchor="middle">slugify()</text>
+        </g>
+
+        <!-- reference edges (step 2): parse used by Config, Config used by slugify -->
+        <g data-step="2">
+          <path class="ref" d="M215,230 H475" marker-end="url(#arwA)"/>
+          <path class="ref" d="M505,230 H765" marker-end="url(#arwA)"/>
+          <text class="lbl sm t-acc" x="345" y="222" text-anchor="middle">uses</text>
+          <text class="lbl sm t-acc" x="635" y="222" text-anchor="middle">uses</text>
+        </g>
+
+        <!-- tips + dim out-of-ideal nodes (step 3) -->
+        <g data-step="3">
+          <circle class="op tip" cx="200" cy="230" r="15"/><text class="vlabel" x="222" y="235">v2</text>
+          <circle class="op tip" cx="490" cy="230" r="15"/><text class="vlabel" x="512" y="235">v2</text>
+          <circle class="op tip" cx="780" cy="230" r="15"/><text class="vlabel" x="802" y="235">v2</text>
+          <!-- grey the above-frontier ops -->
+          <circle cx="200" cy="120" r="15" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <circle cx="490" cy="120" r="15" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <text class="lbl b t-acc" x="60" y="188">the selection</text>
+          <text class="lbl sm" x="60" y="206">one tip per chain · nothing selected without its "uses"</text>
+        </g>
+
+        <!-- code(I) callout (step 4) -->
+        <g data-step="4">
+          <rect class="card" x="560" y="66" width="400" height="70" rx="10" stroke="var(--accent)"/>
+          <text class="lbl b" x="580" y="96"><tspan class="mono t-acc">code(selection)</tspan> = splice each tip's verbatim bytes</text>
+          <text class="lbl sm" x="580" y="120">byte-exact — comments &amp; formatting preserved, never re-printed from an AST</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="5">
+      A downward-closed selection like this — one tip per symbol — is an <span class="em">order ideal</span>.
+      That's the whole model: a codebase state <span class="em">is</span> a legal selection of operations.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 4 · READING THE MOVES ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>04</b> · Reading the moves</div>
+    <h2>Three moves — and what the arrows mean.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 380" role="img" aria-label="a small DAG with op X; its up-set is the cone of dependents above it, its down-set the cone of prerequisites below it; three set operations on the right">
+        <!-- LEFT: X with its two cones -->
+        <!-- up cone (step2) -->
+        <polygon class="cone-up" points="200,206 96,86 304,86" data-step="2"/>
+        <!-- down cone (step3) -->
+        <polygon class="cone-dn" points="200,214 96,336 304,336" data-step="3"/>
+
+        <g data-step="1">
+          <!-- dependency edges point UP (prereq -> dependent = "≤") -->
+          <line class="edge" x1="150" y1="312" x2="188" y2="232" marker-end="url(#arw)"/>
+          <line class="edge" x1="250" y1="312" x2="212" y2="232" marker-end="url(#arw)"/>
+          <line class="edge" x1="188" y1="188" x2="150" y2="110" marker-end="url(#arw)"/>
+          <line class="edge" x1="212" y1="188" x2="250" y2="110" marker-end="url(#arw)"/>
+          <circle class="op" cx="150" cy="100" r="14"/><circle class="op" cx="250" cy="100" r="14"/>
+          <circle class="op" cx="150" cy="320" r="14"/><circle class="op" cx="250" cy="320" r="14"/>
+          <circle class="op hot" cx="200" cy="210" r="17"/>
+          <text class="lbl b" style="fill:#fff" x="200" y="215" text-anchor="middle">X</text>
+        </g>
+        <g data-step="2">
+          <circle class="op tip" cx="150" cy="100" r="14"/><circle class="op tip" cx="250" cy="100" r="14"/>
+          <text class="lbl b t-acc" x="200" y="66" text-anchor="middle">↑X</text>
+          <text class="lbl sm t-acc" x="200" y="52" text-anchor="middle">up-set</text>
+        </g>
+        <g data-step="3">
+          <circle class="op tip" cx="150" cy="320" r="14"/><circle class="op tip" cx="250" cy="320" r="14"/>
+          <text class="lbl b t-acc" x="330" y="332">↓X</text>
+          <text class="lbl sm t-acc" x="330" y="350">down-set</text>
+        </g>
+
+        <!-- RIGHT: legend + three moves -->
+        <line class="edge dim" x1="440" y1="30" x2="440" y2="350"/>
+
+        <!-- legend -->
+        <g data-step="1">
+          <text class="lbl b t-mut" x="490" y="52">the symbols</text>
+          <text class="lbl" x="490" y="82"><tspan class="mono t-acc b">I</tspan>&#160;&#160;the ops you've selected now = your current state</text>
+          <text class="lbl" x="490" y="110"><tspan class="mono t-acc b">\</tspan>&#160;&#160;remove from the set&#160;&#160;&#160;&#160;<tspan class="mono t-acc b">∪</tspan>&#160;&#160;add to the set</text>
+        </g>
+        <g data-step="2">
+          <text class="lbl" x="490" y="138"><tspan class="mono t-acc b">↑X</tspan>&#160;&#160;X <tspan class="b">and everything built on top of it</tspan> (dependents)</text>
+        </g>
+        <g data-step="3">
+          <text class="lbl" x="490" y="166"><tspan class="mono t-acc b">↓X</tspan>&#160;&#160;X <tspan class="b">and everything it's built on</tspan> (its needs)</text>
+        </g>
+
+        <line class="edge dim" x1="490" y1="188" x2="940" y2="188" data-step="2"/>
+
+        <!-- the three moves -->
+        <g data-step="2">
+          <text class="lbl b" x="490" y="224">Revert X</text>
+          <text class="lbl mut" x="600" y="224">drop X and its dependents</text>
+          <text class="lbl b mono t-acc" x="820" y="224">I \ ↑X</text>
+        </g>
+        <g data-step="3">
+          <text class="lbl b" x="490" y="266">Cherry-pick X</text>
+          <text class="lbl mut" x="620" y="266">add X and what it needs</text>
+          <text class="lbl b mono t-acc" x="820" y="266">I ∪ ↓X</text>
+        </g>
+        <g data-step="4">
+          <text class="lbl b" x="490" y="308">Reorder</text>
+          <text class="lbl mut" x="600" y="308">nothing happens — a state is a set</text>
+          <text class="lbl b mono t-acc" x="820" y="308">no-op</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="4">
+      Because a state is a <span class="em">set</span>, not a sequence, "the order of my commits" stops
+      mattering. Revert and cherry-pick are ordinary set arithmetic — and the result is always a
+      legal selection.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 5 · CAPTURE ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>05</b> · Capture</div>
+    <h2>The tangled agent commit → untangled into separate ops.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 360" role="img" aria-label="one tangled commit, diffed at entity granularity, split by def-use into three content-addressed operations">
+        <!-- commit -->
+        <g data-step="1">
+          <rect class="card" x="30" y="140" width="160" height="80" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+          <text class="lbl b t-acc" x="110" y="170" text-anchor="middle">1 tangled</text>
+          <text class="lbl b t-acc" x="110" y="190" text-anchor="middle">commit</text>
+          <text class="lbl sm" x="110" y="238" text-anchor="middle">retry + a rename</text>
+        </g>
+        <!-- entity diff -->
+        <g data-step="2">
+          <line class="edge" x1="194" y1="180" x2="240" y2="180" marker-end="url(#arw)"/>
+          <rect class="card" x="244" y="140" width="150" height="80" rx="12"/>
+          <text class="lbl b" x="319" y="172" text-anchor="middle">entity-level</text>
+          <text class="lbl b" x="319" y="192" text-anchor="middle">diff</text>
+          <text class="lbl sm" x="319" y="238" text-anchor="middle">per function / class</text>
+        </g>
+        <!-- untangle by def-use -->
+        <g data-step="3">
+          <text class="lbl sm t-mut" x="466" y="56" text-anchor="middle">split by def-use</text>
+          <path class="edge" d="M398,180 C436,180 436,80 482,80" marker-end="url(#arw)"/>
+          <path class="edge" d="M398,180 H482" marker-end="url(#arw)"/>
+          <path class="edge" d="M398,180 C436,180 436,280 482,280" marker-end="url(#arw)"/>
+          <circle class="op hot" cx="500" cy="80" r="16"/>
+          <circle class="op hot" cx="500" cy="180" r="16"/>
+          <circle class="op hot" cx="500" cy="280" r="16"/>
+          <text class="lbl b" style="fill:#fff" x="500" y="85" text-anchor="middle">op₁</text>
+          <text class="lbl b" style="fill:#fff" x="500" y="185" text-anchor="middle">op₂</text>
+          <text class="lbl b" style="fill:#fff" x="500" y="285" text-anchor="middle">op₃</text>
+          <text class="lbl sm" x="524" y="82">retry wrapper</text>
+          <text class="lbl sm" x="524" y="182">call site</text>
+          <text class="lbl sm" x="524" y="282">unrelated rename</text>
+        </g>
+        <!-- content-addressed id -->
+        <g data-step="4">
+          <line class="edge" x1="600" y1="180" x2="640" y2="180" marker-end="url(#arw)"/>
+          <rect class="card" x="646" y="96" width="314" height="168" rx="12"/>
+          <text class="lbl b" x="668" y="128">content-addressed <tspan class="mono">id</tspan></text>
+          <text class="lbl mono" x="668" y="158" style="font-size:12.5px">= hash( footprint, images,</text>
+          <text class="lbl mono" x="668" y="178" style="font-size:12.5px">        requires, kind )</text>
+          <text class="lbl sm" x="668" y="208"><tspan class="b">kind</tspan> (add/rework/prune/move) — derived, not typed</text>
+          <text class="lbl sm t-acc" x="668" y="238">the sha is only a <tspan class="b">witness</tspan>, not in the id</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="5">
+      Now the retry wrapper and the rename are <span class="em">separate ops</span>. You can revert one
+      without touching the other — even though the agent jammed them into a single commit.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 6 · IDENTIFICATION LAW ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>06</b> · Survives squash &amp; rebase</div>
+    <h2>The id is the content, not the sha.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 340" role="img" aria-label="three commits with different shas all mining to one operation id, which just accumulates witnesses">
+        <!-- three source commits -->
+        <g data-step="1">
+          <rect class="card" x="40" y="50" width="250" height="52" rx="10"/>
+          <text class="lbl" x="60" y="82">squash merge · <tspan class="mono t-mut">a1b2…</tspan></text>
+          <rect class="card" x="40" y="140" width="250" height="52" rx="10"/>
+          <text class="lbl" x="60" y="172">after a rebase · <tspan class="mono t-mut">c3d4…</tspan></text>
+          <rect class="card" x="40" y="230" width="250" height="52" rx="10"/>
+          <text class="lbl" x="60" y="262">a teammate's commit · <tspan class="mono t-mut">e5f6…</tspan></text>
+        </g>
+        <!-- converging arrows -->
+        <g data-step="2">
+          <path class="edge" d="M294,76  C420,76  480,166 556,166" marker-end="url(#arw)"/>
+          <path class="edge" d="M294,166 H556" marker-end="url(#arw)"/>
+          <path class="edge" d="M294,256 C420,256 480,166 556,166" marker-end="url(#arw)"/>
+          <text class="lbl sm t-mut" x="425" y="150" text-anchor="middle">same symbol · same bytes → same mined id</text>
+        </g>
+        <!-- single op with witnesses -->
+        <g data-step="3">
+          <circle class="op hot" cx="600" cy="166" r="26"/>
+          <text class="lbl b" style="fill:#fff" x="600" y="171" text-anchor="middle">1 op</text>
+          <text class="lbl sm" x="600" y="212" text-anchor="middle">deduped — no fork</text>
+        </g>
+        <g data-step="4">
+          <rect class="card" x="700" y="118" width="240" height="96" rx="10"/>
+          <text class="lbl b" x="720" y="148">witnesses</text>
+          <text class="lbl mono sm" x="720" y="172">a1b2…  c3d4…  e5f6…</text>
+          <text class="lbl sm t-acc" x="720" y="198">more witnesses, not more ops</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="5">
+      This is why squash-merge and rebase — the things that shred git's history — don't faze sgt.
+      Re-mining the same change just re-derives the same id and records another witnessing commit.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 7 · REVERT ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>07</b> · Walkthrough — revert</div>
+    <h2>Back out the retry layer = <span class="mono em">I \ ↑X</span></h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 380" role="img" aria-label="pick op X, light up its up-set of dependents, then subtract the whole cone leaving a legal ideal">
+        <!-- DAG scaffold: A(3 ops) references B; B references C and D -->
+        <g>
+          <line class="edge" x1="160" y1="286" x2="160" y2="146" marker-end="url(#arw)"/>
+          <line class="edge" x1="400" y1="286" x2="400" y2="190" marker-end="url(#arw)"/>
+          <line class="edge" x1="640" y1="286" x2="640" y2="205" marker-end="url(#arw)"/>
+          <line class="edge" x1="840" y1="286" x2="840" y2="205" marker-end="url(#arw)"/>
+          <!-- reference edges: A.v2 -> B.tip ; B.tip -> C.tip , D.tip -->
+          <path class="ref" d="M176,212 C290,200 300,180 385,177" marker-end="url(#arwA)"/>
+          <path class="ref" d="M416,178 C520,182 540,188 626,190" marker-end="url(#arwA)"/>
+          <path class="ref" d="M415,168 C620,120 720,140 826,184" marker-end="url(#arwA)"/>
+          <circle class="op" cx="160" cy="300" r="14"/>
+          <circle class="op" cx="160" cy="215" r="14"/>
+          <circle class="op" cx="160" cy="130" r="14"/>
+          <circle class="op" cx="400" cy="300" r="14"/>
+          <circle class="op" cx="400" cy="175" r="14"/>
+          <circle class="op" cx="640" cy="300" r="14"/>
+          <circle class="op" cx="640" cy="190" r="14"/>
+          <circle class="op" cx="840" cy="300" r="14"/>
+          <circle class="op" cx="840" cy="190" r="14"/>
+          <text class="lbl mut" x="160" y="338" text-anchor="middle">retry wrapper</text>
+          <text class="lbl mut" x="400" y="338" text-anchor="middle">fetch()</text>
+          <text class="lbl mut" x="640" y="338" text-anchor="middle">sync()</text>
+          <text class="lbl mut" x="840" y="338" text-anchor="middle">poll()</text>
+        </g>
+        <!-- step1: mark X = A.v2 -->
+        <g data-step="1">
+          <circle class="op hot" cx="160" cy="215" r="16"/>
+          <text class="lbl b" style="fill:#fff" x="160" y="220" text-anchor="middle">X</text>
+          <text class="lbl sm" x="118" y="200" text-anchor="end">pick the op that added retry</text>
+        </g>
+        <!-- step2: up-set ↑X = {X, A.v3, B.tip, C.tip, D.tip} -->
+        <g data-step="2">
+          <circle class="op tip" cx="160" cy="130" r="14"/>
+          <circle class="op tip" cx="400" cy="175" r="14"/>
+          <circle class="op tip" cx="640" cy="190" r="14"/>
+          <circle class="op tip" cx="840" cy="190" r="14"/>
+          <text class="lbl b t-acc" x="500" y="62" text-anchor="middle">↑X lights up — X and everything that came to depend on it</text>
+        </g>
+        <!-- step3: subtract ↑X (dashed-out) -->
+        <g data-step="3">
+          <circle cx="160" cy="215" r="16" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <circle cx="160" cy="130" r="14" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <circle cx="400" cy="175" r="14" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <circle cx="640" cy="190" r="14" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <circle cx="840" cy="190" r="14" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <text class="lbl b t-acc" x="500" y="92" text-anchor="middle">subtract the whole cone — what remains is still a legal selection</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="4">
+      What's left materializes to compilable code, and <span class="em">revert mints no new op</span> — it
+      just moves ops out of the current selection. Change your mind? Add them back.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 8 · CHERRY-PICK / PIN ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>08</b> · Walkthrough — cherry-pick &amp; pin</div>
+    <h2>Lift a fix onto release = <span class="mono em">I ∪ ↓X</span> · roll back one function = <span class="em">pin</span></h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 360" role="img" aria-label="cherry-pick pulls in a down-set of prerequisites; pin selects an older tip on one chain while others stay put">
+        <!-- LEFT: cherry-pick -->
+        <text class="lbl b" x="40" y="40">cherry-pick(X) = I ∪ ↓X</text>
+        <g>
+          <line class="edge" x1="120" y1="300" x2="120" y2="130" marker-end="url(#arw)"/>
+          <line class="edge" x1="300" y1="300" x2="300" y2="200" marker-end="url(#arw)"/>
+          <path class="ref" d="M135,215 C210,215 220,250 286,250" marker-end="url(#arwA)"/>
+          <circle class="op" cx="120" cy="300" r="13"/>
+          <circle class="op" cx="120" cy="215" r="13"/>
+          <circle class="op" cx="300" cy="300" r="13"/>
+          <text class="lbl mut" x="120" y="336" text-anchor="middle">helper it needs</text>
+          <text class="lbl mut" x="300" y="336" text-anchor="middle">the hotfix</text>
+        </g>
+        <!-- step1: X chosen -->
+        <g data-step="1">
+          <circle class="op hot" cx="300" cy="200" r="15"/>
+          <text class="lbl b" style="fill:#fff" x="300" y="205" text-anchor="middle">X</text>
+        </g>
+        <!-- step2: down-set pulled in -->
+        <g data-step="2">
+          <circle class="op tip" cx="120" cy="215" r="13"/>
+          <circle class="op tip" cx="120" cy="300" r="13"/>
+          <circle class="op tip" cx="300" cy="300" r="13"/>
+          <text class="lbl sm t-acc" x="210" y="150" text-anchor="middle">↓X: X drags in what it depends on</text>
+        </g>
+
+        <!-- divider -->
+        <line class="edge dim" x1="520" y1="30" x2="520" y2="330" data-step="3"/>
+
+        <!-- RIGHT: pin -->
+        <g data-step="3">
+          <text class="lbl b" x="600" y="40">pin — choose a version</text>
+          <line class="edge" x1="700" y1="300" x2="700" y2="130" marker-end="url(#arw)"/>
+          <circle class="op" cx="700" cy="300" r="13"/><text class="vlabel" x="720" y="305">v1</text>
+          <circle class="op" cx="700" cy="215" r="13"/><text class="vlabel" x="720" y="220">v2</text>
+          <circle class="op" cx="700" cy="130" r="13"/><text class="vlabel" x="720" y="135">v3</text>
+        </g>
+        <g data-step="4">
+          <!-- pin the older op (v2) as tip -->
+          <circle class="op tip" cx="700" cy="215" r="15"/>
+          <circle cx="700" cy="130" r="13" fill="#FAFAF8" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
+          <path d="M760,215 h60" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arwA)"/>
+          <text class="lbl sm t-acc" x="828" y="205">pin an older op as the tip</text>
+          <text class="lbl sm" x="828" y="225">every other chain untouched</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="5">
+      "Roll <span class="mono">slugify()</span> back to last week" = pin that one chain to an older op;
+      nothing else moves. All set operations, all exact.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 9 · THE ONLY CONFLICT ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>09</b> · The only conflict</div>
+    <h2>The one thing set algebra can't do:<br>two edits to the same function.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 350" role="img" aria-label="a symbol chain forks into two tips; sgt surfaces the fork and resolves it with an agent-authored merge op gated by the oracle">
+        <!-- base chain -->
+        <g data-step="1">
+          <line class="edge" x1="200" y1="300" x2="200" y2="230" marker-end="url(#arw)"/>
+          <circle class="op" cx="200" cy="300" r="15"/><text class="vlabel" x="224" y="305">v1</text>
+          <circle class="op" cx="200" cy="215" r="15"/><text class="vlabel" x="224" y="220">v2</text>
+          <text class="lbl mut" x="200" y="336" text-anchor="middle">parse_config()</text>
+        </g>
+        <!-- fork -->
+        <g data-step="2">
+          <path class="edge" d="M188,204 C150,160 130,140 118,116" marker-end="url(#arw)"/>
+          <path class="edge" d="M212,204 C250,160 270,140 282,116" marker-end="url(#arw)"/>
+          <circle class="op hot" cx="110" cy="100" r="15"/>
+          <circle class="op hot" cx="290" cy="100" r="15"/>
+          <text class="lbl sm" style="fill:#fff" x="110" y="105" text-anchor="middle">v3a</text>
+          <text class="lbl sm" style="fill:#fff" x="290" y="105" text-anchor="middle">v3b</text>
+          <text class="lbl b t-acc" x="200" y="70" text-anchor="middle">two teammates edit it → the chain forks (two tips)</text>
+        </g>
+        <!-- merge-op -->
+        <g data-step="3">
+          <text class="lbl b" x="560" y="112">merge-op</text>
+          <path class="edge dim" d="M126,100 C400,100 420,180 560,180" marker-end="url(#arw)"/>
+          <path class="edge dim" d="M306,100 C440,100 460,180 560,180" marker-end="url(#arw)"/>
+          <circle class="op tip" cx="580" cy="180" r="18"/>
+          <text class="lbl sm t-acc" x="580" y="185" text-anchor="middle">v4</text>
+          <text class="lbl sm" x="608" y="176">both tips as parents</text>
+          <text class="lbl sm" x="608" y="196">agent / human writes the merged bytes</text>
+        </g>
+        <g data-step="4">
+          <path class="ref" d="M812,208 V250" marker-end="url(#arwA)"/>
+          <rect class="card" x="700" y="254" width="240" height="58" rx="10" stroke="var(--accent)"/>
+          <text class="lbl b t-acc" x="720" y="284">oracle gate</text>
+          <text class="lbl sm" x="720" y="304">lands only if build / test passes</text>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="5">
+      sgt <span class="em">never does a text 3-way merge</span> — it makes the fork explicit and asks for one
+      new op. This is the sole escape hatch where the algebra can't produce the bytes on its own.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 10 · FEATURE LENS ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>10</b> · The feature lens</div>
+    <h2>"What does this codebase contain?"<br>An overlay tree — pure metadata.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 380" role="img" aria-label="coloured feature groups overlaid on a grey op DAG, alongside a small 5-to-9-way feature tree">
+        <!-- grey op DAG -->
+        <g data-step="1">
+          <g stroke="var(--faint)" stroke-width="1.4">
+            <line x1="120" y1="300" x2="120" y2="200"/>
+            <line x1="230" y1="300" x2="230" y2="150"/>
+            <line x1="360" y1="300" x2="360" y2="200"/>
+            <line x1="480" y1="300" x2="480" y2="180"/>
+            <line x1="590" y1="300" x2="590" y2="200"/>
+          </g>
+          <g fill="#fff" stroke="var(--faint)" stroke-width="1.4">
+            <circle cx="120" cy="300" r="11"/><circle cx="120" cy="190" r="11"/>
+            <circle cx="230" cy="300" r="11"/><circle cx="230" cy="140" r="11"/>
+            <circle cx="360" cy="300" r="11"/><circle cx="360" cy="190" r="11"/>
+            <circle cx="480" cy="300" r="11"/><circle cx="480" cy="170" r="11"/>
+            <circle cx="590" cy="300" r="11"/><circle cx="590" cy="190" r="11"/>
+          </g>
+        </g>
+        <!-- feature blobs (muted multi-hue: colour = feature identity) -->
+        <g data-step="2">
+          <ellipse cx="145" cy="245" rx="70" ry="90" fill="var(--f2)" fill-opacity=".16" stroke="var(--f2)" stroke-width="1.2"/>
+          <ellipse cx="290" cy="225" rx="95" ry="110" fill="var(--f3)" fill-opacity=".15" stroke="var(--f3)" stroke-width="1.2"/>
+          <ellipse cx="535" cy="235" rx="95" ry="100" fill="var(--f4)" fill-opacity=".15" stroke="var(--f4)" stroke-width="1.2"/>
+          <text class="lbl sm" style="fill:var(--f2)" x="120" y="170">sync</text>
+          <text class="lbl sm" style="fill:var(--f3)" x="280" y="120">auth</text>
+          <text class="lbl sm" style="fill:var(--f4)" x="520" y="150">cache</text>
+        </g>
+        <!-- tree -->
+        <g data-step="3">
+          <text class="lbl b" x="720" y="60">feature tree · 5–9 per level</text>
+          <line class="edge dim" x1="800" y1="90" x2="720" y2="140"/>
+          <line class="edge dim" x1="800" y1="90" x2="800" y2="140"/>
+          <line class="edge dim" x1="800" y1="90" x2="880" y2="140"/>
+          <circle cx="800" cy="82" r="9" fill="var(--ink)"/>
+          <circle cx="720" cy="150" r="8" fill="var(--f2)"/>
+          <circle cx="800" cy="150" r="8" fill="var(--f3)"/>
+          <circle cx="880" cy="150" r="8" fill="var(--f4)"/>
+          <line class="edge dim" x1="800" y1="158" x2="760" y2="200"/>
+          <line class="edge dim" x1="800" y1="158" x2="840" y2="200"/>
+          <circle cx="760" cy="208" r="6" fill="var(--f3)" fill-opacity=".6"/>
+          <circle cx="840" cy="208" r="6" fill="var(--f3)" fill-opacity=".6"/>
+          <text class="lbl sm mut" x="720" y="238">a leaf = a group of ops</text>
+        </g>
+        <!-- caption box -->
+        <g data-step="4">
+          <rect class="card" x="120" y="332" width="740" height="40" rx="8"/>
+          <text class="lbl" x="140" y="357">merge / split / rename a feature — <tspan class="t-acc b">not a byte of code moves</tspan>; identity survives re-clustering by member overlap, manual fixes persist as pins.</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 11 · HOW IT WORKS ============================ -->
+<section class="slide">
+  <div class="wrap">
+    <div class="kicker"><b>11</b> · How it works</div>
+    <h2>One bidirectional lens: <span class="mono em">get</span> ⇄ <span class="mono em">put</span>.</h2>
+    <div class="diagram">
+      <svg viewBox="0 0 980 360" role="img" aria-label="the get/put lens loop: working tree mined into an op store, ideal materialized back to the working tree and committed, all over a git substrate with an oracle gate">
+        <!-- nodes -->
+        <rect class="card" x="70" y="150" width="150" height="70" rx="12"/>
+        <text class="lbl b" x="145" y="180" text-anchor="middle">working tree</text>
+        <text class="lbl sm" x="145" y="200" text-anchor="middle">your edits</text>
+
+        <rect class="card" x="415" y="60" width="170" height="70" rx="12"/>
+        <text class="lbl b" x="500" y="90" text-anchor="middle">op store</text>
+        <text class="lbl sm" x="500" y="110" text-anchor="middle">the graph (O, ≤)</text>
+
+        <rect class="card" x="770" y="150" width="150" height="70" rx="12"/>
+        <text class="lbl b" x="845" y="180" text-anchor="middle">the selection</text>
+        <text class="lbl sm" x="845" y="200" text-anchor="middle">one tip per chain</text>
+
+        <!-- get arc -->
+        <g data-step="1">
+          <path class="edge" d="M220,168 C300,110 340,95 411,95" marker-end="url(#arw)"/>
+          <text class="lbl b t-acc" x="300" y="118">get</text>
+          <text class="lbl sm" x="300" y="136">mine: your edits → ops in the store</text>
+        </g>
+        <!-- store -> ideal -->
+        <g data-step="2">
+          <path class="edge" d="M589,95 C660,95 700,140 772,168" marker-end="url(#arw)"/>
+        </g>
+        <!-- put arc -->
+        <g data-step="3">
+          <path class="edge" d="M770,196 C560,300 400,300 222,200" marker-end="url(#arw)"/>
+          <text class="lbl b t-acc" x="470" y="300" text-anchor="middle">put</text>
+          <text class="lbl sm" x="470" y="318" text-anchor="middle">code(selection) → working tree → git commit (a witness)</text>
+        </g>
+        <!-- git substrate + oracle -->
+        <g data-step="4">
+          <rect x="40" y="30" width="900" height="300" rx="14" fill="none" stroke="var(--hair)" stroke-width="1.4" stroke-dasharray="2 4"/>
+          <text class="lbl sm mut" x="52" y="50">git — the byte store &amp; transport, underneath the whole thing</text>
+          <rect class="card" x="640" y="250" width="240" height="56" rx="10" stroke="var(--accent)"/>
+          <text class="lbl b t-acc" x="660" y="278">oracle</text>
+          <text class="lbl sm" x="660" y="296">async · tiered · the one semantic gate</text>
+          <path class="ref" d="M845,222 V248" marker-end="url(#arwA)"/>
+        </g>
+      </svg>
+    </div>
+    <p class="cap lift" data-step="5">
+      What it bets on: the <span class="em">symbol</span>, not the commit, is the right atom; a state is a
+      <span class="em">set</span>, not a sequence; ops are <span class="em">mined</span> from real edits (sgt never writes
+      your code); and git stays the one source of bytes. If those hold, every history question is a set operation.
+    </p>
+  </div>
+</section>
+
+<div id="hud">
+  <button id="prev" aria-label="previous">‹</button>
+  <span id="count">1 / 11</span>
+  <button id="next" aria-label="next">›</button>
+</div>
+<div id="hint">← / → · space to advance</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var bar = document.getElementById('bar');
+  var count = document.getElementById('count');
+  var cur = 0, step = 0;
+  // opt-in URL params (default deck behaviour is unchanged):
+  //   ?full   reveal every step on every slide at once (share / print / screenshot)
+  //   #N      open directly at slide N (1-based) — deep-link to a slide
+  var showAll = /(^|[?&])full(=|&|$)/.test(location.search);
+
+  function maxStep(slide){
+    var ns = Array.prototype.map.call(
+      slide.querySelectorAll('[data-step]'), function(el){ return +el.dataset.step; });
+    return ns.length ? Math.max.apply(null, ns) : 0;
+  }
+  function render(){
+    slides.forEach(function(s,i){ s.classList.toggle('active', i===cur); });
+    var slide = slides[cur];
+    Array.prototype.forEach.call(slide.querySelectorAll('[data-step]'), function(el){
+      el.classList.toggle('shown', showAll || (+el.dataset.step) <= step);
+    });
+    count.textContent = (cur+1) + ' / ' + slides.length;
+    bar.style.width = ((cur+1)/slides.length*100) + '%';
+  }
+  function next(){
+    if(!showAll && step < maxStep(slides[cur])) step++;
+    else if(cur < slides.length-1){ cur++; step = 0; }
+    render();
+  }
+  function prev(){
+    if(!showAll && step > 0) step--;
+    else if(cur > 0){ cur--; step = showAll ? 0 : maxStep(slides[cur]); }
+    render();
+  }
+  function goto(i){ if(i>=0 && i<slides.length){ cur=i; step=0; render(); } }
+
+  document.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight' || e.key==='ArrowDown' || e.key===' ' || e.key==='PageDown'){
+      e.preventDefault(); next();
+    } else if(e.key==='ArrowLeft' || e.key==='ArrowUp' || e.key==='PageUp'){
+      e.preventDefault(); prev();
+    } else if(e.key==='Home'){ goto(0); }
+      else if(e.key==='End'){ goto(slides.length-1); }
+  });
+  document.body.addEventListener('click', function(){ next(); });
+  document.getElementById('next').addEventListener('click', function(e){ e.stopPropagation(); next(); });
+  document.getElementById('prev').addEventListener('click', function(e){ e.stopPropagation(); prev(); });
+
+  // honour a #N deep-link on load
+  var h = parseInt((location.hash || '').replace('#',''), 10);
+  if(h >= 1 && h <= slides.length){ cur = h - 1; }
+  render();
+})();
+</script>
+</body>
+</html>
