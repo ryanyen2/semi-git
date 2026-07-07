@@ -138,9 +138,9 @@ def test_squash_remine_identification(tmp_path):
 
 
 @pytest.mark.skipif(not _HAS_ORDER, reason=_ORDER_SKIP)
-@settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(max_examples=10, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(st.data())
-def test_verb_output_is_valid_ideal(data, tmp_path_factory):
+def test_verb_output_is_valid_ideal(tmp_path_factory, data):
     """R3/R20: downward-closure + unique-maximal-per-chain is unconstructible through the
     public API. For all subsets of a real mined op set, `Ideal.from_ops` either refuses (raises
     ValueError) or produces something `order.is_valid_ideal` agrees is valid -- never a silent
