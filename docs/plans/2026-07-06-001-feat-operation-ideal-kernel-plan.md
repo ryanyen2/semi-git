@@ -246,6 +246,19 @@ flowchart TB
 - **Test scenarios:** `state_view` coverage fraction correct on a mixed Python/YAML fixture; `ideal_diff_view` between a branch ideal and main lists exactly the symmetric-difference ops grouped by symbol; views are pure over a freshly opened project (no network); golden snapshots capture the new views.
 - **Verification:** golden snapshot run green; `sgt log/state/diff --json` outputs match api views byte-for-byte.
 
+### U7.5. Persist ref→ideal; safe working-tree get/put
+
+- **Goal:** Make an explicitly-edited ideal durable, and make materialization safe against uncommitted work — the two preconditions U8's verbs assume. U6 deliberately deferred both (FINDINGS.md, 2026-07-07 "U6 lens wiring"); they must close before U8's materializing verbs ship.
+- **Requirements:** R9, R10, R20
+- **Dependencies:** U7
+- **Note:** blocks U8 — U8's verbs call `put()` from user-facing code, which is exactly the combination these two gaps make unsafe or lossy.
+- **Gap 1 — ref→ideal not persisted.** `sgt/core/lens.py::_reconstruct_ideal` *derives* the ideal on every `get()` as "every stored op whose provenance intersects the ref's commit ancestry", and `put()` writes `Sgt-Op:` trailers that are never read back. But revert / cherry-pick / pin (U8) produce ideals that intentionally *differ* from what git provenance implies — so a derived ideal either loses the explicit edit or re-mines it as a fresh op on the next `get()`. Fix: persist the ref→ideal frontier (the per-chain frontier vector, this plan's KTD) in `.sgt/local/`, and have `get()` trust the stored ideal for the current ref while mining only genuinely-new commits beyond the stored witness.
+- **Gap 2 — get() ignores the dirty working tree; put() clobbers it.** `get()` mines only committed history; `put()`'s `_write_working_tree` overwrites unconditionally with no dirty check. Together, an U8 verb calling `put()` silently discards uncommitted work (R9 requires mine-before-materialize). Fix: `get()` must mine the dirty working tree — diff HEAD's tree against the filesystem, not just commits, which needs `mine()`'s per-commit body decoupled from real commit SHAs — and `put()` must refuse (or stash/absorb) uncommitted changes rather than destroy them.
+- **Files:** `sgt/core/lens.py`, `sgt/store/gitbind.py`, `tests/core/test_lens.py`
+- **Approach:** Add a persisted ref→ideal table (frontier-vector form) under `.sgt/local/`, written on every ideal-advancing `get()`/`put()` and read back as the authoritative current ideal for a ref; mine only commits past the stored witness. Decouple `mine()`'s per-commit body from a real commit SHA so a dirty working tree diffs against HEAD's tree as a virtual "pending commit"; `get()` folds that pending delta in before returning. `put()` gains a mine-before-materialize guard: it calls `get()` first and refuses to overwrite paths with unabsorbed uncommitted changes.
+- **Test scenarios:** a revert's persisted ideal survives a re-`get()` without re-mining the reverted op as new; a pin to an older version is not silently re-derived away by provenance; a dirty working-tree edit is mined before a verb materializes over it (R9); `put()` over an uncommitted change refuses rather than discarding it; the U6 round-trip laws (put∘get, get∘put, squash-remine identification) stay green with the persisted table in place.
+- **Verification:** the deferred-gap note in FINDINGS.md (2026-07-07 "U6 lens wiring") is closed; U8 can call `put()` from a verb without data loss; U1's put∘get / get∘put laws remain green.
+
 ### Phase P2 — The verbs
 
 ### U8. Ideal-edit verbs with previews

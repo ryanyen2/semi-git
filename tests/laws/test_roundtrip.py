@@ -98,6 +98,36 @@ def test_coverage_every_path_has_an_image(tmp_path):
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
+def test_fully_removed_file_leaves_no_phantom(tmp_path):
+    """get-put fidelity (R7/R20): a file added with an entity and then fully ``git rm``'d
+    resurrects nowhere. Its anchor pseudo-symbol is ordering metadata mining never revises to
+    BOTTOM, so it lingers at the frontier after the entity and residue are pruned -- but an
+    anchor produces no bytes, so it must not keep the path alive as an empty ``b''``. A sibling
+    that keeps >=1 entity after losing another (positive control) stays covered, materializing
+    only the survivor's exact bytes. `code(I)` and `covered_paths` must agree exactly."""
+    from sgt.core.fold import code
+    from sgt.core.lens import get
+    from sgt.core.store import Store
+
+    repo = corpus.CORPUS["removed_paths"].build(tmp_path / "repo")
+    ideal = get(repo)
+    ops = Store(repo).all_ops()
+    materialized = code(ideal, ops)
+    covered = ideal.covered_paths(ops)
+
+    # Negative: the fully-removed file is gone from both the fold and coverage -- no b'' phantom.
+    assert "gone.py" not in materialized, f"removed file resurrected: {materialized.get('gone.py')!r}"
+    assert "gone.py" not in covered, "removed file still reported covered by a lingering anchor"
+
+    # Positive control: the sibling stays covered, materializing only the surviving entity.
+    assert "survivor.py" in covered
+    assert materialized.get("survivor.py") == (repo / "survivor.py").read_bytes()
+
+    # The two views agree exactly on which paths materialize (R7 coverage law).
+    assert set(materialized) == set(covered)
+
+
+@pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
 def test_locality(tmp_path):
     """Locality (07-02 S6.3): mining one commit only mints ops whose footprint touches paths
     that commit -- or an earlier one in that same symbol's own history -- actually changed; an

@@ -18,6 +18,7 @@ from sgt.project import Project
 
 _VERBS = {"init", "plan", "merge", "split", "checkpoint", "sync", "revert", "restore", "reconcile",
           "show", "graph", "status", "blame", "export",
+          "log", "state", "diff",
           "decisions", "tag", "tui", "mcp", "help", "fsck"}
 
 
@@ -125,6 +126,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "fsck":
         return _fsck(repo, as_json)
+
+    if cmd == "log":
+        return _log(repo, as_json)
+
+    if cmd == "state":
+        return _state(repo, as_json)
+
+    if cmd == "diff":
+        if len(rest) < 2:
+            print("usage: sgt diff [--json] <ref-a> <ref-b>")
+            return 2
+        return _diff(repo, rest[0], rest[1], as_json)
 
     if cmd == "decisions":
         return _decisions(repo, rest, as_json)
@@ -351,6 +364,63 @@ def _fsck(repo: str, as_json: bool = False) -> int:
     return 0 if report.ok else 1
 
 
+def _log(repo: str, as_json: bool = False) -> int:
+    """The kernel op DAG (plan U7). Mine-on-contact first, then project via `sgt.api.oplog_view`."""
+    from sgt.api import oplog_view
+    from sgt.core.lens import get
+
+    get(repo)  # sync foreign commits into the store before inspecting it
+    view = oplog_view(repo)
+    if as_json:
+        return _emit_json(view)
+    if not view["ops"]:
+        print("(no ops — nothing mined yet; commit some work then run `sgt log`)")
+        return 0
+    print(f"{view['count']} op(s):")
+    for op in view["ops"]:
+        syms = ", ".join(f["symbol"] for f in op["footprint"])
+        print(f"  {op['id'][:12]} [{op['kind']}]: {syms}")
+    return 0
+
+
+def _state(repo: str, as_json: bool = False) -> int:
+    """The current ref's ideal (plan U7): frontier, coverage, entity-granularity fraction."""
+    from sgt.api import state_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so the ideal reflects current reality
+    view = state_view(repo)
+    if as_json:
+        return _emit_json(view)
+    pct = view["coverage_fraction"] * 100
+    print(f"{len(view['frontier'])} symbol(s) at the frontier; "
+          f"{len(view['covered_paths'])} path(s) covered, "
+          f"{len(view['entity_paths'])} at entity granularity ({pct:.0f}%)")
+    for path in view["covered_paths"]:
+        mark = "entity" if path in set(view["entity_paths"]) else "whole-file"
+        print(f"  {path}  ({mark})")
+    return 0
+
+
+def _diff(repo: str, ref_a: str, ref_b: str, as_json: bool = False) -> int:
+    """Ideal-vs-ideal semantic diff (plan U7): the symmetric difference grouped by symbol."""
+    from sgt.api import ideal_diff_view
+    from sgt.core.lens import get
+
+    get(repo)  # sync the current ref; ref_a/ref_b use whatever the store already holds
+    view = ideal_diff_view(repo, ref_a, ref_b)
+    if as_json:
+        return _emit_json(view)
+    print(f"{view['count']} differing op(s) between {ref_a} (a) and {ref_b} (b):")
+    for sym, sides in view["by_symbol"].items():
+        print(f"  {sym}")
+        for oid in sides["only_in_a"]:
+            print(f"    a: {oid[:12]}")
+        for oid in sides["only_in_b"]:
+            print(f"    b: {oid[:12]}")
+    return 0
+
+
 def _decisions(repo: str, rest: list[str], as_json: bool) -> int:
     """The decision DAG. `sgt decisions [--json]` → the graph; `decisions frontier` → the frontier."""
     from sgt.api import decision_graph_view, frontier_view
@@ -461,6 +531,9 @@ def _help() -> int:
         "  sgt blame <file>           which feature owns each line of a file (semantic blame)\n"
         "  sgt export                 dump the whole graph as JSON (nodes, edges, effects)\n"
         "  sgt fsck [--json]          verify the kernel op store's content-address integrity\n"
+        "  sgt log [--json]           the mined operation DAG (kernel)\n"
+        "  sgt state [--json]         the current ref's ideal: frontier, coverage, entity-granularity fraction\n"
+        "  sgt diff [--json] <a> <b>  semantic diff between two refs' ideals, grouped by symbol\n"
         "  sgt map [--json]           the deterministic code-entity map (whole repo)\n"
         "  sgt timeframe <n> [--json] the map as of checkpoint ordinal n (the scrubber frame)\n"
         "  sgt tui                    open the terminal UI (needs `semi-git[tui]`)\n"

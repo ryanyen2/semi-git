@@ -1,0 +1,112 @@
+{
+  "ideal_diff_view": {
+    "by_symbol": {
+      "slugify.py::slugify": {
+        "only_in_a": [
+          "32321fb2b304cacad66f629dd6c3450e8c1aeb705ba0016cdbe63858fb5bba83"
+        ],
+        "only_in_b": [
+          "f5949bff4d344da7867a60439f761d8be913f8ce3f2f4e7cbc0bdee7b9e5d45e"
+        ]
+      }
+    },
+    "count": 2,
+    "ref_a": "main",
+    "ref_b": "release"
+  },
+  "oplog_view": {
+    "count": 5,
+    "ops": [
+      {
+        "footprint": [
+          {
+            "after": "b5812fd71f3de69bed000ad0238107a002de9d86",
+            "before": "bf135bc412b785389ca5025ec87188fcf21310bf",
+            "symbol": "slugify.py::slugify"
+          }
+        ],
+        "id": "32321fb2b304cacad66f629dd6c3450e8c1aeb705ba0016cdbe63858fb5bba83",
+        "intent": null,
+        "kind": "rework",
+        "provenance": [
+          "b9baae3f74b5f8ca12354e92d8a87589e75debfa"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "before": null,
+            "symbol": "slugify.py::__anchor__::slugify"
+          }
+        ],
+        "id": "432eea231e85c983c81095349b979ee57a5aa642415a963ddde747f31feed769",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "bf135bc412b785389ca5025ec87188fcf21310bf",
+            "before": null,
+            "symbol": "slugify.py::slugify"
+          }
+        ],
+        "id": "a632bc29f2388ecef03c9b57ecc792090731f33665f452c29267a09ff7c7c1f5",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            "before": null,
+            "symbol": "slugify.py::__residue__"
+          }
+        ],
+        "id": "f1237af4b720c83dd13c2601ec7dec0e913f8a3c89413356ef2db6b9910a4868",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "7fccf605018c6a70d85c4d6e99698a0d625b15e1",
+            "before": "bf135bc412b785389ca5025ec87188fcf21310bf",
+            "symbol": "slugify.py::slugify"
+          }
+        ],
+        "id": "f5949bff4d344da7867a60439f761d8be913f8ce3f2f4e7cbc0bdee7b9e5d45e",
+        "intent": null,
+        "kind": "rework",
+        "provenance": [
+          "eacd3ebbf82ccf0a4a2f484bd3f99f4574086739"
+        ]
+      }
+    ]
+  },
+  "state_view": {
+    "coverage_fraction": 1.0,
+    "covered_paths": [
+      "slugify.py"
+    ],
+    "entity_paths": [
+      "slugify.py"
+    ],
+    "frontier": {
+      "slugify.py::__anchor__::slugify": "432eea231e85c983c81095349b979ee57a5aa642415a963ddde747f31feed769",
+      "slugify.py::__residue__": "f1237af4b720c83dd13c2601ec7dec0e913f8a3c89413356ef2db6b9910a4868",
+      "slugify.py::slugify": "f5949bff4d344da7867a60439f761d8be913f8ce3f2f4e7cbc0bdee7b9e5d45e"
+    },
+    "oracle_verdict": null
+  }
+}

@@ -11,12 +11,14 @@ leakage. `test_golden.py` snapshots the views these builders produce and fails o
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable, NamedTuple
 
 from sgt import api
 from sgt.effects.model import Effect
 from sgt.project import Project
 from sgt.store.graph import Node, NodeKind, NodeStatus
+from tests.laws import corpus as _kernel_git_corpus
 
 
 def _linear_deps(tmp: str) -> Project:
@@ -90,4 +92,48 @@ def capture_views(project: Project, case: Case) -> dict:
     }
     for f in case.files:
         views[f"blame_view::{f}"] = api.blame_view(project, f)
+    return views
+
+
+# -- kernel views (plan U7) -------------------------------------------------------------------
+# The operation-ideal kernel's read surface (`oplog_view`/`state_view`/`ideal_diff_view`) reads a
+# mined git repo, not an in-memory `Project`, so it needs git-repo fixtures. We reuse the
+# deterministic, pinned-SHA fixtures the round-trip law harness already builds
+# (`tests/laws/corpus.py`) -- same discipline (no LLM/network/wall-clock), applied to real git
+# history -- so these kernel snapshots are byte-stable across runs too.
+
+
+class KernelCase(NamedTuple):
+    laws_name: str  # which tests/laws/corpus.py fixture to build and mine
+    diff_refs: tuple[str, str] | None  # (ref_a, ref_b) to also snapshot ideal_diff_view, else None
+
+
+KERNEL_CORPUS: dict[str, KernelCase] = {
+    "mixed_coverage": KernelCase("mixed_coverage", None),
+    "diverged_chain": KernelCase("diverged_chain", ("main", "release")),
+}
+
+
+def capture_kernel_views(name: str, root: str) -> dict:
+    """Build a deterministic git-repo kernel fixture, mine it (`get`), and capture the U7 kernel
+    views. Mirrors `capture_views` for the op-ideal kernel: the op DAG, the current ideal, and --
+    for a diverged fixture -- the ideal-vs-ideal semantic diff between its two branches."""
+    from sgt.core.lens import get
+
+    case = KERNEL_CORPUS[name]
+    repo = _kernel_git_corpus.CORPUS[case.laws_name].build(Path(root))
+    if case.diff_refs:
+        for ref in case.diff_refs:  # mine both branches so the diff sees both sides' ops
+            _kernel_git_corpus.checkout(repo, ref)
+            get(repo)
+    else:
+        get(repo)
+
+    views: dict = {
+        "oplog_view": api.oplog_view(repo),
+        "state_view": api.state_view(repo),
+    }
+    if case.diff_refs:
+        a, b = case.diff_refs
+        views["ideal_diff_view"] = api.ideal_diff_view(repo, a, b)
     return views

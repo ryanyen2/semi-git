@@ -141,11 +141,12 @@ class GitBinding:
         return proc.returncode == 0 and bool(proc.stdout.strip())
 
     # -- commits -----------------------------------------------------------
-    def commit_shas(self) -> list[str]:
-        """All commit SHAs, newest first. Empty before the first commit."""
-        proc = self._git("log", "--format=%H", check=False)
+    def commit_shas(self, ref: str = "HEAD") -> list[str]:
+        """Commit SHAs reachable from ``ref`` (default HEAD), newest first. Empty before the
+        first commit, or if ``ref`` doesn't resolve."""
+        proc = self._git("log", "--format=%H", ref, check=False)
         if proc.returncode != 0:
-            return []  # no commits yet
+            return []  # no commits yet, or ref doesn't resolve
         return [line for line in proc.stdout.splitlines() if line]
 
     def head(self) -> str | None:

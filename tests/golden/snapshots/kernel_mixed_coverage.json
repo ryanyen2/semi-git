@@ -1,0 +1,151 @@
+{
+  "oplog_view": {
+    "count": 8,
+    "ops": [
+      {
+        "footprint": [
+          {
+            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            "before": null,
+            "symbol": "util.py::__residue__"
+          }
+        ],
+        "id": "3030af093d83c1fec533490a2e0238413edf0b0db8a416c6d7c5861646afe6fb",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            "before": null,
+            "symbol": "pkg.py::__residue__"
+          }
+        ],
+        "id": "31801cf9dcc491a286bbc8b1ba70fe5f67e00a4e15044ffde97b61d04d9b6e07",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "before": null,
+            "symbol": "util.py::__anchor__::helper"
+          }
+        ],
+        "id": "50500c118015f90f0724ddb4b26b76390e5b6759b712fb05403c456bb0ae4916",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "bf24c3dc4546aa772b7afbd7c97a68addce989ee",
+            "before": null,
+            "symbol": "util.py::helper"
+          }
+        ],
+        "id": "562c695c19ca9794c1baf83c01e1c0a0d677ff3497282611dc9a005b4218640e",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "bc478fba9d4295b8c0b1f7ff43e06900780ced3b",
+            "before": null,
+            "symbol": "pkg.py::compute"
+          }
+        ],
+        "id": "7d7e9d8fdc5a74cbf205a3599122c4b77b0fc9daa269db02f10b644afc2592ab",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "327dc8661b37b9002545f79befead311f59e04ef",
+            "before": null,
+            "symbol": "config.yaml"
+          }
+        ],
+        "id": "9b71465cd7530e02cf3054d16bf52799e1a97048104a16315ef665dc49ff41c0",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "before": null,
+            "symbol": "pkg.py::__anchor__::compute"
+          }
+        ],
+        "id": "a230384bf23346054b8162b6f6c155f2db6a8c7801ee1427b69aa9c5a60a625d",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "7c88e8a591766f27635a5bdab01832a59b04cf2e",
+            "before": null,
+            "symbol": "notes.md"
+          }
+        ],
+        "id": "b676dd243f472de67d7dc2717bfcf4509208dc65336781a55d24ea0464732b24",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      }
+    ]
+  },
+  "state_view": {
+    "coverage_fraction": 0.5,
+    "covered_paths": [
+      "config.yaml",
+      "notes.md",
+      "pkg.py",
+      "util.py"
+    ],
+    "entity_paths": [
+      "pkg.py",
+      "util.py"
+    ],
+    "frontier": {
+      "config.yaml": "9b71465cd7530e02cf3054d16bf52799e1a97048104a16315ef665dc49ff41c0",
+      "notes.md": "b676dd243f472de67d7dc2717bfcf4509208dc65336781a55d24ea0464732b24",
+      "pkg.py::__anchor__::compute": "a230384bf23346054b8162b6f6c155f2db6a8c7801ee1427b69aa9c5a60a625d",
+      "pkg.py::__residue__": "31801cf9dcc491a286bbc8b1ba70fe5f67e00a4e15044ffde97b61d04d9b6e07",
+      "pkg.py::compute": "7d7e9d8fdc5a74cbf205a3599122c4b77b0fc9daa269db02f10b644afc2592ab",
+      "util.py::__anchor__::helper": "50500c118015f90f0724ddb4b26b76390e5b6759b712fb05403c456bb0ae4916",
+      "util.py::__residue__": "3030af093d83c1fec533490a2e0238413edf0b0db8a416c6d7c5861646afe6fb",
+      "util.py::helper": "562c695c19ca9794c1baf83c01e1c0a0d677ff3497282611dc9a005b4218640e"
+    },
+    "oracle_verdict": null
+  }
+}

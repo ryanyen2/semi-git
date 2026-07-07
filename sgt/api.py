@@ -469,6 +469,118 @@ def frontier_diff(a: dict, b: dict) -> dict:
     return {"added": added, "revised": revised, "revoked": revoked}
 
 
+# -- kernel views (plan U7) -------------------------------------------------------------------
+# The operation-ideal kernel's own read surface: the op DAG, the current ideal, and ideal-vs-
+# ideal semantic diffs. Additive to the legacy views above (U10 deletes those); these read the
+# kernel store (`.sgt/ops/`) via `sgt.core`, not the legacy semantic graph. They are pure reads
+# over an *already-mined* store -- `sgt.core.lens.get` (mine-on-contact) is the CLI/caller's
+# job, kept out of these functions so they stay side-effect-free like every other view here.
+# `sgt.core.*` is imported lazily (mirroring `entity_graph_view`) so `import sgt.api` never
+# pulls in the kernel's tree-sitter dependency just to render a legacy surface.
+
+
+def oplog_view(repo) -> dict:
+    """The mined operation DAG: every stored op with its id, derived kind, footprint (each
+    symbol's before->after version), witnessing-commit provenance, and intent if any.
+    Deterministic order -- ops sorted by content-address id, every nested list sorted -- so set
+    iteration never leaks into the projection."""
+    from sgt.core.store import Store
+
+    ops = sorted(Store(repo).all_ops(), key=lambda op: op.id)
+    return {
+        "ops": [
+            {
+                "id": op.id,
+                "kind": op.kind,
+                "footprint": [
+                    {"symbol": sym, "before": before, "after": after}
+                    for sym, (before, after) in sorted(op.footprint.items())
+                ],
+                "provenance": sorted(op.provenance),
+                "intent": op.intent,
+            }
+            for op in ops
+        ],
+        "count": len(ops),
+    }
+
+
+def state_view(repo) -> dict:
+    """The current ref's ideal: its per-chain frontier (symbol -> tip op id), the paths
+    `code(I)` covers, R7's entity-granularity coverage fraction, and an `oracle_verdict` slot the
+    async oracle (U9) fills -- ``None`` until then.
+
+    Coverage-fraction definition (R7): of the paths present in the materialized tree, the
+    fraction carried at *entity* granularity -- a path with at least one live top-level or nested
+    entity symbol at the frontier (a parseable def/class/method sgt can revert or cherry-pick on
+    its own) -- versus paths represented only by a whole-file pseudo-symbol or by module-level
+    residue / layout facts (coarse, file-granularity coverage). `entity_paths` is that numerator
+    as an explicit list, so `covered_paths` minus `entity_paths` is exactly the whole-file-only
+    remainder. A ref with nothing covered reports 1.0 (vacuously: nothing is stuck at whole-file
+    granularity)."""
+    from sgt.core.fold import _symbol_kind
+    from sgt.core.lens import ideal_for_ref
+    from sgt.core.op import BOTTOM
+    from sgt.core.store import Store
+
+    store = Store(repo)
+    ops = store.all_ops()
+    ideal = ideal_for_ref(repo, "HEAD", store)
+    frontier = ideal.frontier(ops)
+    by_id = {op.id: op for op in ops}
+
+    covered = ideal.covered_paths(ops)
+    entity_paths: set[str] = set()
+    for sym, op_id in frontier.items():
+        after = by_id[op_id].footprint[sym][1]
+        if after != BOTTOM and _symbol_kind(sym) in ("entity", "nested"):
+            entity_paths.add(sym.split("::", 1)[0])
+
+    return {
+        "frontier": {sym: frontier[sym] for sym in sorted(frontier)},
+        "covered_paths": sorted(covered),
+        "entity_paths": sorted(entity_paths),
+        "coverage_fraction": (len(entity_paths) / len(covered)) if covered else 1.0,
+        "oracle_verdict": None,
+    }
+
+
+def ideal_diff_view(repo, ref_a: str, ref_b: str) -> dict:
+    """The semantic diff between two refs' ideals: the symmetric difference of their op sets
+    (`Ideal.diff`), grouped by symbol and labeled by side (`only_in_a` / `only_in_b`). A pure
+    read over the store -- both refs must already have been mined (via `get()` on each) for the
+    diff to be complete; this projects what the store holds onto each ref's own commit ancestry
+    without checking anything out."""
+    from sgt.core.lens import ideal_for_ref
+    from sgt.core.store import Store
+
+    store = Store(repo)
+    ideal_a = ideal_for_ref(repo, ref_a, store)
+    ideal_b = ideal_for_ref(repo, ref_b, store)
+    by_id = {op.id: op for op in store.all_ops()}
+
+    sym_diff = ideal_a.diff(ideal_b)
+    only_a = sym_diff & ideal_a.op_ids
+    only_b = sym_diff & ideal_b.op_ids
+
+    by_symbol: dict[str, dict[str, list[str]]] = {}
+    for op_id in only_a:
+        for sym in by_id[op_id].footprint:
+            by_symbol.setdefault(sym, {}).setdefault("only_in_a", []).append(op_id)
+    for op_id in only_b:
+        for sym in by_id[op_id].footprint:
+            by_symbol.setdefault(sym, {}).setdefault("only_in_b", []).append(op_id)
+
+    grouped = {
+        sym: {
+            "only_in_a": sorted(sides.get("only_in_a", [])),
+            "only_in_b": sorted(sides.get("only_in_b", [])),
+        }
+        for sym, sides in sorted(by_symbol.items())
+    }
+    return {"ref_a": ref_a, "ref_b": ref_b, "by_symbol": grouped, "count": len(sym_diff)}
+
+
 def export_view(project) -> dict:
     """Everything a graph view needs in one payload: nodes, edges, effects, witnesses."""
     g = graph_view(project)
