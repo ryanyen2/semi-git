@@ -1,70 +1,16 @@
-"""CLI surface tests (graph-only): read-only verbs, report rendering, quarantine visibility.
-
-The graph-reasoning `plan` path is covered live; here we test the pure CLI surface without
-any LLM or backend.
+"""CLI surface tests (the operation-ideal kernel, plan U7/U8/U9 flipped onto the CLI in U10):
+argument parsing, human-readable rendering, and `--json` output for the kernel-backed verbs.
+Verb *behavior* (the algebra) is tested in `tests/core/`; this file is the thin CLI layer only.
 """
 
+import json
+import os
+
 from sgt.cli import main
-from sgt.effects.model import Effect
-from sgt.project import Project
-from sgt.store.graph import Node, NodeKind
-
-
-def test_init_and_graph_roundtrip(tmp_path, capsys):
-    assert main(["init", str(tmp_path)]) == 0
-    # add a node directly, then render the graph from a fresh process-like call
-    proj = Project.open(tmp_path)
-    proj.add_feature(Node(id="feat", kind=NodeKind.CAPABILITY, intent="a feature"),
-                     [Effect.add_def("m.py", "feat", "def feat():\n    return 1")])
-    proj.save()
-    import os
-    cwd = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        assert main(["graph"]) == 0
-    finally:
-        os.chdir(cwd)
-    assert "feat" in capsys.readouterr().out
-
-
-def test_graph_shows_quarantine_witness(tmp_path, capsys):
-    main(["init", str(tmp_path)])
-    proj = Project.open(tmp_path)
-    proj.add_feature(Node(id="base", kind=NodeKind.CAPABILITY, intent="base"),
-                     [Effect.add_def("m.py", "base", "def base():\n    return 1")])
-    proj.quarantine(Node(id="q1", kind=NodeKind.CAPABILITY, intent="held"),
-                    [Effect.add_def("m.py", "base", "def base():\n    return 2")],
-                    reason="non_commuting_with:base", held_descs=["add_def base (m.py)"],
-                    against_ids=["base"])
-    proj.save()
-    import os
-    cwd = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        main(["graph"])
-        main(["show", "q1"])
-    finally:
-        os.chdir(cwd)
-    out = capsys.readouterr().out
-    assert "quarantined" in out and "non_commuting_with:base" in out
-
-
-def test_help_mentions_yes_flag(capsys):
-    main(["help"])
-    assert "--yes" in capsys.readouterr().out
-
-
-def _seed(tmp_path):
-    main(["init", str(tmp_path)])
-    proj = Project.open(tmp_path)
-    proj.add_feature(Node(id="feat", kind=NodeKind.CAPABILITY, intent="a feature"),
-                     [Effect.add_def("m.py", "feat", "def feat():\n    return 1")])
-    proj.save()
-    return proj
+from sgt.store.gitbind import init_store
 
 
 def _in(tmp_path, argv):
-    import os
     cwd = os.getcwd()
     os.chdir(tmp_path)
     try:
@@ -73,41 +19,117 @@ def _in(tmp_path, argv):
         os.chdir(cwd)
 
 
-def test_graph_json_is_machine_readable(tmp_path, capsys):
-    import json
-    _seed(tmp_path)
-    capsys.readouterr()  # drain init output
-    assert _in(tmp_path, ["graph", "--json"]) == 0
+def _seed(tmp_path, n: int = 2):
+    """A repo whose a.py::foo is a linear chain of `n` versions, one per commit."""
+    gb, _ = init_store(tmp_path)
+    for i in range(1, n + 1):
+        (tmp_path / "a.py").write_text(f"def foo():\n    return {i}\n", encoding="utf-8")
+        gb.commit_all(f"foo v{i}")
+    return gb
+
+
+def test_init_and_log_roundtrip(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    capsys.readouterr()  # drain seed commit output (none, but keep symmetry with other tests)
+    assert _in(tmp_path, ["log"]) == 0
+    out = capsys.readouterr().out
+    assert "op(s)" in out and "a.py::foo" in out
+
+
+def test_log_json_is_machine_readable(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["log", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["count"] == 1 and payload["nodes"][0]["id"] == "feat"
+    assert payload["count"] >= 1
+    assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
 
 
-def test_blame_json_maps_lines_to_nodes(tmp_path, capsys):
-    import json
-    _seed(tmp_path)
-    capsys.readouterr()  # drain init output
-    assert _in(tmp_path, ["blame", "--json", "m.py"]) == 0
+def test_state_shows_frontier_and_coverage(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["state", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["file"] == "m.py"
-    assert any(s["node_id"] == "feat" for s in payload["spans"])
+    assert "a.py::foo" in payload["frontier"]
+    assert payload["covered_paths"] == ["a.py"]
+    assert payload["oracle_configured"] is False
+    assert payload["oracle_verdict"] is None
 
 
-def test_export_dumps_graph(tmp_path, capsys):
-    import json
-    _seed(tmp_path)
-    capsys.readouterr()  # drain init output
-    assert _in(tmp_path, ["export"]) == 0
+def test_revert_emit_previews_without_writing(tmp_path, capsys):
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["revert", "--emit", "a.py::foo"]) == 0
+    out = capsys.readouterr().out
+    assert "[revert] a.py::foo" in out
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
+
+
+def test_revert_then_restore_roundtrip(tmp_path, capsys):
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    capsys.readouterr()
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
+
+    assert _in(tmp_path, ["restore", "--json", "a.py::foo"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["nodes"][0]["effects"][0]["op"] == "add_def"
+    assert payload["ok"] is True and payload["added"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
 
 
-def test_blame_human_readable(tmp_path, capsys):
-    _seed(tmp_path)
-    assert _in(tmp_path, ["blame", "m.py"]) == 0
-    assert "semantic blame" in capsys.readouterr().out
+def test_revert_unknown_ref_fails_with_message(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["revert", "nope::nothing"]) == 1
+    assert "✗" in capsys.readouterr().out
 
 
-def test_help_mentions_new_verbs(capsys):
+def test_diff_between_refs(tmp_path, capsys):
+    gb = _seed(tmp_path, 1)
+    base = gb.symbolic_ref().rsplit("/", 1)[-1]
+    gb._git("checkout", "-q", "-b", "feature")
+    (tmp_path / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feature: add bar")
+    _in(tmp_path, ["log"])  # mine feature
+    gb._git("checkout", "-q", base)
+    capsys.readouterr()  # drain the priming `log` output
+
+    assert _in(tmp_path, ["diff", "--json", base, "feature"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "b.py::bar" in payload["by_symbol"]
+
+
+def test_fsck_reports_clean_store(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    _in(tmp_path, ["log"])  # mine, so the store isn't empty
+    capsys.readouterr()  # drain the priming `log` output
+    assert _in(tmp_path, ["fsck", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True and payload["checked"] >= 1
+
+
+def test_oracle_run_with_no_config_warns(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["oracle", "run"]) == 0
+    assert "no oracle configured" in capsys.readouterr().out
+
+
+def test_oracle_override_then_state_shows_verdict(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["oracle", "override", "--status", "pass", "--reason", "manual check"]) == 0
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["state", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    # No `.sgt/oracle.json` -> not "configured", so state doesn't surface the override either
+    # (a repo can still call `oracle override` without any tier config; `state` only surfaces
+    # the verdict once an oracle is declared, per R13's "no config" degrade).
+    assert payload["oracle_configured"] is False
+
+
+def test_help_mentions_kernel_verbs(capsys):
     main(["help"])
     out = capsys.readouterr().out
-    assert "blame" in out and "export" in out and "--json" in out
+    assert "revert" in out and "restore" in out and "oracle" in out and "fsck" in out
+    assert "--json" in out
+
+
+def test_unknown_verb_falls_back_to_help(capsys):
+    assert main(["nonsense"]) == 0
+    assert "sgt —" in capsys.readouterr().out

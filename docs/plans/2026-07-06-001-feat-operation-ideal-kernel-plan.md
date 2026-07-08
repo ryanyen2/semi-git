@@ -286,6 +286,7 @@ flowchart TB
 - **Approach:** Config declares tier commands (e.g. `parse`, `build`, `test`); materialization enqueues a verdict record (`pending`) in `.sgt/local/`; `sgt oracle run [--tier]` executes and stores pass/fail + log excerpt; `sgt oracle override` records a human verdict with attribution. No config → warn once, verdicts absent. Rewrite-op gating (U11, U14) consumes verdicts.
 - **Test scenarios:** materialize with no oracle configured warns and proceeds; failing tier records `fail` with the command's exit and output tail; override supersedes with attribution; re-run replaces a stale verdict; verdict is keyed to the ideal (a subsequent edit resets to `pending`); slow command does not block the materializing verb (async model).
 - **Verification:** verdict lifecycle covered; `state_view` shows the verdict.
+- **Status (2026-07-08): DONE.** See FINDINGS.md's "U9 the oracle" entry.
 
 ### U10. Delete the legacy mechanisms; flip CLI and MCP onto the kernel
 
@@ -297,6 +298,7 @@ flowchart TB
 - **Execution note:** Characterization-first — snapshot every surviving api view against the legacy implementation before deleting it.
 - **Test scenarios:** legacy `.sgt/` migrates then all read verbs work; every CLI verb in `_VERBS` either works on the kernel or is removed from help (fix the stale `sgt map`/`timeframe` help wart); MCP tool list responds post-flip with kernel-backed tools; no module under `sgt/` imports a deleted module (import-lint test); test count drops only by the deleted packages' mirrors.
 - **Verification:** full suite green; golden diff reviewed; `grep`-level check that `EffectLog`, `NodeStatus`, EICO references are gone.
+- **Status (2026-07-08): DONE.** Executed per `/Users/ryanyen2/.claude/plans/structured-juggling-cocoa.md`'s corrected module/verb disposition tables (the plan's own file list under-specified several things — see FINDINGS.md's "U10" entry for the exact deltas: `sgt/orchestrate/` collapsed to a whole-package delete, `sgt/entities/graph.py`/`sgt/store/gitbind.py` kept despite no explicit callout, feature-lens/agentic-loop verbs removed from `_VERBS`/MCP entirely rather than "rewritten" since no kernel equivalent exists before U12/U14 — a real, flagged product regression, not an oversight). Full suite green.
 
 ### U11. Rewrite verbs — the explicit escape hatch
 
@@ -307,6 +309,7 @@ flowchart TB
 - **Approach:** Each verb computes the exact part (target chain tips, dependent set, containment split) and drafts hollow rewrite ops with intent prefilled; the agent (or human) supplies images through `sgt fulfill <op> --from-tree` or the P4 loop; the oracle verdict gates landing. `merge-op` takes both fork tips as parents. `identity split/join` rewrites the identity relation and records a permanent matcher constraint (mirroring feature pins); chains re-derive. Offline fallback everywhere: verbs fully work with a human authoring images, no API key required.
 - **Test scenarios:** chain fork + `merge-op` drafted with both parents, lands only after a pass verdict, ideal becomes valid; transplant of two ops onto a diverged release ideal drafts hollows with target tips as `before_version` (Covers AE3); `revert X --keep-dependents` subtracts `↑X` and drafts one hollow per dependent, preview groups by symbol; `split-op` on a two-concern op produces an intermediate image whose chain reads original→intermediate→after; wrong fuzzy weld corrected by `identity split` — subsequent re-mine respects the constraint; all rewrite landings blocked while verdict is `pending` or `fail` unless overridden.
 - **Verification:** each verb round-trips on a fixture repo; constraint persistence across re-mining verified.
+- **Status (2026-07-08): DONE, with one correction to this unit's own Approach.** `merge-op`'s hollow does *not* put the other fork tip's version in `requires` — `order._grounded`'s requires-grounding demands that version's producer be a member of the *same* ideal, and that producer is the other tip itself, which still shares `(symbol, before_version)` with the first tip, so `is_fork_free` correctly rejects the union as a genuine fork regardless of footprint assignment (the two invariants are in real tension for this shape, not resolvable by "which tip is the chain parent"). `merge_op` chain-extends the ideal's own tip instead; the other tip rides only in the drafted op's advisory `intent`. Everything else shipped as specified, including the auto-minted `split-op` tail (verbatim reuse of the original's after-image) and the `.sgt/identity_constraints.json` matcher-correction file consulted by `mine()`. Full detail and the exact reasoning: FINDINGS.md's "U11" entry. Full suite: 211 passed, 1 skipped.
 
 ### Phase P3 — The feature lens
 

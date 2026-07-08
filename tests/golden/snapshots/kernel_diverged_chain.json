@@ -107,6 +107,7 @@
       "slugify.py::__residue__": "f1237af4b720c83dd13c2601ec7dec0e913f8a3c89413356ef2db6b9910a4868",
       "slugify.py::slugify": "f5949bff4d344da7867a60439f761d8be913f8ce3f2f4e7cbc0bdee7b9e5d45e"
     },
+    "oracle_configured": false,
     "oracle_verdict": null
   }
 }

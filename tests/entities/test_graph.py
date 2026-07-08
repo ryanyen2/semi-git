@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-from sgt.api import entity_graph_view
 from sgt.entities import Entity
 from sgt.entities.graph import build_entity_graph, owning_nodes
 
@@ -75,24 +72,6 @@ def test_two_independent_clusters_are_two_components():
     }
     g = build_entity_graph(cb)
     assert len(g.components) == 2
-
-
-def test_entity_graph_view_shape_is_stable(tmp_path):
-    (tmp_path / "m.py").write_text(
-        "def callee():\n    return 1\ndef caller():\n    return callee()\n",
-        encoding="utf-8",
-    )
-    project = SimpleNamespace(repo=tmp_path)
-    v1 = entity_graph_view(project)
-    v2 = entity_graph_view(project)
-    assert v1 == v2  # deterministic
-    assert set(v1) == {"entities", "edges", "reduced_edges", "components", "clusters", "count"}
-    assert v1["count"] == 2
-    assert v1["clusters"] == []  # bare repo: no owned features, so no capability clusters
-    caller = next(e for e in v1["entities"] if e["name"] == "caller")
-    assert "m.py::callee" in caller["depends_on"]
-    # Bare repo has no effect log, so every entity is unowned (dim).
-    assert "node_id" in caller and caller["node_id"] is None
 
 
 def test_owning_nodes_plurality_and_unowned():
