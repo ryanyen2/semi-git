@@ -8,7 +8,9 @@ which survives ``git commit --amend`` and rebase the way Gerrit's Change-Id does
 
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,11 +107,14 @@ class GitBinding:
     def __init__(self, repo_path: str | Path) -> None:
         self.repo = Path(repo_path)
 
-    def _git(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    def _git(
+        self, *args: str, check: bool = True, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess:
         proc = subprocess.run(
             ["git", "-C", str(self.repo), *args],
             capture_output=True,
             text=True,
+            env={**os.environ, **env} if env is not None else None,
         )
         if check and proc.returncode != 0:
             raise GitError(
@@ -304,6 +309,32 @@ class GitBinding:
             )
             for p in order
         ]
+
+    def working_tree_snapshot(self) -> str:
+        """A git tree object id for the current working directory -- tracked files, their
+        uncommitted edits/deletions, and untracked-but-not-ignored files, all included -- so
+        Gap 2's dirty-tree mining pass (U7.5) can diff it against HEAD exactly the way `mine()`
+        diffs two real commits. Computed via a scratch index (a fresh, unique `GIT_INDEX_FILE`)
+        so the real `.git/index` is never touched; `.gitignore` (including `.sgt/local/*`) is
+        respected automatically since gitignore rules aren't index-specific.
+
+        The scratch path is reserved via `mkstemp` then immediately removed -- git errors on an
+        existing-but-empty index file ("index file smaller than expected"), so the path must not
+        exist yet when `add -A` runs; it creates a fresh index there itself.
+        """
+        git_dir = self.repo / ".git"
+        fd, scratch_path = tempfile.mkstemp(dir=str(git_dir), prefix=".sgt-scratch-index-")
+        os.close(fd)
+        os.unlink(scratch_path)
+        try:
+            env = {"GIT_INDEX_FILE": scratch_path}
+            self._git("add", "-A", env=env)
+            return self._git("write-tree", env=env).stdout.strip()
+        finally:
+            try:
+                os.unlink(scratch_path)
+            except OSError:
+                pass
 
     def stage_all(self) -> None:
         self._git("add", "-A")

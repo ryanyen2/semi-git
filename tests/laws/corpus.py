@@ -235,6 +235,24 @@ def _case_removed_paths(root: Path) -> Path:
     return repo
 
 
+def _case_revert_to_original(root: Path) -> Path:
+    """A function's body changes then reverts to its exact original bytes -- an add/modify/
+    revert after-value collision on the same symbol (regression fixture for order.py's
+    frontier/is_valid_ideal fix, U7.5)."""
+    repo = root / "revert_to_original"
+    _init(repo)
+    _write(repo, "a.py", "def foo():\n    return 1\n")
+    _commit(repo, "add foo", 0)
+
+    _write(repo, "a.py", "def foo():\n    return 2\n")
+    _commit(repo, "modify foo", 1)
+
+    _write(repo, "a.py", "def foo():\n    return 1\n")
+    _commit(repo, "revert foo to its original body", 2)
+
+    return repo
+
+
 @dataclass(frozen=True)
 class CorpusCase:
     name: str
@@ -263,6 +281,11 @@ CORPUS: dict[str, CorpusCase] = {
         "removed_paths", _case_removed_paths,
         "a file fully git-rm'd (must vanish, no anchor-only b'' phantom) alongside a sibling that "
         "loses one of two entities (must stay covered) -- get-put fidelity for removals",
+    ),
+    "revert_to_original": CorpusCase(
+        "revert_to_original", _case_revert_to_original,
+        "a function's body changes then reverts to its exact original bytes -- an after-value "
+        "collision regression for order.py's frontier/is_valid_ideal",
     ),
 }
 

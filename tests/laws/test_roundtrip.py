@@ -128,6 +128,21 @@ def test_fully_removed_file_leaves_no_phantom(tmp_path):
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
+def test_revert_to_original_bytes_survives_the_fold(tmp_path):
+    """Regression (order.py's frontier/is_valid_ideal value-collision fix, U7.5): a symbol whose
+    content reverts to an earlier byte-identical version must still materialize that content --
+    not vanish because two ops share an after-value."""
+    from sgt.core.fold import code
+    from sgt.core.lens import get
+    from sgt.core.store import Store
+
+    repo = corpus.CORPUS["revert_to_original"].build(tmp_path / "repo")
+    ideal = get(repo)
+    materialized = code(ideal, Store(repo).all_ops())
+    assert materialized.get("a.py") == (repo / "a.py").read_bytes()
+
+
+@pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
 def test_locality(tmp_path):
     """Locality (07-02 S6.3): mining one commit only mints ops whose footprint touches paths
     that commit -- or an earlier one in that same symbol's own history -- actually changed; an

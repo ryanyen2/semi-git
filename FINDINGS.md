@@ -348,13 +348,72 @@ Two more real bugs surfaced wiring get/put together end to end (both fixed in th
   cumulative set of paths a symbol's whole history has touched, not just one commit's own
   diff -- documented at length in `tests/laws/test_roundtrip.py::test_locality`.
 
-**Known, deliberately deferred gap:** `get()` only mines *committed* history, not the live
-working tree. The ADR's fuller vision ("get: diff working tree or new commits") needs mine()'s
-per-commit body decoupled from real commit SHAs to also diff HEAD's tree against the actual
-filesystem -- real, separable work. Flagging now because `put()` already overwrites the working
-tree unconditionally, and that combination becomes unsafe (silently discarding uncommitted work)
-the moment U8's verbs start calling `put()` from user-facing code. Must be closed before verbs
-ship, not before U6 -- noted here so it isn't forgotten between now and then.
+**Two deliberately deferred gaps (both RESOLVED in U7.5 — see the next entry):** at U6, `get()`
+only mined *committed* history (not the live working tree) and `put()` overwrote the working tree
+unconditionally — a combination that would silently discard uncommitted work once U8's verbs call
+`put()` from user-facing code. Both are closed below before any verb ships.
+
+### Operation-ideal kernel — U7.5 persist ref→ideal; safe working-tree get/put (2026-07-07)
+
+Closes both gaps the U6 entry above flagged, plus a pre-existing `order.py` correctness bug found
+while designing the fix (folded in here since it lives in the same file and the same "which op is
+*the* producer of this version" reasoning).
+
+- **`order.py` value-collision (found + fixed here).** `frontier`/`is_valid_ideal` keyed producer
+  bookkeeping by `(symbol, after_value)` with dict overwrite, so a symbol whose content reverts to
+  an earlier byte-identical value (add → modify → revert) silently lost its true tip and `code(I)`
+  materialized `b""` instead of the reverted content. `is_valid_ideal` now checks downward-closure
+  *existentially* (some in-ideal op produces the `(symbol, version)` pair, never "the" graph-picked
+  producer); `frontier` walks forward via a `before_value → op_id` map, unambiguous by fork-freedom
+  (which is keyed on `before_version`, not `after`). `chain_edges`/`reference_edges`/`upset`/
+  `downset` retain the latent ambiguity but nothing exercises them yet — flagged in-code as a
+  prerequisite for whichever U8 verb first computes an up-set/down-set for real.
+- **Gap 1 — ref→ideal now persisted** in `.sgt/local/ideal.json` (`{ref_key: [op_ids]}`, parallel
+  to `witness.json`). `get()` seeds it from the provenance scan on a ref's first contact, then
+  treats the stored set as authoritative — so a future explicit ideal edit (U8 revert/pin) survives
+  a re-`get()` instead of being re-derived back in from git ancestry, which has no way to represent
+  "excluded though still in history". The durable set is committed-only; the dirty overlay (below)
+  never lands in it, so discarding a working-tree edit simply stops it appearing next time.
+- **Gap 2 — dirty-tree mining + `put()` guard.** `mine(include_dirty=True)` mines one virtual
+  "pending commit" for the uncommitted working tree (diffed against HEAD via
+  `GitBinding.working_tree_snapshot()`'s scratch `GIT_INDEX_FILE`), emitting ops with empty
+  provenance until a real commit witnesses that content. `put()` now runs `get()` first (R9) and
+  refuses via `DirtyWorkingTreeError` if the fold would overwrite an uncommitted change with
+  different bytes, rather than clobbering it — the normal `get()`→`put()` flow, where the ideal
+  already reproduces the edit, passes untouched.
+
+Regression coverage: `tests/laws/corpus.py::revert_to_original` threaded through
+`test_roundtrip.py`, `test_order.py::test_frontier_survives_a_revert_to_an_earlier_byte_identical_value`,
+and three new `test_lens.py` scenarios (dirty-edit visible-but-not-persisted, `put()` refuses to
+clobber, persisted ideal survives re-`get()`).
+
+### Operation-ideal kernel — U8 ideal-edit verbs (2026-07-07)
+
+`sgt/core/verbs.py` adds the first user verbs as exact ideal edits (pure `plan_*` + gated
+`apply`, `--emit`-previewable, refusing any edit that would leave an invalid ideal): `revert`
+(`I \ ↑X`), `pin` (truncate a chain at a version), `restore`/`cherry-pick` (`I ∪ ↓X`, cherry-pick
+across refs surfacing chain forks and refusing — AE2), and `after` (a persisted declared edge).
+Up/down-sets use new collision-safe, ideal-relative `order.upset_in`/`downset_in`; `apply`
+materializes via `lens.put` then `lens.record_ideal` (persist the edited set + advance the witness,
+so the edit survives the next `get()` instead of being re-mined as an inverse op). Full suite 497
+passed, 1 skipped.
+
+**Correctness refinement found here (tightens the U7.5 entry above):** U7.5 described
+`is_valid_ideal`'s downward-closure as *existential* ("some in-ideal op produces the
+`(symbol, version)`"). The verb-validity property test exposed that this is too weak: reverting a
+chain *head* out of add→modify→revert leaves `{modify, revert}`, an **originless cycle** (modify's
+`before` is produced by revert and vice-versa) that the existential check wrongly accepts but which
+has no chain head to fold — `frontier` then `KeyError`s. The fix replaces the existential check
+with **grounding** (`order._grounded`, a least fixpoint from `before=None` heads through real
+production): an op is valid only once it bottoms out at a real add. Grounding still reasons about
+*versions produced* (never a single canonical producer), so it keeps the U7.5 collision immunity
+while additionally rejecting the cycle. `upset_in` is then simply `ideal \ _grounded(ideal - {X})`
+— reverting a head correctly removes the whole chain. The old universe-level `upset`/`downset`
+(collision-unsafe) are retained only for `tests/core/test_order.py`; verbs use the `_in` forms.
+
+Regression coverage: `tests/core/test_verbs.py` (9 scenarios incl. the AE2 fork refusal + the
+every-verb-output-is-a-valid-ideal property over `linear_history` and `revert_to_original`) and 5
+new `test_order.py` cases pinning the grounding / `upset_in` / `downset_in` collision behavior.
 
 ## Known v1 limitations (deferred, see the plan)
 

@@ -23,7 +23,7 @@ seen before `X`) is the store's job (U3/U6), which sees every previously-mined o
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from tree_sitter import Parser
@@ -75,6 +75,8 @@ class _Touch:
     requires: frozenset[tuple[str, str]]  # (required symbol id, version seen at mining time)
     via_move: bool = False
     bucket: str | None = None  # filled in after untangling; None only transiently
+    is_pending: bool = False  # from the dirty-working-tree pass (Gap 2, U7.5) -- no real commit
+    # witnesses it yet, so `_build_ops` must emit `provenance=()` rather than a commit sha.
 
 
 def _requires_of(sym: str, calls_by_src: dict[str, set[str]], entity_version: dict[str, str]) -> frozenset[tuple[str, str]]:
@@ -187,186 +189,217 @@ def _untangle(touched_ids: set[str], edges: list[EntityEdge]) -> list[frozenset[
     return [frozenset(g) for g in sorted(groups.values(), key=lambda g: sorted(g)[0])]
 
 
-def mine(repo: Path | str, since: str | None = None, treat_as_root: str | None = None) -> list[Op]:
-    """Mine an ordered op stream from `repo`'s history. `since`, if given, restricts mining to
-    commits after that witness SHA (`since..HEAD`) -- each commit is still diffed against its
-    own true parent, so incremental mining is exact, not an approximation. `treat_as_root`, if
-    given, forces exactly that one commit's diff to be against the empty tree regardless of its
-    real git parent -- the genesis-horizon mechanism (R10): everything at that commit becomes
-    one add-op per symbol, and deeper history is never mined at all."""
-    repo = Path(repo)
-    gb = GitBinding(repo)
-    uf = _UnionFind()
-    touches: list[_Touch] = []
+def _mine_one(
+    gb: GitBinding, uf: _UnionFind, order: int, sha: str, parent: str | None, is_pending: bool = False
+) -> list[_Touch]:
+    """One commit's touched symbols -- the loop body `mine()` runs once per real commit, plus
+    (when `include_dirty=True`) once more for the working tree's uncommitted state, diffed
+    against real HEAD exactly the same way (Gap 2, U7.5). `sha` need only be a tree-ish (a real
+    commit, or `GitBinding.working_tree_snapshot()`'s synthetic tree object) -- every
+    `GitBinding` read used below accepts either."""
+    codebase_after = gb.tree_at(sha)
+    graph_after = build_entity_graph(codebase_after)
+    calls_by_src: dict[str, set[str]] = {}
+    for e in graph_after.edges:
+        if e.type in ("calls", "imports"):
+            calls_by_src.setdefault(e.src, set()).add(e.dst)
+    entity_version: dict[str, str] = {
+        e.id: _positional_version(e.id, e.content_hash) for e in graph_after.entities
+    }
+    container_of: dict[str, str | None] = {e.id: e.container for e in graph_after.entities}
 
-    for order, (sha, parent, _subject) in enumerate(gb.history(since)):
-        if sha == treat_as_root:
-            parent = None
-        codebase_after = gb.tree_at(sha)
-        graph_after = build_entity_graph(codebase_after)
-        calls_by_src: dict[str, set[str]] = {}
-        for e in graph_after.edges:
-            if e.type in ("calls", "imports"):
-                calls_by_src.setdefault(e.src, set()).add(e.dst)
-        entity_version: dict[str, str] = {
-            e.id: _positional_version(e.id, e.content_hash) for e in graph_after.entities
-        }
-        container_of: dict[str, str | None] = {e.id: e.container for e in graph_after.entities}
+    entity_touches: list[_Touch] = []
+    other_touches: list[_Touch] = []
+    commit_added: list[Snap] = []
+    commit_removed: list[Snap] = []
+    new_entities_by_file: dict[str, list[Entity]] = {}
 
-        entity_touches: list[_Touch] = []
-        other_touches: list[_Touch] = []
-        commit_added: list[Snap] = []
-        commit_removed: list[Snap] = []
-        new_entities_by_file: dict[str, list[Entity]] = {}
+    def emit_entity(sym: str, before, after, image, requires, via_move=False) -> None:
+        uf.add(sym)
+        entity_touches.append(
+            _Touch(order, sym, before, after, image, requires, via_move, is_pending=is_pending)
+        )
 
-        def emit_entity(sym: str, before, after, image, requires, via_move=False) -> None:
-            uf.add(sym)
-            entity_touches.append(_Touch(order, sym, before, after, image, requires, via_move))
-
-        def emit_other(sym: str, before, after, image, requires=frozenset()) -> None:
-            other_touches.append(
-                _Touch(order, sym, before, after, image, requires, bucket=f"{sha}:{sym}")
+    def emit_other(sym: str, before, after, image, requires=frozenset()) -> None:
+        other_touches.append(
+            _Touch(
+                order, sym, before, after, image, requires,
+                bucket=f"{sha}:{sym}", is_pending=is_pending,
             )
+        )
 
-        for fc in gb.diff_name_and_text(parent, sha):
-            if fc.path.startswith(".sgt/") or (fc.old_path or "").startswith(".sgt/"):
-                continue  # sgt's own state, never mined as codebase content
-            lang = _language_for(fc.path)
-            new_bytes = gb.blob_bytes(sha, fc.path)
-            old_ref = fc.old_path or fc.path
+    for fc in gb.diff_name_and_text(parent, sha):
+        if fc.path.startswith(".sgt/") or (fc.old_path or "").startswith(".sgt/"):
+            continue  # sgt's own state, never mined as codebase content
+        lang = _language_for(fc.path)
+        new_bytes = gb.blob_bytes(sha, fc.path)
+        old_ref = fc.old_path or fc.path
 
-            if lang is None:
-                # Whole-file pseudo-symbol (R7): unsupported language, config, docs, binary.
-                # Versioned by git blob OID uniformly (not content-hashed text vs. OID'd binary
-                # separately) -- before_version is always looked up via blob_oid, so after_version
-                # must use the same scheme or a text file's chain could never link across commits.
-                before_version = gb.blob_oid(parent, old_ref) if parent else None
-                if new_bytes is None:
-                    emit_other(fc.path, before_version, BOTTOM, None, frozenset())
-                else:
-                    after_version = gb.blob_oid(sha, fc.path) or _content_version(new_bytes)
-                    emit_other(fc.path, before_version, after_version, new_bytes, frozenset())
-                continue
+        if lang is None:
+            # Whole-file pseudo-symbol (R7): unsupported language, config, docs, binary.
+            # Versioned by git blob OID uniformly (not content-hashed text vs. OID'd binary
+            # separately) -- before_version is always looked up via blob_oid, so after_version
+            # must use the same scheme or a text file's chain could never link across commits.
+            before_version = gb.blob_oid(parent, old_ref) if parent else None
+            if new_bytes is None:
+                emit_other(fc.path, before_version, BOTTOM, None, frozenset())
+            else:
+                after_version = gb.blob_oid(sha, fc.path) or _content_version(new_bytes)
+                emit_other(fc.path, before_version, after_version, new_bytes, frozenset())
+            continue
 
-            new_src = new_bytes.decode("utf-8", "replace") if new_bytes else ""
-            new_entities = extract_file(fc.path, new_src) if new_src else []
-            old_src = gb.file_at(parent, old_ref) if parent else None
-            old_entities = extract_file(old_ref, old_src) if old_src else []
+        new_src = new_bytes.decode("utf-8", "replace") if new_bytes else ""
+        new_entities = extract_file(fc.path, new_src) if new_src else []
+        old_src = gb.file_at(parent, old_ref) if parent else None
+        old_entities = extract_file(old_ref, old_src) if old_src else []
 
-            if new_src and not new_entities and _parse_has_error(fc.path, new_src):
-                # Unparseable mid-edit: degrade to whole-file for this path at this commit
-                # rather than report zero entities (R7) -- no layout/residue this commit either,
-                # since the file isn't meaningfully entity-decomposed right now.
-                before_version = gb.blob_oid(parent, old_ref) if parent else None
-                emit_other(
-                    fc.path, before_version, _content_version(new_bytes), new_bytes, frozenset()
-                )
-                continue
+        if new_src and not new_entities and _parse_has_error(fc.path, new_src):
+            # Unparseable mid-edit: degrade to whole-file for this path at this commit
+            # rather than report zero entities (R7) -- no layout/residue this commit either,
+            # since the file isn't meaningfully entity-decomposed right now.
+            before_version = gb.blob_oid(parent, old_ref) if parent else None
+            emit_other(
+                fc.path, before_version, _content_version(new_bytes), new_bytes, frozenset()
+            )
+            continue
 
-            new_entities_by_file[fc.path] = new_entities
-            old_snaps = snapshot(old_entities, old_src or "")
-            new_snaps = snapshot(new_entities, new_src)
-            by_id_before = {s.ent.id: s for s in old_snaps}
-            m = match_pair(old_snaps, new_snaps)
+        new_entities_by_file[fc.path] = new_entities
+        old_snaps = snapshot(old_entities, old_src or "")
+        new_snaps = snapshot(new_entities, new_src)
+        by_id_before = {s.ent.id: s for s in old_snaps}
+        m = match_pair(old_snaps, new_snaps)
 
-            for a in m.modified:
-                b = by_id_before[a.ent.id]
-                emit_entity(
-                    a.ent.id,
-                    _positional_version(a.ent.id, b.content_hash),
-                    _positional_version(a.ent.id, a.content_hash),
-                    _entity_bytes(new_src, a.ent), _requires_of(a.ent.id, calls_by_src, entity_version),
-                )
-            for old, new in m.links:  # rename / move within one file
-                if old.ent.kind != new.ent.kind:
-                    _emit_scope_reshape(emit_entity, old, new, new_src, calls_by_src, entity_version)
-                    continue
-                uf.union(old.ent.id, new.ent.id)
-                emit_entity(
-                    new.ent.id,
-                    _positional_version(old.ent.id, old.content_hash),
-                    _positional_version(new.ent.id, new.content_hash),
-                    _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
-                    via_move=True,
-                )
-
-            commit_added.extend(m.added)
-            commit_removed.extend(m.removed)
-
-            # Residue pseudo-symbol -- once per changed file per commit, when the text changed
-            # OR the file's existence changed (an empty file being added/removed has identical
-            # -- empty -- residue text on both sides, but R7 coverage still needs a symbol to
-            # register that the path came into or went out of existence).
-            old_residue = _residue_lines(old_src, old_entities) if old_src else ""
-            new_residue = _residue_lines(new_src, new_entities) if new_src else ""
-            if old_residue != new_residue or (old_src is not None) != (new_bytes is not None):
-                sym = f"{fc.path}::__residue__"
-                residue_bytes = new_residue.encode("utf-8")
-                before_v = _content_version(old_residue.encode("utf-8")) if old_src else None
-                if new_bytes is None:
-                    emit_other(sym, before_v, BOTTOM, None)
-                else:
-                    emit_other(sym, before_v, _content_version(residue_bytes), residue_bytes)
-
-        # Cross-file moves: a function cut from one file and pasted into another links by body.
-        cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added)
-        for old, new in cross_links:
-            new_file_src = gb.file_at(sha, new.ent.file) or ""
+        for a in m.modified:
+            b = by_id_before[a.ent.id]
+            emit_entity(
+                a.ent.id,
+                _positional_version(a.ent.id, b.content_hash),
+                _positional_version(a.ent.id, a.content_hash),
+                _entity_bytes(new_src, a.ent), _requires_of(a.ent.id, calls_by_src, entity_version),
+            )
+        for old, new in m.links:  # rename / move within one file
             if old.ent.kind != new.ent.kind:
-                _emit_scope_reshape(emit_entity, old, new, new_file_src, calls_by_src, entity_version)
+                _emit_scope_reshape(emit_entity, old, new, new_src, calls_by_src, entity_version)
                 continue
             uf.union(old.ent.id, new.ent.id)
             emit_entity(
                 new.ent.id,
                 _positional_version(old.ent.id, old.content_hash),
                 _positional_version(new.ent.id, new.content_hash),
-                _entity_bytes(new_file_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+                _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
                 via_move=True,
             )
-        res_added = [s for s in commit_added if s.ent.id not in matched_a]
-        res_removed = [s for s in commit_removed if s.ent.id not in matched_r]
-        for s in res_added:
-            src = gb.file_at(sha, s.ent.file) or ""
-            emit_entity(
-                s.ent.id, None, _positional_version(s.ent.id, s.content_hash),
-                _entity_bytes(src, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
-            )
-        for s in res_removed:
-            emit_entity(s.ent.id, _positional_version(s.ent.id, s.content_hash), BOTTOM, None, frozenset())
 
-        # Anchor facts (R6 layout): for each top-level entity freshly added this commit, an
-        # independent pseudo-symbol recording which top-level entity (if any) precedes it --
-        # never revised after the fact (this v1 doesn't track re-ordering), so its chain is
-        # always a single add. One symbol per entity, not one shared chain per file, is what
-        # makes two unrelated insertions commute instead of forking on a coincidentally-shared
-        # file-wide "before" state.
-        anchor_facts_by_file: dict[str, dict[str, str | None]] = {}
+        commit_added.extend(m.added)
+        commit_removed.extend(m.removed)
+
+        # Residue pseudo-symbol -- once per changed file per commit, when the text changed
+        # OR the file's existence changed (an empty file being added/removed has identical
+        # -- empty -- residue text on both sides, but R7 coverage still needs a symbol to
+        # register that the path came into or went out of existence).
+        old_residue = _residue_lines(old_src, old_entities) if old_src else ""
+        new_residue = _residue_lines(new_src, new_entities) if new_src else ""
+        if old_residue != new_residue or (old_src is not None) != (new_bytes is not None):
+            sym = f"{fc.path}::__residue__"
+            residue_bytes = new_residue.encode("utf-8")
+            before_v = _content_version(old_residue.encode("utf-8")) if old_src else None
+            if new_bytes is None:
+                emit_other(sym, before_v, BOTTOM, None)
+            else:
+                emit_other(sym, before_v, _content_version(residue_bytes), residue_bytes)
+
+    # Cross-file moves: a function cut from one file and pasted into another links by body.
+    cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added)
+    for old, new in cross_links:
+        new_file_src = gb.file_at(sha, new.ent.file) or ""
+        if old.ent.kind != new.ent.kind:
+            _emit_scope_reshape(emit_entity, old, new, new_file_src, calls_by_src, entity_version)
+            continue
+        uf.union(old.ent.id, new.ent.id)
+        emit_entity(
+            new.ent.id,
+            _positional_version(old.ent.id, old.content_hash),
+            _positional_version(new.ent.id, new.content_hash),
+            _entity_bytes(new_file_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+            via_move=True,
+        )
+    res_added = [s for s in commit_added if s.ent.id not in matched_a]
+    res_removed = [s for s in commit_removed if s.ent.id not in matched_r]
+    for s in res_added:
+        src = gb.file_at(sha, s.ent.file) or ""
+        emit_entity(
+            s.ent.id, None, _positional_version(s.ent.id, s.content_hash),
+            _entity_bytes(src, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
+        )
+    for s in res_removed:
+        emit_entity(s.ent.id, _positional_version(s.ent.id, s.content_hash), BOTTOM, None, frozenset())
+
+    # Anchor facts (R6 layout): for each top-level entity freshly added this commit, an
+    # independent pseudo-symbol recording which top-level entity (if any) precedes it --
+    # never revised after the fact (this v1 doesn't track re-ordering), so its chain is
+    # always a single add. One symbol per entity, not one shared chain per file, is what
+    # makes two unrelated insertions commute instead of forking on a coincidentally-shared
+    # file-wide "before" state.
+    anchor_facts_by_file: dict[str, dict[str, str | None]] = {}
+    for t in entity_touches:
+        if t.before_version is not None or container_of.get(t.surface_id) is not None:
+            continue  # only fresh, top-level adds get an anchor
+        path, _, name = t.surface_id.partition("::")
+        file_entities = new_entities_by_file.get(path)
+        if file_entities is None:
+            continue  # defensive: no live entity list for this path (shouldn't happen)
+        if path not in anchor_facts_by_file:
+            anchor_facts_by_file[path] = _top_level_anchor_facts(file_entities)
+        predecessor = anchor_facts_by_file[path].get(name)
+        marker = (predecessor or _ANCHOR_FIRST).encode("utf-8")
+        emit_other(f"{path}::__anchor__::{name}", None, _content_version(marker), marker)
+
+    # Untangle this commit's touched entities into def-use-connected groups (BET-A), then
+    # bucket each touch by its group's deterministic anchor (lexicographically-smallest
+    # member) so grouping doesn't depend on dict/set iteration order.
+    touched_ids = {t.surface_id for t in entity_touches}
+    for group in _untangle(touched_ids, graph_after.edges):
+        anchor = sorted(group)[0]
+        bucket = f"{sha}:{anchor}"
         for t in entity_touches:
-            if t.before_version is not None or container_of.get(t.surface_id) is not None:
-                continue  # only fresh, top-level adds get an anchor
-            path, _, name = t.surface_id.partition("::")
-            file_entities = new_entities_by_file.get(path)
-            if file_entities is None:
-                continue  # defensive: no live entity list for this path (shouldn't happen)
-            if path not in anchor_facts_by_file:
-                anchor_facts_by_file[path] = _top_level_anchor_facts(file_entities)
-            predecessor = anchor_facts_by_file[path].get(name)
-            marker = (predecessor or _ANCHOR_FIRST).encode("utf-8")
-            emit_other(f"{path}::__anchor__::{name}", None, _content_version(marker), marker)
+            if t.surface_id in group:
+                t.bucket = bucket
 
-        # Untangle this commit's touched entities into def-use-connected groups (BET-A), then
-        # bucket each touch by its group's deterministic anchor (lexicographically-smallest
-        # member) so grouping doesn't depend on dict/set iteration order.
-        touched_ids = {t.surface_id for t in entity_touches}
-        for group in _untangle(touched_ids, graph_after.edges):
-            anchor = sorted(group)[0]
-            bucket = f"{sha}:{anchor}"
-            for t in entity_touches:
-                if t.surface_id in group:
-                    t.bucket = bucket
+    return entity_touches + other_touches
 
-        touches.extend(entity_touches)
-        touches.extend(other_touches)
+
+def mine(
+    repo: Path | str,
+    since: str | None = None,
+    treat_as_root: str | None = None,
+    include_dirty: bool = False,
+) -> list[Op]:
+    """Mine an ordered op stream from `repo`'s history. `since`, if given, restricts mining to
+    commits after that witness SHA (`since..HEAD`) -- each commit is still diffed against its
+    own true parent, so incremental mining is exact, not an approximation. `treat_as_root`, if
+    given, forces exactly that one commit's diff to be against the empty tree regardless of its
+    real git parent -- the genesis-horizon mechanism (R10): everything at that commit becomes
+    one add-op per symbol, and deeper history is never mined at all. `include_dirty`, if set,
+    additionally mines one virtual "pending commit" for the current uncommitted working tree
+    (diffed against real HEAD) after the real-commit loop -- its ops carry `provenance=()`
+    until a real commit later witnesses that exact content (Gap 2, U7.5)."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+    uf = _UnionFind()
+    touches: list[_Touch] = []
+
+    history = gb.history(since)
+    for order, (sha, parent, _subject) in enumerate(history):
+        if sha == treat_as_root:
+            parent = None
+        touches.extend(_mine_one(gb, uf, order, sha, parent))
+
+    if include_dirty:
+        touches.extend(
+            _mine_one(
+                gb, uf, len(history), gb.working_tree_snapshot(), gb.head(), is_pending=True
+            )
+        )
 
     return _build_ops(touches, uf)
 
@@ -381,6 +414,7 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
     ops: list[Op] = []
     for bucket, group in by_bucket.items():
         sha = bucket.split(":", 1)[0]
+        is_pending = any(t.is_pending for t in group)
         footprint: dict[str, tuple[str | None, str]] = {}
         images: Images = {}
         requires: set[tuple[str, str]] = set()
@@ -412,7 +446,7 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
                 images,
                 requires=frozenset(requires),
                 kind=kind,
-                provenance=(sha,),
+                provenance=() if is_pending else (sha,),
             )
         )
     return ops
