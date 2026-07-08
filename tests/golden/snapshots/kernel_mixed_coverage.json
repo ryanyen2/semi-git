@@ -1,76 +1,16 @@
 {
   "oplog_view": {
-    "count": 8,
+    "count": 10,
     "ops": [
-      {
-        "footprint": [
-          {
-            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
-            "before": null,
-            "symbol": "util.py::__residue__"
-          }
-        ],
-        "id": "3030af093d83c1fec533490a2e0238413edf0b0db8a416c6d7c5861646afe6fb",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
-      {
-        "footprint": [
-          {
-            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
-            "before": null,
-            "symbol": "pkg.py::__residue__"
-          }
-        ],
-        "id": "31801cf9dcc491a286bbc8b1ba70fe5f67e00a4e15044ffde97b61d04d9b6e07",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
       {
         "footprint": [
           {
             "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
             "before": null,
-            "symbol": "util.py::__anchor__::helper"
+            "symbol": "pkg.py::__anchor__::compute"
           }
         ],
-        "id": "50500c118015f90f0724ddb4b26b76390e5b6759b712fb05403c456bb0ae4916",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
-      {
-        "footprint": [
-          {
-            "after": "bf24c3dc4546aa772b7afbd7c97a68addce989ee",
-            "before": null,
-            "symbol": "util.py::helper"
-          }
-        ],
-        "id": "562c695c19ca9794c1baf83c01e1c0a0d677ff3497282611dc9a005b4218640e",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
-      {
-        "footprint": [
-          {
-            "after": "bc478fba9d4295b8c0b1f7ff43e06900780ced3b",
-            "before": null,
-            "symbol": "pkg.py::compute"
-          }
-        ],
-        "id": "7d7e9d8fdc5a74cbf205a3599122c4b77b0fc9daa269db02f10b644afc2592ab",
+        "id": "3402a2f25af875698d6630222f845156220a4dcd1890e834fe0b2bfe029afa20",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -85,7 +25,7 @@
             "symbol": "config.yaml"
           }
         ],
-        "id": "9b71465cd7530e02cf3054d16bf52799e1a97048104a16315ef665dc49ff41c0",
+        "id": "42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -95,12 +35,27 @@
       {
         "footprint": [
           {
-            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "after": "bc478fba9d4295b8c0b1f7ff43e06900780ced3b",
             "before": null,
-            "symbol": "pkg.py::__anchor__::compute"
+            "symbol": "pkg.py::compute"
           }
         ],
-        "id": "a230384bf23346054b8162b6f6c155f2db6a8c7801ee1427b69aa9c5a60a625d",
+        "id": "4e236d78fb16962aff60d9b7fd949bdf77cdcf5448391ac44303a4b186596687",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "bf24c3dc4546aa772b7afbd7c97a68addce989ee",
+            "before": null,
+            "symbol": "util.py::helper"
+          }
+        ],
+        "id": "601699063318ace2ef9f0c10d076e583b020998a2b73963dc5fc810cb4fc8d61",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -115,7 +70,82 @@
             "symbol": "notes.md"
           }
         ],
-        "id": "b676dd243f472de67d7dc2717bfcf4509208dc65336781a55d24ea0464732b24",
+        "id": "6b3a2ffacb14b982af10c9423cae3dd5ab2a9e0185ef9e6c7e8fe52aa4429bfd",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            "before": null,
+            "symbol": "util.py::__residue__::\u0000HEAD\u0000"
+          }
+        ],
+        "id": "85580ea5e2c2d1aedd589c2d1c4444360f1b2edaec29716d5be853ea7a5ccc79",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            "before": null,
+            "symbol": "pkg.py::__residue__::\u0000HEAD\u0000"
+          }
+        ],
+        "id": "c84027a012851d149ea9f8082af7edd225edc5fd103b6309ab12c9185c2e246c",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "before": null,
+            "symbol": "util.py::__anchor__::helper"
+          }
+        ],
+        "id": "d8974b4a3b6813d143bcaf781bde049f714f9b7a56255dc5a0aeeb861cfaa349",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+            "before": null,
+            "symbol": "util.py::__residue__::helper"
+          }
+        ],
+        "id": "dd667198dadf3be0dce0878174b522e1c28b7cb387a5f11dec79a3f168614d59",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "footprint": [
+          {
+            "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+            "before": null,
+            "symbol": "pkg.py::__residue__::compute"
+          }
+        ],
+        "id": "ef2b9be5105b04fcbdb6d4565a9e48e3bdd59ed71f23bd5b1c8ff77d9887035c",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -137,14 +167,16 @@
       "util.py"
     ],
     "frontier": {
-      "config.yaml": "9b71465cd7530e02cf3054d16bf52799e1a97048104a16315ef665dc49ff41c0",
-      "notes.md": "b676dd243f472de67d7dc2717bfcf4509208dc65336781a55d24ea0464732b24",
-      "pkg.py::__anchor__::compute": "a230384bf23346054b8162b6f6c155f2db6a8c7801ee1427b69aa9c5a60a625d",
-      "pkg.py::__residue__": "31801cf9dcc491a286bbc8b1ba70fe5f67e00a4e15044ffde97b61d04d9b6e07",
-      "pkg.py::compute": "7d7e9d8fdc5a74cbf205a3599122c4b77b0fc9daa269db02f10b644afc2592ab",
-      "util.py::__anchor__::helper": "50500c118015f90f0724ddb4b26b76390e5b6759b712fb05403c456bb0ae4916",
-      "util.py::__residue__": "3030af093d83c1fec533490a2e0238413edf0b0db8a416c6d7c5861646afe6fb",
-      "util.py::helper": "562c695c19ca9794c1baf83c01e1c0a0d677ff3497282611dc9a005b4218640e"
+      "config.yaml": "42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
+      "notes.md": "6b3a2ffacb14b982af10c9423cae3dd5ab2a9e0185ef9e6c7e8fe52aa4429bfd",
+      "pkg.py::__anchor__::compute": "3402a2f25af875698d6630222f845156220a4dcd1890e834fe0b2bfe029afa20",
+      "pkg.py::__residue__::\u0000HEAD\u0000": "c84027a012851d149ea9f8082af7edd225edc5fd103b6309ab12c9185c2e246c",
+      "pkg.py::__residue__::compute": "ef2b9be5105b04fcbdb6d4565a9e48e3bdd59ed71f23bd5b1c8ff77d9887035c",
+      "pkg.py::compute": "4e236d78fb16962aff60d9b7fd949bdf77cdcf5448391ac44303a4b186596687",
+      "util.py::__anchor__::helper": "d8974b4a3b6813d143bcaf781bde049f714f9b7a56255dc5a0aeeb861cfaa349",
+      "util.py::__residue__::\u0000HEAD\u0000": "85580ea5e2c2d1aedd589c2d1c4444360f1b2edaec29716d5be853ea7a5ccc79",
+      "util.py::__residue__::helper": "dd667198dadf3be0dce0878174b522e1c28b7cb387a5f11dec79a3f168614d59",
+      "util.py::helper": "601699063318ace2ef9f0c10d076e583b020998a2b73963dc5fc810cb4fc8d61"
     },
     "oracle_configured": false,
     "oracle_verdict": null

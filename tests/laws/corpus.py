@@ -253,6 +253,205 @@ def _case_revert_to_original(root: Path) -> Path:
     return repo
 
 
+def _case_crlf_endings(root: Path) -> Path:
+    """A Python file using CRLF line endings throughout -- byte-native addressing must slice
+    `\\r\\n` exactly, not silently normalize to `\\n` the way a `splitlines()`/`str.join()`
+    pipeline does (kernel byte-fidelity audit, 2026-07-08)."""
+    repo = root / "crlf_endings"
+    _init(repo)
+    _write(repo, "a.py", b"def foo():\r\n    return 1\r\n\r\n\r\ndef bar():\r\n    return 2\r\n")
+    _commit(repo, "add CRLF file", 0)
+    return repo
+
+
+def _case_no_trailing_newline(root: Path) -> Path:
+    """A file with no trailing newline -- the fold must not synthesize one that wasn't there."""
+    repo = root / "no_trailing_newline"
+    _init(repo)
+    _write(repo, "a.py", b"def foo():\n    return 1")
+    _commit(repo, "add file with no trailing newline", 0)
+    return repo
+
+
+def _case_formfeed_and_unicode_sep(root: Path) -> Path:
+    """A form feed inside a function body and a U+2028 line separator inside a string literal --
+    both bytes a line-based differ can silently truncate on, but tree-sitter's byte-native parse
+    and a raw-byte slice pass through untouched."""
+    repo = root / "formfeed_and_unicode_sep"
+    _init(repo)
+    _write(
+        repo, "a.py",
+        "def foo():\n    x = 1\x0c\n    return x\n\n\ndef bar():\n    return \"a b\"\n".encode("utf-8"),
+    )
+    _commit(repo, "add form-feed and U+2028 content", 0)
+    return repo
+
+
+def _case_latin1_encoded(root: Path) -> Path:
+    """A `.py` file that is not valid UTF-8 (latin-1 encoded, e.g. from a legacy codebase) --
+    extraction and the fold must round-trip its exact bytes rather than decode-with-replacement,
+    which would permanently corrupt the non-ASCII byte into U+FFFD."""
+    repo = root / "latin1_encoded"
+    _init(repo)
+    # b"\xe9" is 'é' in latin-1; invalid as a UTF-8 continuation byte on its own.
+    _write(repo, "a.py", b"def foo():\n    return '\xe9'\n")
+    _commit(repo, "add latin-1 encoded file", 0)
+    return repo
+
+
+def _case_decorated_routes(root: Path) -> Path:
+    """Two top-level decorated functions -- without span-widening, both decorators land in one
+    file-top residue blob and materialize piled onto whichever function's image happens to
+    render first (silent semantic corruption: a Flask route swap), not a formatting nit."""
+    repo = root / "decorated_routes"
+    _init(repo)
+    _write(
+        repo, "routes.py",
+        "from framework import app\n\n\n"
+        "@app.route(\"/a\")\ndef handle_a():\n    return \"a\"\n\n\n"
+        "@app.route(\"/b\")\ndef handle_b():\n    return \"b\"\n",
+    )
+    _commit(repo, "add two decorated routes", 0)
+    return repo
+
+
+def _case_overload_group(root: Path) -> Path:
+    """`@overload` stubs beside their implementation -- all three share the surface id `f`;
+    without coalescing, the fold's last-write-wins entity image silently drops the stubs."""
+    repo = root / "overload_group"
+    _init(repo)
+    _write(
+        repo, "ov.py",
+        "from typing import overload\n\n\n"
+        "@overload\ndef f(x: int) -> int: ...\n"
+        "@overload\ndef f(x: str) -> str: ...\n"
+        "def f(x):\n    return x\n",
+    )
+    _commit(repo, "add overload group", 0)
+    return repo
+
+
+def _case_property_pair(root: Path) -> Path:
+    """A `@property` getter beside its `@x.setter` -- both named `Widget.val`; a nested-entity
+    duplicate-id collision, distinct from the top-level overload case."""
+    repo = root / "property_pair"
+    _init(repo)
+    _write(
+        repo, "w.py",
+        "class Widget:\n"
+        "    @property\n    def val(self):\n        return self._v\n\n"
+        "    @val.setter\n    def val(self, v):\n        self._v = v\n",
+    )
+    _commit(repo, "add property getter/setter pair", 0)
+    return repo
+
+
+def _case_class_with_methods(root: Path) -> Path:
+    """A class with an `__init__` and two methods, one calling the other -- the corpus's first
+    real class fixture (every other case is bare top-level functions); exercises containment,
+    nested-entity subsumption, and a call resolved to its owning method rather than the class."""
+    repo = root / "class_with_methods"
+    _init(repo)
+    _write(
+        repo, "service.py",
+        "class Service:\n"
+        "    def __init__(self, name):\n        self.name = name\n\n"
+        "    def label(self):\n        return self._format(self.name)\n\n"
+        "    def _format(self, name):\n        return name.upper()\n",
+    )
+    _commit(repo, "add class with methods", 0)
+    return repo
+
+
+def _case_imports_and_main(root: Path) -> Path:
+    """A module docstring, imports, a constant, a function, and a trailing `__main__` guard --
+    positional residue (head + tail) must place each where it actually sits, not collapse
+    everything to one file-top blob (the fold's old, honestly-documented limitation)."""
+    repo = root / "imports_and_main"
+    _init(repo)
+    _write(
+        repo, "app.py",
+        '"""Module docstring."""\n\nimport os\n\nMAX = 100\n\n\n'
+        "def run():\n    return os.getpid() + MAX\n\n\n"
+        'if __name__ == "__main__":\n    run()\n',
+    )
+    _commit(repo, "add module docstring, imports, const, fn, and __main__ guard", 0)
+    return repo
+
+
+def _case_commuting_features(root: Path) -> Path:
+    """Two branches from a common base, each inserting a *different* new top-level entity at a
+    *different* anchor -- `feature_a` (adds `foo` after `bar`) and `feature_b` (adds `baz` after
+    `qux`) never touch each other's insertion point. Fixture for the "anchor-disjoint additions
+    commute" law re-stated under the positional-residue segment model: unioning both branches'
+    mined ops must materialize all four entities, correctly interleaved, with the original gaps
+    (before `bar`, between `bar` and `qux`, after `qux`) intact."""
+    repo = root / "commuting_features"
+    _init(repo)
+    _write(repo, "a.py", "def bar():\n    return 1\n\n\ndef qux():\n    return 2\n")
+    _commit(repo, "base: bar, qux", 0)
+
+    _run(repo, "checkout", "-q", "-b", "feature_a")
+    _write(
+        repo, "a.py",
+        "def bar():\n    return 1\n\n\ndef foo():\n    return 3\n\n\ndef qux():\n    return 2\n",
+    )
+    _commit(repo, "feature_a: insert foo after bar", 1)
+
+    _run(repo, "checkout", "-q", "main")
+    _run(repo, "checkout", "-q", "-b", "feature_b")
+    _write(
+        repo, "a.py",
+        "def bar():\n    return 1\n\n\ndef qux():\n    return 2\n\n\ndef baz():\n    return 4\n",
+    )
+    _commit(repo, "feature_b: insert baz after qux", 1)
+
+    _run(repo, "checkout", "-q", "main")
+    return repo
+
+
+def _case_residue_fork(root: Path) -> Path:
+    """Two branches from a common base independently edit the *same* residue segment (an
+    import line) differently -- a genuine chain fork on a residue symbol, exactly like an
+    entity chain fork, since residue footprints are ordinary (before_version, after_version)
+    chains with no special-casing."""
+    repo = root / "residue_fork"
+    _init(repo)
+    _write(repo, "a.py", "import os\n\n\ndef run():\n    return os.getpid()\n")
+    _commit(repo, "base: import os", 0)
+
+    _run(repo, "checkout", "-q", "-b", "feature_a")
+    _write(repo, "a.py", "import os\nimport sys\n\n\ndef run():\n    return os.getpid()\n")
+    _commit(repo, "feature_a: add import sys", 1)
+
+    _run(repo, "checkout", "-q", "main")
+    _run(repo, "checkout", "-q", "-b", "feature_b")
+    _write(repo, "a.py", "import os\nimport json\n\n\ndef run():\n    return os.getpid()\n")
+    _commit(repo, "feature_b: add import json", 1)
+
+    _run(repo, "checkout", "-q", "main")
+    return repo
+
+
+def _case_ts_export_decorated(root: Path) -> Path:
+    """TypeScript's decorator/export shapes: a decorated exported class, an exported const
+    arrow function, and a class member whose decorator is a *sibling*, not a child or wrapping
+    parent -- the grammar shape that top-level Python decorator handling alone would miss."""
+    repo = root / "ts_export_decorated"
+    _init(repo)
+    _write(
+        repo, "widget.ts",
+        "@Component({selector: 'app'})\n"
+        "export class Widget {\n"
+        "  @HostListener('click')\n"
+        "  onClick() { return 1; }\n"
+        "}\n\n"
+        "export const submit = (e: Event) => {\n  e.preventDefault();\n};\n",
+    )
+    _commit(repo, "add TS export/decorator shapes", 0)
+    return repo
+
+
 @dataclass(frozen=True)
 class CorpusCase:
     name: str
@@ -287,7 +486,81 @@ CORPUS: dict[str, CorpusCase] = {
         "a function's body changes then reverts to its exact original bytes -- an after-value "
         "collision regression for order.py's frontier/is_valid_ideal",
     ),
+    "crlf_endings": CorpusCase(
+        "crlf_endings", _case_crlf_endings,
+        "a Python file using CRLF line endings throughout -- byte-native addressing must not "
+        "normalize to LF",
+    ),
+    "no_trailing_newline": CorpusCase(
+        "no_trailing_newline", _case_no_trailing_newline,
+        "a file with no trailing newline -- the fold must not synthesize one",
+    ),
+    "formfeed_and_unicode_sep": CorpusCase(
+        "formfeed_and_unicode_sep", _case_formfeed_and_unicode_sep,
+        "a form feed in a function body and a U+2028 separator inside a string literal -- both "
+        "survive a byte-native slice, both truncate a line-based one",
+    ),
+    "latin1_encoded": CorpusCase(
+        "latin1_encoded", _case_latin1_encoded,
+        "a .py file that is not valid UTF-8 -- extraction/fold must round-trip its exact bytes, "
+        "not decode-with-replacement and corrupt them",
+    ),
+    "decorated_routes": CorpusCase(
+        "decorated_routes", _case_decorated_routes,
+        "two top-level decorated functions -- without span-widening both decorators pile onto "
+        "one function, silent semantic corruption",
+    ),
+    "overload_group": CorpusCase(
+        "overload_group", _case_overload_group,
+        "@overload stubs beside their implementation -- all share one surface id; without "
+        "coalescing the fold's last-write-wins image silently drops the stubs",
+    ),
+    "property_pair": CorpusCase(
+        "property_pair", _case_property_pair,
+        "a @property getter beside its @x.setter -- a nested-entity duplicate-id collision",
+    ),
+    "class_with_methods": CorpusCase(
+        "class_with_methods", _case_class_with_methods,
+        "a class with __init__ and two methods, one calling the other -- the corpus's first "
+        "real class fixture",
+    ),
+    "imports_and_main": CorpusCase(
+        "imports_and_main", _case_imports_and_main,
+        "a module docstring, imports, a constant, a function, and a trailing __main__ guard -- "
+        "positional residue must place each where it actually sits",
+    ),
+    "ts_export_decorated": CorpusCase(
+        "ts_export_decorated", _case_ts_export_decorated,
+        "TypeScript's decorator/export shapes, including a class member decorator that is a "
+        "sibling rather than a child or wrapping parent",
+    ),
+    "commuting_features": CorpusCase(
+        "commuting_features", _case_commuting_features,
+        "two branches each insert a different entity at a different anchor -- anchor-disjoint "
+        "additions must compose with no shared bytes to disagree about",
+    ),
+    "residue_fork": CorpusCase(
+        "residue_fork", _case_residue_fork,
+        "two branches independently edit the same residue segment (an import line) -- a "
+        "genuine chain fork on a residue symbol, same as an entity chain fork",
+    ),
 }
+
+# Fixtures exercising the general-code robustness fixes (kernel byte-fidelity audit,
+# 2026-07-08) -- parametrize the byte-fidelity/coverage laws over these in addition to the
+# original mining-edge-case fixtures above.
+GENERAL_CODE_CASES = [
+    "crlf_endings",
+    "no_trailing_newline",
+    "formfeed_and_unicode_sep",
+    "latin1_encoded",
+    "decorated_routes",
+    "overload_group",
+    "property_pair",
+    "class_with_methods",
+    "imports_and_main",
+    "ts_export_decorated",
+]
 
 
 def self_repo_clone(root: Path) -> Path:

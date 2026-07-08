@@ -3,10 +3,10 @@
     "by_symbol": {
       "slugify.py::slugify": {
         "only_in_a": [
-          "32321fb2b304cacad66f629dd6c3450e8c1aeb705ba0016cdbe63858fb5bba83"
+          "3b54de20a6c59365231fc67bc388f0e070a5dafef8fdfa06da0c2d896d5ba880"
         ],
         "only_in_b": [
-          "f5949bff4d344da7867a60439f761d8be913f8ce3f2f4e7cbc0bdee7b9e5d45e"
+          "c47173203a1241c4a87bdbb92947da5b1e8880aed97d9dbcae609a228d0de100"
         ]
       }
     },
@@ -15,8 +15,23 @@
     "ref_b": "release"
   },
   "oplog_view": {
-    "count": 5,
+    "count": 6,
     "ops": [
+      {
+        "footprint": [
+          {
+            "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+            "before": null,
+            "symbol": "slugify.py::__residue__::slugify"
+          }
+        ],
+        "id": "13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      },
       {
         "footprint": [
           {
@@ -25,7 +40,7 @@
             "symbol": "slugify.py::slugify"
           }
         ],
-        "id": "32321fb2b304cacad66f629dd6c3450e8c1aeb705ba0016cdbe63858fb5bba83",
+        "id": "3b54de20a6c59365231fc67bc388f0e070a5dafef8fdfa06da0c2d896d5ba880",
         "intent": null,
         "kind": "rework",
         "provenance": [
@@ -40,7 +55,7 @@
             "symbol": "slugify.py::__anchor__::slugify"
           }
         ],
-        "id": "432eea231e85c983c81095349b979ee57a5aa642415a963ddde747f31feed769",
+        "id": "58d6688f028649e68f52368ba4e8985bf9d4d1016da3a2d8556e1990e7bffb38",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -55,7 +70,7 @@
             "symbol": "slugify.py::slugify"
           }
         ],
-        "id": "a632bc29f2388ecef03c9b57ecc792090731f33665f452c29267a09ff7c7c1f5",
+        "id": "86295bf31532f4a2d5fc39de45cf16148787abb98b52a51ea0587f46d8fc53c4",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -67,10 +82,10 @@
           {
             "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
             "before": null,
-            "symbol": "slugify.py::__residue__"
+            "symbol": "slugify.py::__residue__::\u0000HEAD\u0000"
           }
         ],
-        "id": "f1237af4b720c83dd13c2601ec7dec0e913f8a3c89413356ef2db6b9910a4868",
+        "id": "92b6b1b44fc7176b8a7e3c1e6ca32acc818cf78b7fcc596ab36c611b3d7a3de7",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -85,7 +100,7 @@
             "symbol": "slugify.py::slugify"
           }
         ],
-        "id": "f5949bff4d344da7867a60439f761d8be913f8ce3f2f4e7cbc0bdee7b9e5d45e",
+        "id": "c47173203a1241c4a87bdbb92947da5b1e8880aed97d9dbcae609a228d0de100",
         "intent": null,
         "kind": "rework",
         "provenance": [
@@ -103,9 +118,10 @@
       "slugify.py"
     ],
     "frontier": {
-      "slugify.py::__anchor__::slugify": "432eea231e85c983c81095349b979ee57a5aa642415a963ddde747f31feed769",
-      "slugify.py::__residue__": "f1237af4b720c83dd13c2601ec7dec0e913f8a3c89413356ef2db6b9910a4868",
-      "slugify.py::slugify": "f5949bff4d344da7867a60439f761d8be913f8ce3f2f4e7cbc0bdee7b9e5d45e"
+      "slugify.py::__anchor__::slugify": "58d6688f028649e68f52368ba4e8985bf9d4d1016da3a2d8556e1990e7bffb38",
+      "slugify.py::__residue__::\u0000HEAD\u0000": "92b6b1b44fc7176b8a7e3c1e6ca32acc818cf78b7fcc596ab36c611b3d7a3de7",
+      "slugify.py::__residue__::slugify": "13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c",
+      "slugify.py::slugify": "c47173203a1241c4a87bdbb92947da5b1e8880aed97d9dbcae609a228d0de100"
     },
     "oracle_configured": false,
     "oracle_verdict": null

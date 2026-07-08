@@ -3,7 +3,7 @@
 An *entity* is an addressable code unit — a function, class, or method — named by a
 scope-qualified path (``Bar.m``) that mirrors the effect-model address space in
 ``sgt/effects/model.py:units`` so a Python entity lines up with the effect targets and
-blame spans that paint it. Extraction is pure over the source text: same bytes in, same
+blame spans that paint it. Extraction is pure over the source **bytes**: same bytes in, same
 entity list out (no LLM, no network, no dict-order nondeterminism — tree-sitter's walk is
 deterministic and we never sort by anything but document order).
 
@@ -11,9 +11,31 @@ Coverage is whole-repo by design (origin R1/R5): files in an unsupported languag
 syntactically-broken files, yield zero entities rather than raising — the map shows them as
 honest unattributed structure, it does not choke on them.
 
+Byte-native by construction (kernel byte-fidelity audit, 2026-07-08): tree-sitter parses raw
+bytes directly and every entity's span is addressed by ``start_byte``/``end_byte`` sliced
+straight from those bytes — never through a decoded ``str`` round-trip. This is what makes
+extraction correct on CRLF line endings, non-UTF-8 files, and any byte sequence a decode-then-
+reslice pipeline would corrupt or truncate (form feeds, line separators inside string literals).
+``start_line``/``end_line`` survive only as a display/blame convenience derived from
+tree-sitter's own row count; they are never used to slice content.
+
+An entity's span always includes any decorator/``export`` wrapper that grammatically belongs to
+it (Python's ``decorated_definition`` parent; TypeScript's ``export_statement`` parent, or a
+class-body member's preceding ``decorator`` sibling) — see ``_entity_span``. Without this, a
+decorator attaches to whichever entity happens to render first after materialization, which is
+silent semantic corruption, not a formatting nit.
+
+A file can legitimately produce more than one raw hit for the same scope-qualified name
+(``@overload`` stubs, a ``@property`` getter next to its ``@x.setter``, a ``@x.register``
+overload). ``_coalesce`` folds a contiguous group (no differently-named entity's span between
+its members) into one ``Entity`` whose span is the verbatim union of its members — one logical
+symbol, matching how the language treats them. A non-contiguous collision (rare: a conditional
+redefinition) falls back to a stable document-order ordinal suffix so two different id's worth
+of code is never silently collapsed into one.
+
 Each entity also carries two body hashes, computed here because this is the one place with the
 parsed AST in hand (ported from ``references/sem`` — reference only, not a dependency):
-``content_hash`` over the exact node bytes answers "did the text change at all", and
+``content_hash`` over the exact span bytes answers "did the text change at all", and
 ``structural_hash`` over normalized AST tokens (comments stripped, whitespace trimmed) answers
 "is this the same code modulo formatting/comments" — the signal a rename/move detector needs
 and one a line-range differ cannot produce. They are in-memory identity signals, kept out of
@@ -25,7 +47,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from tree_sitter import Language, Parser
+from tree_sitter import Language, Node, Parser
 
 import tree_sitter_python as _tsp
 import tree_sitter_typescript as _tst
@@ -33,21 +55,28 @@ import tree_sitter_typescript as _tst
 
 @dataclass(frozen=True)
 class Entity:
-    """One code unit. ``name`` is scope-qualified (``Class.method``); ``id`` is repo-unique."""
+    """One code unit. ``name`` is scope-qualified (``Class.method``); ``id`` is repo-unique.
+
+    ``start_byte``/``end_byte`` are the entity's true span in the file's raw bytes -- the only
+    addressing this kernel slices content by. ``start_line``/``end_line`` (1-based, inclusive)
+    are a display/blame derivative, kept for callers that only need a human-readable range."""
 
     id: str  # f"{file}::{name}" — unique across the repo
     name: str  # scope-qualified path within the file, e.g. "Bar.m"
     file: str  # repo-relative path
     kind: str  # "function" | "class" | "method"
-    start_line: int  # 1-based inclusive
-    end_line: int  # 1-based inclusive
+    start_line: int  # 1-based inclusive, display only
+    end_line: int  # 1-based inclusive, display only
     container: str | None  # enclosing scope-qualified name, or None for top level
-    content_hash: str = ""  # hash of the exact body bytes — "did the text change"
+    content_hash: str = ""  # hash of the exact span bytes — "did the text change"
     structural_hash: str = ""  # hash of normalized AST tokens — "same code modulo formatting"
+    start_byte: int = 0  # byte offset of the entity's span, decorators/export included
+    end_byte: int = 0  # byte offset one past the end of the entity's span
 
     def to_dict(self) -> dict:
-        # Hashes are deliberately omitted: they are an in-memory diff signal, not part of
-        # the read projection (keeps the entity-graph view lean and golden fixtures stable).
+        # Hashes and byte offsets are deliberately omitted: in-memory diff/addressing signals,
+        # not part of the read projection (keeps the entity-graph view lean and golden fixtures
+        # stable).
         return {
             "id": self.id,
             "name": self.name,
@@ -116,6 +145,14 @@ _DEFS: dict[str, dict[str, str]] = {
 # functions are declared in modern TS; treat the declarator as a function entity.
 _ARROW_VALUES = {"arrow_function", "function_expression"}
 
+# The single node type that wraps a decorated def as its parent, per language -- climbing to it
+# absorbs every decorator (Python) or the `export` keyword plus any decorator riding along with
+# it (TypeScript's `export_statement`, confirmed empirically: `export_statement`'s children are
+# `[decorator?, export, default?, <declaration>]`, all siblings inside one wrapper).
+_WRAPPER_PARENT = {"python": "decorated_definition", "typescript": "export_statement", "tsx": "export_statement"}
+
+_DECLARATION_TYPES = {"lexical_declaration", "variable_declaration"}
+
 
 def _language_for(path: str) -> str | None:
     for ext, lang in _EXT_LANG.items():
@@ -129,37 +166,89 @@ def _language_for(path: str) -> str | None:
 _COMMENT_NODES = {"comment", "line_comment", "block_comment", "doc_comment", "tag_comment"}
 
 
-def _content_hash(node, src: bytes) -> str:
-    """Hash the entity's exact bytes: any textual change (including formatting) flips it."""
-    return hashlib.sha1(src[node.start_byte : node.end_byte]).hexdigest()
+def _content_hash_range(start: Node, end: Node, src: bytes) -> str:
+    """Hash the verbatim bytes from ``start``'s beginning to ``end``'s end -- a single slice,
+    since decorator-widening and collision-coalescing only ever combine sibling nodes that are
+    already contiguous (or safely so) in the source. Any textual change flips it."""
+    return hashlib.sha1(src[start.start_byte : end.end_byte]).hexdigest()
 
 
-def _structural_hash(node, src: bytes) -> str:
-    """Streaming hash of the AST — a Python port of sem's ``hash_structural_tokens``.
-
-    Interior nodes contribute their type (so ``x = f(y)`` and ``f(y) = x`` differ despite equal
-    leaves); leaves contribute their whitespace-trimmed text; comments are skipped. The result
-    is invariant to reformatting and comment edits but sensitive to real structural change."""
+def _structural_hash_range(start: Node, end: Node, src: bytes) -> str:
+    """Streaming hash of the AST from ``start`` through ``end`` (inclusive) via sibling links --
+    a Python port of sem's ``hash_structural_tokens``, extended to span >1 sibling root so a
+    decorator or a coalesced duplicate-name group hashes as one unit. Interior nodes contribute
+    their type (so ``x = f(y)`` and ``f(y) = x`` differ despite equal leaves); leaves contribute
+    their whitespace-trimmed text; comments are skipped. Invariant to reformatting/comments,
+    sensitive to real structural change."""
     h = hashlib.sha1()
-    stack = [node]
-    while stack:
-        n = stack.pop()
-        if n.type in _COMMENT_NODES:
-            continue
-        if n.child_count == 0:
-            leaf = src[n.start_byte : n.end_byte].strip()
-            if leaf:
-                h.update(leaf)
-                h.update(b" ")
-        else:
-            h.update(n.type.encode("utf-8"))
-            h.update(b":")
-            stack.extend(reversed(n.children))  # pop yields children in source order
+    node: Node | None = start
+    while node is not None:
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            if n.type in _COMMENT_NODES:
+                continue
+            if n.child_count == 0:
+                leaf = src[n.start_byte : n.end_byte].strip()
+                if leaf:
+                    h.update(leaf)
+                    h.update(b" ")
+            else:
+                h.update(n.type.encode("utf-8"))
+                h.update(b":")
+                stack.extend(reversed(n.children))  # pop yields children in source order
+        if node == end:
+            break
+        node = node.next_sibling
     return h.hexdigest()
 
 
-def _def_entity(node, base_defs, path, prefix):
-    """Return ``(leaf_name, base_kind, name_node)`` if ``node`` is a def, else None."""
+def _widen_over_decorator_siblings(node: Node) -> Node:
+    """Widen leftward over any contiguous ``decorator`` nodes immediately preceding ``node`` in
+    the same parent -- covers TypeScript class-body members, whose decorator is a *sibling* of
+    the ``method_definition``/field it decorates, not a child or a wrapping parent (confirmed
+    empirically: `@HostListener('click')` sits beside `onClick()` inside `class_body`)."""
+    start = node
+    prev = start.prev_sibling
+    while prev is not None and prev.type == "decorator":
+        start = prev
+        prev = start.prev_sibling
+    return start
+
+
+def _climb_declaration(node: Node, lang: str) -> Node:
+    """Climb from a def-bearing node to the outermost node that exists solely to
+    decorate/export it -- Python's `decorated_definition` parent, or TypeScript's
+    `export_statement` parent (one hop directly for a declaration, two hops for an arrow bound
+    via `const`/`let`, and only when that declaration owns exactly one declarator -- a multi-decl
+    `export const a = 1, b = 2` must not swallow both bindings into `a`'s span)."""
+    cur = node
+    if node.type == "variable_declarator":
+        parent = node.parent
+        if parent is not None and parent.type in _DECLARATION_TYPES:
+            declarators = [c for c in parent.children if c.type == "variable_declarator"]
+            if len(declarators) == 1:
+                cur = parent
+    wrapper = _WRAPPER_PARENT.get(lang)
+    grandparent = cur.parent
+    if wrapper is not None and grandparent is not None and grandparent.type == wrapper:
+        return grandparent
+    return cur
+
+
+def _entity_span(def_node: Node, lang: str) -> tuple[Node, Node]:
+    """The `(start_node, end_node)` sibling pair whose combined byte range is this entity's true
+    span: climb through an export/decorator wrapper parent, then widen over any decorator
+    siblings the climb didn't already absorb."""
+    climbed = _climb_declaration(def_node, lang)
+    start_node = _widen_over_decorator_siblings(climbed)
+    return start_node, climbed
+
+
+def _def_entity(node: Node, base_defs: dict[str, str]):
+    """Return ``(leaf_name, base_kind, def_node)`` if ``node`` is a def, else None. ``def_node``
+    is the bare def/declarator node -- span widening happens at the call site via
+    ``_entity_span``, once, after the base kind/name are known."""
     if node.type in base_defs:
         name_node = node.child_by_field_name("name")
         if name_node is None:
@@ -174,51 +263,130 @@ def _def_entity(node, base_defs, path, prefix):
     return None
 
 
-def extract_file(path: str, source: str, *, language: str | None = None) -> list[Entity]:
-    """Parse one file's source into entities. Unsupported/unparseable -> ``[]`` (never raises)."""
+@dataclass
+class _Hit:
+    """One raw walk hit, before duplicate-name coalescing/disambiguation."""
+
+    name: str
+    kind: str
+    container: str | None
+    start_node: Node
+    end_node: Node
+
+
+def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: bytes) -> list[_Hit]:
+    """Fold a same-name group into one entity where safe, else disambiguate with a stable
+    ordinal so no two entities ever collide on `id` (`_symbol_kind`'s "unique id per file"
+    invariant that every downstream consumer -- footprints, identity, the fold -- relies on).
+
+    Mergeable iff the group is *contiguous*: no other, differently-named entity's span falls
+    within the group's own outer byte range. `@overload` stubs beside their implementation, or a
+    `@property` getter beside its `@x.setter`, satisfy this (any code between them is ordinary
+    residue, safely absorbed into the merged span verbatim); a name genuinely re-declared with
+    unrelated code between the declarations does not, and keeps its own separate identity via an
+    ordinal suffix rather than being silently dropped."""
+    if len(hits) == 1:
+        return hits
+    ordered = sorted(hits, key=lambda h: h.start_node.start_byte)
+    lo = ordered[0].start_node.start_byte
+    hi = ordered[-1].end_node.end_byte
+
+    def _contained_in_a_member(h: _Hit) -> bool:
+        # A nested child of one of *this group's own* members (e.g. a method inside a
+        # duplicated class) sits inside the envelope by construction -- that's containment,
+        # not interference, and must not block the merge.
+        return any(
+            m.start_node.start_byte <= h.start_node.start_byte and h.end_node.end_byte <= m.end_node.end_byte
+            for m in ordered
+        )
+
+    foreign = [
+        h
+        for others in all_hits_by_name.values()
+        if others is not hits
+        for h in others
+        if lo <= h.start_node.start_byte and h.end_node.end_byte <= hi and not _contained_in_a_member(h)
+    ]
+    if not foreign:
+        merged = _Hit(
+            name=ordered[0].name,
+            kind=ordered[0].kind,
+            container=ordered[0].container,
+            start_node=ordered[0].start_node,
+            end_node=ordered[-1].end_node,
+        )
+        return [merged]
+    # Non-contiguous collision (rare: a conditional redefinition) -- keep the first occurrence's
+    # name, disambiguate the rest with a stable, document-order ordinal so the id space stays
+    # unique without losing any entity's content.
+    out: list[_Hit] = []
+    for i, h in enumerate(ordered):
+        name = h.name if i == 0 else f"{h.name}${i + 1}"
+        out.append(_Hit(name=name, kind=h.kind, container=h.container, start_node=h.start_node, end_node=h.end_node))
+    return out
+
+
+def extract_file(path: str, source: bytes | str, *, language: str | None = None) -> list[Entity]:
+    """Parse one file's source into entities. Unsupported/unparseable -> ``[]`` (never raises).
+
+    `source` is bytes-native throughout -- pass raw bytes (e.g. a git blob) whenever they're
+    available; a `str` is accepted for ergonomic hand-written callers/fixtures and encoded once
+    via UTF-8 (lossless, since a Python `str` is already correctly decoded)."""
     lang = language or _language_for(path)
     if lang is None:
         return []
     parser = Parser(_language(lang))
     base_defs = _DEFS[lang]
-    src = bytes(source, "utf-8")
+    src = source if isinstance(source, bytes) else source.encode("utf-8")
     tree = parser.parse(src)  # tree-sitter never raises; bad syntax -> ERROR nodes
 
-    out: list[Entity] = []
+    hits: list[_Hit] = []
 
-    def walk(node, stack: list[tuple[str, str]]) -> None:
+    def walk(node: Node, stack: list[tuple[str, str]]) -> None:
         child_stack = stack
-        hit = _def_entity(node, base_defs, path, stack)
+        hit = _def_entity(node, base_defs)
         if hit is not None:
-            leaf, base_kind, span_node = hit
+            leaf, base_kind, def_node = hit
             prefix = [name for name, _ in stack]
             name = ".".join([*prefix, leaf])
             container = ".".join(prefix) or None
             kind = base_kind
             if kind == "function" and stack and stack[-1][1] == "class":
                 kind = "method"
-            out.append(
-                Entity(
-                    id=f"{path}::{name}",
-                    name=name,
-                    file=path,
-                    kind=kind,
-                    start_line=span_node.start_point[0] + 1,
-                    end_line=span_node.end_point[0] + 1,
-                    container=container,
-                    content_hash=_content_hash(span_node, src),
-                    structural_hash=_structural_hash(span_node, src),
-                )
-            )
+            start_node, end_node = _entity_span(def_node, lang)
+            hits.append(_Hit(name=name, kind=kind, container=container, start_node=start_node, end_node=end_node))
             child_stack = [*stack, (leaf, kind)]
         for child in node.children:
             walk(child, child_stack)
 
     walk(tree.root_node, [])
+
+    by_name: dict[str, list[_Hit]] = {}
+    for h in hits:
+        by_name.setdefault(h.name, []).append(h)
+
+    out: list[Entity] = []
+    for name in by_name:  # dict preserves first-seen (document) order -- deterministic
+        for h in _coalesce(by_name[name], by_name, src):
+            out.append(
+                Entity(
+                    id=f"{path}::{h.name}",
+                    name=h.name,
+                    file=path,
+                    kind=h.kind,
+                    start_line=h.start_node.start_point[0] + 1,
+                    end_line=h.end_node.end_point[0] + 1,
+                    container=h.container,
+                    content_hash=_content_hash_range(h.start_node, h.end_node, src),
+                    structural_hash=_structural_hash_range(h.start_node, h.end_node, src),
+                    start_byte=h.start_node.start_byte,
+                    end_byte=h.end_node.end_byte,
+                )
+            )
     return out
 
 
-def extract_codebase(codebase: dict[str, str]) -> list[Entity]:
+def extract_codebase(codebase: dict[str, bytes | str]) -> list[Entity]:
     """Extract entities across a whole ``{path: source}`` map, in sorted-path order."""
     out: list[Entity] = []
     for path in sorted(codebase):

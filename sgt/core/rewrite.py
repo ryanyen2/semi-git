@@ -184,7 +184,7 @@ def _entity_bytes_from_tree(repo: Path, sym: str) -> bytes:
     full = repo / path
     if not full.is_file():
         raise RewriteError(f"{path!r} not found in the working tree -- author {sym} there first")
-    source = full.read_text(encoding="utf-8")
+    source = full.read_bytes()
     ent = next((e for e in extract_file(path, source) if e.id == sym), None)
     if ent is None:
         raise RewriteError(f"{sym!r} not found in the working tree's current {path} -- author it there first")

@@ -580,25 +580,128 @@ matcher level and end-to-end through a real `mine()` call (split blocks a would-
 join forces one, both persist and a *subsequent* `mine()` respects them); `rewrite_view` reporting
 pending drafts and a staged candidate's oracle status. Full suite: 211 passed, 1 skipped.
 
-## Known v1 limitations (deferred, see the plan)
+### Operation-ideal kernel — general-code robustness audit: the byte-fidelity fold (2026-07-08)
 
-- **On-demand reconcile shipped.** `sgt reconcile [<ref>]` retries rewrite-to-commute on
-  pending quarantines (all, or one by ref); a node that now commutes is resolved and
-  flipped ACTIVE (its rewritten effects replay last). Previously auto-reconcile ran only
-  during the original fan-out.
-- **Effects are unit-granular** (`add_def` / `replace_def` / `remove_def` / `add_import`
-  / `set_const` / `rename_def` / `add_call`), addressable at any depth via scope-qualified
-  paths. `replace_def` still rewrites a whole *unit* (function/method/class); sub-statement
-  edits (changing one line, splitting a function) are expressed as a full-unit replacement,
-  not a finer-grained patch. `set_const`/`rename_def` remain top-level only.
-- **Cross-module integrity covers `from <local> import x` against present modules.**
-  `import x` attribute usage and the "imported module deleted entirely" case are not yet
-  checked (conservative to avoid false-flagging third-party imports).
-- **Single language** (Python AST), per plan KTD3.
-- **Gardener** (auto split/merge/relabel) and the **quarantine/reconciliation UI**
-  are minimal in v1: conflicting effects are held back and reported, not yet
-  re-written to commute. Multiverse, the confluence corpus, RL training, and the
-  Codex/Gemini backends are deferred.
+Before starting U12 (Phase P3, feature lens), an audit of U1-U11 found the kernel's correctness
+was verified only against top-level-function Python: every fixture in `tests/laws/corpus.py` was
+bare `def`s with no class, method, decorator, or file mixing a module-level statement with an
+entity. Under that blind spot, four defect classes reproduced empirically on ordinary real-world
+code, all silent (no error, no crash -- just wrong bytes or missing content):
+
+1. **Top-level decorators misapplied.** `extract.py`'s span for a def/class started at
+   `def`/`class`, excluding a Python `decorated_definition` parent or TS `export_statement`
+   wrapper. Two decorated top-level functions materialized with *both* decorators piled onto the
+   first and *none* on the second -- e.g. two Flask routes silently swap handlers.
+2. **Duplicate entity ids -> silent code loss.** `id = file::name`; `@overload` stubs, a
+   `@property` getter beside its `@x.setter`, and similar same-name groups collided, and the
+   fold's `entity_images[name]` was last-write-wins (three `def f` in, one materialized).
+3. **Line-based addressing (`mine.py`'s `_entity_bytes`/`_residue_lines`, `splitlines()` +
+   `"\n".join`) cannot be byte-faithful on arbitrary bytes.** CRLF silently became LF; a form
+   feed or a U+2028 line separator inside a string literal truncated the image; a non-UTF-8
+   tracked file corrupted permanently via `decode("utf-8", "replace")` (U+FFFD substitution);
+   `GitBinding._git`'s `subprocess.run(text=True)` (strict decode) *crashed outright* on any
+   non-UTF-8 byte anywhere in a `git diff`'s output, since diff embeds the changed file's raw
+   content inline.
+4. **Residue was one position-agnostic blob per file**, joined with a hardcoded `b"\n\n\n"`: a
+   trailing `if __name__ == "__main__":` guard rendered at file *top*; blank-line counts
+   inflated; every materialized file got a synthetic trailing `\n` regardless of the original.
+
+**Fix: byte-native addressing + positional residue segments, not a residue patch.** Tree-sitter
+parses raw bytes directly (verified: `has_error=False` on CRLF, latin-1, and form-feed input; a
+full-file byte partition `raw[:a] + raw[a:b] + raw[b:]` reconstructs any input exactly) -- so the
+fold became a pure verbatim concatenation of anchored segments with **zero synthesized bytes**
+anywhere (no separator, no derived content, no trailing newline). This is a stronger property
+than "handles more constructs": *any* unrecognized construct (a TS enum, a lambda, an obscure
+language feature) just becomes faithful residue and still round-trips byte-for-byte -- entity
+recognition only governs revert/cherry-pick *granularity*, never correctness.
+
+- `sgt/entities/extract.py`: `Entity` gained `start_byte`/`end_byte` (the only fields content is
+  ever sliced by now; `start_line`/`end_line` survive as a display-only derivative).
+  `extract_file`/`extract_codebase` accept `bytes | str` (str auto-encoded once, losslessly, for
+  ergonomic hand-written callers). `_entity_span` climbs through a decorator/export wrapper
+  parent (`_climb_declaration`, empirically verified against both tree-sitter-python and
+  tree-sitter-typescript's actual grammar shapes -- notably a TS class member's decorator is a
+  *sibling*, not a child or wrapping parent, so `_widen_over_decorator_siblings` handles that
+  case separately from the wrapper climb). `_coalesce` folds a contiguous same-id group (no
+  foreign entity's span between its members, checked with containment-of-nested-children
+  excluded so a duplicated class's own methods don't block merging the class) into one entity
+  spanning the verbatim union; a non-contiguous collision (rare) falls back to a stable
+  document-order ordinal suffix so the "unique id per file" invariant holds unconditionally.
+  `_content_hash_range`/`_structural_hash_range` generalize the old single-node hashers to a
+  sibling range (used by both decorator-widening and coalescing).
+- `sgt/core/mine.py`: `_entity_bytes` is a raw slice (`source[start_byte:end_byte]`), no decode.
+  `_residue_lines` (one blob) replaced by `_residue_segments`/`_RESIDUE_HEAD`: one segment per
+  gap between top-level entities, keyed by the preceding entity's name (or the HEAD sentinel).
+  Every git-blob read in the mining hot path (`new_bytes`/`old_raw`/cross-file-move reads) is now
+  raw bytes end to end -- the lossy `blob.decode("utf-8", "replace")` step is gone entirely.
+  **Known v1 boundary, documented, not fixed:** a residue segment's chain is keyed on its anchor
+  entity's *current* name; renaming the anchor orphans the gap's chain (a fresh add under the new
+  name) rather than surviving the rename -- the same tier as the anchor-fact mechanism's own
+  pre-existing "never revised" limitation.
+- `sgt/core/identity.py`: `snapshot` tokenizes via a raw byte-range split (`bytes.split()`), no
+  `splitlines()`/decode; `Snap.tokens` is now `frozenset[bytes]` (fuzzy-tier tokens are a
+  heuristic match signal only, never stored/materialized, so lossy comparison there is fine).
+- `sgt/core/fold.py`: `_fold_file` concatenates residue + entities in anchor order verbatim,
+  `b"".join(parts)`, nothing else. **`_derived_imports` deleted outright (a deliberate R6
+  deviation, not an oversight):** once the fold is pure verbatim splicing it cannot also rewrite
+  an import block without breaking exactly the byte-fidelity this rewrite exists to guarantee --
+  and auto-deriving never actually worked for calls inside methods anyway (`requires` attaches to
+  the method symbol, not the file-level entity list, confirmed empirically: a clean cross-file
+  call inside a top-level function DID populate `requires`, but the derivation was never
+  exercised for the common case of a call inside a *method*). An import is just residue now;
+  reverting its only consumer leaves it exactly where it was. Surfacing "this revert leaves an
+  unused import" is a verb/preview-layer concern (the reference edges + `verb_preview_view`'s
+  before/after materialized diff already carry the information) -- no new verb was built this
+  pass; it stays deferred, same as the plan's other "Deferred to Follow-Up Work" items.
+- `sgt/store/gitbind.py`: `GitBinding._git` decodes with `errors="replace"` instead of strict --
+  every caller only reads ASCII-safe structural markers (hunk headers, `+++ b/path`, name-status
+  letters) out of `_git`'s output, never content bytes (those always go through `blob_bytes`
+  separately), so the lossy replacement here never touches anything byte-fidelity depends on.
+- `sgt/core/op.py`: `_symbol_kind` recognizes `__residue__::{anchor}` (was the exact string
+  `__residue__`). `MINER_VERSION` bumped `1` -> `2` per R12 (mining/addressing logic changed);
+  both golden snapshots regenerated (`SGT_UPDATE_GOLDEN=1`) and reviewed -- the diffs are exactly
+  the expected shape (op-id churn from the version bump, `+1` op per file from the residue-blob
+  split into HEAD+per-entity segments), nothing structurally surprising.
+- **Commutativity re-verified, not just re-stated, under the new model:** two branches each
+  inserting a *different* entity at a *different* anchor mine, union by content-addressed op id
+  (the shared base ops collide automatically), and materialize correctly interleaved with the
+  original gaps intact (`tests/laws/corpus.py::_case_commuting_features` +
+  `test_anchor_disjoint_additions_compose`). Two branches editing the *same* residue segment
+  differently is a genuine chain fork, detected by the same `is_fork_free` machinery an entity
+  chain fork uses, no special-casing (`_case_residue_fork` + the paired fork law) -- confirming
+  residue segments are ordinary chains, not a second class of citizen.
+
+Regression coverage: 10 new corpus fixtures across byte/structural/layout/TS-shape layers
+(`crlf_endings`, `no_trailing_newline`, `formfeed_and_unicode_sep`, `latin1_encoded`,
+`decorated_routes`, `overload_group`, `property_pair`, `class_with_methods`, `imports_and_main`,
+`ts_export_decorated`), each parametrized through the byte-fidelity law, the real-mining
+round-trip law, and a new no-duplicate-entity-ids invariant law; a dedicated decorator-never-
+strands-in-residue law; the two commutativity/fork laws above. Full suite green (exit 0, three
+independent full runs); both golden snapshots regenerated and reviewed.
+
+## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
+
+- **Residue-segment chain identity does not survive a rename of its anchor entity** (documented
+  above) -- a v1 boundary, not exercised by the corpus as a correctness bug (byte content is
+  still exact; only chain continuity across that one rename is lost).
+- **Import lifecycle is not yet a verb.** Imports are ordinary residue bytes; no verb yet warns
+  "this revert leaves an unused import" or offers to prune one, though the reference edges and
+  `verb_preview_view`'s before/after diff already carry what such a verb would need.
+- **`revert --keep-dependents` is one-hop only** (U11): only direct reference-edge dependents of
+  the target get a continuation hollow; anything further downstream drops like a plain revert.
+- **Two languages** (Python, TypeScript/TSX) via the tree-sitter grammars wired into
+  `sgt/entities/extract.py`'s `_DEFS`/`_EXT_LANG`; anything else materializes as faithful
+  whole-file residue (R7), never mis-decomposed, just not independently addressable.
+- **Reference-edge resolution for non-UTF-8 files is incomplete.** `mine.py`'s `calls_by_src`/
+  `entity_version`/`container_of` come from `build_entity_graph(gb.tree_at(sha))`, and `tree_at`
+  drops any file `file_at` can't UTF-8-decode -- such a file's own entities/residue still mine and
+  materialize correctly (via the separate `blob_bytes`-based per-file loop), but it won't
+  participate in cross-file `requires`/reference-edge resolution. Not fixed this pass (would
+  require rebuilding `tree_at`'s whole read path on bytes); named here so it's a decision, not an
+  oversight.
+- **TS grammar constructs outside `_DEFS`** (enums, `type` aliases, namespaces, ambient
+  declarations) are not extracted as entities -- they materialize as exact residue bytes (never
+  corrupted, per the byte-partition guarantee), just not independently revertable.
 
 ## Reproduce
 
