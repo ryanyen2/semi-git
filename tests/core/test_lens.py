@@ -1,17 +1,25 @@
-"""Tests for sgt.core.lens -- get/put integration with git (plan U6, R8/R9/R10/R20).
+"""Tests for sgt.core.lens -- get/put integration with git (plan U6/U7.5, R8/R9/R10/R20).
 
-Known, documented scope cut: `get()` only mines *committed* history, not uncommitted
-working-tree edits. The ADR's fuller "get: diff working tree or new commits" vision (dirty-tree
-mining) is deferred -- retrofitting it needs mine()'s per-commit body decoupled from real commit
-SHAs (a "diff HEAD's tree against the live filesystem" pass), which is real, separable work for
-whichever unit first calls `put()` from user-facing code (U8's verbs). `put()` still overwrites
-the working tree unconditionally; that combination is unsafe once verbs exist and is flagged in
-FINDINGS.md as a must-fix-before-U8-ships item, not silently left as a surprise.
+`get()` mines committed history *and* the current uncommitted working tree (dirty edits land as
+pending ops with empty provenance, folded into the returned ideal but never persisted to
+`.sgt/local/ideal.json`); `put()` refuses to overwrite an unabsorbed dirty change rather than
+clobbering it (U7.5, closing the two gaps FINDINGS.md flagged under its 2026-07-07 U6 entry).
 """
 
 from __future__ import annotations
 
-from sgt.core.lens import get, init, put
+import pytest
+
+from sgt.core.fold import code
+from sgt.core.lens import (
+    DirtyWorkingTreeError,
+    _load_ideal_table,
+    _ref_key,
+    _save_ideal_table,
+    get,
+    init,
+    put,
+)
 from sgt.core.order import chain_edges, is_valid_ideal
 from sgt.core.store import Store
 from sgt.store.gitbind import GitBinding, init_store
@@ -173,6 +181,84 @@ def test_get_on_empty_repo_returns_empty_ideal(tmp_path):
     gb, _ = init_store(repo)
     ideal = get(repo)
     assert ideal.op_ids == frozenset()
+
+
+def test_dirty_edit_is_mined_as_pending_and_visible_but_not_persisted(tmp_path):
+    """Gap 2 (U7.5): an uncommitted working-tree edit is mined with empty provenance, folded into
+    `get()`'s returned ideal (so `code()` reproduces the dirty bytes), yet never written to the
+    durable `.sgt/local/ideal.json` -- discarding the edit simply stops it appearing next time."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)  # baseline, clean tree
+
+    (repo / "a.py").write_text("def foo():\n    return 42\n", encoding="utf-8")  # dirty, uncommitted
+    ideal = get(repo)
+
+    store = Store(repo)
+    pending_ids = {op.id for op in store.all_ops() if not op.provenance}
+    assert pending_ids, "the dirty edit was not mined as a pending (empty-provenance) op"
+    assert pending_ids <= ideal.op_ids  # the overlay is visible in the returned ideal
+
+    materialized = code(ideal, store.all_ops())
+    assert materialized["a.py"] == (repo / "a.py").read_bytes()  # reproduces the dirty bytes
+    assert b"return 42" in materialized["a.py"]
+
+    persisted = set(_load_ideal_table(repo)[_ref_key(gb)])
+    assert not (pending_ids & persisted), "a pending op leaked into .sgt/local/ideal.json"
+
+
+def test_put_refuses_to_clobber_an_unabsorbed_dirty_edit(tmp_path):
+    """R9 (U7.5): `put()` of an ideal that targets *different* bytes than an uncommitted edit on
+    disk raises rather than silently reverting the edit; it refuses before touching the tree."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    baseline = get(repo)  # materializes foo == 1
+
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")  # dirty, uncommitted
+
+    with pytest.raises(DirtyWorkingTreeError):
+        put(repo, baseline)  # would overwrite the uncommitted foo == 2 with foo == 1
+
+    assert (repo / "a.py").read_bytes() == b"def foo():\n    return 2\n"  # tree left untouched
+
+
+def test_persisted_ideal_survives_re_get_without_resurrecting_excluded_ops(tmp_path):
+    """Gap 1 (U7.5): once `.sgt/local/ideal.json` holds an explicit (smaller) ideal for a ref, a
+    re-`get()` with no new commits returns exactly that set -- an intentionally excluded op is
+    not re-derived back in by a provenance scan of git history (the durability U8's revert/pin
+    verbs will depend on)."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("modify foo")
+    full = get(repo)
+    store = Store(repo)
+
+    # The modify op (a chain tip, so dropping it keeps a valid ideal) is what we exclude.
+    def _is_foo_modify(op):
+        fp = op.footprint.get("a.py::foo")
+        return fp is not None and fp[0] is not None
+
+    modify_id = next(oid for oid in full.op_ids if _is_foo_modify(store.get(oid)))
+    subset = full.op_ids - {modify_id}
+
+    table = _load_ideal_table(repo)
+    table[_ref_key(gb)] = sorted(subset)
+    _save_ideal_table(repo, table)
+
+    reideal = get(repo)  # no new commits since the witness
+    assert reideal.op_ids == subset  # exactly the persisted subset, not the full history
+    assert modify_id not in reideal.op_ids
+
+    materialized = code(reideal, store.all_ops())
+    assert b"return 1" in materialized["a.py"]  # the excluded modify really is gone from the fold
+    assert b"return 2" not in materialized["a.py"]
 
 
 def test_init_on_large_corpus_repo_within_budgets(tmp_path):

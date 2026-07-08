@@ -8,11 +8,13 @@ from sgt.core.op import make_op
 from sgt.core.order import (
     chain_edges,
     downset,
+    downset_in,
     frontier,
     is_fork_free,
     is_valid_ideal,
     reference_edges,
     upset,
+    upset_in,
 )
 
 
@@ -114,6 +116,25 @@ def test_frontier_is_the_prefix_tip_for_a_partial_ideal():
     assert frontier(ideal_ids, ops) == {"a.py::foo": ops[1].id}
 
 
+def test_frontier_survives_a_revert_to_an_earlier_byte_identical_value():
+    """Regression: add(None->v0) -> modify(v0->v1) -> revert(v1->v0) -- the revert's after-value
+    collides with the add's after-value. The old after-value-keyed dict-overwrite bookkeeping
+    (both `frontier`'s `superseded` set and the `chain_edges` producer map `is_valid_ideal` used
+    to walk) either lost the revert as the tip, or built a nonsense edge that rejected a
+    legitimate prefix's validity as depending on an op it doesn't even include."""
+    sym = "a.py::foo"
+    add = make_op({sym: (None, "v0")}, {sym: b"body0"}, provenance=("c0",))
+    modify = make_op({sym: ("v0", "v1")}, {sym: b"body1"}, provenance=("c1",))
+    revert = make_op({sym: ("v1", "v0")}, {sym: b"body0"}, provenance=("c2",))
+    ops = [add, modify, revert]
+
+    assert is_valid_ideal(ops, {add.id, modify.id})  # a valid prefix, no revert yet
+
+    full = {op.id for op in ops}
+    assert is_valid_ideal(ops, full)
+    assert frontier(full, ops) == {sym: revert.id}
+
+
 @given(st.integers(min_value=1, max_value=8), st.integers(min_value=0, max_value=7))
 @settings(max_examples=40)
 def test_frontier_agrees_with_naive_prefix_walk(n, cut):
@@ -124,6 +145,61 @@ def test_frontier_agrees_with_naive_prefix_walk(n, cut):
     prefix = ops[: cut + 1]
     ideal_ids = {op.id for op in prefix}
     assert frontier(ideal_ids, ops) == {"a.py::foo": prefix[-1].id}
+
+
+def _revert_chain(sym: str):
+    """add(None->v0) -> modify(v0->v1) -> revert(v1->v0): the after-value collision (add and
+    revert both land on v0) the ideal-relative up/down-set must survive (U8, plan U7.5 fix)."""
+    add = make_op({sym: (None, "v0")}, {sym: b"b0"}, provenance=("c0",))
+    mod = make_op({sym: ("v0", "v1")}, {sym: b"b1"}, provenance=("c1",))
+    rev = make_op({sym: ("v1", "v0")}, {sym: b"b0"}, provenance=("c2",))
+    return add, mod, rev
+
+
+def test_is_valid_ideal_rejects_an_originless_revert_cycle():
+    """The `{modify, revert}` pair lifted out of add->modify->revert is existentially closed
+    (each produces the other's before-version) but has no chain head -- grounding rejects it."""
+    sym = "a.py::foo"
+    add, mod, rev = _revert_chain(sym)
+    ops = [add, mod, rev]
+    assert not is_valid_ideal(ops, {mod.id, rev.id})  # no origin -> not grounded
+    assert is_valid_ideal(ops, {add.id})
+    assert is_valid_ideal(ops, {add.id, mod.id})
+    assert is_valid_ideal(ops, {add.id, mod.id, rev.id})
+
+
+def test_upset_in_reverting_a_head_removes_the_whole_chain_despite_the_collision():
+    sym = "a.py::foo"
+    add, mod, rev = _revert_chain(sym)
+    ops = [add, mod, rev]
+    ideal = {add.id, mod.id, rev.id}
+    # reverting the head removes the entire chain -- not just the add, leaving a headless cycle
+    assert upset_in(add.id, ideal, ops) == ideal
+    # reverting the middle removes middle + revert (revert built on v1, which only modify made)
+    assert upset_in(mod.id, ideal, ops) == {mod.id, rev.id}
+    assert is_valid_ideal(ops, ideal - upset_in(mod.id, ideal, ops))
+    # reverting the tip removes only the tip
+    assert upset_in(rev.id, ideal, ops) == {rev.id}
+    assert is_valid_ideal(ops, ideal - {rev.id})
+
+
+def test_upset_in_cascades_a_declared_successor():
+    a = make_op({"a.py::a": (None, "v0")}, {"a.py::a": b"a"})
+    b = make_op({"b.py::b": (None, "v0")}, {"b.py::b": b"b"})  # independent of a by chain/reference
+    ops = [a, b]
+    declared = frozenset({(a.id, b.id)})  # a <= b
+    assert upset_in(a.id, {a.id, b.id}, ops) == {a.id}  # no edge, b survives
+    assert upset_in(a.id, {a.id, b.id}, ops, declared) == {a.id, b.id}  # declared edge pulls b
+
+
+def test_downset_in_walks_chain_order_through_a_revert_collision():
+    sym = "a.py::foo"
+    add, mod, rev = _revert_chain(sym)
+    ops = [add, mod, rev]
+    ideal = {add.id, mod.id, rev.id}
+    assert downset_in(rev.id, ideal, ops) == ideal            # revert <- modify <- add
+    assert downset_in(mod.id, ideal, ops) == {add.id, mod.id}
+    assert downset_in(add.id, ideal, ops) == {add.id}
 
 
 @given(st.integers(min_value=2, max_value=6))

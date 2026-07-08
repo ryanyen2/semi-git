@@ -581,6 +581,58 @@ def ideal_diff_view(repo, ref_a: str, ref_b: str) -> dict:
     return {"ref_a": ref_a, "ref_b": ref_b, "by_symbol": grouped, "count": len(sym_diff)}
 
 
+def verb_preview_view(
+    repo, verb: str, target: str, *, version: str | None = None,
+    source_ref: str | None = None, other: str | None = None,
+) -> dict:
+    """A side-effect-free preview of an ideal-edit verb (U8: revert/restore/pin/cherry-pick/after)
+    -- the op-ids it would add/remove, the symbols whose frontier tip moves, whether it would fork
+    (and so refuse), and the per-file before/after bytes of the fold. Pure: it runs the verb's
+    `plan_*` (no mining, no writes) and materializes both ideals in memory via `fold.code`, so a
+    UI can render `--emit` without a CLI flip. Output is fully sorted for a stable projection.
+
+    `version` is required for `pin` (target is the symbol); `source_ref` for `cherry-pick`;
+    `other` for `after` (target and other are the two ops of the `a <= b` edge)."""
+    from sgt.core import verbs
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.store import Store
+
+    plans = {
+        "revert": lambda: verbs.plan_revert(repo, target),
+        "restore": lambda: verbs.plan_restore(repo, target),
+        "pin": lambda: verbs.plan_pin(repo, target, version),
+        "cherry-pick": lambda: verbs.plan_cherry_pick(repo, target, source_ref),
+        "after": lambda: verbs.plan_after(repo, target, other),
+    }
+    if verb not in plans:
+        return {"error": f"unknown verb {verb!r}", "verbs": sorted(plans)}
+    preview = plans[verb]()
+
+    ops = Store(repo).all_ops()
+    before = code(Ideal.from_ops(preview.before_ids, ops), ops)
+    after = code(Ideal.from_ops(preview.after_ids, ops), ops)
+    files = {
+        path: {
+            "before": before.get(path, b"").decode("utf-8", "replace"),
+            "after": after.get(path, b"").decode("utf-8", "replace"),
+        }
+        for path in sorted(set(before) | set(after))
+        if before.get(path) != after.get(path)
+    }
+    return {
+        "ok": preview.ok,
+        "verb": preview.verb,
+        "target": preview.target,
+        "removed": sorted(preview.removed),
+        "added": sorted(preview.added),
+        "affected_symbols": list(preview.affected_symbols),
+        "forked": preview.forked,
+        "files": files,
+        "message": preview.message,
+    }
+
+
 def export_view(project) -> dict:
     """Everything a graph view needs in one payload: nodes, edges, effects, witnesses."""
     g = graph_view(project)
