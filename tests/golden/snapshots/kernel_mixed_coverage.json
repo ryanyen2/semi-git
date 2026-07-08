@@ -146,6 +146,7 @@
       "util.py::__residue__": "3030af093d83c1fec533490a2e0238413edf0b0db8a416c6d7c5861646afe6fb",
       "util.py::helper": "562c695c19ca9794c1baf83c01e1c0a0d677ff3497282611dc9a005b4218640e"
     },
+    "oracle_configured": false,
     "oracle_verdict": null
   }
 }

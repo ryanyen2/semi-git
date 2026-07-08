@@ -21,7 +21,7 @@ import pathlib
 
 import pytest
 
-from tests.golden.corpus import CORPUS, KERNEL_CORPUS, capture_kernel_views, capture_views
+from tests.golden.corpus import KERNEL_CORPUS, capture_kernel_views
 
 _SNAPSHOTS = pathlib.Path(__file__).resolve().parent / "snapshots"
 
@@ -51,13 +51,6 @@ def _assert_matches_golden(snapshot_name: str, actual: str) -> None:
             )
         )
         pytest.fail(f"sgt.api projection drifted for {snapshot_name!r}:\n{diff}")
-
-
-@pytest.mark.parametrize("name", sorted(CORPUS))
-def test_api_projection_matches_golden(name, tmp_path):
-    case = CORPUS[name]
-    project = case.build(str(tmp_path))
-    _assert_matches_golden(f"{name}.json", _dump(capture_views(project, case)))
 
 
 @pytest.mark.parametrize("name", sorted(KERNEL_CORPUS))

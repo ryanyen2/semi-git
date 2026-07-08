@@ -28,6 +28,7 @@ from pathlib import Path
 
 from tree_sitter import Parser
 
+from sgt.config import IdentityConstraints, load_identity_constraints
 from sgt.core.identity import Snap, detect_splits_merges, link_residual, match_pair, snapshot
 from sgt.core.op import BOTTOM, Images, Op, make_op
 from sgt.entities.extract import Entity, _language, _language_for, extract_file
@@ -190,7 +191,8 @@ def _untangle(touched_ids: set[str], edges: list[EntityEdge]) -> list[frozenset[
 
 
 def _mine_one(
-    gb: GitBinding, uf: _UnionFind, order: int, sha: str, parent: str | None, is_pending: bool = False
+    gb: GitBinding, uf: _UnionFind, order: int, sha: str, parent: str | None, is_pending: bool = False,
+    constraints: IdentityConstraints | None = None,
 ) -> list[_Touch]:
     """One commit's touched symbols -- the loop body `mine()` runs once per real commit, plus
     (when `include_dirty=True`) once more for the working tree's uncommitted state, diffed
@@ -267,7 +269,7 @@ def _mine_one(
         old_snaps = snapshot(old_entities, old_src or "")
         new_snaps = snapshot(new_entities, new_src)
         by_id_before = {s.ent.id: s for s in old_snaps}
-        m = match_pair(old_snaps, new_snaps)
+        m = match_pair(old_snaps, new_snaps, constraints)
 
         for a in m.modified:
             b = by_id_before[a.ent.id]
@@ -309,7 +311,7 @@ def _mine_one(
                 emit_other(sym, before_v, _content_version(residue_bytes), residue_bytes)
 
     # Cross-file moves: a function cut from one file and pasted into another links by body.
-    cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added)
+    cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added, constraints)
     for old, new in cross_links:
         new_file_src = gb.file_at(sha, new.ent.file) or ""
         if old.ent.kind != new.ent.kind:
@@ -387,17 +389,19 @@ def mine(
     gb = GitBinding(repo)
     uf = _UnionFind()
     touches: list[_Touch] = []
+    constraints = load_identity_constraints(repo)  # U11 R14: identity split/join corrections
 
     history = gb.history(since)
     for order, (sha, parent, _subject) in enumerate(history):
         if sha == treat_as_root:
             parent = None
-        touches.extend(_mine_one(gb, uf, order, sha, parent))
+        touches.extend(_mine_one(gb, uf, order, sha, parent, constraints=constraints))
 
     if include_dirty:
         touches.extend(
             _mine_one(
-                gb, uf, len(history), gb.working_tree_snapshot(), gb.head(), is_pending=True
+                gb, uf, len(history), gb.working_tree_snapshot(), gb.head(), is_pending=True,
+                constraints=constraints,
             )
         )
 

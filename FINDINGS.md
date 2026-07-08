@@ -415,6 +415,171 @@ Regression coverage: `tests/core/test_verbs.py` (9 scenarios incl. the AE2 fork 
 every-verb-output-is-a-valid-ideal property over `linear_history` and `revert_to_original`) and 5
 new `test_order.py` cases pinning the grounding / `upset_in` / `downset_in` collision behavior.
 
+### Operation-ideal kernel — U9 the oracle (2026-07-08)
+
+`sgt/core/oracle.py` adds async tiered build/test verdicts (R13), with the "async" requirement
+satisfied by construction rather than a background thread: `verbs.apply`/`lens.put` never import
+or call this module, so materialization is unconditionally non-blocking, and a verdict is simply
+absent ("pending") until `sgt oracle run` is invoked explicitly. A verdict is keyed to a hash of
+the exact `Ideal.op_ids` it was run against (`oracle.ideal_key`), never to a ref, so an edit that
+changes the ideal produces a fresh key rather than needing any reset logic.
+
+- **Config vs. verdict split.** `.sgt/oracle.json` (committed, team-shared -- `sgt.config.
+  load_oracle_config`, the first `.sgt/`-scoped config format in the repo, plain JSON rather than
+  TOML since `requires-python = ">=3.10"` predates stdlib `tomllib`) declares tier commands in
+  run order. `.sgt/local/oracle.json` (gitignored) is the per-ideal-key verdict cache, following
+  `lens.py`'s witness/ideal/declared small-JSON-table convention exactly (no atomic-rename --
+  this is an advisory cache, not content-addressed).
+- **Pipeline semantics.** `oracle.run(repo, tier=None)` runs all configured tiers in declared
+  order, stopping at the first failure (a real CI shape); `tier="name"` re-runs just that one,
+  replacing its stale result regardless of pipeline position. `oracle.override` records a human
+  verdict (status/reason/by/timestamp) that supersedes tier results in `overall_status`.
+- **`run`/`verdict_for`/`override` all take an explicit `ideal` parameter** (defaulting to
+  `lens.current_ideal`) rather than hard-coding "current" -- this is deliberate: U11's rewrite
+  verbs need to gate landing on the verdict for a *candidate* ideal that isn't committed yet, and
+  accepting `Ideal` as a parameter here makes that compose for free later instead of requiring a
+  second oracle API.
+- **`state_view` gained `oracle_configured` (additive) and a real `oracle_verdict`** (was a
+  literal `None` placeholder since U7). Golden snapshots regenerated for the additive key only
+  (R21) -- diff reviewed, no other drift.
+- **CLI:** `sgt oracle run [--tier NAME]` / `sgt oracle override --status pass|fail --reason
+  "..." [--by NAME]`, following the `_fsck`/`_opt_value` dispatch pattern. Verified by hand
+  end-to-end against a scratch repo (no-config warning, a 2-tier pipeline with one failing tier,
+  override, and `sgt state --json` surfacing the verdict) before committing.
+
+Regression coverage: `tests/core/test_oracle.py` (7 scenarios: no-config warns and writes
+nothing, failing tier records exit code + output tail, pipeline stops at first failure, override
+supersedes with attribution, re-run replaces a stale record, verdict keyed to the ideal resets on
+an edit, and a materializing verb with no oracle configured never touches the verdict table).
+
+### Operation-ideal kernel — U10 delete the legacy mechanisms; flip CLI/MCP onto the kernel (2026-07-08)
+
+The one-way door (per the plan's Risks section and memory): removed every pre-kernel subsystem
+now that U8/U9 + the round-trip laws are green. Deleted outright: `sgt/effects/`, `sgt/engine/`,
+`sgt/orchestrate/` (whole package -- `loop.py`/`sync.py`/`constraint.py` backed only verbs being
+retired, so "rewrite" collapsed to "delete"), `sgt/store/{graph,oplog,replica,clock}.py`,
+`sgt/decisions/`, `sgt/lifecycle/`, `sgt/merge/`, `sgt/entities/cluster.py`, `sgt/project.py`,
+`sgt/agents/distill.py` + `sgt/agents/planner.py`. Kept, unused-for-now (no legacy imports,
+self-contained -- candidates for U12/U14 reuse rather than legacy carryover): `sgt/agents/
+resolve.py`, `intent_dsl.py`, `plan_context.py`. Kept because the kernel itself depends on them
+despite the plan's file list being silent on them: `sgt/entities/graph.py`, `sgt/entities/
+extract.py`, `sgt/store/gitbind.py`.
+
+**A real, flagged product regression, not an oversight.** Feature-lens verbs (`merge`/`split`/
+`rename`/`move`, `sgt map`) and the agentic-loop verbs (`plan`/`checkpoint`/drift) have no kernel
+backing until U12/U14 -- retired from `_VERBS`/help/MCP rather than left half-working against a
+deleted subsystem, per the plan's own acceptance bar ("every CLI verb either works on the kernel
+or is removed from help"). `sgt revert`/`restore` flip onto `sgt/core/verbs.py`; `sgt init` flips
+onto `sgt.core.lens.init`. MCP's 13 legacy tools (none imported `sgt.core`) drop to the
+kernel-parity set: `sgt_revert`, `sgt_restore`, `sgt_init`, `sgt_log`, `sgt_state`, `sgt_diff`,
+`sgt_fsck`, `sgt_oracle_run`.
+
+`sgt/tui/app.py`/`color.py` and `editor/vscode/` were left on disk but unregistered (the `tui`
+verb removed from dispatch) rather than deleted-then-recreated -- both already import views U10
+deletes (`export_view`/`show_view`/`status_view`/`Project`), so they're non-functional either way,
+and U13's own file list already names them for a real rewrite once feature-lens views exist.
+
+Characterization-first execution: the two legacy-`CORPUS` golden cases (`linear_deps`,
+`fanout_multifile`, built from the now-deleted `Project`) were deleted along with `tests/golden/
+corpus.py`'s `capture_views`/`CORPUS`; the kernel-backed `KERNEL_CORPUS` cases were the surviving
+characterization net and stayed green throughout the flip. `from __future__` import-ordering and
+module-level-binding regression coverage (originally in `tests/effects/`) was confirmed already
+ported into `tests/core/test_fold.py`/`test_mine.py` during U5/U6 before deleting their old homes.
+
+Regression coverage: full suite green post-flip; `grep -rn "EffectLog|NodeStatus|SemanticGraph|
+VersionVector" sgt/` returns nothing; `sgt --help` lists only surviving verbs; a manual `sgt init
+&& sgt revert <op> --emit` smoke-run against a scratch repo.
+
+### Operation-ideal kernel — U11 rewrite verbs: the explicit escape hatch (2026-07-08)
+
+`sgt/core/rewrite.py` adds R14's escape hatch for edits the ideal algebra can't express exactly:
+`merge_op`/`split_op`/`transplant`/`revert_keep_dependents` each compute the exact part and draft
+hollow op(s) off-chain (`Op.off_chain`, `Store.add_hollow` -- substrate shipped in U3, never
+exercised until now); `stage`/`fulfill` supply real images (agent-authored, or `from_tree=True`
+reading the working tree entity-by-entity) and fold+write the candidate to the working tree
+**without committing**; `land` is the only step that commits, and refuses unless the oracle's
+verdict for that *exact* candidate ideal is "pass" (or an attributed override resolves to one) --
+R14's landing gate, distinct from R13's async, non-blocking *materialization* gate every other
+verb uses. `identity_split`/`identity_join` correct the tiered matcher itself, not a chain -- no
+hollow op involved.
+
+**Correction to the plan's own sketch, found during implementation (recorded, not silently
+changed -- see `rewrite.py`'s module docstring for the full argument).** The `structured-juggling-
+cocoa.md` execution plan proposed that `merge-op`'s drafted hollow `requires` the *other* fork
+tip's produced version, on the theory that the existing reference-edge machinery would then place
+both tips below the merge op "for free", needing zero `order.py` changes. It does not: `requires`-
+grounding (`order._grounded`) demands the referenced version's producer be a member of the *same*
+ideal -- and that producer is exactly the other fork tip, which still shares `(symbol,
+before_version)` with the first tip, so `is_fork_free` correctly rejects the union as a genuine
+fork regardless of which tip is nominally the "chain parent". There is no way to satisfy
+`requires`-grounding for the other tip's version without either including that tip (which forks)
+or weakening fork detection itself (which U8's cherry-pick refusal, AE2, depends on) -- the two
+invariants are in genuine tension for this exact shape, not solvable by a footprint-assignment
+choice. `merge_op` instead drafts a plain chain-extension of the *ideal's own* tip; the other
+tip's identity rides only in the drafted op's advisory `intent`, for the agent/human authoring the
+merge to read both diffs and reconcile them by hand -- still "resolves the AE2-style fork" (the
+draft lands cleanly, no fork, once fulfilled) and still "explicit rewrite, oracle-gated" per R14,
+just via chain-extension + advisory provenance rather than a structural two-parent edge.
+
+**`split-op`'s "no agent involvement for the tail" is exact, not approximate.** The drafted
+hollow's `before` = the original op's own `before_version`; once its agent-authored intermediate
+image is fulfilled, `stage` mints a second op automatically: `before` = the intermediate's own
+now-known `after_version`, `after` = the *original op's own after-image, reused verbatim*. Net
+materialized content is byte-identical before and after a split -- the chain gains a checkpoint
+(`original(before) -> intermediate(agent) -> tail(original's bytes)`) that a future `pin`/`revert`
+can target; it does not change what's on disk. Verified end-to-end against a real fixture (a
+two-concern `process()` mined from git, split into an intermediate cut, chain and final bytes
+both asserted).
+
+**`revert --keep-dependents` scope (v1): one hop only.** Computes the target's full `upset_in`
+(exactly what a plain revert would drop) but only drafts a continuation hollow for *direct*
+reference-edge dependents (`order.reference_edges` filtered to edges originating at the target);
+anything further downstream is dropped exactly like a plain revert. A grand-dependent chain of
+continuations is a real gap (not exercised by the corpus, not requested by the plan's test
+scenario, which names only "keeps dependents' symbols present" without a transitivity claim) --
+named here as a v1 boundary, not an oversight, per CLAUDE.md's guidance against building for
+unrequested cases.
+
+**Identity constraints (`identity_split`/`identity_join`) needed one hardening beyond the plan's
+sketch.** `sgt.config.IdentityConstraints` (committed `.sgt/identity_constraints.json`, loaded
+once per `mine()` call and threaded through `sgt.core.identity.match_pair`/`link_residual`/
+`_link_pass`) sorts pairs on load/save, but `_link_pass` additionally re-normalizes `never_link`
+to a sorted pair on every lookup rather than trusting the caller's storage convention -- a caller
+constructing `IdentityConstraints` directly with an unsorted pair (any code that isn't
+`load_identity_constraints`, e.g. a test) would otherwise silently fail to match, since frozenset
+membership needs the exact tuple order the checking side computes. `force_link` needed no such
+fix -- its lookup already tries both orderings via `by_before.get(x) or by_before.get(y)`.
+Confirmed a rename genuinely needs the *fuzzy* tier to link once the name itself is part of the
+compared bytes (a `def foo` -> `def bar` header changes both `content_hash` and `structural_hash`,
+since the identifier leaf's text is part of both) -- tiers 2/2b mostly catch pure moves with
+unchanged bytes, not renames; the `identity_split` test therefore uses a mostly-unchanged,
+multi-line body (single differing token) to exercise a genuine fuzzy-tier link before splitting it.
+
+**Draft/stage/land persistence** lives under `.sgt/local/{drafts,staged}.json` (gitignored,
+following `lens.py`'s small-JSON-table convention) so `sgt merge-op`/`split-op`/`transplant`/
+`revert --keep-dependents` (one process) and the later `sgt fulfill <draft-id> --from-tree` /
+`sgt land` (a separate process, once the agent has edited the tree) can hand off across CLI
+invocations without keeping the draft object alive in memory. A draft's hollow files are deleted
+from `.sgt/local/hollow/` on fulfillment (not merely superseded) so `sgt.api.rewrite_view`'s
+pending-drafts list stays accurate.
+
+CLI: `sgt merge-op <a> <b>`, `sgt split-op <op>`, `sgt transplant <op>... --onto <ref>`, `sgt
+identity split|join <a> <b>`, `sgt fulfill <draft-id> --from-tree`, `sgt land [--message ...]
+[--override pass|fail --reason "..."]`, and `sgt revert <ref> --keep-dependents` (a flag on the
+existing U8/U10 verb, routed to `rewrite.revert_keep_dependents` instead of `verbs.revert`).
+`sgt.api.rewrite_view` is the review projection (pending drafts' hollow ops + the staged
+candidate's oracle status), read-only and additive per R21.
+
+Regression coverage: `tests/core/test_rewrite.py` (14 scenarios) -- merge-op drafts + refuses
+when nothing's forked + land gating (pending refuses, failing override refuses, passing override
+lands and the ideal is valid); split-op's original/intermediate/after chain and byte-identical
+final content; revert-keep-dependents drops the target and its old dependent op but keeps the
+dependent's symbol live via a fresh hollow (plus a refusal case); transplant's destination-tip
+`before_version` (AE3) and an unresolvable-source refusal; `never_link`/`force_link` at the
+matcher level and end-to-end through a real `mine()` call (split blocks a would-be fuzzy link,
+join forces one, both persist and a *subsequent* `mine()` respects them); `rewrite_view` reporting
+pending drafts and a staged candidate's oracle status. Full suite: 211 passed, 1 skipped.
+
 ## Known v1 limitations (deferred, see the plan)
 
 - **On-demand reconcile shipped.** `sgt reconcile [<ref>]` retries rewrite-to-commute on

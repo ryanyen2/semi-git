@@ -1,75 +1,30 @@
-"""The `sgt` command surface (origin R5, R6) — graph-only.
+"""The `sgt` command surface — the operation-ideal kernel (plan U7/U8/U9/U11, flipped in U10).
 
-sgt never authors code. The verbs operate on the *semantic graph* and reconstruct the tree
-from it: `plan` (decompose an intent into reviewable PLANNED nodes; bare `sgt "..."` is its
-shorthand), `merge`/`split` (reshape the plan — fold drafts together or divide one), `checkpoint`
-(record the agent's on-disk edits; `sync` is the no-intent alias), and `revert`/`restore`/
-`reconcile` (recompose HEAD — the frontier). Ref arguments resolve through one resolver
-(id / lane / decision / entity / phrase). `plan` also accepts a canonical intent-DSL statement
-(`ADD …`/`EXTEND …`/`REPLACE …`) that parses deterministically with no key. Read-only verbs and
-the recompose ops need no OpenAI key; freeform `plan`/`checkpoint` use it for graph-level reasoning only.
+History is a mined, content-addressed op DAG; a codebase state is an order ideal of that DAG.
+`revert`/`restore` are exact ideal edits (`I \\ ↑X` / `I ∪ ↓X`) with `--emit` previews and
+chain-fork surfacing (AE2). `log`/`state`/`diff` inspect the DAG, the current ideal, and
+ideal-vs-ideal semantic diffs. `oracle` attaches async tiered build/test verdicts. `fsck` verifies
+the op store's integrity. Every verb mines the working tree on contact before acting (R9).
+
+Where the ideal algebra can't express an edit exactly, U11's rewrite verbs (`merge-op`,
+`split-op`, `transplant`, `revert --keep-dependents`, `identity split`/`identity join`) draft
+hollow ops for an agent/human to fulfill (`sgt fulfill <draft-id> --from-tree`) and stage to the
+working tree without committing; `sgt land` is the only verb that commits one, gated on a passing
+oracle verdict (R14).
+
+The feature-lens verbs (`merge`/`split`/`rename`/`move`, `sgt map`) and the agentic-loop verbs
+(`plan`/`checkpoint`/drift review) land in later units (P3/P4) — they have no kernel backing yet,
+so they are not registered here rather than half-working against a deleted subsystem.
 """
 
 from __future__ import annotations
 
 import sys
 
-from sgt.project import Project
-
-_VERBS = {"init", "plan", "merge", "split", "checkpoint", "sync", "revert", "restore", "reconcile",
-          "show", "graph", "status", "blame", "export",
-          "log", "state", "diff",
-          "decisions", "tag", "tui", "mcp", "help", "fsck"}
-
-
-def _print_report(rep) -> int:
-    icon = "✓" if rep.ok else "✗"
-    head = f"{icon} [{rep.action}]"
-    if rep.node_id:
-        head += f" {rep.node_id}"
-    print(head + (f" — {rep.message}" if rep.message else ""))
-    for d in rep.landed:
-        print(f"    landed: {d}")
-    for d in getattr(rep, "quarantined", []):
-        print(f"    quarantined: {d}")
-    for d in rep.held:
-        print(f"    held: {d}")
-    return 0 if rep.ok else 1
-
-
-def confirm_plan(intent: str, lines: list[str]) -> bool:
-    """Echo the canonical DSL a freeform intent normalized to, and ask to plan from it.
-
-    Seeing one's own intent rendered into the grammar is how the controlled-NL form is learned;
-    declining falls back to the rich planner. Defaults to yes (the user opted into normalization).
-    """
-    print("Freeform intent normalized to canonical DSL:")
-    for ln in lines:
-        print(f"  {ln}")
-    try:
-        return input("Plan from these statements? [Y/n] ").strip().lower() in ("", "y", "yes")
-    except EOFError:
-        return False
-
-
-def confirm_sync(clusters) -> bool:
-    """Render the reconciliation plan and ask the user to apply it (the sync checkpoint)."""
-    print("Proposed reconciliation of out-of-band changes:")
-    for cl in clusters:
-        where = f"extend {cl.target}" if cl.target else f"new {cl.kind}"
-        print(f"  - {where}: {cl.intent}")
-        for e in cl.effects:
-            print(f"      {e.op.value} {e.target} ({e.file})")
-    try:
-        return input("Apply this reconciliation? [y/N] ").strip().lower() in ("y", "yes")
-    except EOFError:
-        return False
-
-
-def _orchestrator(repo: str, force: bool = False):
-    from sgt.orchestrate.loop import Orchestrator
-
-    return Orchestrator(Project.open(repo), repo_path=repo, force=force)
+_VERBS = {
+    "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
+    "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
+}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,17 +33,11 @@ def main(argv: list[str] | None = None) -> int:
         return _help()
 
     cmd = argv[0]
-    # `sgt "freeform intent"` — first arg is not a known verb -> treat as `plan` (the
-    # front door for intents; sgt never authors code, so a bare intent becomes a plan).
     if cmd not in _VERBS:
-        cmd, rest = "plan", argv
-    else:
-        rest = argv[1:]
+        return _help()
+    rest = argv[1:]
 
     repo = "."
-    # `--force`/`-f` lets a mutating verb overwrite out-of-band changes intentionally.
-    force = any(a in ("--force", "-f") for a in rest)
-    rest = [a for a in rest if a not in ("--force", "-f")]
     # `--json` switches the read verbs to the canonical machine-readable projection (sgt.api),
     # which the VSCode extension and TUI consume. Stripped here so verb parsing is unaffected.
     as_json = "--json" in rest
@@ -99,8 +48,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "init":
         path = rest[0] if rest else "."
-        Project.init(path)
-        print(f"✓ initialized semi-git in {path} (.sgt/ + git)")
+        from sgt.core.lens import init as kernel_init
+
+        kernel_init(path)
+        print(f"✓ initialized sgt kernel in {path} (.sgt/ + git)")
         return 0
 
     if cmd == "mcp":
@@ -108,21 +59,6 @@ def main(argv: list[str] | None = None) -> int:
 
         serve(rest[0] if rest else repo)  # stdio MCP server for coding-agent clients
         return 0
-
-    if cmd == "graph":
-        return _graph(repo, as_json)
-
-    if cmd == "status":
-        return _status(repo, as_json)
-
-    if cmd == "blame":
-        if not rest:
-            print("usage: sgt blame [--json] <file>")
-            return 2
-        return _blame(repo, " ".join(rest), as_json)
-
-    if cmd == "export":
-        return _export(repo)
 
     if cmd == "fsck":
         return _fsck(repo, as_json)
@@ -139,71 +75,33 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return _diff(repo, rest[0], rest[1], as_json)
 
-    if cmd == "decisions":
-        return _decisions(repo, rest, as_json)
+    if cmd == "oracle":
+        return _oracle(repo, rest, as_json)
 
-
-    if cmd == "tag":
-        if not rest:
-            print("usage: sgt tag <name>")
-            return 2
-        return _print_report(_orchestrator(repo).tag(rest[0]))
-
-    if cmd == "tui":
-        return _tui(repo)
-
-    if cmd == "show":
-        if not rest:
-            print("usage: sgt show <ref>")
-            return 2
-        return _show(repo, " ".join(rest), as_json)
-
-    # `sync` is checkpoint without a declared intent (kept as a familiar alias).
-    if cmd in ("checkpoint", "sync"):
-        assume_yes = any(a in ("--yes", "-y") for a in rest)
-        intent = _opt_value(rest, "--intent")
-        fulfills = _opt_value(rest, "--fulfills")
-        return _checkpoint(repo, assume_yes, intent, fulfills)
+    if cmd == "revert" and "--keep-dependents" in rest:
+        rest = [a for a in rest if a != "--keep-dependents"]
+        return _revert_keep_dependents(repo, rest, as_json)
 
     if cmd in ("revert", "restore"):
-        # `--emit` previews the recompose (text); `--emit --json` returns the per-file payload.
-        emit = "--emit" in rest
-        rest = [a for a in rest if a != "--emit"]
-        if not rest:
-            print(f"usage: sgt {cmd} [--emit] [--json] <ref>")
-            return 2
-        ref = " ".join(rest)
-        orch = _orchestrator(repo, force=force)
-        if emit and as_json:
-            return _emit_json(orch.emit_payload(cmd, ref))
-        verb = orch.revert if cmd == "revert" else orch.restore
-        return _print_report(verb(ref, emit=emit))
+        return _kernel_edit_verb(repo, cmd, rest, as_json)
 
-    if cmd == "reconcile":
-        ref = " ".join(rest) if rest else None
-        return _print_report(_orchestrator(repo).reconcile(ref))
+    if cmd == "merge-op":
+        return _merge_op(repo, rest, as_json)
 
-    if cmd == "plan":
-        # `--yes` auto-accepts the freeform->canonical normalization (skips the confirm prompt).
-        assume_yes = any(a in ("--yes", "-y") for a in rest)
-        rest = [a for a in rest if a not in ("--yes", "-y")]
-        if not rest:
-            print('usage: sgt plan [--force] [--yes] "<intent>"')
-            return 2
-        confirm = (lambda intent, lines: True) if assume_yes else confirm_plan
-        return _print_report(_orchestrator(repo, force=force).plan(" ".join(rest), confirm=confirm))
+    if cmd == "split-op":
+        return _split_op(repo, rest, as_json)
 
-    if cmd == "merge":
-        if len(rest) < 2:
-            print("usage: sgt merge <ref> <ref> [<ref>...]   (drafts; first is the survivor)")
-            return 2
-        return _print_report(_orchestrator(repo, force=force).merge(rest))
+    if cmd == "transplant":
+        return _transplant(repo, rest, as_json)
 
-    if cmd == "split":
-        if len(rest) < 3:
-            print('usage: sgt split <ref> "<intent>" "<intent>" [...]   (each piece a draft)')
-            return 2
-        return _print_report(_orchestrator(repo, force=force).split(rest[0], rest[1:]))
+    if cmd == "identity":
+        return _identity(repo, rest, as_json)
+
+    if cmd == "fulfill":
+        return _fulfill(repo, rest, as_json)
+
+    if cmd == "land":
+        return _land(repo, rest, as_json)
 
     return _help()
 
@@ -217,54 +115,14 @@ def _opt_value(args: list[str], flag: str) -> str | None:
     return None
 
 
-def _print_sync(rep, verb: str) -> int:
-    icon = "✓" if rep.ok else "✗"
-    print(f"{icon} [{verb}] — {rep.message}")
-    for nid in rep.landed:
-        print(f"    new node: {nid}")
-    for nid in getattr(rep, "fulfilled", []):
-        print(f"    fulfilled: {nid}")
-    for nid in rep.extended:
-        print(f"    extended: {nid}")
-    for nid in rep.quarantined:
-        print(f"    quarantined: {nid}")
-    for nid in getattr(rep, "swept", []):
-        print(f"    swept (superseded): {nid}")
-    for note in rep.notes:
-        print(f"    ⚠ {note}")
-    return 0 if rep.ok else 1
-
-
-def _checkpoint(repo: str, assume_yes: bool, intent: str | None, fulfills: str | None) -> int:
-    """Distill on-disk edits into the graph; optionally fulfill a PLANNED node (--fulfills)."""
-    from sgt.agents.distill import fallback_cluster
-    from sgt.agents.resolve import resolve
-    from sgt.orchestrate.sync import run_sync
-
-    proj = Project.open(repo)
-    fulfills_id = None
-    if fulfills:
-        r = resolve(proj, fulfills)
-        if r.node_id is None:
-            print(f"✗ [checkpoint] — could not resolve --fulfills {fulfills!r} ({r.kind})")
-            return 1
-        fulfills_id = r.node_id
-
-    # A declared --intent labels the nodes directly via the deterministic clusterer (no LLM);
-    # without one, fall back to the default LLM/deterministic clustering. --fulfills skips
-    # clustering entirely inside run_sync.
-    clusterer = None
-    if intent and not fulfills_id:
-        def clusterer(effects, project):  # noqa: E306
-            clusters = fallback_cluster(effects, project)
-            for c in clusters:
-                c.intent = intent
-            return clusters
-
-    confirm = (lambda clusters: True) if assume_yes else confirm_sync
-    rep = run_sync(proj, repo_path=repo, clusterer=clusterer, confirm=confirm,
-                   fulfills=fulfills_id, intent=intent)
-    return _print_sync(rep, "checkpoint")
+def _strip_opt(args: list[str], flag: str) -> tuple[str | None, list[str]]:
+    """Like ``_opt_value``, but also returns ``args`` with ``flag`` and its value removed --
+    for verbs (U11's) whose remaining positional args matter after the flag is consumed."""
+    if flag not in args:
+        return None, args
+    i = args.index(flag)
+    value = args[i + 1] if i + 1 < len(args) else None
+    return value, args[:i] + args[i + 2 :]
 
 
 def _emit_json(payload) -> int:
@@ -272,72 +130,6 @@ def _emit_json(payload) -> int:
 
     print(json.dumps(payload, indent=2))
     return 1 if isinstance(payload, dict) and "error" in payload else 0
-
-
-def _graph(repo: str, as_json: bool = False) -> int:
-    if as_json:
-        from sgt.api import graph_view
-
-        return _emit_json(graph_view(Project.open(repo)))
-    proj = Project.open(repo)
-    nodes = proj.graph.nodes()
-    if not nodes:
-        print("(empty graph — run `sgt plan \"...\"` to plan a feature)")
-        return 0
-    print("Semantic graph:")
-    for n in nodes:
-        status = "" if n.status.value == "active" else f" [{n.status.value}]"
-        deps = proj.graph.successors(n.id)
-        dep_str = f"  → depends on {', '.join(deps)}" if deps else ""
-        print(f"  {n.id} [{n.kind.value}]{status}: {n.intent[:70]}{dep_str}")
-        w = proj.witnesses.get(n.id)
-        if w:
-            print(f"      ⚠ quarantined — {w.get('reason', '?')}; held: {', '.join(w.get('held', []))}")
-    return 0
-
-
-def _status(repo: str, as_json: bool = False) -> int:
-    from sgt.effects.model import EffectError
-
-    if as_json:
-        from sgt.api import status_view
-
-        return _emit_json(status_view(Project.open(repo)))
-    proj = Project.open(repo)
-    try:
-        cb = proj.materialize()
-    except EffectError as ex:
-        print(f"nodes: {len(proj.graph.nodes())}  (cannot materialize: {ex})")
-        return 1
-    print(f"nodes: {len(proj.graph.nodes())}  files: {len(cb)}  "
-          f"effects: {sum(len(b) for b in proj.bundles.values())}")
-    for path in sorted(cb):
-        print(f"  {path} ({len(cb[path].splitlines())} lines)")
-    return 0
-
-
-def _blame(repo: str, file: str, as_json: bool = False) -> int:
-    from sgt.api import blame_view
-
-    view = blame_view(Project.open(repo), file)
-    if as_json:
-        return _emit_json(view)
-    if "error" in view:
-        print(f"✗ {view['error']}")
-        return 1
-    print(f"semantic blame — {file}" + ("  (⚠ working tree has drifted)" if view["drift"] else ""))
-    for s in view["spans"]:
-        nid = s["node_id"]
-        label = view["nodes"].get(nid, {}).get("intent", "")[:54] if nid else "(unattributed)"
-        rng = f"{s['start']}" if s["start"] == s["end"] else f"{s['start']}-{s['end']}"
-        print(f"  L{rng:<9} {nid or '—':<10} {label}")
-    return 0
-
-
-def _export(repo: str) -> int:
-    from sgt.api import export_view
-
-    return _emit_json(export_view(Project.open(repo)))
 
 
 def _fsck(repo: str, as_json: bool = False) -> int:
@@ -399,6 +191,10 @@ def _state(repo: str, as_json: bool = False) -> int:
     for path in view["covered_paths"]:
         mark = "entity" if path in set(view["entity_paths"]) else "whole-file"
         print(f"  {path}  ({mark})")
+    if view["oracle_configured"]:
+        from sgt.core.oracle import overall_status
+
+        print(f"  oracle: {overall_status(view['oracle_verdict'])}")
     return 0
 
 
@@ -421,123 +217,264 @@ def _diff(repo: str, ref_a: str, ref_b: str, as_json: bool = False) -> int:
     return 0
 
 
-def _decisions(repo: str, rest: list[str], as_json: bool) -> int:
-    """The decision DAG. `sgt decisions [--json]` → the graph; `decisions frontier` → the frontier."""
-    from sgt.api import decision_graph_view, frontier_view
+def _oracle(repo: str, rest: list[str], as_json: bool = False) -> int:
+    """Async tiered build/test verdicts attached to the current ideal (plan U9, R13).
+    `sgt oracle run [--tier NAME]` executes configured tiers in declared order, stopping at the
+    first failure; `sgt oracle override --status pass|fail --reason "..." [--by NAME]` records a
+    human verdict that supersedes them. Materialization itself never calls this -- a verdict is
+    "pending" until this verb is run explicitly."""
+    from sgt.core import oracle
+    from sgt.core.lens import get
 
-    if rest and rest[0] == "frontier":
-        view = frontier_view(Project.open(repo))
+    usage = ('usage: sgt oracle run [--json] [--tier NAME] | '
+             'sgt oracle override --status pass|fail --reason "..." [--by NAME]')
+    if not rest or rest[0] not in ("run", "override"):
+        print(usage)
+        return 2
+
+    get(repo)  # mine-on-contact so the verdict is keyed to the current ideal
+    sub, opts = rest[0], rest[1:]
+
+    if sub == "run":
+        tier = _opt_value(opts, "--tier")
+        try:
+            result = oracle.run(repo, tier=tier)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        if not result["configured"]:
+            print("⚠ no oracle configured (.sgt/oracle.json not found) — proceeding without a verdict")
+            return 0
         if as_json:
-            return _emit_json(view)
-        print(f"{len(view['lanes'])} lanes in force: "
-              + ", ".join(f"{f}={view['selection'].get(f, '-')}" for f in view["lanes"]))
+            return _emit_json(result)
+        for name, tr in result["tiers"].items():
+            icon = "✓" if tr["status"] == "pass" else "✗"
+            print(f"{icon} [{name}] exit {tr['exit_code']}")
         return 0
 
-    if rest and rest[0] == "diff":
-        if len(rest) < 3:
-            print("usage: sgt decisions diff <ref-a> <ref-b>   (ref = HEAD or a tag name)")
-            return 2
-        return _emit_json(_orchestrator(repo).diff(rest[1], rest[2]))
-
-    if rest and rest[0] == "blast":
-        if len(rest) < 2:
-            print("usage: sgt decisions blast <decision-id>")
-            return 2
-        return _emit_json(_orchestrator(repo).blast_radius(rest[1]))
-
-    if rest and rest[0] == "distill":
-        # LLM rationale distillation (Context/Consequence/Alternatives); offline = no-op.
-        from sgt.decisions.distill import distill_all
-
-        only = rest[1] if len(rest) > 1 and not rest[1].startswith("-") else None
-        n = distill_all(Project.open(repo), only=only, overwrite="--force" in rest)
-        print(f"distilled rationale for {n} decision(s)" if n
-              else "nothing distilled (no API key, or all decisions already have rationale)")
-        return 0
-
-    view = decision_graph_view(Project.open(repo))
+    status = _opt_value(opts, "--status")
+    reason = _opt_value(opts, "--reason")
+    by = _opt_value(opts, "--by")
+    if status not in ("pass", "fail") or reason is None:
+        print(usage)
+        return 2
+    record = oracle.override(repo, status, reason, by)
     if as_json:
-        return _emit_json(view)
-    bo = sum(1 for e in view["edges"] if e["type"] == "builds-on")
-    lc = sum(1 for e in view["edges"] if e["type"] in ("revises", "fork"))
-    print(f"{view['count']} decisions, {len(view['frontier'])} lanes in force, "
-          f"{lc} lifecycle + {bo} derived builds-on edges, {len(view['clash'])} clashes")
+        return _emit_json(record)
+    print(f"✓ override recorded: {status} ({reason})")
     return 0
 
 
-def _tui(repo: str) -> int:
-    try:
-        from sgt.tui.app import run as run_tui
-    except ModuleNotFoundError as ex:
-        if ex.name and ex.name.split(".")[0] == "textual":
-            print("✗ the TUI needs Textual — install it with:  uv pip install 'semi-git[tui]'")
-            return 1
-        raise
-    run_tui(repo)
-    return 0
+def _kernel_edit_verb(repo: str, cmd: str, rest: list[str], as_json: bool) -> int:
+    """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
+    `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). `--emit` is side-effect-free
+    (`api.verb_preview_view`); otherwise the verb applies via `sgt.core.verbs`."""
+    from sgt.core import verbs
+    from sgt.core.lens import get
+
+    emit = "--emit" in rest
+    rest = [a for a in rest if a != "--emit"]
+    if not rest:
+        print(f"usage: sgt {cmd} [--emit] [--json] <ref>")
+        return 2
+    target = " ".join(rest)
+    get(repo)  # mine-on-contact before planning/applying the edit (R9)
+
+    if emit:
+        from sgt.api import verb_preview_view
+
+        view = verb_preview_view(repo, cmd, target)
+        return _emit_json(view) if as_json else _print_verb_view(view)
+
+    verb = verbs.revert if cmd == "revert" else verbs.restore
+    preview = verb(repo, target)  # apply
+    view = {
+        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
+        "removed": sorted(preview.removed), "added": sorted(preview.added),
+        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
+        "message": preview.message,
+    }
+    return _emit_json(view) if as_json else _print_verb_view(view)
 
 
-def _show(repo: str, ref: str, as_json: bool = False) -> int:
-    from sgt.agents.resolve import resolve
-
+def _print_draft(draft, as_json: bool) -> int:
+    """Shared printer for the U11 draft-producing verbs (`merge-op`/`split-op`/`transplant`/
+    `revert --keep-dependents`) -- each returns a `sgt.core.rewrite.RewriteDraft`."""
     if as_json:
-        from sgt.api import show_view
-
-        return _emit_json(show_view(Project.open(repo), ref))
-    proj = Project.open(repo)
-    r = resolve(proj, ref)
-    if r.node_id is None:
-        print(f"could not resolve {ref!r} ({r.kind}"
-              + (f": {', '.join(r.matches)}" if r.matches else "") + ")")
+        return _emit_json({
+            "ok": draft.ok, "verb": draft.verb, "target": draft.target,
+            "draft_id": draft.draft_id, "hollow_ids": list(draft.hollow_ids),
+            "message": draft.message,
+        })
+    icon = "✓" if draft.ok else "✗"
+    print(f"{icon} [{draft.verb}] {draft.target}" + (f" — {draft.message}" if draft.message else ""))
+    if not draft.ok:
         return 1
-    n = proj.graph.get(r.node_id)
-    print(f"{n.id} [{n.kind.value}] {n.status.value}")
-    print(f"  intent: {n.intent}")
-    for prior in n.provenance:
-        print(f"  provenance: {prior}")
-    print(f"  depends on: {', '.join(proj.graph.successors(n.id)) or '(none)'}")
-    print(f"  dependents: {', '.join(proj.graph.predecessors(n.id)) or '(none)'}")
-    print(f"  commits: {', '.join(c[:8] for c in n.commit_ids) or '(none)'}")
-    w = proj.witnesses.get(n.id)
-    if w:
-        print(f"  ⚠ quarantined — reason: {w.get('reason', '?')}")
-        print(f"    held: {', '.join(w.get('held', [])) or '(none)'}")
-    print("  effects:")
-    for e in proj.bundles.get(n.id, []):
-        print(f"    - {e.op.value} {e.target} ({e.file})")
+    if draft.draft_id:
+        print(f"    draft: {draft.draft_id}")
+        for hid in draft.hollow_ids:
+            print(f"    hollow: {hid[:12]}")
+        print(f"    edit the working tree, then: sgt fulfill {draft.draft_id} --from-tree")
+    return 0
+
+
+def _merge_op(repo: str, rest: list[str], as_json: bool) -> int:
+    """`merge-op <tip_a> <tip_b>` (plan U11, R14): drafts a hollow reconciling a chain fork --
+    U8's cherry-pick refuses on exactly this shape (AE2)."""
+    from sgt.core import rewrite
+    from sgt.core.lens import get
+
+    intent, rest = _strip_opt(rest, "--intent")
+    if len(rest) < 2:
+        print('usage: sgt merge-op <tip_a> <tip_b> [--intent "..."]')
+        return 2
+    get(repo)
+    draft = rewrite.merge_op(repo, rest[0], rest[1], intent=intent)
+    return _print_draft(draft, as_json)
+
+
+def _split_op(repo: str, rest: list[str], as_json: bool) -> int:
+    """`split-op <op-id>` (plan U11, R14): drafts an intermediate cut of a two-concern op."""
+    from sgt.core import rewrite
+    from sgt.core.lens import get
+
+    intent, rest = _strip_opt(rest, "--intent")
+    if not rest:
+        print('usage: sgt split-op <op-id> [--intent "..."]')
+        return 2
+    get(repo)
+    draft = rewrite.split_op(repo, rest[0], intent=intent)
+    return _print_draft(draft, as_json)
+
+
+def _transplant(repo: str, rest: list[str], as_json: bool) -> int:
+    """`transplant <op-id>... --onto <ref>` (plan U11, R14, AE3): drafts hollows with the
+    destination ref's own chain tip as ``before_version``."""
+    from sgt.core import rewrite
+    from sgt.core.lens import get
+
+    onto, rest = _strip_opt(rest, "--onto")
+    intent, rest = _strip_opt(rest, "--intent")
+    if not rest or not onto:
+        print('usage: sgt transplant <op-id>... --onto <ref> [--intent "..."]')
+        return 2
+    get(repo)
+    draft = rewrite.transplant(repo, rest, onto, intent=intent)
+    return _print_draft(draft, as_json)
+
+
+def _revert_keep_dependents(repo: str, rest: list[str], as_json: bool) -> int:
+    """`revert <ref> --keep-dependents` (plan U11, R14): removes the target's up-set but drafts
+    a continuation hollow per direct reference-dependent, so its symbol stays live."""
+    from sgt.core import rewrite
+    from sgt.core.lens import get
+
+    intent, rest = _strip_opt(rest, "--intent")
+    if not rest:
+        print("usage: sgt revert <ref> --keep-dependents")
+        return 2
+    get(repo)
+    draft = rewrite.revert_keep_dependents(repo, " ".join(rest), intent=intent)
+    return _print_draft(draft, as_json)
+
+
+def _identity(repo: str, rest: list[str], as_json: bool) -> int:
+    """`identity split <a> <b>` / `identity join <a> <b>` (plan U11, R14): corrects the tiered
+    matcher itself, not a chain -- writes a committed `.sgt/identity_constraints.json`."""
+    from sgt.core import rewrite
+
+    usage = "usage: sgt identity split <a> <b> | sgt identity join <a> <b>"
+    if len(rest) < 3 or rest[0] not in ("split", "join"):
+        print(usage)
+        return 2
+    sub, a, b = rest[0], rest[1], rest[2]
+    data = (rewrite.identity_split if sub == "split" else rewrite.identity_join)(repo, a, b)
+    if as_json:
+        return _emit_json(data)
+    print(f"✓ identity {sub}: {a} / {b}")
+    return 0
+
+
+def _fulfill(repo: str, rest: list[str], as_json: bool) -> int:
+    """`fulfill <draft-id> --from-tree` (plan U11): supplies a drafted hollow's image from the
+    working tree, validates + folds + writes the candidate — no commit; run `sgt land` next."""
+    from sgt.core import rewrite
+
+    from_tree = "--from-tree" in rest
+    rest = [a for a in rest if a != "--from-tree"]
+    if not rest:
+        print("usage: sgt fulfill <draft-id> --from-tree")
+        return 2
+    try:
+        candidate = rewrite.fulfill(repo, rest[0], from_tree=from_tree)
+    except rewrite.RewriteError as e:
+        print(f"✗ {e}")
+        return 1
+    if as_json:
+        return _emit_json({"ok": True, "op_ids": sorted(candidate.op_ids)})
+    print(f"✓ staged {len(candidate.op_ids)} op(s) to the working tree (uncommitted) — "
+          "run `sgt oracle run` then `sgt land`")
+    return 0
+
+
+def _land(repo: str, rest: list[str], as_json: bool) -> int:
+    """`land [--message "..."] [--override pass|fail --reason "..." [--by NAME]]` (plan U11,
+    R14): commits the last-staged rewrite candidate, refusing unless its oracle verdict is
+    "pass" (or the supplied override resolves to one)."""
+    from sgt.core import rewrite
+
+    message = _opt_value(rest, "--message")
+    status = _opt_value(rest, "--override")
+    reason = _opt_value(rest, "--reason")
+    by = _opt_value(rest, "--by")
+    override = (status, reason or "", by) if status else None
+    try:
+        sha = rewrite.land(repo, message=message, override=override)
+    except rewrite.RewriteError as e:
+        print(f"✗ {e}")
+        return 1
+    if as_json:
+        return _emit_json({"ok": True, "sha": sha})
+    print(f"✓ landed {sha[:12]}")
+    return 0
+
+
+def _print_verb_view(view: dict) -> int:
+    icon = "✓" if view["ok"] else "✗"
+    print(f"{icon} [{view['verb']}] {view['target']}" + (f" — {view['message']}" if view["message"] else ""))
+    if not view["ok"]:
+        return 1
+    if view["removed"]:
+        print(f"    removed {len(view['removed'])} op(s): " + ", ".join(o[:12] for o in view["removed"]))
+    if view["added"]:
+        print(f"    added {len(view['added'])} op(s): " + ", ".join(o[:12] for o in view["added"]))
+    if view["affected_symbols"]:
+        print(f"    affected: {', '.join(view['affected_symbols'])}")
     return 0
 
 
 def _help() -> int:
     print(
-        "sgt — semantic feature-level version control\n\n"
-        "  sgt init [path]            initialize .sgt + git\n"
-        '  sgt plan "<intent>"        decompose an intent into reviewable PLANNED nodes (no code)\n'
-        '                             accepts canonical DSL: ADD/EXTEND/REPLACE/REMOVE (parses offline)\n'
-        '  sgt "<intent>"             shorthand for `sgt plan`\n'
-        '  sgt merge <ref> <ref>...   fold PLANNED drafts into the first (reshape the plan)\n'
-        '  sgt split <ref> "..." "..." replace a PLANNED draft with several pieces\n'
-        '  sgt checkpoint [--yes] [--intent "..."] [--fulfills <ref>]\n'
-        "                             record your edits as a decision; --fulfills lands them on a PLANNED node\n"
-        "                             (`sgt sync` is checkpoint without a declared intent)\n"
-        "  sgt revert [--emit] <ref>  plug a feature out of HEAD (lane + dependents off); --emit previews\n"
-        "  sgt restore [--emit] <ref> plug a feature back in, or pin it to a decision id (compose versions)\n"
-        "  sgt reconcile [<ref>]      re-gate pending quarantine(s); resolve any that now commute\n"
-        "  sgt mcp [path]             run the MCP stdio server for coding-agent clients\n"
-        "  (mutating verbs take --force to overwrite out-of-band changes)\n"
-        "  sgt show <ref>             inspect a node\n"
-        "  sgt graph                  print the semantic DAG\n"
-        "  sgt status                 summarize state\n"
-        "  sgt blame <file>           which feature owns each line of a file (semantic blame)\n"
-        "  sgt export                 dump the whole graph as JSON (nodes, edges, effects)\n"
-        "  sgt fsck [--json]          verify the kernel op store's content-address integrity\n"
-        "  sgt log [--json]           the mined operation DAG (kernel)\n"
-        "  sgt state [--json]         the current ref's ideal: frontier, coverage, entity-granularity fraction\n"
-        "  sgt diff [--json] <a> <b>  semantic diff between two refs' ideals, grouped by symbol\n"
-        "  sgt map [--json]           the deterministic code-entity map (whole repo)\n"
-        "  sgt timeframe <n> [--json] the map as of checkpoint ordinal n (the scrubber frame)\n"
-        "  sgt tui                    open the terminal UI (needs `semi-git[tui]`)\n"
-        "  (read verbs take --json for the machine-readable projection)\n"
+        "sgt — semantic operation-ideal version control (kernel)\n\n"
+        "  sgt init [path]             bind git + the kernel op store; mine existing history\n"
+        "  sgt revert [--emit] <ref>   remove an op and everything built on it (I \\ upset X)\n"
+        "  sgt revert <ref> --keep-dependents   same, but drafts a continuation hollow per dependent\n"
+        "  sgt restore [--emit] <ref>  re-add an op and its prerequisites (I ∪ downset X)\n"
+        "  sgt fsck [--json]           verify the op store's content-address integrity\n"
+        "  sgt log [--json]            the mined operation DAG\n"
+        "  sgt state [--json]          the current ref's ideal: frontier, coverage, oracle verdict\n"
+        "  sgt diff [--json] <a> <b>   semantic diff between two refs' ideals, grouped by symbol\n"
+        '  sgt oracle run [--tier N]   run configured build/test tiers against the current ideal\n'
+        '  sgt oracle override ...     record a human verdict (--status pass|fail --reason "...")\n'
+        '  sgt merge-op <a> <b>        draft a hollow reconciling a chain fork (AE2\'s refusal)\n'
+        "  sgt split-op <op-id>        draft an intermediate cut of a two-concern op\n"
+        "  sgt transplant <op>... --onto <ref>   draft hollows backported onto another chain (AE3)\n"
+        "  sgt identity split|join <a> <b>       correct the matcher itself, not a chain\n"
+        "  sgt fulfill <draft-id> --from-tree     supply a drafted hollow's image; stages, no commit\n"
+        '  sgt land [--message ...] [--override pass|fail --reason "..."]   commit what\'s staged\n'
+        "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
+        "  <ref> is an op-id, an op-id prefix, or a `file::name` symbol (its frontier tip)\n"
+        "  (read verbs take --json for the machine-readable sgt.api projection)\n"
     )
     return 0
 

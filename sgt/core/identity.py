@@ -28,6 +28,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from sgt.config import IdentityConstraints
 from sgt.entities.extract import Entity
 
 _FUZZY = 0.80        # sem THRESHOLD: min token-Jaccard to call a rename/move
@@ -64,15 +65,55 @@ def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
     return inter / union if union else 0.0
 
 
+def _pair(a: str, b: str) -> tuple[str, str]:
+    return tuple(sorted((a, b)))
+
+
+def _forced_links(
+    before: list[Snap], after: list[Snap], matched_b: set[str], matched_a: set[str],
+    force_link: frozenset[tuple[str, str]],
+) -> list[tuple[Snap, Snap]]:
+    """`identity join` (U11, R14): a durable, human-corrected pair that must link regardless of
+    what the hash/fuzzy tiers below would find on their own -- checked first so it always wins."""
+    if not force_link:
+        return []
+    by_before = {s.ent.id: s for s in before}
+    by_after = {s.ent.id: s for s in after}
+    links: list[tuple[Snap, Snap]] = []
+    for x, y in force_link:
+        b = by_before.get(x) or by_before.get(y)
+        a = by_after.get(y) if by_before.get(x) is not None else by_after.get(x)
+        if b is None or a is None or b.ent.id in matched_b or a.ent.id in matched_a:
+            continue
+        matched_b.add(b.ent.id)
+        matched_a.add(a.ent.id)
+        links.append((b, a))
+    return links
+
+
 def _link_pass(
     before: list[Snap],
     after: list[Snap],
     matched_b: set[str],
     matched_a: set[str],
+    constraints: IdentityConstraints | None = None,
 ) -> list[tuple[Snap, Snap]]:
     """Tiers 2 + 3 (content-hash then guarded fuzzy). Marks matched ids in place and
-    returns ``(old, new)`` rename/move links. Shared by the per-file and cross-file passes."""
-    links: list[tuple[Snap, Snap]] = []
+    returns ``(old, new)`` rename/move links. Shared by the per-file and cross-file passes.
+
+    `constraints` (U11, R14's `identity split`/`identity join` escape hatch) is optional and
+    empty by default -- every existing caller is unaffected. `never_link` skips a would-be match
+    for that exact pair (trying the next hash-bucket candidate, or simply not linking in the
+    fuzzy tier); `force_link` links a human-corrected pair up front, before either heuristic
+    runs, so a false negative (two renamed entities the hashes/fuzzy score missed) still merges
+    into one chain."""
+    # Normalized to sorted pairs regardless of how the caller's constraints stored them --
+    # `sgt.config.load_identity_constraints` always sorts, but this stays correct for any
+    # caller (e.g. a test) that constructs `IdentityConstraints` directly with an unsorted pair.
+    never_link = frozenset(_pair(x, y) for x, y in (constraints.never_link if constraints else ()))
+    links = _forced_links(
+        before, after, matched_b, matched_a, constraints.force_link if constraints else frozenset()
+    )
 
     # tiers 2 + 2b -- identical body then identical structure. Index unmatched before-entities
     # by each hash; match after-entities against content_hash first (exact bytes), then
@@ -88,11 +129,17 @@ def _link_pass(
             if a.ent.id in matched_a or not h:
                 continue
             bucket = pool.get(h)
-            if bucket:
-                b = bucket.pop()
-                matched_b.add(b.ent.id)
-                matched_a.add(a.ent.id)
-                links.append((b, a))
+            if not bucket:
+                continue
+            idx = next(
+                (i for i, b in enumerate(bucket) if _pair(b.ent.id, a.ent.id) not in never_link), None
+            )
+            if idx is None:
+                continue
+            b = bucket.pop(idx)
+            matched_b.add(b.ent.id)
+            matched_a.add(a.ent.id)
+            links.append((b, a))
 
     # tier 3 -- fuzzy: only same-kind candidates, size-guarded, best strict-improving score.
     by_kind: dict[str, list[Snap]] = {}
@@ -108,7 +155,7 @@ def _link_pass(
         best: Snap | None = None
         best_score = 0.0
         for b in cands:
-            if b.ent.id in matched_b:
+            if b.ent.id in matched_b or _pair(b.ent.id, a.ent.id) in never_link:
                 continue
             lo, hi = sorted((a.ntok, b.ntok))
             if hi and lo / hi < _SIZE_RATIO:
@@ -134,8 +181,11 @@ class Match:
     removed: list[Snap]               # unmatched before
 
 
-def match_pair(before: list[Snap], after: list[Snap]) -> Match:
-    """Match the entities of one file across a commit (tiers 1 + 2 + 3)."""
+def match_pair(
+    before: list[Snap], after: list[Snap], constraints: IdentityConstraints | None = None
+) -> Match:
+    """Match the entities of one file across a commit (tiers 1 + 2 + 3). `constraints` is U11's
+    `identity split`/`identity join` escape hatch (optional; empty by default)."""
     by_id_before = {s.ent.id: s for s in before}
     matched_b: set[str] = set()
     matched_a: set[str] = set()
@@ -150,22 +200,23 @@ def match_pair(before: list[Snap], after: list[Snap]) -> Match:
             if b.content_hash != a.content_hash:
                 modified.append(a)
 
-    links = _link_pass(before, after, matched_b, matched_a)
+    links = _link_pass(before, after, matched_b, matched_a, constraints)
     added = [s for s in after if s.ent.id not in matched_a]
     removed = [s for s in before if s.ent.id not in matched_b]
     return Match(modified=modified, links=links, added=added, removed=removed)
 
 
 def link_residual(
-    removed: list[Snap], added: list[Snap]
+    removed: list[Snap], added: list[Snap], constraints: IdentityConstraints | None = None
 ) -> tuple[list[tuple[Snap, Snap]], set[str], set[str]]:
     """Cross-file move detection: match a commit's leftover removals against its leftover
     additions (tiers 2 + 3 only -- surface ids never coincide across files). This is the
     safe generalization of sem's file-rename move pass: a function cut from one file and
-    pasted into another links by body, not by name."""
+    pasted into another links by body, not by name. `constraints` is U11's escape hatch
+    (optional; empty by default)."""
     matched_r: set[str] = set()
     matched_a: set[str] = set()
-    links = _link_pass(removed, added, matched_r, matched_a)
+    links = _link_pass(removed, added, matched_r, matched_a, constraints)
     return links, matched_r, matched_a
 
 

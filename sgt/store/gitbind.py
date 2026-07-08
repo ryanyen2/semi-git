@@ -15,8 +15,6 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from sgt.store.graph import SemanticGraph
-
 TRAILER_KEY = "Sgt-Node-Id"
 
 # The kernel's witness trailer (plan U6): one line per op a materializing commit's tree
@@ -365,25 +363,14 @@ class GitBinding:
 
     # -- drift detection ---------------------------------------------------
     def detect_orphans(self, known_commit_ids: set[str]) -> list[str]:
-        """Commits present in git but unknown to the graph (out-of-band changes)."""
+        """Commits present in git but unknown to `known_commit_ids` (out-of-band changes)."""
         return [sha for sha in self.commit_shas() if sha not in known_commit_ids]
 
 
-def known_commit_ids(graph: SemanticGraph) -> set[str]:
-    """The set of commit SHAs the graph has mapped to a node."""
-    ids: set[str] = set()
-    for node in graph.nodes():
-        ids.update(node.commit_ids)
-    return ids
-
-
 def init_store(repo_path: str | Path) -> tuple[GitBinding, Path]:
-    """`sgt init`: bind (or create) a git repo and an empty `.sgt/graph.json`."""
+    """`sgt init`: bind (or create) a git repo and ensure `.sgt/` exists."""
     gb = GitBinding(repo_path)
     gb.init()
     sgt_dir = Path(repo_path) / ".sgt"
     sgt_dir.mkdir(parents=True, exist_ok=True)
-    graph_path = sgt_dir / "graph.json"
-    if not graph_path.exists():
-        SemanticGraph().save(graph_path)
-    return gb, graph_path
+    return gb, sgt_dir
