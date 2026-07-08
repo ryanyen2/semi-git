@@ -108,10 +108,18 @@ class GitBinding:
     def _git(
         self, *args: str, check: bool = True, env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess:
+        # `errors="replace"` (not the default strict decode): `git diff` embeds a changed
+        # file's raw content inline in its output, so a non-UTF-8 tracked file makes this
+        # decode itself blow up otherwise. Every caller of `_git` only reads structural,
+        # ASCII-safe markers out of that output (hunk headers, `+++ b/path` lines, name-status
+        # letters) -- never the file's own content bytes, which are always read separately via
+        # `blob_bytes` -- so a lossy replacement here never touches anything byte-fidelity
+        # actually depends on.
         proc = subprocess.run(
             ["git", "-C", str(self.repo), *args],
             capture_output=True,
             text=True,
+            errors="replace",
             env={**os.environ, **env} if env is not None else None,
         )
         if check and proc.returncode != 0:

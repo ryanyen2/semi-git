@@ -65,15 +65,20 @@ def test_put_get_fixed_point(tmp_path):
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
-def test_get_put_byte_fidelity(tmp_path):
+@pytest.mark.parametrize("case_name", ["linear_history", *corpus.GENERAL_CODE_CASES])
+def test_get_put_byte_fidelity(tmp_path, case_name):
     """get-put: code(get(edits)) reproduces the committed bytes at entity granularity -- an
     untouched entity's exact comments/formatting survive the fold (the `ast.unparse` formatting-
-    loss regression class the plan's byte-splicing KTD exists to kill)."""
+    loss regression class the plan's byte-splicing KTD exists to kill). Parametrized over the
+    general-code-robustness fixtures (kernel byte-fidelity audit, 2026-07-08) as well as the
+    original mining-edge-case corpus: decorators, duplicate-name groups, classes, mixed
+    module-level/entity files, CRLF, non-UTF-8, and TypeScript export/decorator shapes must all
+    round-trip exactly, not just bare top-level Python functions."""
     from sgt.core.fold import code
     from sgt.core.lens import get
     from sgt.core.store import Store
 
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    repo = corpus.CORPUS[case_name].build(tmp_path / "repo")
     before = {p: (repo / p).read_bytes() for p in corpus.tracked_paths(repo)}
 
     ideal = get(repo)
@@ -81,6 +86,108 @@ def test_get_put_byte_fidelity(tmp_path):
 
     for path, original_bytes in before.items():
         assert materialized.get(path) == original_bytes, f"{path} lost byte fidelity through the fold"
+
+
+@pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
+@pytest.mark.parametrize("case_name", ["linear_history", *corpus.GENERAL_CODE_CASES])
+def test_no_duplicate_entity_ids_per_file(tmp_path, case_name):
+    """Invariant (kernel byte-fidelity audit, 2026-07-08): extraction never yields two entities
+    with the same id in one file -- the join key every downstream consumer (footprints,
+    identity, the fold) relies on being unique. `@overload` groups and property getter/setter
+    pairs must coalesce or ordinal-disambiguate rather than collide."""
+    from sgt.entities.extract import extract_file
+
+    repo = corpus.CORPUS[case_name].build(tmp_path / "repo")
+    for path in corpus.tracked_paths(repo):
+        ents = extract_file(path, (repo / path).read_bytes())
+        ids = [e.id for e in ents]
+        assert len(ids) == len(set(ids)), f"{path} has duplicate entity ids: {ids}"
+
+
+@pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
+def test_decorator_lines_never_strand_in_residue(tmp_path):
+    """Invariant (kernel byte-fidelity audit, 2026-07-08): a decorator is part of its entity's
+    span, never left behind in residue -- the defect that let two decorated top-level functions
+    materialize with both decorators piled onto one of them and none on the other."""
+    from sgt.core.lens import get
+    from sgt.core.store import Store
+    from sgt.core.op import _symbol_kind
+
+    repo = corpus.CORPUS["decorated_routes"].build(tmp_path / "repo")
+    ideal = get(repo)
+    ops = Store(repo).all_ops()
+    by_id = {op.id: op for op in ops}
+    for op_id in ideal.op_ids:
+        op = by_id[op_id]
+        for sym, image in op.images.items():
+            if _symbol_kind(sym) == "residue" and image:
+                assert b"@app.route" not in image, f"decorator stranded in residue symbol {sym!r}"
+
+
+@pytest.mark.skipif(not _HAS_ORDER, reason=_ORDER_SKIP)
+def test_anchor_disjoint_additions_compose():
+    """Anchor-disjoint additions commute (ADR S3.5), re-stated under the positional-residue
+    segment model (kernel byte-fidelity audit, 2026-07-08): two branches that each insert a
+    *different* entity at a *different* anchor share no bytes to disagree about, so their mined
+    ops union into one valid, fork-free ideal that materializes both insertions correctly
+    interleaved -- with the original gaps (before the first entity, between the two base
+    entities, after the last) intact exactly where they were."""
+    import tempfile
+    from pathlib import Path
+
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.mine import mine
+    from sgt.core.order import is_valid_ideal
+
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = corpus.CORPUS["commuting_features"].build(Path(tmp) / "repo")
+
+        corpus.checkout(repo, "feature_a")
+        ops_a = mine(repo)
+        corpus.checkout(repo, "feature_b")
+        ops_b = mine(repo)
+        corpus.checkout(repo, "main")
+
+        by_id = {op.id: op for op in [*ops_a, *ops_b]}  # content-addressed: shared base ops
+        all_ops = list(by_id.values())                  # collide to the same id automatically
+        union_ids = frozenset(by_id)
+
+        assert is_valid_ideal(all_ops, union_ids), "anchor-disjoint additions forked instead of composing"
+        ideal = Ideal.from_ops(union_ids, all_ops)
+        materialized = code(ideal, all_ops)["a.py"]
+        assert materialized == (
+            b"def bar():\n    return 1\n\n\ndef foo():\n    return 3\n\n\n"
+            b"def qux():\n    return 2\n\n\ndef baz():\n    return 4\n"
+        )
+
+
+@pytest.mark.skipif(not _HAS_ORDER, reason=_ORDER_SKIP)
+def test_same_residue_segment_edited_on_both_branches_is_a_genuine_fork():
+    """The only conflict (R5): two branches editing the *same* residue segment (an import line)
+    differently is a genuine chain fork, exactly like an entity chain fork -- residue footprints
+    are ordinary (before_version, after_version) chains with no special-casing, so the same
+    fork-detection machinery applies uniformly."""
+    import tempfile
+    from pathlib import Path
+
+    from sgt.core.mine import mine
+    from sgt.core.order import is_fork_free
+
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = corpus.CORPUS["residue_fork"].build(Path(tmp) / "repo")
+
+        corpus.checkout(repo, "feature_a")
+        ops_a = mine(repo)
+        corpus.checkout(repo, "feature_b")
+        ops_b = mine(repo)
+        corpus.checkout(repo, "main")
+
+        by_id = {op.id: op for op in [*ops_a, *ops_b]}
+        all_ops = list(by_id.values())
+        union_ids = frozenset(by_id)
+
+        assert not is_fork_free(all_ops, union_ids), "same-segment divergent edits didn't fork"
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)

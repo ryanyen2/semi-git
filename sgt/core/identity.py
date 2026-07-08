@@ -43,16 +43,21 @@ class Snap:
     ent: Entity
     content_hash: str
     structural_hash: str
-    tokens: frozenset[str]
+    tokens: frozenset[bytes]  # byte tokens (split on raw bytes) -- fuzzy tier is a heuristic
+    # signal only, never stored/materialized, so no decode is needed here.
     ntok: int
 
 
-def snapshot(entities: list[Entity], source: str) -> list[Snap]:
-    """Wrap each entity with its extraction-time hashes plus a token set (for the fuzzy tier)."""
-    lines = source.splitlines()
+def snapshot(entities: list[Entity], source: bytes | str) -> list[Snap]:
+    """Wrap each entity with its extraction-time hashes plus a token set (for the fuzzy tier).
+
+    Byte-native (`start_byte`/`end_byte`) so tokenizing never round-trips through a lossy
+    decode; `source` accepts `str` too for ergonomic hand-written callers/tests (encoded once,
+    losslessly, via UTF-8 -- matching `extract_file`'s own contract)."""
+    src = source if isinstance(source, bytes) else source.encode("utf-8")
     out: list[Snap] = []
     for e in entities:
-        toks = "\n".join(lines[e.start_line - 1 : e.end_line]).split()
+        toks = src[e.start_byte : e.end_byte].split()
         out.append(Snap(e, e.content_hash, e.structural_hash, frozenset(toks), len(toks)))
     return out
 

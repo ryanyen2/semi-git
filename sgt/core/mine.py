@@ -103,33 +103,46 @@ def _positional_version(surface_id: str, content_hash: str) -> str:
     return hashlib.sha1(f"{surface_id}:{content_hash}".encode()).hexdigest()
 
 
-def _parse_has_error(path: str, source: str) -> bool:
+def _parse_has_error(path: str, source: bytes) -> bool:
     """True if tree-sitter could not cleanly parse `source` as `path`'s language -- the signal
     that separates "legitimately no entities" (e.g. a pure-constants module) from "unparseable
     mid-edit", which must degrade to a whole-file symbol rather than report zero entities (R7)."""
     lang = _language_for(path)
     if lang is None:
         return False
-    tree = Parser(_language(lang)).parse(bytes(source, "utf-8"))
+    tree = Parser(_language(lang)).parse(source)
     return tree.root_node.has_error
 
 
-def _entity_bytes(source: str, entity: Entity) -> bytes:
-    """Verbatim bytes for one entity's line span -- the same line-granularity addressing
-    `Entity.start_line`/`end_line` and `FileChange.new_ranges` already use elsewhere in sgt."""
-    lines = source.splitlines()
-    return "\n".join(lines[entity.start_line - 1 : entity.end_line]).encode("utf-8")
+def _entity_bytes(source: bytes, entity: Entity) -> bytes:
+    """Verbatim bytes for one entity's span -- byte-native (`start_byte`/`end_byte`), so CRLF
+    line endings, non-UTF-8 content, and control characters inside a body all survive exactly.
+    No decode, no line join -- a decode-then-reslice pipeline is exactly what can silently
+    truncate or corrupt bytes a line-based differ can't see (kernel byte-fidelity audit,
+    2026-07-08)."""
+    return source[entity.start_byte : entity.end_byte]
 
 
-def _residue_lines(source: str, entities: list[Entity]) -> str:
-    """Module-level source outside every entity's line span -- imports, constants, `__main__`
-    blocks (ADR S3.5: residue is "module-level statement groups ... with ordinary chains").
-    One pseudo-symbol per file, not one per statement."""
-    covered: set[int] = set()
-    for e in entities:
-        covered.update(range(e.start_line, e.end_line + 1))
-    lines = source.splitlines()
-    return "\n".join(line for i, line in enumerate(lines, start=1) if i not in covered)
+_RESIDUE_HEAD = "\x00HEAD\x00"  # sentinel: the gap before a file's first top-level entity (or
+# the whole file, if it has none) -- mirrors _ANCHOR_FIRST's role for entity ordering.
+
+
+def _residue_segments(raw: bytes, entities: list[Entity]) -> dict[str, bytes]:
+    """Positional residue (ADR S3.5, byte-fidelity fold): the file's raw bytes *not* covered by
+    any top-level entity, split into one segment per gap -- keyed by the name of the top-level
+    entity immediately preceding it, or `_RESIDUE_HEAD` for the gap before the first entity (or
+    a file with none at all). Concatenating every top-level entity in document order with its
+    trailing gap reconstructs the file exactly: a verbatim byte partition, no synthesized
+    separator anywhere. Only top-level (container-less) entities anchor a gap -- a nested
+    entity's bytes are already inside its container's own span."""
+    top = sorted((e for e in entities if e.container is None), key=lambda e: e.start_byte)
+    if not top:
+        return {_RESIDUE_HEAD: raw}
+    segments = {_RESIDUE_HEAD: raw[: top[0].start_byte]}
+    for i, e in enumerate(top):
+        end = top[i + 1].start_byte if i + 1 < len(top) else len(raw)
+        segments[e.name] = raw[e.end_byte : end]
+    return segments
 
 
 _ANCHOR_FIRST = "\x00FIRST\x00"  # sentinel: this entity was first in its file's top-level order
@@ -149,7 +162,7 @@ def _top_level_anchor_facts(entities: list[Entity]) -> dict[str, str | None]:
 
 
 def _emit_scope_reshape(
-    emit_entity, old: Snap, new: Snap, new_src: str, calls_by_src, entity_version
+    emit_entity, old: Snap, new: Snap, new_raw: bytes, calls_by_src, entity_version
 ) -> None:
     """A link the identity matcher found by body/structure similarity, but across a *kind*
     change (function -> method or vice versa) -- a genuine scope reshape, not a rename. The
@@ -159,7 +172,7 @@ def _emit_scope_reshape(
     emit_entity(old.ent.id, _positional_version(old.ent.id, old.content_hash), BOTTOM, None, frozenset())
     emit_entity(
         new.ent.id, None, _positional_version(new.ent.id, new.content_hash),
-        _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+        _entity_bytes(new_raw, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
     )
 
 
@@ -250,12 +263,11 @@ def _mine_one(
                 emit_other(fc.path, before_version, after_version, new_bytes, frozenset())
             continue
 
-        new_src = new_bytes.decode("utf-8", "replace") if new_bytes else ""
-        new_entities = extract_file(fc.path, new_src) if new_src else []
-        old_src = gb.file_at(parent, old_ref) if parent else None
-        old_entities = extract_file(old_ref, old_src) if old_src else []
+        new_entities = extract_file(fc.path, new_bytes) if new_bytes else []
+        old_raw = gb.blob_bytes(parent, old_ref) if parent else None
+        old_entities = extract_file(old_ref, old_raw) if old_raw else []
 
-        if new_src and not new_entities and _parse_has_error(fc.path, new_src):
+        if new_bytes and not new_entities and _parse_has_error(fc.path, new_bytes):
             # Unparseable mid-edit: degrade to whole-file for this path at this commit
             # rather than report zero entities (R7) -- no layout/residue this commit either,
             # since the file isn't meaningfully entity-decomposed right now.
@@ -266,8 +278,8 @@ def _mine_one(
             continue
 
         new_entities_by_file[fc.path] = new_entities
-        old_snaps = snapshot(old_entities, old_src or "")
-        new_snaps = snapshot(new_entities, new_src)
+        old_snaps = snapshot(old_entities, old_raw or b"")
+        new_snaps = snapshot(new_entities, new_bytes or b"")
         by_id_before = {s.ent.id: s for s in old_snaps}
         m = match_pair(old_snaps, new_snaps, constraints)
 
@@ -277,61 +289,68 @@ def _mine_one(
                 a.ent.id,
                 _positional_version(a.ent.id, b.content_hash),
                 _positional_version(a.ent.id, a.content_hash),
-                _entity_bytes(new_src, a.ent), _requires_of(a.ent.id, calls_by_src, entity_version),
+                _entity_bytes(new_bytes, a.ent), _requires_of(a.ent.id, calls_by_src, entity_version),
             )
         for old, new in m.links:  # rename / move within one file
             if old.ent.kind != new.ent.kind:
-                _emit_scope_reshape(emit_entity, old, new, new_src, calls_by_src, entity_version)
+                _emit_scope_reshape(emit_entity, old, new, new_bytes, calls_by_src, entity_version)
                 continue
             uf.union(old.ent.id, new.ent.id)
             emit_entity(
                 new.ent.id,
                 _positional_version(old.ent.id, old.content_hash),
                 _positional_version(new.ent.id, new.content_hash),
-                _entity_bytes(new_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+                _entity_bytes(new_bytes, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
                 via_move=True,
             )
 
         commit_added.extend(m.added)
         commit_removed.extend(m.removed)
 
-        # Residue pseudo-symbol -- once per changed file per commit, when the text changed
-        # OR the file's existence changed (an empty file being added/removed has identical
-        # -- empty -- residue text on both sides, but R7 coverage still needs a symbol to
-        # register that the path came into or went out of existence).
-        old_residue = _residue_lines(old_src, old_entities) if old_src else ""
-        new_residue = _residue_lines(new_src, new_entities) if new_src else ""
-        if old_residue != new_residue or (old_src is not None) != (new_bytes is not None):
-            sym = f"{fc.path}::__residue__"
-            residue_bytes = new_residue.encode("utf-8")
-            before_v = _content_version(old_residue.encode("utf-8")) if old_src else None
-            if new_bytes is None:
+        # Positional residue (byte-fidelity fold, 2026-07-08): one touch per gap between
+        # top-level entities (keyed by the preceding entity's name, or the HEAD sentinel),
+        # not one blob per file. A gap that changed text, or whose existence changed (a file
+        # coming into or out of existence needs a touch to register that even when a gap's
+        # text happens to be identical -- e.g. both empty), gets emitted; an unchanged gap is
+        # silently skipped. A rename of a gap's anchor entity orphans that gap's chain (a new
+        # anchor name is a fresh add) rather than surviving the rename -- a documented v1
+        # boundary, the same tier as the anchor-fact mechanism's own "never revised" limit.
+        old_segments = _residue_segments(old_raw, old_entities) if old_raw is not None else {}
+        new_segments = _residue_segments(new_bytes, new_entities) if new_bytes is not None else {}
+        for anchor in sorted(set(old_segments) | set(new_segments)):
+            old_seg = old_segments.get(anchor)
+            new_seg = new_segments.get(anchor)
+            if old_seg == new_seg:
+                continue
+            sym = f"{fc.path}::__residue__::{anchor}"
+            before_v = _content_version(old_seg) if old_seg is not None else None
+            if new_seg is None:
                 emit_other(sym, before_v, BOTTOM, None)
             else:
-                emit_other(sym, before_v, _content_version(residue_bytes), residue_bytes)
+                emit_other(sym, before_v, _content_version(new_seg), new_seg)
 
     # Cross-file moves: a function cut from one file and pasted into another links by body.
     cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added, constraints)
     for old, new in cross_links:
-        new_file_src = gb.file_at(sha, new.ent.file) or ""
+        new_file_raw = gb.blob_bytes(sha, new.ent.file) or b""
         if old.ent.kind != new.ent.kind:
-            _emit_scope_reshape(emit_entity, old, new, new_file_src, calls_by_src, entity_version)
+            _emit_scope_reshape(emit_entity, old, new, new_file_raw, calls_by_src, entity_version)
             continue
         uf.union(old.ent.id, new.ent.id)
         emit_entity(
             new.ent.id,
             _positional_version(old.ent.id, old.content_hash),
             _positional_version(new.ent.id, new.content_hash),
-            _entity_bytes(new_file_src, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+            _entity_bytes(new_file_raw, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
             via_move=True,
         )
     res_added = [s for s in commit_added if s.ent.id not in matched_a]
     res_removed = [s for s in commit_removed if s.ent.id not in matched_r]
     for s in res_added:
-        src = gb.file_at(sha, s.ent.file) or ""
+        raw = gb.blob_bytes(sha, s.ent.file) or b""
         emit_entity(
             s.ent.id, None, _positional_version(s.ent.id, s.content_hash),
-            _entity_bytes(src, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
+            _entity_bytes(raw, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
         )
     for s in res_removed:
         emit_entity(s.ent.id, _positional_version(s.ent.id, s.content_hash), BOTTOM, None, frozenset())

@@ -18,9 +18,12 @@ from dataclasses import dataclass
 BOTTOM = "⊥"  # the ADR's "removed" version/image sentinel: a symbol's after_version at the
 # tip of its chain, meaning the symbol no longer exists in code(I).
 
-MINER_VERSION = "1"  # R12: bump on any change to mining/untangling/identity logic. Part of
+MINER_VERSION = "2"  # R12: bump on any change to mining/untangling/identity logic. Part of
 # every op's content address, so an algorithm upgrade opens a new identity space rather than
 # silently colliding with -- or silently reusing -- ops minted under the old rules.
+# v2 (2026-07-08, kernel byte-fidelity audit): byte-native entity/residue addressing (was
+# line-based), decorator/export span-widening, duplicate-id coalescing, and positional
+# per-gap residue segments (was one blob per file) -- see FINDINGS.md.
 
 # symbol id -> (before_version, after_version); before_version is None for a fresh add.
 # A "version" is a content-addressed string (the symbol's content hash, or a git blob OID for
@@ -43,11 +46,15 @@ def _symbol_kind(sym: str) -> str:
     The classifier for this kernel's symbol-id vocabulary, owned here rather than in `fold`
     because both `fold` (which splices each kind's image) and `ideal.covered_paths` (which
     decides which paths a given ideal materializes) must agree on it -- and `ideal` importing
-    from `fold` would be a cycle (`fold` imports `Ideal`)."""
+    from `fold` would be a cycle (`fold` imports `Ideal`).
+
+    `residue` is positional (kernel byte-fidelity fold, 2026-07-08): one pseudo-symbol per gap
+    between top-level entities, named `__residue__::{anchor}` where `anchor` is the name of the
+    preceding top-level entity (or a HEAD sentinel) -- not one blob per file."""
     if "::" not in sym:
         return "whole_file"
     _, _, rest = sym.partition("::")
-    if rest == "__residue__":
+    if rest.startswith("__residue__::"):
         return "residue"
     if rest.startswith("__anchor__::"):
         return "anchor"
