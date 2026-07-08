@@ -679,6 +679,72 @@ round-trip law, and a new no-duplicate-entity-ids invariant law; a dedicated dec
 strands-in-residue law; the two commutativity/fork laws above. Full suite green (exit 0, three
 independent full runs); both golden snapshots regenerated and reviewed.
 
+### Operation-ideal kernel — U12 hierarchical feature tree over ops (2026-07-08)
+
+`sgt/lens/{cluster,tree,pins,label}.py` (promoted from `experiments/patch_clustering/` per the
+plan, re-sourced from the kernel op store instead of `patches.json`) build the "map": a
+hierarchical feature tree clustering every alive content-bearing symbol over a fused
+co-change⊕structural⊕scope coupling graph, with binary-search arity control (D2), durable pins
+(D3), Greene identity across runs (D5), and cached LLM labeling with a deterministic offline
+fallback (D6). Pure engine + persistence; `sgt map`, feature verbs, and blame are U13.
+
+**D2 — arity control (binary-search CPM resolution, target 5–9 children).** Replaces the
+experiment's fixed `GAMMAS`/`ESCALATE` ladder with a log-scale binary search over `gamma`
+(`[1e-4, 1.0]`, ≤20 iterations) at each split, scoring by the count of ≥`MIN_LANE` groups; the
+`global MAX_DEPTH` mutation is gone (`max_depth` is a threaded param). On sgt's own store the tree
+has 9 internal nodes with child counts `[4, 4, 6, 7, 7, 9, 9, 9, 9]` — 7/9 splits land inside
+`[5, 9]`, the two `4`s carry a `closest_arity` reason (the search's nearest achievable count when
+no in-range `gamma` exists), never a silent violation. NO-ORPHAN holds (every one of the 1464
+alive symbols lands in exactly one leaf; partition, not cover — a test asserts this).
+
+**D5 — Greene identity θ.** `match_identities` does mutual-best member-overlap (Jaccard) matching
+between the previous committed tree (`.sgt/tree/tree.json`) and a fresh build: continuation keeps
+the old feature id, one-old-to-many is a split, many-old-to-one a merge, unmatched-new a birth,
+unmatched-old a death. θ defaults to **0.5** (the Greene-paper standard). The one recorded
+measurement (per the plan's "documented starting point, not a research task"): re-clustering the
+same store with no history change is **100% continuation, zero id churn** at θ=0.5 (test
+`test_rebuild_on_unchanged_history_renames_nothing`), and an `assign`-pinned member holds its
+feature id across ten re-clusters (D3 override beats Greene —
+`test_assign_pin_overrides_greene_and_survives_reruns`).
+
+**BET-C — MoJoFM vs a hand-labeled package map (R22).** Measured on sgt's own `.sgt/ops/` store
+(5714 mined ops), gold = top-level packages, MoJo distance via the accepted greedy (Wen & Tzerpos
+2004), denominator = the all-singletons distance `n − |gold|`; script
+`scripts/bet_c_mojofm.py`, reproducible:
+
+- **Product-focused (the plan's "6–8 packages"): sgt/ symbols only, 480 syms, 9 gold packages
+  (`core`, `entities`, `store`, `cli`+`api`, `config`, `mcp`, `tui`, `agents`, root): MoJoFM =
+  63.9%.**
+- Whole corpus (1464 syms, 15 gold groups incl. `docs`/`tests`/`experiments`): MoJoFM = 47.6%.
+
+63.9% is a fair result for a co-change/structural/scope clustering scored against a *package*
+gold — features here legitimately cross packages (a verb spans `cli`+`api`+`core`), so a
+by-package gold under-credits real feature lanes; the plan treats BET-C as measured-and-recorded,
+not a gate. A materially higher number would need either a feature-labeled gold or heavier pin
+curation, both of which are the intended UX (D3), not a clustering fix.
+
+**Finding — sgt's own 67-commit history is not a valid ideal.** Reconstructing the current ref's
+ideal over the full self-history hits ~440 forked symbol chains (functions deleted in U10 then
+similar names re-added → two competing tips; plus symbols whose genesis op isn't in the
+provenance-reconstructed set), so `lens.get()` and `order.frontier` **correctly refuse** it — the
+chain-fork guard doing its job on real messy history, not a bug. BET-C therefore takes each
+symbol's tip via a fork-tolerant frontier (in-set op whose after-version no in-set op consumes;
+fork tie-break = largest op id) purely to obtain the current codebase's symbol set for
+measurement; co-change still reads the full store, structural edges the current tree. This is a
+measurement convenience, flagged so it's a decision: dogfooding sgt on itself at HEAD would want
+a genesis-horizon `init` (R10) or explicit `merge-op`/`pin` fork resolution (U11), not the full
+provenance union.
+
+Regression coverage: `tests/lens/` (47 tests) — `test_cluster.py` (hub-strip, structural
+reduction, scope grouping, fused = sum), `test_tree.py` (binary-search arity + reasons,
+NO-ORPHAN partition, plurality-vote op→leaf, all five Greene events, load/save round-trip,
+unchanged-history continuity, assign-pin survives ten re-runs, DEDUP sibling-merge + folder
+disambiguation + op_leaf remap, deterministic offline labels), `test_pins.py` (all three
+contradiction cases never raise, must-link contraction, cannot-link reassignment),
+`test_label.py` (member-hash cache hit/miss, fallback tag re-attempt vs LLM-tag skip).
+`igraph`/`leidenalg` declared under `[project.optional-dependencies.lens]` (first real consumer).
+Full suite: 292 passed, 1 skipped (exit 0).
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Residue-segment chain identity does not survive a rename of its anchor entity** (documented
