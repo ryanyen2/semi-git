@@ -197,6 +197,19 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
     return op_leaf
 
 
+def fused_graph(repo: Path, ops: list[Op], ideal) -> tuple[list[str], dict[frozenset, float]]:
+    """The fused (structural ⊕ co-change ⊕ scope) coupling graph over every alive symbol --
+    shared by `build` (the full recursive tree) and `sgt.lens.verbs.plan_split` (a one-off split
+    of a single feature's induced subgraph), so both start from the identical signal."""
+    gb = GitBinding(repo)
+    nodes_set, hubs, cochange, structural = cluster.signals(repo, ops, ideal)
+    subjects = {sha: subject for sha, _parent, subject in gb.history()}
+    scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
+    structural = cluster.hub_normalize(structural)
+    fused = _fuse(structural, cochange, scope)
+    return sorted(nodes_set), fused
+
+
 def build(
     repo: Path, ops: list[Op], ideal, max_depth: int = MAX_DEPTH, pins: Pins | None = None,
     previous: dict | None = None,
@@ -220,13 +233,7 @@ def build(
     if previous is None:
         previous = load(repo)
 
-    gb = GitBinding(repo)
-    nodes_set, hubs, cochange, structural = cluster.signals(repo, ops, ideal)
-    subjects = {sha: subject for sha, _parent, subject in gb.history()}
-    scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
-    structural = cluster.hub_normalize(structural)
-    fused = _fuse(structural, cochange, scope)
-    all_nodes = sorted(nodes_set)
+    all_nodes, fused = fused_graph(repo, ops, ideal)
 
     contracted_nodes, contracted_fused, expansion = apply_must_link(all_nodes, fused, pins)
     contracted_adj = _adjacency(contracted_fused)
@@ -465,7 +472,7 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
 
 def label_tree(
     result: dict, repo: str | Path = ".", labeler=None,
-    subjects_by_leaf: dict[str, list[str]] | None = None,
+    subjects_by_leaf: dict[str, list[str]] | None = None, pins: Pins | None = None,
 ) -> object:
     """Label every node bottom-up (leaves from members, a single-child node reuses its child's
     label, an internal node from its children's labels), then DEDUP. Mutates `result` in place:
@@ -473,11 +480,17 @@ def label_tree(
     leaf a merge removed. Returns the `Labeler` (for `cost_line()` / `save()`).
 
     Labeling is intentionally separate from `build` so the tree exists deterministically offline;
-    the labeler carries its own member-hash cache and deterministic fallback (`sgt.lens.label`)."""
+    the labeler carries its own member-hash cache and deterministic fallback (`sgt.lens.label`).
+
+    After DEDUP, any leaf whose feature id has a user-pinned label (`pins.labels`, U13's
+    `rename` verb) has that label substituted verbatim -- a user rename always wins over the
+    LLM/fallback label, and survives every future re-cluster as long as the id persists."""
     from sgt.lens.label import Labeler
 
     if labeler is None:
         labeler = Labeler(repo)
+    if pins is None:
+        pins = load_pins(repo)
     nodes = result["nodes"]
     subjects_by_leaf = subjects_by_leaf or {}
     for rid in result["roots"]:
@@ -498,4 +511,10 @@ def label_tree(
     remap = _dedup(nodes, result["roots"])
     if remap:
         result["op_leaf"] = {op: remap.get(leaf, leaf) for op, leaf in result["op_leaf"].items()}
+
+    for nid, label in pins.labels.items():
+        node = nodes.get(nid)
+        if node is not None:
+            node["label"] = label
+
     return labeler

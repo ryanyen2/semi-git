@@ -1,18 +1,21 @@
-"""Durable user pins over the feature tree (plan U12, R17): `must_link`/`cannot_link` pairs and
-`assign` (member -> feature id) constraints, persisted in the committed `.sgt/pins/pins.json` and
-fed to every clustering run -- mirrors `sgt.config.load_identity_constraints`'s shape (frozen
-dataclass, empty default, plain JSON, order-independent pairs).
+"""Durable user pins over the feature tree (plan U12/U13, R16/R17): `must_link`/`cannot_link`
+pairs and `assign` (member -> feature id) constraints that steer every clustering run, plus
+`labels` (feature id -> user-chosen label, U13) that a rename verb writes and `tree.label_tree`
+applies as a final override pass. Persisted in the committed `.sgt/pins/pins.json` -- mirrors
+`sgt.config.load_identity_constraints`'s shape (frozen dataclass, empty default, plain JSON,
+order-independent pairs).
 
 Two members `assign`ed to the same feature id are, by construction, must-linked to each other --
 no separate "anchor node" bookkeeping needed (plan D3). Must-link (explicit + assign-derived) is
 realized as **graph contraction** before every Leiden call: a union-find group becomes one
 synthetic vertex, expanded back afterward (`apply_must_link`/`_expand_members`). Cannot-link is
 enforced **after** clustering (`enforce_cannot_link`): a violated pair has its later-sorted member
-moved to its next-best *other* leaf by adjacency weight.
+moved to its next-best *other* leaf by adjacency weight. `labels` is not a clustering constraint
+-- the contradiction/must-link machinery below ignores it entirely.
 
 Pin sets can be contradictory (a must-link/cannot-link pair, or a must-link closure spanning two
 different `assign` targets); `find_contradictions` reports them structurally and never raises --
-the caller (a future `sgt pin` verb, U13) decides whether to refuse or proceed with a warning.
+the caller (U13's feature verbs) decides whether to refuse or proceed with a warning.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ class Pins:
     assign: dict[str, str] = field(default_factory=dict)  # member id -> feature id
     must_link: frozenset[tuple[str, str]] = frozenset()  # sorted pairs, order-independent
     cannot_link: frozenset[tuple[str, str]] = frozenset()
+    labels: dict[str, str] = field(default_factory=dict)  # feature id -> user-chosen label
 
 
 def _pins_path(repo_path: str | Path = ".") -> Path:
@@ -45,6 +49,7 @@ def load_pins(repo_path: str | Path = ".") -> Pins:
         assign=dict(payload.get("assign", {})),
         must_link=frozenset(tuple(sorted(pair)) for pair in payload.get("must_link", [])),
         cannot_link=frozenset(tuple(sorted(pair)) for pair in payload.get("cannot_link", [])),
+        labels=dict(payload.get("labels", {})),
     )
 
 
@@ -58,6 +63,7 @@ def save_pins(repo_path: str | Path, pins: Pins) -> None:
         "assign": dict(sorted(pins.assign.items())),
         "must_link": sorted([list(pair) for pair in pins.must_link]),
         "cannot_link": sorted([list(pair) for pair in pins.cannot_link]),
+        "labels": dict(sorted(pins.labels.items())),
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 

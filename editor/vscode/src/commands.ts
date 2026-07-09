@@ -1,24 +1,24 @@
-// Command wiring. Read/preview commands are safe and immediate. Mutating commands
-// (revert/suspend/restore) always confirm first, because sgt refuses on drift and re-materializes
-// + commits — so we surface the human report and then invalidate every surface.
+// Command wiring. Read/preview commands are safe and immediate. The mutating revert command
+// always confirms first, because `sgt revert` refuses on a fork and otherwise re-materializes +
+// commits — so we surface the human report and then invalidate every surface.
 
 import * as vscode from "vscode";
-import { DecisionViewProvider } from "./decisionView";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
 
-async function pickNode(store: Store, provided?: string): Promise<string | undefined> {
+async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
   if (provided) {
     return provided;
   }
-  let graph;
+  let map;
   try {
-    graph = await store.graph();
+    map = await store.map();
   } catch {
     return undefined;
   }
+  const features = map.nodes.filter((n) => n.kind === "feature");
   const pick = await vscode.window.showQuickPick(
-    graph.nodes.map((n) => ({ label: n.intent || n.id, description: `${n.kind} · ${n.id}`, id: n.id })),
+    features.map((n) => ({ label: n.label || n.id, description: `${n.op_count} op(s) · ${n.id}`, id: n.id })),
     { placeHolder: "Pick a feature" }
   );
   return pick?.id;
@@ -48,7 +48,6 @@ export function registerCommands(
   context: vscode.ExtensionContext,
   store: Store,
   preview: PreviewProvider,
-  graphView: DecisionViewProvider,
   refreshBlame: () => void
 ): void {
   const reg = (id: string, fn: (...a: any[]) => any) =>
@@ -58,57 +57,22 @@ export function registerCommands(
     store.invalidate();
     refreshBlame();
   });
-  // Reveal the Decision Graph panel view (auto-registered <viewId>.focus command).
-  reg("sgt.showGraph", () => vscode.commands.executeCommand(`${DecisionViewProvider.viewId}.focus`));
   reg("sgt.toggleBlame", () => toggle("blame.enabled"));
-  reg("sgt.toggleHeatmap", () => toggle("heatmap.enabled"));
-  reg("sgt.toggleCodeLens", () => toggle("codeLens.enabled"));
-
-  // Inspect = open the in-situ detail pane in the graph panel (no modal popup).
-  reg("sgt.openNode", async (id?: string) => {
-    const node = id ?? (await pickNode(store));
-    if (node) {
-      graphView.selectNode(node);
-    }
-  });
 
   reg("sgt.previewRevert", async (id?: string) => {
-    const node = await pickNode(store, id);
-    if (node) {
-      void preview.preview("revert", node);
+    const feature = await pickFeature(store, id);
+    if (feature) {
+      void preview.preview(feature);
     }
   });
-  // One frontier, two recompose verbs. "switch off" was a reversible suspend — now just `revert`
-  // (lossless); "switch on" is `restore`. Command IDs are kept stable for the menus/webview.
-  reg("sgt.previewSwitchOff", async (id?: string) => {
-    const node = await pickNode(store, id);
-    if (node) {
-      void preview.preview("revert", node);
-    }
-  });
-  reg("sgt.previewSwitchOn", async (id?: string) => {
-    const node = await pickNode(store, id);
-    if (node) {
-      void preview.preview("restore", node);
-    }
-  });
-
   reg("sgt.revert", async (id?: string) => {
-    const node = await pickNode(store, id);
-    if (node) {
-      await applyMutation(store, ["revert", node], `Revert (plug out) feature ${node}? This rewrites the working tree and commits.`);
-    }
-  });
-  reg("sgt.switchOff", async (id?: string) => {
-    const node = await pickNode(store, id);
-    if (node) {
-      await applyMutation(store, ["revert", node], `Plug feature ${node} out of HEAD?`);
-    }
-  });
-  reg("sgt.switchOn", async (id?: string) => {
-    const node = await pickNode(store, id);
-    if (node) {
-      await applyMutation(store, ["restore", node], `Plug feature ${node} back into HEAD?`);
+    const feature = await pickFeature(store, id);
+    if (feature) {
+      await applyMutation(
+        store,
+        ["revert", feature],
+        `Revert feature ${feature}? This rewrites the working tree and commits.`
+      );
     }
   });
 }

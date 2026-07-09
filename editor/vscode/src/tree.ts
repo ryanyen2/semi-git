@@ -1,20 +1,14 @@
-// The Feature DAG sidebar. A DAG can't render as a pure tree, so we root on the features
-// nothing depends on (the "top" of the stack) and expand downward through depends_on edges.
-// Status is encoded by codicon (active/planned/suspended/quarantined); kind + id sit in the
-// description. The rich topology (multi-parent edges) lives in the graph webview.
+// The feature tree sidebar: `sgt map`'s hierarchical projection. Subsystems (structural groupings)
+// expand to features (Greene-matched, `F<n>` ids); each is emitted uniformly by `map_view` and
+// told apart here by `kind`. A feature's icon is a dot in its identity color (color.ts's OKLCH
+// generator) so it reads the same as the blame gutter; a subsystem gets a plain folder icon.
 
 import * as vscode from "vscode";
+import { colorForNode } from "./color";
 import { Store } from "./store";
-import { NodeView } from "./types";
+import { MapNode } from "./types";
 
-const STATUS_ICON: Record<string, string> = {
-  active: "circle-filled",
-  planned: "circle-outline",
-  suspended: "circle-slash",
-  quarantined: "warning",
-};
-
-export class GraphTreeProvider implements vscode.TreeDataProvider<string> {
+export class MapTreeProvider implements vscode.TreeDataProvider<string> {
   private _onDidChange = new vscode.EventEmitter<string | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChange.event;
 
@@ -23,21 +17,17 @@ export class GraphTreeProvider implements vscode.TreeDataProvider<string> {
   }
 
   async getChildren(element?: string): Promise<string[]> {
-    let graph;
+    let map;
     try {
-      graph = await this.store.graph();
+      map = await this.store.map();
     } catch {
       return [];
     }
     if (element) {
       const node = this.store.node(element);
-      return node ? node.depends_on : [];
+      return node ? [...node.children].sort() : [];
     }
-    // Roots: nodes nothing depends on, sorted with conflicts/planned surfaced first.
-    const rank = (n: NodeView) => (n.conflict ? 0 : n.status === "planned" ? 1 : 2);
-    const roots = graph.nodes.filter((n) => n.dependents.length === 0);
-    const pool = roots.length ? roots : graph.nodes;
-    return [...pool].sort((a, b) => rank(a) - rank(b)).map((n) => n.id);
+    return [...map.roots].sort();
   }
 
   getTreeItem(id: string): vscode.TreeItem {
@@ -45,25 +35,31 @@ export class GraphTreeProvider implements vscode.TreeDataProvider<string> {
     if (!node) {
       return new vscode.TreeItem(id);
     }
-    const hasDeps = node.depends_on.length > 0;
+    const hasChildren = node.children.length > 0;
     const item = new vscode.TreeItem(
-      node.intent || id,
-      hasDeps ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+      node.label || id,
+      hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
     );
-    item.description = `${node.kind} · ${id}`;
-    item.contextValue = "sgtNode";
-    item.iconPath = new vscode.ThemeIcon(STATUS_ICON[node.status] ?? "circle-filled");
+    const ops = `${node.op_count} op${node.op_count === 1 ? "" : "s"}`;
+    item.description = `${ops} · ${id}`;
+    item.contextValue = node.kind === "feature" ? "sgtFeature" : "sgtSubsystem";
+    item.iconPath = node.kind === "feature" ? dotIcon(colorForNode(id)) : new vscode.ThemeIcon("folder");
     item.tooltip = this.tooltip(node);
-    item.command = { command: "sgt.openNode", title: "Inspect", arguments: [id] };
     return item;
   }
 
-  private tooltip(node: NodeView): vscode.MarkdownString {
+  private tooltip(node: MapNode): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
-    md.appendMarkdown(`**${node.intent}**\n\n\`${node.kind}\` · \`${node.status}\` · \`${node.id}\``);
-    if (node.conflict) {
-      md.appendMarkdown(`\n\n⚠ ${node.conflict}`);
+    md.appendMarkdown(`**${node.label}**\n\n\`${node.kind}\` · \`${node.id}\` · ${node.op_count} op(s)`);
+    if (node.why) {
+      md.appendMarkdown(`\n\n${node.why}`);
     }
     return md;
   }
+}
+
+/** A small filled circle in the feature's identity color, for the tree item's icon. */
+function dotIcon(color: string): vscode.Uri {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><circle cx="8" cy="8" r="5" fill="${color}"/></svg>`;
+  return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
 }

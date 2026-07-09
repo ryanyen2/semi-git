@@ -1,17 +1,16 @@
-// Shared state: one sgt client, a cached graph, and a per-file blame cache. Everything reactive
-// (decorations, CodeLens, tree, webview) listens to `onDidChange` and re-reads from here, so a
-// single refresh after a checkpoint/graph op updates every surface at once.
+// Shared state: one sgt client, a cached feature map, and a per-file blame cache. Everything
+// reactive (decorations, the tree) listens to `onDidChange` and re-reads from here, so a single
+// refresh after a checkpoint/feature-verb op updates every surface at once.
 
 import * as vscode from "vscode";
 import { Sgt } from "./sgt";
-import { BlameView, DecisionGraphView, GraphView, NodeView, StatusView } from "./types";
+import { BlameView, MapNode, MapView, StatusView } from "./types";
 
 export class Store {
   readonly sgt: Sgt;
-  private graphCache: GraphView | undefined;
+  private mapCache: MapView | undefined;
   private statusCache: StatusView | undefined;
-  private decisionsCache: DecisionGraphView | undefined;
-  private nodeById = new Map<string, NodeView>();
+  private nodeById = new Map<string, MapNode>();
   private blameCache = new Map<string, BlameView>();
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
@@ -20,22 +19,15 @@ export class Store {
     this.sgt = new Sgt(repoRoot, out);
   }
 
-  async graph(force = false): Promise<GraphView> {
-    if (!this.graphCache || force) {
-      this.graphCache = await this.sgt.export();
-      this.nodeById = new Map(this.graphCache.nodes.map((n) => [n.id, n]));
+  async map(force = false): Promise<MapView> {
+    if (!this.mapCache || force) {
+      this.mapCache = await this.sgt.map();
+      this.nodeById = new Map(this.mapCache.nodes.map((n) => [n.id, n]));
     }
-    return this.graphCache;
+    return this.mapCache;
   }
 
-  async decisions(force = false): Promise<DecisionGraphView> {
-    if (!this.decisionsCache || force) {
-      this.decisionsCache = await this.sgt.decisions();
-    }
-    return this.decisionsCache;
-  }
-
-  node(id: string): NodeView | undefined {
+  node(id: string): MapNode | undefined {
     return this.nodeById.get(id);
   }
 
@@ -58,9 +50,8 @@ export class Store {
 
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
-    this.graphCache = undefined;
+    this.mapCache = undefined;
     this.statusCache = undefined;
-    this.decisionsCache = undefined;
     this.blameCache.clear();
     this._onDidChange.fire();
   }

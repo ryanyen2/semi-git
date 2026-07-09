@@ -1,11 +1,21 @@
 // The single seam to the `sgt` CLI. Every read goes through `--json`; mutations return the
-// human report. We shell out per call (stateless, mirrors the CLI surface) and cache reads
-// keyed by the .sgt mtime so cursor moves don't re-spawn the process needlessly.
+// human report. We shell out per call (stateless, mirrors the CLI surface); the `Store` layers a
+// read-cache on top and invalidates it after every mutation.
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
-import { BlameView, DecisionGraphView, EmitView, GraphView, StatusView } from "./types";
+import {
+  BlameView,
+  EmitView,
+  MapView,
+  MergeResult,
+  MoveResult,
+  RenameResult,
+  SplitApplyResult,
+  SplitPreviewResult,
+  StatusView,
+} from "./types";
 
 const pExecFile = promisify(execFile);
 
@@ -40,10 +50,10 @@ export class Sgt {
     return JSON.parse(stdout) as T;
   }
 
-  // The webview/tree consume the full payload (per-node effects + witness), so we always read
-  // `export`; the lighter `graph --json` shape exists for the CLI, not for us.
-  export(): Promise<GraphView> {
-    return this.json<GraphView>(["export"]);
+  // The feature tree (rebuilds it first — clustering, Greene identity, pins, labeling — then
+  // reads the kernel-backed projection, same as `sgt map --json` on the command line).
+  map(): Promise<MapView> {
+    return this.json<MapView>(["map", "--json"]);
   }
 
   blame(file: string): Promise<BlameView> {
@@ -54,14 +64,29 @@ export class Sgt {
     return this.json<StatusView>(["status", "--json"]);
   }
 
-  // The decision DAG: decisions, lifecycle + derived builds-on edges, clashes, and the frontier.
-  decisions(): Promise<DecisionGraphView> {
-    return this.json<DecisionGraphView>(["decisions", "--json"]);
+  // Structured dry-run of a feature revert: `sgt revert <feature> --emit --json`.
+  emit(feature: string): Promise<EmitView> {
+    return this.json<EmitView>(["revert", feature, "--emit", "--json"]);
   }
 
-  // Structured dry-run of a recompose: `sgt revert|restore <ref> --emit --json`.
-  emit(action: "revert" | "restore", ref: string): Promise<EmitView> {
-    return this.json<EmitView>([action, ref, "--emit", "--json"]);
+  merge(survivorId: string, absorbedId: string): Promise<MergeResult> {
+    return this.json<MergeResult>(["merge", "--json", survivorId, absorbedId]);
+  }
+
+  splitPreview(featureId: string): Promise<SplitPreviewResult> {
+    return this.json<SplitPreviewResult>(["split", "--json", featureId]);
+  }
+
+  splitApply(featureId: string): Promise<SplitApplyResult> {
+    return this.json<SplitApplyResult>(["split", "--json", featureId, "--apply"]);
+  }
+
+  rename(featureId: string, newLabel: string): Promise<RenameResult> {
+    return this.json<RenameResult>(["rename", "--json", featureId, newLabel]);
+  }
+
+  move(opIds: string[], targetFeatureId: string): Promise<MoveResult> {
+    return this.json<MoveResult>(["move", "--json", ...opIds, "--to", targetFeatureId]);
   }
 
   // Mutations return the human report; surface it verbatim.
@@ -70,11 +95,13 @@ export class Sgt {
   }
 }
 
-/** The workspace folder that contains a `.sgt/` store, or undefined. */
+/** The workspace folder that contains a `.sgt` store, or undefined. */
 export async function findSgtRoot(): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   for (const f of folders) {
-    const marker = vscode.Uri.joinPath(f.uri, ".sgt", "graph.json");
+    // Written by `sgt init` before anything else, so it's a reliable "this is an sgt repo" marker
+    // even before `sgt map` has ever built a tree.
+    const marker = vscode.Uri.joinPath(f.uri, ".sgt", "local", "ideal.json");
     try {
       await vscode.workspace.fs.stat(marker);
       return f.uri.fsPath;

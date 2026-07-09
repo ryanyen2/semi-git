@@ -13,7 +13,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:**/.sgt/graph.json"
+    "workspaceContains:**/.sgt/local/ideal.json"
   ],
   "contributes": {
     "configuration": {
@@ -27,64 +27,33 @@
         "sgt.blame.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Show the current-line semantic blame annotation."
-        },
-        "sgt.heatmap.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Tint whole files by the feature that owns each line (gutter + overview ruler)."
-        },
-        "sgt.codeLens.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a CodeLens above each block naming the feature that owns it."
+          "description": "Tint whole files by the feature that owns each span (gutter + overview ruler)."
         }
       }
     },
     "commands": [
       { "command": "sgt.refresh", "title": "Refresh", "category": "semi-git", "icon": "$(refresh)" },
-      { "command": "sgt.toggleBlame", "title": "Toggle Line Blame", "category": "semi-git" },
-      { "command": "sgt.toggleHeatmap", "title": "Toggle Feature Heatmap", "category": "semi-git" },
-      { "command": "sgt.toggleCodeLens", "title": "Toggle Feature CodeLens", "category": "semi-git" },
-      { "command": "sgt.showGraph", "title": "Open Feature Graph", "category": "semi-git", "icon": "$(type-hierarchy)" },
-      { "command": "sgt.openNode", "title": "Inspect Feature", "category": "semi-git" },
-      { "command": "sgt.previewRevert", "title": "Preview Revert (plug out)", "category": "semi-git", "icon": "$(diff)" },
-      { "command": "sgt.previewSwitchOff", "title": "Preview Suspend", "category": "semi-git" },
-      { "command": "sgt.previewSwitchOn", "title": "Preview Restore", "category": "semi-git" },
-      { "command": "sgt.revert", "title": "Revert Feature (plug out)", "category": "semi-git" },
-      { "command": "sgt.switchOff", "title": "Suspend Feature", "category": "semi-git" },
-      { "command": "sgt.switchOn", "title": "Restore Feature", "category": "semi-git" }
+      { "command": "sgt.toggleBlame", "title": "Toggle Feature Blame", "category": "semi-git" },
+      { "command": "sgt.previewRevert", "title": "Preview Revert Feature (plug out)", "category": "semi-git", "icon": "$(diff)" },
+      { "command": "sgt.revert", "title": "Revert Feature (plug out)", "category": "semi-git" }
     ],
     "viewsContainers": {
       "activitybar": [
         { "id": "sgt", "title": "semi-git", "icon": "media/sgt.svg" }
-      ],
-      "panel": [
-        { "id": "sgtPanel", "title": "Decision Graph", "icon": "media/sgt.svg" }
       ]
     },
     "views": {
       "sgt": [
-        { "id": "sgtGraph", "name": "Features" }
-      ],
-      "sgtPanel": [
-        { "id": "sgtDecisionGraph", "name": "Decision Graph", "type": "webview" }
+        { "id": "sgtGraph", "name": "Feature Map" }
       ]
     },
     "menus": {
       "view/title": [
-        { "command": "sgt.showGraph", "when": "view == sgtGraph", "group": "navigation" },
         { "command": "sgt.refresh", "when": "view == sgtGraph", "group": "navigation" }
       ],
       "view/item/context": [
-        { "command": "sgt.openNode", "when": "view == sgtGraph && viewItem == sgtNode", "group": "inline" },
-        { "command": "sgt.previewRevert", "when": "view == sgtGraph && viewItem == sgtNode", "group": "1_preview" },
-        { "command": "sgt.previewSwitchOff", "when": "view == sgtGraph && viewItem == sgtNode", "group": "1_preview" },
-        { "command": "sgt.revert", "when": "view == sgtGraph && viewItem == sgtNode", "group": "2_apply" },
-        { "command": "sgt.switchOff", "when": "view == sgtGraph && viewItem == sgtNode", "group": "2_apply" }
-      ],
-      "editor/title": [
-        { "command": "sgt.showGraph", "when": "resourceLangId == python", "group": "navigation" }
+        { "command": "sgt.previewRevert", "when": "view == sgtGraph && viewItem == sgtFeature", "group": "1_preview" },
+        { "command": "sgt.revert", "when": "view == sgtGraph && viewItem == sgtFeature", "group": "2_apply" }
       ]
     }
   },

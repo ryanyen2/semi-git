@@ -55,7 +55,11 @@ def alive_nodes(ideal: Ideal, ops: list[Op]) -> set[str]:
 
 def _dominant_dir(members: list[str]) -> str:
     """The most common `dir/subdir` prefix among a group's symbol ids -- a cheap, deterministic
-    label fallback and a display hint even when an LLM label exists."""
+    label fallback and a display hint even when an LLM label exists. Empty (an ideal with no
+    alive symbols left, e.g. every feature reverted) -> `""`, not a crash."""
+    if not members:
+        return ""
+
     def prefix(sym: str) -> str:
         parts = sym.split("::", 1)[0].split("/")
         return "/".join(parts[:2]) if len(parts) >= 2 else parts[0]
