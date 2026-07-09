@@ -108,3 +108,55 @@ export interface SplitApplyResult {
   applied: boolean;
   message?: string;
 }
+
+// `sgt plan status --json` / `sgt checkpoint --json` (plan U14): one file's current line spans
+// for a set of symbols an op or a matched step touched.
+export interface PlanFileSpan {
+  path: string;
+  spans: { symbol: string; start_line: number; end_line: number }[];
+}
+
+export interface PlanStep {
+  hollow_id: string;
+  title: string;
+  predicted_footprint: string[];
+  predicted_feature: string | null;
+  rationale: string;
+  status: "pending" | "matched";
+  matched_op_ids: string[];
+  files: PlanFileSpan[];
+}
+
+export interface PlanSession {
+  session_id: string;
+  plan_text: string;
+  status: string;
+  created_ts: number;
+  last_activity_ts: number;
+  steps: PlanStep[];
+}
+
+export interface CheckpointGroup {
+  session_id: string;
+  hollow_ids: string[];
+  op_ids: string[];
+  files: PlanFileSpan[];
+}
+
+// `sgt plan status --json`.
+export interface PlanView {
+  sessions: PlanSession[];
+  checkpoint: { matches: CheckpointGroup[]; drift_op_ids: string[] };
+}
+
+export interface DriftEntry {
+  op_id: string;
+  kind: string;
+  footprint: string[];
+  files: PlanFileSpan[];
+}
+
+// `sgt drift --json`.
+export interface DriftView {
+  entries: DriftEntry[];
+}

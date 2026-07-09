@@ -23,6 +23,11 @@ Shapes (stable; additive changes only):
   gutter: each entity's line range, its feature id, and that feature's label.
 * ``status_view``       — a kernel-backed summary: file/symbol/feature counts, coverage fraction,
   the oracle's overall status, and working-tree drift from `code(current_ideal)`.
+* ``plan_view``         — the U14 plan review surface: every active plan session's steps (with
+  matched-step file/line spans) plus the pure checkpoint preview (candidate step<->op groups and
+  drift op-ids).
+* ``drift_view``        — the U14 "what extra happened" query: every op not predicted by any
+  active plan session, with its kind, footprint, and current file/line spans.
 """
 
 from __future__ import annotations
@@ -289,45 +294,147 @@ def map_view(repo) -> dict:
     }
 
 
-def blame_view(repo, file: str) -> dict:
-    """Per-symbol feature attribution for one file (plan U13): fold the current ideal, extract
-    entities from the materialized bytes (`sgt.entities.extract`), and for each entity resolve
-    `sym -> max-op-in-I -> feature` via the frontier and the feature tree's `op_leaf`. Returns
-    `{"file", "spans", "features", "error"?}`; an entity whose tip op has no feature assignment
-    yet (tree stale, or `sgt map` never run) is omitted from `spans` rather than guessed at."""
+def _entity_line_spans(repo, file: str) -> tuple[list[tuple[str, int, int]], str | None]:
+    """Materialize the current ideal and extract `file`'s live entities as `(symbol, start_line,
+    end_line)` triples, in document order -- the span lookup `blame_view`, `plan_view`, and
+    `drift_view` all need. Returns `(spans, error)`: `error` is set (and `spans` is `[]`) when the
+    current ideal doesn't cover `file`."""
     from sgt.core.fold import code
     from sgt.core.lens import current_ideal
     from sgt.core.store import Store
     from sgt.entities.extract import extract_file
-    from sgt.lens.tree import load as load_tree
 
     ops = Store(repo).all_ops()
-    ideal = current_ideal(repo)
-    materialized = code(ideal, ops)
+    materialized = code(current_ideal(repo), ops)
     source = materialized.get(file)
     if source is None:
-        return {"file": file, "spans": [], "features": {},
-                "error": f"{file!r} is not covered by the current ideal"}
+        return [], f"{file!r} is not covered by the current ideal"
+    spans = [
+        (e.id, e.start_line, e.end_line)
+        for e in sorted(extract_file(file, source), key=lambda e: (e.start_line, e.id))
+    ]
+    return spans, None
+
+
+def _spans_for_symbols(repo, symbols) -> dict[str, list[dict]]:
+    """`{file: [{"symbol", "start_line", "end_line"}, ...]}` for exactly `symbols`, grouped by
+    file -- the per-op/per-step span projection `plan_view` and `drift_view` share. A file no
+    longer covered by the current ideal, or a symbol no longer live in it, is silently omitted
+    (the op/step just gets fewer spans, never an error)."""
+    by_file: dict[str, set[str]] = {}
+    for sym in symbols:
+        by_file.setdefault(sym.split("::", 1)[0], set()).add(sym)
+    out: dict[str, list[dict]] = {}
+    for file, wanted in sorted(by_file.items()):
+        line_spans, error = _entity_line_spans(repo, file)
+        if error:
+            continue
+        matched = [
+            {"symbol": sym, "start_line": start, "end_line": end}
+            for sym, start, end in line_spans if sym in wanted
+        ]
+        if matched:
+            out[file] = matched
+    return out
+
+
+def blame_view(repo, file: str) -> dict:
+    """Per-symbol feature attribution for one file (plan U13): for each of `file`'s live entities
+    (`_entity_line_spans`), resolve `sym -> max-op-in-I -> feature` via the frontier and the
+    feature tree's `op_leaf`. Returns `{"file", "spans", "features", "error"?}`; an entity whose
+    tip op has no feature assignment yet (tree stale, or `sgt map` never run) is omitted from
+    `spans` rather than guessed at."""
+    from sgt.core.lens import current_ideal
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+
+    line_spans, error = _entity_line_spans(repo, file)
+    if error:
+        return {"file": file, "spans": [], "features": {}, "error": error}
 
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
     nodes = tree_result["nodes"] if tree_result else {}
-    frontier = ideal.frontier(ops)
+    frontier = current_ideal(repo).frontier(Store(repo).all_ops())
 
     spans = []
     features: dict[str, dict] = {}
-    for entity in sorted(extract_file(file, source), key=lambda e: (e.start_line, e.id)):
-        tip = frontier.get(entity.id)
+    for sym, start_line, end_line in line_spans:
+        tip = frontier.get(sym)
         feature_id = op_leaf.get(tip) if tip else None
         if feature_id is None:
             continue
         label = nodes.get(feature_id, {}).get("label", feature_id)
         spans.append({
-            "symbol": entity.id, "start_line": entity.start_line, "end_line": entity.end_line,
+            "symbol": sym, "start_line": start_line, "end_line": end_line,
             "feature_id": feature_id, "label": label,
         })
         features[feature_id] = {"label": label}
     return {"file": file, "spans": spans, "features": features}
+
+
+def plan_view(repo) -> dict:
+    """The plan-session review surface (plan U14): every active session's steps (a matched
+    step's current file/line spans, via `_spans_for_symbols`) plus `sgt.loop.match.
+    compute_checkpoint`'s pure preview -- candidate step<->op groups and drift op-ids, each group
+    carrying its own per-op file/line spans. Never mutates anything (`compute_checkpoint` is
+    pure); `sgt checkpoint --confirm-...` (`sgt.loop.match.confirm_match`) is the only writer."""
+    from sgt.core.store import Store
+    from sgt.loop import plan as plan_mod
+    from sgt.loop.match import compute_checkpoint
+
+    by_id = {op.id: op for op in Store(repo).all_ops()}
+    checkpoint = compute_checkpoint(repo)
+
+    def _files_for_ops(op_ids) -> list[dict]:
+        symbols = {sym for op_id in op_ids if op_id in by_id for sym in by_id[op_id].footprint}
+        return [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, symbols).items())]
+
+    sessions = []
+    for session_id, rec in sorted(plan_mod.active_sessions(repo).items()):
+        steps = [
+            {**step, "files": _files_for_ops(step["matched_op_ids"]) if step["status"] == "matched" else []}
+            for step in rec["steps"]
+        ]
+        sessions.append({
+            "session_id": session_id, "plan_text": rec["plan_text"], "status": rec["status"],
+            "created_ts": rec["created_ts"], "last_activity_ts": rec["last_activity_ts"],
+            "steps": steps,
+        })
+
+    matches = [
+        {
+            "session_id": group.session_id, "hollow_ids": list(group.hollow_ids),
+            "op_ids": list(group.op_ids), "files": _files_for_ops(group.op_ids),
+        }
+        for group in checkpoint.matches
+    ]
+
+    return {
+        "sessions": sessions,
+        "checkpoint": {"matches": matches, "drift_op_ids": list(checkpoint.drift_op_ids)},
+    }
+
+
+def drift_view(repo) -> dict:
+    """The "what extra happened" query (plan U14): every drift op -- one not predicted by any
+    active plan session -- with its kind, footprint, and current file/line spans, decoupled from
+    full session detail (`plan_view`)."""
+    from sgt.core.store import Store
+    from sgt.loop.match import compute_checkpoint
+
+    by_id = {op.id: op for op in Store(repo).all_ops()}
+    checkpoint = compute_checkpoint(repo)
+
+    entries = []
+    for op_id in checkpoint.drift_op_ids:
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        footprint = sorted(op.footprint)
+        files = [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, footprint).items())]
+        entries.append({"op_id": op.id, "kind": op.kind, "footprint": footprint, "files": files})
+    return {"entries": entries}
 
 
 def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:

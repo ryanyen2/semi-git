@@ -3,6 +3,7 @@
 // commits — so we surface the human report and then invalidate every surface.
 
 import * as vscode from "vscode";
+import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
 
@@ -48,7 +49,8 @@ export function registerCommands(
   context: vscode.ExtensionContext,
   store: Store,
   preview: PreviewProvider,
-  refreshBlame: () => void
+  refreshBlame: () => void,
+  planDiff: PlanDiffProvider
 ): void {
   const reg = (id: string, fn: (...a: any[]) => any) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
@@ -75,4 +77,7 @@ export function registerCommands(
       );
     }
   });
+
+  reg("sgt.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));
+  reg("sgt.showPlanDiff", (target) => planDiff.showDiff(target));
 }

@@ -47,7 +47,8 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     names = {t["name"] for t in resp["result"]["tools"]}
     # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
     assert names == {"sgt_init", "sgt_log", "sgt_state", "sgt_diff", "sgt_fsck",
-                      "sgt_revert", "sgt_restore", "sgt_oracle_run"}
+                      "sgt_revert", "sgt_restore", "sgt_oracle_run",
+                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -139,3 +140,80 @@ def test_oracle_run_tool_with_no_config(tmp_path):
     repo = _seed(tmp_path, 1)
     _, payload = _call(repo, "sgt_oracle_run")
     assert payload["configured"] is False
+
+
+# -- agentic loop tools (plan U14) -------------------------------------------
+def _no_client(*args, **kwargs):
+    raise RuntimeError("no client")
+
+
+def test_plan_intake_tool_mints_steps_from_a_numbered_list(tmp_path, monkeypatch):
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(
+        repo, "sgt_plan_intake", {"plan_text": "1. step one\n2. step two\n", "session_id": "s1"}
+    )
+    assert payload["session_id"] == "s1"
+    assert payload["step_count"] == 2
+    assert [s["title"] for s in payload["steps"]] == ["step one", "step two"]
+
+
+def test_plan_intake_tool_requires_plan_text(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_plan_intake", {})
+    assert "error" in payload
+
+
+def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
+    from sgt.loop import plan as plan_mod
+    from sgt.store.gitbind import GitBinding
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    repo = _seed(tmp_path, 1)  # a.py::foo == "return 1"
+    repo_path = Path(repo)
+    store = Store(repo)
+    baseline = sorted(op.id for op in store.all_ops())
+
+    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    store.add_hollow(hollow)
+    table = plan_mod._load_sessions(repo_path)
+    table["s1"] = {
+        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
+        "baseline_op_ids": baseline,
+        "steps": [{
+            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }],
+    }
+    plan_mod._save_sessions(repo_path, table)
+
+    (repo_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+    GitBinding(repo).commit_all("touch foo")
+
+    _, preview = _call(repo, "sgt_checkpoint")
+    assert len(preview["matches"]) == 1
+    group = preview["matches"][0]
+    assert group["session_id"] == "s1"
+
+    _, confirmed = _call(
+        repo, "sgt_checkpoint",
+        {"confirm": [{"hollow_ids": group["hollow_ids"], "op_ids": group["op_ids"]}]},
+    )
+    assert confirmed["matches"] == []  # the step is no longer pending
+
+    from sgt.api import plan_view
+
+    assert plan_view(repo)["sessions"][0]["steps"][0]["status"] == "matched"
+
+
+def test_drift_tool_reports_nothing_with_no_active_session(tmp_path):
+    repo = _seed(tmp_path, 2)  # two commits, but no plan session at all
+    _, payload = _call(repo, "sgt_drift")
+    assert payload["entries"] == []

@@ -17,9 +17,13 @@ oracle verdict (R14).
 `status` are its read views. `merge`/`split`/`rename`/`move` are metadata-only feature verbs --
 instant, reversible, content-untouched (R16) -- and `revert <feature>` bridges into the ideal
 algebra: it resolves a feature id/label to its op-set and runs the same exact edit a single-op
-`revert` would, grouped by feature. The agentic-loop verbs (`plan`/`checkpoint`/drift review)
-land in a later unit (P4) — not registered here rather than half-working against a deleted
-subsystem.
+`revert` would, grouped by feature.
+
+`plan`/`checkpoint`/`drift` are the agentic loop (plan U14): `plan intake` decomposes a stated
+plan into predicted hollow ops (off-chain, R18 -- never touching the ideal algebra); `checkpoint`
+previews footprint-overlap matches between pending steps and ops mined since, and (given
+`--confirm-hollow`/`--confirm-op`) applies exactly the named group; `drift` lists ops no active
+plan predicted.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
+    "plan", "checkpoint", "drift",
 }
 
 
@@ -53,10 +58,11 @@ def main(argv: list[str] | None = None) -> int:
         return _help()
 
     if cmd == "init":
+        horizon, rest = _strip_opt(rest, "--horizon")
         path = rest[0] if rest else "."
         from sgt.core.lens import init as kernel_init
 
-        kernel_init(path)
+        kernel_init(path, horizon=horizon)
         print(f"✓ initialized sgt kernel in {path} (.sgt/ + git)")
         return 0
 
@@ -114,6 +120,15 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "move":
         return _feature_move(repo, rest, as_json)
 
+    if cmd == "plan":
+        return _plan(repo, rest, as_json)
+
+    if cmd == "checkpoint":
+        return _checkpoint(repo, rest, as_json)
+
+    if cmd == "drift":
+        return _drift(repo, as_json)
+
     if cmd == "revert" and "--keep-dependents" in rest:
         rest = [a for a in rest if a != "--keep-dependents"]
         return _revert_keep_dependents(repo, rest, as_json)
@@ -159,6 +174,17 @@ def _strip_opt(args: list[str], flag: str) -> tuple[str | None, list[str]]:
     i = args.index(flag)
     value = args[i + 1] if i + 1 < len(args) else None
     return value, args[:i] + args[i + 2 :]
+
+
+def _collect_opt(args: list[str], flag: str) -> tuple[list[str], list[str]]:
+    """Like ``_strip_opt``, but collects every occurrence of a repeatable flag (e.g. multiple
+    ``--confirm-hollow <id>`` pairs) instead of just the first."""
+    values: list[str] = []
+    while flag in args:
+        value, args = _strip_opt(args, flag)
+        if value is not None:
+            values.append(value)
+    return values, args
 
 
 def _emit_json(payload) -> int:
@@ -411,6 +437,127 @@ def _feature_split(repo: str, rest: list[str], as_json: bool = False) -> int:
     if as_json:
         return _emit_json({"ok": True, "feature": preview.feature_id, "new_feature": new_id, "applied": True})
     print(f"✓ split {preview.feature_id} → {preview.feature_id} + {new_id}")
+    return 0
+
+
+_STATUS_ICON = {"pending": "○", "matched": "●"}
+
+
+def _plan(repo: str, rest: list[str], as_json: bool) -> int:
+    """`sgt plan intake "<text>"` / `sgt plan abandon <session>` / `sgt plan status [--json]`
+    (plan U14): plan-session intake, abandonment, and the read view over active sessions."""
+    usage = 'usage: sgt plan intake "<text>" | sgt plan abandon <session> | sgt plan status [--json]'
+    if not rest or rest[0] not in ("intake", "abandon", "status"):
+        print(usage)
+        return 2
+    sub, opts = rest[0], rest[1:]
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so a session's baseline reflects current reality (R9)
+
+    if sub == "intake":
+        if not opts:
+            print(usage)
+            return 2
+        from sgt.loop import plan as plan_mod
+
+        session = plan_mod.intake(repo, " ".join(opts))
+        if as_json:
+            return _emit_json({
+                "session_id": session.session_id, "step_count": len(session.steps),
+                "steps": [{"title": s["title"], "predicted_feature": s["predicted_feature"]} for s in session.steps],
+            })
+        print(f"✓ intake: session {session.session_id} — {len(session.steps)} step(s)")
+        for s in session.steps:
+            suffix = f"  [{s['predicted_feature']}]" if s["predicted_feature"] else ""
+            print(f"    {s['title']}{suffix}")
+        return 0
+
+    if sub == "abandon":
+        if not opts:
+            print(usage)
+            return 2
+        from sgt.loop import plan as plan_mod
+
+        ok = plan_mod.abandon(repo, opts[0])
+        if as_json:
+            return _emit_json({"ok": ok})
+        return 0 if ok else _fail(f"no such session: {opts[0]}")
+
+    from sgt.api import plan_view
+
+    view = plan_view(repo)
+    if as_json:
+        return _emit_json(view)
+    if not view["sessions"]:
+        print("(no active plan sessions)")
+        return 0
+    for s in view["sessions"]:
+        glyphs = "".join(_STATUS_ICON.get(st["status"], "?") for st in s["steps"])
+        print(f"  {s['session_id']}  {glyphs}")
+        for st in s["steps"]:
+            print(f"    [{_STATUS_ICON.get(st['status'], '?')}] {st['title']}")
+    return 0
+
+
+def _checkpoint(repo: str, rest: list[str], as_json: bool) -> int:
+    """`sgt checkpoint [--json]` (preview) / `sgt checkpoint --confirm-hollow <id>...
+    --confirm-op <id>...` (plan U14): the pure footprint-overlap preview between pending plan
+    steps and unpredicted real ops, and the explicit, one-group-at-a-time confirmation."""
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so the preview reflects current reality (R9)
+    hollow_ids, rest = _collect_opt(rest, "--confirm-hollow")
+    op_ids, rest = _collect_opt(rest, "--confirm-op")
+
+    if hollow_ids or op_ids:
+        from sgt.loop import plan as plan_mod
+        from sgt.loop.match import confirm_match
+
+        sessions = plan_mod.active_sessions(repo)
+        session_id = next(
+            (sid for sid, rec in sessions.items() if any(s["hollow_id"] in hollow_ids for s in rec["steps"])),
+            None,
+        )
+        if session_id is None:
+            return _emit_json({"error": "no session"}) if as_json else _fail(f"no active session owns hollow(s) {hollow_ids}")
+        confirm_match(repo, session_id, hollow_ids, op_ids)
+        if as_json:
+            return _emit_json({"ok": True, "session_id": session_id, "hollow_ids": hollow_ids, "op_ids": op_ids})
+        print(f"✓ confirmed {len(hollow_ids)} hollow(s) matched to {len(op_ids)} op(s) in session {session_id}")
+        return 0
+
+    from sgt.api import plan_view
+
+    view = plan_view(repo)["checkpoint"]
+    if as_json:
+        return _emit_json(view)
+    if not view["matches"] and not view["drift_op_ids"]:
+        print("(nothing to checkpoint)")
+        return 0
+    for group in view["matches"]:
+        print(f"  session {group['session_id']}: {len(group['hollow_ids'])} step(s) <-> {len(group['op_ids'])} op(s)")
+        print(f"    hollow: {', '.join(h[:12] for h in group['hollow_ids'])}")
+        print(f"    op:     {', '.join(o[:12] for o in group['op_ids'])}")
+    if view["drift_op_ids"]:
+        print(f"  drift: {', '.join(o[:12] for o in view['drift_op_ids'])}")
+    return 0
+
+
+def _drift(repo: str, as_json: bool) -> int:
+    """`sgt drift [--json]` (plan U14): every op not predicted by any active plan session."""
+    from sgt.api import drift_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so drift reflects current reality (R9)
+    view = drift_view(repo)
+    if as_json:
+        return _emit_json(view)
+    if not view["entries"]:
+        print("(no drift — every recent op was predicted by an active plan)")
+        return 0
+    for e in view["entries"]:
+        print(f"  {e['op_id'][:12]} [{e['kind']}]: {', '.join(e['footprint'])}")
     return 0
 
 
@@ -671,7 +818,8 @@ def _print_verb_view(view: dict) -> int:
 def _help() -> int:
     print(
         "sgt — semantic operation-ideal version control (kernel)\n\n"
-        "  sgt init [path]             bind git + the kernel op store; mine existing history\n"
+        "  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing\n"
+        "                              history, or (with --horizon) only from that commit on (R10)\n"
         "  sgt revert [--emit] <ref>   remove an op and everything built on it (I \\ upset X)\n"
         "  sgt revert <ref> --keep-dependents   same, but drafts a continuation hollow per dependent\n"
         "  sgt restore [--emit] <ref>  re-add an op and its prerequisites (I ∪ downset X)\n"
@@ -695,6 +843,12 @@ def _help() -> int:
         '  sgt rename <feature> "<label>"         override a feature\'s label, durably\n'
         "  sgt move <op>... --to <feature>        retag ops (+ their symbols) onto another feature\n"
         "  sgt revert <feature>        revert an entire feature's op-set (grouped ∪ upset X)\n"
+        '  sgt plan intake "<text>"    decompose a plan into predicted hollow ops (off-chain)\n'
+        "  sgt plan abandon <session>  drop a session's pending hollows and its record\n"
+        "  sgt plan status [--json]    active sessions and their steps' match status\n"
+        "  sgt checkpoint [--json]     preview step<->op footprint-overlap groups, and drift\n"
+        "  sgt checkpoint --confirm-hollow <id>... --confirm-op <id>...   apply one named group\n"
+        "  sgt drift [--json]          ops mined that no active plan predicted\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"
         "  feature id/label (`revert` only)\n"

@@ -7,10 +7,12 @@ import { promisify } from "node:util";
 import * as vscode from "vscode";
 import {
   BlameView,
+  DriftView,
   EmitView,
   MapView,
   MergeResult,
   MoveResult,
+  PlanView,
   RenameResult,
   SplitApplyResult,
   SplitPreviewResult,
@@ -67,6 +69,17 @@ export class Sgt {
   // Structured dry-run of a feature revert: `sgt revert <feature> --emit --json`.
   emit(feature: string): Promise<EmitView> {
     return this.json<EmitView>(["revert", feature, "--emit", "--json"]);
+  }
+
+  // Active plan sessions + the pure checkpoint preview (plan U14). A read, not a rebuild —
+  // mine-on-contact only, same as `status()`.
+  planStatus(): Promise<PlanView> {
+    return this.json<PlanView>(["plan", "status", "--json"]);
+  }
+
+  // Ops mined that no active plan predicted (plan U14).
+  drift(): Promise<DriftView> {
+    return this.json<DriftView>(["drift", "--json"]);
   }
 
   merge(survivorId: string, absorbedId: string): Promise<MergeResult> {
