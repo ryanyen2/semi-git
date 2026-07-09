@@ -1,4 +1,21 @@
 {
+  "blame_view": {
+    "features": {
+      "F0": {
+        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify"
+      }
+    },
+    "file": "slugify.py",
+    "spans": [
+      {
+        "end_line": 2,
+        "feature_id": "F0",
+        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "start_line": 1,
+        "symbol": "slugify.py::slugify"
+      }
+    ]
+  },
   "ideal_diff_view": {
     "by_symbol": {
       "slugify.py::slugify": {
@@ -13,6 +30,32 @@
     "count": 2,
     "ref_a": "main",
     "ref_b": "release"
+  },
+  "map_view": {
+    "feature_count": 1,
+    "identity_events": [
+      {
+        "event": "birth",
+        "feature_id": "F0"
+      }
+    ],
+    "nodes": [
+      {
+        "children": [],
+        "dir": "slugify.py",
+        "id": "F0",
+        "kind": "feature",
+        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "op_count": 5,
+        "parent": null,
+        "size": 3,
+        "split_reason": "max_leaf",
+        "why": "Auto-derived from slugify.py (no LLM label available)."
+      }
+    ],
+    "roots": [
+      "F0"
+    ]
   },
   "oplog_view": {
     "count": 6,
@@ -125,5 +168,19 @@
     },
     "oracle_configured": false,
     "oracle_verdict": null
+  },
+  "status_view": {
+    "coverage_fraction": 1.0,
+    "drift": {
+      "any": false,
+      "paths": []
+    },
+    "features": 1,
+    "files": 1,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "symbols": 4
   }
 }

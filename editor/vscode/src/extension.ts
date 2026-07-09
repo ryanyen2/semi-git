@@ -1,15 +1,12 @@
 // Activation: find the .sgt workspace, build the shared store, and wire every surface to it.
-// A file-watcher on .sgt/* invalidates the store after a checkpoint/graph op so blame, lenses,
-// the tree, and the webview all refresh together.
+// A file-watcher on .sgt/ invalidates the store after a checkpoint/feature-verb op (`sgt map`,
+// `merge`/`split`/`rename`/`move`/`revert`, all of which touch tree.json and/or pins.json) so the
+// tree and blame gutters refresh together.
 
 import * as vscode from "vscode";
-import { ClaudeActivityWatcher } from "./activity";
 import { BlameController } from "./blame";
-import { SgtCodeLensProvider } from "./codelens";
 import { registerCommands } from "./commands";
-import { GraphTreeProvider } from "./tree";
-import { DecisionViewProvider } from "./decisionView";
-import { SgtHoverProvider } from "./hover";
+import { MapTreeProvider } from "./tree";
 import { PreviewProvider } from "./preview";
 import { findSgtRoot } from "./sgt";
 import { Store } from "./store";
@@ -25,30 +22,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const blame = new BlameController(store);
   const preview = new PreviewProvider(store);
-  const tree = new GraphTreeProvider(store);
+  const tree = new MapTreeProvider(store);
   context.subscriptions.push(blame, preview);
+  context.subscriptions.push(vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }));
 
-  const graphView = new DecisionViewProvider(context, store, root);
-  context.subscriptions.push(
-    graphView,
-    vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }),
-    vscode.window.registerWebviewViewProvider(DecisionViewProvider.viewId, graphView, {
-      webviewOptions: { retainContextWhenHidden: true },
-    })
-  );
-  const py: vscode.DocumentSelector = { language: "python" };
-  context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider(py, new SgtCodeLensProvider(store)),
-    vscode.languages.registerHoverProvider(py, new SgtHoverProvider(store))
-  );
+  registerCommands(context, store, preview, () => void blame.render());
 
-  registerCommands(context, store, preview, graphView, () => void blame.render());
-
-  // Refresh on .sgt changes (a checkpoint/graph op rewrites graph.json / effects.json) and on
-  // any *.py change — the latter is how we surface live agent presence: when the agent writes
-  // files (drift appears), the graph marks the features it's editing in near-real-time.
+  // Refresh on .sgt changes (a feature verb rewrites tree.json/pins.json under it) and on any
+  // *.py change — the latter is how newly-written symbols show up in blame before the next
+  // `sgt map` re-clusters them.
   const sgtWatcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(root, ".sgt/*.json")
+    new vscode.RelativePattern(root, ".sgt/**/*.json")
   );
   const pyWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(root, "**/*.py")
@@ -72,18 +56,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     })
   );
-
-  // Tail the Claude Code session transcript: stream a minimal activity feed into the graph's
-  // Activity pane, and nudge a presence refresh when the agent touches a file — so the graph
-  // updates as the agent works, not only when an editor save fires.
-  const activity = new ClaudeActivityWatcher(root, (events) => {
-    graphView.postActivity(events);
-    if (events.some((e) => e.kind === "tool" && e.target)) {
-      refresh();
-    }
-  });
-  activity.start();
-  context.subscriptions.push({ dispose: () => activity.dispose() });
 
   void blame.render();
 }
