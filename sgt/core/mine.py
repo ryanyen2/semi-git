@@ -205,8 +205,9 @@ def _untangle(touched_ids: set[str], edges: list[EntityEdge]) -> list[frozenset[
 
 def _mine_one(
     gb: GitBinding, uf: _UnionFind, order: int, sha: str, parent: str | None, is_pending: bool = False,
-    constraints: IdentityConstraints | None = None,
+    constraints: IdentityConstraints | None = None, excluded_paths: set[str] | None = None,
 ) -> list[_Touch]:
+    excluded_paths = set() if excluded_paths is None else excluded_paths
     """One commit's touched symbols -- the loop body `mine()` runs once per real commit, plus
     (when `include_dirty=True`) once more for the working tree's uncommitted state, diffed
     against real HEAD exactly the same way (Gap 2, U7.5). `sha` need only be a tree-ish (a real
@@ -244,11 +245,23 @@ def _mine_one(
         )
 
     for fc in gb.diff_name_and_text(parent, sha):
-        if fc.path.startswith(".sgt/") or (fc.old_path or "").startswith(".sgt/"):
-            continue  # sgt's own state, never mined as codebase content
+        old_ref_path = fc.old_path or fc.path
+        if (
+            fc.path.startswith(".sgt/")
+            or old_ref_path.startswith(".sgt/")
+            or fc.path in excluded_paths
+            or old_ref_path in excluded_paths
+        ):
+            # sgt's own state, never mined as codebase content -- and once excluded, a rename
+            # carries the exclusion to its new path too (e.g. a `.sgt/` -> `.sgt.bak/` migration),
+            # so a later plain delete of that destination doesn't mine an ungrounded prune for a
+            # path whose "add" was never recorded.
+            excluded_paths.add(fc.path)
+            excluded_paths.add(old_ref_path)
+            continue
         lang = _language_for(fc.path)
         new_bytes = gb.blob_bytes(sha, fc.path)
-        old_ref = fc.old_path or fc.path
+        old_ref = old_ref_path
 
         if lang is None:
             # Whole-file pseudo-symbol (R7): unsupported language, config, docs, binary.
@@ -409,17 +422,25 @@ def mine(
     uf = _UnionFind()
     touches: list[_Touch] = []
     constraints = load_identity_constraints(repo)  # U11 R14: identity split/join corrections
+    excluded_paths: set[str] = set()  # a path renamed out of `.sgt/` stays excluded for the rest
+    # of this call, e.g. a `.sgt/` -> `.sgt.bak/` migration -- otherwise a later plain delete of
+    # the renamed destination mines an ungrounded prune (its "add" was never recorded). Per-call
+    # only, same tier as the union-find above (R14): a `since`-restricted incremental mine() that
+    # starts after such a rename won't see it either.
 
     history = gb.history(since)
     for order, (sha, parent, _subject) in enumerate(history):
         if sha == treat_as_root:
             parent = None
-        touches.extend(_mine_one(gb, uf, order, sha, parent, constraints=constraints))
+        touches.extend(
+            _mine_one(gb, uf, order, sha, parent, constraints=constraints, excluded_paths=excluded_paths)
+        )
 
     if include_dirty:
         touches.extend(
             _mine_one(
                 gb, uf, len(history), gb.working_tree_snapshot(), gb.head(), is_pending=True,
+                excluded_paths=excluded_paths,
                 constraints=constraints,
             )
         )

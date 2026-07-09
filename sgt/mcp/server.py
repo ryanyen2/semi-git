@@ -14,10 +14,14 @@ Tool surface — kernel parity with the CLI's registered verbs:
 * **write**: ``sgt_init`` (bind git + the kernel store, mine existing history), ``sgt_revert`` /
   ``sgt_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run preview),
   ``sgt_oracle_run`` (execute configured build/test tiers against the current ideal).
+* **agentic loop** (plan U14): ``sgt_plan_intake`` (decompose a plan into predicted hollow ops),
+  ``sgt_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given ``confirm`` --
+  the explicit, one-group-at-a-time write that resolves it), ``sgt_drift`` (ops no active plan
+  predicted).
 
 Every write tool mines the working tree on contact first (R9), so it reflects whatever the agent
-just edited. The feature-lens and agentic-loop tools (plan/checkpoint/merge/split/decisions) have
-no kernel backing yet (P3/P4) and are not registered here.
+just edited. The feature-lens verbs (merge/split/rename/move) have no MCP surface yet -- CLI-only
+for now.
 """
 
 from __future__ import annotations
@@ -128,6 +132,63 @@ def tool_oracle_run(repo_path: str, args: dict) -> dict:
         return {"error": str(e)}
 
 
+def tool_plan_intake(repo_path: str, args: dict) -> dict:
+    """Decompose a plan into predicted hollow ops (plan U14). Mines the working tree first (R9)
+    so `baseline_op_ids` reflects current reality."""
+    from sgt.core.lens import get
+    from sgt.loop import plan as plan_mod
+
+    plan_text = (args.get("plan_text") or "").strip()
+    if not plan_text:
+        return {"error": "missing 'plan_text'"}
+    session_id = (args.get("session_id") or "").strip() or None
+    get(repo_path)
+    session = plan_mod.intake(repo_path, plan_text, session_id=session_id)
+    return {
+        "session_id": session.session_id, "status": session.status, "step_count": len(session.steps),
+        "steps": [
+            {"title": s["title"], "predicted_feature": s["predicted_feature"], "rationale": s["rationale"]}
+            for s in session.steps
+        ],
+    }
+
+
+def tool_checkpoint(repo_path: str, args: dict) -> dict:
+    """The pure step<->op footprint-overlap preview (plan U14); given `confirm` (a list of
+    `{hollow_ids, op_ids}` groups), applies exactly those groups via `confirm_match` first --
+    still "never auto-resolved" since nothing is confirmed unless a group is explicitly named."""
+    from sgt.api import plan_view
+    from sgt.core.lens import get
+    from sgt.loop import plan as plan_mod
+    from sgt.loop.match import confirm_match
+
+    get(repo_path)
+    confirm = args.get("confirm")
+    if confirm:
+        sessions = plan_mod.active_sessions(repo_path)
+        for group in confirm:
+            hollow_ids = group.get("hollow_ids") or []
+            op_ids = group.get("op_ids") or []
+            session_id = next(
+                (sid for sid, rec in sessions.items()
+                 if any(s["hollow_id"] in hollow_ids for s in rec["steps"])),
+                None,
+            )
+            if session_id is None:
+                return {"error": f"no active session owns hollow(s) {hollow_ids}"}
+            confirm_match(repo_path, session_id, hollow_ids, op_ids)
+    return plan_view(repo_path)["checkpoint"]
+
+
+def tool_drift(repo_path: str, args: dict) -> dict:
+    """Every op not predicted by any active plan session (plan U14)."""
+    from sgt.api import drift_view
+    from sgt.core.lens import get
+
+    get(repo_path)
+    return drift_view(repo_path)
+
+
 # ---------------------------------------------------------------------------
 # Tool registry (name -> (description, inputSchema, handler))
 # ---------------------------------------------------------------------------
@@ -183,6 +244,40 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "pipeline; pass it to re-run just that one.",
         _schema({"tier": {"type": "string", "description": "run just this one tier (optional)"}}, []),
         tool_oracle_run,
+    ),
+    "sgt_plan_intake": (
+        "Decompose a plan (an agent's or human's stated intent before doing the work) into "
+        "predicted hollow ops -- one per step, off-chain, never touching the ideal algebra. "
+        "Grounds `predicted_feature` in the repo's own feature tree (`sgt map`) when one exists.",
+        _schema(
+            {"plan_text": {"type": "string"}, "session_id": {"type": "string", "description": "explicit id (optional; defaults to a fresh one)"}},
+            ["plan_text"],
+        ),
+        tool_plan_intake,
+    ),
+    "sgt_checkpoint": (
+        "Preview candidate step<->op groups (footprint-overlap between pending plan steps and "
+        "ops mined since each session's own baseline) plus drift op-ids. Pass `confirm` -- a "
+        "list of `{hollow_ids, op_ids}` groups -- to apply exactly those groups; omit it for a "
+        "pure, read-only preview.",
+        _schema(
+            {"confirm": {
+                "type": "array",
+                "items": _schema(
+                    {"hollow_ids": {"type": "array", "items": {"type": "string"}},
+                     "op_ids": {"type": "array", "items": {"type": "string"}}},
+                    ["hollow_ids", "op_ids"],
+                ),
+            }},
+            [],
+        ),
+        tool_checkpoint,
+    ),
+    "sgt_drift": (
+        "Every op not predicted by any active plan session, with its kind, footprint, and "
+        "current file/line spans.",
+        _schema({}, []),
+        tool_drift,
     ),
 }
 

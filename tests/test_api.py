@@ -7,8 +7,13 @@ semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinn
 
 import json
 
-from sgt.api import ideal_diff_view, oplog_view, state_view
+from sgt.api import drift_view, ideal_diff_view, oplog_view, plan_view, state_view
 from sgt.core.lens import get
+from sgt.core.op import make_op
+from sgt.core.store import Store
+from sgt.loop import match as match_mod
+from sgt.loop import plan as plan_mod
+from sgt.store.gitbind import init_store
 from tests.laws import corpus
 
 
@@ -104,3 +109,66 @@ def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch)
     monkeypatch.chdir(repo)
     assert main(["diff", "--json", "main", "release"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == expected
+
+
+def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):
+    """A repo that's never seen `sgt plan intake` reports no sessions, no checkpoint groups, and
+    no drift -- drift is only meaningful relative to a plan session's own predictions."""
+    repo = _mined(tmp_path, "mixed_coverage")
+    assert plan_view(repo) == {"sessions": [], "checkpoint": {"matches": [], "drift_op_ids": []}}
+    assert drift_view(repo) == {"entries": []}
+
+
+def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredicted_op(tmp_path):
+    """A hand-seeded session predicting `a.py::foo` matches the real op that edits it; a second,
+    unrelated real op (`a.py::bar`) is unpredicted -- it shows up as drift, with its own current
+    line span, decoupled from the session."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    store = Store(repo)
+    baseline = sorted(op.id for op in store.all_ops())
+
+    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    store.add_hollow(hollow)
+    table = plan_mod._load_sessions(repo)
+    table["s1"] = {
+        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
+        "baseline_op_ids": baseline,
+        "steps": [{
+            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }],
+    }
+    plan_mod._save_sessions(repo, table)
+
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("touch foo")
+    (repo / "a.py").write_text("def foo():\n    return 2\n\n\ndef bar():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("add bar")
+    get(repo)
+
+    checkpoint = plan_view(repo)["checkpoint"]
+    assert len(checkpoint["matches"]) == 1
+    group = checkpoint["matches"][0]
+    assert group["session_id"] == "s1"
+    assert checkpoint["drift_op_ids"]  # bar's own op, unpredicted
+
+    match_mod.confirm_match(repo, "s1", group["hollow_ids"], group["op_ids"])
+
+    view = plan_view(repo)
+    step = view["sessions"][0]["steps"][0]
+    assert step["status"] == "matched"
+    assert step["files"] == [{"path": "a.py", "spans": [{"symbol": "a.py::foo", "start_line": 1, "end_line": 2}]}]
+
+    # mining also mints residue/anchor pseudo-symbol ops for the same two commits (their own,
+    # unpredicted drift) -- assert on `bar`'s own entry specifically, not the total count.
+    drift = drift_view(repo)
+    bar_entries = [e for e in drift["entries"] if e["footprint"] == ["a.py::bar"]]
+    assert len(bar_entries) == 1
+    assert bar_entries[0]["files"] == [
+        {"path": "a.py", "spans": [{"symbol": "a.py::bar", "start_line": 5, "end_line": 6}]}
+    ]

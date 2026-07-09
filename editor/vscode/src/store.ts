@@ -4,7 +4,7 @@
 
 import * as vscode from "vscode";
 import { Sgt } from "./sgt";
-import { BlameView, MapNode, MapView, StatusView } from "./types";
+import { BlameView, DriftView, MapNode, MapView, PlanView, StatusView } from "./types";
 
 export class Store {
   readonly sgt: Sgt;
@@ -12,6 +12,8 @@ export class Store {
   private statusCache: StatusView | undefined;
   private nodeById = new Map<string, MapNode>();
   private blameCache = new Map<string, BlameView>();
+  private planCache: PlanView | undefined;
+  private driftCache: DriftView | undefined;
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
@@ -48,11 +50,27 @@ export class Store {
     return view;
   }
 
+  async planView(force = false): Promise<PlanView> {
+    if (!this.planCache || force) {
+      this.planCache = await this.sgt.planStatus();
+    }
+    return this.planCache;
+  }
+
+  async driftView(force = false): Promise<DriftView> {
+    if (!this.driftCache || force) {
+      this.driftCache = await this.sgt.drift();
+    }
+    return this.driftCache;
+  }
+
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
     this.mapCache = undefined;
     this.statusCache = undefined;
     this.blameCache.clear();
+    this.planCache = undefined;
+    this.driftCache = undefined;
     this._onDidChange.fire();
   }
 

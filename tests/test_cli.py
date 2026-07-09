@@ -28,6 +28,32 @@ def _seed(tmp_path, n: int = 2):
     return gb
 
 
+def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys):
+    """`sgt init --horizon <ref>` must reach `lens.init`'s `horizon` param, not get swallowed
+    as a positional path -- the escape hatch for a repo whose pre-horizon history is unminable
+    (e.g. self-referential rename/delete cycles the miner can't represent, R10)."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("foo v1")
+    (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    horizon_sha = gb.commit_all("foo v2")
+    (tmp_path / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("foo v3")
+
+    capsys.readouterr()
+    assert _in(tmp_path, ["init", "--horizon", horizon_sha]) == 0
+    assert not (tmp_path / "--horizon").exists()  # not misparsed as the repo path
+
+    capsys.readouterr()
+    assert _in(tmp_path, ["log", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    foo_ops = [op for op in payload["ops"] if "a.py::foo" in [f["symbol"] for f in op["footprint"]]]
+    # v1 (pre-horizon) is never mined at all; v2 becomes one root "add", v3 one modify on top --
+    # not the 3-op chain a horizon-less init would produce.
+    assert len(foo_ops) == 2
+    assert {op["kind"] for op in foo_ops} == {"add", "rework"}
+
+
 def test_init_and_log_roundtrip(tmp_path, capsys):
     _seed(tmp_path, 1)
     capsys.readouterr()  # drain seed commit output (none, but keep symmetry with other tests)
@@ -123,11 +149,111 @@ def test_oracle_override_then_state_shows_verdict(tmp_path, capsys):
     assert payload["oracle_configured"] is False
 
 
+def _no_client(*args, **kwargs):
+    raise RuntimeError("no client")
+
+
+def test_plan_intake_and_status_json(tmp_path, capsys, monkeypatch):
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["plan", "intake", "1. step one\n2. step two"]) == 0
+    assert "step one" in capsys.readouterr().out
+
+    assert _in(tmp_path, ["plan", "status", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["sessions"]) == 1
+    assert [s["title"] for s in payload["sessions"][0]["steps"]] == ["step one", "step two"]
+
+
+def test_plan_abandon(tmp_path, capsys, monkeypatch):
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)
+    _in(tmp_path, ["plan", "intake", "1. step one", "--json"])
+    session_id = json.loads(capsys.readouterr().out)["session_id"]
+
+    assert _in(tmp_path, ["plan", "abandon", session_id]) == 0
+    capsys.readouterr()
+    assert _in(tmp_path, ["plan", "status", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["sessions"] == []
+
+    assert _in(tmp_path, ["plan", "abandon", "no-such-session"]) == 1
+
+
+def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
+    """A session predicting `a.py::foo` previews a match against a real follow-up edit to it,
+    then `--confirm-hollow/--confirm-op` applies exactly that group."""
+    from pathlib import Path
+
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    gb = _seed(tmp_path, 1)  # a.py::foo == "return 1"
+    store = Store(tmp_path)
+    baseline = sorted(op.id for op in store.all_ops())
+
+    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    store.add_hollow(hollow)
+    table = plan_mod._load_sessions(Path(tmp_path))
+    table["s1"] = {
+        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
+        "baseline_op_ids": baseline,
+        "steps": [{
+            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }],
+    }
+    plan_mod._save_sessions(Path(tmp_path), table)
+
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+    gb.commit_all("touch foo")
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["checkpoint", "--json"]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert len(preview["matches"]) == 1
+    group = preview["matches"][0]
+
+    argv = ["checkpoint", "--json"]
+    for hid in group["hollow_ids"]:
+        argv += ["--confirm-hollow", hid]
+    for oid in group["op_ids"]:
+        argv += ["--confirm-op", oid]
+    assert _in(tmp_path, argv) == 0
+    confirmed = json.loads(capsys.readouterr().out)
+    assert confirmed["session_id"] == "s1"
+
+    assert _in(tmp_path, ["plan", "status", "--json"]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["sessions"][0]["steps"][0]["status"] == "matched"
+
+
+def test_drift_json_reports_nothing_with_no_active_session(tmp_path, capsys):
+    _seed(tmp_path, 2)
+    capsys.readouterr()
+    assert _in(tmp_path, ["drift", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["entries"] == []
+
+
 def test_help_mentions_kernel_verbs(capsys):
     main(["help"])
     out = capsys.readouterr().out
     assert "revert" in out and "restore" in out and "oracle" in out and "fsck" in out
     assert "--json" in out
+
+
+def test_help_mentions_agentic_loop_verbs(capsys):
+    main(["help"])
+    out = capsys.readouterr().out
+    assert "plan intake" in out and "checkpoint" in out and "drift" in out
 
 
 def test_unknown_verb_falls_back_to_help(capsys):

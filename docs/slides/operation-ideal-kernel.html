@@ -1,819 +1,667 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>sgt — three things you might ask git to do</title>
+<title>The Operation-Ideal Kernel</title>
 <style>
-  :root{
-    --bg:#FFFFFF;
-    --ink:#1B1B1A;
-    --muted:#6B6B63;
-    --faint:#9A9A90;
-    --hair:#E7E6E0;
-    --panel:#FFFFFF;
-    --accent:#C24B32;          /* the one restrained accent */
-    --accent-wash:#F7E9E3;
-    --accent-line:#D98a76;
-    /* muted multi-hue set — used ONLY on the feature-lens slide, where
-       colour-IS-feature-identity is the pedagogical point. */
-    --f1:#C24B32; --f2:#4E8676; --f3:#B08641; --f4:#5A6E8C; --f5:#8A5B78;
-    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-    --sans: system-ui, -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%}
-  body{
-    background:var(--bg); color:var(--ink); font-family:var(--sans);
-    -webkit-font-smoothing:antialiased; overflow:hidden;
-    line-height:1.5;
-  }
-
-  /* ---- deck chrome ---- */
-  #bar{position:fixed; top:0; left:0; height:2px; background:var(--accent);
-       width:9.1%; transition:width .45s ease; z-index:20}
-  #hud{position:fixed; right:26px; bottom:20px; z-index:20;
-       display:flex; align-items:center; gap:10px; color:var(--faint);
-       font-size:13px; letter-spacing:.04em}
-  #hud button{all:unset; cursor:pointer; width:26px; height:26px; line-height:26px;
-       text-align:center; border:1px solid var(--hair); border-radius:50%;
-       color:var(--muted); font-size:15px}
-  #hud button:hover{border-color:var(--accent); color:var(--accent)}
-  #count{font-variant-numeric:tabular-nums; min-width:52px; text-align:center}
-  #hint{position:fixed; left:26px; bottom:22px; z-index:20; color:var(--faint);
-        font-size:12.5px; letter-spacing:.03em; display:flex; align-items:center; gap:10px}
-  #brand{font-weight:650; color:var(--muted); letter-spacing:.02em}
-  #brand b{color:var(--accent)}
-
-  /* ---- slides ---- */
-  .slide{position:fixed; inset:0; display:none; flex-direction:column;
-         justify-content:center; padding:56px clamp(40px,7vw,120px)}
-  .slide.active{display:flex; animation:fade .5s ease both}
-  @keyframes fade{from{opacity:0} to{opacity:1}}
-  .wrap{width:100%; max-width:1160px; margin:0 auto}
-
-  .kicker{font-size:13px; letter-spacing:.16em; text-transform:uppercase;
-          color:var(--faint); margin-bottom:14px; display:flex; gap:12px; align-items:baseline}
-  .kicker b{color:var(--accent); font-weight:600}
-  h1{font-size:clamp(30px,4.4vw,52px); line-height:1.14; font-weight:650;
-     letter-spacing:-.015em; margin:0 0 22px}
-  h2{font-size:clamp(23px,2.7vw,32px); line-height:1.22; font-weight:620;
-     letter-spacing:-.01em; margin:0 0 22px}
-  .cap{font-size:15.5px; color:var(--muted); max-width:74ch; margin-top:14px}
-  .mono{font-family:var(--mono)}
-  .em{color:var(--accent); font-weight:600}
-  .k{font-family:var(--mono); background:var(--accent-wash); color:var(--accent);
-     padding:1px 6px; border-radius:4px; font-size:.92em}
-
-  svg{display:block; width:100%; height:auto; overflow:visible}
-  .diagram{margin:6px 0 2px}
-
-  /* stepped reveal */
-  [data-step]{opacity:0; transition:opacity .55s ease, transform .55s ease}
-  .active [data-step].shown{opacity:1}
-  .lift[data-step]{transform:translateY(8px)}
-  .active .lift[data-step].shown{transform:none}
-
-  /* draw-in for key edges/outlines: set pathLength="1" on the element */
-  .draw{stroke-dasharray:1; stroke-dashoffset:1; transition:stroke-dashoffset .7s ease}
-  .active .draw.shown{stroke-dashoffset:0}
-  [data-step] .draw{transition-delay:.05s}
-
-  /* a small dot travelling a path, only while its slide is on screen */
-  .flow-dot{fill:var(--accent); opacity:0}
-  .active .flow-dot.shown{opacity:1; animation:flowmove 2.6s linear infinite}
-  @keyframes flowmove{ from{offset-distance:0%} to{offset-distance:100%} }
-
-  .pulse{animation:pulse 1.6s ease-in-out infinite}
-  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.45} }
-
-  @media (prefers-reduced-motion: reduce){
-    [data-step]{transition:none}
-    .lift[data-step]{transform:none}
-    .slide.active{animation:none}
-    #bar{transition:none}
-    .draw{transition:none; stroke-dashoffset:0}
-    .flow-dot{animation:none; opacity:1}
-    .pulse{animation:none}
-  }
-
-  /* shared SVG vocabulary */
-  .op{fill:#fff; stroke:var(--ink); stroke-width:1.6}
-  .op.dim{fill:#fff; stroke:var(--faint); stroke-dasharray:3 3}
-  .op.tip{fill:var(--accent-wash); stroke:var(--accent); stroke-width:2}
-  .op.hot{fill:var(--accent); stroke:var(--accent)}
-  .edge{stroke:#54534E; stroke-width:1.6; fill:none}
-  .edge.dim{stroke:var(--faint); stroke-dasharray:3 3}
-  .ref{stroke:var(--accent-line); stroke-width:1.5; fill:none; stroke-dasharray:5 4}
-  .lbl{font-size:13px; fill:var(--ink); font-family:var(--sans)}
-  .lbl.mut{fill:var(--muted)}
-  .lbl.sm{font-size:11.5px; fill:var(--faint)}
-  .vlabel{font-size:11px; fill:var(--faint); font-family:var(--mono)}
-  .cone-up{fill:var(--accent); fill-opacity:.10; stroke:var(--accent); stroke-width:1.4}
-  .cone-dn{fill:var(--accent); fill-opacity:.05; stroke:var(--accent); stroke-width:1.4; stroke-dasharray:5 4}
-  .band{fill:var(--accent); fill-opacity:.07}
-  .card{fill:var(--panel); stroke:var(--hair); stroke-width:1.4; rx:10}
-  text{font-family:var(--sans)}
-  /* !important: these must win over .lbl.sm/.lbl.mut's own fill, which otherwise out-specifies a
-     single utility class */
-  .t-ink{fill:var(--ink) !important} .t-mut{fill:var(--muted) !important}
-  .t-acc{fill:var(--accent) !important} .t-faint{fill:var(--faint) !important}
-  .b{font-weight:600}
+:root{
+  --bg:#ffffff;
+  --ink:#1b1b1a;
+  --fg:#1b1b1a;
+  --muted:#6b6b63;
+  --faint:#9a9a90;
+  --hair:#e7e6e0;
+  --accent:#c24b32;
+  --accent-wash:#f7e9e3;
+  --accent-line:#d98a76;
+  --f1:#4e8676;
+  --f2:#b08641;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;overflow:hidden}
+.deck{position:relative;width:100vw;height:100vh}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;padding:52px 76px 44px}
+.slide.active{display:flex}
+.kicker{font-size:12.5px;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;margin:0 0 10px;font-weight:600}
+h1{font-size:32px;margin:0 0 8px;font-weight:600;letter-spacing:-.01em;line-height:1.25;color:var(--ink)}
+h1 em{color:var(--accent);font-style:normal}
+.sub{font-size:15.5px;color:var(--muted);margin:0 0 20px;max-width:780px;line-height:1.55}
+.stage{flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;min-height:0}
+.cardrow{display:flex;gap:0;align-items:stretch}
+.card{flex:1;padding:2px 22px}
+.card:first-child{padding-left:0}
+.card:not(:first-child){border-left:1px dashed var(--hair)}
+.card .tag{display:block;font-size:10.5px;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+.card h3{margin:0 0 8px;font-size:14.5px;color:var(--ink);font-weight:600}
+.card p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.5}
+.card.bad .tag{color:var(--accent)}
+.card.warn .tag{color:var(--accent)}
+[data-step]{opacity:0;transform:translateY(9px);transition:opacity .45s ease, transform .45s ease}
+[data-step].shown{opacity:1;transform:translateY(0)}
+svg{overflow:visible;display:block}
+.op{fill:#fff;stroke:var(--ink);stroke-width:1.6}
+.op.tip{fill:var(--accent-wash);stroke:var(--accent);stroke-width:2}
+.op.hot{fill:var(--accent);stroke:var(--accent)}
+.op.dim{fill:#fff;stroke:var(--faint);stroke-width:1.4;stroke-dasharray:3 3}
+.pin-ring{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:3 3}
+.edge{stroke:#54534e;stroke-width:1.6;fill:none}
+.edge.dim{stroke:var(--faint);stroke-width:1.4;fill:none;stroke-dasharray:3 3}
+.ref{stroke:var(--accent-line);stroke-width:1.5;fill:none;stroke-dasharray:5 4}
+.op-label{font-size:11px;fill:var(--muted)}
+.entity-label{font-size:12.5px;fill:var(--ink);font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.state-band{fill:var(--accent);fill-opacity:.07;stroke:none}
+.fork-dot{fill:var(--accent)}
+.feature-blob{fill-opacity:.14;stroke-width:1.2}
+.xlabel{font-size:12px;fill:#fff;font-weight:600;text-anchor:middle}
+.legend{display:flex;gap:22px;flex-wrap:wrap;margin:12px 0 0;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.legend svg{width:30px;height:18px;overflow:visible;flex:none}
+.callout{padding:2px 0 2px 16px;font-size:13.5px;line-height:1.5;color:var(--fg);border-left:1px dashed var(--hair)}
+.callout .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;display:block}
+.two-col{display:flex;gap:26px}
+.two-col>div{flex:1}
+.col-bad .lbl{color:var(--muted)}
+.col-good{border-color:var(--accent)!important}
+.col-good .lbl{color:var(--accent)}
+code,.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;
+  color:var(--accent)}
+.hud{position:fixed;bottom:14px;left:0;right:0;display:flex;align-items:center;justify-content:center;
+  gap:14px;color:var(--muted);font-size:13px;z-index:10}
+.navbtn{background:#fff;border:1px solid var(--hair);color:var(--fg);border-radius:6px;
+  width:30px;height:30px;cursor:pointer;font-size:16px;line-height:1}
+.navbtn:hover{border-color:var(--accent);color:var(--accent)}
+.check{color:var(--accent)}
+.cross{color:var(--accent)}
+.strip{display:flex;gap:0;align-items:center;justify-content:center}
+.strip .step{padding:10px 20px;font-size:12.5px;text-align:center;min-width:140px;line-height:1.4}
+.strip .step:not(:first-child){border-left:1px dashed var(--hair)}
+.strip .sep{color:var(--muted);font-size:16px;display:none}
+.tense{font-style:italic;color:var(--muted)}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
 </style>
 </head>
 <body>
-
-<!-- shared arrowhead markers (resolved document-wide by id) -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <marker id="arw" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-    <path d="M0,0 L10,5 L0,10 z" fill="#54534E"/></marker>
+    <path d="M0,0 L10,5 L0,10 z" fill="#54534e"/></marker>
   <marker id="arwA" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-    <path d="M0,0 L10,5 L0,10 z" fill="#C24B32"/></marker>
+    <path d="M0,0 L10,5 L0,10 z" fill="#c24b32"/></marker>
   <marker id="arwM" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-    <path d="M0,0 L10,5 L0,10 z" fill="#9A9A90"/></marker>
+    <path d="M0,0 L10,5 L0,10 z" fill="#9a9a90"/></marker>
 </defs></svg>
+<div class="deck" id="deck">
 
-<div id="bar"></div>
-
-<!-- ============================ 1 · OPEN ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>01</b> · three requests</div>
-    <h1>Three things you might ask<br>git to do</h1>
-    <div class="diagram" style="max-width:960px" data-step="1">
-      <svg viewBox="0 0 980 226" role="img" aria-label="three request cards: undo the retry logic, look at an older version of slugify, and move a fix to the release branch">
-        <!-- Card A -->
-        <g>
-          <rect class="card" x="16" y="8" width="300" height="204" rx="14"/>
-          <text x="40" y="52" font-size="34" fill="var(--hair)">&#8220;</text>
-          <text class="lbl" x="40" y="76" font-size="16">
-            <tspan x="40" dy="0">Undo the retry logic</tspan>
-            <tspan x="40" dy="22">someone added —</tspan>
-            <tspan x="40" dy="22">nothing else changes.</tspan>
-          </text>
-          <line x1="40" y1="156" x2="292" y2="156" stroke="var(--hair)" stroke-width="1"/>
-          <g transform="translate(46,196)">
-            <line x1="0" y1="0" x2="0" y2="-16" stroke="#54534E" stroke-width="1.6"/>
-            <line x1="0" y1="-20" x2="0" y2="-34" stroke="var(--faint)" stroke-width="1.6" stroke-dasharray="2 2"/>
-            <circle cx="0" cy="0" r="5.5" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/>
-            <circle cx="0" cy="-18" r="5.5" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/>
-            <circle cx="0" cy="-36" r="5.5" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="1.5 1.5"/>
-          </g>
-          <circle cx="266" cy="184" r="14" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
-          <text class="lbl b t-acc" x="266" y="189" text-anchor="middle" font-size="13">A</text>
-        </g>
-        <!-- Card B -->
-        <g>
-          <rect class="card" x="340" y="8" width="300" height="204" rx="14"/>
-          <text x="364" y="52" font-size="34" fill="var(--hair)">&#8220;</text>
-          <text class="lbl" x="364" y="76" font-size="16">
-            <tspan x="364" dy="0">Show me what</tspan>
-            <tspan x="364" dy="22"><tspan class="mono">slugify()</tspan> looked like</tspan>
-            <tspan x="364" dy="22">last week.</tspan>
-          </text>
-          <line x1="364" y1="156" x2="616" y2="156" stroke="var(--hair)" stroke-width="1"/>
-          <g transform="translate(392,196)">
-            <circle cx="0" cy="-18" r="15" fill="none" stroke="#54534E" stroke-width="1.5"/>
-            <line x1="0" y1="-18" x2="0" y2="-27" stroke="#54534E" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="0" y1="-18" x2="7" y2="-14" stroke="#54534E" stroke-width="1.6" stroke-linecap="round"/>
-          </g>
-          <circle cx="590" cy="184" r="14" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
-          <text class="lbl b t-acc" x="590" y="189" text-anchor="middle" font-size="13">B</text>
-        </g>
-        <!-- Card C -->
-        <g>
-          <rect class="card" x="664" y="8" width="300" height="204" rx="14"/>
-          <text x="688" y="52" font-size="34" fill="var(--hair)">&#8220;</text>
-          <text class="lbl" x="688" y="76" font-size="16">
-            <tspan x="688" dy="0">Put this fix on the</tspan>
-            <tspan x="688" dy="22">release branch too.</tspan>
-          </text>
-          <line x1="688" y1="156" x2="940" y2="156" stroke="var(--hair)" stroke-width="1"/>
-          <g transform="translate(716,196)">
-            <line x1="0" y1="-8" x2="60" y2="-8" stroke="var(--faint)" stroke-width="1.6"/>
-            <line x1="0" y1="-30" x2="60" y2="-30" stroke="var(--faint)" stroke-width="1.6"/>
-            <path d="M6,-8 C 24,-8 24,-30 42,-30" fill="none" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#arwA)"/>
-            <circle cx="6" cy="-8" r="4" fill="var(--ink)"/>
-            <circle cx="42" cy="-30" r="4" fill="var(--accent)"/>
-          </g>
-          <circle cx="914" cy="184" r="14" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
-          <text class="lbl b t-acc" x="914" y="189" text-anchor="middle" font-size="13">C</text>
-        </g>
-      </svg>
+<section class="slide active" data-slide="1">
+  <div class="kicker">sgt &middot; the operation-ideal kernel</div>
+  <h1>One commit did five things. Now you need to undo just <em>one</em> of them.</h1>
+  <p class="sub">Mira's coding agent just landed a 40-minute autonomous session as a single commit.</p>
+  <div class="stage">
+    <div class="cardrow">
+      <div class="card" data-step="1">
+        <span class="tag">40 minutes, one commit</span>
+        <h3>The agent lands one commit</h3>
+        <p>A refactor of <code>ApiClient</code>, and a new <code>PriceCache</code> layer built on top of it &mdash; tangled together into a single commit.</p>
+      </div>
+      <div class="card bad" data-step="2">
+        <span class="tag">two days later</span>
+        <h3>Stale prices in prod</h3>
+        <p><code>PriceCache</code> is serving stale prices. A real bug. The refactor underneath is fine &mdash; two other features already depend on it.</p>
+      </div>
+      <div class="card warn" data-step="3">
+        <span class="tag">the only tool she has</span>
+        <h3><code>git revert</code> takes the whole commit</h3>
+        <p>Git only knows one commit went in. It has no idea two different changes are sitting inside it.</p>
+      </div>
     </div>
-    <p class="cap lift" data-step="2">
-      These are three ordinary requests. Git can attempt all three, but whether it succeeds
-      cleanly depends on what else happened to the surrounding code — which is what this talk
-      is about.
+    <div class="callout col-bad" data-step="4">
+      <span class="lbl">the tension</span>
+      She needs to take back <strong>only the cache</strong>. Git doesn't work at that granularity &mdash; it never asked what was inside the commit, only what changed on disk.
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-slide="2">
+  <div class="kicker">why now</div>
+  <h1>Git tracks bytes. LLMs write more of them, faster, in bigger commits.</h1>
+  <p class="sub">So the first instinct is to log what the agent <em>meant</em> to do, alongside the commit. That doesn't survive.</p>
+  <div class="stage">
+    <svg viewBox="0 0 960 230" width="100%" height="300">
+      <text x="6" y="46" class="entity-label">commits</text>
+      <line x1="70" x2="900" y1="60" y2="60" class="edge"/>
+      <text x="6" y="176" class="entity-label">intent notes</text>
+      <line x1="70" x2="960" y1="170" y2="170" class="edge"/>
+
+      <g data-step="1">
+        <circle cx="90"  cy="60" r="7" class="op tip"/>
+        <rect x="82" y="163" width="16" height="14" rx="2" class="op tip"/>
+        <line x1="90" y1="67" x2="90" y2="163" class="ref"/>
+        <circle cx="230" cy="60" r="7" class="op tip"/>
+        <rect x="237" y="163" width="16" height="14" rx="2" class="op tip"/>
+        <line x1="230" y1="67" x2="245" y2="163" class="ref"/>
+      </g>
+      <g data-step="2">
+        <circle cx="370" cy="60" r="7" class="op"/>
+        <rect x="397" y="163" width="16" height="14" rx="2" class="op"/>
+        <line x1="370" y1="67" x2="405" y2="163" class="ref"/>
+        <circle cx="510" cy="60" r="7" class="op"/>
+        <rect x="562" y="163" width="16" height="14" rx="2" class="op"/>
+        <line x1="510" y1="67" x2="570" y2="163" class="ref"/>
+      </g>
+      <g data-step="3">
+        <circle cx="650" cy="60" r="7" class="op"/>
+        <rect x="727" y="163" width="16" height="14" rx="2" class="op ghost"/>
+        <line x1="650" y1="67" x2="735" y2="163" class="ref" stroke="var(--accent)"/>
+        <circle cx="800" cy="60" r="7" class="op"/>
+        <rect x="902" y="163" width="16" height="14" rx="2" class="op ghost"/>
+        <line x1="800" y1="67" x2="910" y2="163" class="ref" stroke="var(--accent)"/>
+        <text x="820" y="120" fill="var(--accent)" font-size="13" font-weight="600">&#10007; out of sync</text>
+      </g>
+    </svg>
+    <p class="sub" data-step="3" style="margin:0">
+      Notes describe intent at the moment they're written. Code keeps changing underneath them. By the thirtieth commit, the notes describe a codebase that no longer exists &mdash; and nobody goes back to fix the notes.
     </p>
   </div>
 </section>
 
-<!-- ============================ 2 · GIT TODAY ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>02</b> · what git gives you</div>
-    <h2>git's unit is the commit, not the function</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 320" role="img" aria-label="three commits, each a bundle of line-diffs across several functions, each annotated with which of the three requests it breaks and why">
-        <g data-step="1">
-          <circle class="op hot" cx="70" cy="66" r="9"/>
-          <rect class="card" x="102" y="40" width="230" height="52" rx="10"/>
-          <line x1="118" y1="56" x2="260" y2="56" stroke="#4E8676" stroke-width="3"/>
-          <line x1="118" y1="72" x2="220" y2="72" stroke="#C24B32" stroke-width="3"/>
-          <text class="lbl sm" x="102" y="106">retry wrapper + fetch() + sync() + poll()</text>
-        </g>
-        <g data-step="2">
-          <circle class="op hot" cx="70" cy="176" r="9"/>
-          <rect class="card" x="102" y="150" width="230" height="52" rx="10"/>
-          <line x1="118" y1="166" x2="246" y2="166" stroke="#4E8676" stroke-width="3"/>
-          <line x1="118" y1="182" x2="200" y2="182" stroke="#C24B32" stroke-width="3"/>
-          <text class="lbl sm" x="102" y="216">one edit to <tspan class="mono">slugify()</tspan>, no history kept</text>
-        </g>
-        <g data-step="3">
-          <circle class="op hot" cx="70" cy="286" r="9"/>
-          <rect class="card" x="102" y="260" width="230" height="52" rx="10"/>
-          <line x1="118" y1="276" x2="256" y2="276" stroke="#4E8676" stroke-width="3"/>
-          <line x1="118" y1="292" x2="210" y2="292" stroke="#C24B32" stroke-width="3"/>
-          <text class="lbl sm" x="102" y="318">a hotfix, lines away from where release's copy sits</text>
-        </g>
-
-        <line class="edge dim" x1="440" y1="20" x2="440" y2="310"/>
-
-        <g data-step="1">
-          <circle cx="482" cy="66" r="15" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.6"/>
-          <text class="lbl b t-acc" x="482" y="71" text-anchor="middle">A</text>
-          <text class="lbl" x="516" y="60">revert takes the <tspan class="b">whole commit</tspan> —</text>
-          <text class="lbl" x="516" y="80">it can't tell the wrapper apart from fetch/sync/poll.</text>
-        </g>
-        <g data-step="2">
-          <circle cx="482" cy="176" r="15" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.6"/>
-          <text class="lbl b t-acc" x="482" y="181" text-anchor="middle">B</text>
-          <text class="lbl" x="516" y="170">no per-function history — only</text>
-          <text class="lbl" x="516" y="190"><tspan class="mono">git log -p</tspan> on the whole file.</text>
-        </g>
-        <g data-step="3">
-          <circle cx="482" cy="286" r="15" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.6"/>
-          <text class="lbl b t-acc" x="482" y="291" text-anchor="middle">C</text>
-          <text class="lbl" x="516" y="280">cherry-pick replays a line diff that</text>
-          <text class="lbl" x="516" y="300">assumes the surrounding lines still match.</text>
-        </g>
-      </svg>
+<section class="slide" data-slide="3">
+  <div class="kicker">the actual idea</div>
+  <h1>Track <em>entities</em>, not lines or words.</h1>
+  <p class="sub">Crack open Mira's commit and it's actually two changes to two different things: a refactor of <code>ApiClient</code>, and a new <code>PriceCache</code> that reads from it.</p>
+  <div class="stage">
+    <svg viewBox="0 0 760 340" width="100%" height="340">
+      <g data-step="1">
+        <line class="edge" x1="140" y1="286" x2="140" y2="204" marker-end="url(#arw)"/>
+        <circle class="op" cx="140" cy="300" r="14"/>
+        <circle class="op tip" cx="140" cy="190" r="14"/>
+        <text class="op-label" x="162" y="304">v1</text>
+        <text class="op-label" x="162" y="194">v2 &middot; refactor</text>
+        <text class="entity-label" x="140" y="330" text-anchor="middle">ApiClient</text>
+      </g>
+      <g data-step="2">
+        <circle class="op tip" cx="400" cy="190" r="14"/>
+        <text class="op-label" x="422" y="194">v1 &middot; new</text>
+        <text class="entity-label" x="400" y="330" text-anchor="middle">PriceCache</text>
+        <path class="ref" d="M386,190 H162" marker-end="url(#arwA)"/>
+        <text class="lbl-acc" x="270" y="178" text-anchor="middle" style="font-size:12px;fill:var(--accent)">reads from</text>
+      </g>
+      <g data-step="3">
+        <circle class="op tip" cx="640" cy="190" r="14"/>
+        <text class="op-label" x="662" y="194">v1 &middot; existing</text>
+        <text class="entity-label" x="640" y="330" text-anchor="middle">CheckoutFlow</text>
+        <path class="ref" d="M626,190 H162" marker-end="url(#arwA)"/>
+        <text class="lbl-acc" x="540" y="178" text-anchor="middle" style="font-size:12px;fill:var(--accent)">depends on</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> current tip</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="edge"/></svg> builds on (same entity)</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on (another entity)</span>
     </div>
-    <p class="cap lift" data-step="4">
-      git records a commit as a diff of lines against the previous commit; it has no idea a
-      function is a unit at all. So when the retry wrapper is squashed together with a dozen
-      unrelated edits, revert can only take the whole commit, not just the wrapper.
+    <p class="sub" data-step="3" style="margin:0">
+      <code>CheckoutFlow</code> already depends on <code>ApiClient</code>, from long before Mira's session. That's the fact her tangled commit is about to run into.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="4">
+  <div class="kicker">a state is just a set</div>
+  <h1>A "state" is a chosen set of versions &mdash; one per entity.</h1>
+  <p class="sub">The rule: you can't pick a version without also having what it needs underneath.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 400" width="100%" height="380">
+      <rect class="state-band" x="60" y="150" width="560" height="160" rx="8" data-step="1"/>
+      <line data-step="1" x1="60" y1="150" x2="620" y2="150" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="6 5"/>
+      <text data-step="1" x="60" y="134" style="fill:var(--accent);font-weight:600;font-size:13px">the selection</text>
+
+      <line class="edge" x1="130" y1="288" x2="130" y2="216" marker-end="url(#arw)"/>
+      <line class="edge dim" x1="130" y1="184" x2="130" y2="112" marker-end="url(#arwM)"/>
+      <circle class="op" cx="130" cy="300" r="13"/>
+      <circle class="op dim" cx="130" cy="100" r="13"/>
+      <text class="entity-label" x="130" y="332" text-anchor="middle">ApiClient</text>
+
+      <g data-step="1">
+        <line class="edge dim" x1="340" y1="184" x2="340" y2="112" marker-end="url(#arwM)"/>
+        <circle class="op dim" cx="340" cy="100" r="13"/>
+        <text class="entity-label" x="340" y="332" text-anchor="middle">PriceCache</text>
+
+        <line class="edge dim" x1="550" y1="212" x2="550" y2="140" marker-end="url(#arwM)"/>
+        <circle class="op dim" cx="550" cy="128" r="13"/>
+        <text class="entity-label" x="550" y="332" text-anchor="middle">CheckoutFlow</text>
+
+        <circle class="op hot" cx="130" cy="200" r="16"/>
+        <text class="xlabel" x="130" y="205">X</text>
+        <circle class="op tip" cx="340" cy="200" r="13"/>
+        <text class="op-label" x="358" y="204">v1</text>
+        <circle class="op tip" cx="550" cy="228" r="13"/>
+        <text class="op-label" x="568" y="232">v1</text>
+        <text class="op-label" x="150" y="304">v1</text>
+
+        <path class="ref" d="M325,192 C260,178 200,182 148,197" marker-end="url(#arwA)"/>
+        <path class="ref" d="M536,222 C420,176 250,172 148,193" marker-end="url(#arwA)"/>
+      </g>
+
+      <text data-step="2" x="60" y="360" style="fill:var(--accent);font-weight:600;font-size:13px">&#8593; up-set of X reaches sideways: PriceCache and CheckoutFlow both depend on it</text>
+      <text data-step="3" x="60" y="382" style="fill:var(--accent);font-weight:600;font-size:13px">&#8595; down-set of X reaches down to its own v1 &mdash; what it needs underneath</text>
+
+      <line class="edge dim" x1="672" y1="70" x2="672" y2="340" data-step="2"/>
+      <g data-step="2">
+        <text x="712" y="70" style="fill:var(--muted);font-weight:600;font-size:14px">three moves on the selection</text>
+        <text x="712" y="122" style="font-weight:600;font-size:15px">Revert X</text>
+        <text x="712" y="142" style="fill:var(--muted);font-size:12.5px">drop X and its up-set</text>
+        <text x="712" y="168" style="fill:var(--accent);font-weight:600;font-size:15px;font-family:ui-monospace,Menlo,Consolas,monospace">I &#92; &#8593;X</text>
+      </g>
+      <g data-step="3">
+        <text x="712" y="216" style="font-weight:600;font-size:15px">Cherry-pick X</text>
+        <text x="712" y="236" style="fill:var(--muted);font-size:12.5px">add X and its down-set</text>
+        <text x="712" y="262" style="fill:var(--accent);font-weight:600;font-size:15px;font-family:ui-monospace,Menlo,Consolas,monospace">I &#8746; &#8595;X</text>
+        <text x="712" y="306" style="font-weight:600;font-size:15px">Reorder commits</text>
+        <text x="712" y="326" style="fill:var(--muted);font-size:12.5px">nothing &mdash; a state is a set</text>
+        <text x="712" y="352" style="fill:var(--accent);font-weight:600;font-size:15px;font-family:ui-monospace,Menlo,Consolas,monospace">no-op</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> current tip</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op hot"/></svg> X &mdash; the op in question</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op dim"/></svg> not in the state yet</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on</span>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="5">
+  <div class="kicker">payoff &mdash; revert</div>
+  <h1>Mira reverts one op. Its up-set is just itself.</h1>
+  <p class="sub">Same three entities as before. This time X is the cache, not the refactor &mdash; and that's exactly why it's safe.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 300" width="100%" height="300">
+      <line class="edge" x1="130" y1="288" x2="130" y2="216" marker-end="url(#arw)"/>
+      <circle class="op" cx="130" cy="300" r="13"/>
+      <text class="op-label" x="150" y="304">v1</text>
+      <circle class="op tip" cx="130" cy="200" r="13" id="s5-a2"/>
+      <text class="op-label" x="150" y="204">v2</text>
+      <text class="entity-label" x="130" y="332" text-anchor="middle">ApiClient</text>
+
+      <circle class="op" cx="550" cy="228" r="13" id="s5-k1"/>
+      <text class="op-label" x="570" y="232">v1</text>
+      <text class="entity-label" x="550" y="332" text-anchor="middle">CheckoutFlow</text>
+      <path class="ref" d="M536,222 C420,176 250,172 148,193" marker-end="url(#arwA)"/>
+
+      <text class="entity-label" x="340" y="332" text-anchor="middle">PriceCache</text>
+      <path class="ref" d="M325,192 C260,178 200,182 148,197" marker-end="url(#arwA)" data-step="1"/>
+
+      <g data-step="1">
+        <circle class="op hot" cx="340" cy="200" r="16"/>
+        <text class="xlabel" x="340" y="205">X</text>
+        <text class="op-label" x="362" y="180">selected for revert</text>
+      </g>
+      <text data-step="2" x="60" y="30" style="fill:var(--muted);font-weight:600;font-size:13.5px">&#8593;X = { X } &mdash; nothing depends on the cache, so the up-set stops there</text>
+
+      <g data-step="3">
+        <circle class="op dim" cx="340" cy="200" r="16"/>
+        <text data-step="3" x="60" y="58" style="fill:var(--accent);font-weight:600;font-size:13.5px">I &#92; &#8593;X drops just PriceCache &mdash; ApiClient and CheckoutFlow never move</text>
+      </g>
+    </svg>
+    <div class="two-col" data-step="4">
+      <div class="callout col-bad">
+        <span class="lbl">git revert &lt;sha&gt;</span>
+        Takes the whole commit. The refactor comes out too &mdash; <code>CheckoutFlow</code> now depends on a version of <code>ApiClient</code> that no longer exists.
+      </div>
+      <div class="callout col-good">
+        <span class="lbl">sgt revert &lt;cache-op&gt;</span>
+        <code>I &#92; &#8593;{cache-op}</code> &mdash; drops exactly the cache op. The refactor and <code>CheckoutFlow</code> stay exactly as they were.
+      </div>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="6">
+  <div class="kicker">payoff &mdash; cherry-pick and pin</div>
+  <h1>Pull in exactly what you need. Nothing more, in either direction.</h1>
+  <p class="sub">Same cast, two more requests that show up the moment one commit stops being the unit of work.</p>
+  <div class="stage">
+    <div class="two-col">
+      <div data-step="1">
+        <h3 style="margin:0 0 10px;font-size:14.5px;color:var(--ink)">On-call needs Mira's fix on <code>release</code></h3>
+        <svg viewBox="0 0 380 260" width="100%" height="250">
+          <text x="10" y="20" style="fill:var(--accent);font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px">cherry-pick(fix) = I &#8746; &#8595;X</text>
+
+          <line class="edge dim" x1="120" y1="210" x2="120" y2="150" marker-end="url(#arwM)"/>
+          <circle class="op dim" cx="120" cy="140" r="13"/>
+          <circle class="op tip" cx="120" cy="140" r="13" data-step="2"/>
+          <text class="op-label" x="140" y="144">v2</text>
+          <circle class="op" cx="120" cy="220" r="13"/>
+          <text class="op-label" x="140" y="224">v1</text>
+          <text class="entity-label" x="120" y="248" text-anchor="middle">ApiClient</text>
+
+          <circle class="op" cx="280" cy="220" r="13"/>
+          <text class="op-label" x="300" y="224">v1 &middot; buggy</text>
+          <line class="edge" x1="280" y1="208" x2="280" y2="150" marker-end="url(#arw)"/>
+          <circle class="op hot" cx="280" cy="140" r="15"/>
+          <text class="xlabel" x="280" y="145">X</text>
+          <text class="op-label" x="300" y="130">fix</text>
+          <text class="entity-label" x="280" y="248" text-anchor="middle">PriceCache</text>
+
+          <path class="ref" d="M266,140 H134" marker-end="url(#arwA)"/>
+          <text data-step="2" x="10" y="60" style="fill:var(--accent);font-weight:600;font-size:12.5px">&#8595;X reaches down to ApiClient v2 &mdash; release gains exactly that, nothing else</text>
+        </svg>
+        <div class="callout col-good" data-step="2" style="margin-top:6px">
+          <code>sgt restore --emit &lt;fix-op&gt;</code> &mdash; <code>I &#8746; &#8595;X</code>. Brings the refactor along because the fix needs it, and stops there.
+        </div>
+      </div>
+      <div data-step="3">
+        <h3 style="margin:0 0 10px;font-size:14.5px;color:var(--ink)">A teammate pins the pre-refactor <code>ApiClient</code></h3>
+        <svg viewBox="0 0 380 260" width="100%" height="250">
+          <text x="10" y="20" style="fill:var(--muted);font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px">revert(v2) --keep-dependents</text>
+
+          <line class="edge dim" x1="120" y1="208" x2="120" y2="150" marker-end="url(#arwM)"/>
+          <circle class="op dim" cx="120" cy="140" r="13"/>
+          <text class="op-label" x="140" y="144">v2 &middot; excluded</text>
+          <circle class="op tip" cx="120" cy="220" r="14"/>
+          <circle class="pin-ring" cx="120" cy="220" r="20"/>
+          <text class="op-label" x="140" y="224">v1 &middot; pinned</text>
+          <text class="entity-label" x="120" y="248" text-anchor="middle">ApiClient</text>
+
+          <circle class="op tip" cx="280" cy="180" r="13"/>
+          <text class="op-label" x="300" y="184">v1</text>
+          <text class="entity-label" x="280" y="248" text-anchor="middle">CheckoutFlow</text>
+          <path d="M266,186 C220,200 170,212 134,220" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#arwA)"/>
+          <text x="10" y="60" style="fill:var(--accent);font-weight:600;font-size:12.5px">dashed = drafted continuation: CheckoutFlow keeps running against v1</text>
+        </svg>
+        <div class="callout col-good" style="margin-top:6px">
+          <code>sgt revert &lt;refactor-op&gt; --keep-dependents</code> &mdash; pins <code>v1</code> as the tip, drafts a hollow continuation for anything built on <code>v2</code> instead of breaking it outright.
+        </div>
+      </div>
+    </div>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> current tip</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op hot"/></svg> X &mdash; the op in question</span>
+      <span><svg><circle cx="9" cy="9" r="5" class="op tip"/><circle cx="9" cy="9" r="8" class="pin-ring"/></svg> pinned tip</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on</span>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="7">
+  <div class="kicker">how the split actually happens</div>
+  <h1>How did sgt know one commit was two operations?</h1>
+  <p class="sub">It never trusted the commit boundary. It looked at what each changed piece of code actually touches and uses.</p>
+  <div class="stage">
+    <svg viewBox="0 0 900 220" width="100%" height="240">
+      <g data-step="1">
+        <text x="20" y="16" class="op-label">Mira's commit</text>
+        <line x1="20" y1="26" x2="220" y2="26" class="edge" style="stroke:var(--hair)"/>
+        <text x="34" y="60" class="op-label">class ApiClient:</text>
+        <text x="44" y="80" class="op-label">def request(...):</text>
+        <text x="34" y="110" class="op-label">class PriceCache:</text>
+        <text x="44" y="130" class="op-label">def get(...):</text>
+        <text x="44" y="150" class="op-label">self.client.request(...)</text>
+      </g>
+      <path d="M226,100 L294,100" class="edge" data-step="2" marker-end="url(#arw)"/>
+      <g data-step="2">
+        <text x="300" y="20" class="op-label">function-level diff</text>
+        <text x="310" y="55" class="op-label">ApiClient.request changed</text>
+        <text x="310" y="125" class="op-label">PriceCache class added</text>
+        <text x="310" y="143" class="op-label">uses ApiClient.request</text>
+      </g>
+      <path d="M486,65 L560,65" class="edge" data-step="3" marker-end="url(#arw)"/>
+      <path d="M486,140 L560,140" class="edge" data-step="3" marker-end="url(#arw)"/>
+      <g data-step="3">
+        <text x="566" y="20" class="op-label">split by def/use connectivity</text>
+        <circle cx="600" cy="65" r="16" class="op tip"/>
+        <text x="600" y="70" text-anchor="middle" class="op-label" font-size="10">refactor</text>
+        <circle cx="600" cy="140" r="16" class="op tip" style="stroke:var(--accent)"/>
+        <text x="600" y="145" text-anchor="middle" font-size="10" class="op-label">cache</text>
+        <path d="M600,124 L600,81" class="ref"/>
+        <text x="640" y="105" class="op-label">references, doesn't modify</text>
+        <text x="640" y="120" class="op-label">&#8594; two ops, one commit</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> a version / op</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="edge"/></svg> builds on</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on</span>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="8">
+  <div class="kicker">robustness</div>
+  <h1>Same change, same id &mdash; no matter how git rearranges the commits.</h1>
+  <p class="sub">Ops are content-addressed: hashed from the change itself, not from where it happens to sit in history.</p>
+  <div class="stage">
+    <svg viewBox="0 0 780 220" width="100%" height="240">
+      <g data-step="1">
+        <text x="115" y="30" text-anchor="middle" class="op-label">Mira's fix commit</text>
+        <text x="115" y="46" text-anchor="middle" class="op-label" font-size="10">sha a1b2c3</text>
+        <path d="M115,54 C115,100 340,120 380,142" class="edge" marker-end="url(#arw)"/>
+      </g>
+      <g data-step="2">
+        <text x="390" y="30" text-anchor="middle" class="op-label">after teammate rebases</text>
+        <text x="390" y="46" text-anchor="middle" font-size="10" class="op-label">sha 7f9e21</text>
+        <path d="M390,54 L390,142" class="edge" marker-end="url(#arw)"/>
+      </g>
+      <g data-step="3">
+        <text x="665" y="30" text-anchor="middle" class="op-label">squash-merged copy</text>
+        <text x="665" y="46" text-anchor="middle" font-size="10" class="op-label">sha 44dd90</text>
+        <path d="M665,54 C665,100 440,120 400,142" class="edge" marker-end="url(#arw)"/>
+      </g>
+      <circle cx="390" cy="160" r="20" class="op tip"/>
+      <text x="390" y="165" text-anchor="middle" class="op-label" font-size="10">fix</text>
+      <text x="390" y="200" text-anchor="middle" class="op-label">one op &mdash; same content hash every time it shows up</text>
+    </svg>
+    <p class="sub" style="margin:0" data-step="3">
+      Three different commit shas, three different moments in git's history. sgt recognizes it's the same operation each time and never double-counts, never double-reverts.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="9">
+  <div class="kicker">the one case that needs a person</div>
+  <h1>Two ops that both start from the same version.</h1>
+  <p class="sub">A teammate was mid-edit on <code>ApiClient</code> at the same moment Mira's own quick follow-up touched it too.</p>
+  <div class="stage">
+    <svg viewBox="0 0 780 300" width="100%" height="300">
+      <line class="edge" x1="180" y1="270" x2="180" y2="200" marker-end="url(#arw)"/>
+      <circle class="op" cx="180" cy="280" r="14"/>
+      <text class="op-label" x="200" y="284">v1</text>
+      <circle class="op" cx="180" cy="190" r="14"/>
+      <text class="op-label" x="200" y="194">v2</text>
+      <text class="entity-label" x="180" y="308" text-anchor="middle">ApiClient</text>
+
+      <g data-step="1">
+        <path class="edge" d="M192,178 C230,130 260,100 280,90" marker-end="url(#arw)"/>
+        <circle class="op hot pulse" cx="300" cy="80" r="15"/>
+        <text class="xlabel" x="300" y="85">T</text>
+        <text class="op-label" x="322" y="60">teammate's edit</text>
+
+        <path class="edge" d="M192,202 C230,250 260,280 280,290" marker-end="url(#arw)"/>
+        <circle class="op hot pulse" cx="300" cy="300" r="15"/>
+        <text class="xlabel" x="300" y="305">M</text>
+        <text class="op-label" x="322" y="320">Mira's follow-up</text>
+
+        <text x="192" y="140" style="fill:var(--accent);font-weight:600;font-size:13px">chain fork &mdash; both claim to build on v2</text>
+      </g>
+
+      <g data-step="2">
+        <path class="ref" d="M316,86 C420,110 440,150 470,175" marker-end="url(#arwA)"/>
+        <path class="ref" d="M316,296 C420,270 440,220 470,190" marker-end="url(#arwA)"/>
+        <circle class="op tip" cx="490" cy="182" r="17"/>
+        <text class="op-label" x="490" y="187" text-anchor="middle" style="font-size:11px">v3</text>
+        <text x="520" y="150" style="font-weight:600;font-size:14px">one new version</text>
+        <text class="op-label" x="520" y="172">supersedes both T and M</text>
+        <text class="op-label" x="520" y="190"><tspan style="font-family:ui-monospace,Menlo,Consolas,monospace">sgt merge-op(T, M)</tspan></text>
+      </g>
+
+      <g data-step="3">
+        <path class="ref" d="M490,199 V228" marker-end="url(#arwA)"/>
+        <text x="440" y="256" style="fill:var(--accent);font-weight:600;font-size:13.5px">build &amp; test gate &mdash; v3 lands only if it passes</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="edge"/></svg> builds on</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op hot"/></svg> concurrent edit</span>
+    </div>
+    <p class="sub" style="margin:0" data-step="3">
+      Every other request in this deck resolved itself from the DAG. This is the one shape that can't: two ops with the same starting version. sgt surfaces it explicitly instead of silently interleaving the edits &mdash; a person (or agent) writes the reconciled version, and it lands only if it builds and passes tests.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="10">
+  <div class="kicker">naming groups of operations &mdash; <span class="tense">the next layer</span></div>
+  <h1>Why reverting the cache never touched the refactor.</h1>
+  <p class="sub">Underneath, they were never the same feature. sgt is building a lens that names that grouping instead of leaving it implicit.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 340" width="100%" height="340">
+      <g stroke="#54534e" stroke-width="1.4" fill="none">
+        <line x1="130" y1="288" x2="130" y2="216"/>
+        <line x1="550" y1="212" x2="550" y2="140"/>
+      </g>
+      <g fill="#fff" stroke="var(--faint)" stroke-width="1.4">
+        <circle cx="130" cy="300" r="13"/><circle cx="130" cy="200" r="13"/>
+        <circle cx="340" cy="200" r="13"/>
+        <circle cx="550" cy="228" r="13"/><circle cx="550" cy="128" r="13"/>
+      </g>
+      <text class="entity-label" x="130" y="332" text-anchor="middle" style="fill:var(--muted)">ApiClient</text>
+      <text class="entity-label" x="340" y="332" text-anchor="middle" style="fill:var(--muted)">PriceCache</text>
+      <text class="entity-label" x="550" y="332" text-anchor="middle" style="fill:var(--muted)">CheckoutFlow</text>
+
+      <g data-step="1">
+        <ellipse cx="150" cy="220" rx="110" ry="130" fill="var(--f1)" fill-opacity=".14" stroke="var(--f1)" stroke-width="1.3"/>
+        <text x="60" y="90" style="fill:var(--f1);font-weight:600;font-size:13.5px">checkout-client</text>
+      </g>
+      <g data-step="2">
+        <ellipse cx="340" cy="200" rx="80" ry="60" fill="var(--f2)" fill-opacity=".16" stroke="var(--f2)" stroke-width="1.3"/>
+        <text x="290" y="118" style="fill:var(--f2);font-weight:600;font-size:13.5px">pricing-cache</text>
+      </g>
+
+      <g data-step="3">
+        <line class="edge dim" x1="800" y1="40" x2="720" y2="90"/>
+        <line class="edge dim" x1="800" y1="40" x2="800" y2="90"/>
+        <circle cx="800" cy="32" r="9" fill="var(--ink)"/>
+        <text class="op-label" x="820" y="36">codebase</text>
+        <circle cx="720" cy="98" r="8" fill="var(--f1)"/>
+        <text class="op-label" x="740" y="102">checkout-client</text>
+        <circle cx="800" cy="98" r="8" fill="var(--f2)"/>
+        <text class="op-label" x="820" y="102">pricing-cache</text>
+        <text class="op-label" x="700" y="140" style="fill:var(--faint)">5&ndash;9 roots, nested &mdash; a leaf is a group of ops</text>
+      </g>
+    </svg>
+    <p class="sub" style="margin:0" data-step="2">
+      Two roots, not one commit. <code>sgt revert &lt;cache-op&gt;</code> only ever touched <code>pricing-cache</code> &mdash; <code>checkout-client</code> was never in scope. This tree isn't shipped yet: it's the layer sgt is building next on top of the kernel this deck has been describing.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="11">
+  <div class="kicker">how it's wired</div>
+  <h1>Git stays the substrate. sgt reads and writes through it.</h1>
+  <p class="sub">This is the pipeline that turned Mira's one commit into two independently revertable operations.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 360" width="100%" height="360">
+      <rect x="40" y="30" width="900" height="300" rx="14" fill="none" stroke="var(--hair)" stroke-width="1.4" stroke-dasharray="2 4" data-step="3"/>
+      <text data-step="3" x="52" y="50" class="op-label">git &mdash; the byte store &amp; transport, underneath the whole thing</text>
+
+      <circle class="op" cx="145" cy="185" r="15"/>
+      <text style="font-weight:600;font-size:14px" x="145" y="225" text-anchor="middle">working tree</text>
+      <text class="op-label" x="145" y="243" text-anchor="middle">your edits</text>
+
+      <circle class="op tip" cx="500" cy="95" r="15"/>
+      <text style="font-weight:600;font-size:14px" x="500" y="135" text-anchor="middle">op DAG</text>
+      <text class="op-label" x="500" y="153" text-anchor="middle">mined operations</text>
+
+      <circle class="op tip" cx="845" cy="185" r="15"/>
+      <text style="font-weight:600;font-size:14px" x="845" y="225" text-anchor="middle">the selection</text>
+      <text class="op-label" x="845" y="243" text-anchor="middle">one tip per chain</text>
+
+      <g data-step="1">
+        <path class="edge" d="M158,172 C260,110 340,95 483,95" marker-end="url(#arw)"/>
+        <text style="fill:var(--accent);font-weight:600;font-size:14px" x="300" y="108">get</text>
+        <text class="op-label" x="300" y="126">mine: your edits &#8594; ops in the DAG</text>
+      </g>
+      <g data-step="2">
+        <path class="edge" d="M517,95 C630,95 700,140 832,172" marker-end="url(#arw)"/>
+      </g>
+      <g data-step="2">
+        <path class="edge" d="M830,200 C620,300 380,300 160,210" marker-end="url(#arw)"/>
+        <text style="fill:var(--accent);font-weight:600;font-size:14px" x="470" y="300" text-anchor="middle">put</text>
+        <text class="op-label" x="470" y="318" text-anchor="middle">the selection &#8594; working tree &#8594; git commit (a witness)</text>
+      </g>
+      <g data-step="3">
+        <path class="ref" d="M845,201 V248" marker-end="url(#arwA)"/>
+        <text style="fill:var(--accent);font-weight:600;font-size:13.5px" x="660" y="278">build &amp; test gate</text>
+        <text class="op-label" x="660" y="296">the one check before a put lands</text>
+      </g>
+    </svg>
+    <p class="sub" style="margin:0" data-step="3">
+      Mira's cache revert was a single ideal edit &mdash; <code>I &#92; &#8593;{cache-op}</code> &mdash; through this same pipeline. No new mechanism, just this one loop run once.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="12">
+  <div class="kicker">close</div>
+  <h1>One commit did five things. She undid <em>one</em> of them.</h1>
+  <p class="sub">Track entities, not lines or words &mdash; states are sets, and every verb is an exact edit to that set.</p>
+  <div class="stage">
+    <div class="strip">
+      <div class="step" data-step="1"><span class="check">&#10003;</span> commit landed<br><span style="color:var(--muted)">refactor + cache, tangled</span></div>
+      <div class="step" data-step="2"><span class="cross">&#10007;</span> bug found<br><span style="color:var(--muted)">stale prices in prod</span></div>
+      <div class="step" data-step="3"><code>sgt revert &lt;cache-op&gt;</code><br><span style="color:var(--muted)">I \ &#8593;{cache-op}</span></div>
+      <div class="step" data-step="4"><span class="check">&#10003;</span> clean commit<br><span style="color:var(--muted)">refactor, CheckoutFlow, OrdersPanel intact</span></div>
+    </div>
+    <p class="sub" style="margin:20px 0 0;max-width:900px" data-step="4">
+      The round trip works today, on sgt's own commit history. What's still being measured: how well untangling matches what a human would have split by hand, how often the mined dependency graph misses a real one, and how closely the feature tree lines up with the boundaries people actually think in.
     </p>
   </div>
 </section>
 
-<!-- ============================ 3 · THE CHANGE ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>03</b> · the change</div>
-    <h2>Give each function its own<br>version history</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 300" role="img" aria-label="three parallel version chains, one per function, linked by uses edges: slugify uses Config, Config uses parse">
-        <g data-step="1">
-          <line class="edge draw shown" pathLength="1" x1="200" y1="250" x2="200" y2="160" marker-end="url(#arw)"/>
-          <line class="edge draw shown" pathLength="1" x1="200" y1="140" x2="200" y2="50" marker-end="url(#arw)"/>
-          <line class="edge draw shown" pathLength="1" x1="490" y1="250" x2="490" y2="160" marker-end="url(#arw)"/>
-          <line class="edge draw shown" pathLength="1" x1="490" y1="140" x2="490" y2="50" marker-end="url(#arw)"/>
-          <line class="edge draw shown" pathLength="1" x1="780" y1="250" x2="780" y2="85" marker-end="url(#arw)"/>
-          <circle class="op" cx="200" cy="260" r="15"/><circle class="op tip" cx="200" cy="40" r="15"/>
-          <circle class="op" cx="490" cy="260" r="15"/><circle class="op tip" cx="490" cy="40" r="15"/>
-          <circle class="op tip" cx="780" cy="72" r="15"/>
-          <text class="vlabel" x="222" y="265">v1</text><text class="vlabel" x="222" y="45">v3</text>
-          <text class="vlabel" x="512" y="265">v1</text><text class="vlabel" x="512" y="45">v3</text>
-          <text class="vlabel" x="802" y="77">v1</text>
-          <text class="lbl mut" x="200" y="298" text-anchor="middle" font-family="var(--mono)">parse()</text>
-          <text class="lbl mut" x="490" y="298" text-anchor="middle" font-family="var(--mono)">Config</text>
-          <text class="lbl mut" x="780" y="298" text-anchor="middle" font-family="var(--mono)">slugify()</text>
-        </g>
-        <g data-step="2">
-          <path class="ref draw shown" pathLength="1" d="M215,150 H475" marker-end="url(#arwA)"/>
-          <path class="ref draw shown" pathLength="1" d="M505,150 H765" marker-end="url(#arwA)"/>
-          <text class="lbl sm t-acc" x="345" y="142" text-anchor="middle">uses</text>
-          <text class="lbl sm t-acc" x="635" y="142" text-anchor="middle">uses</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="3">
-      Instead of one diff per commit, sgt gives each function, class, or method its own chain
-      of versions, oldest to newest. When one function's code refers to another, that's
-      recorded directly — <span class="mono">slugify()</span> depends on <span class="mono">Config</span>,
-      which depends on <span class="mono">parse()</span>.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 4 · WHAT A STATE IS ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>04</b> · what "current" means</div>
-    <h2>A state is one version<br>picked per function</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 410" role="img" aria-label="one version selected per chain forms a downward-closed selection; the selected version of slugify has an up-set of nothing above it and a down-set of Config and parse below it; three moves are set operations on this selection">
-        <!-- ideal band across the three chains -->
-        <rect class="band" x="60" y="150" width="560" height="152" rx="8" data-step="1"/>
-        <line data-step="1" x1="60" y1="150" x2="620" y2="150" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="6 5"/>
-        <g data-step="1">
-          <text class="lbl b t-acc" x="60" y="134">the selection</text>
-        </g>
-
-        <g>
-          <line class="edge" x1="130" y1="290" x2="130" y2="210" marker-end="url(#arw)"/>
-          <line class="edge" x1="130" y1="190" x2="130" y2="110" marker-end="url(#arw)"/>
-          <line class="edge" x1="340" y1="290" x2="340" y2="210" marker-end="url(#arw)"/>
-          <line class="edge" x1="340" y1="190" x2="340" y2="110" marker-end="url(#arw)"/>
-          <line class="edge" x1="550" y1="290" x2="550" y2="238" marker-end="url(#arw)"/>
-          <path class="ref" d="M145,178 H325" marker-end="url(#arwA)"/>
-          <path class="ref" d="M355,178 H535" marker-end="url(#arwA)"/>
-          <circle class="op" cx="130" cy="300" r="13"/><circle cx="130" cy="100" r="13" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <circle class="op" cx="340" cy="300" r="13"/><circle cx="340" cy="100" r="13" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <circle class="op" cx="550" cy="300" r="13"/>
-          <circle class="op tip" cx="130" cy="200" r="13"/>
-          <circle class="op tip" cx="340" cy="200" r="13"/>
-          <circle class="op tip" cx="550" cy="228" r="13"/>
-          <text class="lbl mut" x="130" y="330" text-anchor="middle" font-family="var(--mono)" font-size="12">parse()</text>
-          <text class="lbl mut" x="340" y="330" text-anchor="middle" font-family="var(--mono)" font-size="12">Config</text>
-          <text class="lbl mut" x="550" y="330" text-anchor="middle" font-family="var(--mono)" font-size="12">slugify()</text>
-        </g>
-
-        <!-- X = slugify tip -->
-        <g data-step="2">
-          <circle class="op hot" cx="550" cy="228" r="15"/>
-          <text class="lbl b" style="fill:#fff" x="550" y="233" text-anchor="middle" font-size="12">X</text>
-        </g>
-
-        <g data-step="1">
-          <text class="lbl sm t-faint" x="60" y="362">this kind of selection has a name — an order ideal — but the rule is what matters</text>
-        </g>
-        <g data-step="2">
-          <text class="lbl sm t-acc" x="60" y="386">↑X is empty here · ↓X reaches down to <tspan class="mono">Config</tspan> and <tspan class="mono">parse()</tspan></text>
-        </g>
-
-        <!-- moves table -->
-        <line class="edge dim" x1="672" y1="70" x2="672" y2="330"/>
-        <g data-step="3">
-          <text class="lbl b t-mut" x="712" y="70">three moves on the selection</text>
-          <text class="lbl b" x="712" y="122">Revert X</text>
-          <text class="lbl mut sm" x="712" y="142">drop X and its up-set</text>
-          <text class="lbl b mono t-acc" x="712" y="166">I \ ↑X</text>
-        </g>
-        <g data-step="3">
-          <text class="lbl b" x="712" y="212">Cherry-pick X</text>
-          <text class="lbl mut sm" x="712" y="232">add X and its down-set</text>
-          <text class="lbl b mono t-acc" x="712" y="256">I ∪ ↓X</text>
-        </g>
-        <g data-step="3">
-          <text class="lbl b" x="712" y="302">Reorder commits</text>
-          <text class="lbl mut sm" x="712" y="322">nothing — a state is a set</text>
-          <text class="lbl b mono t-acc" x="712" y="346">no-op</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="4">
-      You can't pick an old <span class="mono">slugify()</span> without also having the
-      <span class="mono">Config</span> it was written against, so a state has to respect what
-      depends on what. Everything built on top of a function is its up-set; everything
-      underneath it that it needs is its down-set — those are the two directions revert and
-      cherry-pick move along.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 5 · CASE A — UNDO ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>05</b> · case A — undo</div>
-    <h2>Undo the retry wrapper: drop it<br>and its up-set</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 380" role="img" aria-label="pick the retry wrapper op, light up its up-set of dependents fetch sync and poll, then subtract the whole cone leaving a legal selection">
-        <g>
-          <line class="edge" x1="160" y1="286" x2="160" y2="146" marker-end="url(#arw)"/>
-          <line class="edge" x1="400" y1="286" x2="400" y2="190" marker-end="url(#arw)"/>
-          <line class="edge" x1="640" y1="286" x2="640" y2="205" marker-end="url(#arw)"/>
-          <line class="edge" x1="840" y1="286" x2="840" y2="205" marker-end="url(#arw)"/>
-          <path class="ref" d="M176,212 C290,200 300,180 385,177" marker-end="url(#arwA)"/>
-          <path class="ref" d="M416,178 C520,182 540,188 626,190" marker-end="url(#arwA)"/>
-          <path class="ref" d="M415,168 C620,120 720,140 826,184" marker-end="url(#arwA)"/>
-          <circle class="op" cx="160" cy="300" r="14"/>
-          <circle class="op" cx="160" cy="215" r="14"/>
-          <circle class="op" cx="160" cy="130" r="14"/>
-          <circle class="op" cx="400" cy="300" r="14"/>
-          <circle class="op" cx="400" cy="175" r="14"/>
-          <circle class="op" cx="640" cy="300" r="14"/>
-          <circle class="op" cx="640" cy="190" r="14"/>
-          <circle class="op" cx="840" cy="300" r="14"/>
-          <circle class="op" cx="840" cy="190" r="14"/>
-          <text class="lbl mut" x="160" y="338" text-anchor="middle">retry wrapper</text>
-          <text class="lbl mut" x="400" y="338" text-anchor="middle" font-family="var(--mono)">fetch()</text>
-          <text class="lbl mut" x="640" y="338" text-anchor="middle" font-family="var(--mono)">sync()</text>
-          <text class="lbl mut" x="840" y="338" text-anchor="middle" font-family="var(--mono)">poll()</text>
-        </g>
-        <g data-step="1">
-          <circle class="op hot" cx="160" cy="215" r="16"/>
-          <text class="lbl b" style="fill:#fff" x="160" y="220" text-anchor="middle">X</text>
-          <text class="lbl sm" x="118" y="200" text-anchor="end">pick the op that added retry</text>
-        </g>
-        <g data-step="2">
-          <circle class="op tip" cx="160" cy="130" r="14"/>
-          <circle class="op tip" cx="400" cy="175" r="14"/>
-          <circle class="op tip" cx="640" cy="190" r="14"/>
-          <circle class="op tip" cx="840" cy="190" r="14"/>
-          <text class="lbl b t-acc" x="500" y="62" text-anchor="middle">↑X lights up — X and everything that came to depend on it</text>
-        </g>
-        <g data-step="3">
-          <circle cx="160" cy="215" r="16" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <circle cx="160" cy="130" r="14" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <circle cx="400" cy="175" r="14" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <circle cx="640" cy="190" r="14" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <circle cx="840" cy="190" r="14" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <text class="lbl b t-acc" x="500" y="92" text-anchor="middle">subtract the whole cone — what remains is still a legal selection</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="4">
-      Reverting the retry wrapper means dropping it and everything built assuming it exists —
-      the wrapper, <span class="mono">fetch()</span>, <span class="mono">sync()</span>, and
-      <span class="mono">poll()</span>. What's left still has exactly one version per function,
-      so it compiles and runs like any other state.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 6 · CASES B & C ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>06</b> · cases B &amp; C — look back, move a fix</div>
-    <h2>Pin an older version, or bring<br>in what a fix needs</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 360" role="img" aria-label="cherry-pick pulls in a down-set of prerequisites on the left; pin selects an older tip on one chain while every other chain stays put on the right">
-        <text class="lbl b" x="40" y="40">cherry-pick(X) = I ∪ ↓X</text>
-        <g>
-          <line class="edge" x1="120" y1="300" x2="120" y2="130" marker-end="url(#arw)"/>
-          <line class="edge" x1="300" y1="300" x2="300" y2="200" marker-end="url(#arw)"/>
-          <path class="ref" d="M135,215 C210,215 220,250 286,250" marker-end="url(#arwA)"/>
-          <circle class="op" cx="120" cy="300" r="13"/>
-          <circle class="op" cx="120" cy="215" r="13"/>
-          <circle class="op" cx="300" cy="300" r="13"/>
-          <text class="lbl mut" x="120" y="336" text-anchor="middle">helper it needs</text>
-          <text class="lbl mut" x="300" y="336" text-anchor="middle">the hotfix</text>
-        </g>
-        <g data-step="1">
-          <circle class="op hot" cx="300" cy="200" r="15"/>
-          <text class="lbl b" style="fill:#fff" x="300" y="205" text-anchor="middle">X</text>
-        </g>
-        <g data-step="2">
-          <circle class="op tip" cx="120" cy="215" r="13"/>
-          <circle class="op tip" cx="120" cy="300" r="13"/>
-          <circle class="op tip" cx="300" cy="300" r="13"/>
-          <text class="lbl sm t-acc" x="210" y="150" text-anchor="middle">↓X: X drags in what it depends on</text>
-        </g>
-
-        <line class="edge dim" x1="520" y1="30" x2="520" y2="330" data-step="3"/>
-
-        <g data-step="3">
-          <text class="lbl b" x="600" y="40">pin — choose a version</text>
-          <line class="edge" x1="700" y1="300" x2="700" y2="130" marker-end="url(#arw)"/>
-          <circle class="op" cx="700" cy="300" r="13"/><text class="vlabel" x="720" y="305">v1</text>
-          <circle class="op" cx="700" cy="215" r="13"/><text class="vlabel" x="720" y="220">v2</text>
-          <circle class="op" cx="700" cy="130" r="13"/><text class="vlabel" x="720" y="135">v3</text>
-        </g>
-        <g data-step="4">
-          <circle class="op tip" cx="700" cy="215" r="15"/>
-          <circle cx="700" cy="130" r="13" fill="#fff" stroke="var(--faint)" stroke-width="1.4" stroke-dasharray="3 3"/>
-          <path d="M760,215 h60" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arwA)"/>
-          <text class="lbl sm t-acc" x="828" y="205">pin an older op as the tip</text>
-          <text class="lbl sm" x="828" y="225">every other chain untouched</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="5">
-      Looking at last week's <span class="mono">slugify()</span> means pinning an older version
-      on just its own chain — nothing else moves. Moving a hotfix to the release branch means
-      adding that fix's version plus its down-set, whatever it needs underneath to actually
-      compile.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 7 · CAPTURE ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>07</b> · where operations come from</div>
-    <h2>Reading one commit at the<br>function level</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 340" role="img" aria-label="one tangled commit, diffed at the function level, split by def-use into three separate operations">
-        <g data-step="1">
-          <rect class="card" x="30" y="130" width="160" height="80" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
-          <text class="lbl b t-acc" x="110" y="160" text-anchor="middle">1 tangled</text>
-          <text class="lbl b t-acc" x="110" y="180" text-anchor="middle">commit</text>
-          <text class="lbl sm" x="110" y="228" text-anchor="middle">retry + a rename</text>
-        </g>
-        <g data-step="2">
-          <line class="edge" x1="194" y1="170" x2="240" y2="170" marker-end="url(#arw)"/>
-          <rect class="card" x="244" y="130" width="150" height="80" rx="12"/>
-          <text class="lbl b" x="319" y="162" text-anchor="middle">function-level</text>
-          <text class="lbl b" x="319" y="182" text-anchor="middle">diff</text>
-          <text class="lbl sm" x="319" y="228" text-anchor="middle">per function / class</text>
-        </g>
-        <g data-step="3">
-          <text class="lbl sm t-mut" x="466" y="46" text-anchor="middle">split by def-use</text>
-          <path class="edge draw shown" pathLength="1" d="M398,170 C436,170 436,70 482,70" marker-end="url(#arw)"/>
-          <path class="edge draw shown" pathLength="1" d="M398,170 H482" marker-end="url(#arw)"/>
-          <path class="edge draw shown" pathLength="1" d="M398,170 C436,170 436,270 482,270" marker-end="url(#arw)"/>
-          <circle class="op hot" cx="500" cy="70" r="16"/>
-          <circle class="op hot" cx="500" cy="170" r="16"/>
-          <circle class="op hot" cx="500" cy="270" r="16"/>
-          <text class="lbl b" style="fill:#fff" x="500" y="75" text-anchor="middle">op&#8321;</text>
-          <text class="lbl b" style="fill:#fff" x="500" y="175" text-anchor="middle">op&#8322;</text>
-          <text class="lbl b" style="fill:#fff" x="500" y="275" text-anchor="middle">op&#8323;</text>
-          <text class="lbl sm" x="524" y="72">retry wrapper</text>
-          <text class="lbl sm" x="524" y="172">call site</text>
-          <text class="lbl sm" x="524" y="272">unrelated rename</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="4">
-      sgt reads a commit after it happened and diffs it function by function instead of line by
-      line. It then splits that diff wherever the changed functions don't call each other, so
-      the retry wrapper and an unrelated rename in the same commit become two separate
-      operations.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 8 · ROBUSTNESS ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>08</b> · surviving squash &amp; rebase</div>
-    <h2>The same change gets the same id</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 320" role="img" aria-label="three commits with different shas all mining to one operation id, whose id is a hash of what changed, and which just accumulates witnesses">
-        <g data-step="1">
-          <rect class="card" x="30" y="40" width="240" height="50" rx="10"/>
-          <text class="lbl" x="48" y="70">squash merge · <tspan class="mono t-mut">a1b2…</tspan></text>
-          <rect class="card" x="30" y="126" width="240" height="50" rx="10"/>
-          <text class="lbl" x="48" y="156">after a rebase · <tspan class="mono t-mut">c3d4…</tspan></text>
-          <rect class="card" x="30" y="212" width="240" height="50" rx="10"/>
-          <text class="lbl" x="48" y="242">a teammate's commit · <tspan class="mono t-mut">e5f6…</tspan></text>
-        </g>
-        <g data-step="2">
-          <path class="edge draw shown" pathLength="1" d="M270,65  C380,65  430,150 500,150" marker-end="url(#arw)"/>
-          <path class="edge draw shown" pathLength="1" d="M270,150 H500" marker-end="url(#arw)"/>
-          <path class="edge draw shown" pathLength="1" d="M270,236 C380,236 430,150 500,150" marker-end="url(#arw)"/>
-          <text class="lbl sm t-mut" x="385" y="134" text-anchor="middle">same footprint · same bytes → same id</text>
-          <circle class="flow-dot shown" r="4" style="offset-path:path('M270,65  C380,65  430,150 500,150')"/>
-          <circle class="flow-dot shown" r="4" style="offset-path:path('M270,150 H500'); animation-delay:.4s"/>
-          <circle class="flow-dot shown" r="4" style="offset-path:path('M270,236 C380,236 430,150 500,150'); animation-delay:.8s"/>
-        </g>
-        <g data-step="3">
-          <circle class="op hot" cx="540" cy="150" r="26"/>
-          <text class="lbl b" style="fill:#fff" x="540" y="155" text-anchor="middle">1 op</text>
-          <text class="lbl sm" x="540" y="196" text-anchor="middle">deduped — no fork</text>
-        </g>
-        <g data-step="4">
-          <rect class="card" x="622" y="60" width="330" height="184" rx="12" stroke="var(--accent)"/>
-          <text class="lbl b" x="644" y="92"><tspan class="mono t-acc">id</tspan> = hash of what it changed</text>
-          <text class="lbl mono" x="644" y="122" style="font-size:12.5px">footprint · which function, which version</text>
-          <text class="lbl mono" x="644" y="144" style="font-size:12.5px">images &#183; the bytes it now contains</text>
-          <text class="lbl mono" x="644" y="166" style="font-size:12.5px">requires &#183; what it depends on</text>
-          <text class="lbl sm" x="644" y="196">the commit sha is never part of it —</text>
-          <text class="lbl sm t-acc" x="644" y="216">it's only recorded as a <tspan class="b">witness</tspan></text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="5">
-      An operation's id is computed from what it changed — which function, what it now
-      contains, what it depends on — not from the commit's SHA. A squash merge, a rebase, and a
-      teammate's separate commit that all produce the same change collapse into one operation
-      with three witnessing commits.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 9 · CONFLICT ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>09</b> · the one case that needs a person</div>
-    <h2>Two edits to the same function<br>fork its chain</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 350" role="img" aria-label="a function's chain forks into two tips when two people edit it at once; sgt surfaces the fork and resolves it with a new version gated by build and test">
-        <g data-step="1">
-          <line class="edge" x1="200" y1="300" x2="200" y2="230" marker-end="url(#arw)"/>
-          <circle class="op" cx="200" cy="300" r="15"/><text class="vlabel" x="224" y="305">v1</text>
-          <circle class="op" cx="200" cy="215" r="15"/><text class="vlabel" x="224" y="220">v2</text>
-          <text class="lbl mut" x="200" y="336" text-anchor="middle" font-family="var(--mono)">parse_config()</text>
-        </g>
-        <g data-step="2">
-          <path class="edge draw shown" pathLength="1" d="M188,204 C150,160 130,140 118,116" marker-end="url(#arw)"/>
-          <path class="edge draw shown" pathLength="1" d="M212,204 C250,160 270,140 282,116" marker-end="url(#arw)"/>
-          <circle class="op hot pulse" cx="110" cy="100" r="15"/>
-          <circle class="op hot pulse" cx="290" cy="100" r="15"/>
-          <text class="lbl sm" style="fill:#fff" x="110" y="105" text-anchor="middle">v3a</text>
-          <text class="lbl sm" style="fill:#fff" x="290" y="105" text-anchor="middle">v3b</text>
-          <text class="lbl b t-acc" x="200" y="70" text-anchor="middle">two teammates edit it at once → the chain forks</text>
-        </g>
-        <g data-step="3">
-          <text class="lbl b" x="560" y="112">one new version</text>
-          <path class="edge dim" d="M126,100 C400,100 420,180 560,180" marker-end="url(#arw)"/>
-          <path class="edge dim" d="M306,100 C440,100 460,180 560,180" marker-end="url(#arw)"/>
-          <circle class="op tip" cx="580" cy="180" r="18"/>
-          <text class="t-acc b" x="580" y="185" text-anchor="middle" font-size="12">v4</text>
-          <text class="lbl sm" x="608" y="176">supersedes both v3a and v3b</text>
-          <text class="lbl sm" x="608" y="196">a person writes it, sgt never guesses</text>
-        </g>
-        <g data-step="4">
-          <path class="ref" d="M812,208 V250" marker-end="url(#arwA)"/>
-          <rect class="card" x="700" y="254" width="240" height="58" rx="10" stroke="var(--accent)"/>
-          <text class="lbl b t-acc" x="720" y="284">build &amp; test gate</text>
-          <text class="lbl sm" x="720" y="304">v4 lands only if it passes</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="5">
-      If two people edit the same function at the same time, its chain forks into two versions,
-      and sgt won't silently combine them. It surfaces the fork directly and asks for one new
-      version that supersedes both, and that version only lands if it builds and passes tests.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 10 · FEATURE LENS ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>10</b> · zooming out</div>
-    <h2>Naming a group of operations<br>is just a label</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 320" role="img" aria-label="coloured feature groups overlaid on a grey operation graph, alongside a small tree with five to nine groups per level">
-        <g data-step="1">
-          <g stroke="var(--faint)" stroke-width="1.4">
-            <line x1="120" y1="280" x2="120" y2="180"/>
-            <line x1="230" y1="280" x2="230" y2="130"/>
-            <line x1="360" y1="280" x2="360" y2="180"/>
-            <line x1="480" y1="280" x2="480" y2="160"/>
-            <line x1="590" y1="280" x2="590" y2="180"/>
-          </g>
-          <g fill="#fff" stroke="var(--faint)" stroke-width="1.4">
-            <circle cx="120" cy="280" r="11"/><circle cx="120" cy="170" r="11"/>
-            <circle cx="230" cy="280" r="11"/><circle cx="230" cy="120" r="11"/>
-            <circle cx="360" cy="280" r="11"/><circle cx="360" cy="170" r="11"/>
-            <circle cx="480" cy="280" r="11"/><circle cx="480" cy="150" r="11"/>
-            <circle cx="590" cy="280" r="11"/><circle cx="590" cy="170" r="11"/>
-          </g>
-        </g>
-        <g data-step="2">
-          <ellipse cx="145" cy="225" rx="70" ry="90" fill="var(--f2)" fill-opacity=".16" stroke="var(--f2)" stroke-width="1.2"/>
-          <ellipse cx="290" cy="205" rx="95" ry="110" fill="var(--f3)" fill-opacity=".15" stroke="var(--f3)" stroke-width="1.2"/>
-          <ellipse cx="535" cy="215" rx="95" ry="100" fill="var(--f4)" fill-opacity=".15" stroke="var(--f4)" stroke-width="1.2"/>
-          <text class="lbl sm" style="fill:var(--f2)" x="118" y="165">sync</text>
-          <text class="lbl sm" style="fill:var(--f3)" x="300" y="140">auth</text>
-          <text class="lbl sm" style="fill:var(--f4)" x="520" y="145">cache</text>
-        </g>
-        <g data-step="3">
-          <text class="lbl b" x="720" y="60">feature tree · 5–9 per level</text>
-          <line class="edge dim" x1="800" y1="90" x2="720" y2="140"/>
-          <line class="edge dim" x1="800" y1="90" x2="800" y2="140"/>
-          <line class="edge dim" x1="800" y1="90" x2="880" y2="140"/>
-          <circle cx="800" cy="82" r="9" fill="var(--ink)"/>
-          <circle cx="720" cy="150" r="8" fill="var(--f2)"/>
-          <circle cx="800" cy="150" r="8" fill="var(--f3)"/>
-          <circle cx="880" cy="150" r="8" fill="var(--f4)"/>
-          <line class="edge dim" x1="800" y1="158" x2="760" y2="200"/>
-          <line class="edge dim" x1="800" y1="158" x2="840" y2="200"/>
-          <circle cx="760" cy="208" r="6" fill="var(--f3)" fill-opacity=".6"/>
-          <circle cx="840" cy="208" r="6" fill="var(--f3)" fill-opacity=".6"/>
-          <text class="lbl sm mut" x="700" y="248">a leaf = a group of operations</text>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="4">
-      On top of all these operations, sgt keeps a small tree of named groups — five to nine at
-      each level — so "what does this codebase contain" has an answer besides reading every
-      file. Renaming, merging, or splitting a group changes the label; it never touches a byte
-      of code.
-    </p>
-  </div>
-</section>
-
-<!-- ============================ 11 · HOW IT'S WIRED ============================ -->
-<section class="slide">
-  <div class="wrap">
-    <div class="kicker"><b>11</b> · how it's wired</div>
-    <h2>Reading commits in, writing<br>a state back out</h2>
-    <div class="diagram">
-      <svg viewBox="0 0 980 360" role="img" aria-label="the get/put loop: your working tree is mined into an operation store, a selection is materialized back to the working tree and committed, all over a git substrate with a build and test gate">
-        <rect class="card" x="70" y="150" width="150" height="70" rx="12"/>
-        <text class="lbl b" x="145" y="180" text-anchor="middle">working tree</text>
-        <text class="lbl sm" x="145" y="200" text-anchor="middle">your edits</text>
-
-        <rect class="card" x="415" y="60" width="170" height="70" rx="12"/>
-        <text class="lbl b" x="500" y="90" text-anchor="middle">op store</text>
-        <text class="lbl sm" x="500" y="110" text-anchor="middle">the graph of ops</text>
-
-        <rect class="card" x="770" y="150" width="150" height="70" rx="12"/>
-        <text class="lbl b" x="845" y="180" text-anchor="middle">the selection</text>
-        <text class="lbl sm" x="845" y="200" text-anchor="middle">one tip per chain</text>
-
-        <g data-step="1">
-          <path class="edge draw shown" pathLength="1" d="M220,168 C300,110 340,95 411,95" marker-end="url(#arw)"/>
-          <text class="lbl b t-acc" x="300" y="118">get</text>
-          <text class="lbl sm" x="300" y="136">mine: your edits → ops in the store</text>
-          <circle class="flow-dot shown" r="4" style="offset-path:path('M220,168 C300,110 340,95 411,95')"/>
-        </g>
-        <g data-step="2">
-          <path class="edge draw shown" pathLength="1" d="M589,95 C660,95 700,140 772,168" marker-end="url(#arw)"/>
-          <circle class="flow-dot shown" r="4" style="offset-path:path('M589,95 C660,95 700,140 772,168'); animation-delay:.9s"/>
-        </g>
-        <g data-step="3">
-          <path class="edge draw shown" pathLength="1" d="M770,196 C560,300 400,300 222,200" marker-end="url(#arw)"/>
-          <text class="lbl b t-acc" x="470" y="300" text-anchor="middle">put</text>
-          <text class="lbl sm" x="470" y="318" text-anchor="middle">the selection → working tree → git commit (a witness)</text>
-          <circle class="flow-dot shown" r="4" style="offset-path:path('M770,196 C560,300 400,300 222,200'); animation-delay:1.8s"/>
-        </g>
-        <g data-step="4">
-          <rect x="40" y="30" width="900" height="300" rx="14" fill="none" stroke="var(--hair)" stroke-width="1.4" stroke-dasharray="2 4"/>
-          <text class="lbl sm mut" x="52" y="50">git — the byte store &amp; transport, underneath the whole thing</text>
-          <rect class="card" x="640" y="250" width="240" height="56" rx="10" stroke="var(--accent)"/>
-          <text class="lbl b t-acc" x="660" y="278">build &amp; test</text>
-          <text class="lbl sm" x="660" y="296">the one gate before it lands</text>
-          <path class="ref" d="M845,222 V248" marker-end="url(#arwA)"/>
-        </g>
-      </svg>
-    </div>
-    <p class="cap lift" data-step="5">
-      <span class="mono">get</span> reads your commits and mines them into operations;
-      <span class="mono">put</span> takes a chosen state, writes it to the working tree, and
-      commits it as one more commit, so git stays the only place bytes live. The round-trip
-      between them works today on this repo's own history; how well the automatic parts —
-      untangling, dependency detection, feature grouping — hold up on a large, messy codebase is
-      still being measured.
-    </p>
-  </div>
-</section>
-
-<div id="hud">
-  <button id="prev" aria-label="previous">‹</button>
-  <span id="count">1 / 11</span>
-  <button id="next" aria-label="next">›</button>
 </div>
-<div id="hint"><span id="brand"><b>sgt</b> · semi-git</span>· ← / → · space to advance</div>
+
+<div class="hud">
+  <button id="prevBtn" class="navbtn" aria-label="previous">&#8249;</button>
+  <span class="counter"><span id="slideNum">1</span> / 12</span>
+  <button id="nextBtn" class="navbtn" aria-label="next">&#8250;</button>
+</div>
 
 <script>
 (function(){
-  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
-  var bar = document.getElementById('bar');
-  var count = document.getElementById('count');
-  var cur = 0, step = 0;
-  // opt-in URL params (default deck behaviour is unchanged):
-  //   ?full   reveal every step on every slide at once (share / print / screenshot)
-  //   #N      open directly at slide N (1-based) — deep-link to a slide
-  var showAll = /(^|[?&])full(=|&|$)/.test(location.search);
-
-  function maxStep(slide){
-    var ns = Array.prototype.map.call(
-      slide.querySelectorAll('[data-step]'), function(el){ return +el.dataset.step; });
-    return ns.length ? Math.max.apply(null, ns) : 0;
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var total=slides.length;
+  var cur=0, step=0;
+  var numEl=document.getElementById('slideNum');
+  function maxStep(s){
+    var m=0;
+    s.querySelectorAll('[data-step]').forEach(function(e){ m=Math.max(m, +e.dataset.step); });
+    return m;
   }
   function render(){
     slides.forEach(function(s,i){ s.classList.toggle('active', i===cur); });
-    var slide = slides[cur];
-    Array.prototype.forEach.call(slide.querySelectorAll('[data-step]'), function(el){
-      el.classList.toggle('shown', showAll || (+el.dataset.step) <= step);
+    var s=slides[cur];
+    s.querySelectorAll('[data-step]').forEach(function(e){
+      e.classList.toggle('shown', +e.dataset.step<=step);
     });
-    count.textContent = (cur+1) + ' / ' + slides.length;
-    bar.style.width = ((cur+1)/slides.length*100) + '%';
+    numEl.textContent = cur+1;
   }
   function next(){
-    if(!showAll && step < maxStep(slides[cur])) step++;
-    else if(cur < slides.length-1){ cur++; step = 0; }
+    var m=maxStep(slides[cur]);
+    if(step<m){ step++; }
+    else if(cur<total-1){ cur++; step=0; }
     render();
   }
   function prev(){
-    if(!showAll && step > 0) step--;
-    else if(cur > 0){ cur--; step = showAll ? 0 : maxStep(slides[cur]); }
+    if(step>0){ step--; }
+    else if(cur>0){ cur--; step=maxStep(slides[cur]); }
     render();
   }
-  function goto(i){ if(i>=0 && i<slides.length){ cur=i; step=0; render(); } }
-
-  document.addEventListener('keydown', function(e){
-    if(e.key==='ArrowRight' || e.key==='ArrowDown' || e.key===' ' || e.key==='PageDown'){
-      e.preventDefault(); next();
-    } else if(e.key==='ArrowLeft' || e.key==='ArrowUp' || e.key==='PageUp'){
-      e.preventDefault(); prev();
-    } else if(e.key==='Home'){ goto(0); }
-      else if(e.key==='End'){ goto(slides.length-1); }
+  document.getElementById('nextBtn').addEventListener('click', next);
+  document.getElementById('prevBtn').addEventListener('click', prev);
+  window.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' '){ e.preventDefault(); next(); }
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){ e.preventDefault(); prev(); }
   });
-  document.body.addEventListener('click', function(){ next(); });
-  document.getElementById('next').addEventListener('click', function(e){ e.stopPropagation(); next(); });
-  document.getElementById('prev').addEventListener('click', function(e){ e.stopPropagation(); prev(); });
-
-  // honour a #N deep-link on load
-  var h = parseInt((location.hash || '').replace('#',''), 10);
-  if(h >= 1 && h <= slides.length){ cur = h - 1; }
+  document.getElementById('deck').addEventListener('click', function(e){
+    if(e.target.closest('.navbtn')) return;
+    next();
+  });
   render();
 })();
 </script>

@@ -6,6 +6,7 @@
 import * as vscode from "vscode";
 import { BlameController } from "./blame";
 import { registerCommands } from "./commands";
+import { PlanCodeLensProvider, PlanDiffProvider, PlanStatusBar } from "./plan";
 import { MapTreeProvider } from "./tree";
 import { PreviewProvider } from "./preview";
 import { findSgtRoot } from "./sgt";
@@ -23,10 +24,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const blame = new BlameController(store);
   const preview = new PreviewProvider(store);
   const tree = new MapTreeProvider(store);
-  context.subscriptions.push(blame, preview);
+  const planLens = new PlanCodeLensProvider(store);
+  const planDiff = new PlanDiffProvider(root);
+  const planStatusBar = new PlanStatusBar(store);
+  context.subscriptions.push(blame, preview, planLens, planDiff, planStatusBar);
   context.subscriptions.push(vscode.window.createTreeView("sgtGraph", { treeDataProvider: tree }));
+  context.subscriptions.push(vscode.languages.registerCodeLensProvider({ scheme: "file" }, planLens));
 
-  registerCommands(context, store, preview, () => void blame.render());
+  registerCommands(context, store, preview, () => void blame.render(), planDiff);
 
   // Refresh on .sgt changes (a feature verb rewrites tree.json/pins.json under it) and on any
   // *.py change — the latter is how newly-written symbols show up in blame before the next
@@ -58,6 +63,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   void blame.render();
+  void planStatusBar.refresh();
 }
 
 export function deactivate(): void {

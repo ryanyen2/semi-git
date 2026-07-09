@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sgt.core import order
 from sgt.core.mine import mine
 from sgt.store.gitbind import GitBinding, init_store
 from tests.laws import corpus
@@ -131,3 +132,30 @@ def test_mining_is_repeatable_across_two_calls(tmp_path):
     first = mine(repo)
     second = mine(repo)
     assert first == second
+
+
+def test_rename_out_of_sgt_dir_stays_excluded_after_a_later_delete(tmp_path):
+    """A path renamed *out of* `.sgt/` (e.g. a `.sgt/` -> `.sgt.bak/` migration, which git's -M
+    detection reports as a rename since the content is unchanged) must stay excluded for the
+    rest of this mine() call. The rename touch itself is already skipped by the `.sgt/` prefix
+    check on its old_path -- but without carrying the exclusion forward, a later *plain* delete
+    of the renamed destination (no longer matching the `.sgt/` prefix) mines a genuine prune op
+    whose before_version was never produced by any op in the stream, breaking downward-closure."""
+    gb, sgt_dir = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (sgt_dir / "frontier.json").write_text('{"x": 1}\n', encoding="utf-8")
+    gb.commit_all("seed .sgt state")
+
+    bak_dir = tmp_path / ".sgt.bak"
+    bak_dir.mkdir()
+    (sgt_dir / "frontier.json").rename(bak_dir / "frontier.json")
+    gb.commit_all("migrate .sgt -> .sgt.bak")  # git detects this as a 100% rename
+
+    (bak_dir / "frontier.json").unlink()
+    gb.commit_all("drop the old backup")  # a plain delete, not part of any rename this time
+
+    ops = mine(tmp_path)
+    assert not any(".sgt.bak/frontier.json" in op.footprint for op in ops)
+
+    ids = {op.id for op in ops}
+    assert order.is_valid_ideal(ops, ids)
