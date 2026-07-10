@@ -745,6 +745,145 @@ contradiction cases never raise, must-link contraction, cannot-link reassignment
 `igraph`/`leidenalg` declared under `[project.optional-dependencies.lens]` (first real consumer).
 Full suite: 292 passed, 1 skipped (exit 0).
 
+### Operation-ideal kernel — U13 feature verbs and surface re-pointing (2026-07-09)
+
+`sgt/lens/verbs.py` adds `merge`/`split`/`rename`/`move` as `plan_*`/`apply_*` pairs (mirroring
+`sgt.core.verbs`'s shape) that patch the loaded `tree.json` plus write one durable pin in the
+same call, and `plan_revert_feature` bridges a feature ref to the kernel algebra by resolving it
+to its op-set and reusing `order.upset_in`/`core_verbs._validated` verbatim -- a feature revert
+refuses on a chain fork exactly as a single-op revert does. All four metadata verbs are
+byte-neutral **by construction**, not merely by test: `code(I)` (`sgt.core.fold.code`) is a pure
+function of ops + ideal and never reads `.sgt/tree/` or `.sgt/pins/`, so there is no code path by
+which any of them could touch a materialized byte (`test_feature_verbs_never_change_materialized_bytes`
+exercises this as a regression, not a load-bearing guarantee).
+
+`sgt/api.py` gained `map_view` (pure read of `tree.json`, empty-but-well-shaped when no tree has
+been built), `blame_view` (`sym -> max-op-in-I -> feature` via the frontier, one lookup per live
+entity, an unassigned tip omitted rather than guessed at), and `status_view` (file/symbol/feature
+counts, R7 coverage, oracle status, and working-tree drift -- paths whose on-disk bytes no longer
+match `code(current_ideal)`). `sgt map` replaces `sgt graph` in the CLI; `sgt feature
+merge/split/rename/move` and `sgt blame`/`sgt status` are new verbs.
+
+**TUI and VS Code extension were rewritten onto the new projection, not patched.** The old
+decision-DAG webview (`decisionView.ts`, `decision.js`/`.css`, the activity sidecar, codelens,
+hover-preview machinery) is deleted outright rather than adapted -- there is no kernel-backed
+equivalent of "decision" as a first-class node, so porting it would have meant inventing one.
+`sgt/tui/app.py` is a from-scratch Textual app over `map_view`/`status_view`: browse the tree,
+preview/apply a feature revert, rename a feature, all through the same `sgt.api` projection the
+CLI and VS Code consume. The editor extension keeps the OKLCH hue-is-identity discipline (a
+feature's color is stable across the TUI, the editor gutter, and -- previously -- the graph
+webview) but now sources it from `map_view` instead of the deleted decision graph.
+
+Regression coverage: `tests/lens/test_feature_verbs.py` (12 tests) covers every verb's preview/
+apply split, the two refusal paths (self-merge, unresolvable ref), the byte-neutrality property,
+blame resolution, label-pin round-trip, and rename surviving a `sgt map` re-cluster (Greene
+identity holding the id stable across the metadata edit). Golden snapshots regenerated for the
+new `map_view`/`status_view`/`blame_view` shapes.
+
+**Left for the next pass, not a defect:** this unit's own plan text and FINDINGS.md were not
+updated when the code shipped (commit `f000a7b`, 2026-07-09) -- this entry and the plan's Status
+line close that gap after the fact, written from the shipped diff rather than from a running log.
+
+### Operation-ideal kernel — U14 plan intake, checkpoint matching, drift review (2026-07-09)
+
+`sgt/loop/plan.py` + `sgt/loop/match.py` implement the agentic-loop substrate: `intake` decomposes
+plan text into one hollow op per step (LLM-first via `sgt.config.get_client`, deterministic
+numbered-list/paragraph split on any failure -- no API key required), each hollow off-chain
+(`Store.add_hollow`, `Op.off_chain=True`) so a prediction can never fork a chain or block a human
+editing the same symbol mid-plan. Sessions persist in `.sgt/local/plan_sessions.json`;
+`baseline_op_ids` is the store's op-id set at intake time, so `compute_checkpoint` only ever
+considers ops mined *since*.
+
+`compute_checkpoint` is pure and offline: per active session, footprint-overlap (Jaccard over
+real, non-`__plan__::` symbols) at or above `THRESHOLD=0.3` between a pending step's hollow and
+an op mined since baseline is a candidate edge; candidate edges union-find into n:m groups, so
+"one commit fulfills two steps" and "two commits fulfill one step" both fall out of the same
+mechanism rather than needing special-casing. An op that joins no group for a session is drift for
+that session; it's global drift only if every session considering it new also calls it drift (a
+real match in one session isn't overridden by a stale, unrelated session B). `confirm_match` is
+the sole writer -- it records `.sgt/local/plan_matches.json` (op id -> session/hollow ids/intent,
+a side table; the immutable content-addressed `Op` itself is never rewritten to carry the
+rationale), marks the confirmed steps `matched`, and deletes their now-consumed hollow files, so a
+confirmed match can never resurface as drift later.
+
+Surfaced through `sgt plan`/`sgt checkpoint`/`sgt drift` (CLI), `sgt_plan_intake`/`sgt_checkpoint`/
+`sgt_drift` (MCP, tested through the pure `handle_request` dispatch per existing convention), and
+`plan_view`/`drift_view` (`sgt.api`). The VS Code extension gained `src/plan.ts`
+(`PlanCodeLensProvider`/`PlanDiffProvider`/`PlanStatusBar`) showing matched/drifted lines inline
+and a status-bar summary, reusing the same views.
+
+**Note on provenance, not a defect:** this unit's implementation, tests, MCP wiring, and VS Code
+surface landed bundled inside commit `6a1557b`, whose message describes only an unrelated
+`mine.py`/`cli.py` fix -- the bundling was discovered during this review, not flagged at commit
+time. The code itself is complete against the plan's test-scenario list (three-step plan drafts
+three off-chain hollows; a commit fulfilling two hollows shows the 2:1 mapping; an unpredicted op
+surfaces as drift; an abandoned session's hollows are swept; a human edit to a hollow-predicted
+symbol creates no phantom fork since the hollow is off-chain; intake degrades gracefully offline)
+and the full suite is green, but neither the plan doc nor this file had a closing entry until now.
+
+Regression coverage: `tests/loop/test_plan.py` (9 tests, including one live-LLM-gated grounding
+test), `tests/loop/test_match.py` (9 tests: n:m grouping, drift classification, baseline
+exclusion, non-active-session skip, hollow-never-enters-ideal, confirm/never-resurfaces-as-drift),
+`tests/mcp/test_server.py` (plan/checkpoint/drift tool round-trips).
+
+**Known gap surfaced by this review, deferred to U15:** declared order edges (`sgt after`,
+`.sgt/local/declared.json`) live under the gitignored `.sgt/local/` tree, same as the ref->ideal
+table and oracle verdicts -- so two clones never see each other's declared edges through git at
+all today. R19 ("declared-edge cycles introduced by union are detected and surfaced") presumes
+declared edges *do* travel between clones; U15 needs to either promote `declared.json` to a
+committed location or define an explicit exchange path for it, or the requirement is vacuous by
+construction.
+
+### Operation-ideal kernel — U15 sync: op-store union and tree reconciliation (2026-07-09)
+
+`sgt/core/sync.py` implements `sync(repo, remote, branch) -> SyncReport`: `lens.get(repo)` absorbs
+local reality first (R9) and sync refuses on a dirty tree, same guard as `put`. It fetches
+`remote/branch`, and a `theirs` already an ancestor of `ours` is a no-op -- what makes a second
+`sync` idempotent. Op-store union is nearly free: `git merge --no-commit -X ours theirs_sha` brings
+in every op file git can merge without conflict (distinct content-addressed paths never collide),
+then every op path under theirs' tree is re-added via `Store.add_bytes` to re-union provenance that
+`-X ours` would otherwise drop on a same-id collision (both clones independently mining the
+identical edit). `order.forks` (new) over the unioned ideal surfaces same-symbol chain forks with
+the exact `sgt merge-op <a> <b>` remedy and aborts the merge uncommitted, rather than picking a
+side. Pins union via `reconcile.union_pins` (dict-merge `assign`/`labels` theirs-wins, set-union
+`must_link`/`cannot_link`, then `find_contradictions` reports but never blocks — ordinary
+re-pinning is not a contradiction, only a genuine must-link/assign clash is). The feature tree is
+*rebuilt* from the unioned op store and Greene-matched against ours' last-committed tree
+(`reconcile.reconcile_tree`) rather than merging two stored trees, since the tree is a deterministic
+clustering overlay, not a source of truth.
+
+**Closes the U14 FINDINGS gap:** declared edges (`sgt after`) are now committed at
+`.sgt/declared.json` (previously gitignored `.sgt/local/declared.json`), so they travel between
+clones through git exactly as ops do. A teammate's committed ideal is read purely from their
+fetched tip commit's `Sgt-Op:` trailers (`parse_op_ids(gb.commit_message(theirs_sha))`) — no
+checkout needed; this is the same trailer convention `put` already writes on every real commit.
+
+**Real bug found and fixed during test-writing (not anticipated by the plan):** `sync` originally
+constructed the merged `Ideal` from the full unioned declared-edge set before ever checking for
+cycles. A genuinely cyclic union — two clones each declaring the opposite order on the same pair
+(`foo <= bar` on one, `bar <= foo` on the other) — made `order.is_valid_ideal`'s grounding fixpoint
+deadlock (neither op could ground, since each needed the other as an ungroundable declared
+predecessor), raising `ValueError` instead of the graceful "cycle detected, edges need retracting"
+report the plan calls for. Fixed by computing `order.find_declared_cycles` *before* building the
+ideal and excluding cyclic edges from the fold (`usable_declared = declared - set(cycles)`), while
+still persisting and reporting the full union so `sgt after` retraction has something to act on.
+
+**Test-fixture gotcha worth naming for future two-clone tests:** a plain `GitBinding.commit_all()`
+with no `trailers=` argument (the pattern every other test module in this repo uses, since local
+mining reads the commit diff directly and never needs trailers) is *not* sufficient for a commit
+that will become a synced ref's tip — `sync` depends entirely on `Sgt-Op:` trailers to read a
+remote ref's ideal, since it never checks that ref out. Fixtures that push a commit for `sgt sync`
+tests must route it through `lens.put` (or otherwise pass `trailers=format_op_trailers(...)`) so
+the tip carries them, exactly as real `sgt` usage always does outside tests.
+
+Regression coverage: `tests/core/test_sync.py` (6 tests) — AE4 disjoint-symbol merge with zero
+interaction; idempotence and double-mine determinism (U1 law) across both clones; a same-symbol
+fork surfaced with the `merge-op` remedy, merge aborted, tree left clean; the identification law at
+sync time (an op independently mined identically on both clones dedups to one id with both sides'
+provenance, `ops_added == 0`); a pin contradiction (`assign_conflict_in_must_link_group`) reported
+while the sync still merges; a declared-edge cycle from two replicas reported, with the (now
+non-cyclic-blocking) declared edges traveling to both sides. Full suite green.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Residue-segment chain identity does not survive a rename of its anchor entity** (documented

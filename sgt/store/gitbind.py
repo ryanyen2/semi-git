@@ -213,6 +213,13 @@ class GitBinding:
         )
         return proc.stdout if proc.returncode == 0 else None
 
+    def list_tree(self, sha: str, prefix: str) -> list[str]:
+        """Every tracked path under ``prefix`` at ``sha`` -- e.g. every op file a remote's commit
+        carries, for `sgt sync`'s (U15) provenance-union pass without reading the whole tree via
+        ``tree_at``."""
+        proc = self._git("ls-tree", "-r", "--name-only", sha, "--", prefix, check=False)
+        return [line for line in proc.stdout.splitlines() if line]
+
     def blob_oid(self, sha: str, path: str) -> str | None:
         """The git blob object id of ``path`` at ``sha`` -- the stable content address a binary
         file's image can point at without embedding the bytes themselves."""
@@ -373,6 +380,65 @@ class GitBinding:
     def detect_orphans(self, known_commit_ids: set[str]) -> list[str]:
         """Commits present in git but unknown to `known_commit_ids` (out-of-band changes)."""
         return [sha for sha in self.commit_shas() if sha not in known_commit_ids]
+
+    # -- sync transport (U15) -----------------------------------------------
+    def is_clean(self) -> bool:
+        """True if the working tree and index have no uncommitted changes -- the precondition
+        `sgt sync` needs before it can run `git merge`."""
+        proc = self._git("status", "--porcelain", check=False)
+        return proc.returncode == 0 and not proc.stdout.strip()
+
+    def upstream(self) -> str | None:
+        """`<remote>/<branch>` HEAD's branch tracks, or None (detached HEAD, or no upstream
+        configured)."""
+        proc = self._git(
+            "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}", check=False
+        )
+        return proc.stdout.strip() if proc.returncode == 0 else None
+
+    def default_remote(self) -> str:
+        """The remote `sgt sync` targets when the caller doesn't name one: the upstream's
+        remote if HEAD tracks one, else `origin`."""
+        up = self.upstream()
+        if up and "/" in up:
+            return up.split("/", 1)[0]
+        return "origin"
+
+    def default_branch(self) -> str | None:
+        """The remote branch `sgt sync` targets when the caller doesn't name one: the
+        upstream's branch name if HEAD tracks one, else the current local branch's own name."""
+        up = self.upstream()
+        if up and "/" in up:
+            return up.split("/", 1)[1]
+        ref = self.symbolic_ref()
+        return ref.rsplit("/", 1)[-1] if ref else None
+
+    def fetch(self, remote: str, branch: str) -> None:
+        self._git("fetch", remote, branch)
+
+    def merge_ours_no_commit(self, ref: str) -> bool:
+        """Stage a merge of `ref` into HEAD without committing, preferring our side (`-X ours`)
+        on any textual overlap -- sgt's own committed files (pins/tree/declared/source) get
+        overwritten with the real reconciliation right after, so git's textual pick never
+        matters. Returns False (leaving the merge state for the caller to inspect/abort) if git
+        reports a conflict `-X ours` can't resolve on its own, e.g. a delete/modify conflict."""
+        proc = self._git("merge", "--no-commit", "--no-ff", "-X", "ours", ref, check=False)
+        return proc.returncode == 0
+
+    def merge_abort(self) -> None:
+        self._git("merge", "--abort", check=False)
+
+    def complete_merge(self, message: str, trailers: str | None = None) -> str:
+        """Stage whatever sync wrote to reconcile pins/tree/declared/source, then commit the
+        merge already opened by `merge_ours_no_commit`, embedding `Sgt-Op:` trailers for the ops
+        this materialization witnesses (mirrors `commit_all`'s trailer convention)."""
+        self.stage_all()
+        full = message if trailers is None else f"{message}\n\n{trailers}"
+        self._git("commit", "-q", "-m", full)
+        head = self.head()
+        if head is None:
+            raise GitError("merge commit succeeded but HEAD is unresolved")
+        return head
 
 
 def init_store(repo_path: str | Path) -> tuple[GitBinding, Path]:

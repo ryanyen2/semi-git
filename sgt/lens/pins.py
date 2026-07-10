@@ -38,19 +38,22 @@ def _pins_path(repo_path: str | Path = ".") -> Path:
     return Path(repo_path) / ".sgt" / "pins" / "pins.json"
 
 
-def load_pins(repo_path: str | Path = ".") -> Pins:
-    """Empty (never absent-as-None) if the file doesn't exist -- every caller treats "no pins" the
-    same as "empty pins", matching `load_identity_constraints`'s discipline."""
-    path = _pins_path(repo_path)
-    if not path.is_file():
-        return Pins()
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _pins_from_payload(payload: dict) -> Pins:
     return Pins(
         assign=dict(payload.get("assign", {})),
         must_link=frozenset(tuple(sorted(pair)) for pair in payload.get("must_link", [])),
         cannot_link=frozenset(tuple(sorted(pair)) for pair in payload.get("cannot_link", [])),
         labels=dict(payload.get("labels", {})),
     )
+
+
+def load_pins(repo_path: str | Path = ".") -> Pins:
+    """Empty (never absent-as-None) if the file doesn't exist -- every caller treats "no pins" the
+    same as "empty pins", matching `load_identity_constraints`'s discipline."""
+    path = _pins_path(repo_path)
+    if not path.is_file():
+        return Pins()
+    return _pins_from_payload(json.loads(path.read_text(encoding="utf-8")))
 
 
 def save_pins(repo_path: str | Path, pins: Pins) -> None:

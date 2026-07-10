@@ -84,17 +84,29 @@ def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
 
 
 def _declared_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _DECLARED_FILE
+    # Committed (not under .sgt/local/), U15: declared edges are a fact a teammate needs too,
+    # so they must travel with the repo rather than staying gitignored per-clone.
+    return repo / ".sgt" / _DECLARED_FILE
 
 
 def _load_declared(repo: Path) -> frozenset[tuple[str, str]]:
     """The persisted declared order edges (`sgt after a b` -> `(a, b)` meaning `a <= b`, U8's
     escape hatch for ordering the analyzer can't infer). Repo-global, not per-ref: an edge is a
     fact about two ops' content, independent of which ref is checked out. `order`'s validity and
-    up/down-set functions take these as their `declared` argument."""
+    up/down-set functions take these as their `declared` argument.
+
+    One-shot migration: a repo whose declared edges still sit at the pre-U15 gitignored
+    `.sgt/local/declared.json` gets them re-saved to the committed path and the old file removed,
+    the first time anything reads declared edges."""
     path = _declared_path(repo)
     if not path.is_file():
-        return frozenset()
+        old_path = repo / ".sgt" / "local" / _DECLARED_FILE
+        if not old_path.is_file():
+            return frozenset()
+        edges = frozenset(tuple(pair) for pair in json.loads(old_path.read_text(encoding="utf-8")))
+        _save_declared(repo, edges)
+        old_path.unlink()
+        return edges
     return frozenset(tuple(pair) for pair in json.loads(path.read_text(encoding="utf-8")))
 
 
