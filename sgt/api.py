@@ -28,6 +28,8 @@ Shapes (stable; additive changes only):
   drift op-ids).
 * ``drift_view``        — the U14 "what extra happened" query: every op not predicted by any
   active plan session, with its kind, footprint, and current file/line spans.
+* ``sync_view``         — the U15 `sgt sync` result: ops merged in, forks surfaced (with the
+  `merge-op` remedy), pin contradictions, declared-edge cycles, and tree identity events.
 """
 
 from __future__ import annotations
@@ -435,6 +437,28 @@ def drift_view(repo) -> dict:
         files = [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, footprint).items())]
         entries.append({"op_id": op.id, "kind": op.kind, "footprint": footprint, "files": files})
     return {"entries": entries}
+
+
+def sync_view(report) -> dict:
+    """Project an already-run `sgt.core.sync.SyncReport` (plan U15) -- `sync` performs a real git
+    fetch/merge/commit, so unlike this module's other views it isn't a pure read the CLI can call
+    on demand; the CLI runs `sync.sync(...)` itself and hands the result here for projection."""
+    return {
+        "remote": report.remote,
+        "branch": report.branch,
+        "merged": report.merged,
+        "message": report.message,
+        "fetched_sha": report.fetched_sha,
+        "merge_sha": report.merge_sha,
+        "ops_added": report.ops_added,
+        "forks": [list(triple) for triple in report.forks],
+        "pin_contradictions": [
+            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
+            for c in report.pin_contradictions
+        ],
+        "declared_cycles": [list(pair) for pair in report.declared_cycles],
+        "identity_events": list(report.identity_events),
+    }
 
 
 def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:

@@ -34,7 +34,7 @@ _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
-    "plan", "checkpoint", "drift",
+    "plan", "checkpoint", "drift", "sync",
 }
 
 
@@ -128,6 +128,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "drift":
         return _drift(repo, as_json)
+
+    if cmd == "sync":
+        return _sync(repo, rest, as_json)
 
     if cmd == "revert" and "--keep-dependents" in rest:
         rest = [a for a in rest if a != "--keep-dependents"]
@@ -561,6 +564,44 @@ def _drift(repo: str, as_json: bool) -> int:
     return 0
 
 
+def _sync(repo: str, rest: list[str], as_json: bool) -> int:
+    """`sgt sync [remote] [branch]` (plan U15, R19/AE4): fetch a teammate's work, union the op
+    store, reconcile pins/declared-edges/the feature tree, and surface any same-symbol chain fork
+    (with the `merge-op`/`pin` remedy) instead of doing a textual merge."""
+    from sgt.core import sync as sync_mod
+    from sgt.core.lens import DirtyWorkingTreeError
+    from sgt.store.gitbind import GitError
+
+    remote = rest[0] if len(rest) > 0 else None
+    branch = rest[1] if len(rest) > 1 else None
+    try:
+        report = sync_mod.sync(repo, remote=remote, branch=branch)
+    except (DirtyWorkingTreeError, GitError, ValueError) as e:
+        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+
+    from sgt.api import sync_view
+
+    view = sync_view(report)
+    if as_json:
+        return _emit_json({"ok": report.merged or report.message == "already up to date", **view})
+
+    if not report.merged:
+        icon = "✓" if report.message == "already up to date" else "✗"
+        print(f"{icon} sync {report.remote}/{report.branch}: {report.message}")
+        return 0 if report.message == "already up to date" else 1
+
+    print(f"✓ sync {report.remote}/{report.branch}: merged {report.merge_sha[:12]}")
+    if report.ops_added:
+        print(f"    +{report.ops_added} op(s)")
+    if report.pin_contradictions:
+        print(f"    ⚠ {len(report.pin_contradictions)} pin contradiction(s):")
+        for c in report.pin_contradictions:
+            print(f"      {c.detail}")
+    if report.declared_cycles:
+        print(f"    ⚠ {len(report.declared_cycles)} declared-edge cycle(s): {report.declared_cycles}")
+    return 0
+
+
 def _fail(message: str) -> int:
     print(f"✗ {message}")
     return 1
@@ -849,6 +890,8 @@ def _help() -> int:
         "  sgt checkpoint [--json]     preview step<->op footprint-overlap groups, and drift\n"
         "  sgt checkpoint --confirm-hollow <id>... --confirm-op <id>...   apply one named group\n"
         "  sgt drift [--json]          ops mined that no active plan predicted\n"
+        "  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile\n"
+        "                              pins/declared-edges/tree, surface any chain fork\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"
         "  feature id/label (`revert` only)\n"

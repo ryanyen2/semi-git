@@ -149,6 +149,15 @@ class Store:
             _write_atomic(path, _serialize(op))
             return op
 
+    def add_bytes(self, data: bytes) -> Op:
+        """Deserialize a stored op's raw file bytes -- as read from another commit or clone via
+        git, not this store's own filesystem -- and add it. `sgt sync` (U15) uses this to union a
+        teammate's provenance into an op this store already has: `git merge -X ours` picks our
+        bytes on any same-path conflict (the two sides' provenance lists differ though the op's
+        content is identical), silently dropping theirs' witness commits unless this re-applies
+        `add`'s provenance union afterward."""
+        return self.add(_deserialize(data))
+
     def get(self, op_id: str) -> Op | None:
         path = self._path(op_id)
         if not path.is_file():

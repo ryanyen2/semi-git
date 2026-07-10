@@ -133,6 +133,66 @@ def is_fork_free(ops: list[Op], ideal_ids) -> bool:
     return True
 
 
+def forks(ops: list[Op], ideal_ids) -> list[tuple[str, str, str]]:
+    """Collecting form of `is_fork_free` above: every `(symbol, op_a, op_b)` triple where two
+    in-ideal ops claim the same `(symbol, before_version)` chain step, instead of just a bool.
+    `ideal_ids` is walked in sorted order for deterministic output -- unlike `is_fork_free`, which
+    only needs to notice *that* a collision exists, this needs to report *which* pair, so the
+    iteration order is no longer irrelevant. Used by `sgt sync` (U15) to surface same-symbol
+    chain forks with a concrete `merge-op`/`pin` remedy instead of silently picking a side."""
+    by_id = {op.id: op for op in ops}
+    claimed: dict[tuple[str, str | None], str] = {}
+    found: list[tuple[str, str, str]] = []
+    for op_id in sorted(ideal_ids):
+        op = by_id[op_id]
+        for sym, (before, _after) in op.footprint.items():
+            key = (sym, before)
+            claimant = claimed.get(key)
+            if claimant is not None and claimant != op_id:
+                found.append((sym, claimant, op_id))
+            claimed[key] = op_id
+    return found
+
+
+def find_declared_cycles(ops: list[Op], declared: Declared) -> list[tuple[str, str]]:
+    """Declared edges (`sgt after`) that lie on a cycle in the full chain+reference+declared
+    adjacency -- e.g. two clones each declare an edge that, unioned, contradicts the other.
+    Iterative DFS over `_adjacency`'s successors, tracking the current path to find back-edges;
+    every declared edge on a detected cycle is returned (sorted, for deterministic output). An
+    empty result means the union is still a valid partial order. Used by `sgt sync` (U15) to
+    surface which `after` declarations need retracting rather than committing a cyclic union."""
+    _, successors = _adjacency(ops, declared)
+    ids = sorted(successors.keys())
+
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {op_id: WHITE for op_id in ids}
+    cyclic_edges: set[tuple[str, str]] = set()
+
+    for start in ids:
+        if color[start] != WHITE:
+            continue
+        color[start] = GRAY
+        path = [start]
+        stack = [iter(sorted(successors.get(start, ())))]
+        while stack:
+            nxt = next(stack[-1], None)
+            if nxt is None:
+                color[path.pop()] = BLACK
+                stack.pop()
+                continue
+            if color[nxt] == GRAY:
+                idx = path.index(nxt)
+                cycle_nodes = path[idx:] + [nxt]
+                for a, b in zip(cycle_nodes, cycle_nodes[1:]):
+                    if (a, b) in declared:
+                        cyclic_edges.add((a, b))
+            elif color[nxt] == WHITE:
+                color[nxt] = GRAY
+                path.append(nxt)
+                stack.append(iter(sorted(successors.get(nxt, ()))))
+    return sorted(cyclic_edges)
+
+
 def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
     """The largest *well-founded* downward-closed subset of `ideal_ids`: ops reachable from chain
     heads (`before_version` None) by actual production, computed as a least fixpoint. An op joins
