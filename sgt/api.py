@@ -18,7 +18,12 @@ Shapes (stable; additive changes only):
 * ``rewrite_view``      — the U11 rewrite-verb review surface: pending drafts (hollow ops awaiting
   fulfillment) and the currently staged candidate's oracle verdict, if any.
 * ``map_view``          — the U13 feature tree: every node's id/label/kind/parent/children/op_count,
-  the roots, and the last build's Greene identity events (birth/death/merge/split/continuation).
+  the roots, the cross-feature structural dependency edges, and the last build's Greene identity
+  events (birth/death/merge/split/continuation).
+* ``history_view``      — the feature-map webview's commit-index axis: every mined commit in order,
+  and every op's derived kind/feature/commit-index, for Gantt-style lifebars.
+* ``feature_verb_preview_view`` — a side-effect-free preview of a feature verb (merge/split/move/
+  rename/revert), with a uniform ``affected_features`` ripple list for hover-preview UIs.
 * ``blame_view``        — per-file symbol spans (`sym -> max-op-in-I -> feature`) for the editor
   gutter: each entity's line range, its feature id, and that feature's label.
 * ``status_view``       — a kernel-backed summary: file/symbol/feature counts, coverage fraction,
@@ -253,13 +258,18 @@ def map_view(repo) -> dict:
     Every node -- leaf (a `label_tree`/Greene-matched feature, `F<n>` id) or internal (a
     structural subsystem grouping, build-local `N<n>` id) -- is emitted uniformly with
     `kind: "feature" | "subsystem"` distinguishing them; `op_count` is the number of ops
-    `op_leaf` assigns to a feature, rolled up through subsystems. Fully sorted for a stable
-    projection."""
+    `op_leaf` assigns to a feature, rolled up through subsystems. `edges` rolls the fused
+    structural/co-change/scope coupling graph (`sgt.lens.tree.fused_graph`, the same signal
+    `plan_split` reads) up to leaf-feature pairs -- the cross-feature dependency edges a
+    visualization draws between features. Fully sorted for a stable projection."""
+    from sgt.core.lens import current_ideal
+    from sgt.core.store import Store
+    from sgt.lens.tree import feature_edges, fused_graph
     from sgt.lens.tree import load as load_tree
 
     result = load_tree(repo)
     if result is None:
-        return {"nodes": [], "roots": [], "identity_events": [], "feature_count": 0}
+        return {"nodes": [], "roots": [], "identity_events": [], "feature_count": 0, "edges": []}
 
     nodes = result["nodes"]
     op_leaf = result["op_leaf"]
@@ -288,12 +298,131 @@ def map_view(repo) -> dict:
         }
         for nid, nd in sorted(nodes.items())
     ]
+    ops = Store(repo).all_ops()
+    ideal = current_ideal(repo)
+    _, fused = fused_graph(repo, ops, ideal)
+
     return {
         "nodes": emitted,
         "roots": sorted(result["roots"]),
         "identity_events": sorted(result.get("identity_events", []), key=lambda e: (e["event"], e["feature_id"])),
         "feature_count": sum(1 for nd in nodes.values() if not nd["children"]),
+        "edges": feature_edges(nodes, fused),
     }
+
+
+def history_view(repo) -> dict:
+    """The feature-map webview's commit-index axis: every mined commit in chronological order
+    (`sgt.store.gitbind.GitBinding.history`, oldest-first), and every stored op's derived kind,
+    feature (`op_leaf`, if a tree has been built), and `commit_index` -- the position in that
+    chronological list of the *earliest* of the op's provenance commits that actually appears
+    there. An op none of whose provenance commits are in `history()` (e.g. mined from a detached
+    or since-rewritten commit) is omitted rather than assigned a misleading index."""
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+    from sgt.store.gitbind import GitBinding
+
+    rows = GitBinding(repo).history()
+    commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
+    commits = [{"sha": sha, "subject": subject, "index": i} for i, (sha, _parent, subject) in enumerate(rows)]
+
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+
+    ops_out = []
+    for op in sorted(Store(repo).all_ops(), key=lambda op: op.id):
+        idx = min((commit_index[sha] for sha in op.provenance if sha in commit_index), default=None)
+        if idx is None:
+            continue
+        ops_out.append({"id": op.id, "kind": op.kind, "feature_id": op_leaf.get(op.id), "commit_index": idx})
+    ops_out.sort(key=lambda o: (o["commit_index"], o["id"]))
+
+    return {"commits": commits, "ops": ops_out}
+
+
+def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
+    """A side-effect-free preview of a feature verb (U13's merge/split/move/rename) or a
+    feature-grouped revert (U8's kernel edit, resolved via `sgt.lens.verbs.plan_revert_feature`),
+    each verb's own `plan_*` fields plus a uniform ``affected_features`` list -- the real ripple
+    of that verb, so a hover-preview UI never needs per-verb-shaped logic: merge/rename affect the
+    named feature(s) directly; split's second id is the fresh id the *next* `sgt map` would mint
+    for the new group (previewed, not committed); move's are the op-losing source leaf(es) plus
+    the target; revert's is every feature whose ops sit in the real upset closure being removed --
+    the genuine cross-feature blast radius, not a guessed dependency edge."""
+    from sgt.lens import tree as tree_mod
+    from sgt.lens import verbs as lens_verbs
+
+    if verb == "merge":
+        if len(args) != 2:
+            return {"error": "merge requires <survivor> <absorbed>"}
+        preview = lens_verbs.plan_merge(repo, args[0], args[1])
+        return {
+            "ok": preview.ok, "verb": "merge", "message": preview.message,
+            "survivor_id": preview.survivor_id, "absorbed_id": preview.absorbed_id,
+            "op_count": preview.op_count, "member_count": preview.member_count,
+            "affected_features": [preview.survivor_id, preview.absorbed_id] if preview.ok else [],
+        }
+
+    if verb == "rename":
+        if len(args) != 2:
+            return {"error": "rename requires <feature> <new-label>"}
+        preview = lens_verbs.plan_rename(repo, args[0], args[1])
+        return {
+            "ok": preview.ok, "verb": "rename", "message": preview.message,
+            "feature_id": preview.feature_id, "old_label": preview.old_label, "new_label": preview.new_label,
+            "affected_features": [preview.feature_id] if preview.ok else [],
+        }
+
+    if verb == "split":
+        if len(args) != 1:
+            return {"error": "split requires <feature>"}
+        preview = lens_verbs.plan_split(repo, args[0])
+        affected: list[str] = []
+        if preview.ok:
+            tree_result = tree_mod.load(repo)
+            new_id = next(tree_mod._fresh_id_gen(set(tree_result["nodes"])))
+            affected = [preview.feature_id, new_id]
+        return {
+            "ok": preview.ok, "verb": "split", "message": preview.message,
+            "feature_id": preview.feature_id,
+            "groups": [list(g) for g in preview.groups] if preview.groups else None,
+            "reason": preview.reason,
+            "affected_features": affected,
+        }
+
+    if verb == "move":
+        if len(args) < 2:
+            return {"error": "move requires <op>... <target-feature>"}
+        *op_refs, target_id = args
+        preview = lens_verbs.plan_move(repo, list(op_refs), target_id)
+        affected = []
+        if preview.ok:
+            tree_result = tree_mod.load(repo)
+            op_leaf = tree_result["op_leaf"] if tree_result else {}
+            sources = {op_leaf[op] for op in preview.op_ids if op in op_leaf} - {preview.target_id}
+            affected = sorted(sources | {preview.target_id})
+        return {
+            "ok": preview.ok, "verb": "move", "message": preview.message,
+            "op_ids": list(preview.op_ids), "target_id": preview.target_id,
+            "affected_features": affected,
+        }
+
+    if verb == "revert":
+        if len(args) != 1:
+            return {"error": "revert requires <feature>"}
+        preview = lens_verbs.plan_revert_feature(repo, args[0])
+        affected = []
+        if preview.ok:
+            tree_result = tree_mod.load(repo)
+            op_leaf = tree_result["op_leaf"] if tree_result else {}
+            affected = sorted({op_leaf[op] for op in preview.removed if op in op_leaf})
+        return {
+            "ok": preview.ok, "verb": "revert", "message": preview.message,
+            "target": preview.target, "removed": sorted(preview.removed), "added": sorted(preview.added),
+            "affected_features": affected,
+        }
+
+    return {"error": f"unknown verb {verb!r}", "verbs": ["merge", "split", "move", "rename", "revert"]}
 
 
 def _entity_line_spans(repo, file: str) -> tuple[list[tuple[str, int, int]], str | None]:

@@ -9,6 +9,8 @@ import {
   BlameView,
   DriftView,
   EmitView,
+  FeatureVerbPreview,
+  HistoryView,
   MapView,
   MergeResult,
   MoveResult,
@@ -80,6 +82,25 @@ export class Sgt {
   // Ops mined that no active plan predicted (plan U14).
   drift(): Promise<DriftView> {
     return this.json<DriftView>(["drift", "--json"]);
+  }
+
+  // The feature-map webview's shared commit-index axis: mined commits in order + every op's
+  // kind/feature/commit-index.
+  history(): Promise<HistoryView> {
+    return this.json<HistoryView>(["history", "--json"]);
+  }
+
+  // A side-effect-free preview of a feature verb or feature-grouped revert (the feature-map
+  // webview's hover-preview primitive). `args` mirrors the mutating command's own usage, except
+  // `move`'s target is passed as the trailing element of `args` rather than after `--to` -- this
+  // method reshapes that one case onto the CLI's `--to` flag.
+  previewVerb(verb: string, args: string[]): Promise<FeatureVerbPreview> {
+    if (verb === "move") {
+      const target = args[args.length - 1];
+      const opIds = args.slice(0, -1);
+      return this.json<FeatureVerbPreview>(["preview", "move", ...opIds, "--to", target, "--json"]);
+    }
+    return this.json<FeatureVerbPreview>(["preview", verb, ...args, "--json"]);
   }
 
   merge(survivorId: string, absorbedId: string): Promise<MergeResult> {

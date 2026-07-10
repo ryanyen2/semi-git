@@ -241,6 +241,109 @@ def test_labels_pin_round_trips_and_overrides_the_fallback_label(tmp_path):
     assert result["nodes"][fid]["label"] == "Hand-Picked Label"
 
 
+# -- feature_verb_preview_view (the feature-map webview's hover-preview primitive) -------------
+
+
+def test_feature_verb_preview_view_merge_reports_both_features_as_affected(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    split_result = _split_into_two(repo)
+    survivor, absorbed = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
+
+    preview = api.feature_verb_preview_view(repo, "merge", survivor, absorbed)
+    assert preview["ok"]
+    assert preview["affected_features"] == [survivor, absorbed]
+    assert tree.load(repo) == split_result  # pure -- nothing written by a preview
+
+
+def test_feature_verb_preview_view_rename_reports_the_one_feature_affected(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    result = lensmap.build_map(repo)
+    fid = next(iter(result["nodes"]))
+
+    preview = api.feature_verb_preview_view(repo, "rename", fid, "New Label")
+    assert preview["ok"]
+    assert preview["new_label"] == "New Label"
+    assert preview["affected_features"] == [fid]
+    assert tree.load(repo)["nodes"][fid]["label"] != "New Label"  # not applied
+
+
+def test_feature_verb_preview_view_split_previews_the_fresh_id_split_would_mint(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    before = lensmap.build_map(repo)
+    fid = next(iter(before["nodes"]))
+
+    preview = api.feature_verb_preview_view(repo, "split", fid)
+    assert preview["ok"]
+    assert preview["feature_id"] == fid
+    assert tree.load(repo) == before  # pure -- nothing written by a preview
+
+    applied = verbs.apply_split(repo, verbs.plan_split(repo, fid), confirm=True)
+    new_id = next(nid for nid in applied["nodes"] if nid not in before["nodes"])
+    assert preview["affected_features"] == [fid, new_id]  # exactly what apply_split just minted
+
+
+def test_feature_verb_preview_view_move_reports_source_and_target_affected(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    split_result = _split_into_two(repo)
+    source, target = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
+    op_ref = next(op for op, leaf in split_result["op_leaf"].items() if leaf == source)
+
+    preview = api.feature_verb_preview_view(repo, "move", op_ref, target)
+    assert preview["ok"]
+    assert preview["affected_features"] == sorted([source, target])
+
+
+def test_feature_verb_preview_view_revert_reports_every_affected_feature(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    result = lensmap.build_map(repo)
+    fid = next(iter(result["nodes"]))
+
+    preview = api.feature_verb_preview_view(repo, "revert", fid)
+    assert preview["ok"]
+    op_leaf = result["op_leaf"]
+    expected = sorted({op_leaf[op] for op in preview["removed"] if op in op_leaf})
+    assert preview["affected_features"] == expected
+    assert fid in preview["affected_features"]
+
+
+def test_feature_verb_preview_view_revert_ripples_across_a_second_feature(tmp_path):
+    """The exact ask behind this view: a revert's real impact can span more than the one feature
+    named -- every feature whose ops sit in the upset closure being removed lights up, not just
+    the reverted one."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    split_result = _split_into_two(repo)
+    reverted, other = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
+
+    ops = Store(repo).all_ops()
+    ideal = current_ideal(repo)
+    reverted_ops = {op for op, leaf in split_result["op_leaf"].items() if leaf == reverted}
+    upset_union: set[str] = set()
+    for op_id in reverted_ops:
+        upset_union |= order.upset_in(op_id, ideal.op_ids, ops)
+    if not any(split_result["op_leaf"].get(op_id) == other for op_id in upset_union):
+        pytest.skip("this fixture's split didn't produce a cross-feature upset -- nothing to ripple")
+
+    preview = api.feature_verb_preview_view(repo, "revert", reverted)
+    assert preview["ok"]
+    assert other in preview["affected_features"]
+    assert reverted in preview["affected_features"]
+
+
+def test_feature_verb_preview_view_reports_an_error_for_an_unknown_verb_or_bad_arity(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    lensmap.build_map(repo)
+
+    assert "error" in api.feature_verb_preview_view(repo, "not-a-verb")
+    assert "error" in api.feature_verb_preview_view(repo, "merge", "only-one-arg")
+
+
 def test_rename_survives_a_build_map_recluster(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)

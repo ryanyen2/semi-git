@@ -7,7 +7,7 @@ semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinn
 
 import json
 
-from sgt.api import drift_view, ideal_diff_view, oplog_view, plan_view, state_view
+from sgt.api import drift_view, history_view, ideal_diff_view, oplog_view, plan_view, state_view
 from sgt.core.lens import get
 from sgt.core.op import make_op
 from sgt.core.store import Store
@@ -109,6 +109,40 @@ def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch)
     monkeypatch.chdir(repo)
     assert main(["diff", "--json", "main", "release"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == expected
+
+
+def test_history_view_orders_commits_chronologically_and_places_every_op_on_the_axis(tmp_path):
+    """`commits` is oldest-first (matching `GitBinding.history`); every op's `commit_index` is a
+    valid position in that list, and the whole `ops` list is sorted by (commit_index, id)."""
+    repo = _mined(tmp_path, "linear_history")
+    v = history_view(repo)
+
+    assert [c["index"] for c in v["commits"]] == list(range(len(v["commits"])))
+    subjects = [c["subject"] for c in v["commits"]]
+    assert subjects.index("add foo, qux, config, binary") < subjects.index("modify foo")
+    assert subjects.index("modify foo") < subjects.index("rename foo -> bar within a.py")
+
+    assert v["ops"]  # linear_history mints several ops
+    valid_indices = {c["index"] for c in v["commits"]}
+    for op in v["ops"]:
+        assert set(op) == {"id", "kind", "feature_id", "commit_index"}
+        assert op["commit_index"] in valid_indices
+        assert op["feature_id"] is None  # no `sgt map` has run in this fixture
+    assert [(o["commit_index"], o["id"]) for o in v["ops"]] == sorted(
+        (o["commit_index"], o["id"]) for o in v["ops"]
+    )
+
+
+def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
+    """After `sgt map`, `op_leaf` is populated -- every op with a feature assignment reports it."""
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+
+    v = history_view(repo)
+    assert v["ops"]
+    assert any(op["feature_id"] is not None for op in v["ops"])
 
 
 def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):

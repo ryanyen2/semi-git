@@ -19,11 +19,51 @@ export interface IdentityEvent {
   feature_id: string;
 }
 
+// A cross-feature structural dependency edge (`sgt.lens.tree.feature_edges`) -- the fused
+// structural/co-change/scope coupling graph rolled up to leaf-feature pairs.
+export interface MapEdge {
+  a: string;
+  b: string;
+  weight: number;
+}
+
 export interface MapView {
   nodes: MapNode[];
   roots: string[];
   identity_events: IdentityEvent[];
   feature_count: number;
+  edges: MapEdge[];
+}
+
+// `sgt history --json`: the feature-map webview's shared commit-index axis.
+export interface HistoryCommit {
+  sha: string;
+  subject: string;
+  index: number;
+}
+
+export interface HistoryOp {
+  id: string;
+  kind: string;
+  feature_id: string | null;
+  commit_index: number;
+}
+
+export interface HistoryView {
+  commits: HistoryCommit[];
+  ops: HistoryOp[];
+}
+
+// `sgt preview <verb> <args...> --json` -- a side-effect-free preview shared by every feature
+// verb + feature-grouped revert; fields beyond `ok`/`verb`/`message`/`affected_features` vary by
+// verb, so callers narrow on `verb` before reading them.
+export interface FeatureVerbPreview {
+  ok: boolean;
+  verb: string;
+  message: string;
+  affected_features: string[];
+  error?: string;
+  [key: string]: unknown;
 }
 
 export interface BlameSpan {
