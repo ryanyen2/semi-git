@@ -3,6 +3,7 @@
 // commits — so we surface the human report and then invalidate every surface.
 
 import * as vscode from "vscode";
+import { MapViewPanel } from "./mapView";
 import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
@@ -60,6 +61,7 @@ export function registerCommands(
     refreshBlame();
   });
   reg("sgt.toggleBlame", () => toggle("blame.enabled"));
+  reg("sgt.showFeatureMap", () => MapViewPanel.createOrShow(context, store));
 
   reg("sgt.previewRevert", async (id?: string) => {
     const feature = await pickFeature(store, id);

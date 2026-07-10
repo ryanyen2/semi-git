@@ -210,6 +210,24 @@ def fused_graph(repo: Path, ops: list[Op], ideal) -> tuple[list[str], dict[froze
     return sorted(nodes_set), fused
 
 
+def feature_edges(nodes: dict, fused: dict[frozenset, float]) -> list[dict]:
+    """Roll the fused symbol-pair coupling graph up to leaf-feature pairs: for every `fused` edge
+    whose two symbols land in different leaves, add its weight to that leaf pair's total. Used by
+    `sgt.api.map_view` to expose cross-feature structural dependency edges (the same signal
+    `plan_split` already reads, at feature-pair rather than symbol-pair granularity)."""
+    member_leaf = _leaf_member_index(nodes)
+    totals: dict[frozenset[str], float] = defaultdict(float)
+    for pair, w in fused.items():
+        a, b = tuple(pair)
+        leaf_a, leaf_b = member_leaf.get(a), member_leaf.get(b)
+        if leaf_a is None or leaf_b is None or leaf_a == leaf_b:
+            continue
+        totals[frozenset((leaf_a, leaf_b))] += w
+    edges = [{"a": min(pair), "b": max(pair), "weight": w} for pair, w in totals.items()]
+    edges.sort(key=lambda e: (-e["weight"], e["a"], e["b"]))
+    return edges
+
+
 def build(
     repo: Path, ops: list[Op], ideal, max_depth: int = MAX_DEPTH, pins: Pins | None = None,
     previous: dict | None = None,

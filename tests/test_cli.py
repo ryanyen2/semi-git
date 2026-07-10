@@ -243,6 +243,41 @@ def test_drift_json_reports_nothing_with_no_active_session(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["entries"] == []
 
 
+def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys):
+    _seed(tmp_path, n=2)
+    capsys.readouterr()
+    assert _in(tmp_path, ["history", "--json"]) == 0
+    view = json.loads(capsys.readouterr().out)
+    assert [c["index"] for c in view["commits"]] == [0, 1]
+    assert view["ops"]
+    assert all(op["commit_index"] in (0, 1) for op in view["ops"])
+
+
+def test_preview_split_reports_affected_features_and_writes_nothing(tmp_path, capsys):
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("add foo and bar")
+    assert _in(tmp_path, ["map"]) == 0
+    capsys.readouterr()
+    tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
+
+    assert _in(tmp_path, ["preview", "split", "F0", "--json"]) == 0
+    view = json.loads(capsys.readouterr().out)
+    assert view["ok"] is True
+    assert view["affected_features"] == ["F0", "F1"]
+    assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # preview writes nothing
+
+
+def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):
+    _seed(tmp_path, n=1)
+    capsys.readouterr()
+    assert _in(tmp_path, ["preview", "not-a-verb"]) == 2
+    assert "usage: sgt preview" in capsys.readouterr().out
+    assert _in(tmp_path, ["preview", "merge", "only-one-arg"]) == 2
+    assert "usage: sgt preview" in capsys.readouterr().out
+
+
 def test_help_mentions_kernel_verbs(capsys):
     main(["help"])
     out = capsys.readouterr().out
@@ -254,6 +289,12 @@ def test_help_mentions_agentic_loop_verbs(capsys):
     main(["help"])
     out = capsys.readouterr().out
     assert "plan intake" in out and "checkpoint" in out and "drift" in out
+
+
+def test_help_mentions_history_and_preview_verbs(capsys):
+    main(["help"])
+    out = capsys.readouterr().out
+    assert "sgt history" in out and "sgt preview" in out
 
 
 def test_unknown_verb_falls_back_to_help(capsys):

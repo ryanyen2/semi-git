@@ -34,7 +34,7 @@ _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
-    "plan", "checkpoint", "drift", "sync",
+    "plan", "checkpoint", "drift", "sync", "history", "preview",
 }
 
 
@@ -131,6 +131,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "sync":
         return _sync(repo, rest, as_json)
+
+    if cmd == "history":
+        return _history(repo, as_json)
+
+    if cmd == "preview":
+        return _preview_verb(repo, rest, as_json)
 
     if cmd == "revert" and "--keep-dependents" in rest:
         rest = [a for a in rest if a != "--keep-dependents"]
@@ -440,6 +446,74 @@ def _feature_split(repo: str, rest: list[str], as_json: bool = False) -> int:
     if as_json:
         return _emit_json({"ok": True, "feature": preview.feature_id, "new_feature": new_id, "applied": True})
     print(f"✓ split {preview.feature_id} → {preview.feature_id} + {new_id}")
+    return 0
+
+
+def _history(repo: str, as_json: bool = False) -> int:
+    """`sgt history [--json]`: every mined commit in chronological order plus every op's derived
+    kind/feature/commit-index -- the feature-map webview's Gantt commit-index axis
+    (`api.history_view`)."""
+    from sgt.api import history_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so history reflects current reality (R9)
+    view = history_view(repo)
+    if as_json:
+        return _emit_json(view)
+    print(f"{len(view['commits'])} commit(s), {len(view['ops'])} op(s) placed on the axis:")
+    for c in view["commits"]:
+        print(f"  [{c['index']}] {c['sha'][:12]}  {c['subject']}")
+    return 0
+
+
+def _preview_verb(repo: str, rest: list[str], as_json: bool = False) -> int:
+    """`sgt preview <verb> <args...> [--json]`: a side-effect-free preview of a feature verb or a
+    feature-grouped revert (`api.feature_verb_preview_view`) -- the feature-map webview's
+    hover-preview primitive. Purely additive: `merge`/`split`/`rename`/`move`/`revert` themselves
+    are untouched and remain the only commands that actually apply one."""
+    usage = ("usage: sgt preview merge <survivor> <absorbed> | sgt preview split <feature> | "
+             'sgt preview rename <feature> "<new label>" | '
+             "sgt preview move <op>... --to <feature> | sgt preview revert <feature>")
+    if not rest or rest[0] not in ("merge", "split", "rename", "move", "revert"):
+        print(usage)
+        return 2
+
+    from sgt.api import feature_verb_preview_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so the preview reflects current reality (R9)
+    verb, opts = rest[0], rest[1:]
+
+    if verb == "merge":
+        if len(opts) != 2:
+            print(usage)
+            return 2
+        args: tuple[str, ...] = (opts[0], opts[1])
+    elif verb in ("split", "revert"):
+        if len(opts) != 1:
+            print(usage)
+            return 2
+        args = (opts[0],)
+    elif verb == "rename":
+        if len(opts) < 2:
+            print(usage)
+            return 2
+        args = (opts[0], " ".join(opts[1:]))
+    else:  # move
+        target, opts = _strip_opt(opts, "--to")
+        if not opts or not target:
+            print(usage)
+            return 2
+        args = (*opts, target)
+
+    view = feature_verb_preview_view(repo, verb, *args)
+    if as_json:
+        return _emit_json(view)
+    if "error" in view:
+        return _fail(view["error"])
+    if not view["ok"]:
+        return _fail(view["message"])
+    print(f"✓ preview {verb}: affects {', '.join(view['affected_features'])}")
     return 0
 
 
@@ -884,6 +958,8 @@ def _help() -> int:
         '  sgt rename <feature> "<label>"         override a feature\'s label, durably\n'
         "  sgt move <op>... --to <feature>        retag ops (+ their symbols) onto another feature\n"
         "  sgt revert <feature>        revert an entire feature's op-set (grouped ∪ upset X)\n"
+        "  sgt history [--json]        mined commits in order + every op's kind/feature/commit-index\n"
+        "  sgt preview <verb> <args>   side-effect-free preview of merge/split/rename/move/revert\n"
         '  sgt plan intake "<text>"    decompose a plan into predicted hollow ops (off-chain)\n'
         "  sgt plan abandon <session>  drop a session's pending hollows and its record\n"
         "  sgt plan status [--json]    active sessions and their steps' match status\n"

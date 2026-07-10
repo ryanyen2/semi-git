@@ -4,11 +4,12 @@
 
 import * as vscode from "vscode";
 import { Sgt } from "./sgt";
-import { BlameView, DriftView, MapNode, MapView, PlanView, StatusView } from "./types";
+import { BlameView, DriftView, HistoryView, MapNode, MapView, PlanView, StatusView } from "./types";
 
 export class Store {
   readonly sgt: Sgt;
   private mapCache: MapView | undefined;
+  private historyCache: HistoryView | undefined;
   private statusCache: StatusView | undefined;
   private nodeById = new Map<string, MapNode>();
   private blameCache = new Map<string, BlameView>();
@@ -27,6 +28,15 @@ export class Store {
       this.nodeById = new Map(this.mapCache.nodes.map((n) => [n.id, n]));
     }
     return this.mapCache;
+  }
+
+  // Cached alongside `map()` -- both are invalidated together off the same `.sgt/**/*.json`
+  // watcher (a feature verb or a new mined commit changes both the tree and the op DAG).
+  async history(force = false): Promise<HistoryView> {
+    if (!this.historyCache || force) {
+      this.historyCache = await this.sgt.history();
+    }
+    return this.historyCache;
   }
 
   node(id: string): MapNode | undefined {
@@ -67,6 +77,7 @@ export class Store {
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
     this.mapCache = undefined;
+    this.historyCache = undefined;
     this.statusCache = undefined;
     this.blameCache.clear();
     this.planCache = undefined;

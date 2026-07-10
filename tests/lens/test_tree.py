@@ -96,6 +96,46 @@ def test_subdivide_recurses_into_children_below_max_depth():
         assert child["split_reason"] == "stop_split"
 
 
+def test_feature_edges_rolls_symbol_pairs_up_to_leaf_pairs_and_sums_weight():
+    nodes = {
+        "N0": {"children": ["F1", "F2"], "members": []},
+        "F1": {"children": [], "members": ["a.py::foo", "a.py::bar"]},
+        "F2": {"children": [], "members": ["b.py::baz"]},
+    }
+    fused = {
+        frozenset(("a.py::foo", "a.py::bar")): 5.0,  # intra-F1 -- must not appear as an edge
+        frozenset(("a.py::foo", "b.py::baz")): 3.0,  # cross F1<->F2
+        frozenset(("a.py::bar", "b.py::baz")): 2.0,  # cross F1<->F2, same pair, sums with above
+    }
+    edges = tree.feature_edges(nodes, fused)
+    assert edges == [{"a": "F1", "b": "F2", "weight": 5.0}]
+
+
+def test_feature_edges_ignores_pairs_touching_a_symbol_outside_any_leaf():
+    nodes = {"F1": {"children": [], "members": ["a.py::foo"]}}
+    fused = {frozenset(("a.py::foo", "dead.py::gone")): 9.0}
+    assert tree.feature_edges(nodes, fused) == []
+
+
+def test_feature_edges_sorted_descending_by_weight_then_by_id():
+    nodes = {
+        "F1": {"children": [], "members": ["a.py::x"]},
+        "F2": {"children": [], "members": ["b.py::y"]},
+        "F3": {"children": [], "members": ["c.py::z"]},
+    }
+    fused = {
+        frozenset(("a.py::x", "b.py::y")): 1.0,
+        frozenset(("a.py::x", "c.py::z")): 4.0,
+        frozenset(("b.py::y", "c.py::z")): 4.0,
+    }
+    edges = tree.feature_edges(nodes, fused)
+    assert edges == [
+        {"a": "F1", "b": "F3", "weight": 4.0},
+        {"a": "F2", "b": "F3", "weight": 4.0},
+        {"a": "F1", "b": "F2", "weight": 1.0},
+    ]
+
+
 def test_assign_ops_to_leaves_plurality_vote_with_smallest_id_tiebreak():
     nodes = {
         "N0": {"children": ["N1", "N2"], "members": []},
