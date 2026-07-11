@@ -37,8 +37,9 @@ def materialize(
 ) -> str:
     store = Store(repo)
     store.init()
-    for op in ing.theirs_ops:
-        store.add(op)  # re-unions provenance a same-id collision would otherwise drop (R8)
+    for op in [*ing.theirs_ops, *ing.mined_ops]:
+        store.add(op)  # re-unions provenance a same-id collision would otherwise drop (R8); the
+        # mined foreign commits (C3) have no op file anywhere else, so they land for real here
 
     save_pins(repo, res.unioned_pins)
     lens._save_declared(repo, res.declared)

@@ -184,6 +184,14 @@ class GitBinding:
         parents = proc.stdout.split()
         return parents[0] if parents else None
 
+    def merge_base(self, a: str, b: str) -> str | None:
+        """The best common ancestor of `a` and `b` (`git merge-base`), or None if they share none
+        -- the point sync mines forward from (`merge_base..theirs`) to fold a teammate's foreign
+        commits into the union without a checkout (U20, C3)."""
+        proc = self._git("merge-base", a, b, check=False)
+        out = proc.stdout.strip()
+        return out if proc.returncode == 0 and out else None
+
     def commit_message(self, sha: str) -> str:
         return self._git("log", "-1", "--format=%B", sha).stdout
 
@@ -231,14 +239,15 @@ class GitBinding:
         fields = line.split()
         return fields[2] if len(fields) >= 3 else None
 
-    def history(self, since: str | None = None) -> list[tuple[str, str | None, str]]:
+    def history(self, since: str | None = None, target: str = "HEAD") -> list[tuple[str, str | None, str]]:
         """``(sha, first_parent, subject)`` oldest-first. ``since``, if given, restricts to
-        commits reachable from HEAD but not from ``since`` (``since..HEAD``) -- each commit's
-        own first-parent is still returned for diffing, so incremental mining diffs each commit
-        against its true predecessor regardless of where the range starts. First-parent only:
-        merges never re-attribute a whole side branch onto the merge commit (a v1
-        simplification also used by the entity miner)."""
-        rev_range = f"{since}..HEAD" if since is not None else "HEAD"
+        commits reachable from ``target`` (default HEAD) but not from ``since`` (``since..target``)
+        -- each commit's own first-parent is still returned for diffing, so incremental mining
+        diffs each commit against its true predecessor regardless of where the range starts.
+        ``target`` lets sync mine a *fetched* teammate branch (``merge_base..theirs_sha``) without
+        checking it out (U20). First-parent only: merges never re-attribute a whole side branch
+        onto the merge commit (a v1 simplification also used by the entity miner)."""
+        rev_range = f"{since}..{target}" if since is not None else target
         proc = self._git("log", "--reverse", "--format=%H%x1f%P%x1f%s", rev_range, check=False)
         if proc.returncode != 0:
             return []

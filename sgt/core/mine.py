@@ -407,10 +407,13 @@ def mine(
     since: str | None = None,
     treat_as_root: str | None = None,
     include_dirty: bool = False,
+    target: str = "HEAD",
 ) -> list[Op]:
     """Mine an ordered op stream from `repo`'s history. `since`, if given, restricts mining to
-    commits after that witness SHA (`since..HEAD`) -- each commit is still diffed against its
-    own true parent, so incremental mining is exact, not an approximation. `treat_as_root`, if
+    commits after that witness SHA (`since..target`) -- each commit is still diffed against its
+    own true parent, so incremental mining is exact, not an approximation. `target` (default HEAD)
+    mines a different tip: sync passes a fetched teammate's `theirs_sha` to mine
+    `merge_base..theirs` without a checkout (U20, C3). `treat_as_root`, if
     given, forces exactly that one commit's diff to be against the empty tree regardless of its
     real git parent -- the genesis-horizon mechanism (R10): everything at that commit becomes
     one add-op per symbol, and deeper history is never mined at all. `include_dirty`, if set,
@@ -428,7 +431,7 @@ def mine(
     # only, same tier as the union-find above (R14): a `since`-restricted incremental mine() that
     # starts after such a rename won't see it either.
 
-    history = gb.history(since)
+    history = gb.history(since, target)
     for order, (sha, parent, _subject) in enumerate(history):
         if sha == treat_as_root:
             parent = None

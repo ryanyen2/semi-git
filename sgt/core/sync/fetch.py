@@ -21,6 +21,7 @@ class Fetched:
     remote: str
     branch: str
     theirs_sha: str
+    ours_sha: str
     up_to_date: bool
 
 
@@ -49,5 +50,6 @@ def fetch(repo: Path, gb: GitBinding, remote: str | None, branch: str | None) ->
         remote=remote,
         branch=branch,
         theirs_sha=theirs_sha,
+        ours_sha=ours_sha,
         up_to_date=theirs_sha in set(gb.commit_shas(ours_sha)),
     )
