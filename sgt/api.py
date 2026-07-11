@@ -39,6 +39,9 @@ Shapes (stable; additive changes only):
   `merge-op` remedy), pin contradictions, declared-edge cycles, and tree identity events.
 * ``forks_view``        — the U20 open same-symbol forks recorded in committed `.sgt/forks.json`,
   each with its two tips and the `sgt merge-op` remedy (divergence-as-state, C4).
+* ``proposal_view``     — the U24 proposal review object: feature delta, Δ op count, oracle claim,
+  provenance summary, and staleness `status` (current / clean-reunion / fork). `render_github`
+  projects exactly this shape into a PR body.
 """
 
 from __future__ import annotations
@@ -645,6 +648,67 @@ def forks_view(repo) -> dict:
 
     records = state.load_json(repo, "forks", default=[])
     return {"open": len(records), "forks": records}
+
+
+def proposal_view(repo, proposal_id: str) -> dict:
+    """The proposal review surface (plan U24, C10): a base+Δ review object projected for a client --
+    the feature delta (each touched feature's id/label/op-count), Δ's op count, the oracle claim for
+    base∪Δ, a provenance summary (the structured attribution + witnessing shas across Δ), and the
+    full staleness `status` (current / clean-reunion / fork, with the `merge-op` remedy). Pure and
+    deterministic; `{"error": ...}` for an unknown id. `render_github` is a pure projection of exactly
+    this shape."""
+    from sgt.core import propose
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+
+    p = propose.load(repo, proposal_id)
+    if p is None:
+        return {"error": f"no proposal {proposal_id!r}", "id": proposal_id}
+
+    st = propose.status(repo, proposal_id)
+    by_id = {op.id: op for op in Store(repo).all_ops()}
+    delta_ids = list(p.delta_ids)
+
+    tree_result = load_tree(repo)
+    nodes = tree_result["nodes"] if tree_result else {}
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    leaf_op_count: dict[str, int] = {}
+    for op_id in delta_ids:
+        leaf = op_leaf.get(op_id)
+        if leaf is not None:
+            leaf_op_count[leaf] = leaf_op_count.get(leaf, 0) + 1
+    feature_delta = [
+        {"feature_id": fid, "label": nodes.get(fid, {}).get("label", fid), "op_count": leaf_op_count.get(fid, 0)}
+        for fid in sorted(p.feature_delta)
+    ]
+
+    # Provenance across Δ: the structured attribution (D7) keyed by witnessing sha, with every bare
+    # provenance sha folded in even when it carries no session/agent/plan -- a sorted, stable list.
+    prov: dict[str, dict] = {}
+    for op_id in delta_ids:
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        for a in sorted(op.attribution, key=lambda a: a.sha):
+            entry = prov.setdefault(a.sha, {"sha": a.sha})
+            for f in ("session", "agent", "plan"):
+                if getattr(a, f) is not None:
+                    entry[f] = getattr(a, f)
+        for sha in op.provenance:
+            prov.setdefault(sha, {"sha": sha})
+    provenance = [prov[s] for s in sorted(prov)]
+
+    return {
+        "id": p.id,
+        "base_ref": p.base_ref,
+        "title": p.title,
+        "description": p.description,
+        "feature_delta": feature_delta,
+        "delta_op_count": len(delta_ids),
+        "claim": st["claim"],
+        "provenance": provenance,
+        "status": st,
+    }
 
 
 def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:

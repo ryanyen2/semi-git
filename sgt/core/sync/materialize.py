@@ -42,6 +42,22 @@ def _union_claims(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
         local.write_bytes(raw)
 
 
+def _union_proposals(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
+    """G-Set union of theirs' committed proposals (C10): copy any `.sgt/proposals/` file we don't
+    already have, byte-for-byte. Proposals are immutable review objects content-addressed by base+Δ,
+    so -- exactly like claims (`_union_claims`) -- a file-level presence check is the whole merge: no
+    field union, no conflict. A teammate's proposal therefore arrives verbatim on the next sync."""
+    for path in gb.list_tree(theirs_sha, ".sgt/proposals/"):
+        raw = gb.blob_bytes(theirs_sha, path)
+        if raw is None:
+            continue
+        local = repo / path
+        if local.exists():
+            continue
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(raw)
+
+
 def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
     """The committed `.sgt/forks.json` body (C4): one record per open same-symbol fork, each with
     its two tips and the `sgt merge-op` remedy that closes it. Sorted for a deterministic blob. The
@@ -77,6 +93,7 @@ def persist_reconciled(
     tree.save(repo, res.tree_result)
     state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
     _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
+    _union_proposals(repo, gb, theirs_sha)  # committed review objects travel too (C10)
 
     materialized = code(res.merged_ideal, ing.all_ops)
     lens._write_working_tree(repo, materialized)
