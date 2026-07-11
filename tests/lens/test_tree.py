@@ -278,6 +278,47 @@ def test_assign_pin_overrides_greene_and_survives_reruns(tmp_path):
         tree.save(repo, result)
 
 
+def test_pinned_label_on_a_legacy_id_survives_an_ordinary_rebuild(tmp_path):
+    """Regression (U21): an ordinary `tree.build` must NOT silently re-mint a legacy `F<n>` id that
+    a pin still references -- doing so orphaned the pinned label (`label_tree`'s raw lookup by the
+    old id missed the re-minted leaf). A pre-U21 repo whose feature was renamed (a `labels` pin on
+    the legacy id) rebuilds without `sgt migrate`: the id is carried (not re-minted) and the label
+    survives. Only the explicit migration re-mints those, atomically with the pin rewrite."""
+    from sgt.lens.pins import Pins
+
+    repo = corpus.CORPUS["class_with_methods"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+
+    natural = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
+    members = sorted({m for nd in natural["nodes"].values() if not nd["children"] for m in nd["members"]})
+
+    # pre-U21 shape: the feature lives under a legacy id and carries a user-pinned label keyed to it.
+    prev = {"nodes": {"F7": {"members": members, "children": [], "parent": None, "depth": 0}}, "roots": ["F7"]}
+    pins = Pins(labels={"F7": "My Custom Label"})
+    result = tree.build(repo, ops, ideal, pins=pins, previous=prev)
+    tree.label_tree(result, repo, pins=pins)
+
+    leaf = next(nid for nid, nd in result["nodes"].items() if not nd["children"])
+    assert leaf == "F7"  # carried, not silently re-minted out from under the pin
+    assert result["nodes"][leaf]["label"] == "My Custom Label"  # the pinned label survived
+
+
+def test_unreferenced_legacy_id_still_converges_on_rebuild(tmp_path):
+    """The other side of the guard: with *no* pin referencing it, a legacy continuation id still
+    re-mints to its content-addressed form (LAW-U) -- the guard only spares *referenced* ids."""
+    from sgt.lens.pins import Pins
+
+    repo = corpus.CORPUS["class_with_methods"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+    natural = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
+    members = sorted({m for nd in natural["nodes"].values() if not nd["children"] for m in nd["members"]})
+
+    prev = {"nodes": {"F7": {"members": members, "children": [], "parent": None, "depth": 0}}, "roots": ["F7"]}
+    result = tree.build(repo, ops, ideal, pins=Pins(), previous=prev)  # empty pins -> nothing protected
+    leaf = next(nid for nid, nd in result["nodes"].items() if not nd["children"])
+    assert leaf.startswith("f-") and leaf != "F7"  # re-minted content-addressed (converges)
+
+
 # --- labeling + DEDUP (plan R15/R17) ----------------------------------------------------------
 
 

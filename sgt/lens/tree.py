@@ -275,7 +275,14 @@ def build(
     }
 
     old_leaves = _leaf_members(previous["nodes"]) if previous else {}
-    id_map, events = match_identities(old_leaves, _leaf_members(nodes), founding=_founding_ops(op_leaf))
+    # A legacy id a pin still references must not be silently re-minted by an ordinary build (that
+    # would orphan the pin) -- only the atomic `sgt migrate` re-mints those. Unreferenced legacy ids
+    # converge freely (LAW-U). `assign` values are additionally force-applied below, but including
+    # them here keeps the identity_events honest (no spurious re-mint that a pin immediately undoes).
+    protected = frozenset(pins.assign.values()) | frozenset(pins.labels)
+    id_map, events = match_identities(
+        old_leaves, _leaf_members(nodes), founding=_founding_ops(op_leaf), protected=protected,
+    )
     _apply_id_map(result, id_map)
     _apply_assign_pins(result, pins)
     result["identity_events"] = events
@@ -351,7 +358,7 @@ def _content_birth_id(members: frozenset[str], founding: str | None, used: set[s
 
 def match_identities(
     old: dict[str, frozenset[str]], new: dict[str, frozenset[str]], theta: float = THETA,
-    founding: dict[str, str] | None = None,
+    founding: dict[str, str] | None = None, protected: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, str], list[dict]]:
     """Greene member-overlap matching between the previous run's leaves and this run's. `old`/`new`
     map a leaf id to its member set; `old` uses stable feature ids, `new` uses build-local ids.
@@ -367,8 +374,15 @@ def match_identities(
     a new leaf whose best old is mutual is a **continuation** (>1 old pointing at it => **merge**);
     a new leaf matching an old that prefers a different new is a **split**; an unmatched new is a
     **birth**; an old that nothing continues/merges is a **death**. A continuation/merge of a
-    *modern* id carries that id (stability -- a curated feature keeps its id as it evolves); of a
-    *legacy* ``F<n>`` id it re-mints content-addressed (convergence), reported as the same event."""
+    *modern* id carries that id (stability -- a curated feature keeps its id as it evolves).
+
+    A continuation of a *legacy* ``F<n>`` id re-mints content-addressed (convergence) **only when no
+    pin references it** (`protected`): re-minting a legacy id that a pin's `assign`/`labels` still
+    names is exactly the un-transacted curation corruption the plan forbids -- an ordinary build has
+    no license to rewrite pins, so it carries a referenced legacy id untouched and leaves the atomic
+    upgrade to the explicit ``sgt migrate feature-ids`` (which re-mints *and* rewrites the pin
+    references together). An *unreferenced* legacy id has nothing to corrupt, so it converges freely.
+    `protected` is the set of pin-referenced feature ids (`assign` values + `labels` keys)."""
     pairs = [
         (oid, nid, _jaccard(om, nm))
         for oid, om in old.items()
@@ -400,10 +414,12 @@ def match_identities(
         olds_here = sorted(o for o, bn in old_best.items() if bn == nid)
         nb = new_best.get(nid)
         if nb is not None and nb in olds_here:  # mutual best -> continuation / merge
-            if founding is not None and _is_legacy_id(nb):
-                fid = _mint(nid)  # upgrade a replica-local legacy id to its content id (converges)
+            if founding is not None and _is_legacy_id(nb) and nb not in protected:
+                fid = _mint(nid)  # upgrade an *unreferenced* legacy id to its content id (converges);
+                # a pin-referenced legacy id is carried untouched -- only `sgt migrate` re-mints it,
+                # atomically with the pin rewrite, so an ordinary build never orphans a pinned label.
             else:
-                fid = nb  # carry a modern id (or legacy behavior when founding is absent)
+                fid = nb  # carry a modern id, a referenced legacy id, or the pre-`founding` path
                 used.add(fid)
             id_map[nid] = fid
             continued_old.update(olds_here)
