@@ -11,6 +11,7 @@
         "end_line": 2,
         "feature_id": "f-13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c",
         "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "sessions": [],
         "start_line": 1,
         "symbol": "slugify.py::slugify"
       }
@@ -62,6 +63,7 @@
     "count": 6,
     "ops": [
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
@@ -77,6 +79,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "b5812fd71f3de69bed000ad0238107a002de9d86",
@@ -92,6 +95,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
@@ -107,6 +111,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "bf135bc412b785389ca5025ec87188fcf21310bf",
@@ -122,6 +127,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
@@ -137,6 +143,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "7fccf605018c6a70d85c4d6e99698a0d625b15e1",

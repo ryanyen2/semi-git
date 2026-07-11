@@ -11,6 +11,7 @@
         "end_line": 2,
         "feature_id": "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
+        "sessions": [],
         "start_line": 1,
         "symbol": "pkg.py::compute"
       }
@@ -47,6 +48,7 @@
     "count": 10,
     "ops": [
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
@@ -62,6 +64,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "327dc8661b37b9002545f79befead311f59e04ef",
@@ -77,6 +80,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "bc478fba9d4295b8c0b1f7ff43e06900780ced3b",
@@ -92,6 +96,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "bf24c3dc4546aa772b7afbd7c97a68addce989ee",
@@ -107,6 +112,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "7c88e8a591766f27635a5bdab01832a59b04cf2e",
@@ -122,6 +128,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
@@ -137,6 +144,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
@@ -152,6 +160,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
@@ -167,6 +176,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
@@ -182,6 +192,7 @@
         ]
       },
       {
+        "attribution": [],
         "footprint": [
           {
             "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
