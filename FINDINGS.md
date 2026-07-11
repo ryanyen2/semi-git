@@ -1060,6 +1060,28 @@ hazard the ref CAS does *not* cover is two landers sharing one working tree/inde
 materializing — handled in `land` by giving each session its own clone/worktree (the test does
 this; see `land.py`'s docstring), never by a second lock around the CAS.
 
+**The `land` verb it drove (C9 + C12/LAW-G).** `sgt/core/sync/land.py` reuses the sync pipeline's
+`ingest → resolve` verbatim over a *local* source (this session's HEAD vs the branch tip), persists
+the reconciled union with the extracted `materialize.persist_reconciled` (sync's own reconciled-tree
+construction, behavior unchanged), then departs from sync in *how it commits*: it builds the landing
+commit off-ref (`git commit-tree`, a real 2-parent merge when HEAD diverges from the tip) and
+advances the branch by CAS (`git update-ref <ref> <new> <old>`), re-looping on a lost race to
+re-ingest against the moved tip (the "re-union retry"). LAW-G is enforced *here*, not in `sync` (the
+U20 contract note): the CAS runs only after the exact resulting op-set passes the oracle — and with
+**no oracle configured `land` also refuses** (a green verdict cannot exist, so the shared tip must
+not move). A genuine same-symbol fork blocks the land (with the `sgt merge-op` remedy) rather than
+advancing over it. The LAW-G test was *rewritten* (not unflipped) to exercise `land` and passes for
+real; concurrency is proven with two landers in separate `git worktree`s of a shared bare repo
+(genuine ref-CAS contention, separate indexes) — one CAS winner per contended round, the loser
+re-unions and either lands or surfaces a fork, `fsck` clean and no lost provenance across randomized
+rounds (`tests/core/test_land.py`, deterministic across repeated runs). One surprise the worktree
+model surfaced and fixed: `working_tree_snapshot` assumed `.git` was a directory, which is false in a
+linked worktree (there `.git` is a file) — it now resolves the real gitdir via `--absolute-git-dir`.
+**Naming:** `sgt land` was already U11's "commit the staged rewrite candidate", and argparse allows
+one subparser per name, so the SYNC-2 verb is `sgt land <branch>` (an explicit positional); bare
+`sgt land` still routes to U11 unchanged (its golden/behavior untouched), and the
+`land(repo, branch=None)` API keeps the default-current-branch form for programmatic use.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
