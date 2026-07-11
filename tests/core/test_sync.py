@@ -106,7 +106,13 @@ def test_sync_is_idempotent_and_double_mine_is_deterministic(tmp_path):
     assert second.message == "already up to date"
 
 
-def test_sync_surfaces_a_same_symbol_fork_without_committing(tmp_path):
+def test_sync_records_a_fork_and_lands_the_forked_symbol_at_the_common_ancestor(tmp_path):
+    """Divergence-as-state (U20/C4, updated from the pre-U20 abort-on-fork behavior): a same-symbol
+    fork no longer aborts the sync. Here the *only* divergence is the forked symbol, so there is no
+    fork-free advance -- but the fork is still recorded as durable, committed `.sgt/forks.json`
+    state, and the forked symbol materializes at the pre-fork common ancestor (never either tip).
+    `merged` is False (an open fork needs attention) even though the reconciling merge commit
+    lands."""
     a, b = _two_clones(tmp_path, _BASE)
 
     _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
@@ -118,16 +124,18 @@ def test_sync_surfaces_a_same_symbol_fork_without_committing(tmp_path):
 
     report = sync.sync(b, remote="origin", branch="main")
 
-    assert not report.merged
-    assert "fork" in report.message
+    assert not report.merged  # an open fork -- attention needed
     assert "merge-op" in report.message
     assert len(report.forks) == 1
     symbol, _tip_a, _tip_b = report.forks[0]
     assert symbol == "main.py::foo"
 
-    assert gb.is_clean()  # merge was aborted, not left half-applied
-    assert gb.head() == before_head
-    assert (b / "main.py").read_text(encoding="utf-8") == "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n"
+    assert (b / ".sgt" / "forks.json").is_file()  # the fork is durable, shared state (LAW-R)
+    text = (b / "main.py").read_text(encoding="utf-8")
+    assert "return 1" in text  # the forked symbol sits at the common ancestor...
+    assert "return 42" not in text and "return 999" not in text  # ...never either tip
+    assert gb.is_clean()  # the reconciling merge landed cleanly, not left half-applied
+    assert gb.head() == report.merge_sha and gb.head() != before_head  # branch advanced past the fork
 
 
 def test_sync_dedups_an_op_independently_mined_on_both_clones(tmp_path):

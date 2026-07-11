@@ -40,7 +40,7 @@ _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
-    "plan", "checkpoint", "drift", "sync", "push", "history", "preview",
+    "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
 }
 
 # Tree-mutating git subcommands warrant an advisory when reached via `sgt git` -- they change the
@@ -148,6 +148,7 @@ def _help() -> int:
         "  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile\n"
         "                              pins/declared-edges/tree, surface any chain fork\n"
         "  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n"
+        "  sgt forks [--json]          list open same-symbol forks + their `sgt merge-op` remedies\n"
         "  sgt git <args...>           pass through to real git (advises on tree-mutating verbs)\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"

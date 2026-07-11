@@ -29,6 +29,7 @@ import subprocess
 from pathlib import Path
 
 from sgt import state
+from sgt.core import order
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
@@ -101,9 +102,16 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     ideal derived fresh from content-addressed history. Used only to *seed* the persisted
     `.sgt/local/ideal.json` entry on a ref's first tracked `get()`; once that entry exists it is
     authoritative, so an explicit ideal edit (revert/pin, U8) is never silently re-derived away
-    by a later provenance scan that has no way to represent "excluded though still in history"."""
+    by a later provenance scan that has no way to represent "excluded though still in history".
+
+    Reduced to its fork-free part (U20): once a sync surfaces a fork, *both* forked tips ride the
+    ref's ancestry (theirs' side is the merge's second parent), so a raw provenance scan would be an
+    invalid (forked) ideal -- forked tips live only in `.sgt/forks.json`, never a verb-visible
+    ideal (D5)."""
     ref_commits = set(gb.commit_shas())
-    return {op.id for op in store.all_ops() if set(op.provenance) & ref_commits}
+    all_ops = store.all_ops()
+    included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
+    return set(order.fork_free(included, all_ops))
 
 
 def current_ideal(repo: str | Path) -> Ideal:
@@ -135,7 +143,7 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
     ref_commits = set(gb.commit_shas(ref))
     all_ops = store.all_ops()
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
-    return Ideal.from_ops(included, all_ops)
+    return Ideal.from_ops(order.fork_free(included, all_ops), all_ops)
 
 
 def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Ideal:

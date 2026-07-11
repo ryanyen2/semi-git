@@ -61,6 +61,9 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # squash/rebase that destroys `Sgt-Op:` trailers (C5). Distinct from the local, per-ref
     # `ideal_table` below (that stays authoritative for the *current* ref; this is in-tree history).
     "ideal": _Artifact(("ideal.json",), committed=True),
+    # committed record of the open same-symbol forks a sync surfaced (C4) -- a fork is durable,
+    # shared state that travels with the repo so a teammate's next sync (and `sgt status`) sees it.
+    "forks": _Artifact(("forks.json",), committed=True),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),

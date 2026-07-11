@@ -154,6 +154,22 @@ def forks(ops: list[Op], ideal_ids) -> list[tuple[str, str, str]]:
     return found
 
 
+def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+    """The largest fork-free subset of `ideal_ids`: drop every forked symbol's *two* tips together
+    with their up-sets. Neither tip can be included without deciding which side wins, so nothing
+    transitively built on either can be either. A downward-closed `ideal_ids` minus these
+    upward-closed up-sets stays downward-closed, and having removed both claimants of every forked
+    step it is now fork-free -- a valid ideal by construction (divergence-as-state, U20/C4). Used by
+    `sgt sync`'s resolve to advance a branch by only the fork-free part, and by `lens.ideal_for_ref`
+    so a ref whose committed history contains both tips of a fork still projects a valid ideal (the
+    forked tip never surfaces in `sgt state`/`sgt map`; only the common ancestor does)."""
+    excluded: set[str] = set()
+    for _sym, tip_a, tip_b in forks(ops, ideal_ids):
+        excluded |= upset(tip_a, ops, declared)
+        excluded |= upset(tip_b, ops, declared)
+    return frozenset(ideal_ids) - excluded
+
+
 def find_declared_cycles(ops: list[Op], declared: Declared) -> list[tuple[str, str]]:
     """Declared edges (`sgt after`) that lie on a cycle in the full chain+reference+declared
     adjacency -- e.g. two clones each declare an edge that, unioned, contradicts the other.

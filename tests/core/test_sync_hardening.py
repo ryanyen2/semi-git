@@ -14,11 +14,16 @@ from pathlib import Path
 
 import pytest
 
+from sgt.api import forks_view, status_view
 from sgt.cli.sync import _push as cli_push
-from sgt.core import lens, sync
+from sgt.core import lens, order, sync
+from sgt.core.ideal import Ideal
 from sgt.core.op import make_op
 from sgt.core.store import Store, _serialize
 from sgt.core.sync import MinerVersionMismatch
+from sgt.core.sync.ingest import Ingested
+from sgt.core.sync.resolve import resolve
+from sgt.lens.pins import Pins
 from sgt.store.gitbind import GitBinding, PushRejected
 
 from tests.core.test_sync import (
@@ -186,3 +191,69 @@ def test_c7_push_rejected_on_non_fast_forward_routes_to_sync(tmp_path):
     rc = cli_push(str(b), "origin", "main", as_json=False)
     assert rc == 1  # the CLI reports the rejection and routes to `sgt sync`
     assert gb.head() != gb.rev_parse("origin/main")  # nothing was forced over the remote
+
+
+# --- C4: divergence-as-state (AE9) -------------------------------------------------------------
+
+
+def _six(overrides: dict[int, int]) -> str:
+    return "".join(f"def f{i}():\n    return {overrides.get(i, i)}\n\n\n" for i in range(6))
+
+
+def test_c4_fork_free_five_land_while_one_symbol_forks(tmp_path):
+    """AE9: five ops sync cleanly while one symbol forks. The branch advances by the clean five
+    (their effects are in the post-sync tree), the forked symbol's content stays at the pre-fork
+    common ancestor (never either tip), `.sgt/forks.json` records the fork, and `sgt status`/
+    `sgt forks` report exactly one open fork."""
+    a, b = _two_clones(tmp_path, _six({}))
+
+    # A advances five disjoint symbols (f1..f5) *and* reworks f0.
+    _edit_and_commit(a, "main.py", _six({0: 900, 1: 101, 2: 102, 3: 103, 4: 104, 5: 105}), "A: five + f0")
+    _push(a)
+    # B reworks only f0 -- so f0 forks, but f1..f5 are fork-free new work from A.
+    _edit_and_commit(b, "main.py", _six({0: 42}), "B: rework f0")
+
+    report = sync.sync(b, remote="origin", branch="main")
+
+    assert not report.merged  # an open fork
+    assert len(report.forks) == 1
+    assert report.forks[0][0] == "main.py::f0"
+
+    text = (b / "main.py").read_text(encoding="utf-8")
+    for i in range(1, 6):  # the clean five landed
+        assert f"return {100 + i}" in text
+    assert "return 0" in text  # f0 sits at the common ancestor...
+    assert "return 900" not in text and "return 42" not in text  # ...never either tip
+
+    assert (b / ".sgt" / "forks.json").is_file()
+    assert forks_view(b)["open"] == 1
+    assert status_view(b)["forks"]["open"] == 1  # loud status (D5)
+
+
+def test_c4_fork_free_construction_is_a_valid_ideal(tmp_path):
+    """The soundness the D5 construction rests on: `union \\ (both tips' up-sets)` is still a valid
+    ideal (a downward-closed set minus an upward-closed set stays downward-closed *and* fork-free).
+    Verified directly with `order.is_valid_ideal` rather than trusted -- and the forked tips are
+    genuinely absent from the resulting ideal, while an unrelated fork-free op survives."""
+    add_foo = make_op({"m.py::foo": (None, "v1")}, {"m.py::foo": b"1"}, kind="add")
+    rework_a = make_op({"m.py::foo": ("v1", "v2a")}, {"m.py::foo": b"a"}, kind="rework")
+    rework_b = make_op({"m.py::foo": ("v1", "v2b")}, {"m.py::foo": b"b"}, kind="rework")
+    add_bar = make_op({"m.py::bar": (None, "w1")}, {"m.py::bar": b"x"}, kind="add")  # unrelated
+    all_ops = [add_foo, rework_a, rework_b, add_bar]
+
+    ing = Ingested(
+        ours_pins=Pins(), theirs_pins=Pins(),
+        ours_declared=frozenset(), theirs_declared=frozenset(),
+        ours_tree=None,
+        ours_ideal=Ideal.from_ops({add_foo.id, rework_b.id, add_bar.id}, all_ops),
+        theirs_ideal_ids=frozenset({add_foo.id, rework_a.id, add_bar.id}),
+        all_ops=all_ops, theirs_ops=[rework_a], mined_ops=[], ops_added=1,
+    )
+
+    res = resolve(tmp_path, ing)
+
+    assert len(res.forks) == 1
+    fork_free = res.merged_ideal.op_ids
+    assert order.is_valid_ideal(all_ops, fork_free)  # the construction is a valid ideal
+    assert rework_a.id not in fork_free and rework_b.id not in fork_free  # both tips excluded
+    assert {add_foo.id, add_bar.id} <= fork_free  # ancestor + unrelated fork-free op survive

@@ -25,10 +25,12 @@ from sgt.store.gitbind import GitBinding
 from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
 
 
-def test_resolve_surfaces_a_fork_before_building_any_merged_state():
-    """A same-symbol fork short-circuits `resolve` -- it returns the triples with no merged ideal,
-    pins, or tree, so nothing downstream (the disk-writing `materialize`) is ever reached. This is
-    the isolation that makes the fork path need no rollback: `resolve` is pure."""
+def test_resolve_advances_the_fork_free_part_and_surfaces_the_fork(tmp_path):
+    """Under divergence-as-state (U20/C4) a fork no longer short-circuits `resolve`: it returns the
+    fork triples *and* a fork-free merged ideal with both tips excluded (here the whole union, so
+    the ideal is empty). Still pure -- no disk write -- so the fork path needs no rollback, and the
+    excluded tips never enter a verb-visible ideal (`order.is_valid_ideal` holds on the remainder,
+    proven directly in `test_sync_hardening.py`)."""
     ours = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"})
     theirs = make_op({"a.py::foo": (None, "v2")}, {"a.py::foo": b"2"})  # same (sym, before) -> fork
     all_ops = [ours, theirs]
@@ -41,14 +43,15 @@ def test_resolve_surfaces_a_fork_before_building_any_merged_state():
         all_ops=all_ops, theirs_ops=[theirs], mined_ops=[], ops_added=1,
     )
 
-    res = resolve(Path("/nonexistent"), ing)  # repo unused: fork returns before any repo read
+    res = resolve(tmp_path, ing)
 
     assert len(res.forks) == 1
     sym, _a, _b = res.forks[0]
     assert sym == "a.py::foo"
-    assert res.merged_ideal is None
-    assert res.unioned_pins is None
-    assert res.tree_result is None
+    assert res.merged_ideal is not None
+    assert ours.id not in res.merged_ideal.op_ids  # both forked tips excluded from the ideal...
+    assert theirs.id not in res.merged_ideal.op_ids
+    assert res.merged_ideal.op_ids == frozenset()  # ...leaving nothing else in this fixture
 
 
 def test_ingest_unions_the_op_store_in_memory_without_touching_disk(tmp_path):
