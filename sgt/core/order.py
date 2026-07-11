@@ -170,6 +170,25 @@ def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
     return frozenset(ideal_ids) - excluded
 
 
+def reduce_to_ideal(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+    """The largest *valid ideal* contained in a raw provenance-derived op set: ground it (keep only
+    ops all of whose chain/reference/declared prerequisites are also present -- downward-closure),
+    then drop forked tips and their up-sets (fork-freedom). One pass suffices, in that order:
+    `fork_free` removes only upward-closed up-sets, and removing an upward-closed set from a
+    downward-closed one leaves it downward-closed, so grounding survives fork-freeing.
+
+    A raw provenance scan of real history is not directly a valid ideal for two reasons a
+    single-clone `sgt` still hits (not just sync): a symbol added, deleted, then re-added rebirths
+    with `before=None` both times, so both births claim `(symbol, None)` -- a fork; and an op whose
+    chain predecessor's provenance fell outside this ref (a squashed/rebased-away branch) is
+    ungrounded. `fork_free` alone leaves the ungrounded op in; `_grounded` alone leaves the fork in;
+    only the composition is constructible. This is the reduction every provenance-derived ideal
+    goes through -- `lens._sync` on the mine-on-contact write path, and the pure-read
+    `_committed_ids_by_provenance`/`ideal_for_ref` -- so all three agree on what a ref's history
+    means (divergence, historical or concurrent, is state, never a crash; U20/C4)."""
+    return fork_free(_grounded(ideal_ids, ops, declared), ops, declared)
+
+
 def find_declared_cycles(ops: list[Op], declared: Declared) -> list[tuple[str, str]]:
     """Declared edges (`sgt after`) that lie on a cycle in the full chain+reference+declared
     adjacency -- e.g. two clones each declare an edge that, unioned, contradicts the other.

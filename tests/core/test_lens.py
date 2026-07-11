@@ -283,3 +283,43 @@ def test_init_on_large_corpus_repo_within_budgets(tmp_path):
 
     budget = corpus.MAX_INIT_SECONDS_PER_1K_COMMITS * (n_commits / 1000)
     assert elapsed <= budget, f"init took {elapsed:.1f}s, budget {budget:.1f}s for {n_commits} commits"
+
+
+def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
+    """U22.5 regression: a single-clone, single-branch history where a file is added, deleted,
+    then re-added rebirths `(symbol, None)` twice -- two ops claim the same chain step, a fork by
+    `is_fork_free`'s definition. `get()` must reduce to a *valid* ideal (drop the forked file's
+    tips) rather than raise from `Ideal.from_ops`, and the reduction must be surgical: an unrelated
+    file added once still surfaces. Before the fix, `sgt state` on any such repo crashed with
+    'not a valid ideal', after having already persisted the invalid table to disk."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+
+    (repo / "keep.py").write_text("def keep():\n    return 1\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("alpha\n", encoding="utf-8")
+    gb.commit_all("add keep and notes")
+
+    (repo / "notes.txt").unlink()
+    gb.commit_all("delete notes")
+
+    (repo / "notes.txt").write_text("beta\n", encoding="utf-8")  # rebirth: before=None again
+    gb.commit_all("re-add notes with different content")
+
+    ideal = get(repo)  # must not raise
+    store = Store(repo)
+    all_ops = store.all_ops()
+    assert is_valid_ideal(all_ops, ideal.op_ids)  # grounded + fork-free
+
+    # The reduction is surgical: the unrelated single-add symbol survives, only the forked file's
+    # tips were dropped, and the materialized tree agrees (notes.txt does not resurrect).
+    assert any("keep.py::keep" in store.get(o).footprint for o in ideal.op_ids)
+    materialized = code(ideal, all_ops)
+    assert "keep.py" in materialized
+    assert "notes.txt" not in materialized
+
+    # The persisted table is itself a valid ideal -- a second read never re-raises, and the pure
+    # read path (which reads the table straight back) constructs cleanly too.
+    assert get(repo).op_ids == ideal.op_ids
+    from sgt.core.lens import current_ideal
+
+    assert current_ideal(repo).op_ids == ideal.op_ids

@@ -199,14 +199,16 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     authoritative, so an explicit ideal edit (revert/pin, U8) is never silently re-derived away
     by a later provenance scan that has no way to represent "excluded though still in history".
 
-    Reduced to its fork-free part (U20): once a sync surfaces a fork, *both* forked tips ride the
-    ref's ancestry (theirs' side is the merge's second parent), so a raw provenance scan would be an
-    invalid (forked) ideal -- forked tips live only in `.sgt/forks.json`, never a verb-visible
-    ideal (D5)."""
+    Reduced to a valid ideal (U20/U22.5): once a sync surfaces a fork, *both* forked tips ride the
+    ref's ancestry (theirs' side is the merge's second parent), and real single-clone history alone
+    already produces forks (add/delete/re-add rebirths `(symbol, None)` twice) and ungrounded ops (a
+    predecessor squashed away), so a raw provenance scan is not directly a valid ideal --
+    `order.reduce_to_ideal` grounds it and drops forked up-sets; forked tips live only in
+    `.sgt/forks.json`, never a verb-visible ideal (D5)."""
     ref_commits = set(gb.commit_shas())
     all_ops = store.all_ops()
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
-    return set(order.fork_free(included, all_ops))
+    return set(order.reduce_to_ideal(included, all_ops))
 
 
 def current_ideal(repo: str | Path) -> Ideal:
@@ -238,7 +240,7 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
     ref_commits = set(gb.commit_shas(ref))
     all_ops = store.all_ops()
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
-    return Ideal.from_ops(order.fork_free(included, all_ops), all_ops)
+    return Ideal.from_ops(order.reduce_to_ideal(included, all_ops), all_ops)
 
 
 def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Ideal:
@@ -270,8 +272,12 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
 
     # (4) The durable ideal gains only newly-committed ops; the dirty overlay is never persisted,
     # so a discarded working-tree edit (e.g. `git checkout -- .`) simply stops appearing on the
-    # next `get()` rather than lingering in the table.
-    committed_ids = base_ids | new_committed_ids
+    # next `get()` rather than lingering in the table. Reduce to a valid ideal *before* persisting
+    # (U22.5): real history mined cold contains add/delete/re-add forks and predecessors squashed
+    # out of this ref, so the raw union is not directly constructible -- persisting it unreduced
+    # would leave an invalid `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
+    all_ops = store.all_ops()
+    committed_ids = set(order.reduce_to_ideal(base_ids | new_committed_ids, all_ops))
     ideal_table[key] = sorted(committed_ids)
     _save_ideal_table(repo, ideal_table)
 
@@ -279,8 +285,9 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     table[key] = head
     _save_witnesses(repo, table)
 
-    # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set.
-    return Ideal.from_ops(committed_ids | pending_ids, store.all_ops())
+    # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
+    # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
+    return Ideal.from_ops(order.reduce_to_ideal(committed_ids | pending_ids, all_ops), all_ops)
 
 
 def get(repo: str | Path) -> Ideal:
