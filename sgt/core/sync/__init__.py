@@ -27,6 +27,9 @@ from . import fetch as _fetch
 from . import ingest as _ingest
 from . import materialize as _materialize
 from . import resolve as _resolve
+from .ingest import MinerVersionMismatch  # re-exported: the CLI catches it distinctly (C6)
+
+__all__ = ["SyncReport", "sync", "MinerVersionMismatch"]
 
 
 @dataclass(frozen=True)

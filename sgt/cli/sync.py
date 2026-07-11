@@ -22,11 +22,12 @@ def _cmd_sync(args) -> int:
 def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
     from sgt.core import sync as sync_mod
     from sgt.core.lens import DirtyWorkingTreeError
+    from sgt.core.sync import MinerVersionMismatch
     from sgt.store.gitbind import GitError
 
     try:
         report = sync_mod.sync(repo, remote=remote, branch=branch)
-    except (DirtyWorkingTreeError, GitError, ValueError) as e:
+    except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
         return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
 
     from sgt.api import sync_view
