@@ -163,37 +163,35 @@ def test_law_u_disjoint_edits_converge_under_a_randomized_schedule(tmp_path):
         assert want in trees[0]  # all three disjoint edits survived the union
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="LAW-U: reconcile.union_pins is order-dependent latest-wins (theirs wins the dict "
-    "merge, pins.py:~28); the winning pin depends on which replica is 'theirs' in the last sync. "
-    "Witness-topological tie-break lands in U21.",
-)
 def test_law_u_contradicting_pins_converge_across_schedules(tmp_path):
-    """LAW-U (the half that is broken): two replicas assign the *same* member to *different*
-    features -- a genuine pin contradiction. Two schedules deliver the identical pin facts but let
-    a different side be `theirs` in the reconciling sync; because `union_pins` is latest-wins by
-    merge order, the two schedules converge to *different* committed `assign` maps. This asserts
-    they match (they must, under LAW-U) and so fails until U21 makes pin reconciliation a
-    commutative semilattice join."""
-    def _world(sub: Path, winner_pushes_last: str) -> dict[str, str]:
+    """LAW-U: two replicas assign the *same* member to *different* features -- a genuine pin
+    contradiction. Two schedules deliver the identical pin facts but let a different side be
+    `theirs` in the reconciling sync. Before U21 `union_pins` was latest-wins by merge order, so the
+    schedules converged to *different* committed `assign` maps; U21's witness-topo + hash tie-break
+    makes the winner a pure function of the pin facts (here: witness-less, so the content-hash
+    fallback), so both schedules must now converge to the identical `assign`.
+
+    In each schedule the side that publishes *first* is the one that pushes -- the other reconciles
+    it as `theirs` in a fast-forward-free sync (the second side never force-pushes over the first;
+    it absorbs and, in real use, would push the merge). This makes a genuinely different side
+    `theirs` across the two schedules while every push is a legal fast-forward from the shared
+    base."""
+    def _world(sub: Path, theirs_side: str) -> dict[str, str]:
         _remote, (a, b) = _replicas(sub, _BASE, 2)
         save_pins(a, Pins(assign={"m1": "featureA"}))
         GitBinding(a).commit_all("A: pin m1 -> featureA")
-        _push(a)
         save_pins(b, Pins(assign={"m1": "featureB"}))
         GitBinding(b).commit_all("B: pin m1 -> featureB")
-        # `winner_pushes_last` chooses the schedule: whoever syncs last sees the other as `theirs`.
-        if winner_pushes_last == "b":
-            sync.sync(b, remote="origin", branch="main")  # b syncs a-as-theirs -> a's pin wins
+        if theirs_side == "a":
+            _push(a)  # a publishes first; b reconciles a-as-theirs
+            sync.sync(b, remote="origin", branch="main")
             return load_pins(b).assign
-        _push(b)  # publish b's pin first, then a reconciles with b-as-theirs -> b's pin wins
-        # a is behind now; re-clone-free: a fetches b's tip and reconciles
+        _push(b)  # b publishes first; a reconciles b-as-theirs
         sync.sync(a, remote="origin", branch="main")
         return load_pins(a).assign
 
-    schedule_1 = _world(tmp_path / "w1", winner_pushes_last="b")
-    schedule_2 = _world(tmp_path / "w2", winner_pushes_last="a")
+    schedule_1 = _world(tmp_path / "w1", theirs_side="a")
+    schedule_2 = _world(tmp_path / "w2", theirs_side="b")
     assert schedule_1 == schedule_2  # same pin facts, two schedules -> identical assign (LAW-U)
 
 

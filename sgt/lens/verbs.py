@@ -25,6 +25,7 @@ from sgt.core.store import Store
 from sgt.lens import tree
 from sgt.lens.cluster import _dominant_dir
 from sgt.lens.pins import Pins, load_pins, save_pins
+from sgt.store.gitbind import GitBinding
 
 VerbError = core_verbs.VerbError
 
@@ -75,8 +76,23 @@ def _require_tree(repo: str | Path) -> dict | None:
 
 
 def _save_pins(repo: str | Path, pins: Pins, **overrides) -> None:
+    assign = overrides.get("assign", pins.assign)
+    witness = dict(pins.assign_witness)
+    if "assign" in overrides:
+        # Stamp the introducing witness (D6): the head this curation was recorded against, so a
+        # later re-pin (from history that already contains a teammate's pin) reconciles as causally
+        # later. head() before this verb's own commit is the right causal anchor -- the decision was
+        # made *on top of* that state. Only changed/new members get a fresh stamp; a member dropped
+        # from `assign` drops its (now meaningless) witness.
+        head = GitBinding(repo).head()
+        if head is not None:
+            for member, fid in assign.items():
+                if pins.assign.get(member) != fid:
+                    witness[member] = head
+        witness = {m: w for m, w in witness.items() if m in assign}
     save_pins(repo, Pins(
-        assign=overrides.get("assign", pins.assign),
+        assign=assign,
+        assign_witness=witness,
         must_link=overrides.get("must_link", pins.must_link),
         cannot_link=overrides.get("cannot_link", pins.cannot_link),
         labels=overrides.get("labels", pins.labels),
