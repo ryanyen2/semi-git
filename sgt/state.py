@@ -105,7 +105,8 @@ def _unwrap(payload):
 
 
 def _encode(body, art: _Artifact) -> str:
-    text = json.dumps(body, indent=2, sort_keys=art.sort_keys)
+    envelope = {"schema": SCHEMA, "data": body}
+    text = json.dumps(envelope, indent=2, sort_keys=art.sort_keys)
     return text + "\n" if art.newline else text
 
 

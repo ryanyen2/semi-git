@@ -55,6 +55,12 @@ def test_missing_artifact_returns_default(tmp_path):
 # -- schema envelope: v0 (pre-U17) and v1 (enveloped) round-trip --------------------------------
 
 
+def test_writer_emits_versioned_envelope(tmp_path):
+    state.save_json(tmp_path, "declared", [["op_a", "op_b"]])
+    raw = json.loads(state.path(tmp_path, "declared").read_text(encoding="utf-8"))
+    assert raw == {"schema": 1, "data": [["op_a", "op_b"]]}
+
+
 def test_reader_accepts_v0_shape_with_no_envelope(tmp_path):
     """The exact pre-U17 byte format: the parsed JSON *is* the body, no `schema` key at all. Every
     real repo's committed history predates this unit, so this is the shape `sync` must keep reading
@@ -174,6 +180,9 @@ def test_a_v0_shaped_repo_round_trips_through_load_and_save(tmp_path):
     assert _load_declared(repo) == frozenset({("op_a", "op_b")})
     assert tree.load(repo) == tree_body
 
-    # A subsequent save round-trips through the same reader -- no silent corruption.
+    # A subsequent save (post-U17) upgrades the file to the versioned envelope, and a re-read
+    # still recovers the identical logical body -- no silent corruption across the version bump.
     save_pins(repo, pins)
     assert load_pins(repo).assign == {"m1": "featureA"}
+    raw = json.loads((pins_dir / "pins.json").read_text(encoding="utf-8"))
+    assert raw["schema"] == 1
