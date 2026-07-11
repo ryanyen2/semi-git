@@ -14,11 +14,12 @@ from pathlib import Path
 
 import pytest
 
+from sgt.cli.sync import _push as cli_push
 from sgt.core import lens, sync
 from sgt.core.op import make_op
 from sgt.core.store import Store, _serialize
 from sgt.core.sync import MinerVersionMismatch
-from sgt.store.gitbind import GitBinding
+from sgt.store.gitbind import GitBinding, PushRejected
 
 from tests.core.test_sync import (
     _BASE,
@@ -157,3 +158,31 @@ def test_c5_squash_merge_ideal_is_recovered_from_the_committed_file(tmp_path):
     assert report.merged
     assert lens.current_ideal(b).op_ids == fine_ideal  # recovered fine ideal, no coarse re-mine
     assert "def baz" in (b / "main.py").read_text(encoding="utf-8")
+
+
+# --- C7: sgt push (never forces; rejection routes to sync) --------------------------------------
+
+
+def test_c7_push_succeeds_and_reports_the_pushed_sha(tmp_path):
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(b, "main.py", _BASE.replace("return 1", "return 5"), "B: bump foo")
+    gb = GitBinding(b)
+
+    pushed = gb.push("origin", "main")
+    assert pushed == gb.head()
+    assert gb.rev_parse("origin/main") == pushed  # the remote-tracking ref advanced
+
+
+def test_c7_push_rejected_on_non_fast_forward_routes_to_sync(tmp_path):
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", _BASE.replace("return 1", "return 9"), "A: bump foo")
+    _push(a)  # origin advances past B
+    _edit_and_commit(b, "main.py", _BASE.replace("return 2", "return 8"), "B: bump bar")  # divergent
+    gb = GitBinding(b)
+
+    with pytest.raises(PushRejected):
+        gb.push("origin", "main")  # never forces -- the remote moved
+
+    rc = cli_push(str(b), "origin", "main", as_json=False)
+    assert rc == 1  # the CLI reports the rejection and routes to `sgt sync`
+    assert gb.head() != gb.rev_parse("origin/main")  # nothing was forced over the remote
