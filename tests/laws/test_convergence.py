@@ -195,12 +195,6 @@ def test_law_u_contradicting_pins_converge_across_schedules(tmp_path):
     assert schedule_1 == schedule_2  # same pin facts, two schedules -> identical assign (LAW-U)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="LAW-U: feature ids are replica-local (sgt/lens/tree.py mints F<n> via Greene "
-    "member-overlap against each replica's own `previous` tree, so independently-curated replicas "
-    "adopt different ids for the same feature). Birth-minted, replica-independent ids land in U21.",
-)
 def test_law_u_feature_ids_are_replica_independent(tmp_path):
     """LAW-U (feature-tree half): the *same* feature (same member set, same ops) must carry the
     same id on every replica. Today `tree.build` carries ids across a run by matching against that

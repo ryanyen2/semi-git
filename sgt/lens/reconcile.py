@@ -138,3 +138,120 @@ def reconcile_tree(
     result = tree.build(repo, ops, ideal, pins=pins, previous=ours_tree)
     tree.label_tree(result, repo, pins=pins)
     return result
+
+
+# --- feature-id alias G-Set + birth-id migration (U21/D6) --------------------------------------
+
+
+def load_aliases(repo: str | Path) -> frozenset[Alias]:
+    """The committed feature-id alias G-Set (`.sgt/aliases.json`): every `(old, new)` re-mint the
+    migration recorded. Empty when absent -- the documented default, like every other artifact."""
+    body = state.load_json(repo, "aliases", default=[])
+    return frozenset((pair[0], pair[1]) for pair in body)
+
+
+def save_aliases(repo: str | Path, aliases: frozenset[Alias]) -> None:
+    state.save_json(repo, "aliases", sorted([old, new] for old, new in aliases))
+
+
+def aliases_at(gb, sha: str) -> frozenset[Alias]:
+    """A teammate's alias G-Set as committed at `sha` -- the historical-blob read `sync` unions so a
+    stale reference from their un-migrated history resolves on our side after contact."""
+    body = state.load_blob_json(gb, sha, "aliases")
+    return frozenset() if body is None else frozenset((pair[0], pair[1]) for pair in body)
+
+
+def union_aliases(ours: frozenset[Alias], theirs: frozenset[Alias]) -> frozenset[Alias]:
+    """Union two alias G-Sets and apply the alias-merge rule (D6): when divergent unsynced curation
+    minted two different new ids for one old id, the union holds both `(old, new1)` and
+    `(old, new2)` -- a genuine collision. Pick a deterministic winner (smallest content hash) and
+    add explicit `loser -> winner` edges, so *every* reference (the old id, or either minted new id)
+    resolves to the single canonical feature. Commutative, idempotent, and identical on every
+    replica -- no wall clock, no sync-order dependence."""
+    merged = set(ours) | set(theirs)
+    by_old: dict[str, set[str]] = defaultdict(set)
+    for old, new in merged:
+        by_old[old].add(new)
+    for news in by_old.values():
+        if len(news) > 1:
+            winner = min(news, key=_hash_key)
+            merged.update((loser, winner) for loser in news if loser != winner)
+    return frozenset(merged)
+
+
+def resolve_alias(aliases: frozenset[Alias], fid: str) -> str:
+    """Follow `old -> new` alias edges from `fid` to its canonical current id. On a collision (an id
+    with several targets) the smallest-content-hash target wins -- the same rule `union_aliases`
+    applies, so resolution agrees with the merge. Cycle-guarded (a G-Set can, pathologically, hold a
+    loop); returns `fid` unchanged when it is already canonical (the common case)."""
+    amap: dict[str, list[str]] = defaultdict(list)
+    for old, new in aliases:
+        amap[old].append(new)
+    seen: set[str] = set()
+    cur = fid
+    while cur in amap and cur not in seen:
+        seen.add(cur)
+        cur = min(amap[cur], key=_hash_key)
+    return cur
+
+
+@dataclass(frozen=True)
+class MigrationReport:
+    """The birth-id migration's re-mint map (`old F<n> -> new f-<founding op>`) and whether it was a
+    dry run. `remap` empty means nothing to do -- a fresh repo, an already-migrated one, or a second
+    run (idempotence)."""
+
+    remap: dict[str, str]
+    dry_run: bool
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.remap) and not self.dry_run
+
+
+def plan_feature_id_migration(repo: str | Path) -> dict[str, str]:
+    """The `old -> new` re-mint map for every legacy sequential `F<n>` leaf in the committed tree:
+    `f-<min founding op id>`, the same content-addressed id `tree.build` now mints. Empty when the
+    tree is absent or already fully modern -- which is what makes the migration idempotent (a second
+    run finds no legacy leaf and returns `{}`). Pure: reads the tree, writes nothing."""
+    result = tree.load(repo)
+    if result is None:
+        return {}
+    founding = tree._founding_ops(result.get("op_leaf", {}))
+    used = set(result["nodes"])
+    remap: dict[str, str] = {}
+    for nid in sorted(result["nodes"]):
+        nd = result["nodes"][nid]
+        if nd["children"] or not tree._is_legacy_id(nid):
+            continue
+        new_id = tree._content_birth_id(frozenset(nd["members"]), founding.get(nid), used)
+        used.add(new_id)
+        remap[nid] = new_id
+    return remap
+
+
+def migrate_feature_ids(repo: str | Path, *, dry_run: bool = False) -> MigrationReport:
+    """Re-mint every legacy `F<n>` feature id to its content-addressed `f-<founding op>` form as one
+    atomic write set (D6): the tree ids, the pin references that name them (`assign` values and
+    `labels` keys), and the alias G-Set all move together, so no pin is left keyed to a vanished id.
+    `dry_run` computes and returns the map without writing -- the reviewable preview a destructive
+    re-mint must offer. Idempotent: a repo with no legacy ids is a no-op."""
+    remap = plan_feature_id_migration(repo)
+    if dry_run or not remap:
+        return MigrationReport(remap=remap, dry_run=dry_run)
+
+    result = tree.load(repo)
+    tree._apply_id_map(result, remap)
+    tree.save(repo, result)
+
+    pins = load_pins(repo)
+    save_pins(repo, Pins(
+        assign={m: remap.get(fid, fid) for m, fid in pins.assign.items()},
+        assign_witness=pins.assign_witness,
+        must_link=pins.must_link,
+        cannot_link=pins.cannot_link,
+        labels={remap.get(fid, fid): label for fid, label in pins.labels.items()},
+    ))
+
+    save_aliases(repo, load_aliases(repo) | frozenset(remap.items()))
+    return MigrationReport(remap=remap, dry_run=False)

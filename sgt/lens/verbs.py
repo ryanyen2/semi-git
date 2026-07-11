@@ -327,13 +327,22 @@ def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = Fals
 
 
 def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, str] | None:
-    """Match `ref` against a feature id (`F<n>`) or an exact leaf label -- the feature's op-set
-    (from `op_leaf`), its id, and its label; `None` if `ref` names no leaf feature."""
+    """Match `ref` against a feature id (`f-<op>`/legacy `F<n>`) or an exact leaf label -- the
+    feature's op-set (from `op_leaf`), its id, and its label; `None` if `ref` names no leaf feature.
+    A raw id miss is retried through the alias G-Set (`reconcile.resolve_alias`, U21/D6), so a
+    reference to a pre-migration id (or another clone's colliding birth id) still resolves to the
+    feature it was re-minted to."""
+    from sgt.lens import reconcile
+
     result = tree.load(repo)
     if result is None:
         return None
     nodes = result["nodes"]
     feature_id = ref if _leaf(nodes, ref) is not None else None
+    if feature_id is None:
+        aliased = reconcile.resolve_alias(reconcile.load_aliases(repo), ref)
+        if aliased != ref and _leaf(nodes, aliased) is not None:
+            feature_id = aliased
     if feature_id is None:
         feature_id = next(
             (nid for nid, nd in nodes.items() if not nd["children"] and nd.get("label") == ref), None,
