@@ -55,7 +55,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
             fetched_sha=fetched.theirs_sha, message="already up to date",
         )
 
-    ing = _ingest.ingest(repo, gb, fetched.theirs_sha)
+    ing = _ingest.ingest(repo, gb, fetched.theirs_sha, fetched.ours_sha)
     res = _resolve.resolve(repo, ing)
 
     if res.forks:

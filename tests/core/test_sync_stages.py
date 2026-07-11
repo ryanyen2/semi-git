@@ -38,7 +38,7 @@ def test_resolve_surfaces_a_fork_before_building_any_merged_state():
         ours_tree=None,
         ours_ideal=Ideal.from_ops({ours.id}, all_ops),
         theirs_ideal_ids=frozenset({theirs.id}),
-        all_ops=all_ops, theirs_ops=[theirs], ops_added=1,
+        all_ops=all_ops, theirs_ops=[theirs], mined_ops=[], ops_added=1,
     )
 
     res = resolve(Path("/nonexistent"), ing)  # repo unused: fork returns before any repo read
@@ -65,7 +65,7 @@ def test_ingest_unions_the_op_store_in_memory_without_touching_disk(tmp_path):
     assert not fetched.up_to_date
 
     before_ids = {op.id for op in Store(b).all_ops()}
-    ing = ingest(Path(b), gb, fetched.theirs_sha)
+    ing = ingest(Path(b), gb, fetched.theirs_sha, fetched.ours_sha)
     after_ids = {op.id for op in Store(b).all_ops()}
 
     assert after_ids == before_ids  # ingest wrote no op file to disk
@@ -83,7 +83,7 @@ def test_resolve_reports_a_declared_cycle_but_still_produces_an_ideal(tmp_path):
 
     gb = GitBinding(b)
     fetched = fetch(Path(b), gb, "origin", "main")
-    ing = ingest(Path(b), gb, fetched.theirs_sha)
+    ing = ingest(Path(b), gb, fetched.theirs_sha, fetched.ours_sha)
     foo_id = next(op.id for op in ing.all_ops if "main.py::foo" in op.footprint)
     bar_id = next(op.id for op in ing.all_ops if "main.py::bar" in op.footprint)
     ing = replace(
