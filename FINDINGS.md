@@ -1126,6 +1126,45 @@ base moved. Rows 6/7/12 + G-Set travel + round-trip are green (`tests/core/test_
 ids change (proposals never touch ops), and the only golden drift is the new `sgt propose` help
 lines.
 
+### Product surface — U25 the closure-scale gate [HARD GATE] (2026-07-11)
+
+The measurement U29 (`sgt select`, branch-as-selection) hangs on: **does selecting a feature node
+induce an op-closure a human can read?** For every feature node F in a repo's built tree, compute
+`↓ops(F)` = `order.downset_in` unioned over F's op-set (exactly what selecting F would drag into the
+working ideal), and report closure size + dragged-feature count. Harness:
+`experiments/closure_scale/measure.py`. Pre-registered threshold (D1, fixed *before* measuring):
+median closure ≤ 25 ops AND median dragged ≤ 3 features, AND ≥ 80% of selections within *both*
+bounds, on both real corpora — else RED.
+
+**BET-C (sgt's own op store, this repo): RED.** 24 feature nodes over a 5861-op ideal.
+median closure **34 ops** (> 25), p90 96, **max 991**; median dragged **0** features (≤ 3 ✓, max 2);
+**only 46% of selections within bounds** (< 80%). Two of the three sub-conditions fail, so BET-C is
+unambiguously red — and the gate requires *both* corpora green, so the gate is RED regardless of
+BET-E.
+
+**Root cause (the useful part of the finding).** The failure is *not* feature entanglement — dragged
+≈ 0 everywhere, so each feature's closure is almost entirely its *own* ops; features are cleanly
+separated. The gate fails on feature *size*, concentrated in **docs-file and `residue__::`
+pseudo-symbol features**: the single worst node is a 990-op `docs/brainstorms/…` cluster; 13 of 24
+nodes exceed 25 ops and nearly all of those are docs/residue. The real *code-entity* features
+(`normalize` 4 ops, `clique_graph` 1, `FakeClient` 1, …) are tiny and pass by a wide margin — but the
+clustering produces very few of them: only 1793 of the 5861 ideal ops (~30%) are assigned to any
+feature leaf at all, and most that are land in residue/doc mega-features. So the gate is red because
+the current clustering (design-doc BET-C, 63.9% MoJoFM) lumps prose and residue into large
+pseudo-features nobody would meaningfully "select," not because code selection is unreadable.
+
+**BET-E (the ~5k-commit probe repo): UNMEASURED.** `SGT_PROBE_REPO` is unset in this environment; the
+acceptance bar is unfalsifiable without a named, SHA-pinned repo (per U25's own note), so the
+onboarding probe (BET-E wall-clock/peak-memory for `init --horizon`, D8's 10-minute budget) and the
+second closure corpus both await a supplied probe repo.
+
+**Routing (per D1: a red gate routes work to clustering or closure-explanation UX, a better outcome
+than a bad flagship).** Recorded here as data; the U29 disposition is pending direction — see this
+plan's U29 status line. The honest reading: the bottleneck is clustering granularity / selectable-node
+scope (docs & residue), not the closure algebra, which points at scoping feature selection to code
+entities and/or improving doc/residue clustering, then re-measuring — over shipping U29's silent
+selection as planned.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
