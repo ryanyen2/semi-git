@@ -416,22 +416,16 @@ class GitBinding:
     def fetch(self, remote: str, branch: str) -> None:
         self._git("fetch", remote, branch)
 
-    def merge_ours_no_commit(self, ref: str) -> bool:
-        """Stage a merge of `ref` into HEAD without committing, preferring our side (`-X ours`)
-        on any textual overlap -- sgt's own committed files (pins/tree/declared/source) get
-        overwritten with the real reconciliation right after, so git's textual pick never
-        matters. Returns False (leaving the merge state for the caller to inspect/abort) if git
-        reports a conflict `-X ours` can't resolve on its own, e.g. a delete/modify conflict."""
-        proc = self._git("merge", "--no-commit", "--no-ff", "-X", "ours", ref, check=False)
-        return proc.returncode == 0
-
-    def merge_abort(self) -> None:
-        self._git("merge", "--abort", check=False)
-
-    def complete_merge(self, message: str, trailers: str | None = None) -> str:
-        """Stage whatever sync wrote to reconcile pins/tree/declared/source, then commit the
-        merge already opened by `merge_ours_no_commit`, embedding `Sgt-Op:` trailers for the ops
-        this materialization witnesses (mirrors `commit_all`'s trailer convention)."""
+    def complete_merge(self, message: str, merge_parent: str, trailers: str | None = None) -> str:
+        """Commit a real 2-parent merge joining HEAD with `merge_parent`, whose tree is *exactly*
+        the current working tree -- sgt's explicitly-reconciled union (op files, pins/tree/declared,
+        folded source) -- with no textual 3-way merge run on any path. Writing `.git/MERGE_HEAD`
+        ourselves is what makes git's ordinary commit path add `merge_parent` as the second parent
+        (the way a real `git merge` would) while leaving the tree entirely under sgt's control; git
+        clears MERGE_HEAD on a successful commit. Replaces the pre-U19 `git merge -X ours`, whose
+        textual resolution sgt overwrote anyway. Embeds `Sgt-Op:` trailers for the ops this
+        materialization witnesses (mirrors `commit_all`'s trailer convention)."""
+        (self.repo / ".git" / "MERGE_HEAD").write_text(f"{merge_parent}\n", encoding="utf-8")
         self.stage_all()
         full = message if trailers is None else f"{message}\n\n{trailers}"
         self._git("commit", "-q", "-m", full)
