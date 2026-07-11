@@ -130,6 +130,7 @@ def _help() -> int:
         "  sgt identity split|join <a> <b>       correct the matcher itself, not a chain\n"
         "  sgt fulfill <draft-id> --from-tree     supply a drafted hollow's image; stages, no commit\n"
         '  sgt land [--message ...] [--override pass|fail --reason "..."]   commit what\'s staged\n'
+        "  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green (LAW-G)\n"
         "  sgt map [--json]            (re)build + print the hierarchical feature tree\n"
         "  sgt blame [--json] <file>   per-symbol feature attribution for a file's live entities\n"
         "  sgt status [--json]        files/symbols/features, coverage, oracle status, drift\n"

@@ -28,8 +28,9 @@ from . import ingest as _ingest
 from . import materialize as _materialize
 from . import resolve as _resolve
 from .ingest import MinerVersionMismatch  # re-exported: the CLI catches it distinctly (C6)
+from .land import LandReport, land  # SYNC-2: the CAS-gated shared-branch advance (U23)
 
-__all__ = ["SyncReport", "sync", "MinerVersionMismatch"]
+__all__ = ["SyncReport", "sync", "MinerVersionMismatch", "LandReport", "land"]
 
 
 @dataclass(frozen=True)

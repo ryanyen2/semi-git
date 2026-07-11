@@ -53,15 +53,18 @@ def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
     ]
 
 
-def materialize(
-    repo: Path,
-    gb: GitBinding,
-    remote: str,
-    branch: str,
-    theirs_sha: str,
-    ing: Ingested,
-    res: Resolution,
-) -> str:
+def persist_reconciled(
+    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
+) -> None:
+    """Persist the reconciled union to the working tree -- everything `materialize` writes *before*
+    it commits: theirs' op files for real (unioning provenance a same-id collision would otherwise
+    drop, R8), the reconciled pins/declared/aliases/tree, the durable fork record, theirs' claim
+    G-Set, the folded source, and the in-tree ideal-recovery record. Does not stage or commit.
+
+    Shared verbatim by sync's `materialize` (which then runs a 2-parent `complete_merge`) and by
+    `land` (U23, which stages + builds the commit off-ref then CAS-advances the branch). Factored so
+    the branch-record CAS reuses the exact reconciled-tree construction sync already tests, with no
+    behavior change to sync itself."""
     store = Store(repo)
     store.init()
     for op in [*ing.theirs_ops, *ing.mined_ops]:
@@ -79,6 +82,17 @@ def materialize(
     lens._write_working_tree(repo, materialized)
     state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery record (C5)
 
+
+def materialize(
+    repo: Path,
+    gb: GitBinding,
+    remote: str,
+    branch: str,
+    theirs_sha: str,
+    ing: Ingested,
+    res: Resolution,
+) -> str:
+    persist_reconciled(repo, gb, theirs_sha, ing, res)
     trailers = format_op_trailers(sorted(res.merged_ideal.op_ids))
     merge_sha = gb.complete_merge(f"sgt sync: merge {remote}/{branch}", theirs_sha, trailers=trailers)
     lens.record_ideal(repo, res.merged_ideal, merge_sha)

@@ -81,6 +81,40 @@ def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
     return 0
 
 
+def _land_branch(repo: str, branch: str, as_json: bool) -> int:
+    """`sgt land <branch>` (plan U23, C9/LAW-G): advance the shared branch record `refs/heads/<branch>`
+    by CAS -- union this session's HEAD onto the branch tip, gate the result oracle-green (LAW-G),
+    and compare-and-swap the ref, re-unioning on a lost race. A blocked land (red/absent oracle, an
+    open fork, or persistent contention) exits non-zero with the reason and the `sgt merge-op` remedy
+    for a fork. (Bare `sgt land`, with no branch, is U11's staged-rewrite-candidate commit.)"""
+    from sgt.core import sync as sync_mod
+    from sgt.core.lens import DirtyWorkingTreeError
+    from sgt.core.sync import MinerVersionMismatch
+    from sgt.store.gitbind import GitError
+
+    try:
+        report = sync_mod.land(repo, branch=branch)
+    except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
+        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+
+    from sgt.api import land_view
+
+    view = land_view(report)
+    if as_json:
+        return _emit_json({"ok": report.landed, **view})
+
+    if report.landed:
+        print(f"✓ land {report.branch}: {report.land_sha[:12]} (+{report.ops_added} op(s))")
+        if report.attempts > 1:
+            print(f"    re-unioned after losing {report.attempts - 1} CAS race(s)")
+        return 0
+
+    print(f"✗ land {report.branch}: {report.blocked_reason}")
+    for sym, a, b in report.forks:
+        print(f"    {sym}: sgt merge-op {a[:8]} {b[:8]}")
+    return 1
+
+
 def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
     from sgt.core import sync as sync_mod
     from sgt.core.lens import DirtyWorkingTreeError
