@@ -35,6 +35,8 @@ Shapes (stable; additive changes only):
   active plan session, with its kind, footprint, and current file/line spans.
 * ``sync_view``         — the U15 `sgt sync` result: ops merged in, forks surfaced (with the
   `merge-op` remedy), pin contradictions, declared-edge cycles, and tree identity events.
+* ``forks_view``        — the U20 open same-symbol forks recorded in committed `.sgt/forks.json`,
+  each with its two tips and the `sgt merge-op` remedy (divergence-as-state, C4).
 """
 
 from __future__ import annotations
@@ -569,9 +571,11 @@ def drift_view(repo) -> dict:
 
 
 def sync_view(report) -> dict:
-    """Project an already-run `sgt.core.sync.SyncReport` (plan U15) -- `sync` performs a real git
-    fetch/merge/commit, so unlike this module's other views it isn't a pure read the CLI can call
-    on demand; the CLI runs `sync.sync(...)` itself and hands the result here for projection."""
+    """Project an already-run `sgt.core.sync.SyncReport` (plan U15/U20) -- `sync` performs a real
+    git fetch/merge/commit, so unlike this module's other views it isn't a pure read the CLI can
+    call on demand; the CLI runs `sync.sync(...)` itself and hands the result here for projection.
+    `open_fork_count` (additive, U20/C4) is the divergence-as-state loudness signal: nonzero means
+    the fork-free part merged but that many same-symbol forks are recorded and await resolution."""
     return {
         "remote": report.remote,
         "branch": report.branch,
@@ -581,6 +585,7 @@ def sync_view(report) -> dict:
         "merge_sha": report.merge_sha,
         "ops_added": report.ops_added,
         "forks": [list(triple) for triple in report.forks],
+        "open_fork_count": len(report.forks),
         "pin_contradictions": [
             {"kind": c.kind, "members": list(c.members), "detail": c.detail}
             for c in report.pin_contradictions
@@ -588,6 +593,17 @@ def sync_view(report) -> dict:
         "declared_cycles": [list(pair) for pair in report.declared_cycles],
         "identity_events": list(report.identity_events),
     }
+
+
+def forks_view(repo) -> dict:
+    """The open same-symbol forks a prior sync recorded in committed `.sgt/forks.json` (plan U20,
+    C4) -- for `sgt forks`. Each fork carries its symbol, its two tips, and the `sgt merge-op`
+    remedy that closes it. A pure read of shared state; empty (`{"open": 0, "forks": []}`) when
+    there are none."""
+    from sgt import state
+
+    records = state.load_json(repo, "forks", default=[])
+    return {"open": len(records), "forks": records}
 
 
 def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:
@@ -608,6 +624,7 @@ def status_view(repo) -> dict:
     (reusing `state_view`'s definition), the oracle's overall status, and working-tree drift --
     paths whose on-disk bytes no longer match `code(current_ideal)` (e.g. an edit made outside
     `sgt`, or a verb applied without re-writing the working tree)."""
+    from sgt import state as state_mod
     from sgt.core.fold import code
     from sgt.core.lens import current_ideal
     from sgt.core.oracle import overall_status
@@ -627,6 +644,7 @@ def status_view(repo) -> dict:
     feature_count = sum(1 for nd in tree_result["nodes"].values() if not nd["children"]) if tree_result else 0
 
     drift = _drift_paths(repo, code(ideal, ops))
+    open_forks = state_mod.load_json(repo, "forks", default=[])
 
     return {
         "files": len(st["covered_paths"]),
@@ -638,4 +656,5 @@ def status_view(repo) -> dict:
             "status": overall_status(st["oracle_verdict"]) if st["oracle_configured"] else "unconfigured",
         },
         "drift": {"any": bool(drift), "paths": drift},
+        "forks": {"open": len(open_forks), "records": open_forks},
     }

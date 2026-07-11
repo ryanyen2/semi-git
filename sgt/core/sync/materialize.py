@@ -27,6 +27,17 @@ from .ingest import Ingested
 from .resolve import Resolution
 
 
+def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
+    """The committed `.sgt/forks.json` body (C4): one record per open same-symbol fork, each with
+    its two tips and the `sgt merge-op` remedy that closes it. Sorted for a deterministic blob. The
+    excluded tips live only here -- never in any verb-visible ideal -- so a fork is shared state a
+    teammate's next sync (and `sgt status`/`sgt forks`) reads, not a lost edit."""
+    return [
+        {"symbol": sym, "tips": [tip_a, tip_b], "remedy": f"sgt merge-op {tip_a[:8]} {tip_b[:8]}"}
+        for sym, tip_a, tip_b in sorted(forks)
+    ]
+
+
 def materialize(
     repo: Path,
     gb: GitBinding,
@@ -45,6 +56,7 @@ def materialize(
     save_pins(repo, res.unioned_pins)
     lens._save_declared(repo, res.declared)
     tree.save(repo, res.tree_result)
+    state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
 
     materialized = code(res.merged_ideal, ing.all_ops)
     lens._write_working_tree(repo, materialized)

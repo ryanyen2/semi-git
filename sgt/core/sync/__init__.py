@@ -36,7 +36,8 @@ __all__ = ["SyncReport", "sync", "MinerVersionMismatch"]
 class SyncReport:
     remote: str
     branch: str
-    merged: bool  # a merge commit landed; False means nothing new, or a fork was surfaced
+    merged: bool  # a *clean* merge landed (no open fork); False means up-to-date, or a fork was
+    # surfaced (the fork-free part still merged and the fork is recorded -- see `forks`)
     message: str
     fetched_sha: str | None = None
     merge_sha: str | None = None
@@ -61,21 +62,28 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
     ing = _ingest.ingest(repo, gb, fetched.theirs_sha, fetched.ours_sha)
     res = _resolve.resolve(repo, ing)
 
-    if res.forks:
-        remedies = "; ".join(f"sgt merge-op {a[:8]} {b[:8]}" for _sym, a, b in res.forks)
-        return SyncReport(
-            remote=fetched.remote, branch=fetched.branch, merged=False,
-            fetched_sha=fetched.theirs_sha, forks=res.forks,
-            message=f"fork(s) detected, not merged -- resolve with: {remedies}",
-        )
-
+    # Divergence-as-state (D5/C4): a fork no longer aborts. `materialize` always runs -- it lands
+    # the fork-free part (advancing the branch by it) *and* records any open forks as durable,
+    # committed state. `merged` means a *clean* merge with no open fork; a fork makes it False
+    # (attention needed) though the fork-free work still landed and the fork is now shared.
     merge_sha = _materialize.materialize(
         repo, gb, fetched.remote, fetched.branch, fetched.theirs_sha, ing, res
     )
+
+    if res.forks:
+        remedies = "; ".join(f"sgt merge-op {a[:8]} {b[:8]}" for _sym, a, b in res.forks)
+        message = (
+            f"merged fork-free work; {len(res.forks)} open fork(s) -- the forked symbol(s) sit at "
+            f"the common ancestor until resolved with: {remedies}"
+        )
+    else:
+        message = "merged"
+
     return SyncReport(
-        remote=fetched.remote, branch=fetched.branch, merged=True,
+        remote=fetched.remote, branch=fetched.branch, merged=not res.forks,
         fetched_sha=fetched.theirs_sha, merge_sha=merge_sha, ops_added=ing.ops_added,
+        forks=res.forks,
         pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
         identity_events=tuple(res.tree_result.get("identity_events", [])),
-        message="merged",
+        message=message,
     )

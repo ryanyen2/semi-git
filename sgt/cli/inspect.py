@@ -210,9 +210,11 @@ def _status(repo: str, as_json: bool = False) -> int:
     print(f"{view['files']} file(s), {view['symbols']} symbol(s), {view['features']} feature(s), "
           f"{view['coverage_fraction'] * 100:.0f}% entity coverage")
     print(f"  oracle: {view['oracle']['status']}")
+    if view["forks"]["open"]:
+        print(f"  ⚠ {view['forks']['open']} OPEN FORK(S) — run `sgt forks` for the merge-op remedies")
     if view["drift"]["any"]:
         print(f"  ⚠ drift: {', '.join(view['drift']['paths'])}")
-    else:
+    elif not view["forks"]["open"]:
         print("  ✓ in sync")
     return 0
 

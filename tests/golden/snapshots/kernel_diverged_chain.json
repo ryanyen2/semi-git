@@ -178,6 +178,10 @@
     },
     "features": 1,
     "files": 1,
+    "forks": {
+      "open": 0,
+      "records": []
+    },
     "oracle": {
       "configured": false,
       "status": "unconfigured"

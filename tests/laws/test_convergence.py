@@ -282,22 +282,16 @@ def test_law_f_sync_reports_a_fork_iff_the_union_forks_a_chain(tmp_path):
     assert symbol == "main.py::foo"
 
 
-# --- LAW-R: resolutions travel (RED, U20/U21) --------------------------------------------------
+# --- LAW-R: resolutions travel (GREEN as of U20 -- the fork is durable shared state) -----------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="LAW-R: a fork aborts sync (sync.py) and leaves no committed record, so there is "
-    "nothing durable+shared for a resolution to travel on -- `.sgt/forks.json` (divergence-as-"
-    "state) and travelling resolutions land in U20/U21.",
-)
 def test_law_r_a_surfaced_fork_is_durable_shared_state(tmp_path):
     """LAW-R precondition -- 'a fork resolved on any replica is resolved on every replica' can only
-    hold if the fork is durable, committed, shared state a resolution attaches to. Today sync
-    surfaces the fork in an in-memory report and aborts the merge, committing nothing; a resolution
-    computed on one replica (via `sgt merge-op`) therefore has no shared object to record against
-    and cannot travel. This asserts the surfaced fork is recorded in committed `.sgt/forks.json`
-    and so fails until U20 makes divergence first-class shared state."""
+    hold if the fork is durable, committed, shared state a resolution attaches to. As of U20's
+    divergence-as-state, sync records the surfaced fork in committed `.sgt/forks.json` (travelling
+    with the repo) instead of aborting, so a resolution computed on one replica has a shared object
+    to record against. This asserts the fork is durably recorded; travelling resolutions (LAW-R's
+    second half) build on it in U21."""
     _remote, (a, b) = _replicas(tmp_path, _BASE, 2)
     _edit_and_commit(a, "main.py", _BASE.replace("return 1", "return 999"), "A: rework foo")
     _push(a)
@@ -305,7 +299,7 @@ def test_law_r_a_surfaced_fork_is_durable_shared_state(tmp_path):
 
     report = sync.sync(b, remote="origin", branch="main")
     assert report.forks  # the fork is seen...
-    assert (b / ".sgt" / "forks.json").is_file()  # ...but must be recorded to be resolvable-shared
+    assert (b / ".sgt" / "forks.json").is_file()  # ...and recorded, so it is resolvable-shared
 
 
 # --- LAW-G: green-to-green (RED, U23 -- out of scope for U16) -----------------------------------

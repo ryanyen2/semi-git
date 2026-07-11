@@ -233,6 +233,10 @@
     },
     "features": 1,
     "files": 4,
+    "forks": {
+      "open": 0,
+      "records": []
+    },
     "oracle": {
       "configured": false,
       "status": "unconfigured"
