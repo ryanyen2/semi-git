@@ -15,8 +15,10 @@ from pathlib import Path
 import pytest
 
 from sgt.core import lens, sync
-from sgt.core.store import Store
-from sgt.store.gitbind import GitBinding, PushRejected
+from sgt.core.op import make_op
+from sgt.core.store import Store, _serialize
+from sgt.core.sync import MinerVersionMismatch
+from sgt.store.gitbind import GitBinding
 
 from tests.core.test_sync import (
     _BASE,
@@ -86,3 +88,26 @@ def test_c3_hotfix_committed_on_top_of_an_sgt_branch_is_mined(tmp_path):
     assert report.merged
     assert "def hotfix" in (b / "main.py").read_text(encoding="utf-8")
     assert any("main.py::hotfix" in op.footprint for op in Store(b).all_ops())
+
+
+# --- C6: miner-version handshake (row 10) ------------------------------------------------------
+
+
+def test_c6_sync_refuses_to_union_across_miner_versions(tmp_path):
+    """Row 10 / §5.1.5: a teammate on a different sgt miner version mints different ids for the
+    same edit, so uniting the stores would alias incompatible semantics. Sync refuses the whole
+    union with an instruction naming which side is behind, before any merge is attempted."""
+    a, b = _two_clones(tmp_path, _BASE)  # B's op store arrives committed via clone -- tree is clean
+
+    # A publishes an op file stamped with an older miner version.
+    stale = make_op(
+        {"main.py::foo": ("v1", "v2")}, {"main.py::foo": b"x"}, kind="rework", miner_version="1"
+    )
+    (a / ".sgt" / "ops" / stale.id).write_bytes(_serialize(stale))
+    GitBinding(a).commit_all("A: op minted by an older miner")
+    _push(a)
+
+    with pytest.raises(MinerVersionMismatch) as exc:
+        sync.sync(b, remote="origin", branch="main")
+    assert "theirs" in str(exc.value)  # A (version 1) is the side behind ours (version 2)
+    assert GitBinding(b).is_clean()  # refused before any tree mutation

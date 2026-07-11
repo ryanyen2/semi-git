@@ -21,11 +21,20 @@ from sgt import state
 from sgt.core import lens
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
-from sgt.core.op import Op
+from sgt.core.op import MINER_VERSION, Op
 from sgt.core.store import Store, _deserialize
 from sgt.lens import tree
 from sgt.lens.pins import Pins, _pins_from_payload, load_pins
 from sgt.store.gitbind import GitBinding, parse_op_ids
+
+
+class MinerVersionMismatch(Exception):
+    """Theirs' ops were mined by a different `miner_version` than ours (design doc §2.1, §5.1.5,
+    C6). `miner_version` is inside `compute_id`, so the two sides mint *different* ids for the same
+    edit -- uniting the stores would alias incompatible op semantics. A version skew is a protocol
+    event, not silent corruption: sync refuses the whole union with instructions rather than
+    merging across it. Not a `GitError`/`ValueError` -- it is neither a git failure nor bad input,
+    so the CLI catches it distinctly."""
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,11 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
     # Recover theirs' ideal, and mine foreign commits when there's no sgt record to read (C3/C5).
     theirs_ideal_ids, mined_ops = _theirs_ideal(repo, gb, theirs_sha, ours_sha)
 
+    # Miner-version handshake (C6): a precondition, before any union is built. Theirs' op files
+    # (mined by whatever sgt version committed them) are the only ones that can carry a foreign
+    # version -- the mined ops are minted by this process -- but both are checked.
+    _check_miner_versions([*theirs_ops, *mined_ops])
+
     # Mirror `Store.add`'s provenance union on an id collision, in memory -- so `all_ops` matches
     # what `materialize` will persist, without any op file being written yet. Theirs' op files and
     # its mined foreign commits both fold in here; content-addressing dedups an op present in both.
@@ -91,6 +105,20 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
         theirs_ops=theirs_ops,
         mined_ops=mined_ops,
         ops_added=ops_added,
+    )
+
+
+def _check_miner_versions(ops: list[Op]) -> None:
+    """Refuse the sync if any of `ops` was mined by a version other than ours (C6). Reports every
+    foreign version seen and which side is behind, so the user knows exactly what to upgrade."""
+    foreign = sorted({op.miner_version for op in ops if op.miner_version != MINER_VERSION})
+    if not foreign:
+        return
+    behind = "theirs" if all(v < MINER_VERSION for v in foreign) else "ours"
+    raise MinerVersionMismatch(
+        f"refusing to union op stores across miner versions: theirs carries "
+        f"{', '.join(foreign)}, ours is {MINER_VERSION} -- the {behind} side is behind. "
+        f"Upgrade sgt on the {behind} side, re-run `sgt log` to re-mine, then sync again."
     )
 
 
