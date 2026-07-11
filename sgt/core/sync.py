@@ -36,10 +36,10 @@ Pipeline:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sgt import state
 from sgt.core import lens, order
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
@@ -65,17 +65,13 @@ class SyncReport:
 
 
 def _declared_at(gb: GitBinding, sha: str) -> frozenset[tuple[str, str]]:
-    raw = gb.blob_bytes(sha, ".sgt/declared.json")
-    if raw is None:
-        return frozenset()
-    return frozenset(tuple(pair) for pair in json.loads(raw.decode("utf-8")))
+    body = state.load_blob_json(gb, sha, "declared")
+    return frozenset() if body is None else frozenset(tuple(pair) for pair in body)
 
 
 def _pins_at(gb: GitBinding, sha: str) -> Pins:
-    raw = gb.blob_bytes(sha, ".sgt/pins/pins.json")
-    if raw is None:
-        return Pins()
-    return _pins_from_payload(json.loads(raw.decode("utf-8")))
+    body = state.load_blob_json(gb, sha, "pins")
+    return Pins() if body is None else _pins_from_payload(body)
 
 
 def sync(repo: str | Path, remote: str | None = None, branch: str | None = None) -> SyncReport:

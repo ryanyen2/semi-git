@@ -15,11 +15,11 @@ re-paying for anything that already got a real one.
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
 from pydantic import BaseModel
 
+from sgt import state
 from sgt.config import get_client
 
 MODEL = "gpt-5.4-mini"
@@ -49,18 +49,11 @@ def _fallback_label(members: list[str]) -> FeatureLabel:
     return FeatureLabel(label=label, rationale=f"Auto-derived from {dom_dir} (no LLM label available).")
 
 
-def _cache_path(repo: str | Path) -> Path:
-    return Path(repo) / ".sgt" / "local" / "label_cache.json"
-
-
 class Labeler:
     def __init__(self, repo: str | Path = ".") -> None:
         self._repo = repo
         self._client = None
-        self._cache_path = _cache_path(repo)
-        self.cache: dict = (
-            json.loads(self._cache_path.read_text(encoding="utf-8")) if self._cache_path.is_file() else {}
-        )
+        self.cache: dict = state.load_json(repo, "label_cache", default={})
         self.tokens_in = 0
         self.tokens_out = 0
         self.calls = 0
@@ -123,8 +116,7 @@ class Labeler:
         return self._resolve(key, prompt, [*child_labels, *files])
 
     def save(self) -> None:
-        self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self._cache_path.write_text(json.dumps(self.cache, indent=2), encoding="utf-8")
+        state.save_json(self._repo, "label_cache", self.cache)
 
     def cost_line(self) -> str:
         est = self.tokens_in / 1e6 * 0.25 + self.tokens_out / 1e6 * 2.0  # ~ballpark $/Mtok

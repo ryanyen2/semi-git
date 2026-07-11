@@ -28,6 +28,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from sgt import state
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
@@ -41,52 +42,26 @@ class DirtyWorkingTreeError(Exception):
     into the ideal) so the materialization reproduces it rather than reverting it."""
 
 
-_WITNESS_FILE = "witness.json"
-_IDEAL_FILE = "ideal.json"
 _DECLARED_FILE = "declared.json"
 
 
-def _witness_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _WITNESS_FILE
-
-
 def _load_witnesses(repo: Path) -> dict[str, str]:
-    path = _witness_path(repo)
-    if not path.is_file():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return state.load_json(repo, "witness", default={})
 
 
 def _save_witnesses(repo: Path, table: dict[str, str]) -> None:
-    path = _witness_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _ideal_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _IDEAL_FILE
+    state.save_json(repo, "witness", table)
 
 
 def _load_ideal_table(repo: Path) -> dict[str, list[str]]:
     """The persisted per-ref ideal: `{ref_key: [sorted op_ids]}`. This is the durable committed
     ideal (never the dirty overlay) that lets an explicit ideal edit (revert/pin, U8) survive a
     re-`get()` -- provenance alone can't represent "excluded though still in git history"."""
-    path = _ideal_path(repo)
-    if not path.is_file():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return state.load_json(repo, "ideal_table", default={})
 
 
 def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
-    path = _ideal_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def _declared_path(repo: Path) -> Path:
-    # Committed (not under .sgt/local/), U15: declared edges are a fact a teammate needs too,
-    # so they must travel with the repo rather than staying gitignored per-clone.
-    return repo / ".sgt" / _DECLARED_FILE
+    state.save_json(repo, "ideal_table", table)
 
 
 def _load_declared(repo: Path) -> frozenset[tuple[str, str]]:
@@ -98,8 +73,8 @@ def _load_declared(repo: Path) -> frozenset[tuple[str, str]]:
     One-shot migration: a repo whose declared edges still sit at the pre-U15 gitignored
     `.sgt/local/declared.json` gets them re-saved to the committed path and the old file removed,
     the first time anything reads declared edges."""
-    path = _declared_path(repo)
-    if not path.is_file():
+    body = state.load_json(repo, "declared")
+    if body is None:
         old_path = repo / ".sgt" / "local" / _DECLARED_FILE
         if not old_path.is_file():
             return frozenset()
@@ -107,14 +82,12 @@ def _load_declared(repo: Path) -> frozenset[tuple[str, str]]:
         _save_declared(repo, edges)
         old_path.unlink()
         return edges
-    return frozenset(tuple(pair) for pair in json.loads(path.read_text(encoding="utf-8")))
+    return frozenset(tuple(pair) for pair in body)
 
 
 def _save_declared(repo: Path, edges: frozenset[tuple[str, str]]) -> None:
-    path = _declared_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = sorted([a, b] for a, b in edges)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    state.save_json(repo, "declared", payload)
 
 
 def _ref_key(gb: GitBinding) -> str | None:

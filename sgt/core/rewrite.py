@@ -37,6 +37,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sgt import state
 from sgt.config import IdentityConstraints, load_identity_constraints, save_identity_constraints
 from sgt.core import lens, oracle, order
 from sgt.core.fold import code
@@ -48,8 +49,6 @@ from sgt.core.verbs import resolve_target
 from sgt.entities.extract import extract_file
 
 _PENDING = "…pending…"  # hollow after_version placeholder -- never a real content hash
-_DRAFTS_FILE = "drafts.json"
-_STAGED_FILE = "staged.json"
 
 
 class RewriteError(Exception):
@@ -82,19 +81,12 @@ def _refuse(verb: str, target: str, message: str) -> RewriteDraft:
 
 # -- local-state persistence (mirrors lens.py's small-JSON-table convention) ----------------------
 
-def _drafts_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _DRAFTS_FILE
-
-
 def _load_drafts(repo: Path) -> dict:
-    path = _drafts_path(repo)
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return state.load_json(repo, "drafts", default={})
 
 
 def _save_drafts(repo: Path, table: dict) -> None:
-    path = _drafts_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    state.save_json(repo, "drafts", table)
 
 
 def _register(repo: Path, draft: RewriteDraft) -> RewriteDraft:
@@ -120,27 +112,16 @@ def pending_drafts(repo: str | Path) -> dict:
     return _load_drafts(Path(repo))
 
 
-def _staged_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _STAGED_FILE
-
-
 def _save_staged(repo: Path, ideal: Ideal, verb: str, target: str) -> None:
-    path = _staged_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"op_ids": sorted(ideal.op_ids), "verb": verb, "target": target}, indent=2, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
-    )
+    state.save_json(repo, "staged", {"op_ids": sorted(ideal.op_ids), "verb": verb, "target": target})
 
 
 def _load_staged(repo: Path) -> dict | None:
-    path = _staged_path(repo)
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+    return state.load_json(repo, "staged")
 
 
 def _clear_staged(repo: Path) -> None:
-    path = _staged_path(repo)
+    path = state.path(repo, "staged")
     if path.is_file():
         path.unlink()
 
