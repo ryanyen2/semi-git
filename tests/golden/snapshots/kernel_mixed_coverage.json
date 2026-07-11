@@ -1,7 +1,7 @@
 {
   "blame_view": {
     "features": {
-      "F0": {
+      "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46": {
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000"
       }
     },
@@ -9,7 +9,7 @@
     "spans": [
       {
         "end_line": 2,
-        "feature_id": "F0",
+        "feature_id": "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
         "start_line": 1,
         "symbol": "pkg.py::compute"
@@ -22,14 +22,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "F0"
+        "feature_id": "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "pkg.py",
-        "id": "F0",
+        "id": "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
         "kind": "feature",
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
         "op_count": 8,
@@ -40,7 +40,7 @@
       }
     ],
     "roots": [
-      "F0"
+      "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46"
     ]
   },
   "oplog_view": {

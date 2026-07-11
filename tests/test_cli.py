@@ -262,10 +262,15 @@ def test_preview_split_reports_affected_features_and_writes_nothing(tmp_path, ca
     capsys.readouterr()
     tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
 
-    assert _in(tmp_path, ["preview", "split", "F0", "--json"]) == 0
+    # feature ids are now content-addressed (`f-<founding op>`, U21) rather than a hardcoded `F0`,
+    # so the target is derived from the built tree; a manual split still mints the next `F<n>`.
+    from sgt.lens.tree import load as _load_tree
+    feature_id = next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
+
+    assert _in(tmp_path, ["preview", "split", feature_id, "--json"]) == 0
     view = json.loads(capsys.readouterr().out)
     assert view["ok"] is True
-    assert view["affected_features"] == ["F0", "F1"]
+    assert view["affected_features"] == [feature_id, "F0"]
     assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # preview writes nothing
 
 

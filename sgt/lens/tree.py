@@ -25,6 +25,7 @@ without saying why.
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -274,7 +275,7 @@ def build(
     }
 
     old_leaves = _leaf_members(previous["nodes"]) if previous else {}
-    id_map, events = match_identities(old_leaves, _leaf_members(nodes))
+    id_map, events = match_identities(old_leaves, _leaf_members(nodes), founding=_founding_ops(op_leaf))
     _apply_id_map(result, id_map)
     _apply_assign_pins(result, pins)
     result["identity_events"] = events
@@ -293,9 +294,24 @@ def _leaf_members(nodes: dict) -> dict[str, frozenset[str]]:
     return {nid: frozenset(nd["members"]) for nid, nd in nodes.items() if not nd["children"]}
 
 
+def _founding_ops(op_leaf: dict[str, str]) -> dict[str, str]:
+    """Each leaf's *founding op*: the lexicographically-smallest (content-addressed) op id assigned
+    to it. The seed for a birth/split's content-addressed feature id (`_content_birth_id`) -- a pure
+    function of which ops land in the leaf, so replica-independent given a shared op store."""
+    founding: dict[str, str] = {}
+    for op_id, leaf in op_leaf.items():
+        cur = founding.get(leaf)
+        if cur is None or op_id < cur:
+            founding[leaf] = op_id
+    return founding
+
+
 def _fresh_id_gen(old_ids: set[str]):
     """Monotonic ``F<n>`` ids that never collide with an existing feature id -- start past the
-    largest ``F<n>`` already in `old_ids` so a birth never reuses a dead feature's id."""
+    largest ``F<n>`` already in `old_ids` so a birth never reuses a dead feature's id. Retained for
+    the manual `sgt split` verb (a local, pinned curation act, not an automatic birth) and for
+    direct `match_identities` callers that pass no `founding` map; automatic birth/split minting is
+    content-addressed (`_content_birth_id`) so it is replica-independent (U21/D6)."""
     used = [int(x[1:]) for x in old_ids if x.startswith("F") and x[1:].isdigit()]
     n = max(used) + 1 if used else 0
     while True:
@@ -303,20 +319,56 @@ def _fresh_id_gen(old_ids: set[str]):
         n += 1
 
 
+def _is_legacy_id(fid: str) -> bool:
+    """A pre-U21 sequential ``F<n>`` id (replica-local). Modern ids are ``f-<op-id>`` (birth-minted,
+    content-addressed) -- those are carried by Greene continuation for stability; a legacy id is
+    re-minted to its content-addressed form on contact so two replicas' divergent local numbering
+    converges (LAW-U)."""
+    return fid.startswith("F") and fid[1:].isdigit()
+
+
+def _content_birth_id(members: frozenset[str], founding: str | None, used: set[str]) -> str:
+    """A content-derived, replica-independent feature id for a birth/split/legacy-remint leaf
+    (U21/D6): ``f-<min founding op id>`` -- the founding op is the lexicographically-smallest
+    (content-addressed) op id assigned to the leaf, so two replicas that cluster the same members
+    over the same (LAW-0 byte-identical) op store mint the identical id with no coordination. A leaf
+    with no plurality-assigned op (rare) derives from its member set instead, still content-
+    addressed. On the pathological collision with an already-used id (a modern id carried by a
+    concurrent continuation of a since-reassigned op) it falls back to the member hash, so the tree
+    never aliases two distinct leaves under one id."""
+    if founding is not None:
+        candidate = f"f-{founding}"
+        if candidate not in used:
+            return candidate
+    digest = hashlib.sha256("\x00".join(sorted(members)).encode("utf-8")).hexdigest()
+    candidate = f"f-m{digest}"
+    n = 0
+    while candidate in used:
+        n += 1
+        candidate = f"f-m{digest}-{n}"
+    return candidate
+
+
 def match_identities(
     old: dict[str, frozenset[str]], new: dict[str, frozenset[str]], theta: float = THETA,
+    founding: dict[str, str] | None = None,
 ) -> tuple[dict[str, str], list[dict]]:
     """Greene member-overlap matching between the previous run's leaves and this run's. `old`/`new`
     map a leaf id to its member set; `old` uses stable feature ids, `new` uses build-local ids.
+    `founding` (optional) maps each *new* build-leaf id to its founding op id (the min op assigned
+    to it) -- when given, births/splits and legacy-id continuations mint content-addressed
+    ``f-<founding>`` ids (replica-independent, U21/D6); when absent, minting falls back to legacy
+    sequential ``F<n>`` (direct callers and the pre-U21 path).
 
-    Returns ``(id_map, events)``: `id_map` maps each *new* build-leaf id to the stable feature id
-    it should adopt (continuation/merge keep the matched feature id; birth/split mint a fresh one);
-    `events` is a sorted list of ``{"event", "feature_id", ...}`` facts naming what happened.
+    Returns ``(id_map, events)``: `id_map` maps each *new* build-leaf id to the feature id it should
+    adopt; `events` is a sorted list of ``{"event", "feature_id", ...}`` facts naming what happened.
 
     Matching is mutual-best over Jaccard >= `theta` (tie-break: higher overlap, then smaller id):
     a new leaf whose best old is mutual is a **continuation** (>1 old pointing at it => **merge**);
     a new leaf matching an old that prefers a different new is a **split**; an unmatched new is a
-    **birth**; an old that nothing continues/merges is a **death**."""
+    **birth**; an old that nothing continues/merges is a **death**. A continuation/merge of a
+    *modern* id carries that id (stability -- a curated feature keeps its id as it evolves); of a
+    *legacy* ``F<n>`` id it re-mints content-addressed (convergence), reported as the same event."""
     pairs = [
         (oid, nid, _jaccard(om, nm))
         for oid, om in old.items()
@@ -330,33 +382,46 @@ def match_identities(
     old_best = {oid: _best([(nid, j) for (o, nid, j) in pairs if o == oid]) for oid in old}
     new_best = {nid: _best([(oid, j) for (oid, n, j) in pairs if n == nid]) for nid in new}
 
-    gen = _fresh_id_gen(set(old))
+    legacy_gen = _fresh_id_gen(set(old))
+    used: set[str] = set(old)  # never mint an id that collides with a carried old id
+
+    def _mint(nid: str) -> str:
+        if founding is None:
+            fid = next(legacy_gen)
+        else:
+            fid = _content_birth_id(new[nid], founding.get(nid), used)
+        used.add(fid)
+        return fid
+
     id_map: dict[str, str] = {}
     events: list[dict] = []
+    continued_old: set[str] = set()
     for nid in sorted(new):
         olds_here = sorted(o for o, bn in old_best.items() if bn == nid)
         nb = new_best.get(nid)
-        if nb is not None and nb in olds_here:  # mutual best -> continuation (adopt old feature id)
-            id_map[nid] = nb
-            if len(olds_here) > 1:
-                events.append({"event": "merge", "feature_id": nb, "merged_from": olds_here})
+        if nb is not None and nb in olds_here:  # mutual best -> continuation / merge
+            if founding is not None and _is_legacy_id(nb):
+                fid = _mint(nid)  # upgrade a replica-local legacy id to its content id (converges)
             else:
-                events.append({"event": "continuation", "feature_id": nb})
+                fid = nb  # carry a modern id (or legacy behavior when founding is absent)
+                used.add(fid)
+            id_map[nid] = fid
+            continued_old.update(olds_here)
+            if len(olds_here) > 1:
+                events.append({"event": "merge", "feature_id": fid, "merged_from": olds_here})
+            else:
+                events.append({"event": "continuation", "feature_id": fid})
         elif nb is not None:  # matched an old that prefers another new -> split off it
-            fid = next(gen)
+            fid = _mint(nid)
             id_map[nid] = fid
             events.append({"event": "split", "feature_id": fid, "parent": nb})
         else:
-            fid = next(gen)
+            fid = _mint(nid)
             id_map[nid] = fid
             events.append({"event": "birth", "feature_id": fid})
 
-    consumed = set(id_map.values())
-    for e in events:
-        if e["event"] == "merge":
-            consumed.update(e["merged_from"])
     for oid in sorted(old):
-        if oid not in consumed:
+        if oid not in continued_old:
             events.append({"event": "death", "feature_id": oid})
 
     events.sort(key=lambda e: (e["event"], e["feature_id"]))

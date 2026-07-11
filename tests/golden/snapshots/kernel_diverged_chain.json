@@ -1,7 +1,7 @@
 {
   "blame_view": {
     "features": {
-      "F0": {
+      "f-13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c": {
         "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify"
       }
     },
@@ -9,7 +9,7 @@
     "spans": [
       {
         "end_line": 2,
-        "feature_id": "F0",
+        "feature_id": "f-13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c",
         "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
         "start_line": 1,
         "symbol": "slugify.py::slugify"
@@ -37,14 +37,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "F0"
+        "feature_id": "f-13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "slugify.py",
-        "id": "F0",
+        "id": "f-13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c",
         "kind": "feature",
         "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
         "op_count": 5,
@@ -55,7 +55,7 @@
       }
     ],
     "roots": [
-      "F0"
+      "f-13cc252e4d484de2c10e9b26de1f7d009ee37679e4ede10c334bebed38f6225c"
     ]
   },
   "oplog_view": {
