@@ -116,6 +116,48 @@ def test_concurrent_adds_all_land_without_corruption(tmp_path):
         assert stored[op.id] == op
 
 
+def _same_op_provenance_worker(repo: str, tag: str, n: int) -> None:
+    """Add the same content-addressed op `n` times, each add carrying a distinct provenance sha --
+    the read-modify-write union `add()` runs under `.sgt/lock`. Module-level so `multiprocessing`
+    (spawn on macOS) can pickle it."""
+    store = Store(repo)
+    for i in range(n):
+        op = make_op(
+            {"shared.py::sym": (None, "v0")}, {"shared.py::sym": b"same"},
+            provenance=(f"{tag}{i:04d}",),
+        )
+        store.add(op)
+
+
+def test_concurrent_same_op_adds_across_processes_lose_no_provenance(tmp_path):
+    """U23 store-lock audit, encoded as a regression guard: two *separate OS processes* each add the
+    same op id many times, each add with a distinct witness sha. The per-`add()` exclusive flock
+    protects the provenance-union read-modify-write, so every witness survives -- no lost update.
+    This is the finding that says `land` needs a branch-record CAS (not a wider store lock): the
+    single-writer lock is already correct for op appends."""
+    import multiprocessing as mp
+
+    store = Store(tmp_path)
+    store.init()
+    n = 150
+    procs = [
+        mp.Process(target=_same_op_provenance_worker, args=(str(tmp_path), tag, n))
+        for tag in ("P1", "P2")
+    ]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+        assert p.exitcode == 0
+
+    ops = store.all_ops()
+    assert len(ops) == 1  # one content-addressed file, not many
+    got = set(ops[0].provenance)
+    expected = {f"{tag}{i:04d}" for tag in ("P1", "P2") for i in range(n)}
+    assert got == expected  # all 2n witnesses present -- none dropped by a lost update
+    assert fsck(tmp_path).ok
+
+
 def test_hollow_op_roundtrips_with_empty_images(tmp_path):
     store = Store(tmp_path)
     store.init()
