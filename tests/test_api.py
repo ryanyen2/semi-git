@@ -59,14 +59,15 @@ def test_ideal_diff_view_lists_symmetric_difference_grouped_by_symbol(tmp_path):
 
 def test_oplog_view_is_sorted_and_carries_op_fields(tmp_path):
     """The op DAG is emitted in a deterministic (id-sorted) order with each op's kind, footprint,
-    provenance, and intent -- no set-iteration leakage."""
+    provenance, structured attribution (U22/D7), and intent -- no set-iteration leakage."""
     v = oplog_view(_mined(tmp_path, "mixed_coverage"))
     assert v["count"] == len(v["ops"]) > 0
     assert [op["id"] for op in v["ops"]] == sorted(op["id"] for op in v["ops"])
     op = v["ops"][0]
-    assert set(op) == {"id", "kind", "footprint", "provenance", "intent"}
+    assert set(op) == {"id", "kind", "footprint", "provenance", "attribution", "intent"}
     assert op["footprint"] and all({"symbol", "before", "after"} == set(f) for f in op["footprint"])
     assert op["provenance"]  # every mined op carries at least its witnessing commit
+    assert op["attribution"] == []  # no session/agent/plan stamped by plain mining
 
 
 def test_kernel_views_are_pure(tmp_path):

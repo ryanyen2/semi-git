@@ -9,7 +9,8 @@ sgt.api` never pulls in the kernel's tree-sitter dependency just to define these
 
 Shapes (stable; additive changes only):
 
-* ``oplog_view``        — the mined operation DAG: every op's id, kind, footprint, provenance, intent.
+* ``oplog_view``        — the mined operation DAG: every op's id, kind, footprint, provenance,
+  structured attribution (D7: session/agent/plan per witnessing sha), intent.
 * ``state_view``        — the current ref's ideal: frontier, coverage, entity-granularity fraction,
   and the async oracle's verdict (U9).
 * ``ideal_diff_view``   — the semantic diff between two refs' ideals, grouped by symbol.
@@ -25,7 +26,8 @@ Shapes (stable; additive changes only):
 * ``feature_verb_preview_view`` — a side-effect-free preview of a feature verb (merge/split/move/
   rename/revert), with a uniform ``affected_features`` ripple list for hover-preview UIs.
 * ``blame_view``        — per-file symbol spans (`sym -> max-op-in-I -> feature`) for the editor
-  gutter: each entity's line range, its feature id, and that feature's label.
+  gutter: each entity's line range, its feature id, that feature's label, and the plan sessions
+  (D7) that touched its tip op.
 * ``status_view``       — a kernel-backed summary: file/symbol/feature counts, coverage fraction,
   the oracle's overall status, and working-tree drift from `code(current_ideal)`.
 * ``plan_view``         — the U14 plan review surface: every active plan session's steps (with
@@ -60,12 +62,23 @@ def oplog_view(repo) -> dict:
                     for sym, (before, after) in sorted(op.footprint.items())
                 ],
                 "provenance": sorted(op.provenance),
+                "attribution": _attribution_entries(op),
                 "intent": op.intent,
             }
             for op in ops
         ],
         "count": len(ops),
     }
+
+
+def _attribution_entries(op) -> list[dict]:
+    """An op's structured provenance (D7) as a stable, sorted-by-sha list of `{sha, session?,
+    agent?, plan?}` dicts, omitting None fields -- additive to `provenance` (the bare sha list),
+    never replacing it. `[]` for an op with no attribution."""
+    return [
+        {"sha": a.sha, **{f: getattr(a, f) for f in ("session", "agent", "plan") if getattr(a, f) is not None}}
+        for a in sorted(op.attribution, key=lambda a: a.sha)
+    ]
 
 
 def state_view(repo) -> dict:
@@ -488,7 +501,9 @@ def blame_view(repo, file: str) -> dict:
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
     nodes = tree_result["nodes"] if tree_result else {}
-    frontier = current_ideal(repo).frontier(Store(repo).all_ops())
+    ops = Store(repo).all_ops()
+    by_id = {op.id: op for op in ops}
+    frontier = current_ideal(repo).frontier(ops)
 
     spans = []
     features: dict[str, dict] = {}
@@ -498,9 +513,11 @@ def blame_view(repo, file: str) -> dict:
         if feature_id is None:
             continue
         label = nodes.get(feature_id, {}).get("label", feature_id)
+        tip_op = by_id.get(tip)
+        sessions = sorted({a.session for a in tip_op.attribution if a.session is not None}) if tip_op else []
         spans.append({
             "symbol": sym, "start_line": start_line, "end_line": end_line,
-            "feature_id": feature_id, "label": label,
+            "feature_id": feature_id, "label": label, "sessions": sessions,
         })
         features[feature_id] = {"label": label}
     return {"file": file, "spans": spans, "features": features}
