@@ -33,6 +33,14 @@ class Pins:
     must_link: frozenset[tuple[str, str]] = frozenset()  # sorted pairs, order-independent
     cannot_link: frozenset[tuple[str, str]] = frozenset()
     labels: dict[str, str] = field(default_factory=dict)  # feature id -> user-chosen label
+    # member id -> the commit SHA the assignment was recorded against -- the "introducing witness"
+    # `reconcile.union_pins` uses for its witness-topo tie-break (U21/D6): a same-member assign
+    # collision is decided by git DAG ancestry (causally-later curation wins), hash tie-break when
+    # concurrent. An additive key (D3 old-reader policy): a v0/v1 reader ignores it and still reads
+    # `assign` as a flat member->feature map, so it never lands at a new path or bumps the envelope.
+    # A member absent here has no ancestry information -- it falls straight through to the hash
+    # tie-break, which is exactly how a pre-U21 pin (no witness) reconciles.
+    assign_witness: dict[str, str] = field(default_factory=dict)
 
 
 def _pins_from_payload(payload: dict) -> Pins:
@@ -41,6 +49,7 @@ def _pins_from_payload(payload: dict) -> Pins:
         must_link=frozenset(tuple(sorted(pair)) for pair in payload.get("must_link", [])),
         cannot_link=frozenset(tuple(sorted(pair)) for pair in payload.get("cannot_link", [])),
         labels=dict(payload.get("labels", {})),
+        assign_witness=dict(payload.get("assign_witness", {})),
     )
 
 
@@ -63,6 +72,11 @@ def save_pins(repo_path: str | Path, pins: Pins) -> None:
         "cannot_link": sorted([list(pair) for pair in pins.cannot_link]),
         "labels": dict(sorted(pins.labels.items())),
     }
+    # Written only when populated so a repo with no witness-anchored pins keeps the exact pre-U21
+    # byte format (an empty `assign_witness` and its absence are semantically identical -- both
+    # tie-break by hash), leaving pre-existing goldens/round-trips untouched.
+    if pins.assign_witness:
+        payload["assign_witness"] = dict(sorted(pins.assign_witness.items()))
     state.save_json(repo_path, "pins", payload)
 
 

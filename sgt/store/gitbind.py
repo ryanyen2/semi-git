@@ -199,6 +199,16 @@ class GitBinding:
         out = proc.stdout.strip()
         return out if proc.returncode == 0 and out else None
 
+    def is_ancestor(self, a: str, b: str) -> bool:
+        """True iff commit `a` is an ancestor of `b` (or `a == b`) -- `git merge-base
+        --is-ancestor`, exit 0 for yes, 1 for no. The causal-ordering primitive U21's pin
+        witness-topo tie-break asks: a pin recorded at a witness that is an ancestor of another's
+        witness is causally earlier, so the descendant's assignment wins. A witness that doesn't
+        resolve (missing/foreign) makes this False, falling the tie-break through to its hash path."""
+        if not a or not b:
+            return False
+        return self._git("merge-base", "--is-ancestor", a, b, check=False).returncode == 0
+
     def commit_message(self, sha: str) -> str:
         return self._git("log", "-1", "--format=%B", sha).stdout
 
