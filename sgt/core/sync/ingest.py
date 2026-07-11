@@ -23,7 +23,7 @@ from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
 from sgt.core.op import MINER_VERSION, Op
 from sgt.core.store import Store, _deserialize
-from sgt.lens import tree
+from sgt.lens import reconcile, tree
 from sgt.lens.pins import Pins, _pins_from_payload, load_pins
 from sgt.store.gitbind import GitBinding, parse_op_ids
 
@@ -41,8 +41,10 @@ class MinerVersionMismatch(Exception):
 class Ingested:
     ours_pins: Pins
     theirs_pins: Pins
-    ours_declared: frozenset[tuple[str, str]]
-    theirs_declared: frozenset[tuple[str, str]]
+    ours_declared_orset: lens.DeclaredORSet
+    theirs_declared_orset: lens.DeclaredORSet
+    ours_aliases: frozenset[tuple[str, str]]
+    theirs_aliases: frozenset[tuple[str, str]]
     ours_tree: dict | None
     ours_ideal: Ideal
     theirs_ideal_ids: frozenset[str]
@@ -50,11 +52,6 @@ class Ingested:
     theirs_ops: list[Op]  # theirs' op files as parsed, for `materialize` to persist for real
     mined_ops: list[Op]  # theirs' foreign commits mined on contact (C3), for `materialize` too
     ops_added: int
-
-
-def _declared_at(gb: GitBinding, sha: str) -> frozenset[tuple[str, str]]:
-    body = state.load_blob_json(gb, sha, "declared")
-    return frozenset() if body is None else frozenset(tuple(pair) for pair in body)
 
 
 def _pins_at(gb: GitBinding, sha: str) -> Pins:
@@ -96,8 +93,10 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
     return Ingested(
         ours_pins=load_pins(repo),
         theirs_pins=_pins_at(gb, theirs_sha),
-        ours_declared=lens._load_declared(repo),
-        theirs_declared=_declared_at(gb, theirs_sha),
+        ours_declared_orset=lens.load_declared_orset(repo),
+        theirs_declared_orset=lens.declared_orset_at(gb, theirs_sha),
+        ours_aliases=reconcile.load_aliases(repo),
+        theirs_aliases=reconcile.aliases_at(gb, theirs_sha),
         ours_tree=tree.load(repo),
         ours_ideal=lens.current_ideal(repo),
         theirs_ideal_ids=theirs_ideal_ids,

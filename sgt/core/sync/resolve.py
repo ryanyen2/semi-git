@@ -20,10 +20,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from sgt.core import order
+from sgt.core import lens, order
 from sgt.core.ideal import Ideal
 from sgt.lens import reconcile
 from sgt.lens.pins import Contradiction, Pins
+from sgt.store.gitbind import GitBinding
 
 from .ingest import Ingested
 
@@ -32,16 +33,23 @@ from .ingest import Ingested
 class Resolution:
     forks: tuple[tuple[str, str, str], ...]
     merged_ideal: Ideal | None = None
-    declared: frozenset[tuple[str, str]] | None = None
+    declared_orset: lens.DeclaredORSet | None = None
     declared_cycles: tuple[tuple[str, str], ...] = ()
     unioned_pins: Pins | None = None
     pin_contradictions: tuple[Contradiction, ...] = ()
+    aliases: frozenset[tuple[str, str]] = frozenset()
     tree_result: dict | None = None
 
 
 def resolve(repo: Path, ing: Ingested) -> Resolution:
     union_ids = ing.ours_ideal.op_ids | ing.theirs_ideal_ids
-    declared = ing.ours_declared | ing.theirs_declared
+
+    # Declared edges union as an OR-Set by tag (U21/D6): the live edge set is every edge value with
+    # a surviving (non-tombstoned) tag, so a retraction on one side travels while a concurrent add
+    # on the other survives. `order` still consumes the plain live edge set (`fold-time` cycle
+    # exclusion is unchanged -- it runs over the live edges).
+    declared_orset = ing.ours_declared_orset.union(ing.theirs_declared_orset)
+    declared = declared_orset.live()
 
     fork_triples = order.forks(ing.all_ops, union_ids)
 
@@ -58,7 +66,15 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     usable_declared = declared - set(declared_cycles)
     merged_ideal = Ideal.from_ops(fork_free_ids, ing.all_ops, usable_declared)
 
-    unioned_pins, pin_contradictions = reconcile.union_pins(ing.ours_pins, ing.theirs_pins)
+    # Witness-topo tie-break (D6): the git DAG supplies the causal order over pin witnesses, so a
+    # deliberate re-pin (its witness a descendant of the stale one) wins regardless of sync order.
+    unioned_pins, pin_contradictions = reconcile.union_pins(
+        ing.ours_pins, ing.theirs_pins, is_ancestor=GitBinding(repo).is_ancestor
+    )
+    # Feature-id aliases union as a G-Set with the alias-merge rule (D6): a stale old-id reference
+    # from either side still resolves, and a genuine collision (two clones minting different new ids
+    # for one old id) picks a single deterministic winner on every replica.
+    aliases = reconcile.union_aliases(ing.ours_aliases, ing.theirs_aliases)
     tree_result = reconcile.reconcile_tree(
         repo, ing.all_ops, merged_ideal, unioned_pins, ing.ours_tree
     )
@@ -66,9 +82,10 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     return Resolution(
         forks=tuple(fork_triples),
         merged_ideal=merged_ideal,
-        declared=declared,
+        declared_orset=declared_orset,
         declared_cycles=tuple(declared_cycles),
         unioned_pins=unioned_pins,
         pin_contradictions=tuple(pin_contradictions),
+        aliases=aliases,
         tree_result=tree_result,
     )

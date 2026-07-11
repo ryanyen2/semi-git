@@ -34,13 +34,14 @@ import argparse
 import subprocess
 import sys
 
-from . import feature, ideal_edit, init, inspect, loop, oracle, rewrite, sync
+from . import feature, ideal_edit, init, inspect, loop, migrate, oracle, rewrite, sync
 
 _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
+    "after", "migrate",
 }
 
 # Tree-mutating git subcommands warrant an advisory when reached via `sgt git` -- they change the
@@ -50,7 +51,7 @@ _GIT_TREE_MUTATING = frozenset({
     "stash", "cherry-pick", "am", "apply",
 })
 
-_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite)
+_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate)
 
 
 class _CLIExit(Exception):

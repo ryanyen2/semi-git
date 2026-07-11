@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from sgt import state
@@ -65,15 +67,42 @@ def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
     state.save_json(repo, "ideal_table", table)
 
 
-def _load_declared(repo: Path) -> frozenset[tuple[str, str]]:
-    """The persisted declared order edges (`sgt after a b` -> `(a, b)` meaning `a <= b`, U8's
-    escape hatch for ordering the analyzer can't infer). Repo-global, not per-ref: an edge is a
-    fact about two ops' content, independent of which ref is checked out. `order`'s validity and
-    up/down-set functions take these as their `declared` argument.
+Edge = tuple[str, str]  # (a, b) meaning a <= b
 
-    One-shot migration: a repo whose declared edges still sit at the pre-U15 gitignored
-    `.sgt/local/declared.json` gets them re-saved to the committed path and the old file removed,
-    the first time anything reads declared edges."""
+
+@dataclass(frozen=True)
+class DeclaredORSet:
+    """The declared order edges as an OR-Set (U21/D6): each `add` carries a globally-unique tag, a
+    `remove` tombstones the tags it locally observes, and the *live* edge set is every edge value
+    with at least one non-tombstoned tag. This is what makes a retraction durable, travelling state
+    -- a concurrent add elsewhere (a tag this clone never saw) survives the retraction, and a
+    resolved retraction stays resolved after sync, unlike the pre-U21 flat G-Set which could only
+    ever grow. Two clones' OR-Sets merge by tag (`union`), never by bare edge value."""
+
+    adds: frozenset[tuple[str, str, str]] = frozenset()  # (a, b, tag)
+    tombstones: frozenset[str] = frozenset()  # tombstoned tags
+
+    def live(self) -> frozenset[Edge]:
+        """Every edge value that still has an un-tombstoned tag -- what `order` actually consumes."""
+        dead = self.tombstones
+        return frozenset((a, b) for (a, b, tag) in self.adds if tag not in dead)
+
+    def union(self, other: DeclaredORSet) -> DeclaredORSet:
+        return DeclaredORSet(self.adds | other.adds, self.tombstones | other.tombstones)
+
+
+def _legacy_tag(a: str, b: str) -> str:
+    """A deterministic tag for a pre-U21 flat G-Set edge lifted into the OR-Set. Deterministic (not
+    a fresh UUID) so the lift is idempotent and two clones lifting the *same* legacy edge produce
+    the same tag -- their union dedups it instead of double-counting, and a retraction of it
+    propagates (as a shared legacy edge should)."""
+    return f"legacy:{a}:{b}"
+
+
+def _load_declared_flat(repo: Path) -> frozenset[Edge]:
+    """The legacy flat G-Set at `.sgt/declared.json` (pre-U21), with the one-shot pre-U15
+    local-path migration. Read only to *lift* into the OR-Set when no OR-Set exists yet, and to
+    dual-write for old readers (D3); the OR-Set at `.sgt/declared_edges.json` is authoritative."""
     body = state.load_json(repo, "declared")
     if body is None:
         old_path = repo / ".sgt" / "local" / _DECLARED_FILE
@@ -86,9 +115,75 @@ def _load_declared(repo: Path) -> frozenset[tuple[str, str]]:
     return frozenset(tuple(pair) for pair in body)
 
 
-def _save_declared(repo: Path, edges: frozenset[tuple[str, str]]) -> None:
-    payload = sorted([a, b] for a, b in edges)
-    state.save_json(repo, "declared", payload)
+def _save_declared(repo: Path, edges: frozenset[Edge]) -> None:
+    """Write the flat G-Set at the legacy path (v0 shape). Retained as the old-reader dual-write
+    target of `save_declared_orset` (D3) and for the state round-trip tests."""
+    state.save_json(repo, "declared", sorted([a, b] for a, b in edges))
+
+
+def _orset_from_body(body: dict | None, repo_or_flat) -> DeclaredORSet:
+    if body is not None:
+        return DeclaredORSet(
+            adds=frozenset((a, b, tag) for a, b, tag in body.get("adds", [])),
+            tombstones=frozenset(body.get("tombstones", [])),
+        )
+    # No OR-Set present: lift the legacy flat G-Set (add-only, deterministically tagged).
+    flat = repo_or_flat if isinstance(repo_or_flat, frozenset) else _load_declared_flat(repo_or_flat)
+    return DeclaredORSet(adds=frozenset((a, b, _legacy_tag(a, b)) for a, b in flat))
+
+
+def load_declared_orset(repo: Path) -> DeclaredORSet:
+    """The declared-edge OR-Set from the working tree, lifting the legacy flat G-Set when the OR-Set
+    file doesn't exist yet (an un-migrated repo)."""
+    return _orset_from_body(state.load_json(repo, "declared_orset"), Path(repo))
+
+
+def declared_orset_at(gb: GitBinding, sha: str) -> DeclaredORSet:
+    """A teammate's declared-edge OR-Set as committed at `sha` -- the historical-blob read `sync`
+    unions by tag. Falls back to their legacy flat `declared.json` blob (an older sgt that never
+    wrote an OR-Set), lifted the same way, so a mixed-version team still reconciles edges."""
+    body = state.load_blob_json(gb, sha, "declared_orset")
+    if body is not None:
+        return _orset_from_body(body, frozenset())
+    legacy = state.load_blob_json(gb, sha, "declared")
+    flat = frozenset() if legacy is None else frozenset(tuple(pair) for pair in legacy)
+    return _orset_from_body(None, flat)
+
+
+def save_declared_orset(repo: Path, orset: DeclaredORSet) -> None:
+    """Persist the OR-Set, and dual-write its live edges to the legacy flat path in v0 shape so an
+    older sgt reader (D3 old-reader policy) still sees the current declared edges."""
+    state.save_json(repo, "declared_orset", {
+        "adds": sorted([a, b, tag] for a, b, tag in orset.adds),
+        "tombstones": sorted(orset.tombstones),
+    })
+    _save_declared(repo, orset.live())
+
+
+def declare_after(repo: Path, a: str, b: str) -> None:
+    """`sgt after a b`: add the edge `a <= b` with a fresh, globally-unique tag (OR-Set add)."""
+    orset = load_declared_orset(repo)
+    save_declared_orset(repo, orset.union(DeclaredORSet(adds=frozenset({(a, b, uuid.uuid4().hex)}))))
+
+
+def retract_after(repo: Path, a: str, b: str) -> frozenset[str]:
+    """`sgt after --retract a b`: tombstone every tag *currently observed locally* for edge
+    `(a, b)` (OR-Set remove). A concurrent add elsewhere, with a tag this clone hasn't seen, is not
+    tombstoned and survives the sync -- the whole point of OR-Set over a blanket delete. Returns the
+    set of tags tombstoned (empty if the edge wasn't declared here)."""
+    orset = load_declared_orset(repo)
+    observed = frozenset(tag for (x, y, tag) in orset.adds if (x, y) == (a, b))
+    save_declared_orset(repo, DeclaredORSet(adds=orset.adds, tombstones=orset.tombstones | observed))
+    return observed
+
+
+def _load_declared(repo: Path) -> frozenset[Edge]:
+    """The *live* declared order edges (`sgt after a b` -> `(a, b)` meaning `a <= b`, U8's escape
+    hatch for ordering the analyzer can't infer) -- the OR-Set resolved down to the plain edge set
+    every consumer (`order`'s validity + up/down-sets, `sync`'s cycle detection) expects. Repo-
+    global, not per-ref: an edge is a fact about two ops' content, independent of the checked-out
+    ref."""
+    return load_declared_orset(repo).live()
 
 
 def _ref_key(gb: GitBinding) -> str | None:

@@ -36,7 +36,8 @@ def test_resolve_advances_the_fork_free_part_and_surfaces_the_fork(tmp_path):
     all_ops = [ours, theirs]
     ing = Ingested(
         ours_pins=Pins(), theirs_pins=Pins(),
-        ours_declared=frozenset(), theirs_declared=frozenset(),
+        ours_declared_orset=lens.DeclaredORSet(), theirs_declared_orset=lens.DeclaredORSet(),
+        ours_aliases=frozenset(), theirs_aliases=frozenset(),
         ours_tree=None,
         ours_ideal=Ideal.from_ops({ours.id}, all_ops),
         theirs_ideal_ids=frozenset({theirs.id}),
@@ -79,7 +80,7 @@ def test_ingest_unions_the_op_store_in_memory_without_touching_disk(tmp_path):
 
 def test_resolve_reports_a_declared_cycle_but_still_produces_an_ideal(tmp_path):
     """`resolve` drops the cyclic declared edges from the ideal it folds, reports them, and keeps
-    the full union (cycles included) in `declared` so the retraction target still travels."""
+    the full union (cycles included) in the declared OR-Set so the retraction target still travels."""
     a, b = _two_clones(tmp_path, _BASE)
     _edit_and_commit(a, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "A: bump bar")
     _push(a)
@@ -91,8 +92,8 @@ def test_resolve_reports_a_declared_cycle_but_still_produces_an_ideal(tmp_path):
     bar_id = next(op.id for op in ing.all_ops if "main.py::bar" in op.footprint)
     ing = replace(
         ing,
-        ours_declared=frozenset({(foo_id, bar_id)}),
-        theirs_declared=frozenset({(bar_id, foo_id)}),  # unioned -> a cycle
+        ours_declared_orset=lens.DeclaredORSet(adds=frozenset({(foo_id, bar_id, "t1")})),
+        theirs_declared_orset=lens.DeclaredORSet(adds=frozenset({(bar_id, foo_id, "t2")})),  # -> cycle
     )
 
     res = resolve(Path(b), ing)
@@ -100,7 +101,7 @@ def test_resolve_reports_a_declared_cycle_but_still_produces_an_ideal(tmp_path):
     assert not res.forks
     assert res.merged_ideal is not None
     assert len(res.declared_cycles) > 0
-    assert res.declared == frozenset({(foo_id, bar_id), (bar_id, foo_id)})
+    assert res.declared_orset.live() == frozenset({(foo_id, bar_id), (bar_id, foo_id)})
 
 
 def test_sync_materializes_exactly_the_ideal_algebra(tmp_path):
