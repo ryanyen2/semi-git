@@ -205,3 +205,56 @@ def load_blob_claim(gb, sha: str, name: str, default=None):
     if raw is None:
         return default
     return _unwrap(json.loads(raw.decode("utf-8")))
+
+
+# -- committed proposals directory (C10) ---------------------------------------------------------
+# A proposal (`sgt propose create`) is a committed, immutable review object -- base frontier + Δ
+# op-set + feature delta + claim link + provenance -- living one file per id under `.sgt/proposals/`,
+# content-addressed by base+Δ. Like claims (D8), the file *set* is the artifact, so sync's union is a
+# trivial file-level G-Set (`materialize._union_proposals`): copy any file you don't have, no field
+# merge. Each file reuses the same schema envelope and byte format as every other committed
+# single-file artifact, so a teammate's proposal arrives verbatim on `sgt sync`.
+_PROPOSAL_ART = _Artifact(("proposals",), committed=True)
+
+
+def proposals_dir(repo: str | Path) -> Path:
+    return subdir(repo, "proposals")
+
+
+def proposal_rel(name: str) -> str:
+    """The repo-relative path (`.sgt/proposals/<name>`) of one proposal file -- a blob read's key."""
+    return "/".join((SGT_DIR, "proposals", name))
+
+
+def save_proposal(repo: str | Path, name: str, body) -> None:
+    """Write proposal file `name` (a full basename like `<proposal_id>.json`) to the working tree.
+    Proposals are immutable once created; a re-create with the same base+Δ overwrites the identical
+    content-addressed key, a no-op on content."""
+    d = proposals_dir(repo)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(_encode(body, _PROPOSAL_ART), encoding="utf-8")
+
+
+def load_proposal(repo: str | Path, name: str, default=None):
+    """The logical body of proposal file `name` from the working tree, or `default` if absent."""
+    p = proposals_dir(repo) / name
+    if not p.is_file():
+        return default
+    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+
+
+def list_proposal_files(repo: str | Path) -> list[str]:
+    """Sorted basenames of every proposal file present in the working tree (empty if none)."""
+    d = proposals_dir(repo)
+    if not d.is_dir():
+        return []
+    return sorted(p.name for p in d.iterdir() if p.is_file())
+
+
+def load_blob_proposal(gb, sha: str, name: str, default=None):
+    """The logical body of proposal file `name` as committed at `sha` (the historical-blob read
+    path), or `default` if absent -- the same version dispatch as a working-tree read."""
+    raw = gb.blob_bytes(sha, proposal_rel(name))
+    if raw is None:
+        return default
+    return _unwrap(json.loads(raw.decode("utf-8")))

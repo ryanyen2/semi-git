@@ -34,14 +34,14 @@ import argparse
 import subprocess
 import sys
 
-from . import feature, ideal_edit, init, inspect, loop, migrate, oracle, rewrite, sync
+from . import feature, ideal_edit, init, inspect, loop, migrate, oracle, propose, rewrite, sync
 
 _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
-    "after", "migrate",
+    "after", "migrate", "propose",
 }
 
 # Tree-mutating git subcommands warrant an advisory when reached via `sgt git` -- they change the
@@ -51,7 +51,7 @@ _GIT_TREE_MUTATING = frozenset({
     "stash", "cherry-pick", "am", "apply",
 })
 
-_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate)
+_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose)
 
 
 class _CLIExit(Exception):
@@ -151,6 +151,10 @@ def _help() -> int:
         "                              pins/declared-edges/tree, surface any chain fork\n"
         "  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n"
         "  sgt forks [--json]          list open same-symbol forks + their `sgt merge-op` remedies\n"
+        '  sgt propose create [--base REF] [--title "..."]   a base+Δ review object over REF (default main)\n'
+        "  sgt propose status <id>     staleness by re-union: current / clean-reunion / fork\n"
+        "  sgt propose land <id>       advance the base branch by CAS (refuses a stale-forked proposal)\n"
+        "  sgt propose render <id> --github   emit a suggested branch + a GitHub PR body (plain markdown)\n"
         "  sgt git <args...>           pass through to real git (advises on tree-mutating verbs)\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"
