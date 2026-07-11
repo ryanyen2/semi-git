@@ -19,7 +19,7 @@ from sgt import state
 from sgt.core import lens
 from sgt.core.fold import code
 from sgt.core.store import Store
-from sgt.lens import tree
+from sgt.lens import reconcile, tree
 from sgt.lens.pins import save_pins
 from sgt.store.gitbind import GitBinding, format_op_trailers
 
@@ -54,7 +54,8 @@ def materialize(
         # mined foreign commits (C3) have no op file anywhere else, so they land for real here
 
     save_pins(repo, res.unioned_pins)
-    lens._save_declared(repo, res.declared)
+    lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
+    reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
     tree.save(repo, res.tree_result)
     state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
 

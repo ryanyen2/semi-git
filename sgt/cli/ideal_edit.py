@@ -1,10 +1,11 @@
 """Exact ideal-edit verbs (plan U8, flipped onto the kernel in U10): `revert` (`I \\ ↑X`) and
 `restore` (`I ∪ ↓X`), with `--emit` previews and chain-fork surfacing (AE2). `revert
---keep-dependents` (plan U11) instead drafts a continuation hollow per dependent."""
+--keep-dependents` (plan U11) instead drafts a continuation hollow per dependent. `after`
+(U21) declares/retracts a declared order edge (`a <= b`) over the OR-Set."""
 
 from __future__ import annotations
 
-from ._common import _emit_json
+from ._common import _emit_json, _fail
 from .rewrite import _print_draft
 
 
@@ -20,6 +21,46 @@ def register(subs, parent) -> None:
     s.add_argument("--emit", action="store_true")
     s.add_argument("ref", nargs="*")
     s.set_defaults(func=_cmd_restore)
+
+    af = subs.add_parser("after", parents=[parent])
+    af.add_argument("--retract", action="store_true")
+    af.add_argument("a")
+    af.add_argument("b")
+    af.set_defaults(func=_cmd_after)
+
+
+def _cmd_after(args) -> int:
+    return _after(".", args.a, args.b, args.retract, args.as_json)
+
+
+def _after(repo: str, a: str, b: str, retract: bool, as_json: bool) -> int:
+    """`sgt after <a> <b>` declares the order edge `a <= b` (OR-Set add with a fresh tag);
+    `sgt after --retract <a> <b>` tombstones every locally-observed tag for that edge (a concurrent
+    add elsewhere survives). Both resolve `a`/`b` through the ideal the same way the other edit
+    verbs resolve a target (op-id, prefix, or `file::name` frontier tip)."""
+    from sgt.core import verbs
+    from sgt.core.lens import get, retract_after
+
+    get(repo)  # mine-on-contact before resolving targets (R9)
+    preview = verbs.plan_after(repo, a, b)
+    if not preview.ok:
+        view = {"ok": False, "verb": "after", "message": preview.message}
+        return _emit_json(view) if as_json else _fail(preview.message)
+    assert preview.declared_edge is not None
+    a_id, b_id = preview.declared_edge
+    if retract:
+        tags = retract_after(repo, a_id, b_id)
+        view = {"ok": True, "verb": "after", "retracted": True,
+                "edge": [a_id, b_id], "tombstoned_tags": sorted(tags)}
+        msg = f"retract {a_id[:8]} ≤ {b_id[:8]} ({len(tags)} tag(s) tombstoned)"
+    else:
+        verbs.apply(repo, preview)
+        view = {"ok": True, "verb": "after", "retracted": False, "edge": [a_id, b_id]}
+        msg = f"declare {a_id[:8]} ≤ {b_id[:8]}"
+    if as_json:
+        return _emit_json(view)
+    print(f"✓ {msg}")
+    return 0
 
 
 def _cmd_revert(args) -> int:

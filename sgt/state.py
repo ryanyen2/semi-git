@@ -64,6 +64,16 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # committed record of the open same-symbol forks a sync surfaced (C4) -- a fork is durable,
     # shared state that travels with the repo so a teammate's next sync (and `sgt status`) sees it.
     "forks": _Artifact(("forks.json",), committed=True),
+    # committed G-Set of feature-id aliases: old-id -> new-id from the birth-id migration (U21/D6).
+    # Additive-only so a stale reference from an un-migrated clone's history still resolves after
+    # that clone syncs; a same-old collision (divergent unsynced curation) resolves by the alias-
+    # merge rule. Travels with the repo and is read from historical blobs, like every committed slot.
+    "aliases": _Artifact(("aliases.json",), committed=True),
+    # committed OR-Set of declared order edges (`sgt after`/`sgt after --retract`, U21/D6): adds
+    # carry a unique tag, retraction tombstones observed tags, live = adds minus tombstoned. A new
+    # path (the legacy flat G-Set stays at `declared` in v0 shape for old readers, D3 old-reader
+    # policy); `sgt.core.lens` resolves this down to the plain live edge set every consumer expects.
+    "declared_orset": _Artifact(("declared_edges.json",), committed=True),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),

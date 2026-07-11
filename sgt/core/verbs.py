@@ -194,7 +194,7 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
     repo = Path(repo)
     if preview.verb == "after":
         assert preview.declared_edge is not None
-        lens._save_declared(repo, lens._load_declared(repo) | {preview.declared_edge})
+        lens.declare_after(repo, *preview.declared_edge)  # OR-Set add with a fresh tag (U21/D6)
         return ""
     edited = Ideal.from_ops(preview.after_ids, Store(repo).all_ops())
     sha = lens.put(repo, edited, message=message or f"sgt {preview.verb} {preview.target}")
