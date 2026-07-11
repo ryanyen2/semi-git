@@ -1025,6 +1025,41 @@ pushes; B syncs and reads A's claim with A's runner identity (`tests/core/test_c
 Implemented by a subagent against a fully-specified brief; independently verified (re-ran the suite
 to exit 0, read the whole diff, confirmed `compute_id` untouched and the goldens purely additive).
 
+### Collaboration & review foundations — U23 the shared-store concurrency audit (2026-07-11)
+
+The plan's pre-registered unknown-unknown honeypot: R11's store lock was designed single-process,
+and SYNC-2 wants concurrent sessions, so the lock *scope* was declared unexamined. Audited
+empirically (two real OS processes, not by assertion — throwaway measurement, three deterministic
+runs) rather than by reading the code alone. Result matches the expectation:
+
+- **Distinct ops (different ids/paths):** two processes each appended 200 distinct ops
+  concurrently → `fsck` clean, all 400 present, zero corruption. Distinct-path writes never
+  collide (each is write-temp-then-`os.replace`, atomic on POSIX), so they'd be collision-free even
+  without the lock.
+- **Same op id, different provenance each add (the lost-update case):** two processes each did 300
+  `store.add(...)` of the *same* content-addressed op, each add carrying a distinct fake witness
+  sha → the single op file ended with all **600** provenance shas, none dropped, `fsck` clean. The
+  provenance-union read-modify-write inside `add()` (`if path.exists(): read; merge; _write_atomic`)
+  is protected by the per-`add()` exclusive `flock` on `.sgt/lock`, so concurrent unions serialize
+  and no witness is lost.
+- **Lock scope — per-`add()`, NOT per-verb:** `_locked()` is entered *inside* each `add()` and
+  released when it returns. Measured directly: a "verb" that does `add()` … `sleep(0.5)` … `add()`
+  (holding no lock across the gap) finished at ~0.58s, while a competing single `add()` from another
+  process completed at ~0.17s — i.e. *inside* the gap. The flock serializes each individual store
+  mutation, never a whole verb.
+
+**Conclusion (drives the `land` design):** the single-writer lock is already correct for op
+appends and must **not** be widened. Because it does not serialize whole verbs, it is *not* the
+mechanism that makes a shared-branch advance atomic — two concurrent landers could each pass their
+fork/oracle gate and both try to move the branch. So `land` needs a **branch-record CAS**, not a
+wider store lock: the branch record *is* the git ref `refs/heads/<branch>`, and
+`git update-ref <ref> <new> <old>` is an atomic compare-and-swap across processes (it fails if the
+ref moved off `<old>`). That ref CAS is the entire concurrency-safety mechanism for `land`; the
+store lock keeps doing exactly its existing job (safe op appends) underneath it. The one residual
+hazard the ref CAS does *not* cover is two landers sharing one working tree/index while
+materializing — handled in `land` by giving each session its own clone/worktree (the test does
+this; see `land.py`'s docstring), never by a second lock around the CAS.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
