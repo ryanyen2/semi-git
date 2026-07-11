@@ -223,6 +223,11 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
             f"put() would overwrite uncommitted changes: {sorted(conflicts)}"
         )
     _write_working_tree(repo, materialized)
+    # Committed in-tree recovery record of *this* commit's ideal (C5): written before the commit
+    # so the blob at the witness SHA describes that SHA's own ideal, recoverable after a
+    # squash/rebase strips the trailers below. The local per-ref table stays authoritative for the
+    # current ref; this is the historical record `sync` reads from a teammate's arbitrary SHA.
+    state.save_json(repo, "ideal", sorted(ideal.op_ids))
     return gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
 
 
