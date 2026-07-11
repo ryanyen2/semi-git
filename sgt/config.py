@@ -7,10 +7,11 @@ repo root; we parse it without adding a dotenv dependency.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from sgt import state
 
 DEFAULT_MODEL = "gpt-4o"
 
@@ -57,11 +58,10 @@ def load_oracle_config(repo_path: str | Path = ".") -> OracleConfig | None:
     (e.g. parse/build/test), run in declared order. `None` if the file is absent -- the
     "no oracle configured" case, which degrades to a loud warning rather than a fake pass.
     Plain JSON, not TOML: this repo's `requires-python = ">=3.10"` predates stdlib `tomllib`."""
-    path = Path(repo_path) / ".sgt" / "oracle.json"
-    if not path.is_file():
+    body = state.load_json(repo_path, "oracle_config")
+    if body is None:
         return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    tiers = tuple(OracleTier(name=t["name"], command=t["command"]) for t in payload.get("tiers", []))
+    tiers = tuple(OracleTier(name=t["name"], command=t["command"]) for t in body.get("tiers", []))
     return OracleConfig(tiers=tiers)
 
 
@@ -78,18 +78,13 @@ class IdentityConstraints:
     force_link: frozenset[tuple[str, str]] = frozenset()
 
 
-def _identity_constraints_path(repo_path: str | Path = ".") -> Path:
-    return Path(repo_path) / ".sgt" / "identity_constraints.json"
-
-
 def load_identity_constraints(repo_path: str | Path = ".") -> IdentityConstraints:
     """Read the committed `.sgt/identity_constraints.json`. Empty (never `None`) if the file is
     absent, so every caller treats "no constraints" the same as "empty constraints" -- unlike
     `load_oracle_config`, no caller needs an absence check of its own."""
-    path = _identity_constraints_path(repo_path)
-    if not path.is_file():
+    payload = state.load_json(repo_path, "identity_constraints")
+    if payload is None:
         return IdentityConstraints()
-    payload = json.loads(path.read_text(encoding="utf-8"))
     return IdentityConstraints(
         never_link=frozenset(tuple(sorted(pair)) for pair in payload.get("never_link", [])),
         force_link=frozenset(tuple(sorted(pair)) for pair in payload.get("force_link", [])),
@@ -99,10 +94,8 @@ def load_identity_constraints(repo_path: str | Path = ".") -> IdentityConstraint
 def save_identity_constraints(repo_path: str | Path, constraints: IdentityConstraints) -> None:
     """Write `.sgt/identity_constraints.json` -- committed, so teammates re-mining the same
     history see the same correction (the escape hatch's whole point)."""
-    path = _identity_constraints_path(repo_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "never_link": sorted([list(pair) for pair in constraints.never_link]),
         "force_link": sorted([list(pair) for pair in constraints.force_link]),
     }
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    state.save_json(repo_path, "identity_constraints", payload)

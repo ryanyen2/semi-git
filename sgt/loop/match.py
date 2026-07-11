@@ -22,31 +22,23 @@ explicit `confirm=True` discipline.
 
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from sgt import state
 from sgt.core.store import Store
 from sgt.loop.plan import _load_sessions, _save_sessions
 
-_MATCHES_FILE = "plan_matches.json"
 THRESHOLD = 0.3  # Jaccard footprint-overlap floor for a step<->op candidate edge
 
 
-def _matches_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _MATCHES_FILE
-
-
 def _load_matches(repo: Path) -> dict:
-    path = _matches_path(repo)
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return state.load_json(repo, "plan_matches", default={})
 
 
 def _save_matches(repo: Path, table: dict) -> None:
-    path = _matches_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    state.save_json(repo, "plan_matches", table)
 
 
 def recorded_matches(repo: str | Path) -> dict:

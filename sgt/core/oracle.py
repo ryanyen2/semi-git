@@ -19,17 +19,16 @@ a rewrite op on the verdict for a *candidate* ideal that isn't committed yet.
 
 from __future__ import annotations
 
-import json
 import subprocess
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 
+from sgt import state
 from sgt.config import load_oracle_config
 from sgt.core import lens
 from sgt.core.ideal import Ideal
 
-_VERDICT_FILE = "oracle.json"
 _OUTPUT_TAIL_CHARS = 4000
 
 
@@ -39,21 +38,12 @@ def ideal_key(ideal: Ideal) -> str:
     return sha256(",".join(sorted(ideal.op_ids)).encode("utf-8")).hexdigest()[:16]
 
 
-def _verdict_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _VERDICT_FILE
-
-
 def _load_verdicts(repo: Path) -> dict:
-    path = _verdict_path(repo)
-    if not path.is_file():
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return state.load_json(repo, "verdicts", default={})
 
 
 def _save_verdicts(repo: Path, table: dict) -> None:
-    path = _verdict_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    state.save_json(repo, "verdicts", table)
 
 
 def _now() -> str:

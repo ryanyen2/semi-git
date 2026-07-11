@@ -20,10 +20,11 @@ the caller (U13's feature verbs) decides whether to refuse or proceed with a war
 
 from __future__ import annotations
 
-import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from sgt import state
 
 
 @dataclass(frozen=True)
@@ -32,10 +33,6 @@ class Pins:
     must_link: frozenset[tuple[str, str]] = frozenset()  # sorted pairs, order-independent
     cannot_link: frozenset[tuple[str, str]] = frozenset()
     labels: dict[str, str] = field(default_factory=dict)  # feature id -> user-chosen label
-
-
-def _pins_path(repo_path: str | Path = ".") -> Path:
-    return Path(repo_path) / ".sgt" / "pins" / "pins.json"
 
 
 def _pins_from_payload(payload: dict) -> Pins:
@@ -50,25 +47,23 @@ def _pins_from_payload(payload: dict) -> Pins:
 def load_pins(repo_path: str | Path = ".") -> Pins:
     """Empty (never absent-as-None) if the file doesn't exist -- every caller treats "no pins" the
     same as "empty pins", matching `load_identity_constraints`'s discipline."""
-    path = _pins_path(repo_path)
-    if not path.is_file():
+    payload = state.load_json(repo_path, "pins")
+    if payload is None:
         return Pins()
-    return _pins_from_payload(json.loads(path.read_text(encoding="utf-8")))
+    return _pins_from_payload(payload)
 
 
 def save_pins(repo_path: str | Path, pins: Pins) -> None:
     """Write `.sgt/pins/pins.json` -- committed, team-shared, current-state (not an append log):
     re-pinning a member simply overwrites its entry, so "latest-wins" is just "whatever the file
     currently says." """
-    path = _pins_path(repo_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "assign": dict(sorted(pins.assign.items())),
         "must_link": sorted([list(pair) for pair in pins.must_link]),
         "cannot_link": sorted([list(pair) for pair in pins.cannot_link]),
         "labels": dict(sorted(pins.labels.items())),
     }
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    state.save_json(repo_path, "pins", payload)
 
 
 class _UnionFind:

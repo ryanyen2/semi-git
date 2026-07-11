@@ -25,12 +25,12 @@ without saying why.
 
 from __future__ import annotations
 
-import json
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+from sgt import state
 from sgt.core.op import Op
 from sgt.lens import cluster
 from sgt.lens.cluster import _dominant_dir, _fuse, _leiden
@@ -402,24 +402,15 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
 # --- persistence (.sgt/tree/tree.json, committed -- plan D5) -----------------------------------
 
 
-def _tree_path(repo: str | Path) -> Path:
-    return Path(repo) / ".sgt" / "tree" / "tree.json"
-
-
 def load(repo: str | Path) -> dict | None:
     """The last committed tree (`.sgt/tree/tree.json`), or None on first run. Feeds `build`'s
     Greene matching as the `previous` run."""
-    path = _tree_path(repo)
-    if not path.is_file():
-        return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return state.load_json(repo, "tree")
 
 
 def save(repo: str | Path, result: dict) -> None:
     """Persist the built tree so the next run's Greene matching can preserve feature ids."""
-    path = _tree_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    state.save_json(repo, "tree", result)
 
 
 # --- labeling + DEDUP (plan R15/R17, promoted from the experiment's hierarchy.py) --------------

@@ -16,7 +16,6 @@ signal."
 
 from __future__ import annotations
 
-import json
 import re
 import time
 import uuid
@@ -25,12 +24,12 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from sgt import state
 from sgt.config import get_client
 from sgt.core.op import make_op
 from sgt.core.store import Store
 
 _PENDING = "…pending…"  # hollow after_version placeholder -- never a real content hash (mirrors rewrite.py)
-_SESSIONS_FILE = "plan_sessions.json"
 _PLAN_SENTINEL_PREFIX = "__plan__::"
 
 MODEL = "gpt-5.4-mini"
@@ -63,19 +62,12 @@ class PlanSession:
     steps: tuple[dict, ...]
 
 
-def _sessions_path(repo: Path) -> Path:
-    return repo / ".sgt" / "local" / _SESSIONS_FILE
-
-
 def _load_sessions(repo: Path) -> dict:
-    path = _sessions_path(repo)
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return state.load_json(repo, "plan_sessions", default={})
 
 
 def _save_sessions(repo: Path, table: dict) -> None:
-    path = _sessions_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(table, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    state.save_json(repo, "plan_sessions", table)
 
 
 def active_sessions(repo: str | Path) -> dict:
