@@ -30,7 +30,7 @@ import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from sgt.core.op import Images, Op, compute_id
+from sgt.core.op import Attribution, Images, Op, compute_id, merge_attribution
 
 _OPS_DIR = "ops"
 _LOCAL_DIR = "local"
@@ -42,7 +42,22 @@ class StoreError(Exception):
     """The store detected corruption or an attempt to write something that isn't a valid Op."""
 
 
+_ATTR_FIELDS = ("session", "agent", "plan")
+
+
 def _serialize(op: Op) -> bytes:
+    # v1 provenance shape (D7): a list of `{sha, session?, agent?, plan?}` dicts, one per witnessing
+    # SHA, folding in any structured attribution for that SHA. Provenance is still excluded from the
+    # id (`compute_id` untouched), so this is pure on-disk enrichment -- old repos' v0 tuple-of-shas
+    # files keep round-tripping via `_deserialize`, and no committed op is bulk-rewritten.
+    attr_by_sha = {a.sha: a for a in op.attribution}
+    provenance = []
+    for sha in sorted(op.provenance):
+        entry = {"sha": sha}
+        a = attr_by_sha.get(sha)
+        if a is not None:
+            entry.update({f: getattr(a, f) for f in _ATTR_FIELDS if getattr(a, f) is not None})
+        provenance.append(entry)
     payload = {
         "id": op.id,
         "footprint": {k: list(v) for k, v in sorted(op.footprint.items())},
@@ -51,7 +66,7 @@ def _serialize(op: Op) -> bytes:
         },
         "requires": [list(r) for r in sorted(op.requires)],
         "kind": op.kind,
-        "provenance": list(op.provenance),
+        "provenance": provenance,
         "intent": op.intent,
         "miner_version": op.miner_version,
         "off_chain": op.off_chain,
@@ -65,13 +80,28 @@ def _deserialize(data: bytes) -> Op:
     images: Images = {
         k: (bytes.fromhex(v) if v is not None else None) for k, v in payload["images"].items()
     }
+    prov = payload["provenance"]
+    if prov and isinstance(prov[0], dict):  # v1: a list of `{sha, session?, ...}` dicts
+        provenance = tuple(sorted(e["sha"] for e in prov))
+        attribution = tuple(sorted(
+            (
+                Attribution(sha=e["sha"], **{f: e.get(f) for f in _ATTR_FIELDS})
+                for e in prov
+                if any(e.get(f) is not None for f in _ATTR_FIELDS)
+            ),
+            key=lambda a: a.sha,
+        ))
+    else:  # v0 (every committed repo today): a list of bare SHA strings, no attribution
+        provenance = tuple(prov)
+        attribution = ()
     return Op(
         id=payload["id"],
         footprint=footprint,
         images=images,
         requires=frozenset(tuple(r) for r in payload["requires"]),
         kind=payload["kind"],
-        provenance=tuple(payload["provenance"]),
+        provenance=provenance,
+        attribution=attribution,
         intent=payload.get("intent"),
         miner_version=payload["miner_version"],
         off_chain=payload.get("off_chain", False),
@@ -132,22 +162,44 @@ class Store:
 
     def add(self, op: Op) -> Op:
         """Append ``op``. Rejects anything whose id doesn't match its own content. If an op
-        with the same id already exists, its provenance is unioned (an appendable witness set,
-        R8) rather than the file being duplicated or overwritten -- every other field is
-        identical by construction (same content address)."""
+        with the same id already exists, its provenance *and* structured attribution are unioned
+        (both appendable, R8/D7) rather than the file being duplicated or overwritten -- every
+        other field is identical by construction (same content address). The file is rewritten
+        only when either side actually changed."""
         self._validate(op)
         with self._locked():
             path = self._path(op.id)
             if path.exists():
                 existing = _deserialize(path.read_bytes())
                 merged_provenance = tuple(sorted(set(existing.provenance) | set(op.provenance)))
-                if merged_provenance == existing.provenance:
+                merged_attribution = merge_attribution(existing.attribution, op.attribution)
+                if (merged_provenance == existing.provenance
+                        and merged_attribution == existing.attribution):
                     return existing
-                merged = replace(existing, provenance=merged_provenance)
+                merged = replace(
+                    existing, provenance=merged_provenance, attribution=merged_attribution
+                )
                 _write_atomic(path, _serialize(merged))
                 return merged
             _write_atomic(path, _serialize(op))
             return op
+
+    def attribute(self, op_id: str, entries: tuple[Attribution, ...]) -> Op | None:
+        """Merge structured attribution `entries` into a committed op's provenance shape (D7),
+        rewriting its file only when the merge actually changes something. Returns the updated op,
+        or ``None`` if no committed op with that id exists -- hollow ops (never committed) are not
+        attributed."""
+        with self._locked():
+            path = self._path(op_id)
+            if not path.is_file():
+                return None
+            existing = _deserialize(path.read_bytes())
+            merged = merge_attribution(existing.attribution, entries)
+            if merged == existing.attribution:
+                return existing
+            updated = replace(existing, attribution=merged)
+            _write_atomic(path, _serialize(updated))
+            return updated
 
     def add_bytes(self, data: bytes) -> Op:
         """Deserialize a stored op's raw file bytes -- as read from another commit or clone via

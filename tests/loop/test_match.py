@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sgt.core.op import make_op
+from sgt.core.op import Attribution, make_op
 from sgt.core.order import is_valid_ideal
 from sgt.core.store import Store
 from sgt.loop import match as match_mod
@@ -143,3 +143,30 @@ def test_confirmed_match_never_resurfaces_as_drift(tmp_path):
     result = match_mod.compute_checkpoint(tmp_path)
 
     assert result.matches == () and result.drift_op_ids == ()
+
+
+# -- structured provenance stamping (plan U22, D7) ---------------------------------------------
+
+def test_confirm_match_stamps_the_session_onto_the_matched_ops_provenance(tmp_path):
+    """After confirmation the matched op's structured provenance carries the fulfilling session
+    for each of its witnessing shas -- the immutable op payload (and its id) is untouched."""
+    store = Store(tmp_path)
+    steps = _seed_session(tmp_path, "s1", set(), [("do the thing", ["a.py::foo"])])
+    op = store.add(make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"body"}, provenance=("shaX",)))
+
+    match_mod.confirm_match(tmp_path, "s1", [steps[0]["hollow_id"]], [op.id])
+
+    stored = store.get(op.id)
+    assert stored.id == op.id
+    assert stored.attribution == (Attribution(sha="shaX", session="s1"),)
+
+
+def test_stamp_drift_stamps_the_session_onto_named_ops(tmp_path):
+    """`stamp_drift` is the sibling writer for drift ops a caller explicitly names -- same
+    mechanism, no checkpoint required."""
+    store = Store(tmp_path)
+    op = store.add(make_op({"a.py::bar": (None, "v1")}, {"a.py::bar": b"body"}, provenance=("shaY",)))
+
+    match_mod.stamp_drift(tmp_path, "s2", [op.id])
+
+    assert store.get(op.id).attribution == (Attribution(sha="shaY", session="s2"),)

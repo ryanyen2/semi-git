@@ -21,7 +21,7 @@ from sgt import state
 from sgt.core import lens
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
-from sgt.core.op import MINER_VERSION, Op
+from sgt.core.op import MINER_VERSION, Op, merge_attribution
 from sgt.core.store import Store, _deserialize
 from sgt.lens import reconcile, tree
 from sgt.lens.pins import Pins, _pins_from_payload, load_pins
@@ -84,8 +84,9 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
         if existing is None:
             union[op.id] = op
         else:
-            merged = tuple(sorted(set(existing.provenance) | set(op.provenance)))
-            union[op.id] = replace(existing, provenance=merged)
+            merged_prov = tuple(sorted(set(existing.provenance) | set(op.provenance)))
+            merged_attr = merge_attribution(existing.attribution, op.attribution)
+            union[op.id] = replace(existing, provenance=merged_prov, attribution=merged_attr)
     all_ops = [union[k] for k in sorted(union)]
     theirs_all_ids = {op.id for op in theirs_ops} | {op.id for op in mined_ops}
     ops_added = len(theirs_all_ids - {op.id for op in ours_ops})
