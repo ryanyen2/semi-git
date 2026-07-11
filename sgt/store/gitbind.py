@@ -30,6 +30,13 @@ class GitError(Exception):
     """A git command failed."""
 
 
+class PushRejected(GitError):
+    """A non-forcing `git push` was rejected because the remote moved (non-fast-forward). The
+    remedy is `sgt sync` then push again -- sgt never force-pushes (design doc §3.2, C7). Kept a
+    subclass of `GitError` so an unaware caller still treats it as a failure, while `sgt push`
+    catches it specifically to route the user to sync."""
+
+
 @dataclass(frozen=True)
 class FileChange:
     """One path's change between two commits: its status, rename origin, and the line
@@ -424,6 +431,22 @@ class GitBinding:
 
     def fetch(self, remote: str, branch: str) -> None:
         self._git("fetch", remote, branch)
+
+    def push(self, remote: str, branch: str) -> str:
+        """`git push <remote> <branch>` with no force of any kind (C7). A non-fast-forward
+        rejection (the remote moved) raises `PushRejected` distinctly from every other failure, so
+        `sgt push` can route the user to `sgt sync` rather than ever forcing. Returns the pushed
+        HEAD sha on success."""
+        proc = self._git("push", remote, branch, check=False)
+        if proc.returncode != 0:
+            stderr = proc.stderr.strip()
+            if "rejected" in stderr or "non-fast-forward" in stderr or "fetch first" in stderr:
+                raise PushRejected(stderr)
+            raise GitError(f"git push {remote} {branch} failed ({proc.returncode}): {stderr}")
+        head = self.head()
+        if head is None:
+            raise GitError("push succeeded but HEAD is unresolved")
+        return head
 
     def complete_merge(self, message: str, merge_parent: str, trailers: str | None = None) -> str:
         """Commit a real 2-parent merge joining HEAD with `merge_parent`, whose tree is *exactly*

@@ -14,9 +14,48 @@ def register(subs, parent) -> None:
     p.add_argument("branch", nargs="?")
     p.set_defaults(func=_cmd_sync)
 
+    pp = subs.add_parser("push", parents=[parent])
+    pp.add_argument("remote", nargs="?")
+    pp.add_argument("branch", nargs="?")
+    pp.set_defaults(func=_cmd_push)
+
 
 def _cmd_sync(args) -> int:
     return _sync(".", args.remote, args.branch, args.as_json)
+
+
+def _cmd_push(args) -> int:
+    return _push(".", args.remote, args.branch, args.as_json)
+
+
+def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
+    """`sgt push [remote] [branch]` (C7): a non-forcing `git push`. On a non-fast-forward rejection
+    (the remote moved), route the user to `sgt sync` rather than ever forcing -- exactly git's own
+    contract, so hosting-platform protection rules keep working."""
+    from sgt.store.gitbind import GitBinding, GitError, PushRejected
+
+    gb = GitBinding(repo)
+    remote = remote or gb.default_remote()
+    branch = branch or gb.default_branch()
+    if branch is None:
+        msg = "no branch to push -- HEAD has no upstream and isn't on a named branch"
+        return _emit_json({"ok": False, "error": msg}) if as_json else _fail(msg)
+
+    try:
+        sha = gb.push(remote, branch)
+    except PushRejected as e:
+        remedy = f"sgt sync {remote} {branch}"
+        if as_json:
+            return _emit_json({"ok": False, "error": str(e), "rejected": True, "remedy": remedy})
+        print(f"✗ push {remote}/{branch}: rejected (the remote moved) -- run `{remedy}`, then push again")
+        return 1
+    except (GitError, ValueError) as e:
+        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+
+    if as_json:
+        return _emit_json({"ok": True, "remote": remote, "branch": branch, "pushed_sha": sha})
+    print(f"✓ push {remote}/{branch}: {sha[:12]}")
+    return 0
 
 
 def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
