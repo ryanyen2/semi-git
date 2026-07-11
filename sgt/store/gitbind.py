@@ -360,8 +360,13 @@ class GitBinding:
         The scratch path is reserved via `mkstemp` then immediately removed -- git errors on an
         existing-but-empty index file ("index file smaller than expected"), so the path must not
         exist yet when `add -A` runs; it creates a fresh index there itself.
+
+        The scratch index lives in the *real* git dir resolved via `--absolute-git-dir`, not
+        `self.repo / ".git"`: in a linked worktree (which is how `sgt land` runs concurrent
+        sessions, U23) `.git` is a file pointing at the worktree's gitdir, so assuming a directory
+        there fails.
         """
-        git_dir = self.repo / ".git"
+        git_dir = Path(self._git("rev-parse", "--absolute-git-dir").stdout.strip())
         fd, scratch_path = tempfile.mkstemp(dir=str(git_dir), prefix=".sgt-scratch-index-")
         os.close(fd)
         os.unlink(scratch_path)
@@ -457,6 +462,46 @@ class GitBinding:
         if head is None:
             raise GitError("push succeeded but HEAD is unresolved")
         return head
+
+    # -- land: off-ref commit construction + branch-record CAS (plan U23, C9) ----------------
+    def write_tree(self) -> str:
+        """The tree object id of the current index (`git write-tree`). `land` stages its
+        materialized union (`stage_all`) then captures the tree here to build a commit *off* any
+        ref (`commit_tree`) -- nothing is visible until the CAS advances the branch onto it."""
+        return self._git("write-tree").stdout.strip()
+
+    def commit_tree(
+        self, tree: str, parents: list[str], message: str, trailers: str | None = None
+    ) -> str:
+        """`git commit-tree <tree> [-p <parent> ...] -m <msg>` -> a new commit sha, WITHOUT moving
+        any ref. The plumbing `land` uses to construct the landing commit (a real 2-parent merge
+        when the session's HEAD diverges from the branch tip) before compare-and-swapping the branch
+        onto it. `commit_all`/`complete_merge` can't be reused here because they move HEAD, which
+        must not happen until the CAS wins the race."""
+        args = ["commit-tree", tree]
+        for parent in parents:
+            args += ["-p", parent]
+        full = message if trailers is None else f"{message}\n\n{trailers}"
+        args += ["-m", full]
+        return self._git(*args).stdout.strip()
+
+    def update_ref_cas(self, ref: str, new: str, old: str | None) -> bool:
+        """Compare-and-swap the branch record (plan U23, C9/LAW-G): `git update-ref <ref> <new>
+        <old>` atomically moves `ref` to `new` only if it still points at `old` -- the 40-zero oid
+        when `old` is None ("create only if absent"). Returns True on success, False on a CAS
+        failure (the ref moved off `old`, or a create raced another create -- git reports both as
+        `cannot lock ref`), and raises `GitError` on any other failure. This atomic old-value
+        precondition, shared across every process touching this repo's ref store, is the *entire*
+        concurrency-safety mechanism for `land`; the U23 store-lock audit confirmed the single-writer
+        store lock is per-`add()` (already correct for op appends) and must not be widened around
+        this."""
+        old_val = old if old is not None else "0" * 40
+        proc = self._git("update-ref", ref, new, old_val, check=False)
+        if proc.returncode == 0:
+            return True
+        if "cannot lock ref" in proc.stderr:
+            return False
+        raise GitError(f"git update-ref {ref} failed ({proc.returncode}): {proc.stderr.strip()}")
 
     def complete_merge(self, message: str, merge_parent: str, trailers: str | None = None) -> str:
         """Commit a real 2-parent merge joining HEAD with `merge_parent`, whose tree is *exactly*

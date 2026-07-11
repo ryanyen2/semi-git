@@ -36,6 +36,7 @@ def register(subs, parent) -> None:
     fp.set_defaults(func=_cmd_fulfill)
 
     lp = subs.add_parser("land", parents=[parent])
+    lp.add_argument("branch", nargs="?")  # given => the U23 SYNC-2 shared-branch CAS advance
     lp.add_argument("--message")
     lp.add_argument("--override")
     lp.add_argument("--reason")
@@ -64,6 +65,13 @@ def _cmd_fulfill(args) -> int:
 
 
 def _cmd_land(args) -> int:
+    # Two distinct verbs share the `land` name (argparse allows only one subparser per name): a bare
+    # `sgt land` commits the last-staged rewrite candidate (U11, below); `sgt land <branch>` advances
+    # a shared branch record by CAS (U23 SYNC-2). The positional branch disambiguates.
+    if args.branch is not None:
+        from .sync import _land_branch
+
+        return _land_branch(".", args.branch, args.as_json)
     return _land(".", args.message, args.override, args.reason, args.by, args.as_json)
 
 

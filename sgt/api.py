@@ -612,6 +612,30 @@ def sync_view(report) -> dict:
     }
 
 
+def land_view(report) -> dict:
+    """Project an already-run `sgt.core.sync.LandReport` (plan U23, C9) -- like `sync_view`, `land`
+    performs real git plumbing (a branch-record CAS), so the CLI runs `sync.land(...)` itself and
+    hands the result here. `landed` is the CAS outcome; `blocked_reason` is set (and `landed` False)
+    when the land was refused -- a red/absent oracle (LAW-G), an open fork, or persistent contention.
+    Additive-only (R21)."""
+    return {
+        "branch": report.branch,
+        "landed": report.landed,
+        "land_sha": report.land_sha,
+        "blocked_reason": report.blocked_reason,
+        "ops_added": report.ops_added,
+        "attempts": report.attempts,
+        "forks": [list(triple) for triple in report.forks],
+        "open_fork_count": len(report.forks),
+        "pin_contradictions": [
+            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
+            for c in report.pin_contradictions
+        ],
+        "declared_cycles": [list(pair) for pair in report.declared_cycles],
+        "identity_events": list(report.identity_events),
+    }
+
+
 def forks_view(repo) -> dict:
     """The open same-symbol forks a prior sync recorded in committed `.sgt/forks.json` (plan U20,
     C4) -- for `sgt forks`. Each fork carries its symbol, its two tips, and the `sgt merge-op`
