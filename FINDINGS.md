@@ -996,6 +996,35 @@ fix `sgt state` exits clean and `sgt fsck` genuinely checks 7035 ops on this rep
 rule is no longer vacuous. Regression:
 `tests/core/test_lens.py::test_get_survives_add_delete_readd_fork_in_linear_history`.
 
+### Collaboration & review foundations — U22 structured provenance + published claims (2026-07-11)
+
+D7 (structured provenance) + D8 (verdicts-as-claims). The load-bearing constraint was that no op id
+may move: provenance is excluded from `compute_id`, so the codec change is pure on-disk enrichment.
+
+Provenance stays `Op.provenance: tuple[str,...]` (bare witness SHAs — all 10 existing consumers
+untouched); a parallel `Op.attribution: tuple[Attribution,...]` (sparse, one `{sha, session?, agent?,
+plan?}` per SHA that carries a field) rides alongside, and the two are folded together at serialize
+time into the v1 on-disk shape `provenance: [{sha, session?, ...}]`. `_deserialize` dual-reads: a
+list of *strings* is v0 (every committed repo today), a list of *dicts* is v1. `compute_id` is
+byte-identical to before (AST-verified; the golden corpus's op ids are unchanged, only an additive
+`attribution: []` / `sessions: []` appears in `oplog_view`/`blame_view`). `merge_attribution` is the
+ACI union (group by SHA; per field take the non-None side, `min` on a genuine conflict) so the
+D7-pitfall case — two clones holding a v0 and a v1 file for the *same* op id — unions shapes rather
+than comparing bytes, on both `Store.add` and sync's in-memory ingest union. Session attribution is
+stamped (not at mine time — `compute_checkpoint` stays pure) by `confirm_match` and the sibling
+`stamp_drift`, via a new `Store.attribute(op_id, entries)` that only ever grows the excluded-from-id
+provenance shape.
+
+D8 claims: a published verdict is an immutable committed file `.sgt/claims/<ideal_key>.<runner_fp>.json`
+(runner_fp = short hash of `{by, host, python, platform}`), so two runners' claims for one ideal are
+distinct files and sync's union is a trivial file-level G-Set (`materialize._union_claims` copies any
+`.sgt/claims/` blob it lacks, byte-for-byte). The private per-clone verdict cache
+(`.sgt/local/oracle.json`) is unchanged; `sgt oracle publish` is the explicit publication step, so a
+red experiment never leaks into shared history. Verified with a real two-clone test: A publishes,
+pushes; B syncs and reads A's claim with A's runner identity (`tests/core/test_claims.py`).
+Implemented by a subagent against a fully-specified brief; independently verified (re-ran the suite
+to exit 0, read the whole diff, confirmed `compute_id` untouched and the goldens purely additive).
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
