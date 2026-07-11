@@ -884,8 +884,130 @@ provenance, `ops_added == 0`); a pin contradiction (`assign_conflict_in_must_lin
 while the sync still merges; a declared-edge cycle from two replicas reported, with the (now
 non-cyclic-blocking) declared edges traveling to both sides. Full suite green.
 
+### Collaboration & review foundations — U16 freeze the ground (2026-07-10)
+
+The refactor plan (`docs/plans/2026-07-10-001-...`) opens by freezing behavior before touching it.
+Two harnesses landed as the falsifiable ground everything after builds on: `tests/golden/` captures
+each CLI verb's text and `--json` bytes (the C11 byte-parity contract — the non-human backstop for
+surface drift across the U18 CLI move), and `tests/laws/test_convergence.py` is an N-replica
+sync-schedule harness with one named test per convergence law (LAW-0 determinism, LAW-U order
+independence, LAW-I idempotence, LAW-F fork completeness/soundness, LAW-R resolutions travel, LAW-G
+green-to-green, LAW-L locality). LAW-G lands `xfail(strict=True)` — deliberately, it is the
+oracle-gated law U23 turns green; a strict xfail means the suite fails loudly the day it starts
+passing by accident, forcing the flip to be intentional. The two dead layout tests the plan's Open
+Questions flagged (`test_decision_layout.py`, `test_color_parity.py`) were checked and kept — they
+still guard live rail-webview output.
+
+### Collaboration & review foundations — U17 state.py: layout registry + schema codecs (2026-07-10)
+
+`sgt/state.py` centralizes the `.sgt/` layout: one `_Artifact` registry row per file (its path
+parts, committed-vs-local, and — critically — its exact `sort_keys`/`newline` byte behavior so the
+move preserves each writer's on-disk bytes), plus a `{"schema": N, "data": ...}` envelope. Readers
+dispatch on schema forever: v0 (no envelope, pre-U17 blobs) and v1+ both parse, and
+`load_blob_json(gb, sha, name)` reads a *teammate's arbitrary-vintage committed* metadata straight
+from a fetched commit without checkout. Shipped in two commits, read-side first (`c58b9d4` adds the
+registry and dispatch while every writer still emits raw v0; `27673a4` flips writers to the
+envelope), so the read path provably accepts old bytes before any new bytes exist. `tests/test_state.py`
+covers round-trip, v0/v1 dispatch, and blob-read dispatch.
+
+### Collaboration & review foundations — U18 CLI restructure (2026-07-10)
+
+`sgt/cli.py` became the `sgt/cli/` package: one module per verb family behind an argparse
+subcommand tree, replacing the hand-rolled `_strip_opt` parsing. New `sgt git <args>` passthrough
+runs git in the repo and, for tree-mutating verbs (`checkout`/`switch`/`reset`/`merge`/`rebase`/…),
+prints a one-line note that the command bypasses sgt's own tracking (mine-on-contact absorbs the
+result on the next verb, so it is a warning, not a block). The golden byte-parity suite (U16) gated
+the move verb-family by verb-family — no `--json` byte drift across the restructure.
+
+### Collaboration & review foundations — U19 sync decomposition + explicit tree (2026-07-10)
+
+`sgt/core/sync.py` became the `sgt/core/sync/` package of pure stages: `fetch` → `ingest` →
+`resolve` → `materialize`. The behavior-preserving win is that `ingest` builds the op union
+*purely in memory* (parses each op via `_deserialize`, never `store.add_bytes`), so fork detection
+happens before anything touches disk and `materialize` is the single writing stage. This let the
+plan's D4 delete `git merge --no-commit -X ours` entirely (`merge_ours_no_commit`/`merge_abort`
+gone from `gitbind.py`): `complete_merge` now writes `.git/MERGE_HEAD` by hand and lets an ordinary
+`git commit` produce a real 2-parent merge whose tree is exactly what sgt explicitly wrote — no
+textual 3-way merge ever runs, so a same-symbol divergence can never be silently resolved by git's
+merge driver behind sgt's back.
+
+### Collaboration & review foundations — U20 SYNC-1 hardening: divergence-as-state (2026-07-10)
+
+Five hardenings (C3/C4/C5/C6/C7). The load-bearing one is **divergence-as-state (D5/C4)**: a
+same-symbol fork no longer aborts the whole sync. The fork-free part of the union lands and the fork
+becomes durable committed state in `.sgt/forks.json` (read by `sgt status`/`sgt forks` and a
+teammate's next sync). The ideal algebra that makes this sound is `order.fork_free(ideal_ids, ops,
+declared)` = the union minus the up-sets of *both* tips of every fork: removing two upward-closed
+up-sets from a downward-closed set leaves it downward-closed, and having dropped both claimants of
+every forked step it is fork-free — a valid ideal by construction. Also: mine-on-contact mines a
+plain-git teammate's foreign commits at sync (C3, `merge_base..theirs` with no checkout); committed
+ideal recovery from `.sgt/ideal.json` survives a GitHub squash-merge (C5/R8 — identify, don't
+re-mint); a miner-version handshake refuses a cross-version union (C6); and non-forcing `sgt push`
+routes a rejection into sync (C7).
+
+### Collaboration & review foundations — U21 metadata semilattices [HARD GATE] (2026-07-10)
+
+The plan's one genuinely destructive unit, gated. Three semilattices so metadata converges
+order-independently (LAW-U): **ACI pin unions** with a witness-topological tie-break (contested
+pins resolve by git-DAG ancestry of their introducing commit, deterministic hash as the fallback);
+**birth-minted feature ids** — `f-<founding-op-id>` content-addressed ids replacing replica-local
+sequential `F<n>`, with `sgt migrate feature-ids [--apply]` doing an atomic re-mint (tree ids + pin
+references + alias G-Set together, dry-run by default) and an alias table keeping old ids resolvable
+forever; and **OR-Set declared edges** (unique-tag add, observed-tag tombstone on retract).
+
+**Confirmed data-loss bug found at the gate (the reason the gate exists).** The plan's D6 as first
+written birth-minted on *every* build: `tree.build()` unconditionally re-minted a legacy `F<n>`
+continuation to its `f-<op>` form on any ordinary `sgt map`/`sgt sync` — no `sgt migrate` needed —
+silently orphaning any `pins.labels`/`pins.assign` reference to the old id. A hand-written repro
+confirmed a pinned label vanished on a plain rebuild. The naive fix (never auto-remint on
+continuation) breaks `test_law_u_feature_ids_are_replica_independent`, which *requires* an
+unreferenced legacy id to converge. The shipped fix (`a553d8f`) is surgical: `build()` computes
+`protected = frozenset(pins.assign.values()) | frozenset(pins.labels)` and a legacy id re-mints
+only when *not* referenced by a pin — referenced ids migrate solely through the explicit,
+transactional `sgt migrate`. **Plan correction:** D6's "birth-minted on every build" is wrong as
+stated; the shipped semantics are "birth-minted for unreferenced ids on any build, referenced ids
+only through the atomic migration." Two Open Questions resolved as the plan hoped: no witness
+backfill (pre-U21 pins tie-break by hash), and alias chains are single-hop on this corpus.
+
+### Collaboration & review foundations — U22.5 fork-free local mining (2026-07-11)
+
+Not a planned unit — surfaced by actually running the plan's own per-unit self-hosting rule
+(`sgt fsck` + `sgt state` on this repo), which had never been exercised because the repo's own
+`.sgt/` store was empty until now. `sgt state` **crashed** on this repo, and would on any repo with
+real history: `lens._sync` built `Ideal.from_ops` on the raw committed∪pending provenance union with
+no reduction, so mining this repo cold (7028 ops) hit 464 forked `(symbol, before_version)` pairs
+and raised "not a valid ideal". U20 gave the *sync* path `order.fork_free`; the *local mining* write
+path (`lens.get`/`_sync`) and even its pure-read siblings (`_committed_ids_by_provenance`,
+`ideal_for_ref`) never got the equivalent — and the read siblings additionally lacked *grounding*,
+so they too would raise on the 4 ungrounded ops this repo carries.
+
+Root cause is not merge history (the miner walks first-parent only): a symbol **added, deleted, then
+re-added** rebirths with `before=None` both times, so both births claim `(symbol, None)` — a fork by
+`is_fork_free`'s definition, produced by ordinary linear single-clone history. The 4 ungrounded ops
+are `__residue__` symbols whose chain predecessor's provenance fell outside this ref (a
+squashed/rebased-away branch); grounding correctly drops them. Fix: one `order.reduce_to_ideal(ids,
+ops)` = `fork_free(_grounded(ids))` — ground first (downward-closure), then drop forked up-sets; one
+pass suffices because `fork_free` removes only upward-closed sets, which preserves grounding.
+Measured `fork_free(grounded(raw))`, `grounded(fork_free(raw))`, and the alternating fixpoint all
+converge to the same 5626-op valid ideal, so a single ordered pass is exact. Wired into all three
+call sites; `_sync` additionally now reduces *before* persisting `.sgt/local/ideal.json` (it
+previously wrote the invalid table to disk and *then* raised, leaving corruption behind). After the
+fix `sgt state` exits clean and `sgt fsck` genuinely checks 7035 ops on this repo — the self-hosting
+rule is no longer vacuous. Regression:
+`tests/core/test_lens.py::test_get_survives_add_delete_readd_fork_in_linear_history`.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
+- **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
+  this repo the reduction to a valid ideal drops ~20% of ops (1399 of 7025: 1265 real-symbol, 86
+  residue, 48 anchor) — chiefly whole files that were added/deleted/re-added, which `fork_free`
+  drops entirely (both births' up-sets). Unlike a *sync* fork, these are not recorded in
+  `.sgt/forks.json` (they are historical, already resolved in git, and not actionable by `sgt
+  merge-op`), matching the pre-existing silent reduction in the read-side siblings. Consequence to
+  keep in view: `put` materializes `code(I)`, so an add/delete/re-add file is absent from a
+  materialized tree. This 20% closure figure is exactly the kind of signal U25's measurement gate
+  exists to quantify; the deeper fix (re-add chaining `before=<deleted version>` instead of `None`,
+  which would remove the pseudo-fork) touches op identity and is deferred, not attempted here.
 - **Residue-segment chain identity does not survive a rename of its anchor entity** (documented
   above) -- a v1 boundary, not exercised by the corpus as a correctness bug (byte content is
   still exact; only chain continuity across that one rename is lost).
