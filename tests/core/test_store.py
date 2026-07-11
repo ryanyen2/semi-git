@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 
 import pytest
 
-from sgt.core.op import make_op
-from sgt.core.store import FsckReport, Store, StoreError, fsck
+from sgt.core.op import Attribution, make_op
+from sgt.core.store import FsckReport, Store, StoreError, _serialize, fsck
 
 
 def _op(sym: str = "a.py::foo", n: int = 0):
@@ -174,3 +175,119 @@ def test_fsck_reports_corrupt_json(tmp_path):
     report = fsck(tmp_path)
     assert not report.ok
     assert "not-valid-json" in report.corrupt
+
+
+# -- structured provenance codec (plan U22, D7) ------------------------------------------------
+
+def _v0_bytes(op, provenance: list[str]) -> bytes:
+    """A pre-U22 op file: `provenance` is a flat list of SHA strings (the shape every committed
+    repo carries today). Built from `op`'s real content so it still hashes to `op.id`."""
+    payload = {
+        "id": op.id,
+        "footprint": {k: list(v) for k, v in sorted(op.footprint.items())},
+        "images": {k: (v.hex() if v is not None else None) for k, v in sorted(op.images.items())},
+        "requires": [list(r) for r in sorted(op.requires)],
+        "kind": op.kind,
+        "provenance": provenance,
+        "intent": op.intent,
+        "miner_version": op.miner_version,
+        "off_chain": op.off_chain,
+    }
+    return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def test_v1_attribution_roundtrips_through_the_store(tmp_path):
+    """An op with structured attribution serializes to the v1 shape and deserializes back equal."""
+    store = Store(tmp_path)
+    store.init()
+    op = make_op(
+        {"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"},
+        provenance=("shaA", "shaB"),
+        attribution=(Attribution(sha="shaA", session="s1", agent="claude"),),
+    )
+    store.add(op)
+
+    fetched = store.get(op.id)
+    assert fetched == op
+    assert fetched.provenance == ("shaA", "shaB")
+    assert fetched.attribution == (Attribution(sha="shaA", session="s1", agent="claude"),)
+
+
+def test_v0_file_deserializes_with_empty_attribution(tmp_path):
+    """A committed v0 op file (list-of-strings provenance) reads back with `attribution == ()` and
+    its provenance intact -- old shapes live in history forever (D3)."""
+    store = Store(tmp_path)
+    store.init()
+    op = _op()
+    (store.ops_dir / op.id).write_bytes(_v0_bytes(op, ["sha0", "sha1"]))
+
+    fetched = store.get(op.id)
+    assert fetched.provenance == ("sha0", "sha1")
+    assert fetched.attribution == ()
+
+
+def test_add_bytes_unions_a_v0_and_a_v1_file_for_the_same_id(tmp_path):
+    """The D7 pitfall: two clones hold a v0 and a v1 file for the *same* op id. `add`/`add_bytes`
+    unions on collision, so the union must merge shapes (not compare bytes) -- provenance grows and
+    the v1 file's attribution survives."""
+    store = Store(tmp_path)
+    store.init()
+    op = make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"})
+
+    # a v0 file already on disk: provenance ["shaA"], no attribution
+    (store.ops_dir / op.id).write_bytes(_v0_bytes(op, ["shaA"]))
+
+    # a v1 file for the same id arrives (as raw bytes, e.g. from a teammate's clone via sync)
+    v1 = make_op(
+        {"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"},
+        provenance=("shaB",), attribution=(Attribution(sha="shaB", session="s1"),),
+    )
+    merged = store.add_bytes(_serialize(v1))
+
+    assert merged.provenance == ("shaA", "shaB")
+    assert merged.attribution == (Attribution(sha="shaB", session="s1"),)
+    # ...and persisted, not just returned
+    persisted = store.get(op.id)
+    assert persisted.provenance == ("shaA", "shaB")
+    assert persisted.attribution == (Attribution(sha="shaB", session="s1"),)
+
+
+def test_attribute_stamps_a_committed_op_without_moving_its_id(tmp_path):
+    store = Store(tmp_path)
+    store.init()
+    op = store.add(_op())  # provenance ("sha0",), no attribution
+
+    updated = store.attribute(op.id, (Attribution(sha="sha0", session="s1"),))
+
+    assert updated.id == op.id  # id is content-addressed; attribution is not part of it
+    assert updated.attribution == (Attribution(sha="sha0", session="s1"),)
+    assert store.get(op.id).attribution == (Attribution(sha="sha0", session="s1"),)
+    assert fsck(tmp_path).ok  # the rewritten file still hashes to its filename
+
+
+def test_attribute_returns_none_for_an_unknown_op(tmp_path):
+    store = Store(tmp_path)
+    store.init()
+    assert store.attribute("does-not-exist", (Attribution(sha="x", session="s1"),)) is None
+
+
+def test_provenance_roundtrip_preserves_op_ids_across_a_corpus(tmp_path):
+    """The U22 verification (D7 proven end to end): mine a real corpus repo, then enrich every op's
+    structured provenance. No op id moves -- provenance/attribution are outside the content address
+    -- and the store stays fsck-clean."""
+    from sgt.core.lens import get
+    from tests.laws import corpus
+
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)  # mine-on-contact populates .sgt/ops/
+    store = Store(repo)
+    before = sorted(op.id for op in store.all_ops())
+    assert before  # the fixture actually produced ops
+
+    for op in store.all_ops():
+        for sha in op.provenance:
+            store.attribute(op.id, (Attribution(sha=sha, session="s1"),))
+
+    after = sorted(op.id for op in store.all_ops())
+    assert after == before
+    assert fsck(repo).ok

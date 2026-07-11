@@ -77,6 +77,19 @@ def is_content_bearing(sym: str) -> bool:
 
 
 @dataclass(frozen=True)
+class Attribution:
+    """Structured provenance for one witnessing commit (D7): who/what produced it, beyond the bare
+    SHA already in ``Op.provenance``. Frozen and hashable. Sparse -- an op only carries an entry
+    for a SHA that has at least one non-None field, so an op with no attribution has ``()``. Like
+    ``intent`` and ``provenance``, excluded from ``compute_id`` (attribution is not identity)."""
+
+    sha: str
+    session: str | None = None
+    agent: str | None = None
+    plan: str | None = None
+
+
+@dataclass(frozen=True)
 class Op:
     """Frozen and hashable; nothing about a mined Op is mutable after minting. Correcting a
     wrong result happens by minting a new op (revert/rework) or, for a wrong identity weld,
@@ -88,6 +101,8 @@ class Op:
     requires: Requires = frozenset()
     kind: str = "touched"  # add | extend | rework | prune | move | merge -- derived, not authored
     provenance: tuple[str, ...] = ()  # witnessing commit SHAs; appendable; excluded from the id
+    attribution: tuple[Attribution, ...] = ()  # sparse, sorted-by-sha structured provenance (D7);
+    # one entry per SHA carrying >=1 non-None field; appendable; excluded from the id like provenance
     intent: str | None = None  # advisory label/rationale only; excluded from the id
     miner_version: str = MINER_VERSION
     off_chain: bool = False  # R18: a hollow plan-intake op, not yet fulfilled. Lifecycle/storage
@@ -127,12 +142,14 @@ def make_op(
     requires: Requires = frozenset(),
     kind: str = "touched",
     provenance: tuple[str, ...] = (),
+    attribution: tuple[Attribution, ...] = (),
     intent: str | None = None,
     miner_version: str = MINER_VERSION,
     off_chain: bool = False,
 ) -> Op:
     """Construct an Op with its id computed from its content -- the only supported way to make
-    one (never hand-assign ``.id``)."""
+    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``) rides along
+    but does not enter the id."""
     op_id = compute_id(footprint, images, requires, kind, miner_version)
     return Op(
         id=op_id,
@@ -141,7 +158,30 @@ def make_op(
         requires=requires,
         kind=kind,
         provenance=provenance,
+        attribution=attribution,
         intent=intent,
         miner_version=miner_version,
         off_chain=off_chain,
     )
+
+
+def merge_attribution(
+    a: tuple[Attribution, ...], b: tuple[Attribution, ...]
+) -> tuple[Attribution, ...]:
+    """The ACI union of two structured-provenance sets (D7, LAW-U): group by SHA, and for each
+    field combine field-by-field -- take the other side when one is None, keep it when both agree,
+    and pick ``min`` when both are non-None and differ (deterministic, so any merge schedule
+    converges). Returns a sorted-by-SHA tuple, dropping any entry left all-None."""
+    by_sha: dict[str, list[Attribution]] = {}
+    for entry in (*a, *b):
+        by_sha.setdefault(entry.sha, []).append(entry)
+    merged: list[Attribution] = []
+    for sha in sorted(by_sha):
+        entries = by_sha[sha]
+        fields: dict[str, str | None] = {}
+        for field in ("session", "agent", "plan"):
+            vals = [getattr(e, field) for e in entries if getattr(e, field) is not None]
+            fields[field] = min(vals) if vals else None
+        if any(v is not None for v in fields.values()):
+            merged.append(Attribution(sha=sha, **fields))
+    return tuple(merged)

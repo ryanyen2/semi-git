@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sgt import state
+from sgt.core.op import Attribution
 from sgt.core.store import Store
 from sgt.loop.plan import _load_sessions, _save_sessions
 
@@ -166,3 +167,25 @@ def confirm_match(repo: str | Path, session_id: str, hollow_ids: list[str], op_i
 
     for hollow_id in hollow_ids:
         (store.hollow_dir / hollow_id).unlink(missing_ok=True)
+
+    _stamp_session(store, session_id, op_ids)  # D7: the fulfilling session onto the op's provenance
+
+
+def _stamp_session(store: Store, session_id: str, op_ids) -> None:
+    """Stamp `session=session_id` onto the structured attribution of each op's provenance SHAs
+    (D7). The immutable `Op` payload is untouched -- only its excluded-from-id provenance shape
+    grows -- so no id moves. A hollow op (not committed) or an unknown id is skipped."""
+    for op_id in op_ids:
+        op = store.get(op_id)
+        if op is None:
+            continue
+        entries = tuple(Attribution(sha=sha, session=session_id) for sha in op.provenance)
+        if entries:
+            store.attribute(op_id, entries)
+
+
+def stamp_drift(repo: str | Path, session_id: str, op_ids) -> None:
+    """The sibling writer to `confirm_match` for drift ops a caller explicitly names: stamp the
+    naming session onto each op's structured provenance (D7). `compute_checkpoint` stays pure --
+    stamping is never done inside it, only by an explicit call here."""
+    _stamp_session(Store(Path(repo)), session_id, op_ids)
