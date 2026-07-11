@@ -108,6 +108,19 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
     )
 
 
+def _tip_witnesses_ideal(gb: GitBinding, sha: str) -> bool:
+    """True iff commit `sha` actually wrote `.sgt/ideal.json` (its blob differs from the first
+    parent's, or is newly added). Distinguishes a squash-merge -- whose tree carries a real
+    witness's ideal record forward, so the record describes `sha`'s own code -- from a plain-git
+    commit that merely inherited a *stale* record from an earlier witness without touching it."""
+    cur = gb.blob_oid(sha, state.rel("ideal"))
+    if cur is None:
+        return False
+    parent = gb.parent_of(sha)
+    prev = gb.blob_oid(parent, state.rel("ideal")) if parent is not None else None
+    return cur != prev
+
+
 def _check_miner_versions(ops: list[Op]) -> None:
     """Refuse the sync if any of `ops` was mined by a version other than ours (C6). Reports every
     foreign version seen and which side is behind, so the user knows exactly what to upgrade."""
@@ -134,9 +147,22 @@ def _theirs_ideal(
     if trailer_ids:
         return trailer_ids, []  # theirs' tip is sgt-native -- trailers are authoritative
 
-    # No trailers (a squash-merge destroyed them, or theirs never ran sgt): theirs' commits are
-    # mined as if sgt had been tracking theirs' branch all along. LAW-0 makes these byte-identical
-    # to the ops theirs' own `sgt init` would mint, so a later adoption self-dedups (AE8). Theirs'
+    # No trailers (GitHub squash-merges destroy them by default). Recover from the committed
+    # in-tree `.sgt/ideal.json` (C5) when theirs' tip is a *witness* of it -- i.e. the tip commit
+    # actually wrote that ideal, so the record describes the tip's own code (a squash carries the
+    # branch's witness tree forward). The fine-grained ops still live in `.sgt/ops/` blobs (read as
+    # `theirs_ops`), so this identifies rather than re-mining -- re-mining a squash would mint
+    # *coarse* ops (§2.1 path-dependence) that fork against those fine ops. A stale record inherited
+    # by a later foreign commit (a plain-git hotfix that never touched `.sgt/ideal.json`) does not
+    # describe that commit's code, so it is *not* trusted -- that falls through to mining below.
+    if _tip_witnesses_ideal(gb, theirs_sha):
+        recovered = state.load_blob_json(gb, theirs_sha, "ideal")
+        if recovered is not None:
+            return frozenset(recovered), []
+
+    # Neither trailers nor an in-tree ideal record: theirs never ran sgt. Mine theirs' commits as
+    # if sgt had been tracking theirs' branch all along. LAW-0 makes these byte-identical to the
+    # ops theirs' own `sgt init` would mint, so a later adoption self-dedups (AE8). Theirs'
     # divergent ops alone form its ideal contribution -- the shared base below `merge_base` already
     # rides in `ours_ideal`, so the union covers it.
     base = gb.merge_base(ours_sha, theirs_sha)

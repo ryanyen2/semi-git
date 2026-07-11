@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sgt import state
 from sgt.core import lens
 from sgt.core.fold import code
 from sgt.core.store import Store
@@ -47,6 +48,7 @@ def materialize(
 
     materialized = code(res.merged_ideal, ing.all_ops)
     lens._write_working_tree(repo, materialized)
+    state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery record (C5)
 
     trailers = format_op_trailers(sorted(res.merged_ideal.op_ids))
     merge_sha = gb.complete_merge(f"sgt sync: merge {remote}/{branch}", theirs_sha, trailers=trailers)

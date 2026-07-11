@@ -57,6 +57,10 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "declared": _Artifact(("declared.json",), committed=True, sort_keys=False),
     "pins": _Artifact(("pins", "pins.json"), committed=True, sort_keys=False),
     "tree": _Artifact(("tree", "tree.json"), committed=True),
+    # committed recovery record of a witness commit's own ideal (op-id list) -- survives a
+    # squash/rebase that destroys `Sgt-Op:` trailers (C5). Distinct from the local, per-ref
+    # `ideal_table` below (that stays authoritative for the *current* ref; this is in-tree history).
+    "ideal": _Artifact(("ideal.json",), committed=True),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),

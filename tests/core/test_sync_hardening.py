@@ -111,3 +111,49 @@ def test_c6_sync_refuses_to_union_across_miner_versions(tmp_path):
         sync.sync(b, remote="origin", branch="main")
     assert "theirs" in str(exc.value)  # A (version 1) is the side behind ours (version 2)
     assert GitBinding(b).is_clean()  # refused before any tree mutation
+
+
+# --- C5: committed-ideal recovery after a squash-merge (AE10, row 4) ----------------------------
+
+
+def _squash_commit(repo: Path, tip_sha: str, parent_sha: str, message: str) -> str:
+    """A single commit whose *tree* is `tip_sha`'s but whose message is plain (no `Sgt-Op:`
+    trailers) and whose parent is `parent_sha` -- exactly what GitHub's squash-merge produces."""
+    tree = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", f"{tip_sha}^{{tree}}"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", tree, "-p", parent_sha, "-m", message],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def test_c5_squash_merge_ideal_is_recovered_from_the_committed_file(tmp_path):
+    """AE10 / row 4: GitHub squash-merges an sgt branch -- the `Sgt-Op:` trailers are destroyed but
+    the tree (including `.sgt/ideal.json` and the fine-grained `.sgt/ops/` blobs) survives. Sync
+    recovers the exact ideal from the committed file and identifies rather than re-mining the
+    coarse squash (which would fork against the fine ops)."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    _edit_and_commit(a, "main.py", _BASE, "init")
+    _push(a)
+    base_sha = GitBinding(a).head()
+
+    b = _clone(remote, tmp_path / "b")
+    lens.get(b)  # a fresh teammate at the base, never having witnessed a's later work
+
+    _edit_and_commit(a, "main.py", _BASE + "\n\ndef baz():\n    return 42\n", "A: add baz")
+    fine_ideal = lens.current_ideal(a).op_ids  # a's exact fine-grained ideal
+
+    squash = _squash_commit(a, GitBinding(a).head(), base_sha, "Squash merge #1 (no trailers)")
+    subprocess.run(
+        ["git", "-C", str(a), "push", "-q", "-f", "origin", f"{squash}:main"],
+        check=True, capture_output=True,
+    )
+
+    report = sync.sync(b, remote="origin", branch="main")
+    assert report.merged
+    assert lens.current_ideal(b).op_ids == fine_ideal  # recovered fine ideal, no coarse re-mine
+    assert "def baz" in (b / "main.py").read_text(encoding="utf-8")
