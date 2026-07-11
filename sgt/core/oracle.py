@@ -10,7 +10,10 @@ the old verdict silently stops applying -- no reset bookkeeping needed.
 `.sgt/oracle.json` (committed, team-shared -- see `sgt.config.load_oracle_config`) declares tier
 commands in run order. `.sgt/local/oracle.json` (gitignored) is the per-ideal verdict cache,
 following the same small-JSON-table convention as `lens.py`'s witness/ideal/declared files
-(plain `json.loads`/`write_text`, not `store.py`'s heavier content-addressed atomic writes).
+(plain `json.loads`/`write_text`, not `store.py`'s heavier content-addressed atomic writes). A
+verdict a teammate should see -- a proposal's -- is *published* explicitly (`publish`, D8) into the
+committed `.sgt/claims/` G-Set (`sgt.state`), carrying runner identity; the local cache stays
+private, so a red experiment never leaks into shared history.
 
 `run`/`verdict_for`/`override` all take an explicit `ideal` (defaulting to the current ref's
 committed one) rather than always deriving "current" -- this is what lets U11 later gate landing
@@ -19,6 +22,10 @@ a rewrite op on the verdict for a *candidate* ideal that isn't committed yet.
 
 from __future__ import annotations
 
+import getpass
+import json
+import platform
+import socket
 import subprocess
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -140,3 +147,62 @@ def override(
     table[key] = record
     _save_verdicts(repo, table)
     return record
+
+
+def _runner_fingerprint(by: str | None = None) -> dict:
+    """The environment that produced a verdict, recorded on a published claim so a reader knows
+    where it ran. `by` (the runner's identity) defaults to the OS user; an explicit arg overrides
+    it (e.g. a CI identity)."""
+    return {
+        "by": by if by is not None else (getpass.getuser() or None),
+        "host": socket.gethostname(),
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+    }
+
+
+def _runner_fp(fingerprint: dict) -> str:
+    """A short, stable id for a runner fingerprint -- the per-runner half of a claim file's name,
+    so two runners' claims for the same ideal are distinct files (a G-Set, not a merge surface)."""
+    blob = json.dumps(fingerprint, sort_keys=True).encode("utf-8")
+    return sha256(blob).hexdigest()[:12]
+
+
+def publish(repo: str | Path, ideal: Ideal | None = None, by: str | None = None) -> dict:
+    """Publish this clone's recorded verdict for `ideal` (default: the current ref's committed one)
+    as a committed claim (D8) under `.sgt/claims/<ideal_key>.<runner_fp>.json`, carrying runner
+    identity + environment. Requires a local verdict already recorded -- publication is explicit,
+    never automatic. Returns the claim body."""
+    repo = Path(repo)
+    if ideal is None:
+        ideal = lens.current_ideal(repo)
+    record = verdict_for(repo, ideal)
+    if record is None:
+        raise ValueError("no verdict recorded for this ideal; run `sgt oracle run` first")
+    key = ideal_key(ideal)
+    fingerprint = _runner_fingerprint(by)
+    body = {
+        "ideal_key": key,
+        "tiers": record.get("tiers", {}),
+        "override": record.get("override"),
+        "status": overall_status(record),
+        "runner": fingerprint,
+        "published_ts": _now(),
+    }
+    state.save_claim(repo, f"{key}.{_runner_fp(fingerprint)}.json", body)
+    return body
+
+
+def claim_for(repo: str | Path, ideal: Ideal) -> list[dict]:
+    """Every published claim for exactly this `ideal`'s key (one per runner), from the working
+    tree -- may be empty. A pure read; a teammate's claim arrives here after `sgt sync` unions the
+    committed `.sgt/claims/` G-Set."""
+    repo = Path(repo)
+    prefix = f"{ideal_key(ideal)}."
+    claims = []
+    for name in state.list_claim_files(repo):
+        if name.startswith(prefix):
+            body = state.load_claim(repo, name)
+            if body is not None:
+                claims.append(body)
+    return claims

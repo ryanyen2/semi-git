@@ -27,6 +27,21 @@ from .ingest import Ingested
 from .resolve import Resolution
 
 
+def _union_claims(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
+    """G-Set union of theirs' committed claims (D8): copy any `.sgt/claims/` file we don't already
+    have, byte-for-byte. Claim files are immutable and keyed by `(ideal_key, runner_fp)`, so a
+    file-level presence check is the whole merge -- no re-encode, no field union, no conflict."""
+    for path in gb.list_tree(theirs_sha, ".sgt/claims/"):
+        raw = gb.blob_bytes(theirs_sha, path)
+        if raw is None:
+            continue
+        local = repo / path
+        if local.exists():
+            continue
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_bytes(raw)
+
+
 def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
     """The committed `.sgt/forks.json` body (C4): one record per open same-symbol fork, each with
     its two tips and the `sgt merge-op` remedy that closes it. Sorted for a deterministic blob. The
@@ -58,6 +73,7 @@ def materialize(
     reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
     tree.save(repo, res.tree_result)
     state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
+    _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
 
     materialized = code(res.merged_ideal, ing.all_ops)
     lens._write_working_tree(repo, materialized)
