@@ -1,8 +1,9 @@
-"""Async tiered build/test verdicts attached to the current ideal (plan U9, R13). `sgt oracle
+"""Async tiered build/test verdicts attached to the current ideal (plan U9/U22, R13). `sgt oracle
 run [--tier NAME]` executes configured tiers in declared order, stopping at the first failure;
 `sgt oracle override --status pass|fail --reason "..." [--by NAME]` records a human verdict that
-supersedes them. Materialization itself never calls this -- a verdict is "pending" until this
-verb is run explicitly."""
+supersedes them; `sgt oracle publish [--by NAME]` publishes the recorded verdict as a committed
+claim that travels via sync (D8). Materialization itself never calls this -- a verdict is "pending"
+until one of these verbs is run explicitly."""
 
 from __future__ import annotations
 
@@ -29,8 +30,9 @@ def _oracle(repo: str, sub: str | None, tier: str | None, status: str | None,
     from sgt.core.lens import get
 
     usage = ('usage: sgt oracle run [--json] [--tier NAME] | '
-             'sgt oracle override --status pass|fail --reason "..." [--by NAME]')
-    if sub not in ("run", "override"):
+             'sgt oracle override --status pass|fail --reason "..." [--by NAME] | '
+             'sgt oracle publish [--json] [--by NAME]')
+    if sub not in ("run", "override", "publish"):
         print(usage)
         return 2
 
@@ -50,6 +52,17 @@ def _oracle(repo: str, sub: str | None, tier: str | None, status: str | None,
         for name, tr in result["tiers"].items():
             icon = "✓" if tr["status"] == "pass" else "✗"
             print(f"{icon} [{name}] exit {tr['exit_code']}")
+        return 0
+
+    if sub == "publish":
+        try:
+            claim = oracle.publish(repo, by=by)
+        except ValueError as e:
+            print(f"✗ {e}")
+            return 2
+        if as_json:
+            return _emit_json(claim)
+        print(f"✓ published claim for {claim['ideal_key']} ({claim['status']})")
         return 0
 
     if status not in ("pass", "fail") or reason is None:

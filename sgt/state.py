@@ -152,3 +152,56 @@ def save_json(repo: str | Path, name: str, body) -> None:
     p = path(repo, name)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(_encode(body, art), encoding="utf-8")
+
+
+# -- committed claims directory (D8) -------------------------------------------------------------
+# Published oracle verdicts (`sgt oracle publish`) live one immutable file per (ideal_key, runner)
+# under `.sgt/claims/`, so sync's union is a trivial file-level G-Set: copy any file you don't have
+# (no field merge, no re-encode). Unlike the flat JSON tables above, the file *set* is the artifact,
+# so these get directory helpers rather than a registry slot -- but each file reuses the same schema
+# envelope (`_encode`/`_unwrap`) and byte format (`sort_keys=True`, trailing newline) as every other
+# committed single-file artifact. Distinct from the local, per-clone verdict cache, which never travels.
+_CLAIM_ART = _Artifact(("claims",), committed=True)
+
+
+def claims_dir(repo: str | Path) -> Path:
+    return subdir(repo, "claims")
+
+
+def claim_rel(name: str) -> str:
+    """The repo-relative path (`.sgt/claims/<name>`) of one claim file -- the key a blob read uses."""
+    return "/".join((SGT_DIR, "claims", name))
+
+
+def save_claim(repo: str | Path, name: str, body) -> None:
+    """Write claim file `name` (a full basename like `<ideal_key>.<runner_fp>.json`) to the working
+    tree. Claim files are immutable once published; a re-publish by the same runner overwrites the
+    identical key, which is a no-op on content."""
+    d = claims_dir(repo)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(_encode(body, _CLAIM_ART), encoding="utf-8")
+
+
+def load_claim(repo: str | Path, name: str, default=None):
+    """The logical body of claim file `name` from the working tree, or `default` if absent."""
+    p = claims_dir(repo) / name
+    if not p.is_file():
+        return default
+    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+
+
+def list_claim_files(repo: str | Path) -> list[str]:
+    """Sorted basenames of every claim file present in the working tree (empty if none)."""
+    d = claims_dir(repo)
+    if not d.is_dir():
+        return []
+    return sorted(p.name for p in d.iterdir() if p.is_file())
+
+
+def load_blob_claim(gb, sha: str, name: str, default=None):
+    """The logical body of claim file `name` as committed at `sha` (the historical-blob read path),
+    or `default` if absent -- the same version dispatch as a working-tree read."""
+    raw = gb.blob_bytes(sha, claim_rel(name))
+    if raw is None:
+        return default
+    return _unwrap(json.loads(raw.decode("utf-8")))
