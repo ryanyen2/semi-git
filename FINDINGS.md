@@ -1082,6 +1082,50 @@ one subparser per name, so the SYNC-2 verb is `sgt land <branch>` (an explicit p
 `sgt land` still routes to U11 unchanged (its golden/behavior untouched), and the
 `land(repo, branch=None)` API keeps the default-current-branch form for programmatic use.
 
+### Collaboration & review foundations — U24 the proposal object + GitHub rendering (2026-07-11)
+
+The last foundations unit. A **proposal** is a reviewable base+Δ over the op DAG (C10): a base
+frontier (some ref's committed ideal at create time), the Δ op-set this session adds on top, the
+feature ids Δ touches, a link to the published oracle claim for base∪Δ, and provenance. It exists
+end-to-end — create → status → land → render — and is a *pure projection* to GitHub with **no
+`gh`/GitHub API dependency** (that is follow-on porcelain); the renderer takes a template seam so
+GitLab/other forges are a later addition, not a redesign (plan Open Question).
+
+- **`sgt/core/propose.py`.** `create` mines-on-contact, computes Δ = current − `ideal_for_ref(base)`,
+  and **refuses a base∪Δ that isn't a valid ideal** (`is_valid_ideal` — downward-closed *and*
+  fork-free): a branch that forks the base is not a reviewable object. Proposals are content-addressed
+  by base+Δ and stored one file per id under `.sgt/proposals/`, mirroring claims (D8) — immutable
+  G-Set members, so `materialize._union_proposals` (a sibling of `_union_claims`) makes a teammate's
+  proposal arrive on `sgt sync`.
+- **Staleness is computed, never stored (`status`).** It re-reads the base's ideal *now* and
+  re-unions it with the recorded Δ: base unchanged → `current`; base advanced disjointly → 
+  `clean-reunion`; Δ now forks the moved base → `fork` with the per-symbol `sgt merge-op` remedy. A
+  pure read (persists nothing). The claim is looked up on the base∪Δ ideal reduced to a valid ideal,
+  so a forked union still keys cleanly (and returns empty, correctly, once the base re-keys the
+  op-set).
+- **`land` reuses U23 verbatim.** It refuses a stale-forked proposal (blocked report), else delegates
+  to `sync.land(repo, branch=<base branch>)` — the session's HEAD carries Δ, which the CAS advance
+  unions onto the (possibly moved) branch tip and gates oracle-green. Partial acceptance ships: an
+  `accept_ids` subset of Δ that must itself be downward-closed on the base (`is_valid_ideal(base ∪
+  accept)`); a proper subset is materialized onto HEAD first so `sync.land`'s re-union lands exactly
+  base_now∪accept. Approvals are **schema + storage only** (no enforcement this unit).
+- **`proposal_view` + `render_github`.** The view (additive, R21) carries the feature delta
+  (id/label/op-count), Δ op count, the claim, a provenance summary, and the full `status`.
+  `render_github` is a pure function of that view returning `{branch, pr_title, pr_body}`; the
+  `pr_body` is plain markdown — a feature-delta table, the oracle claim (status + runner identity), a
+  provenance summary, and a staleness/fork banner up top — that a reviewer *without sgt* can act on.
+
+**A self-hosting note that shaped the tests (not a code change).** The op store `.sgt/ops/` is a
+*committed, per-branch* directory, so a plain `git checkout` between two divergent branches *swaps*
+it — two conflicting reworks of one symbol never coexist in a single working tree's store that way.
+A same-symbol **fork only ever arises through a store union** (sync's ingest), which is how forks are
+constructed everywhere in the suite. So the fork-based-contributor tests (matrix row 6, and the
+create-time validity rejection) union the base's conflicting op in via a real `sgt sync` (or the
+mine-into-store half of one) rather than a checkout — matching how a contributor actually learns the
+base moved. Rows 6/7/12 + G-Set travel + round-trip are green (`tests/core/test_propose.py`); no op
+ids change (proposals never touch ops), and the only golden drift is the new `sgt propose` help
+lines.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
