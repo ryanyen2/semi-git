@@ -9,14 +9,18 @@ including over the `revert_to_original` after-value collision that the collision
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from hypothesis import HealthCheck, given, settings, strategies as st
 
+from sgt.core import session as session_mod
 from sgt.core import verbs
 from sgt.core.fold import code
 from sgt.core.lens import get
 from sgt.core.order import is_valid_ideal
 from sgt.core.store import Store
 from sgt.store.gitbind import init_store
+from tests.core.test_session import _seed_repo, _write_and_commit
 from tests.laws import corpus
 
 
@@ -192,6 +196,53 @@ def test_apply_then_get_persists_the_edit_without_a_phantom_inverse(tmp_path):
     after = get(repo).op_ids
     assert after == before - preview.removed  # exactly the edit, nothing resurrected or inverted
     assert is_valid_ideal(Store(repo).all_ops(), after)
+
+
+def test_plan_revert_session_removes_exactly_the_landed_session_ops(tmp_path):
+    """Addressing by provenance (plan U31, S7): `revert --session <name>` resolves a session name
+    to the op-set it landed via structured attribution (`ops_by_session`), not the session record
+    (which `land` already dropped), then removes exactly that op-set's up-set closure."""
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
+    session_mod.land(tmp_path, "s1")
+    get(tmp_path)  # absorb the landing commit into the main repo's store
+
+    session_ops = session_mod.ops_by_session(tmp_path, "s1")
+    assert session_ops  # the landed op still carries the attribution after the record is gone
+    assert session_mod.list_sessions(tmp_path) == ()  # the session record itself is gone
+
+    preview = verbs.plan_revert_session(tmp_path, "s1")
+    assert preview.ok
+    assert preview.removed == session_ops
+
+    verbs.apply(tmp_path, preview)
+    materialized = code(get(tmp_path), Store(tmp_path).all_ops())
+    assert "b.py" not in materialized
+
+
+def test_plan_revert_session_refuses_an_unknown_session_name(tmp_path):
+    _seed_repo(tmp_path)
+    preview = verbs.plan_revert_session(tmp_path, "nope")
+    assert not preview.ok
+    assert "no op carries session" in preview.message
+    assert preview.after_ids == preview.before_ids
+
+
+def test_plan_revert_session_reports_no_change_once_already_reverted(tmp_path):
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
+    session_mod.land(tmp_path, "s1")
+    get(tmp_path)
+
+    verbs.plan_revert_session(tmp_path, "s1")
+    verbs.apply(tmp_path, verbs.plan_revert_session(tmp_path, "s1"))  # reverted once
+
+    preview = verbs.plan_revert_session(tmp_path, "s1")
+    assert preview.ok
+    assert preview.after_ids == preview.before_ids
+    assert "no change" in preview.message
 
 
 @settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])

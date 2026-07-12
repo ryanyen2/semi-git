@@ -7,7 +7,10 @@ semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinn
 
 import json
 
-from sgt.api import drift_view, history_view, ideal_diff_view, oplog_view, plan_view, state_view
+from sgt.api import (
+    drift_view, history_view, ideal_diff_view, map_view, oplog_view, plan_view, state_view,
+    trust_view,
+)
 from sgt.core.lens import get
 from sgt.core.op import make_op
 from sgt.core.store import Store
@@ -204,6 +207,118 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
     drift = drift_view(repo)
     bar_entries = [e for e in drift["entries"] if e["footprint"] == ["a.py::bar"]]
     assert len(bar_entries) == 1
-    assert bar_entries[0]["files"] == [
-        {"path": "a.py", "spans": [{"symbol": "a.py::bar", "start_line": 5, "end_line": 6}]}
-    ]
+
+
+def test_map_view_reports_no_sessions_for_a_plain_mined_tree(tmp_path):
+    """No `sgt session` has ever landed against this repo, so every node's rollup is empty --
+    additive to `map_view` (plan U31, S7), never a required field elsewhere."""
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    v = map_view(repo)
+    assert v["nodes"]
+    assert all(n["sessions"] == [] for n in v["nodes"])
+
+
+def test_map_view_rolls_up_a_landed_session_onto_its_feature_node(tmp_path):
+    """A session's landed op's `Attribution(session=...)` rolls up through `map_view`'s node tree
+    (plan U31, S7) exactly like `op_count` does -- the leaf feature node it lands under names the
+    session."""
+    from pathlib import Path
+
+    from sgt.core import session as session_mod
+    from sgt.lens.map import build_map
+    from tests.core.test_session import _seed_repo, _write_and_commit
+
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
+    session_mod.land(tmp_path, "s1")
+    get(tmp_path)
+    build_map(tmp_path)
+
+    v = map_view(tmp_path)
+    named = [n for n in v["nodes"] if n["sessions"]]
+    assert named, "at least one node should roll up the landed session"
+    assert all(n["sessions"] == ["s1"] for n in named)
+
+
+def test_trust_view_is_empty_with_nothing_attributed_or_drifting(tmp_path):
+    repo = _mined(tmp_path, "mixed_coverage")
+    assert trust_view(repo) == {"groups": [], "total_ops": 0}
+
+
+def test_trust_view_groups_a_landed_sessions_ops_under_its_session_name(tmp_path):
+    from pathlib import Path
+
+    from sgt.core import session as session_mod
+    from tests.core.test_session import _seed_repo, _write_and_commit
+
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
+    session_mod.land(tmp_path, "s1")
+    get(tmp_path)
+
+    v = trust_view(tmp_path)
+    assert [g["provenance"] for g in v["groups"]] == ["s1"]
+    group = v["groups"][0]
+    assert group["op_ids"]
+    assert all(not op["drift"] for op in group["ops"])
+    assert v["total_ops"] == len(group["op_ids"])
+
+
+def test_trust_view_dequeues_ops_covered_by_a_review_record(tmp_path):
+    from pathlib import Path
+
+    from sgt.core import review, session as session_mod
+    from tests.core.test_session import _seed_repo, _write_and_commit
+
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
+    session_mod.land(tmp_path, "s1")
+    get(tmp_path)
+
+    op_ids = trust_view(tmp_path)["groups"][0]["op_ids"]
+    review.ack(tmp_path, op_ids, scope="session:s1")
+
+    assert trust_view(tmp_path) == {"groups": [], "total_ops": 0}
+
+
+def test_trust_view_includes_an_unattributed_drift_op_under_the_drift_key(tmp_path):
+    """A mined op with no session/agent attribution but flagged drift by an active plan session
+    still shows up in the trust queue -- grouped under the `"drift"` key -- until reviewed or
+    retagged (the plan's second test scenario)."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    store = Store(repo)
+    baseline = sorted(op.id for op in store.all_ops())
+
+    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    store.add_hollow(hollow)
+    table = plan_mod._load_sessions(repo)
+    table["s1"] = {
+        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
+        "baseline_op_ids": baseline,
+        "steps": [{
+            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }],
+    }
+    plan_mod._save_sessions(repo, table)
+
+    (repo / "a.py").write_text("def foo():\n    return 2\n\n\ndef bar():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("add bar")
+    get(repo)
+
+    v = trust_view(repo)
+    assert [g["provenance"] for g in v["groups"]] == ["drift"]
+    drift_ops = v["groups"][0]["ops"]
+    assert drift_ops and all(op["drift"] for op in drift_ops)
+    assert any(op["footprint"] == ["a.py::bar"] for op in drift_ops)

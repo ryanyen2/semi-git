@@ -225,3 +225,13 @@ def stale_sessions(repo) -> tuple[Session, ...]:
     """Sessions whose owning pid is dead -- leaked scratch trees `fsck` should report, without
     reaping them (that's `gc`'s job, not a read verb's)."""
     return tuple(s for s in list_sessions(repo) if not is_alive(s.owner_pid))
+
+
+def ops_by_session(repo, name: str) -> frozenset[str]:
+    """Every op in the main repo's store carrying `Attribution(session=name)` (plan U31, S7) --
+    addressing by provenance. Attribution outlives the session record itself (`land` drops the
+    record but the stamped attribution is permanent), so this works for a long-landed session
+    exactly as it does right after `land`."""
+    return frozenset(
+        op.id for op in Store(repo).all_ops() if any(a.session == name for a in op.attribution)
+    )

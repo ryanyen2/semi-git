@@ -51,6 +51,10 @@ Shapes (stable; additive changes only):
 * ``why_view``          — the U29 "why is this op here" query: an op's plurality-vote feature
   attribution, or (given a target feature) the exact chain that pulled it into that feature's
   selection closure.
+* ``trust_view``        — the U31 trust queue: every op with session/agent attribution or drift
+  status that isn't yet covered by a review record, grouped by provenance key (a session/agent
+  name, or ``"drift"`` for unattributed drift), so a teammate can act on or ack a whole group at
+  once (``sgt revert --session``, ``sgt review-queue ack``).
 """
 
 from __future__ import annotations
@@ -375,6 +379,28 @@ def map_view(repo) -> dict:
             return leaf_op_count.get(nid, 0)
         return sum(op_count(c) for c in children)
 
+    ops = Store(repo).all_ops()
+    by_id = {op.id: op for op in ops}
+    leaf_sessions: dict[str, set[str]] = {}
+    for op_id, leaf in op_leaf.items():
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        sessions = {a.session for a in op.attribution if a.session}
+        if sessions:
+            leaf_sessions.setdefault(leaf, set()).update(sessions)
+
+    def node_sessions(nid: str) -> list[str]:
+        """Every session (plan U30/D5) whose attributed ops sit under this node -- additive
+        provenance rollup (plan U31, S7), same children-recursion shape as `op_count`."""
+        children = nodes[nid]["children"]
+        if not children:
+            return sorted(leaf_sessions.get(nid, ()))
+        merged: set[str] = set()
+        for c in children:
+            merged.update(node_sessions(c))
+        return sorted(merged)
+
     emitted = [
         {
             "id": nid,
@@ -387,10 +413,10 @@ def map_view(repo) -> dict:
             "dir": nd.get("dir", ""),
             "why": nd.get("why", ""),
             "split_reason": nd.get("split_reason"),
+            "sessions": node_sessions(nid),
         }
         for nid, nd in sorted(nodes.items())
     ]
-    ops = Store(repo).all_ops()
     ideal = current_ideal(repo)
     _, fused = fused_graph(repo, ops, ideal)
 
@@ -662,6 +688,47 @@ def drift_view(repo) -> dict:
         files = [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, footprint).items())]
         entries.append({"op_id": op.id, "kind": op.kind, "footprint": footprint, "files": files})
     return {"entries": entries}
+
+
+def trust_view(repo) -> dict:
+    """The U31 trust queue: every op carrying session/agent attribution (D7) or drift status
+    (`drift_view`) that isn't yet covered by a review record (`sgt.core.review`), grouped by
+    provenance key -- a session or agent name, or ``"drift"`` for an unattributed drift op. Acting
+    on a group (`sgt revert --session`) or acking it (`sgt review-queue ack`) is the existing verb
+    surface; this view only renders what's queued, per the plan's "report, don't invent mutation
+    semantics" boundary."""
+    from sgt.core import review
+    from sgt.core.store import Store
+    from sgt.loop.match import compute_checkpoint
+
+    ops = Store(repo).all_ops()
+    drift_ids = compute_checkpoint(repo).drift_op_ids
+    reviewed = review.reviewed_op_ids(repo)
+
+    groups: dict[str, list[dict]] = {}
+    for op in ops:
+        if op.id in reviewed:
+            continue
+        keys = sorted({a.session for a in op.attribution if a.session} |
+                      {a.agent for a in op.attribution if a.agent})
+        is_drift = op.id in drift_ids
+        if not keys and not is_drift:
+            continue
+        for key in keys or ["drift"]:
+            groups.setdefault(key, []).append({
+                "op_id": op.id,
+                "kind": op.kind,
+                "footprint": sorted(op.footprint),
+                "attribution": _attribution_entries(op),
+                "drift": is_drift,
+            })
+
+    group_list = [
+        {"provenance": key, "op_ids": [e["op_id"] for e in entries], "ops": entries}
+        for key, entries in sorted(groups.items())
+    ]
+    total_ops = len({e["op_id"] for entries in groups.values() for e in entries})
+    return {"groups": group_list, "total_ops": total_ops}
 
 
 def sync_view(report) -> dict:

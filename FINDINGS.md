@@ -1378,6 +1378,61 @@ A thin named wrapper around a real `git worktree`, not a daemon -- `sgt session 
   four new `sgt session ...` help lines, once for `fsck --json`'s new `stale_sessions: []` field --
   both diffs reviewed, no unrelated drift.
 
+### Product surface — U31 provenance and trust surfaces (2026-07-12)
+
+Renders what U22 structured and U30 populates: `sgt.api.trust_view` (the trust queue) and
+`map_view`'s additive `sessions` rollup, plus the two verbs the plan scoped -- `sgt revert
+--session` (addressing by provenance) and `sgt review-queue ack` (the one new mutation, a
+committed G-Set review record).
+
+- **A review record is a fourth content-addressed G-Set artifact**, following D8/claims and
+  C10/proposals exactly: `sgt/core/review.py`'s `ReviewRecord` is keyed by the sorted op-id set
+  alone (`scope`/`note` ride along but aren't part of identity), so re-acking the same op-set is a
+  no-op on content and `sgt sync`'s union is the same trivial file-presence check as the other two
+  (`materialize._union_reviews`, added next to `_union_claims`/`_union_proposals`). No field-level
+  merge, no conflict possible -- confirmed by a two-clone sync test round-tripping a committed
+  review file byte-for-byte.
+- **Addressing by provenance resolves a session *name* to an op-set via structured attribution,
+  never the session record.** `session.ops_by_session(repo, name)` scans `Store(repo).all_ops()`
+  for `Attribution(session=name)` (D7, U22) -- this is deliberately independent of
+  `plan._load_sessions`/`land`'s bookkeeping, which is dropped the moment a session lands. The
+  effect: `sgt revert --session s1` still resolves correctly arbitrarily long after `s1` landed
+  and its record is gone, exactly as the plan's provenance framing requires. `verbs.
+  plan_revert_session` then reuses `plan_revert_feature`'s grouped `I \ (∪ upset_in(x))` closure
+  verbatim -- no new ideal-algebra code, just a different way to name the op-set going in.
+- **`trust_view` is a pure grouping read, not a new source of truth.** It walks every mined op
+  once, skips anything already covered by `review.reviewed_op_ids` (a review, once acked, is gone
+  from the queue for good -- there is no "unack"), and buckets the rest by provenance key: each
+  distinct `session`/`agent` string an op's `Attribution` list carries, or the literal string
+  `"drift"` for an op with no attribution at all but flagged by `compute_checkpoint(repo).
+  drift_op_ids` (U14). An op with *both* real attribution and drift status appears once, under its
+  attribution key, not under `"drift"` -- attribution is the more specific claim about who's
+  responsible, and the plan's own worked example groups by session/agent first.
+- **`map_view`'s `sessions` field is an additive rollup with the same recursion shape as the
+  pre-existing `op_count`**: a leaf feature node's sessions are exactly the set of `session`
+  strings among its ops' attribution; an interior node's is the union of its children's. This
+  keeps the tree's existing children-recursion invariant (every rollup is a fold over `children`,
+  never a second pass over the flat op list) and required no change to how the tree itself is
+  built -- only a new field on the already-emitted node dicts.
+- **No new mutation semantics, exactly per the plan's boundary.** `review-queue ack` is the *only*
+  new way to change state; acting on a trust-queue group (accepting, rejecting, retagging) is
+  entirely the pre-existing verb surface (`revert --session`, `feature move`). `trust_view` never
+  writes anything.
+- **Rail/TUI panel work deferred, following U29's precedent.** Per D6 (not yet implemented in
+  code), the live surface for the trust queue is scoped to core + `sgt.api` + CLI this unit --
+  `sgt review-queue list`/`ack` and `sgt revert --session` are the full deliverable; a dedicated
+  panel rendering `trust_view` interactively is left for whichever unit actually builds the rail.
+- **Verified:** `tests/core/test_review.py` (4 tests) -- ack/load round-trip and re-ack idempotence,
+  an empty op-set refusal, cross-record union, and G-Set travel across a sync. Three new
+  `plan_revert_session` tests in `tests/core/test_verbs.py` (removes exactly a landed session's
+  op-set; refuses an unknown session name; reports "no change" once already reverted) -- 12/12 in
+  that file. Six new `tests/test_api.py` tests for `map_view`'s `sessions` field and `trust_view`
+  (empty queue, a landed session's ops grouped under its name, dequeuing on ack, an unattributed
+  drift op grouped under `"drift"`). Full suite green (`uv run pytest -q`, live-LLM test
+  deselected as usual); golden snapshots regenerated once, diff reviewed as purely additive -- a
+  new `"sessions": []` field on every feature-tree node, plus the two new `sgt revert --session`/
+  `sgt review-queue` help lines in the captured `sgt help` output.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On

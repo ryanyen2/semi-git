@@ -14,6 +14,7 @@ def register(subs, parent) -> None:
     r.add_argument("--emit", action="store_true")
     r.add_argument("--keep-dependents", action="store_true", dest="keep_dependents")
     r.add_argument("--intent")
+    r.add_argument("--session")
     r.add_argument("ref", nargs="*")
     r.set_defaults(func=_cmd_revert)
 
@@ -64,6 +65,8 @@ def _after(repo: str, a: str, b: str, retract: bool, as_json: bool) -> int:
 
 
 def _cmd_revert(args) -> int:
+    if args.session:
+        return _revert_session(".", args.session, args.emit, args.as_json)
     if args.keep_dependents:
         return _revert_keep_dependents(".", args.ref, args.intent, args.as_json)
     return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json)
@@ -98,6 +101,35 @@ def _kernel_edit_verb(repo: str, cmd: str, ref_tokens: list[str], emit: bool, as
                 preview = lens_verbs.plan_revert_feature(repo, target)
     else:
         preview = verbs.plan_restore(repo, target)
+
+    if emit:
+        from sgt.api import _project_verb_preview
+
+        view = _project_verb_preview(repo, preview)
+        return _emit_json(view) if as_json else _print_verb_view(view)
+
+    if preview.ok:
+        verbs.apply(repo, preview)
+    view = {
+        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
+        "removed": sorted(preview.removed), "added": sorted(preview.added),
+        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
+        "message": preview.message,
+    }
+    return _emit_json(view) if as_json else _print_verb_view(view)
+
+
+def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:
+    """`sgt revert --session <name>` (plan U31, S7): addressing by provenance -- resolves a
+    session name to the op-set it landed (`sgt.core.session.ops_by_session`, reading structured
+    attribution rather than the session record, so it still works long after the session itself is
+    gone) and previews/applies the exact same grouped `I \\ (∪ upset_in(x))` edit `revert <feature>`
+    already runs, through the identical `verbs.apply` path."""
+    from sgt.core import verbs
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact before resolving the session's ops (R9)
+    preview = verbs.plan_revert_session(repo, name)
 
     if emit:
         from sgt.api import _project_verb_preview

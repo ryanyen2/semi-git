@@ -272,3 +272,54 @@ def load_blob_proposal(gb, sha: str, name: str, default=None):
     if raw is None:
         return default
     return _unwrap(json.loads(raw.decode("utf-8")))
+
+
+# -- committed reviews directory (plan U31, S7) --------------------------------------------------
+# A review record (`sgt review-queue ack`) marks an op-set reviewed -- content-addressed by the
+# sorted op-id set, so acking the same set twice is a no-op and, like claims (D8) and proposals
+# (C10), the file *set* is the artifact: sync's union is a trivial file-level G-Set
+# (`materialize._union_reviews`), no field merge.
+_REVIEW_ART = _Artifact(("reviews",), committed=True)
+
+
+def reviews_dir(repo: str | Path) -> Path:
+    return subdir(repo, "reviews")
+
+
+def review_rel(name: str) -> str:
+    """The repo-relative path (`.sgt/reviews/<name>`) of one review file -- a blob read's key."""
+    return "/".join((SGT_DIR, "reviews", name))
+
+
+def save_review(repo: str | Path, name: str, body) -> None:
+    """Write review file `name` (a full basename like `<review_id>.json`) to the working tree.
+    Review records are immutable once acked; a re-ack of the same op-set overwrites the identical
+    content-addressed key, a no-op on content."""
+    d = reviews_dir(repo)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(_encode(body, _REVIEW_ART), encoding="utf-8")
+
+
+def load_review(repo: str | Path, name: str, default=None):
+    """The logical body of review file `name` from the working tree, or `default` if absent."""
+    p = reviews_dir(repo) / name
+    if not p.is_file():
+        return default
+    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+
+
+def list_review_files(repo: str | Path) -> list[str]:
+    """Sorted basenames of every review file present in the working tree (empty if none)."""
+    d = reviews_dir(repo)
+    if not d.is_dir():
+        return []
+    return sorted(p.name for p in d.iterdir() if p.is_file())
+
+
+def load_blob_review(gb, sha: str, name: str, default=None):
+    """The logical body of review file `name` as committed at `sha` (the historical-blob read
+    path), or `default` if absent -- the same version dispatch as a working-tree read."""
+    raw = gb.blob_bytes(sha, review_rel(name))
+    if raw is None:
+        return default
+    return _unwrap(json.loads(raw.decode("utf-8")))
