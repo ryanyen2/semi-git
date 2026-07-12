@@ -322,7 +322,7 @@ def handle_request(repo_path: str, msg: dict) -> dict | None:
         name = params.get("name")
         try:
             data = call_tool(repo_path, name, params.get("arguments"))
-            is_error = isinstance(data, dict) and "error" in data
+            is_error = isinstance(data, dict) and ("error" in data or data.get("ok") is False)
         except KeyError:
             data, is_error = {"error": f"unknown tool: {name}"}, True
         except Exception as ex:  # noqa: BLE001 - report any handler failure as a tool error

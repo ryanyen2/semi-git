@@ -17,9 +17,16 @@ def register(subs, parent) -> None:
 
 
 def _cmd_init(args) -> int:
+    from sgt.cli._common import _emit_json, _fail
     from sgt.core.lens import init as kernel_init
+    from sgt.store.gitbind import GitError
 
-    kernel_init(args.path, horizon=args.horizon)
+    try:
+        kernel_init(args.path, horizon=args.horizon)
+    except (ValueError, GitError) as ex:
+        return _emit_json({"error": str(ex)}) if args.as_json else _fail(str(ex))
+    if args.as_json:
+        return _emit_json({"ok": True, "path": args.path, "horizon": args.horizon})
     print(f"✓ initialized sgt kernel in {args.path} (.sgt/ + git)")
     return 0
 

@@ -41,7 +41,6 @@ REFUSALS: dict[str, str] = {
     "cherry-pick": "sgt restore <ref>  (or `sgt transplant <op>... --onto <ref>`)",
     "stash": "sgt save  (a dirty tree is just ops not yet landed)",
     "am": "git apply, then `sgt save` to record the change as ops",
-    "apply": "apply, then `sgt save` to record the change as ops",
 }
 
 

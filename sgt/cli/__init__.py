@@ -161,7 +161,7 @@ def _help() -> int:
         "  sgt propose status <id>     staleness by re-union: current / clean-reunion / fork\n"
         "  sgt propose land <id>       advance the base branch by CAS (refuses a stale-forked proposal)\n"
         "  sgt propose render <id> --github   emit a suggested branch + a GitHub PR body (plain markdown)\n"
-        "  sgt git <args...>           pass through to real git (advises on tree-mutating verbs)\n"
+        "  sgt git <args...>           pass through to real git (refuses tree-mutating verbs; --force overrides)\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"
         "  feature id/label (`revert` only)\n"
