@@ -1315,6 +1315,69 @@ never materialize one.
   suite green (no regressions), golden snapshots unchanged (the golden CLI-surface test doesn't
   enumerate every verb's help line, so the two new verbs didn't require regeneration).
 
+### Product surface — U30 the session layer (D5) (2026-07-12)
+
+A thin named wrapper around a real `git worktree`, not a daemon -- `sgt session start`/`status`/
+`land`/`gc`, plus `fsck` surfacing (never reaping) leaked sessions.
+
+- **A session's scratch tree is a real `git worktree`** (`sgt/core/session.py`), checked out on a
+  fresh `sgt-session/<name>` branch off the current (or `--base`) branch, living at
+  `.sgt/local/sessions/<name>` -- nested inside the main repo's own gitignored `.sgt/local/`, so it
+  never shows up in the main tree's `git status`. `sgt/state.py` gets a new `sessions` artifact
+  slot (`.sgt/local/sessions.json`, local, gitignored, never travels) recording each session's
+  branch, scratch path, target branch, the op-ids present at its base, owning pid, and start time.
+- **`land` needed no new union machinery -- it reuses U23's CAS `sgt.core.sync.land` verbatim**,
+  called with `repo` = the scratch worktree's own path. Worktrees share one ref store, so the CAS
+  in `land()` operates on the *shared* `refs/heads/<branch>` regardless of which worktree issues
+  the call -- this was the key unblocking insight; no new op-union code was written for this unit.
+  `Session.target_branch` (a branch name, resolved at `start()` from `--base` or the current
+  checked-out branch) is tracked separately from `Session.base_ref` (the sha) -- a session always
+  lands onto a named branch, never a detached sha, matching `land`'s nature as a branch-record CAS.
+- **Provenance is stamped in the *main* repo's store, not the scratch tree's.** `session.land()`
+  computes `new_op_ids` before calling `sync.land`, then -- once the landing commit is mined into
+  the main repo (`lens.get(repo)`) -- calls `Store(repo).attribute(op_id, (Attribution(sha=sha,
+  session=name) for sha in op.provenance))` per new op, mirroring `sgt.loop.match._stamp_session`'s
+  existing convention (a different, unrelated notion of "session"). This must run against the main
+  repo's `Store`: `.sgt/ops/<id>` files are separate on-disk copies per worktree, so attribution
+  written into the scratch tree's copy would never be visible to anyone reading the main repo.
+- **A successful `land` is the session's terminal step**, unlike `gc` (crash-only reaping): it
+  removes the scratch worktree and drops the session record, since the session's job is done. A
+  *refused* land (fork/red oracle/contention) leaves both in place so the agent can fix and retry.
+- **Owning-pid liveness, not age, distinguishes a crash from a long-running session (D5's
+  pitfall).** `start()` records `os.getppid()` (the invoking agent/shell -- sgt's own CLI pid is
+  transient and meaningless by the time anyone checks); `gc` reaps a session once `os.kill(pid, 0)`
+  raises `ProcessLookupError` (POSIX, stdlib, no new dependency), or every session with `--force`.
+  `sgt fsck` now also reports (never reaps) any session whose owning pid has died -- a
+  `stale_sessions` JSON field / a printed line per leaked session, advisory only (doesn't flip
+  `ok`, since a leaked worktree isn't store corruption).
+- **The early-fork warning is a report, never a lock (S6).** `overlaps(repo)` diffs each live
+  session's new ops' footprints pairwise and names any pair that shares a symbol; `sgt session
+  status --watch` polls this every couple of seconds until interrupted -- the only thing that ever
+  loops, and only for as long as it's asked to. No daemon anywhere in this unit.
+- **Test-fixture bug found and fixed during verification.** A helper calling `gb.commit_all(...)`
+  then `lens.get(repo)` produces a base commit whose tree never includes `.sgt/local/.gitignore` or
+  `.sgt/ops/*`, since `get()`/`_sync()` is what writes those files, *after* the commit that would
+  need to carry them. A `git worktree` checked out at that base sha inherits the same gap and is
+  therefore permanently dirty per `git status` -- which trips `sync.land()`'s clean-tree
+  precondition. Fixed (matching `tests/core/test_land.py`'s existing `_seed_shared`/`_stage_local_op`
+  pattern) by following every `get()` with `lens.put(repo, ideal, message=...)` +
+  `lens.record_ideal(repo, ideal, put_sha)`, which materializes and commits a witness so the tree is
+  genuinely clean and `.sgt/ops/*` is tracked.
+- **A single `def bar(): ...` in a new file mines to 4 ops, not 1** (anchor + residue + HEAD-residue
+  + the symbol itself) -- the land-provenance test's initial `ops_added == 1` assumption was wrong
+  about the kernel's actual mining granularity, not about session semantics; fixed to compare
+  against `len(session_mod.new_op_ids(session))` computed before landing, rather than a hardcoded
+  count.
+- **Verified:** `tests/core/test_session.py`, 9 tests -- a session materializes a real worktree on
+  its own branch and refuses a name collision; two sessions editing the same symbol are reported
+  overlapping (and independent edits are not); a landed session's ops carry
+  `Attribution(session=...)` in the *main* repo's store and the scratch worktree + record are both
+  gone; a red-oracle land leaves the session fully intact; `gc` reaps only a dead-pid session (or
+  every session with `--force`) and `fsck` stays clean after; `stale_sessions` reports without
+  reaping. Full suite green (no regressions); golden CLI snapshot regenerated twice -- once for the
+  four new `sgt session ...` help lines, once for `fsck --json`'s new `stale_sessions: []` field --
+  both diffs reviewed, no unrelated drift.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On

@@ -93,6 +93,10 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),
     "plan_sessions": _Artifact(("local", "plan_sessions.json"), committed=False),
     "plan_matches": _Artifact(("local", "plan_matches.json"), committed=False),
+    # local, gitignored record of scratch-tree sessions (`sgt session start`, U30/D5): name ->
+    # branch/scratch path/target branch/base op-ids/owning pid/start time. Per-clone, never
+    # travels -- a session's scratch tree is a `git worktree` of *this* clone's object store.
+    "sessions": _Artifact(("local", "sessions.json"), committed=False),
 }
 
 

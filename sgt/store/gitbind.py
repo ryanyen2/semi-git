@@ -469,6 +469,22 @@ class GitBinding:
             raise GitError("push succeeded but HEAD is unresolved")
         return head
 
+    # -- worktrees: session scratch trees (plan U30, D5) --------------------
+    def worktree_add(self, path: str | Path, branch: str, base_sha: str) -> None:
+        """`git worktree add -b <branch> <path> <base_sha>`: a real, isolated working directory
+        sharing this repo's object store, checked out on a fresh branch off `base_sha` -- the
+        mechanism behind `sgt session start`'s "ephemeral materialization of a base ideal into a
+        scratch tree" (no daemon, no separate clone; git's own worktree bookkeeping owns it)."""
+        self._git("worktree", "add", "-q", "-b", branch, str(path), base_sha)
+
+    def worktree_remove(self, path: str | Path, force: bool = False) -> None:
+        """`git worktree remove [--force] <path>`. `force` is needed when the scratch tree has
+        uncommitted edits -- a crashed session's abandoned work (`sgt session gc`)."""
+        args = ["worktree", "remove"]
+        if force:
+            args.append("--force")
+        self._git(*args, str(path))
+
     # -- land: off-ref commit construction + branch-record CAS (plan U23, C9) ----------------
     def write_tree(self) -> str:
         """The tree object id of the current index (`git write-tree`). `land` stages its
