@@ -238,6 +238,38 @@ class GitBinding:
         )
         return proc.stdout if proc.returncode == 0 else None
 
+    def blob_bytes_many(self, specs: list[tuple[str, str]]) -> list[bytes | None]:
+        """Raw bytes for many ``(sha, path)`` pairs in one ``git cat-file --batch`` process,
+        aligned with ``specs`` order -- the batched counterpart to ``blob_bytes``. Mining one
+        commit needs many blobs at once (every tracked file for ``tree_at``, or every changed
+        file for a diff); one subprocess per blob made mining scale as O(commits x files)
+        subprocess spawns (measured: minutes to mine a 169-commit repo). ``cat-file --batch``
+        takes a ``<rev>:<path>`` object spec per line, so no oid lookup is needed first."""
+        if not specs:
+            return []
+        stdin_data = "".join(f"{sha}:{path}\n" for sha, path in specs).encode()
+        proc = subprocess.run(
+            ["git", "-C", str(self.repo), "cat-file", "--batch"],
+            input=stdin_data, capture_output=True,
+        )
+        data = proc.stdout
+        results: list[bytes | None] = []
+        pos = 0
+        for _ in specs:
+            nl = data.index(b"\n", pos)
+            header = data[pos:nl]
+            pos = nl + 1
+            # A missing spec's line is the literal input echoed back + " missing" -- a path
+            # containing spaces would otherwise throw off a plain field-count check, since git
+            # doesn't quote it.
+            if header.endswith(b" missing") or len(header.split()) != 3:
+                results.append(None)
+                continue
+            size = int(header.split()[2])
+            results.append(data[pos:pos + size])
+            pos += size + 1  # the blob's trailing newline
+        return results
+
     def list_tree(self, sha: str, prefix: str) -> list[str]:
         """Every tracked path under ``prefix`` at ``sha`` -- e.g. every op file a remote's commit
         carries, for `sgt sync`'s (U15) provenance-union pass without reading the whole tree via
@@ -286,14 +318,16 @@ class GitBinding:
         listing = self._git("ls-tree", "-r", "--name-only", sha, check=False)
         if listing.returncode != 0:
             return {}
+        paths = [name.strip() for name in listing.stdout.splitlines() if name.strip()]
+        blobs = self.blob_bytes_many([(sha, p) for p in paths])
         out: dict[str, str] = {}
-        for name in listing.stdout.splitlines():
-            name = name.strip()
-            if not name:
+        for path, raw in zip(paths, blobs):
+            if raw is None:
                 continue
-            content = self.file_at(sha, name)
-            if content is not None:
-                out[name] = content
+            try:
+                out[path] = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
         return out
 
     def diff_name_and_text(

@@ -150,6 +150,14 @@ def load_json(repo: str | Path, name: str, default=None):
     return _unwrap(json.loads(p.read_text(encoding="utf-8")))
 
 
+def decode_blob_json(raw: bytes | None, default=None):
+    """`load_blob_json`'s decode step, given an already-fetched blob (or None) -- for a caller
+    that batched its own `blob_bytes_many` read instead of one `blob_bytes` call per artifact."""
+    if raw is None:
+        return default
+    return _unwrap(json.loads(raw.decode("utf-8")))
+
+
 def load_blob_json(gb, sha: str, name: str, default=None):
     """The logical body of artifact `name` as committed at `sha` (via any `GitBinding`-shaped `gb`),
     or `default` if absent -- the historical-blob read path, running the same version dispatch as a

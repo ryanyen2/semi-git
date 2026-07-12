@@ -106,13 +106,17 @@ def _positional_version(surface_id: str, content_hash: str) -> str:
     return hashlib.sha1(f"{surface_id}:{content_hash}".encode()).hexdigest()
 
 
-def _prior_whole_file_version(gb, old_ref: str, parent: str | None, tier_cfg_parent) -> str | None:
+def _prior_whole_file_version(
+    gb, old_ref: str, parent: str | None, tier_cfg_parent, old_raw: bytes | None
+) -> str | None:
     """The (symbol==path) whole-file chain's producing version at `parent`, or None if no such
     producer exists there -- either the path didn't exist yet, it was mined per-entity instead
     (U27/D4 promotion/demotion boundary), or its tier was `ignored` (no producer at all). Chaining
     a new whole-file touch onto a real git blob OID that no same-symbol op ever produced would
     leave it permanently ungrounded (`order.py`'s `_grounded` fixpoint), silently dropping it from
-    every future ideal even though `mine()`'s raw output still lists it."""
+    every future ideal even though `mine()`'s raw output still lists it. `old_raw` is the
+    caller's already-batch-fetched content at `(parent, old_ref)` -- reused here rather than a
+    fresh `blob_bytes` subprocess per opaque/degraded file per commit."""
     if parent is None:
         return None
     parent_tier = tiers.resolve_tier(old_ref, tier_cfg_parent)
@@ -120,7 +124,6 @@ def _prior_whole_file_version(gb, old_ref: str, parent: str | None, tier_cfg_par
         return None
     if parent_tier == "opaque":
         return gb.blob_oid(parent, old_ref)
-    old_raw = gb.blob_bytes(parent, old_ref)
     if old_raw and not extract_file(old_ref, old_raw) and _parse_has_error(old_ref, old_raw):
         return gb.blob_oid(parent, old_ref)
     return None
@@ -236,9 +239,13 @@ def _mine_one(
     against real HEAD exactly the same way (Gap 2, U7.5). `sha` need only be a tree-ish (a real
     commit, or `GitBinding.working_tree_snapshot()`'s synthetic tree object) -- every
     `GitBinding` read used below accepts either."""
-    tier_cfg = tiers.load_tiers_at(gb, sha)  # LAW-0: read from the mined commit's own tree, so
-    # tier assignment stays a pure function of the commit, never the current working tier map.
-    tier_cfg_parent = tiers.load_tiers_at(gb, parent) if parent else None
+    # LAW-0: read from the mined commit's own tree, so tier assignment stays a pure function of
+    # the commit, never the current working tier map. Batched (one `git cat-file --batch` for
+    # both `sha` and `parent`'s `.sgt/tiers.json` + `.sgtignore`) instead of up to 4 separate
+    # `blob_bytes` subprocess spawns per commit.
+    tier_cfgs = tiers.load_tiers_at_many(gb, [sha, parent] if parent else [sha])
+    tier_cfg = tier_cfgs[sha]
+    tier_cfg_parent = tier_cfgs.get(parent) if parent else None
     codebase_after = gb.tree_at(sha)
     graph_after = build_entity_graph(codebase_after)
     calls_by_src: dict[str, set[str]] = {}
@@ -270,7 +277,23 @@ def _mine_one(
             )
         )
 
-    for fc in gb.diff_name_and_text(parent, sha):
+    diffs = gb.diff_name_and_text(parent, sha)
+    # Batched blob reads (one `git cat-file --batch` process for every changed file's new
+    # content, one more for the old side) instead of a `blob_bytes` subprocess per file --
+    # a commit touching dozens of files no longer spawns dozens of git processes to mine.
+    new_blobs = dict(zip(
+        ((sha, fc.path) for fc in diffs),
+        gb.blob_bytes_many([(sha, fc.path) for fc in diffs]),
+    ))
+    old_blobs = (
+        dict(zip(
+            ((parent, fc.old_path or fc.path) for fc in diffs),
+            gb.blob_bytes_many([(parent, fc.old_path or fc.path) for fc in diffs]),
+        ))
+        if parent is not None else {}
+    )
+
+    for fc in diffs:
         old_ref_path = fc.old_path or fc.path
         if (
             fc.path.startswith(".sgt/")
@@ -286,7 +309,7 @@ def _mine_one(
             excluded_paths.add(old_ref_path)
             continue
         tier = tiers.resolve_tier(fc.path, tier_cfg)
-        new_bytes = gb.blob_bytes(sha, fc.path)
+        new_bytes = new_blobs[(sha, fc.path)]
         old_ref = old_ref_path
 
         if tier == "ignored":
@@ -305,7 +328,9 @@ def _mine_one(
             # untouched here (frozen at their tips, D4) -- `fold._fold_file`'s whole-file
             # short-circuit already prefers this new whole-file symbol over them, so there is
             # never a second, competing live representation of the same bytes.
-            before_version = _prior_whole_file_version(gb, old_ref, parent, tier_cfg_parent)
+            before_version = _prior_whole_file_version(
+                gb, old_ref, parent, tier_cfg_parent, old_blobs.get((parent, old_ref)) if parent else None
+            )
             derived = tiers.is_derived(fc.path)
             if new_bytes is None:
                 emit_other(fc.path, before_version, BOTTOM, None, frozenset(), derived=derived)
@@ -315,14 +340,16 @@ def _mine_one(
             continue
 
         new_entities = extract_file(fc.path, new_bytes) if new_bytes else []
-        old_raw = gb.blob_bytes(parent, old_ref) if parent else None
+        old_raw = old_blobs.get((parent, old_ref)) if parent else None
         old_entities = extract_file(old_ref, old_raw) if old_raw else []
 
         if new_bytes and not new_entities and _parse_has_error(fc.path, new_bytes):
             # Unparseable mid-edit: degrade to whole-file for this path at this commit
             # rather than report zero entities (R7) -- no layout/residue this commit either,
             # since the file isn't meaningfully entity-decomposed right now.
-            before_version = _prior_whole_file_version(gb, old_ref, parent, tier_cfg_parent)
+            before_version = _prior_whole_file_version(
+                gb, old_ref, parent, tier_cfg_parent, old_raw
+            )
             emit_other(
                 fc.path, before_version, _content_version(new_bytes), new_bytes, frozenset(),
                 derived=tiers.is_derived(fc.path),
@@ -384,7 +411,10 @@ def _mine_one(
     # Cross-file moves: a function cut from one file and pasted into another links by body.
     cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added, constraints)
     for old, new in cross_links:
-        new_file_raw = gb.blob_bytes(sha, new.ent.file) or b""
+        # `new.ent.file` was already touched this commit, so its bytes are already sitting in
+        # `new_blobs` from the batched prefetch above -- a per-entity `blob_bytes` subprocess
+        # here would re-spawn git once per cross-file-moved symbol.
+        new_file_raw = new_blobs.get((sha, new.ent.file)) or gb.blob_bytes(sha, new.ent.file) or b""
         if old.ent.kind != new.ent.kind:
             _emit_scope_reshape(emit_entity, old, new, new_file_raw, calls_by_src, entity_version)
             continue
@@ -399,7 +429,7 @@ def _mine_one(
     res_added = [s for s in commit_added if s.ent.id not in matched_a]
     res_removed = [s for s in commit_removed if s.ent.id not in matched_r]
     for s in res_added:
-        raw = gb.blob_bytes(sha, s.ent.file) or b""
+        raw = new_blobs.get((sha, s.ent.file)) or gb.blob_bytes(sha, s.ent.file) or b""
         emit_entity(
             s.ent.id, None, _positional_version(s.ent.id, s.content_hash),
             _entity_bytes(raw, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
