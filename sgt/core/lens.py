@@ -67,6 +67,16 @@ def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
     state.save_json(repo, "ideal_table", table)
 
 
+def _load_ideal_journal(repo: Path) -> dict[str, list[dict]]:
+    """The per-ref undo stack: `{ref_key: [{ideal: [op_ids], witness: sha}, ...]}` -- the prior
+    ideals `record_ideal` pushed before each overwrite (U26). Local, never travels."""
+    return state.load_json(repo, "ideal_journal", default={})
+
+
+def _save_ideal_journal(repo: Path, journal: dict[str, list[dict]]) -> None:
+    state.save_json(repo, "ideal_journal", journal)
+
+
 Edge = tuple[str, str]  # (a, b) meaning a <= b
 
 
@@ -341,21 +351,68 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
     return gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
 
 
-def record_ideal(repo: str | Path, ideal: Ideal, witness_sha: str) -> None:
+def record_ideal(repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True) -> None:
     """Persist an explicitly-edited `ideal` as the current ref's authoritative committed set and
     advance the ref's witness to `witness_sha` -- the durability an ideal-edit verb (U8's
     revert/pin/restore/cherry-pick) needs after `put()` commits. Without it, the next `get()`
     would re-mine the materializing commit's diff as a fresh op and union it back onto a stale
     base, undoing a reducing edit. Called *after* `put()` so `witness_sha` is the post-commit
-    HEAD: the next `get()` then mines nothing new (`since == witness_sha`) and trusts this set."""
+    HEAD: the next `get()` then mines nothing new (`since == witness_sha`) and trusts this set.
+
+    Before overwriting an existing entry it pushes the *outgoing* ideal (and its witness) onto the
+    ref's undo stack, so `sgt undo` (U26) can restore exactly the ideal this edit replaced -- the
+    edit history that lets undo be exact set arithmetic. `journal=False` suppresses that push (undo
+    itself records with it off, so a second undo reaches the edge before the one just undone rather
+    than toggling)."""
     repo = Path(repo)
     key = _ref_key(GitBinding(repo)) or witness_sha
     itable = _load_ideal_table(repo)
+    if journal and key in itable:
+        jtable = _load_ideal_journal(repo)
+        prev_witness = _load_witnesses(repo).get(key)
+        jtable.setdefault(key, []).append({"ideal": sorted(itable[key]), "witness": prev_witness})
+        _save_ideal_journal(repo, jtable)
     itable[key] = sorted(ideal.op_ids)
     _save_ideal_table(repo, itable)
     wtable = _load_witnesses(repo)
     wtable[key] = witness_sha
     _save_witnesses(repo, wtable)
+
+
+@dataclass(frozen=True)
+class UndoResult:
+    """What `undo_ideal` restored: the prior `ideal`, the fresh `witness_sha` that re-materialized
+    it, and the op-set delta versus the state undone (for the verb's report)."""
+
+    ideal: Ideal
+    witness_sha: str
+    removed: frozenset[str]
+    added: frozenset[str]
+
+
+def undo_ideal(repo: str | Path) -> UndoResult | None:
+    """`sgt undo` (U26): pop the ref's ideal-edit journal and restore that prior ideal exactly.
+    The restore is materialized as a *fresh* witness commit -- history is an append-only op DAG, so
+    undo is a forward edit re-establishing prior content, never a ref rewind. Returns None when the
+    stack is empty (nothing to undo). The restore is itself not journaled, so repeated `undo` walks
+    back through the edit history one step at a time instead of toggling the last two states."""
+    repo = Path(repo)
+    get(repo)  # absorb current reality first (R9)
+    gb = GitBinding(repo)
+    key = _ref_key(gb)
+    jtable = _load_ideal_journal(repo)
+    stack = jtable.get(key, []) if key is not None else []
+    if not stack:
+        return None
+    all_ops = Store(repo).all_ops()
+    current = current_ideal(repo)
+    prev = Ideal.from_ops(frozenset(stack[-1]["ideal"]), all_ops)
+    sha = put(repo, prev, message="sgt undo: restore prior ideal")
+    stack.pop()
+    jtable[key] = stack
+    _save_ideal_journal(repo, jtable)
+    record_ideal(repo, prev, sha, journal=False)
+    return UndoResult(prev, sha, removed=current.op_ids - prev.op_ids, added=prev.op_ids - current.op_ids)
 
 
 def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes]) -> set[str]:

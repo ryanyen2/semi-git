@@ -447,6 +447,12 @@ class GitBinding:
     def fetch(self, remote: str, branch: str) -> None:
         self._git("fetch", remote, branch)
 
+    def checkout_branch(self, branch: str) -> None:
+        """Move HEAD to an existing `branch`, materializing its committed tree -- the git mechanism
+        behind `sgt switch` (U26). sgt mines-on-contact on either side of it so the op store never
+        drifts; creating a branch stays raw git (`sgt git checkout -b`)."""
+        self._git("checkout", branch)
+
     def push(self, remote: str, branch: str) -> str:
         """`git push <remote> <branch>` with no force of any kind (C7). A non-fast-forward
         rejection (the remote moved) raises `PushRejected` distinctly from every other failure, so
