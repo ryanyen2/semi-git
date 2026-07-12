@@ -34,24 +34,20 @@ import argparse
 import subprocess
 import sys
 
-from . import feature, ideal_edit, init, inspect, loop, migrate, oracle, propose, rewrite, sync
+from . import (
+    feature, ideal_edit, init, inspect, loop, migrate, oracle, porcelain, propose, rewrite, sync,
+)
 
 _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
-    "after", "migrate", "propose",
+    "after", "migrate", "propose", "switch", "save", "undo",
 }
 
-# Tree-mutating git subcommands warrant an advisory when reached via `sgt git` -- they change the
-# working tree behind sgt's back (C8; refusal is deferred to the porcelain plan, this is advisory).
-_GIT_TREE_MUTATING = frozenset({
-    "checkout", "switch", "restore", "pull", "reset", "merge", "rebase", "revert",
-    "stash", "cherry-pick", "am", "apply",
-})
-
-_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose)
+_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
+             porcelain)
 
 
 class _CLIExit(Exception):
@@ -101,12 +97,19 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _git_passthrough(args: list[str]) -> int:
-    """`sgt git <args...>`: forward verbatim to real git (inherit stdio, propagate exit code).
-    The args are untouched -- no `--json` stripping, no flag rewriting. A tree-mutating subcommand
-    gets an advisory to stderr first (C8); the command runs regardless."""
-    if args and args[0] in _GIT_TREE_MUTATING:
-        print("note: this bypasses sgt's own tracking for this change; "
-              "run `sgt sync`/`sgt log` after to reconcile", file=sys.stderr)
+    """`sgt git <args...>`: forward to real git (inherit stdio, propagate exit code). A tree-mutating
+    subcommand (D2's refusal table in `porcelain`) is *refused* -- it would rewrite the tree behind
+    sgt's tracking -- with the native sgt verb named, unless `--force` is present, in which case the
+    override token is consumed and the plain git command runs (the `gitbind` out-of-band detector
+    re-mines on next contact). Everything else forwards verbatim: no `--json` stripping, no flag
+    rewriting."""
+    if args:
+        remedy = porcelain.git_remedy(args[0])
+        if remedy is not None:
+            if "--force" not in args:
+                sys.stderr.write(porcelain.refusal_message(args[0], remedy))
+                return 1
+            args = [a for a in args if a != "--force"]  # override consumed, not passed to git
     return subprocess.run(["git", *args]).returncode
 
 
@@ -131,6 +134,9 @@ def _help() -> int:
         "  sgt fulfill <draft-id> --from-tree     supply a drafted hollow's image; stages, no commit\n"
         '  sgt land [--message ...] [--override pass|fail --reason "..."]   commit what\'s staged\n'
         "  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green (LAW-G)\n"
+        "  sgt switch <branch>         materialize a branch's ideal (the sgt-native `git switch`)\n"
+        '  sgt save [-m "<msg>"]       mine the working tree + commit a witness for it\n'
+        "  sgt undo                    invert the last ideal edit (revert/restore/save/…)\n"
         "  sgt map [--json]            (re)build + print the hierarchical feature tree\n"
         "  sgt blame [--json] <file>   per-symbol feature attribution for a file's live entities\n"
         "  sgt status [--json]        files/symbols/features, coverage, oracle status, drift\n"

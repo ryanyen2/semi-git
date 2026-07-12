@@ -78,6 +78,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
+    # local, gitignored per-ref stack of prior committed ideals: `record_ideal` pushes the outgoing
+    # ideal (+ its witness) before each overwrite, so `sgt undo` (U26) can restore the ideal a
+    # revert/restore/rewrite/save last replaced. Never travels; there is no edit history to invert
+    # until this log exists, which is exactly why U26 must add it.
+    "ideal_journal": _Artifact(("local", "ideal_journal.json"), committed=False),
     "drafts": _Artifact(("local", "drafts.json"), committed=False),
     "staged": _Artifact(("local", "staged.json"), committed=False),
     "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),

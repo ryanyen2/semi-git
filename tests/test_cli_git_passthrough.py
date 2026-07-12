@@ -1,6 +1,9 @@
-"""`sgt git <args...>` passthrough (plan U18, C8): argv[1:] is forwarded to real git verbatim --
-no `--json` stripping, no flag rewriting -- with a stderr advisory (never a refusal) for
-tree-mutating subcommands. Refusal is deferred to the porcelain plan; this is advisory-only.
+"""`sgt git <args...>` passthrough (plan U18, C8; refusal added in U26/D2): argv[1:] is forwarded
+to real git verbatim -- no `--json` stripping, no flag rewriting -- EXCEPT a tree-mutating
+subcommand (`porcelain.REFUSALS`), which is refused (never run) with the native sgt verb named,
+unless `--force` overrides (the token is consumed, the plain git command runs, and the out-of-band
+detector re-mines on next contact). U18 shipped this as an advisory; U26's porcelain plan turned it
+into the refusal the design doc §1 routing table calls for.
 """
 
 import os
@@ -35,12 +38,30 @@ def test_forwards_args_verbatim_and_propagates_exit_code(monkeypatch):
     assert rc == 7
 
 
-def test_advisory_fires_for_tree_mutating_subcommand(monkeypatch, capsys):
-    _record_run(monkeypatch)
-    cli.main(["git", "checkout", "-b", "feature"])
+def test_refuses_tree_mutating_subcommand_naming_the_sgt_verb(monkeypatch, capsys):
+    """A tree-mutating subcommand is refused (git never runs), exits non-zero, and names the sgt
+    remedy on stderr (D2). `checkout` routes to `sgt switch`; `pull` to `sgt sync`."""
+    calls = _record_run(monkeypatch)
+    rc = cli.main(["git", "checkout", "main"])
+    assert rc == 1
+    assert calls == []  # git was NOT run
     err = capsys.readouterr().err
-    assert "bypasses sgt's own tracking" in err
-    assert "sgt sync" in err and "sgt log" in err
+    assert "sgt switch" in err and "--force" in err
+
+    rc = cli.main(["git", "pull", "origin", "main"])
+    assert rc == 1
+    assert calls == []
+    assert "sgt sync" in capsys.readouterr().err
+
+
+def test_force_overrides_refusal_and_consumes_the_token(monkeypatch, capsys):
+    """`--force` overrides the refusal: git runs, but the override token is stripped so the plain
+    git command reaches git (uniform across subcommands that don't accept `--force`)."""
+    calls = _record_run(monkeypatch)
+    rc = cli.main(["git", "checkout", "--force", "main"])
+    assert rc == 0
+    assert calls == [["git", "checkout", "main"]]  # --force consumed, not forwarded
+    assert capsys.readouterr().err == ""
 
 
 def test_no_advisory_for_read_only_subcommands(monkeypatch, capsys):
