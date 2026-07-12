@@ -119,9 +119,11 @@ def _state(repo: str, as_json: bool = False) -> int:
     print(f"{len(view['frontier'])} symbol(s) at the frontier; "
           f"{len(view['covered_paths'])} path(s) covered, "
           f"{len(view['entity_paths'])} at entity granularity ({pct:.0f}%)")
+    derived = set(view["derived_paths"])
     for path in view["covered_paths"]:
         mark = "entity" if path in set(view["entity_paths"]) else "whole-file"
-        print(f"  {path}  ({mark})")
+        tag = " [derived]" if path in derived else ""
+        print(f"  {path}  ({mark}){tag}")
     if view["oracle_configured"]:
         from sgt.core.oracle import overall_status
 

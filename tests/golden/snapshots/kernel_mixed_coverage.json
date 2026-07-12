@@ -217,6 +217,7 @@
       "pkg.py",
       "util.py"
     ],
+    "derived_paths": [],
     "entity_paths": [
       "pkg.py",
       "util.py"

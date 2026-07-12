@@ -29,6 +29,7 @@ from pathlib import Path
 from tree_sitter import Parser
 
 from sgt.config import IdentityConstraints, load_identity_constraints
+from sgt.core import tiers
 from sgt.core.identity import Snap, detect_splits_merges, link_residual, match_pair, snapshot
 from sgt.core.op import BOTTOM, Images, Op, make_op
 from sgt.entities.extract import Entity, _language, _language_for, extract_file
@@ -78,6 +79,8 @@ class _Touch:
     bucket: str | None = None  # filled in after untangling; None only transiently
     is_pending: bool = False  # from the dirty-working-tree pass (Gap 2, U7.5) -- no real commit
     # witnesses it yet, so `_build_ops` must emit `provenance=()` rather than a commit sha.
+    derived: bool = False  # U27/S4: this touch's path is a generated/vendored file (a lockfile,
+    # by basename) -- advisory only, folded into the built op's `derived` flag.
 
 
 def _requires_of(sym: str, calls_by_src: dict[str, set[str]], entity_version: dict[str, str]) -> frozenset[tuple[str, str]]:
@@ -101,6 +104,26 @@ def _positional_version(surface_id: str, content_hash: str) -> str:
     chain fork. Keying on (surface_id, content_hash) makes a move a genuine version advance --
     before != after -- even when the bytes never change."""
     return hashlib.sha1(f"{surface_id}:{content_hash}".encode()).hexdigest()
+
+
+def _prior_whole_file_version(gb, old_ref: str, parent: str | None, tier_cfg_parent) -> str | None:
+    """The (symbol==path) whole-file chain's producing version at `parent`, or None if no such
+    producer exists there -- either the path didn't exist yet, it was mined per-entity instead
+    (U27/D4 promotion/demotion boundary), or its tier was `ignored` (no producer at all). Chaining
+    a new whole-file touch onto a real git blob OID that no same-symbol op ever produced would
+    leave it permanently ungrounded (`order.py`'s `_grounded` fixpoint), silently dropping it from
+    every future ideal even though `mine()`'s raw output still lists it."""
+    if parent is None:
+        return None
+    parent_tier = tiers.resolve_tier(old_ref, tier_cfg_parent)
+    if parent_tier == "ignored":
+        return None
+    if parent_tier == "opaque":
+        return gb.blob_oid(parent, old_ref)
+    old_raw = gb.blob_bytes(parent, old_ref)
+    if old_raw and not extract_file(old_ref, old_raw) and _parse_has_error(old_ref, old_raw):
+        return gb.blob_oid(parent, old_ref)
+    return None
 
 
 def _parse_has_error(path: str, source: bytes) -> bool:
@@ -213,6 +236,9 @@ def _mine_one(
     against real HEAD exactly the same way (Gap 2, U7.5). `sha` need only be a tree-ish (a real
     commit, or `GitBinding.working_tree_snapshot()`'s synthetic tree object) -- every
     `GitBinding` read used below accepts either."""
+    tier_cfg = tiers.load_tiers_at(gb, sha)  # LAW-0: read from the mined commit's own tree, so
+    # tier assignment stays a pure function of the commit, never the current working tier map.
+    tier_cfg_parent = tiers.load_tiers_at(gb, parent) if parent else None
     codebase_after = gb.tree_at(sha)
     graph_after = build_entity_graph(codebase_after)
     calls_by_src: dict[str, set[str]] = {}
@@ -236,11 +262,11 @@ def _mine_one(
             _Touch(order, sym, before, after, image, requires, via_move, is_pending=is_pending)
         )
 
-    def emit_other(sym: str, before, after, image, requires=frozenset()) -> None:
+    def emit_other(sym: str, before, after, image, requires=frozenset(), derived=False) -> None:
         other_touches.append(
             _Touch(
                 order, sym, before, after, image, requires,
-                bucket=f"{sha}:{sym}", is_pending=is_pending,
+                bucket=f"{sha}:{sym}", is_pending=is_pending, derived=derived,
             )
         )
 
@@ -259,21 +285,33 @@ def _mine_one(
             excluded_paths.add(fc.path)
             excluded_paths.add(old_ref_path)
             continue
-        lang = _language_for(fc.path)
+        tier = tiers.resolve_tier(fc.path, tier_cfg)
         new_bytes = gb.blob_bytes(sha, fc.path)
         old_ref = old_ref_path
 
-        if lang is None:
-            # Whole-file pseudo-symbol (R7): unsupported language, config, docs, binary.
-            # Versioned by git blob OID uniformly (not content-hashed text vs. OID'd binary
-            # separately) -- before_version is always looked up via blob_oid, so after_version
-            # must use the same scheme or a text file's chain could never link across commits.
-            before_version = gb.blob_oid(parent, old_ref) if parent else None
+        if tier == "ignored":
+            # Tier-3 (U27/D4): excluded from mining entirely -- no touch at all, not even a
+            # whole-file one. Nothing already mined for this path is rewritten; it just stops
+            # being tracked as of this commit forward.
+            continue
+
+        if tier == "opaque":
+            # Whole-file pseudo-symbol: the built-in default for a path with no tree-sitter
+            # grammar (R7 -- config, docs, binary), or an explicit opaque override/demotion
+            # (U27/D4). Versioned by git blob OID uniformly (not content-hashed text vs. OID'd
+            # binary separately) -- before_version is always looked up via blob_oid, so
+            # after_version must use the same scheme or a text file's chain could never link
+            # across commits. A demoted entity-tier path's prior entity/residue chains are left
+            # untouched here (frozen at their tips, D4) -- `fold._fold_file`'s whole-file
+            # short-circuit already prefers this new whole-file symbol over them, so there is
+            # never a second, competing live representation of the same bytes.
+            before_version = _prior_whole_file_version(gb, old_ref, parent, tier_cfg_parent)
+            derived = tiers.is_derived(fc.path)
             if new_bytes is None:
-                emit_other(fc.path, before_version, BOTTOM, None, frozenset())
+                emit_other(fc.path, before_version, BOTTOM, None, frozenset(), derived=derived)
             else:
                 after_version = gb.blob_oid(sha, fc.path) or _content_version(new_bytes)
-                emit_other(fc.path, before_version, after_version, new_bytes, frozenset())
+                emit_other(fc.path, before_version, after_version, new_bytes, frozenset(), derived=derived)
             continue
 
         new_entities = extract_file(fc.path, new_bytes) if new_bytes else []
@@ -284,9 +322,10 @@ def _mine_one(
             # Unparseable mid-edit: degrade to whole-file for this path at this commit
             # rather than report zero entities (R7) -- no layout/residue this commit either,
             # since the file isn't meaningfully entity-decomposed right now.
-            before_version = gb.blob_oid(parent, old_ref) if parent else None
+            before_version = _prior_whole_file_version(gb, old_ref, parent, tier_cfg_parent)
             emit_other(
-                fc.path, before_version, _content_version(new_bytes), new_bytes, frozenset()
+                fc.path, before_version, _content_version(new_bytes), new_bytes, frozenset(),
+                derived=tiers.is_derived(fc.path),
             )
             continue
 
@@ -468,6 +507,7 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
         any_added = False
         any_removed = False
         any_move = False
+        any_derived = False
         for t in group:
             canon = uf.find(t.surface_id)
             footprint[canon] = (t.before_version, t.after_version)
@@ -476,6 +516,7 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
             any_added = any_added or t.before_version is None
             any_removed = any_removed or t.after_version == BOTTOM
             any_move = any_move or t.via_move
+            any_derived = any_derived or t.derived
 
         requires = {(r_id, r_ver) for r_id, r_ver in requires if r_id not in footprint}  # never self
         if any_move and not any_added and not any_removed:
@@ -494,6 +535,7 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
                 requires=frozenset(requires),
                 kind=kind,
                 provenance=() if is_pending else (sha,),
+                derived=any_derived,
             )
         )
     return ops

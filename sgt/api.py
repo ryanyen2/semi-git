@@ -42,6 +42,9 @@ Shapes (stable; additive changes only):
 * ``proposal_view``     — the U24 proposal review object: feature delta, Δ op count, oracle claim,
   provenance summary, and staleness `status` (current / clean-reunion / fork). `render_github`
   projects exactly this shape into a PR body.
+* ``tiers_view``        — the U27 three-tier file boundary's effective configuration: `.sgt/
+  tiers.json`'s overrides, `.sgtignore`'s patterns, and each covered path's resolved tier + its
+  `derived` flag (S4).
 """
 
 from __future__ import annotations
@@ -118,14 +121,42 @@ def state_view(repo) -> dict:
         if after != BOTTOM and _symbol_kind(sym) in ("entity", "nested"):
             entity_paths.add(sym.split("::", 1)[0])
 
+    from sgt.core import tiers
+
     oracle_configured = load_oracle_config(repo) is not None
     return {
         "frontier": {sym: frontier[sym] for sym in sorted(frontier)},
         "covered_paths": sorted(covered),
         "entity_paths": sorted(entity_paths),
         "coverage_fraction": (len(entity_paths) / len(covered)) if covered else 1.0,
+        "derived_paths": sorted(p for p in covered if tiers.is_derived(p)),  # S4/U27
         "oracle_configured": oracle_configured,
         "oracle_verdict": verdict_for(repo, ideal) if oracle_configured else None,
+    }
+
+
+def tiers_view(repo) -> dict:
+    """The three-tier file boundary's effective configuration (U27/D4): `.sgt/tiers.json`'s
+    explicit overrides, `.sgtignore`'s patterns, and -- for every path this ref's ideal
+    currently covers -- the tier it resolves to plus whether it's flagged `derived` (S4). Reads
+    the *working tree*'s config (a reporting/mutation surface); mining itself always reads via
+    `sgt.core.tiers.load_tiers_at` against the mined commit's own tree (LAW-0), never this."""
+    from sgt.core import tiers
+    from sgt.core.lens import ideal_for_ref
+    from sgt.core.store import Store
+
+    cfg = tiers.load_tiers(repo)
+    store = Store(repo)
+    ops = store.all_ops()
+    ideal = ideal_for_ref(repo, "HEAD", store)
+    covered = ideal.covered_paths(ops)
+    return {
+        "overrides": {t: list(cfg.overrides.get(t, ())) for t in ("entity", "opaque", "ignored")},
+        "sgtignore": list(cfg.sgtignore),
+        "paths": {
+            path: {"tier": tiers.resolve_tier(path, cfg), "derived": tiers.is_derived(path)}
+            for path in sorted(covered)
+        },
     }
 
 
