@@ -713,6 +713,27 @@ def land_view(report) -> dict:
     }
 
 
+def sessions_view(repo) -> dict:
+    """Every active scratch-tree session (plan U30, D5): name, branches, new-op count since its
+    base, and whether its owning pid is still alive. `overlaps` is the early-fork warning's data
+    -- pairs of sessions whose new ops touch a shared symbol -- that `sgt session status`/
+    `--watch` renders; it is a *report*, never a lock (S6)."""
+    from sgt.core import session as session_mod
+
+    sessions = session_mod.list_sessions(repo)
+    return {
+        "sessions": [
+            {
+                "name": s.name, "branch": s.branch, "target_branch": s.target_branch,
+                "scratch": s.scratch, "new_op_count": len(session_mod.new_op_ids(s)),
+                "owner_pid": s.owner_pid, "alive": session_mod.is_alive(s.owner_pid),
+            }
+            for s in sessions
+        ],
+        "overlaps": list(session_mod.overlaps(repo)),
+    }
+
+
 def forks_view(repo) -> dict:
     """The open same-symbol forks a prior sync recorded in committed `.sgt/forks.json` (plan U20,
     C4) -- for `sgt forks`. Each fork carries its symbol, its two tips, and the `sgt merge-op`

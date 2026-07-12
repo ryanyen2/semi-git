@@ -36,7 +36,7 @@ import sys
 
 from . import (
     feature, ideal_edit, init, inspect, loop, migrate, oracle, porcelain, propose, rewrite, select,
-    sync, tiers,
+    session, sync, tiers,
 )
 
 _VERBS = {
@@ -44,11 +44,11 @@ _VERBS = {
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
     "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
-    "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why",
+    "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
 }
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select)
+             porcelain, tiers, select, session)
 
 
 class _CLIExit(Exception):
@@ -164,6 +164,10 @@ def _help() -> int:
         "  sgt propose render <id> --github   emit a suggested branch + a GitHub PR body (plain markdown)\n"
         "  sgt tiers [--json]          the three-tier file boundary's effective config + coverage\n"
         "  sgt tiers set <pattern> <entity|opaque|ignored>   add an override (`.sgt/tiers.json`)\n"
+        "  sgt session start <name> [--base <branch>]   a git-worktree scratch tree on its own branch\n"
+        "  sgt session status [<name>] [--watch]   active sessions + early-fork footprint overlaps\n"
+        "  sgt session land <name>     CAS-land the session's ops onto its target branch (U23)\n"
+        "  sgt session gc [--force]    reap sessions whose owning process has died\n"
         "  sgt git <args...>           pass through to real git (advises on tree-mutating verbs)\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"
