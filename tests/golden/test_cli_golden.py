@@ -32,6 +32,7 @@ import io
 import json
 import os
 import pathlib
+import re
 
 import pytest
 
@@ -165,6 +166,36 @@ def capture_cli_surface(root: str) -> dict:
     views["merge_op"] = both_fork(lambda r: ["merge-op", *_slugify_tips(r)])
     views["transplant"] = both_fork(lambda r: ["transplant", _slugify_tips(r)[1], "--onto", "main"])
 
+    # -- porcelain daily-loop verbs (U26/D3): switch/save/undo -----------------------------------
+    views["switch"] = both_isolated(lambda r: ["switch", "release"], case="diverged_chain")
+    views["switch_unknown_branch"] = _both(fresh(), ["switch", "no-such-branch"])
+
+    def _dirty_repo() -> pathlib.Path:
+        seq[0] += 1
+        repo = corpus.CORPUS["linear_history"].build(root / f"f{seq[0]}")
+        get(repo)
+        (repo / "new_file.py").write_text("def new_thing():\n    return 1\n", encoding="utf-8")
+        return repo
+
+    views["save"] = {
+        "text": _redact_witness_sha(_capture(_dirty_repo(), ["save", "-m", "add new_file"])),
+        "json": _redact_witness_sha(_capture(_dirty_repo(), ["save", "-m", "add new_file", "--json"])),
+    }
+    views["save_nothing_to_save"] = _both(fresh(), ["save"])
+
+    def _undoable_repo() -> pathlib.Path:
+        seq[0] += 1
+        repo = corpus.CORPUS["linear_history"].build(root / f"f{seq[0]}")
+        get(repo)
+        _capture(repo, ["revert", "c.py::qux"])  # journal one ideal edit to undo
+        return repo
+
+    views["undo"] = {
+        "text": _redact_witness_sha(_capture(_undoable_repo(), ["undo"])),
+        "json": _redact_witness_sha(_capture(_undoable_repo(), ["undo", "--json"])),
+    }
+    views["undo_nothing_to_undo"] = _both(fresh(), ["undo"])
+
     # -- init on a fresh, un-mined git repo -----------------------------------------------------
     plain = corpus.CORPUS["mixed_coverage"].build(root / "init")
     views["init"] = _capture(plain, ["init", "."])
@@ -174,6 +205,24 @@ def capture_cli_surface(root: str) -> dict:
     views["preview_bad_arity"] = _capture(rf, ["preview", "merge", "only-one-arg"])
 
     return views
+
+
+_WITNESS_SHA_TEXT_RE = re.compile(r"(save |undo )[0-9a-f]{12}(:)")
+
+
+def _redact_witness_sha(capture: dict) -> dict:
+    """`save`/`undo` are the only verbs that print their own witness commit's sha (every other
+    verb reports only content-addressed op ids). That commit is freshly made with the real
+    wall-clock author/committer date (no pinned timestamp, unlike the corpus fixtures), so its sha
+    is not reproducible across runs -- freeze a placeholder instead of the literal value."""
+    out = capture["out"]
+    if out.startswith("{"):
+        sha = json.loads(out).get("commit")
+        if sha:
+            out = out.replace(sha, "<witness-sha>")
+    else:
+        out = _WITNESS_SHA_TEXT_RE.sub(r"\1<witness-sha-12>\2", out)
+    return {**capture, "out": out}
 
 
 def _merge_argv(repo: pathlib.Path) -> list[str]:

@@ -1175,6 +1175,51 @@ closure it would materialize (files + op count) for the human to confirm. Improv
 docs/residue don't form large selectable nodes is the deferred path to a future green. Recorded in
 this plan's U29 status line.
 
+### Product surface — U26 porcelain completion: the D2 refusal table + D3 daily-loop verbs (2026-07-11)
+
+Gate-independent, run in parallel with the U25/U29 disposition above. Two small pieces, both data
+over conditionals (design doc §1):
+
+- **D2, `sgt git` refusal table (`sgt/cli/porcelain.py::REFUSALS`).** U18 shipped `sgt git
+  <tree-mutating-sub>` as *advisory* — it printed a hint but still ran git, so the working tree
+  could move behind sgt's tracking. This unit turns it into a **refusal**: 12 subcommands
+  (`checkout`/`switch`/`restore`/`pull`/`merge`/`reset`/`rebase`/`revert`/`cherry-pick`/`stash`/
+  `am`/`apply`) are refused outright, each naming the sgt verb that owns that job (`pull`/`merge`/
+  `rebase` all route to `sgt sync` — integration is op-set union + fork-surfacing, not a text
+  merge; `reset`→`sgt undo`; `stash`→`sgt save`, since a dirty tree is just ops not yet landed).
+  `--force` overrides: the token is consumed, the plain git command runs, and the existing
+  out-of-band detector (`gitbind`) re-mines on next contact — the same net that already catches a
+  raw `git` call made outside sgt entirely. Anything not in the table (read/inspect verbs, plumbing
+  like `remote`/`config`/`tag`) still passes through untouched, unchanged from U18.
+- **D3, three daily-loop verbs (`sgt switch`/`sgt save`/`sgt undo`).** Each composed from existing
+  lens machinery, no new kernel call: `switch <branch>` is `get` (absorb current reality, R9) +
+  `gitbind.checkout_branch` + `get` (mine the newly-current ref); `save [-m]` is the put-path sugar
+  (`get` + `lens.put` + `lens.record_ideal`), with "nothing to save" decided by **the ideal**, not
+  git's dirty flag (`get(repo).op_ids == current_ideal(repo).op_ids`) — necessary because an
+  unconfigured `.sgt/` reads as dirty to `gb.is_clean()` unconditionally (the pre-existing
+  `sync_refuses_dirty_tree` golden), which would make every `save` look dirty. `undo` inverts the
+  most recent recorded ideal edit.
+- **The ideal-edit journal, the one piece of new state.** `lens.record_ideal` previously kept only
+  the *latest* ideal per ref — sufficient for persistence, but nothing to invert. It now pushes the
+  outgoing ideal onto a local, gitignored per-ref stack (`.sgt/local/ideal_journal.json`, a new
+  non-committed artifact in `state.py`) before overwriting, guarded by a `journal: bool = True`
+  kwarg so `undo_ideal` itself can pop-and-restore without re-journaling its own write (`journal=
+  False`) — otherwise every undo would push a redo-able entry and the stack would never drain.
+  `undo_ideal` restores the popped ideal via a fresh witness commit (history is append-only; undo
+  is a forward edit, never a rewind) and reports `removed`/`added` op-id sets by set difference
+  against the ideal just replaced.
+- **Verified:** `tests/test_porcelain.py` — the journal's empty/single/repeated-pop semantics
+  directly against `lens.undo_ideal`, and `switch`/`save`/`undo` through `cli.main` on real repos,
+  ending in the plan's named scenario (switch → save → undo → a raw `git checkout` still refuses —
+  the whole loop is sgt verbs, never a direct git tree mutation). `tests/test_cli_git_passthrough.py`
+  (already updated) covers the refusal table + `--force` override end to end.
+- **Golden snapshot note.** `save`/`undo` are the only verbs that report their own witness commit's
+  sha (every other verb reports only content-addressed op ids) — and unlike the corpus fixtures'
+  pinned commit timestamps, that commit is made with the real wall clock, so its sha is not
+  reproducible run to run. `tests/golden/test_cli_golden.py::_redact_witness_sha` freezes a
+  placeholder instead of the literal value; confirmed stable across two independent runs before
+  committing.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
