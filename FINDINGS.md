@@ -1220,6 +1220,59 @@ over conditionals (design doc §1):
   placeholder instead of the literal value; confirmed stable across two independent runs before
   committing.
 
+### Product surface — U27 the three-tier file boundary (D4) (2026-07-12)
+
+Config-driven tier resolution, plus a latent grounding bug this unit's verification surfaced.
+
+- **Three tiers, config over conditionals.** `sgt/core/tiers.py` resolves each mined path to
+  `entity` (tree-sitter grammar available, the existing default), `opaque` (whole-file
+  pseudo-symbol -- the built-in fallback for a grammar-less path, or an explicit override), or
+  `ignored` (excluded from mining entirely). Two config sources, both read via `.sgtignore`
+  (gitignore-style patterns, ignored-tier only) and `.sgt/tiers.json` (explicit
+  entity/opaque/ignored pattern lists); conflict priority is `ignored` > `opaque` > `entity`.
+  **LAW-0:** `tiers.load_tiers_at(gb, sha)` reads both files from the *mined commit's own tree*,
+  never the working tree -- tier assignment stays a pure function of the commit, so two replicas
+  with divergent uncommitted tier maps still re-mine identical history to byte-identical ops
+  (`test_divergent_working_tier_maps_mine_to_byte_identical_ops`).
+- **Two named safety guards (`sgt tiers set`, `sgt/cli/tiers.py`).** Promoting a grammar-less path
+  to `entity` before this kernel actually has a grammar for it is a content no-op -- it silently
+  degrades back to `opaque`, so earlier commits' ops are byte-identical and the chain just
+  continues linking before/after versions across the override boundary
+  (`test_entity_override_on_ungrammared_path_is_a_content_noop`). Marking a currently-covered path
+  `ignored` refuses outright (data loss shape: it would silently stop tracking live content) and
+  names `sgt revert` as the remedy (`test_ignoring_a_live_path_refuses_and_names_revert` --
+  reverting *every* content-bearing op touching the path, not just its entity op: a single-function
+  file mines an entity op plus head/tail residue ops, all three content-bearing and all three
+  independently covering the path).
+- **Genuine kernel bug found during verification, fixed in the same unit.** `mine.py`'s
+  opaque-tier branch and its pre-existing "unparseable mid-edit degrades to whole-file" branch
+  both unconditionally computed a new whole-file touch's `before_version` from the real git blob
+  OID whenever a parent commit existed -- correct only when the *old* version of the file was
+  itself mined as a whole-file symbol (`symbol == path`) at that parent. When the old version was
+  mined per-entity instead (exactly the entity→opaque demotion this unit adds, U27's own test 5),
+  no op with `symbol == path` ever produced that OID as an `after_version`, so `order.py`'s
+  `_grounded` fixpoint (`before is None OR (sym, before) in produced`) could never match it -- the
+  new whole-file op became **permanently ungrounded** and was silently dropped from every
+  `lens.get()`-derived ideal, despite still appearing in `mine()`'s raw output. This is not
+  U27-specific: it's a **pre-existing latent bug** in the mid-edit-degrade path too (the existing
+  `test_unparseable_midedit_degrades_to_whole_file` never caught it because it only inspected
+  `mine()`'s raw list, never materialized through `lens.get()`/`code()`). **Fix:** a shared helper,
+  `_prior_whole_file_version(gb, old_ref, parent, tier_cfg_parent)`, that returns the parent's real
+  blob OID only when a whole-file producer genuinely existed there (parent tier resolves to
+  `opaque`, or the old content itself failed to parse -- mirroring the exact existing degrade
+  condition), and `None` otherwise (including `ignored`, where no producer ever existed) -- a
+  `None` before_version is a fresh chain root, which *is* groundable. Both call sites now go
+  through this helper instead of a bare `gb.blob_oid(parent, old_ref) if parent else None`.
+  Strengthened `test_unparseable_midedit_degrades_to_whole_file` to assert the degraded op is
+  actually live (`op.id in ideal.op_ids`, `code()` materializes it) rather than only checking
+  `mine()`'s raw output, so this class of regression can't go uncaught again.
+- **Verified:** `tests/core/test_tiers.py` (5 tests: derived-flag collapse on lockfiles, the
+  entity-override content-no-op, the ignored-tier revert-then-refuse-then-succeed guard, LAW-0
+  divergent-working-tree determinism, and entity→opaque demotion materializing as whole-file
+  post-fix) plus the strengthened `test_unparseable_midedit_degrades_to_whole_file`. Full suite
+  green; three golden snapshots regenerated for the new `derived_paths` field (state/tiers views)
+  and the new `sgt tiers`/`sgt tiers set` help lines -- reviewed diffs, no unrelated drift.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On

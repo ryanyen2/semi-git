@@ -74,6 +74,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # path (the legacy flat G-Set stays at `declared` in v0 shape for old readers, D3 old-reader
     # policy); `sgt.core.lens` resolves this down to the plain live edge set every consumer expects.
     "declared_orset": _Artifact(("declared_edges.json",), committed=True),
+    # committed three-tier file-boundary overrides (`sgt tiers set`, U27/D4): explicit
+    # entity/opaque/ignored patterns, the escape hatch over the built-in grammar-presence
+    # default. Read from historical blobs at mining time (`sgt.core.tiers.load_tiers_at`) so
+    # tier assignment stays a pure function of the mined commit (LAW-0).
+    "tiers": _Artifact(("tiers.json",), committed=True),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),

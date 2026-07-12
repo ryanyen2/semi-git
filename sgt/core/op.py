@@ -109,6 +109,9 @@ class Op:
     # state (which store directory holds it), not content -- excluded from the id so fulfillment
     # (which flips this to False and splices real images) doesn't need to re-derive an identity
     # a human's concurrent edit could have already reserved.
+    derived: bool = False  # S4/U27: touches a generated/vendored file (e.g. a lockfile) --
+    # advisory only, like intent/provenance/attribution, so review surfaces can collapse it;
+    # excluded from the id since re-tagging a path derived/not-derived is not a content change.
 
 
 def compute_id(
@@ -146,10 +149,11 @@ def make_op(
     intent: str | None = None,
     miner_version: str = MINER_VERSION,
     off_chain: bool = False,
+    derived: bool = False,
 ) -> Op:
     """Construct an Op with its id computed from its content -- the only supported way to make
-    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``) rides along
-    but does not enter the id."""
+    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``/``derived``)
+    rides along but does not enter the id."""
     op_id = compute_id(footprint, images, requires, kind, miner_version)
     return Op(
         id=op_id,
@@ -162,6 +166,7 @@ def make_op(
         intent=intent,
         miner_version=miner_version,
         off_chain=off_chain,
+        derived=derived,
     )
 
 
