@@ -1433,6 +1433,71 @@ committed G-Set review record).
   new `"sessions": []` field on every feature-tree node, plus the two new `sgt revert --session`/
   `sgt review-queue` help lines in the captured `sgt help` output.
 
+### Product surface — U32 the review surface + GitHub publish (2026-07-12)
+
+Closes S8: `sgt.api.proposal_review_view` (the partial-accept checklist), `sgt propose land
+--subset` (the CLI half of the down-closed-subset flow D6 assigns to a future rail), and `sgt
+propose publish` (the `gh`-CLI porcelain D7 specifies).
+
+- **`proposal_review_view` computes the checklist's `requires` edges by reusing U29's closure
+  primitive, not new logic.** Each delta feature's `requires` is `order.downset_in(op, base∪Δ,
+  ops, declared)` unioned over that feature's own Δ ops, restricted to *other* delta features'
+  ids and to chain/reference/declared edges -- the same trace `sgt why`/`sgt select` walk, just
+  scoped to a proposal's op-set instead of the current ideal. `op_ids` rides along per feature so
+  a caller (the CLI, or a future rail) can build an `accept_ids` set without recomputing
+  attribution itself.
+- **`--subset` takes feature ids or labels**, resolved against the checklist: an unknown ref
+  refuses by name; a chosen feature that omits a feature it `requires` refuses naming the missing
+  one *by label* ("'Baz' requires Qux -- include it in --subset too") -- the CLI does this
+  resolution itself (`propose.land`'s own guard only checks `accept_ids <= Δ` and downward-closure,
+  not requires-completeness), matching the plan's "the rail computes nothing itself" framing by
+  keeping the closure computation in `proposal_review_view`, not duplicated in the CLI.
+- **A real, if narrow, kernel finding surfaced while testing partial acceptance: two ops from
+  adjacent insertions in the *same file* are not an independently-landable slice.** Adding two
+  functions back-to-back mints a shared `__residue__` op for the whitespace gap between them; a
+  feature-checklist entry built from *only* a function's own bare symbol op (no
+  anchor/residue) is `is_valid_ideal`-passing but not self-consistent -- materializing it alone
+  produced a corrupt file (one function's body spliced directly against another's with no
+  separator). This is not a `propose.land` bug: `land`'s own landing-commit trailers and the
+  materialized tree were exactly right for whatever op-set was actually accepted; the trap is
+  constructing an `accept_ids` set that looks like "one feature" but is missing a residue op a
+  positionally-adjacent feature also touches. Two features in two disjoint files have no such
+  coupling and partial-accept exactly as the plan's acceptance wording requires. Filed as a v1
+  limitation below rather than fixed -- `proposal_review_view`'s `op_ids`/`requires` fields
+  already give a caller everything needed to avoid it (a feature's full closure, computed the same
+  way `sgt why` would), and the plan's test scenario doesn't require intra-file adjacent-feature
+  acceptance to work.
+- **A second, unrelated trap while verifying the fix: `lens.ideal_for_ref` is not the right tool
+  to check what a `land` actually landed onto a *different* branch than the checked-out one.**
+  Its docstring already says so (a coarse provenance-scan over a ref's whole ancestry, never
+  consulting the persisted ideal table) but it is easy to reach for anyway. When `land` targets a
+  branch other than the checked-out one, the landing commit is a real 2-parent merge and that
+  merge's ancestry still reaches back through the pre-split commit that carried the *full* Δ's
+  trailers -- so a provenance-scan over-reports even though the landing commit's own trailers (and
+  the materialized tree) are exactly the accepted subset. The fix was in the test (read the landing
+  commit's own trailers / file content), not in `land`.
+- **`publish` resolves create-vs-update by branch, not by proposal id.** `gh pr list --head
+  <branch> --state open` before every publish; an existing open PR gets `gh pr edit` (title/body
+  refreshed from the current `render_github`), otherwise `gh pr create` -- so re-publishing after
+  a claim lands or the base moves updates the same PR rather than opening a second one, per D7. No
+  network call happens without `shutil.which("gh")` first; its absence refuses cleanly with the
+  install URL rather than a raw `FileNotFoundError`.
+- **Rail work deferred, following U29/U31's precedent (D6).** The checked-list UI, greyed-out
+  disabled-uncheck-with-requires-tooltip, and staleness banner are rail concerns explicitly out of
+  scope this unit; `proposal_review_view` is the complete API surface a rail would call, and `sgt
+  propose land --subset`/`sgt propose publish` are the complete CLI surface a scripted or
+  agent-driven caller has today.
+- **Verified:** `tests/core/test_propose_review.py` (8 tests) -- the checklist's disjoint
+  `op_ids`/empty `requires` for two unrelated features, the unknown-proposal-id error path, partial
+  land exactly landing the chosen feature's ops (checked via the landing commit's own trailers and
+  file presence, not `ideal_for_ref` -- see above), `propose.land`'s own subset-validity guard, the
+  CLI's requires-refusal naming the missing feature by label, `gh`-absent refusal, the
+  create-vs-edit branch (subprocess faked, no network), and a `gh`-present integration guard
+  (skipped when `gh` is absent) that pushes to a real local `origin` and confirms `gh pr create`
+  fails cleanly off a non-GitHub remote. Full suite green (`uv run pytest -q`, live-LLM test
+  deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
+  land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
@@ -1451,6 +1516,20 @@ committed G-Set review record).
 - **Import lifecycle is not yet a verb.** Imports are ordinary residue bytes; no verb yet warns
   "this revert leaves an unused import" or offers to prune one, though the reference edges and
   `verb_preview_view`'s before/after diff already carry what such a verb would need.
+- **A feature's "own" ops are not always an independently-landable slice when it sits directly
+  adjacent to another feature in the same file** (U32). Two functions added back-to-back share a
+  `__residue__` op for the whitespace between them; accepting only one function's bare symbol op
+  via `propose.land(accept_ids=...)` passes `is_valid_ideal` but materializes corrupt content (no
+  separator between the accepted function and whatever followed it in the original edit). Two
+  features in disjoint files have no such coupling. `proposal_review_view`'s per-feature closure
+  (`requires`) does not currently surface this positional/residue coupling as a `requires` edge
+  (it only traces chain/reference/declared edges, and a shared residue op is attributed to
+  exactly one feature, not flagged as shared) -- a caller that builds `accept_ids` from anything
+  narrower than a feature's full owned-op set for adjacent same-file features can reproduce this.
+  Deferred rather than fixed: the plan's own test scenario is satisfied by disjoint features, and
+  a real fix (residue ops declaring a `requires` on whichever feature is positionally adjacent, or
+  rejecting a checklist split that would cut through a shared residue) touches feature-tree
+  construction, not this unit's scope.
 - **`revert --keep-dependents` is one-hop only** (U11): only direct reference-edge dependents of
   the target get a continuation hollow; anything further downstream drops like a plain revert.
 - **Two languages** (Python, TypeScript/TSX) via the tree-sitter grammars wired into

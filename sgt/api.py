@@ -55,6 +55,10 @@ Shapes (stable; additive changes only):
   status that isn't yet covered by a review record, grouped by provenance key (a session/agent
   name, or ``"drift"`` for unattributed drift), so a teammate can act on or ack a whole group at
   once (``sgt revert --session``, ``sgt review-queue ack``).
+* ``proposal_review_view`` — the U32 partial-accept surface: everything ``proposal_view`` has,
+  plus the U24 ``approvals`` schema and a ``feature_checklist`` naming, per delta feature, which
+  *other* delta features it requires — so ``sgt propose land --subset`` (or a future checkbox UI)
+  can validate or grey out a choice without recomputing the closure itself.
 """
 
 from __future__ import annotations
@@ -871,6 +875,57 @@ def proposal_view(repo, proposal_id: str) -> dict:
         "provenance": provenance,
         "status": st,
     }
+
+
+def proposal_review_view(repo, proposal_id: str) -> dict:
+    """`proposal_view` plus what a partial-accept UI needs (plan U32, S8) without computing
+    anything itself: the U24 ``approvals`` schema, and a ``feature_checklist`` -- each delta
+    feature's entry from `proposal_view`'s ``feature_delta``, plus ``op_ids`` (this feature's own Δ
+    op ids, so a caller can build an `accept_ids` set without recomputing feature attribution) and
+    ``requires``: the *other* delta features whose ops sit in this feature's closure over base∪Δ
+    (chain/reference/declared edges, `order.downset_in`, restricted to Δ -- the same closure
+    primitive `sgt select`/`sgt why` (U29) trace, just scoped to a proposal's op-set instead of the
+    current ideal). Un-checking a feature while a still-checked feature ``requires`` it would make
+    the accepted subset fail `propose.land`'s downward-closure check; this field lets a caller
+    (`sgt propose land --subset`, or a future checkbox rail) refuse/grey-out that choice with a
+    name, not just a raw op-id failure. `{"error": ...}` for an unknown id, same as `proposal_view`.
+    """
+    from sgt.core import lens, order, propose
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+
+    view = proposal_view(repo, proposal_id)
+    if "error" in view:
+        return view
+    p = propose.load(repo, proposal_id)
+    assert p is not None  # proposal_view already confirmed it loads
+
+    ops = Store(repo).all_ops()
+    declared = lens._load_declared(repo)
+    delta_ids = frozenset(p.delta_ids)
+    union_ids = frozenset(p.base_ideal_ids) | delta_ids
+
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    feature_ops: dict[str, set[str]] = {}
+    for op_id in delta_ids:
+        leaf = op_leaf.get(op_id)
+        if leaf is not None:
+            feature_ops.setdefault(leaf, set()).add(op_id)
+
+    checklist = []
+    for f in view["feature_delta"]:
+        fid = f["feature_id"]
+        closure: set[str] = set()
+        for op_id in feature_ops.get(fid, ()):
+            closure |= order.downset_in(op_id, union_ids, ops, declared)
+        requires = sorted({
+            op_leaf[oid] for oid in (closure & delta_ids)
+            if op_leaf.get(oid) not in (None, fid)
+        })
+        checklist.append({**f, "op_ids": sorted(feature_ops.get(fid, ())), "requires": requires})
+
+    return {**view, "approvals": list(p.approvals), "feature_checklist": checklist}
 
 
 def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:

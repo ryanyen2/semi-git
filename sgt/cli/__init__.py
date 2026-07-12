@@ -162,8 +162,9 @@ def _help() -> int:
         "  sgt forks [--json]          list open same-symbol forks + their `sgt merge-op` remedies\n"
         '  sgt propose create [--base REF] [--title "..."]   a base+Δ review object over REF (default main)\n'
         "  sgt propose status <id>     staleness by re-union: current / clean-reunion / fork\n"
-        "  sgt propose land <id>       advance the base branch by CAS (refuses a stale-forked proposal)\n"
+        "  sgt propose land <id> [--subset <feature>...]   advance the base by CAS, all Δ or named features\n"
         "  sgt propose render <id> --github   emit a suggested branch + a GitHub PR body (plain markdown)\n"
+        "  sgt propose publish <id> [--remote origin]   push the rendered branch + create/update a GitHub PR\n"
         "  sgt tiers [--json]          the three-tier file boundary's effective config + coverage\n"
         "  sgt tiers set <pattern> <entity|opaque|ignored>   add an override (`.sgt/tiers.json`)\n"
         "  sgt session start <name> [--base <branch>]   a git-worktree scratch tree on its own branch\n"
