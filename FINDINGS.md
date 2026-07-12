@@ -1273,6 +1273,48 @@ Config-driven tier resolution, plus a latent grounding bug this unit's verificat
   green; three golden snapshots regenerated for the new `derived_paths` field (state/tiers views)
   and the new `sgt tiers`/`sgt tiers set` help lines -- reviewed diffs, no unrelated drift.
 
+### Product surface — U29 closure-explanation UX, rerouted from branch-as-selection (2026-07-12)
+
+U25's gate came back red (median closure 34 ops, only 46% of feature nodes in bounds), so this
+unit ships the disposition it recorded: `sgt select`/`sgt why` explain a selection's closure --
+never materialize one.
+
+- **`sgt select <feature>...`** (`sgt/lens/select.py`) resolves each feature ref via
+  `lens.verbs.resolve_feature`, unions the op-sets, and computes the induced closure with
+  `order.downset_in` -- the same collision-safe, ideal-relative primitive the ideal-edit verbs
+  use. Reports direct op count, closure op count, touched files, and every op the closure pulled
+  in beyond the direct set, grouped by *that op's own feature* with one representative
+  chain/requires path each.
+- **Closure follows chain + `requires` edges only, never clustering co-membership** (the design
+  doc's true-vs-incidental-coupling rule, S2 point 3). The explanatory path is a BFS scoped to
+  the already-computed closure (`_closure_edges` restricts `order.chain_edges`/
+  `reference_edges`/declared edges to the closure set up front, so an edge naming an op outside
+  it can never appear) -- computed once, not re-derived per group.
+- **Hub diagnosis** (`_hub_diagnosis`) tallies, among `requires` edges whose consumer is in the
+  selected feature(s) and whose producer is in the closure but attributed elsewhere, which
+  referenced symbol accounts for the most distinct foreign producer ops -- only `requires` edges
+  count, since a chain edge is the same symbol and can't cross a feature boundary. Reports the
+  top symbol and its producer count, with `sgt split`/`sgt identity split` named as the remedy.
+- **`sgt why <op> [--for <feature>]`** (same module): with no target feature, the plurality vote
+  (`tree.assign_ops_to_leaves`'s own logic, re-run over one op's footprint via
+  `tree._leaf_member_index`) that assigned the op its feature, every leaf it touched and how many
+  symbols voted for each. With `--for`, the same chain `select` would report for that op's
+  group -- refusing by name (`"... is not part of ...'s selection closure"`) rather than
+  guessing when the op genuinely isn't in that feature's closure.
+- **Test fixture required committing the dependency and the dependent in separate commits.**
+  Two def-use-connected entities added in the *same* commit get unioned into one op by mining's
+  untangling, producing no cross-op `requires` edge -- confirmed empirically before writing the
+  fixture. `tests/lens/test_select.py` hand-crafts the feature tree directly (`tree.save`,
+  bypassing the Leiden clusterer -- consistent with U25's own finding that clustering quality,
+  not `requires`-closure, is this codebase's actual bottleneck) but still computes `op_leaf` via
+  the real `tree.assign_ops_to_leaves`, so membership stays consistent with genuinely mined ops.
+- **Verified:** 6 new tests -- a cross-feature `requires` chain reports exactly that chain and
+  the hub it names; three independent features never drag each other in; three callers of the
+  same foreign symbol still produce one hub op count, not an inflated closure; `why` with and
+  without `--for`, including the explicit refusal when the op isn't in the target closure. Full
+  suite green (no regressions), golden snapshots unchanged (the golden CLI-surface test doesn't
+  enumerate every verb's help line, so the two new verbs didn't require regeneration).
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On

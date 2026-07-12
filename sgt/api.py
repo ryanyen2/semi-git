@@ -45,6 +45,12 @@ Shapes (stable; additive changes only):
 * ``tiers_view``        — the U27 three-tier file boundary's effective configuration: `.sgt/
   tiers.json`'s overrides, `.sgtignore`'s patterns, and each covered path's resolved tier + its
   `derived` flag (S4).
+* ``selection_view``    — the U29 closure-explanation UX: a feature-tree selection's induced
+  closure (direct ops, files, ops pulled in grouped by their own feature with a representative
+  requires/chain path each), and the hub symbol when the pull crosses a feature boundary.
+* ``why_view``          — the U29 "why is this op here" query: an op's plurality-vote feature
+  attribution, or (given a target feature) the exact chain that pulled it into that feature's
+  selection closure.
 """
 
 from __future__ import annotations
@@ -157,6 +163,43 @@ def tiers_view(repo) -> dict:
             path: {"tier": tiers.resolve_tier(path, cfg), "derived": tiers.is_derived(path)}
             for path in sorted(covered)
         },
+    }
+
+
+def selection_view(repo, feature_refs) -> dict:
+    """The closure induced by selecting `feature_refs` (plan U29): direct op count, files, the
+    closure's total op count, ops additionally pulled in grouped by their own feature (each with
+    a representative requires/chain path), and the hub symbol when the pull crosses a feature
+    boundary. `select()` reports; it never materializes anything (see `sgt.lens.select`'s
+    module docstring for why -- the U25 BET-C gate that ruled out silent branch materialization)."""
+    from sgt.lens.select import select
+
+    result = select(repo, feature_refs)
+    if not result.ok:
+        return {"ok": False, "message": result.message}
+    return {
+        "ok": True, "feature_ids": list(result.feature_ids), "files": list(result.files),
+        "direct_op_count": result.direct_op_count, "closure_op_count": result.closure_op_count,
+        "pulled": [
+            {"feature_id": g.feature_id, "op_count": g.op_count, "chain": list(g.chain)}
+            for g in result.pulled
+        ],
+        "hub": result.hub,
+        "message": result.message,
+    }
+
+
+def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
+    """One op's feature attribution (plan U29): with no `for_feature`, the plurality vote that
+    assigned it (every leaf its footprint touched, and how many symbols voted for each); with
+    `for_feature`, the exact chain that pulled it into that feature's selection closure."""
+    from sgt.lens.select import why
+
+    result = why(repo, op_ref, for_feature)
+    return {
+        "ok": result.ok, "message": result.message, "op_id": result.op_id,
+        "feature_id": result.feature_id, "for_feature": result.for_feature,
+        "votes": list(result.votes), "chain": list(result.chain),
     }
 
 
