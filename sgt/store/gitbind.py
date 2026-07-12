@@ -469,6 +469,18 @@ class GitBinding:
             raise GitError("push succeeded but HEAD is unresolved")
         return head
 
+    def push_head_as(self, remote: str, branch: str) -> None:
+        """`git push <remote> HEAD:refs/heads/<branch>`: publish HEAD's commit under a fresh
+        remote branch name, without creating or checking out a local branch of that name -- the
+        mechanism behind `sgt propose publish`'s PR branch (plan U32). Non-forcing, like `push`;
+        a rejection (the remote branch already diverged) surfaces as a plain `GitError`."""
+        proc = self._git("push", remote, f"HEAD:refs/heads/{branch}", check=False)
+        if proc.returncode != 0:
+            raise GitError(
+                f"git push {remote} HEAD:refs/heads/{branch} failed "
+                f"({proc.returncode}): {proc.stderr.strip()}"
+            )
+
     # -- worktrees: session scratch trees (plan U30, D5) --------------------
     def worktree_add(self, path: str | Path, branch: str, base_sha: str) -> None:
         """`git worktree add -b <branch> <path> <base_sha>`: a real, isolated working directory
