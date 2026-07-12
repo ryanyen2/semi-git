@@ -1158,12 +1158,22 @@ acceptance bar is unfalsifiable without a named, SHA-pinned repo (per U25's own 
 onboarding probe (BET-E wall-clock/peak-memory for `init --horizon`, D8's 10-minute budget) and the
 second closure corpus both await a supplied probe repo.
 
-**Routing (per D1: a red gate routes work to clustering or closure-explanation UX, a better outcome
-than a bad flagship).** Recorded here as data; the U29 disposition is pending direction — see this
-plan's U29 status line. The honest reading: the bottleneck is clustering granularity / selectable-node
-scope (docs & residue), not the closure algebra, which points at scoping feature selection to code
-entities and/or improving doc/residue clustering, then re-measuring — over shipping U29's silent
-selection as planned.
+**Re-scope attempted (does NOT flip the gate).** Re-measuring over only code-entity feature nodes
+(majority of own ops revise a real code entity) gives 5/5 within bounds — but those 5 features hold
+just **8 of 1793 assigned ops (0.4%)**, a degenerate sample, because the op representation is
+residue-heavy: of 5861 ideal ops, only 287 are code entities (245 entity + 42 nested); the rest are
+residue (3429), anchor (1969), whole_file (176). Measuring closure in *files* instead of ops doesn't
+rescue it either — median 6 files but a 146-file tail, only 42% of nodes touch ≤5 files. So the RED
+is robust across op-count, code-scoping, and file-count lenses; it is not a metric artifact.
+
+**Disposition: gate RED, U29 rerouted to closure-explanation UX (per D1).** The bottleneck is the
+residue-heavy representation plus docs/residue clustering, not feature entanglement (dragged ≈ 0 —
+selecting a feature almost never pulls in *other* features). Per the pre-registered D1 rule (a red
+gate routes to clustering or closure-explanation UX over a bad flagship) and the fixed no-post-hoc
+threshold, `sgt select` does **not** ship as silent branch-as-selection; it ships showing the
+closure it would materialize (files + op count) for the human to confirm. Improving clustering so
+docs/residue don't form large selectable nodes is the deferred path to a future green. Recorded in
+this plan's U29 status line.
 
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
