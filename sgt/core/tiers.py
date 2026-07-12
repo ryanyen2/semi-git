@@ -93,11 +93,25 @@ def load_tiers_at(gb, sha: str) -> TierConfig:
     """`TierConfig` as committed at `sha` -- the mining-time read (LAW-0): never the working
     tree, so tier assignment stays a pure function of the mined commit. `sha` may be any
     tree-ish `GitBinding` accepts, including the dirty-pass synthetic snapshot tree."""
-    tiers_body = state.load_blob_json(gb, sha, "tiers", default=None)
-    overrides = _parse_tiers_json(tiers_body) if tiers_body is not None else dict(_EMPTY_OVERRIDES)
-    ignore_raw = gb.blob_bytes(sha, ".sgtignore")
-    sgtignore = _parse_sgtignore(ignore_raw.decode("utf-8")) if ignore_raw is not None else ()
-    return TierConfig(overrides=overrides, sgtignore=sgtignore)
+    return load_tiers_at_many(gb, [sha])[sha]
+
+
+def load_tiers_at_many(gb, shas: list[str]) -> dict[str, TierConfig]:
+    """`load_tiers_at` for several `sha`s in one `git cat-file --batch` process instead of two
+    per `sha` (`.sgt/tiers.json` + `.sgtignore`) -- mining a commit needs this for both the
+    commit and its parent, and one `blob_bytes`/`blob_bytes_many` call per `sha` per artifact
+    added up to 4 git subprocess spawns per commit."""
+    tiers_path = state.rel("tiers")
+    specs = [(sha, path) for sha in shas for path in (tiers_path, ".sgtignore")]
+    blobs = gb.blob_bytes_many(specs)
+    out: dict[str, TierConfig] = {}
+    for i, sha in enumerate(shas):
+        tiers_raw, ignore_raw = blobs[2 * i], blobs[2 * i + 1]
+        tiers_body = state.decode_blob_json(tiers_raw, default=None)
+        overrides = _parse_tiers_json(tiers_body) if tiers_body is not None else dict(_EMPTY_OVERRIDES)
+        sgtignore = _parse_sgtignore(ignore_raw.decode("utf-8")) if ignore_raw is not None else ()
+        out[sha] = TierConfig(overrides=overrides, sgtignore=sgtignore)
+    return out
 
 
 def load_tiers(repo) -> TierConfig:
