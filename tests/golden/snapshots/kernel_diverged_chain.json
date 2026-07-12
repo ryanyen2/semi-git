@@ -50,6 +50,7 @@
         "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
         "op_count": 5,
         "parent": null,
+        "sessions": [],
         "size": 3,
         "split_reason": "max_leaf",
         "why": "Auto-derived from slugify.py (no LLM label available)."

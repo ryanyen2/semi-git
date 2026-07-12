@@ -35,8 +35,8 @@ import subprocess
 import sys
 
 from . import (
-    feature, ideal_edit, init, inspect, loop, migrate, oracle, porcelain, propose, rewrite, select,
-    session, sync, tiers,
+    feature, ideal_edit, init, inspect, loop, migrate, oracle, porcelain, propose, review, rewrite,
+    select, session, sync, tiers,
 )
 
 _VERBS = {
@@ -45,10 +45,11 @@ _VERBS = {
     "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
+    "review-queue",
 }
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session)
+             porcelain, tiers, select, session, review)
 
 
 class _CLIExit(Exception):
@@ -121,6 +122,7 @@ def _help() -> int:
         "                              history, or (with --horizon) only from that commit on (R10)\n"
         "  sgt revert [--emit] <ref>   remove an op and everything built on it (I \\ upset X)\n"
         "  sgt revert <ref> --keep-dependents   same, but drafts a continuation hollow per dependent\n"
+        "  sgt revert --session <name> [--emit]   revert every op a session's attribution covers\n"
         "  sgt restore [--emit] <ref>  re-add an op and its prerequisites (I ∪ downset X)\n"
         "  sgt fsck [--json]           verify the op store's content-address integrity\n"
         "  sgt log [--json]            the mined operation DAG\n"
@@ -168,6 +170,8 @@ def _help() -> int:
         "  sgt session status [<name>] [--watch]   active sessions + early-fork footprint overlaps\n"
         "  sgt session land <name>     CAS-land the session's ops onto its target branch (U23)\n"
         "  sgt session gc [--force]    reap sessions whose owning process has died\n"
+        "  sgt review-queue list [--json]   ops with session/agent/drift provenance, not yet reviewed\n"
+        '  sgt review-queue ack <op-id>... [--session <name>] [--note "..."]   mark an op-set reviewed\n'
         "  sgt git <args...>           pass through to real git (advises on tree-mutating verbs)\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"

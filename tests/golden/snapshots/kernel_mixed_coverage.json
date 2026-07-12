@@ -35,6 +35,7 @@
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
         "op_count": 8,
         "parent": null,
+        "sessions": [],
         "size": 8,
         "split_reason": "max_leaf",
         "why": "Auto-derived from pkg.py (no LLM label available)."
