@@ -518,7 +518,10 @@ class GitBinding:
         clears MERGE_HEAD on a successful commit. Replaces the pre-U19 `git merge -X ours`, whose
         textual resolution sgt overwrote anyway. Embeds `Sgt-Op:` trailers for the ops this
         materialization witnesses (mirrors `commit_all`'s trailer convention)."""
-        (self.repo / ".git" / "MERGE_HEAD").write_text(f"{merge_parent}\n", encoding="utf-8")
+        merge_head = Path(self._git("rev-parse", "--git-path", "MERGE_HEAD").stdout.strip())
+        if not merge_head.is_absolute():
+            merge_head = self.repo / merge_head
+        merge_head.write_text(f"{merge_parent}\n", encoding="utf-8")
         self.stage_all()
         full = message if trailers is None else f"{message}\n\n{trailers}"
         self._git("commit", "-q", "-m", full)

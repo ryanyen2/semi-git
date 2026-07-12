@@ -8,7 +8,7 @@ appending a witness. Local, uncommitted state (ref->ideal table, caches, oracle 
 hollow off-chain ops, R18) lives under ``.sgt/local/``, gitignored -- this module only
 guarantees that directory exists with a ``.gitignore`` inside; U6/U9/U14 populate it further.
 
-Concurrency: a single-writer ``flock`` on ``.sgt/lock`` serializes mutating store operations
+Concurrency: a single-writer ``flock`` on ``.sgt/local/lock`` serializes mutating store operations
 across processes; every mutable-file write is write-temp-then-rename (``os.replace``, atomic
 on POSIX), so a crash mid-write can never leave a torn file for a reader to trip over.
 
@@ -137,14 +137,18 @@ class Store:
         """Create the store's directories. Idempotent."""
         self.ops_dir.mkdir(parents=True, exist_ok=True)
         self.hollow_dir.mkdir(parents=True, exist_ok=True)
+        self._ensure_local()
+
+    def _ensure_local(self) -> None:
+        """`.sgt/local/` exists and ignores itself (never committed)."""
         gitignore = self.local_dir / ".gitignore"
         if not gitignore.exists():
             _write_atomic(gitignore, b"*\n")
 
     @contextlib.contextmanager
     def _locked(self):
-        self.sgt_dir.mkdir(parents=True, exist_ok=True)
-        lock_path = self.sgt_dir / _LOCK_FILE
+        self._ensure_local()
+        lock_path = self.local_dir / _LOCK_FILE
         with open(lock_path, "w") as f:
             fcntl.flock(f, fcntl.LOCK_EX)
             try:
