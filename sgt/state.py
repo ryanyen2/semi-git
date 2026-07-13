@@ -24,10 +24,32 @@ Only the small JSON tables route through here. The content-addressed op store (`
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 SGT_DIR = ".sgt"
+
+
+def _atomic_write_text(p: Path, text: str) -> None:
+    """Durable write (R5): a temp file in the same directory, fsync'd, then atomically renamed
+    over the target. A reader sees the old bytes or the new bytes, never a torn file, and a crash
+    mid-write leaves the prior file intact -- the property every `.sgt` metadata write now has."""
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, p)  # atomic rename on POSIX
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 # The envelope version every writer emits. Bump only when an artifact's *content* shape changes;
 # readers keep accepting every prior version (D3 -- historical blobs are read forever).
@@ -143,11 +165,19 @@ def _encode(body, art: _Artifact) -> str:
 
 def load_json(repo: str | Path, name: str, default=None):
     """The logical body of artifact `name` from the working tree, or `default` if absent. Accepts
-    both v0 (no envelope) and v1 payloads."""
+    both v0 (no envelope) and v1 payloads. A torn file (a crash mid-write before atomic writes
+    shipped, R6) degrades to `default` for a *local* reseedable artifact -- the next verb re-mines
+    it -- but re-raises for a *committed* artifact, whose corruption is real and must reach `fsck`
+    loudly rather than being silently reseeded into a wrong shared state."""
     p = path(repo, name)
     if not p.is_file():
         return default
-    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+    try:
+        return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        if _ARTIFACTS[name].committed:
+            raise
+        return default
 
 
 def decode_blob_json(raw: bytes | None, default=None):
@@ -171,9 +201,7 @@ def load_blob_json(gb, sha: str, name: str, default=None):
 def save_json(repo: str | Path, name: str, body) -> None:
     """Write artifact `name`'s `body` to the working tree, in its registered byte format."""
     art = _ARTIFACTS[name]
-    p = path(repo, name)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(_encode(body, art), encoding="utf-8")
+    _atomic_write_text(path(repo, name), _encode(body, art))
 
 
 # -- committed claims directory (D8) -------------------------------------------------------------
@@ -199,9 +227,7 @@ def save_claim(repo: str | Path, name: str, body) -> None:
     """Write claim file `name` (a full basename like `<ideal_key>.<runner_fp>.json`) to the working
     tree. Claim files are immutable once published; a re-publish by the same runner overwrites the
     identical key, which is a no-op on content."""
-    d = claims_dir(repo)
-    d.mkdir(parents=True, exist_ok=True)
-    (d / name).write_text(_encode(body, _CLAIM_ART), encoding="utf-8")
+    _atomic_write_text(claims_dir(repo) / name, _encode(body, _CLAIM_ART))
 
 
 def load_claim(repo: str | Path, name: str, default=None):
@@ -252,9 +278,7 @@ def save_proposal(repo: str | Path, name: str, body) -> None:
     """Write proposal file `name` (a full basename like `<proposal_id>.json`) to the working tree.
     Proposals are immutable once created; a re-create with the same base+Δ overwrites the identical
     content-addressed key, a no-op on content."""
-    d = proposals_dir(repo)
-    d.mkdir(parents=True, exist_ok=True)
-    (d / name).write_text(_encode(body, _PROPOSAL_ART), encoding="utf-8")
+    _atomic_write_text(proposals_dir(repo) / name, _encode(body, _PROPOSAL_ART))
 
 
 def load_proposal(repo: str | Path, name: str, default=None):
@@ -303,9 +327,7 @@ def save_review(repo: str | Path, name: str, body) -> None:
     """Write review file `name` (a full basename like `<review_id>.json`) to the working tree.
     Review records are immutable once acked; a re-ack of the same op-set overwrites the identical
     content-addressed key, a no-op on content."""
-    d = reviews_dir(repo)
-    d.mkdir(parents=True, exist_ok=True)
-    (d / name).write_text(_encode(body, _REVIEW_ART), encoding="utf-8")
+    _atomic_write_text(reviews_dir(repo) / name, _encode(body, _REVIEW_ART))
 
 
 def load_review(repo: str | Path, name: str, default=None):

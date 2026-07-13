@@ -35,7 +35,7 @@ from sgt.core import order
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
-from sgt.core.store import Store
+from sgt.core.store import Store, locked_section
 from sgt.store.gitbind import GitBinding, format_op_trailers
 
 
@@ -288,12 +288,16 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     # would leave an invalid `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
     all_ops = store.all_ops()
     committed_ids = set(order.reduce_to_ideal(base_ids | new_committed_ids, all_ops))
-    ideal_table[key] = sorted(committed_ids)
-    _save_ideal_table(repo, ideal_table)
-
-    table = _load_witnesses(repo)
-    table[key] = head
-    _save_witnesses(repo, table)
+    # The ideal table and the witness must advance together (R5): a crash that moved the witness
+    # without the table would make the next `get()` mine nothing new yet trust a stale ideal. One
+    # locked section, each file landing atomically. Ops were added above, before this section, so
+    # `Store.add`'s own lock never nests inside this one (U23 / locked_section contract).
+    with locked_section(repo):
+        ideal_table[key] = sorted(committed_ids)
+        _save_ideal_table(repo, ideal_table)
+        table = _load_witnesses(repo)
+        table[key] = head
+        _save_witnesses(repo, table)
 
     # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
     # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
@@ -367,17 +371,22 @@ def record_ideal(repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: b
     than toggling)."""
     repo = Path(repo)
     key = _ref_key(GitBinding(repo)) or witness_sha
-    itable = _load_ideal_table(repo)
-    if journal and key in itable:
-        jtable = _load_ideal_journal(repo)
-        prev_witness = _load_witnesses(repo).get(key)
-        jtable.setdefault(key, []).append({"ideal": sorted(itable[key]), "witness": prev_witness})
-        _save_ideal_journal(repo, jtable)
-    itable[key] = sorted(ideal.op_ids)
-    _save_ideal_table(repo, itable)
-    wtable = _load_witnesses(repo)
-    wtable[key] = witness_sha
-    _save_witnesses(repo, wtable)
+    # The journal push, the table overwrite, and the witness advance are one read-modify-write:
+    # holding the lock across all three closes the double-journal-entry window (a concurrent
+    # `record_ideal` reading the same journal and both appending) and keeps table+witness
+    # consistent (R5/R6). No `Store.add` runs inside, so the lock never nests.
+    with locked_section(repo):
+        itable = _load_ideal_table(repo)
+        if journal and key in itable:
+            jtable = _load_ideal_journal(repo)
+            prev_witness = _load_witnesses(repo).get(key)
+            jtable.setdefault(key, []).append({"ideal": sorted(itable[key]), "witness": prev_witness})
+            _save_ideal_journal(repo, jtable)
+        itable[key] = sorted(ideal.op_ids)
+        _save_ideal_table(repo, itable)
+        wtable = _load_witnesses(repo)
+        wtable[key] = witness_sha
+        _save_witnesses(repo, wtable)
 
 
 @dataclass(frozen=True)

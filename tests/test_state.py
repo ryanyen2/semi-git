@@ -186,3 +186,76 @@ def test_a_v0_shaped_repo_round_trips_through_load_and_save(tmp_path):
     assert load_pins(repo).assign == {"m1": "featureA"}
     raw = json.loads((pins_dir / "pins.json").read_text(encoding="utf-8"))
     assert raw["schema"] == 1
+
+
+# -- U3: atomic writes + torn-file tolerance (R5/R6) ------------------------------------------
+
+
+def test_save_json_is_atomic_leaving_no_torn_file_on_crash(tmp_path, monkeypatch):
+    """R5: a crash mid-write leaves the *prior* file intact -- writes go to a temp file that is
+    fsync'd and atomically renamed, never a partial overwrite of the live file."""
+    import os
+    state.save_json(tmp_path, "ideal_table", {"refs/heads/main": ["op-a"]})
+
+    real_replace = os.replace
+
+    def _boom(src, dst):
+        raise RuntimeError("crash before rename")
+
+    monkeypatch.setattr(os, "replace", _boom)
+    try:
+        state.save_json(tmp_path, "ideal_table", {"refs/heads/main": ["op-b"]})
+    except RuntimeError:
+        pass
+    monkeypatch.setattr(os, "replace", real_replace)
+
+    # the original bytes survived; no torn/partial file
+    assert state.load_json(tmp_path, "ideal_table") == {"refs/heads/main": ["op-a"]}
+    # and no leftover temp files in .sgt/local/
+    leftovers = [p.name for p in (tmp_path / ".sgt" / "local").iterdir() if p.name.startswith(".tmp-")]
+    assert leftovers == []
+
+
+def test_torn_local_artifact_reseeds_instead_of_crashing(tmp_path):
+    """R6: a torn *local* reseedable artifact (a crash before atomic writes shipped) degrades to
+    the default so the next verb re-mines it, rather than crashing every read."""
+    state.path(tmp_path, "ideal_table").parent.mkdir(parents=True, exist_ok=True)
+    state.path(tmp_path, "ideal_table").write_text("{ truncated", encoding="utf-8")
+    assert state.load_json(tmp_path, "ideal_table", default={}) == {}
+
+
+def test_torn_committed_artifact_fails_loudly(tmp_path):
+    """R6: a torn *committed* artifact is real shared-state corruption -- it re-raises to reach
+    `fsck` loudly, never silently reseeds into a wrong team-visible state."""
+    import json as _json
+    import pytest
+    state.path(tmp_path, "forks").parent.mkdir(parents=True, exist_ok=True)
+    state.path(tmp_path, "forks").write_text("{ truncated", encoding="utf-8")
+    with pytest.raises(_json.JSONDecodeError):
+        state.load_json(tmp_path, "forks", default=[])
+
+
+def test_concurrent_locked_section_writers_lose_no_update(tmp_path):
+    """R5 (mirrors U23's concurrent-add methodology): two threads each do a locked read-modify-
+    write appending to a shared local table. Under the store flock both appends survive; without
+    it the last writer would clobber the other's."""
+    import threading
+    from sgt.core.store import Store, locked_section
+    Store(tmp_path).init()
+    state.save_json(tmp_path, "drafts", {"items": []})
+    barrier = threading.Barrier(2)
+
+    def _append(tag):
+        barrier.wait()
+        for _ in range(50):
+            with locked_section(tmp_path):
+                body = state.load_json(tmp_path, "drafts", default={"items": []})
+                body["items"].append(tag)
+                state.save_json(tmp_path, "drafts", body)
+
+    a = threading.Thread(target=_append, args=("a",))
+    b = threading.Thread(target=_append, args=("b",))
+    a.start(); b.start(); a.join(); b.join()
+
+    items = state.load_json(tmp_path, "drafts")["items"]
+    assert items.count("a") == 50 and items.count("b") == 50  # no lost update
