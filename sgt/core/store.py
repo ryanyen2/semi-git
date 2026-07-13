@@ -110,6 +110,19 @@ def _deserialize(data: bytes) -> Op:
     )
 
 
+@contextlib.contextmanager
+def locked_section(repo: str | Path):
+    """Hold the store's per-mutation flock across a multi-artifact read-modify-write, so a pair
+    that must stay mutually consistent (ideal table + witness; journal push + table overwrite;
+    forks + the ops they name) is computed and written under one lock, each file landing via
+    atomic rename (R5/R6). Same lock and per-mutation granularity as `Store.add()` -- deliberately
+    NOT verb-wide (U23). MUST NOT nest inside another `locked_section` or a `Store.add()` call:
+    `flock` on a second fd of the same lock file blocks this very process (a self-deadlock), so a
+    caller adds its ops *before* entering the section and writes only metadata inside it."""
+    with Store(repo)._locked():
+        yield
+
+
 def _write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")

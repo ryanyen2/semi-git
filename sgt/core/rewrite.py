@@ -44,7 +44,7 @@ from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.mine import _content_version, _entity_bytes, _positional_version
 from sgt.core.op import Op, make_op
-from sgt.core.store import Store
+from sgt.core.store import Store, locked_section
 from sgt.core.verbs import resolve_target
 from sgt.entities.extract import extract_file
 
@@ -422,9 +422,13 @@ def stage(
     except ValueError as e:
         raise RewriteError(f"fulfilling {draft.verb} would leave an invalid ideal, refused: {e}") from e
 
+    # The staged bytes (working tree) and the staged record must move together (R5): a crash
+    # between them would leave a dirty tree with no record, or a record for bytes never written.
+    # Ops were added above, before this section, so `Store.add`'s lock never nests here.
     materialized = code(candidate, ops)
-    lens._write_working_tree(repo, materialized, ops)
-    _save_staged(repo, candidate, draft.verb, draft.target)
+    with locked_section(repo):
+        lens._write_working_tree(repo, materialized, ops)
+        _save_staged(repo, candidate, draft.verb, draft.target)
     return candidate
 
 

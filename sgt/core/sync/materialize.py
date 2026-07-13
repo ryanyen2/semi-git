@@ -18,7 +18,7 @@ from pathlib import Path
 from sgt import state
 from sgt.core import lens
 from sgt.core.fold import code
-from sgt.core.store import Store
+from sgt.core.store import Store, _write_atomic, locked_section
 from sgt.lens import reconcile, tree
 from sgt.lens.pins import save_pins
 from sgt.store.gitbind import GitBinding, format_op_trailers
@@ -38,8 +38,7 @@ def _union_claims(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
         local = repo / path
         if local.exists():
             continue
-        local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_bytes(raw)
+        _write_atomic(local, raw)  # torn copy would be skipped forever by the exists() guard (R5)
 
 
 def _union_proposals(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
@@ -54,8 +53,7 @@ def _union_proposals(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
         local = repo / path
         if local.exists():
             continue
-        local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_bytes(raw)
+        _write_atomic(local, raw)  # torn copy would be skipped forever by the exists() guard (R5)
 
 
 def _union_reviews(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
@@ -70,8 +68,7 @@ def _union_reviews(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
         local = repo / path
         if local.exists():
             continue
-        local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_bytes(raw)
+        _write_atomic(local, raw)  # torn copy would be skipped forever by the exists() guard (R5)
 
 
 def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
@@ -103,18 +100,23 @@ def persist_reconciled(
         store.add(op)  # re-unions provenance a same-id collision would otherwise drop (R8); the
         # mined foreign commits (C3) have no op file anywhere else, so they land for real here
 
-    save_pins(repo, res.unioned_pins)
-    lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
-    reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
-    tree.save(repo, res.tree_result)
-    state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
-    _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
-    _union_proposals(repo, gb, theirs_sha)  # committed review objects travel too (C10)
-    _union_reviews(repo, gb, theirs_sha)  # trust-queue acks travel too (U31/S7)
-
+    # Ops are persisted above (each `Store.add` self-locked); the reconciled metadata -- forks and
+    # the ideal record that name those ops, pins, declared edges, aliases, tree -- then writes
+    # under one locked section so it stays mutually consistent and no reader sees a half-union
+    # (R5/R6). The op adds are deliberately *before* this section: `Store.add`'s own lock must not
+    # nest inside `locked_section` (self-deadlock; see its contract).
     materialized = code(res.merged_ideal, ing.all_ops)
-    lens._write_working_tree(repo, materialized, ing.all_ops)
-    state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery record (C5)
+    with locked_section(repo):
+        save_pins(repo, res.unioned_pins)
+        lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
+        reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
+        tree.save(repo, res.tree_result)
+        state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
+        _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
+        _union_proposals(repo, gb, theirs_sha)  # committed review objects travel too (C10)
+        _union_reviews(repo, gb, theirs_sha)  # trust-queue acks travel too (U31/S7)
+        lens._write_working_tree(repo, materialized, ing.all_ops)
+        state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery (C5)
 
 
 def materialize(
