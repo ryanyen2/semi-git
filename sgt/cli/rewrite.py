@@ -43,6 +43,9 @@ def register(subs, parent) -> None:
     lp.add_argument("--by")
     lp.set_defaults(func=_cmd_land)
 
+    up = subs.add_parser("unstage", parents=[parent])
+    up.set_defaults(func=_cmd_unstage)
+
 
 def _cmd_merge_op(args) -> int:
     return _merge_op(".", args.tips, args.intent, args.as_json)
@@ -62,6 +65,10 @@ def _cmd_identity(args) -> int:
 
 def _cmd_fulfill(args) -> int:
     return _fulfill(".", args.draft, args.from_tree, args.as_json)
+
+
+def _cmd_unstage(args) -> int:
+    return _unstage(".", args.as_json)
 
 
 def _cmd_land(args) -> int:
@@ -171,6 +178,23 @@ def _fulfill(repo: str, draft_id: str | None, from_tree: bool, as_json: bool) ->
         return _emit_json({"ok": True, "op_ids": sorted(candidate.op_ids)})
     print(f"✓ staged {len(candidate.op_ids)} op(s) to the working tree (uncommitted) — "
           "run `sgt oracle run` then `sgt land`")
+    return 0
+
+
+def _unstage(repo: str, as_json: bool) -> int:
+    """`sgt unstage` (plan U6): abandon the staged rewrite candidate — restore the committed ideal
+    to the working tree and drop `staged.json`, so `switch`/`save`/other edits work again."""
+    from sgt.core import rewrite
+
+    try:
+        restored = rewrite.unstage(repo)
+    except rewrite.RewriteError as e:
+        print(f"✗ {e}")
+        return 1
+    if as_json:
+        return _emit_json({"ok": True, "op_ids": sorted(restored.op_ids)})
+    print(f"✓ abandoned staged candidate; restored the committed ideal "
+          f"({len(restored.op_ids)} op(s)) to the working tree")
     return 0
 
 

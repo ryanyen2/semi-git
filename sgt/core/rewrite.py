@@ -205,9 +205,16 @@ def merge_op(repo: str | Path, tip_a: str, tip_b: str, intent: str | None = None
         )
         store.add_hollow(h)
         hollows.append(h)
+    # Every hollow chain-extends `tip_a`, so grounding the fulfilled merge needs `tip_a` and its
+    # whole downset in the candidate ideal (U6). A sync-recorded fork parks the symbol at the common
+    # ancestor -- neither tip is in the current ideal -- so `stage` must *pull `tip_a`'s downset in*,
+    # else the fold refuses as ungrounded. Recorded here so `stage` unions it before folding, the
+    # way `revert --keep-dependents` records `removed_ids`.
+    declared = lens._load_declared(repo)
+    required = sorted(order.downset(a_id, ops, declared))
     draft = RewriteDraft(
         ok=True, verb="merge-op", target=f"{a_id[:12]}+{b_id[:12]}",
-        hollow_ids=tuple(h.id for h in hollows),
+        hollow_ids=tuple(h.id for h in hollows), meta={"required_ids": required},
         message=f"drafted {len(hollows)} hollow(s) for {', '.join(forked)}",
     )
     return _register(repo, draft)
@@ -384,7 +391,10 @@ def stage(
     lens.get(repo)  # absorb any pre-existing dirty tree / foreign commit first (R9)
     store = Store(repo)
     ideal = lens.current_ideal(repo)
-    candidate_ids = set(ideal.op_ids) - set(draft.meta.get("removed_ids", ()))
+    # `removed_ids` subtracts (revert/split remedies); `required_ids` adds a fork tip's downset the
+    # merge remedy chain-extends but the parked ideal excludes (U6) -- both before the fulfilled ops.
+    candidate_ids = (set(ideal.op_ids) - set(draft.meta.get("removed_ids", ()))
+                     | set(draft.meta.get("required_ids", ())))
 
     fulfilled: dict[str, Op] = {}
     for hollow_id in draft.hollow_ids:
@@ -454,19 +464,75 @@ def fulfill(
     return candidate
 
 
+def _stale_paths(repo: Path, candidate: Ideal, ops: list[Op]) -> list[str]:
+    """Paths where the working tree no longer equals the staged candidate's `code(I)` -- an edit or
+    a sync landed after `fulfill` staged it. Symlink-through paths are unmanaged (`stage` never
+    wrote them), so they can't go stale here. A non-empty result means landing would commit a
+    mixture of the reviewed candidate and later drift, so `land` refuses on it (R9)."""
+    materialized = code(candidate, ops)
+    stale: list[str] = []
+    for path, data in materialized.items():
+        if path.startswith(".sgt/") or lens._writes_through_symlink(repo, path):
+            continue
+        full = repo / path
+        on_disk = full.read_bytes() if full.is_file() else None
+        if on_disk != data:
+            stale.append(path)
+    return sorted(stale)
+
+
+def _close_resolved_forks(repo: Path, candidate: Ideal, ops: list[Op]) -> None:
+    """Drop from committed `.sgt/forks.json` (C4) any recorded fork the landed candidate resolved.
+    A sync parks a forked symbol at the *common ancestor* (neither tip in the ideal) yet keeps the
+    fork open, so "one tip missing" can't be the signal. The signal that closes it is a
+    reconciliation op *chained onto* a tip -- exactly what `merge-op` drafts (its hollow's
+    `before_version` is a tip's own `after_version`) -- now present in the landed ideal. Written
+    just before the landing commit so the closed record travels in that commit's tree."""
+    records = state.load_json(repo, "forks", default=[])
+    if not records:
+        return
+    by_id = {op.id: op for op in ops}
+    live = candidate.op_ids
+
+    def resolved(rec: dict) -> bool:
+        sym = rec["symbol"]
+        tip_afters = {
+            by_id[t].footprint[sym][1]
+            for t in rec["tips"] if t in by_id and sym in by_id[t].footprint
+        }
+        return any(
+            sym in by_id[oid].footprint and by_id[oid].footprint[sym][0] in tip_afters
+            for oid in live if oid in by_id
+        )
+
+    remaining = [r for r in records if not resolved(r)]
+    if len(remaining) != len(records):
+        state.save_json(repo, "forks", remaining)
+
+
 def land(
     repo: str | Path, *, message: str | None = None, override: tuple[str, str, str | None] | None = None,
 ) -> str:
     """Commits the last-`stage`d candidate (R14's landing gate): refused unless the oracle's
     verdict for that exact ideal is "pass", or `override` (status, reason, by) is supplied and
-    itself resolves to "pass". On success, mirrors U8's `apply()` tail (`lens.put` then
-    `lens.record_ideal`) so the edit survives the next `get()` instead of being re-mined away."""
+    itself resolves to "pass". The staged bytes are already on disk and the ideal is exact, so it
+    commits them *directly* (`lens.commit_materialized`) rather than re-mining the deliberately
+    dirty tree through `lens.put` -- then `record_ideal` so the edit survives the next `get()`.
+    Refuses a *stale* stage (a tree edited or synced since `fulfill`, U6) before gating, so a
+    mixture can never be committed; abandon it with `sgt unstage`."""
     repo = Path(repo)
     record = _load_staged(repo)
     if record is None:
         raise RewriteError("nothing staged -- run `sgt fulfill` first")
     ops = Store(repo).all_ops()
     candidate = Ideal.from_ops(frozenset(record["op_ids"]), ops)
+
+    stale = _stale_paths(repo, candidate, ops)
+    if stale:
+        raise RewriteError(
+            f"staged candidate is stale -- {', '.join(stale)} changed since `sgt fulfill`; "
+            f"re-fulfill, or `sgt unstage` to abandon it (refusing to land a mixture)"
+        )
 
     status = oracle.overall_status(oracle.verdict_for(repo, candidate))
     if status != "pass":
@@ -480,7 +546,30 @@ def land(
         if status != "pass":
             raise RewriteError(f"override recorded as {status!r}, still refusing to land")
 
-    sha = lens.put(repo, candidate, message=message or f"sgt {record['verb']} {record['target']}")
+    _close_resolved_forks(repo, candidate, ops)  # the reconciliation closes the fork it lands (C4)
+    sha = lens.commit_materialized(
+        repo, candidate, message or f"sgt {record['verb']} {record['target']}"
+    )
     lens.record_ideal(repo, candidate, sha)
     _clear_staged(repo)
     return sha
+
+
+def unstage(repo: str | Path) -> Ideal:
+    """`sgt unstage`: abandon the staged rewrite candidate (U6). Rematerializes the committed ideal
+    over the deliberately-dirty staged tree and clears `staged.json`, so `switch`/`put`/any other
+    materializing edit works again. Raises if nothing is staged."""
+    repo = Path(repo)
+    if _load_staged(repo) is None:
+        raise RewriteError("nothing staged to abandon")
+    store = Store(repo)
+    ops = store.all_ops()
+    committed = lens.current_ideal(repo)
+    materialized = code(committed, ops)
+    # Restore then clear under one lock (mirrors `stage`): the tree and the staged record move
+    # together (R5). A crash after the restore but before the clear leaves a clean tree with a stale
+    # record, which the next `unstage` idempotently re-clears -- never a dirty tree with no record.
+    with locked_section(repo):
+        lens._write_working_tree(repo, materialized, ops)
+        _clear_staged(repo)
+    return committed

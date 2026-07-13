@@ -343,6 +343,15 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
     clobbering) if it would overwrite an uncommitted change with different bytes."""
     repo = Path(repo)
     gb = GitBinding(repo)
+    # A staged rewrite candidate deliberately leaves the tree dirty (U6). `put`'s `get()` would
+    # re-mine those un-landed bytes and its fold would clobber them, committing a mixture -- so any
+    # materializing edit refuses while a stage is live. `sgt land` commits the candidate directly
+    # (`commit_materialized`, which does not call `get`); `sgt unstage` abandons it.
+    if state.load_json(repo, "staged", default=None) is not None:
+        raise DirtyWorkingTreeError(
+            "a rewrite candidate is staged -- `sgt land` to commit it or `sgt unstage` to abandon "
+            "it before another materializing edit"
+        )
     get(repo)  # absorb any dirty tree / foreign commit first (R9)
     store = Store(repo)
     all_ops = store.all_ops()
@@ -357,6 +366,19 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
     # so the blob at the witness SHA describes that SHA's own ideal, recoverable after a
     # squash/rebase strips the trailers below. The local per-ref table stays authoritative for the
     # current ref; this is the historical record `sync` reads from a teammate's arbitrary SHA.
+    state.save_json(repo, "ideal", sorted(ideal.op_ids))
+    return gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
+
+
+def commit_materialized(repo: str | Path, ideal: Ideal, message: str) -> str:
+    """Commit an `ideal` whose `code(I)` bytes are *already* on the working tree -- the rewrite
+    staging path (U6). Unlike `put`, this neither re-mines the deliberately-dirty staged tree nor
+    re-materializes: the staged bytes `stage` wrote are authoritative, so it only records the
+    in-tree ideal recovery blob (C5) and commits with the op trailers. The caller (`rewrite.land`)
+    owns the staleness check that guarantees the tree still equals the staged candidate, so the
+    commit can never capture a mixture."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
     state.save_json(repo, "ideal", sorted(ideal.op_ids))
     return gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
 
@@ -543,6 +565,17 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
             continue
         mat = materialized.get(path)
         head_bytes = gb.blob_bytes(head, path)
+        # A live stage (U6) deliberately leaves an uncommitted rewrite candidate on the working
+        # tree; a path whose *disk* bytes differ from the committed ideal is that candidate --
+        # planned divergence classified `staged`, never `drift`. Checked before the HEAD comparison
+        # because a stage's committed ideal still equals HEAD, so the mat-vs-HEAD test below can
+        # never see the candidate (it lives only on disk).
+        if staged_active and not _writes_through_symlink(repo, path):
+            full = repo / path
+            on_disk = full.read_bytes() if full.is_file() else None
+            if on_disk != mat:
+                result["staged"].append(path)
+                continue
         if mat == head_bytes:
             continue  # the ideal reproduces HEAD's bytes exactly -- no divergence
         if _writes_through_symlink(repo, path):
