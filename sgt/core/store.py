@@ -223,13 +223,18 @@ class Store:
         return _deserialize(path.read_bytes())
 
     def all_ops(self) -> list[Op]:
-        """Every stored op, in a deterministic (sorted-by-id) order."""
+        """Every stored op, in a deterministic (sorted-by-id) order. A corrupt file degrades to a
+        read-side skip (R1) rather than raising, so every verb still runs on a store with one
+        truncated op file; `fsck` is the single place that reports the corruption."""
         if not self.ops_dir.is_dir():
             return []
-        return [
-            _deserialize((self.ops_dir / name).read_bytes())
-            for name in sorted(p.name for p in self.ops_dir.iterdir() if p.is_file())
-        ]
+        ops: list[Op] = []
+        for name in sorted(p.name for p in self.ops_dir.iterdir() if p.is_file()):
+            try:
+                ops.append(_deserialize((self.ops_dir / name).read_bytes()))
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                continue  # corrupt: skipped here, surfaced by fsck
+        return ops
 
     def __contains__(self, op_id: str) -> bool:
         return self._path(op_id).is_file()
@@ -266,14 +271,44 @@ class FsckReport:
     checked: int
     bad_hash: tuple[str, ...]  # file name (== claimed id) whose content hashes to something else
     corrupt: tuple[str, ...]  # file name that isn't valid JSON, or is missing a required field
+    # R11 completion (U2). All default () so a healthy store reports exactly the two fields above.
+    chain_gaps: tuple[str, ...] = ()          # `sym@version` steps produced by no op (advisory:
+    # real single-clone histories carry benign off-ref-predecessor gaps, so this never flips `ok`)
+    invalid_ideals: tuple[str, ...] = ()      # ref keys whose stored ideal isn't a valid ideal
+    unreachable_witnesses: tuple[str, ...] = ()  # ref keys whose witness SHA no longer resolves
+    mixed_versions: tuple[str, ...] = ()      # distinct miner_versions present, only when >1 (U10)
+
+
+def _chain_gaps(ops: list[Op]) -> list[str]:
+    """Every `symbol@before_version` step whose predecessor version is produced by no op in the
+    store -- the R11 linearity check. Advisory: a squashed/rebased-away branch legitimately leaves
+    an off-ref predecessor gap (FINDINGS U22.5), so a gap is reported, never treated as corruption."""
+    produced: set[tuple[str, str]] = set()
+    for op in ops:
+        for sym, (_before, after) in op.footprint.items():
+            produced.add((sym, after))
+    gaps: set[str] = set()
+    for op in ops:
+        for sym, (before, _after) in op.footprint.items():
+            if before is not None and (sym, before) not in produced:
+                gaps.add(f"{sym}@{before}")
+    return sorted(gaps)
 
 
 def fsck(repo: str | Path) -> FsckReport:
-    """Verify every stored op's content address matches its own content and its filename.
-    Repair (re-mining) is a caller concern -- this only reports."""
+    """The R11 contract (U2): content addresses, chain linearity, ideal validity of every stored
+    ideal-table entry, and witness reachability, plus a mixed-miner-version backstop (U10). A
+    corrupt op file degrades to a reported skip -- no verb crashes on it. Repair (re-mining) is a
+    caller concern; this only reports."""
+    from sgt import state
+    from sgt.core import order
+    from sgt.store.gitbind import GitBinding
+
     store = Store(repo)
     bad_hash: list[str] = []
     corrupt: list[str] = []
+    ops: list[Op] = []
+    versions: set[str] = set()
     names = sorted(p.name for p in store.ops_dir.iterdir() if p.is_file()) if store.ops_dir.is_dir() else []
     for name in names:
         try:
@@ -287,9 +322,33 @@ def fsck(repo: str | Path) -> FsckReport:
         expected = compute_id(op.footprint, op.images, op.requires, op.kind, op.miner_version)
         if expected != op.id:
             bad_hash.append(op.id)
+            continue
+        ops.append(op)
+        versions.add(op.miner_version)
+
+    # Ideal validity: every persisted per-ref ideal must be a valid ideal over the readable ops.
+    invalid_ideals: list[str] = []
+    for key, ids in state.load_json(repo, "ideal_table", default={}).items():
+        if not order.is_valid_ideal(ops, set(ids)):
+            invalid_ideals.append(key)
+
+    # Witness reachability: every recorded witness SHA must still resolve in git.
+    unreachable: list[str] = []
+    gb = GitBinding(repo)
+    for key, sha in state.load_json(repo, "witness", default={}).items():
+        # `rev_parse(sha)` only checks syntax; peel to `^{commit}` so a well-formed but absent
+        # object (a deleted branch's tip) is reported as unreachable rather than silently accepted.
+        if not sha or gb.rev_parse(f"{sha}^{{commit}}") is None:
+            unreachable.append(key)
+
+    mixed = tuple(sorted(versions)) if len(versions) > 1 else ()
     return FsckReport(
-        ok=not bad_hash and not corrupt,
+        ok=not (bad_hash or corrupt or invalid_ideals or unreachable or mixed),
         checked=len(names),
         bad_hash=tuple(bad_hash),
         corrupt=tuple(corrupt),
+        chain_gaps=tuple(_chain_gaps(ops)),
+        invalid_ideals=tuple(sorted(invalid_ideals)),
+        unreachable_witnesses=tuple(sorted(unreachable)),
+        mixed_versions=mixed,
     )

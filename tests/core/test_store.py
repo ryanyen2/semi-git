@@ -333,3 +333,85 @@ def test_provenance_roundtrip_preserves_op_ids_across_a_corpus(tmp_path):
     after = sorted(op.id for op in store.all_ops())
     assert after == before
     assert fsck(repo).ok
+
+
+# -- U2: fsck completion (R11 contract) + read-side corruption tolerance ----------------------
+
+
+def test_all_ops_skips_corrupt_file_instead_of_raising(tmp_path):
+    """R1: a corrupt op file degrades to a read-side skip so every verb still runs; fsck is the
+    one place that reports it. Before U2 `all_ops` raised, crashing `sgt status` on any repo with
+    a single truncated op file."""
+    store = Store(tmp_path)
+    store.init()
+    good = _op()
+    store.add(good)
+    (store.ops_dir / "truncated").write_bytes(b"{ not json")
+
+    ops = store.all_ops()
+    assert [o.id for o in ops] == [good.id]  # the good op survives, the corrupt one is skipped
+
+
+def test_fsck_reports_chain_gap_naming_the_symbol(tmp_path):
+    """R11 linearity: an op whose non-None before_version is produced by no op in the store is a
+    chain gap. fsck names the symbol@version. Advisory only -- real histories carry benign
+    off-ref-predecessor gaps, so a gap does not by itself flip `ok`."""
+    store = Store(tmp_path)
+    store.init()
+    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
+    # v1 was produced by nobody -- a gap in a.py::foo's chain
+    store.add(make_op({"a.py::foo": ("v1", "v2")}, {"a.py::foo": b"b2"}, provenance=("s1",)))
+
+    report = fsck(tmp_path)
+    assert any("a.py::foo" in g for g in report.chain_gaps)
+
+
+def test_fsck_reports_invalid_ideal_table_entry_with_ref_key(tmp_path):
+    """R11 ideal validity: an ideal-table entry naming an op id no op in the store produces is not
+    a valid ideal. fsck reports the ref key and flips `ok`."""
+    from sgt import state
+    store = Store(tmp_path)
+    store.init()
+    store.add(_op())
+    state.save_json(tmp_path, "ideal_table", {"refs/heads/main": ["deadbeef-no-such-op"]})
+
+    report = fsck(tmp_path)
+    assert not report.ok
+    assert "refs/heads/main" in report.invalid_ideals
+
+
+def test_fsck_reports_unreachable_witness_with_ref_key(tmp_path):
+    """R11 witness reachability: a witness SHA that no longer resolves (deleted branch, foreign
+    clone) is reported against its ref key and flips `ok`; the remedy is prune-or-reseed."""
+    from sgt import state
+    from sgt.store.gitbind import init_store
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    gb.commit_all("seed")
+    Store(tmp_path).add(_op())
+    # a well-formed sha that is not an object in this repo (a deleted branch's tip)
+    state.save_json(tmp_path, "witness", {"refs/heads/main": "1234567890abcdef1234567890abcdef12345678"})
+
+    report = fsck(tmp_path)
+    assert not report.ok
+    assert "refs/heads/main" in report.unreachable_witnesses
+
+
+def test_fsck_flags_mixed_miner_versions(tmp_path):
+    """U10 backstop: a store containing ops from two miner versions is a mid-migration hazard.
+    fsck lists the versions and flips `ok`. A single-version store reports nothing (mixed=())."""
+    store = Store(tmp_path)
+    store.init()
+    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
+    from dataclasses import replace as _replace
+    from sgt.core.store import _serialize
+    v3 = make_op({"a.py::bar": (None, "v0")}, {"a.py::bar": b"b1"}, provenance=("s1",))
+    v3 = _replace(v3, miner_version="3")
+    # re-mint id under the v3 version so the file still hashes to its own name
+    from sgt.core.op import compute_id
+    v3 = _replace(v3, id=compute_id(v3.footprint, v3.images, v3.requires, v3.kind, "3"))
+    (store.ops_dir / v3.id).write_bytes(_serialize(v3))
+
+    report = fsck(tmp_path)
+    assert not report.ok
+    assert set(report.mixed_versions) == {"2", "3"}

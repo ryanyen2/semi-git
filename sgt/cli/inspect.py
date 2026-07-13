@@ -11,9 +11,13 @@ from ._common import _emit_json, _fail
 def register(subs, parent) -> None:
     for verb, fn in (
         ("log", _cmd_log), ("state", _cmd_state), ("status", _cmd_status),
-        ("map", _cmd_map), ("history", _cmd_history), ("fsck", _cmd_fsck),
+        ("map", _cmd_map), ("history", _cmd_history),
     ):
         subs.add_parser(verb, parents=[parent]).set_defaults(func=fn)
+    pf = subs.add_parser("fsck", parents=[parent])
+    pf.add_argument("--tree", action="store_true",
+                    help="compare code(current_ideal) against the HEAD tree (R2)")
+    pf.set_defaults(func=_cmd_fsck)
     p = subs.add_parser("diff", parents=[parent])
     p.add_argument("a")
     p.add_argument("b")
@@ -48,6 +52,8 @@ def _cmd_history(args) -> int:
 
 
 def _cmd_fsck(args) -> int:
+    if getattr(args, "tree", False):
+        return _fsck_tree(".", args.as_json)
     return _fsck(".", args.as_json)
 
 
@@ -82,6 +88,10 @@ def _fsck(repo: str, as_json: bool = False) -> int:
                 "checked": report.checked,
                 "bad_hash": list(report.bad_hash),
                 "corrupt": list(report.corrupt),
+                "chain_gaps": list(report.chain_gaps),
+                "invalid_ideals": list(report.invalid_ideals),
+                "unreachable_witnesses": list(report.unreachable_witnesses),
+                "mixed_versions": list(report.mixed_versions),
                 "stale_sessions": stale,
             }
         )
@@ -91,9 +101,44 @@ def _fsck(repo: str, as_json: bool = False) -> int:
         print(f"    bad hash: {name}")
     for name in report.corrupt:
         print(f"    corrupt: {name}")
+    for key in report.invalid_ideals:
+        print(f"    invalid ideal for {key!r}: names an op the store can't produce -- "
+              f"re-mine the ref (`sgt get`) to rebuild it")
+    for key in report.unreachable_witnesses:
+        print(f"    unreachable witness for {key!r}: its SHA no longer resolves -- prune the ref "
+              f"or re-seed it (`sgt get` on a live ref)")
+    if report.mixed_versions:
+        print(f"    mixed miner versions {', '.join(report.mixed_versions)} -- "
+              f"run `sgt migrate ops-v3` to unify the store")
+    for gap in report.chain_gaps:
+        print(f"    chain gap (advisory): {gap} has no producing op "
+              f"(off-ref predecessor -- benign unless unexpected)")
     for name in stale:
         print(f"    stale session: {name!r} (owning process died -- `sgt session gc` will reap it)")
     return 0 if report.ok else 1
+
+
+def _fsck_tree(repo: str, as_json: bool = False) -> int:
+    """`sgt fsck --tree` (R2): classify every path where `code(current_ideal)` diverges from the
+    HEAD tree. Real `drift` is the only failing finding; unmanaged/backstop-kept/staged/unseeded
+    are planned divergence and reported for context."""
+    from sgt.core.lens import fsck_tree, get
+
+    get(repo)  # mine-on-contact so the comparison reflects current reality (R9)
+    result = fsck_tree(repo)
+    if as_json:
+        return _emit_json(result)
+    drift = result["drift"]
+    icon = "✗" if drift else "✓"
+    print(f"{icon} fsck --tree — {len(drift)} drifted path(s)")
+    for path in drift:
+        print(f"    drift: {path} — `sgt get` to absorb HEAD's bytes, or `sgt save` to enforce "
+              f"the ideal (opposite data-loss profiles)")
+    for cls, label in (("backstop_kept", "backstop-kept"), ("unmanaged", "unmanaged"),
+                       ("staged", "staged candidate"), ("unseeded", "unseeded ref")):
+        for path in result[cls]:
+            print(f"    {label}: {path}")
+    return 0 if not drift else 1
 
 
 def _log(repo: str, as_json: bool = False) -> int:
