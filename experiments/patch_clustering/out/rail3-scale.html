@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sgt · scale layout (rail 3 · reductions)</title>
+<style>
+  :root{
+    --bg:#FBFBFA; --panel:#FFFFFF; --panel2:#F9F9F8;
+    --line:#ECECEA; --line-soft:rgba(0,0,0,.05); --line-strong:#DDDDD9;
+    --ink:#1B1B1A; --ink2:#3A3A37; --dim:#8B8B85; --faint:#B7B7B1;
+    --accent:#3B5BDB; --accent-soft:#E7ECFC;
+    --blast-bg:#FBEBE0; --blast:#B45A24;
+    --found-bg:#E4F2FB; --found:#1F6C9F;
+    --land:#357a3e; --land-bg:#EAF3E9;
+    --drift:#8f6200; --drift-bg:#FBF2D7;
+    --fail:#9F2F2D;
+    --sans:'SF Pro Display',-apple-system,'Segoe UI','Helvetica Neue',system-ui,sans-serif;
+    --mono:'SF Mono','Geist Mono','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+    --rail-w:300px;
+  }
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important; transition:none!important} }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:#EDEDEA; color:var(--ink); font-family:var(--sans); font-size:13px;
+       -webkit-font-smoothing:antialiased; letter-spacing:-0.006em;
+       display:flex; align-items:center; justify-content:center; padding:20px}
+  .win{width:min(1340px,100%); height:min(860px,calc(100vh - 40px)); background:var(--panel);
+       border:1px solid var(--line-strong); border-radius:13px; overflow:hidden; display:flex; flex-direction:column;
+       box-shadow:0 24px 60px -28px rgba(20,20,30,.28)}
+  .titlebar{height:42px; flex:none; display:flex; align-items:center; gap:14px; padding:0 15px;
+            border-bottom:1px solid var(--line); background:linear-gradient(180deg,#fff,#FBFBFA)}
+  .dots{display:flex; gap:8px} .dots i{width:12px;height:12px;border-radius:50%;display:block}
+  .dots .r{background:#F0655A}.dots .y{background:#F5BE4F}.dots .g{background:#61C554}
+  .brand{font-weight:600} .brand .mono{font-family:var(--mono);font-size:11.5px;color:var(--dim);font-weight:450}
+  .spacer{flex:1}
+  .seg{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; font-size:11.5px}
+  .seg button{border:0; background:var(--panel); color:var(--ink2); padding:5px 11px; cursor:pointer; font-family:var(--sans); border-left:1px solid var(--line)}
+  .seg button:first-child{border-left:0}
+  .seg button.on{background:var(--accent-soft); color:var(--accent); font-weight:600}
+  .stat{font-family:var(--mono); font-size:11px; color:var(--dim)} .stat b{color:var(--ink);font-weight:550}
+
+  .body{flex:1; display:grid; grid-template-columns:var(--rail-w) 1fr; min-height:0}
+  .rail{border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; background:var(--panel)}
+  .center{display:flex; flex-direction:column; min-height:0; background:var(--panel2); position:relative}
+  .panehead{height:31px; flex:none; display:flex; align-items:center; gap:8px; padding:0 12px; border-bottom:1px solid var(--line);
+            font-size:10.5px; text-transform:uppercase; letter-spacing:0.09em; color:var(--dim); font-weight:600}
+  .panehead .mini{margin-left:auto; text-transform:none; letter-spacing:-0.01em; font-weight:450; color:var(--ink2);
+                  font-family:var(--mono); font-size:11px; cursor:pointer; padding:2px 7px; border-radius:5px}
+  .panehead .mini:hover{background:var(--panel2); color:var(--ink)}
+
+  /* left tree */
+  .tree{flex:1; overflow:auto; padding:4px 0}
+  .node{height:26px; display:flex; align-items:center; gap:6px; padding:0 10px; cursor:pointer; position:relative; white-space:nowrap; font-size:12px}
+  .node:hover{background:var(--panel2)}
+  .node.sel{background:var(--accent-soft)}
+  .node.sel::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:2px;background:var(--accent);border-radius:2px}
+  .node .car{width:11px;font-size:9px;color:var(--faint);flex:none;text-align:center;transition:transform .15s}
+  .node.collapsed .car{transform:rotate(-90deg)}
+  .node .name{overflow:hidden;text-overflow:ellipsis}
+  .node.sub{font-weight:600;color:var(--ink)}
+  .node.grp{color:var(--ink2)}
+  .node.leaf{color:var(--ink2)}
+  .node .cnt{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint);flex:none}
+  .node.dim{opacity:.32}
+  .node.inpath{}
+  .node .roi{width:7px;height:7px;border-radius:2px;flex:none}
+
+  /* center timeline */
+  .tl{flex:1; min-height:0; position:relative; overflow:hidden}
+  .scroll{position:absolute; inset:0; overflow:auto}
+  svg{display:block}
+  svg text{font-family:var(--mono); font-size:10px; fill:var(--dim)}
+  .grid{stroke:var(--line);stroke-width:1} .grid.maj{stroke:var(--line-strong)}
+  .rowsep{stroke:var(--line-soft);stroke-width:1}
+  .rowg{transition:opacity .18s cubic-bezier(.16,1,.3,1)}
+  svg.focus .rowg{opacity:.16}
+  svg.focus .rowg.on{opacity:1}
+  .glyph{font-size:11px;cursor:pointer;user-select:none}
+  .lifebar{stroke-width:5;stroke-linecap:round;opacity:.85}
+  /* dependency edges (focus only, transitively reduced) */
+  .dep{fill:none;stroke-width:1.4;opacity:.9}
+  .dep.found{stroke:var(--found)} .dep.blast{stroke:var(--blast)}
+  .dep-lab{font-size:8.5px;fill:var(--dim)}
+  .aggdot{stroke-width:1}
+  .ph{stroke:var(--accent);stroke-width:1.5}
+  .phflag{fill:var(--accent)} .phflag-t{fill:#fff;font-size:9px;font-weight:600;font-family:var(--mono)}
+
+  /* DSM matrix overlay */
+  .dsm{position:absolute; right:14px; top:44px; width:340px; background:var(--panel); border:1px solid var(--line-strong);
+       border-radius:10px; box-shadow:0 18px 46px -22px rgba(20,20,30,.32); padding:12px; display:none; z-index:5}
+  .dsm.show{display:block}
+  .dsm h3{margin:0 0 3px;font-size:12px} .dsm .d{color:var(--dim);font-size:10.5px;margin-bottom:9px;font-family:var(--mono)}
+  .dsm .close{position:absolute;right:10px;top:9px;cursor:pointer;color:var(--faint);font-size:14px}
+  .dsm svg text{font-size:8px}
+
+  .legend{position:absolute; left:12px; bottom:12px; background:var(--panel); border:1px solid var(--line);
+          border-radius:9px; padding:9px 11px; font-size:10.5px; color:var(--dim); line-height:1.7; max-width:340px}
+  .legend b{color:var(--ink2)} .legend .sw{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:4px}
+  .legend .k{font-family:var(--mono);color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="titlebar">
+    <div class="dots"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+    <div class="brand">sgt <span class="mono">· scale layout · reduction methods</span></div>
+    <div class="spacer"></div>
+    <span class="stat" id="stat"></span>
+    <div class="seg" id="depmode">
+      <button data-m="focus" class="on">focus edges</button>
+      <button data-m="off">no edges</button>
+      <button data-m="dsm">matrix</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="rail">
+      <div class="panehead"><span>feature hierarchy · frontier</span>
+        <span class="mini" id="collapseAll">collapse all</span></div>
+      <div class="tree" id="tree"></div>
+    </div>
+    <div class="center">
+      <div class="panehead" style="text-transform:none;letter-spacing:-0.01em;color:var(--ink2)">
+        <span id="hint">Click a subsystem to expand its frontier · click a feature to trace its <span style="color:var(--found)">foundation ↓</span> / <span style="color:var(--blast)">blast ↑</span> closure (transitively reduced)</span>
+      </div>
+      <div class="tl"><div class="scroll" id="scroll"><svg id="rail"></svg></div></div>
+      <div class="dsm" id="dsm"></div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+</div>
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   Synthetic-at-scale scenario: a 4-level hierarchy of ~130 features
+   over sgt's real subsystem names, a sparse ACYCLIC requires DAG
+   (the thing worth drawing) and a dense coupling graph (absorbed by
+   the tree, not drawn). Deterministic seed → stable layout.
+   ════════════════════════════════════════════════════════════════ */
+function rng(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const R=rng(42);
+const pick=(a)=>a[Math.floor(R()*a.length)];
+const T=40; // time columns
+
+const SUBS=[
+  {n:'core',   groups:['ideal','fold','order','mine','identity','oracle']},
+  {n:'lens',   groups:['cluster','tree','label','select','reconcile']},
+  {n:'store',  groups:['gitbind','cas','sync']},
+  {n:'api',    groups:['views','projection']},
+  {n:'cli',    groups:['verbs','session','propose']},
+  {n:'vscode', groups:['webview','codelens','panel']},
+  {n:'agents', groups:['loop','distill']},
+];
+const GLYPHS=['◆','+','+','~','~','−'];
+
+// build tree + features
+let nodes={}, features=[], nid=0, fid=0;
+const root={id:'root', kind:'root', children:[], label:'HEAD'};
+nodes.root=root;
+for(const s of SUBS){
+  const sub={id:'S'+(nid++), kind:'sub', parent:'root', label:s.n, children:[]};
+  nodes[sub.id]=sub; root.children.push(sub.id);
+  for(const g of s.groups){
+    const grp={id:'G'+(nid++), kind:'grp', parent:sub.id, label:g, children:[]};
+    nodes[grp.id]=grp; sub.children.push(grp.id);
+    const k=2+Math.floor(R()*4);
+    for(let i=0;i<k;i++){
+      const f={id:'F'+(fid++), kind:'leaf', parent:grp.id, label:g+(i?('_'+i):''), children:[],
+               sub:s.n, ops:[], req:[], rank:0, prov:'main'};
+      // ops scattered over time
+      const birth=Math.floor(R()*T*0.7);
+      const nops=1+Math.floor(R()*5);
+      let c=birth;
+      for(let j=0;j<nops;j++){ f.ops.push({c:Math.min(T-1,c), t: j===0?'◆':pick(GLYPHS)}); c+=1+Math.floor(R()*6); }
+      f.birth=birth; f.last=Math.min(T-1, f.ops[f.ops.length-1].c);
+      nodes[f.id]=f; grp.children.push(f.id); features.push(f);
+    }
+  }
+}
+// rank by birth (foundations are older) then wire a SPARSE acyclic requires DAG
+features.sort((a,b)=>a.birth-b.birth);
+features.forEach((f,i)=>f.rank=i);
+for(const f of features){
+  const nd=Math.floor(R()*3); // 0..2 deps
+  const cand=features.filter(g=>g.rank<f.rank && (g.sub===f.sub || R()<0.25));
+  for(let i=0;i<nd && cand.length;i++){ const g=cand[Math.floor(R()*Math.min(cand.length,12))]; if(g && !f.req.includes(g.id)) f.req.push(g.id); }
+}
+// a couple of proposals / drift for flavour
+features[10].prov='agent'; features[11]&&(features[11].prov='agent');
+features[40].prov='drift';
+
+const byId=Object.fromEntries(features.map(f=>[f.id,f]));
+// reverse requires
+const dependents={}; for(const f of features){ for(const r of f.req){ (dependents[r] ||= []).push(f.id); } }
+
+/* ── closures + TRANSITIVE REDUCTION ───────────────────────────── */
+function closure(seedId, adj){ const seen=new Set(),q=[seedId]; while(q.length){const x=q.pop(); for(const y of (adj(x)||[])){ if(!seen.has(y)){seen.add(y);q.push(y);} }} return seen; }
+function reduceEdges(edgeList){
+  // edgeList: [ [u,w], ... ] directed. drop (u,w) if w reachable from u via a length>=2 path.
+  const adj={}; for(const [u,w] of edgeList){ (adj[u] ||= new Set()).add(w); }
+  const reach=(s,avoidW)=>{ const seen=new Set();
+    // BFS from s's neighbours, ignoring the direct s->avoidW edge, to test if w is reachable via a longer path
+    const stack=[]; for(const n of (adj[s]||[])) if(n!==avoidW) stack.push(n);
+    while(stack.length){ const x=stack.pop(); if(seen.has(x))continue; seen.add(x); for(const y of (adj[x]||[])) stack.push(y);} return seen; };
+  const keep=[];
+  for(const [u,w] of edgeList){ if(!reach(u,w).has(w)) keep.push([u,w]); }
+  return keep;
+}
+
+/* ── expansion state (degree-of-interest frontier) ─────────────── */
+let expanded=new Set(['root']); // subsystems collapsed by default → bounded frontier
+let sel=null, depmode='focus';
+
+function visibleRows(){
+  const out=[];
+  function walk(id, depth){
+    const n=nodes[id];
+    if(id!=='root'){ out.push({id, depth, node:n}); }
+    if(id==='root' || expanded.has(id)){ for(const c of n.children) walk(c, id==='root'?0:depth+1); }
+  }
+  walk('root',0);
+  return out;
+}
+// representative visible row for a feature (itself, or nearest collapsed ancestor)
+function repRow(fid, vis){
+  const set=new Set(vis.map(r=>r.id));
+  let cur=fid;
+  while(cur && !set.has(cur)) cur=nodes[cur].parent;
+  return cur;
+}
+function ancestors(id){ const a=[]; let c=nodes[id].parent; while(c){ a.push(c); c=nodes[c]?.parent; } return a; }
+
+/* ── layout constants ──────────────────────────────────────────── */
+const PADL=12, PADR=90, PADT=26, ROWH=26;
+function colX(c,W){ return PADL + (c/(T-1))*(W-PADL-PADR); }
+let head= T*0.62;
+
+/* ── RENDER TREE ───────────────────────────────────────────────── */
+function renderTree(){
+  const el=document.getElementById('tree'); el.innerHTML='';
+  const focusSet=focusRowSet();
+  for(const r of visibleRows()){
+    const n=r.node, d=document.createElement('div');
+    const cls=n.kind==='sub'?'sub':n.kind==='grp'?'grp':'leaf';
+    d.className='node '+cls; d.style.paddingLeft=(10+r.depth*15)+'px';
+    if(sel===n.id) d.classList.add('sel');
+    if(focusSet && !focusSet.has(n.id) && !isAncestorOfFocus(n.id)) d.classList.add('dim');
+    const car = n.children.length ? (expanded.has(n.id)?'▾':'▸') : '';
+    const roi = n.kind==='leaf' ? `<span class="roi" style="background:${n.prov==='agent'?'var(--drift)':n.prov==='drift'?'var(--fail)':'#c9c9c4'}"></span>` : '';
+    const cnt = n.kind==='leaf' ? `<span class="cnt">${n.ops.length}</span>` : `<span class="cnt">${countLeaves(n.id)}</span>`;
+    d.innerHTML=`<span class="car">${car}</span>${roi}<span class="name">${n.label}${n.kind!=='leaf'?'/':''}</span>${cnt}`;
+    d.onclick=()=>{ if(n.kind==='leaf'){ selectFeat(n.id); } else { toggle(n.id); } };
+    el.appendChild(d);
+  }
+}
+function countLeaves(id){ const n=nodes[id]; if(n.kind==='leaf')return 1; return n.children.reduce((a,c)=>a+countLeaves(c),0); }
+function toggle(id){ if(expanded.has(id)) expanded.delete(id); else expanded.add(id); renderAll(); }
+function isAncestorOfFocus(id){ if(!sel) return false; return ancestors(sel).includes(id); }
+
+/* ── FOCUS SETS (which features participate on selection) ──────── */
+function focusFeatures(){ if(!sel || nodes[sel].kind!=='leaf') return null;
+  const found=closure(sel, id=>byId[id]?.req);
+  const blast=closure(sel, id=>dependents[id]);
+  const all=new Set([sel,...found,...blast]); return {found,blast,all};
+}
+function focusRowSet(){ const ff=focusFeatures(); if(!ff) return null;
+  const vis=visibleRows(); const s=new Set();
+  for(const f of ff.all){ s.add(repRow(f,vis)); } return s; }
+
+/* ── RENDER RAIL ───────────────────────────────────────────────── */
+function renderRail(){
+  const svg=document.getElementById('rail'), scroll=document.getElementById('scroll');
+  const W=Math.max(scroll.clientWidth,560);
+  const vis=visibleRows();
+  const H=PADT+vis.length*ROWH+12;
+  svg.setAttribute('width',W); svg.setAttribute('height',H); svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.innerHTML='';
+  const ff=focusFeatures();
+  svg.classList.toggle('focus', !!ff && depmode!=='off');
+
+  // grid + ruler
+  for(let c=0;c<T;c+=4){ const x=colX(c,W); add(svg,'line',{x1:x,y1:PADT-8,x2:x,y2:H-6,class:'grid'+(c%8?'':' maj')}); add(svg,'text',{x:x,y:PADT-12,'text-anchor':'middle'},'op'+c); }
+
+  const rowY={}; vis.forEach((r,i)=>rowY[r.id]=PADT+i*ROWH+ROWH/2);
+  const focusRows = ff && depmode!=='off' ? focusRowSet() : null;
+
+  vis.forEach((r,i)=>{
+    const y=PADT+i*ROWH+ROWH/2;
+    add(svg,'line',{x1:PADL-4,y1:PADT+i*ROWH,x2:W-8,y2:PADT+i*ROWH,class:'rowsep'});
+    const g=add(svg,'g',{class:'rowg'});
+    if(focusRows && focusRows.has(r.id)) g.classList.add('on');
+    if(r.node.kind==='leaf') renderLeaf(g,r.node,y,W);
+    else renderHeatstrip(g,r.node,y,W);       // collapsed node → density heatstrip (REDUCTION)
+  });
+
+  // dependency edges — FOCUS ONLY, transitively reduced, aggregated to visible rows
+  if(ff && depmode==='focus'){ drawFocusEdges(svg,ff,vis,rowY,W); }
+
+  // playhead
+  const hx=colX(head,W);
+  add(svg,'line',{x1:hx,y1:PADT-16,x2:hx,y2:H-6,class:'ph'});
+  add(svg,'rect',{x:hx-2,y:PADT-24,width:34,height:14,rx:3,class:'phflag'});
+  add(svg,'text',{x:hx+15,y:PADT-14,'text-anchor':'middle',class:'phflag-t'},'I');
+  const hit=add(svg,'rect',{x:hx-8,y:PADT-24,width:16,height:H-PADT+18,fill:'transparent'}); hit.style.cursor='ew-resize';
+  hit.onpointerdown=dragHead;
+
+  document.getElementById('stat').innerHTML=`<b>${features.length}</b> features · <b>${vis.length}</b> visible lanes · edges drawn: <b>${lastEdgeCount}</b>${ff?` / ${ff.all.size-1} in closure`:''}`;
+}
+let lastEdgeCount=0;
+
+function renderLeaf(g,f,y,W){
+  if(!f.ops.length) return;
+  const x0=colX(f.birth,W), x1=colX(f.last,W);
+  const col=f.prov==='agent'?'var(--drift)':f.prov==='drift'?'var(--fail)':'#cfcfca';
+  add(g,'line',{x1:x0,y1:y,x2:x1,y2:y,class:'lifebar',stroke:col});
+  for(const o of f.ops){ const t=add(g,'text',{x:colX(o.c,W),y:y+4,'text-anchor':'middle',class:'glyph',
+      fill:f.prov==='agent'?'var(--drift)':f.prov==='drift'?'var(--fail)':'var(--ink)', opacity:o.c>head?0.28:1},o.t);
+      t.onclick=(e)=>{e.stopPropagation(); selectFeat(f.id);}; }
+}
+// REDUCTION: a collapsed node renders its subtree's op density as a heatstrip, not N rows
+function renderHeatstrip(g,n,y,W){
+  const buckets=new Array(T).fill(0); let leaves=0, maxb=0;
+  (function gather(id){ const x=nodes[id]; if(x.kind==='leaf'){ leaves++; for(const o of x.ops) buckets[o.c]++; } else x.children.forEach(gather); })(n.id);
+  maxb=Math.max(1,...buckets);
+  const bw=(W-PADL-PADR)/T;
+  for(let c=0;c<T;c++){ if(!buckets[c])continue; const inten=buckets[c]/maxb;
+    add(g,'rect',{x:colX(c,W)-bw/2, y:y-7, width:Math.max(2,bw-1), height:14, rx:2,
+      fill: c>head?'#e8e8e4':'var(--land)', opacity: c>head?0.5:0.14+0.55*inten}); }
+  add(g,'text',{x:W-PADR+8,y:y+3,fill:'var(--faint)','font-size':'9px'},`${leaves} feats`);
+}
+
+/* draw only the reduced closure edges, aggregated to visible representative rows */
+function drawFocusEdges(svg,ff,vis,rowY,W){
+  const edges=[]; // directed [from,to,kind]
+  for(const f of ff.found){ for(const r of byId[f].req){ if(ff.all.has(r)) edges.push([f,r,'found']); } }
+  edges.push(...[...ff.found].filter(f=>byId[sel].req.includes(f)).map(f=>[sel,f,'found']));
+  for(const f of [...ff.blast, sel]){ for(const d of (dependents[f]||[])){ if(ff.all.has(d)) edges.push([d,f,'blast']); } }
+  // transitive reduction on the closure subgraph
+  const reduced=reduceEdges(edges.map(e=>[e[0],e[1]]));
+  const kindOf={}; edges.forEach(e=>kindOf[e[0]+'>'+e[1]]=e[2]);
+  // aggregate to visible representative rows
+  const agg={};
+  for(const [u,w] of reduced){ const ru=repRow(u,vis), rw=repRow(w,vis); if(ru===rw)continue;
+    const key=ru+'>'+rw; (agg[key] ||= {u:ru,w:rw,n:0,kind:kindOf[u+'>'+w]||'found'}).n++; }
+  lastEdgeCount=Object.keys(agg).length;
+  const selY=rowY[repRow(sel,vis)];
+  for(const k in agg){ const {u,w,n,kind}=agg[k]; const y1=rowY[u], y2=rowY[w]; if(y1==null||y2==null)continue;
+    const gx=PADL-2; const bend=Math.min(60, 18+Math.abs(y1-y2)*0.28);
+    const path=`M ${gx} ${y1} C ${gx-bend} ${y1}, ${gx-bend} ${y2}, ${gx} ${y2}`;
+    add(svg,'path',{d:path,class:'dep '+kind});
+    if(n>1) add(svg,'text',{x:gx-bend-4,y:(y1+y2)/2,'text-anchor':'end',class:'dep-lab'},'×'+n);
+  }
+}
+
+function dragHead(e){ e.preventDefault(); const svg=document.getElementById('rail'); const W=svg.getBoundingClientRect().width;
+  const mv=(ev)=>{ const rect=svg.getBoundingClientRect(); head=Math.max(0,Math.min(T-1,(ev.clientX-rect.left-PADL)/(W-PADL-PADR)*(T-1))); renderRail(); };
+  const up=()=>{window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);};
+  window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up); }
+
+/* ── selection: auto-expand path to focus (DOI) ────────────────── */
+function selectFeat(id){ sel=id;
+  // degree-of-interest: expand ancestors of selection + ancestors of closure members
+  const ff=focusFeatures();
+  if(ff){ for(const f of ff.all){ ancestors(f).forEach(a=>{ if(a!=='root') { /* keep collapsed unless it's the focus feature's own path */ } }); }
+    ancestors(id).forEach(a=>expanded.add(a)); }
+  if(depmode==='dsm') renderDSM();
+  renderAll();
+}
+
+/* ── DSM adjacency matrix for the selected subsystem (dense-region escape) ── */
+function renderDSM(){
+  const box=document.getElementById('dsm');
+  let subId = sel? (nodes[sel].kind==='leaf'? nodes[nodes[sel].parent].parent : (nodes[sel].kind==='grp'?nodes[sel].parent:sel)) : null;
+  if(!subId){ box.classList.remove('show'); return; }
+  const leaves=[]; (function g(id){ const x=nodes[id]; if(x.kind==='leaf')leaves.push(x); else x.children.forEach(g); })(subId);
+  const L=leaves.slice(0,16); const idx=Object.fromEntries(L.map((f,i)=>[f.id,i]));
+  const cell=16, S=cell*L.length, off=64;
+  let svg=`<div class="close" onclick="document.getElementById('dsm').classList.remove('show')">✕</div>
+    <h3>${nodes[subId].label}/ · dependency matrix</h3><div class="d">${L.length} features · requires (row → col)</div>
+    <svg width="${off+S+6}" height="${off+S+6}">`;
+  L.forEach((f,i)=>{ svg+=`<text x="${off-4}" y="${off+i*cell+cell-4}" text-anchor="end">${f.label.slice(0,10)}</text>`;
+    svg+=`<text x="${off+i*cell+cell/2}" y="${off-4}" text-anchor="middle" transform="rotate(-90 ${off+i*cell+cell/2} ${off-6})">${f.label.slice(0,10)}</text>`; });
+  for(const f of L){ for(const r of f.req){ if(idx[r]!=null){ const ri=idx[f.id], ci=idx[r];
+    svg+=`<rect x="${off+ci*cell}" y="${off+ri*cell}" width="${cell-1}" height="${cell-1}" fill="var(--found)" opacity="0.8"/>`; } } }
+  for(let i=0;i<=L.length;i++){ svg+=`<line x1="${off}" y1="${off+i*cell}" x2="${off+S}" y2="${off+i*cell}" stroke="var(--line)"/><line x1="${off+i*cell}" y1="${off}" x2="${off+i*cell}" y2="${off+S}" stroke="var(--line)"/>`; }
+  svg+=`</svg>`; box.innerHTML=svg; box.classList.add('show');
+}
+
+/* ── helpers / boot ────────────────────────────────────────────── */
+function add(p,t,a,tx){ const e=document.createElementNS('http://www.w3.org/2000/svg',t); for(const k in a)e.setAttribute(k,a[k]); if(tx!=null)e.textContent=tx; p.appendChild(e); return e; }
+function renderAll(){ renderTree(); renderRail(); }
+
+document.getElementById('depmode').onclick=(e)=>{ const b=e.target.closest('button'); if(!b)return;
+  depmode=b.dataset.m; [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  document.getElementById('dsm').classList.toggle('show', depmode==='dsm' && !!sel);
+  if(depmode==='dsm') renderDSM(); renderAll(); };
+document.getElementById('collapseAll').onclick=()=>{ expanded=new Set(['root']); sel=null; renderAll(); };
+
+document.getElementById('legend').innerHTML=`
+  <div><b>Reduction stack</b></div>
+  <div><span class="sw" style="background:var(--land)"></span>collapsed node → <b>op-density heatstrip</b> (bounded lanes)</div>
+  <div><span class="sw" style="background:var(--found)"></span>foundation ↓ &nbsp; <span class="sw" style="background:var(--blast)"></span>blast ↑ — drawn <b>on focus only</b>, <b>transitively reduced</b></div>
+  <div><span class="k">×n</span> = edges aggregated to a collapsed ancestor lane · <span class="k">matrix</span> = DSM for a dense subsystem</div>`;
+
+let _rt; window.addEventListener('resize',()=>{clearTimeout(_rt);_rt=setTimeout(renderRail,120);});
+renderAll();
+</script>
+</body>
+</html>
