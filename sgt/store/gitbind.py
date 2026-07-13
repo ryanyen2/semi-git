@@ -473,6 +473,19 @@ class GitBinding:
         proc = self._git("status", "--porcelain", check=False)
         return proc.returncode == 0 and not proc.stdout.strip()
 
+    def has_dirty_source(self) -> bool:
+        """True if any path outside `.sgt/` has an uncommitted working-tree change -- modified,
+        deleted, staged, *or* untracked -- which is exactly the precondition for `_sync`'s dirty
+        mining pass (R16). Only `.sgt/` is excluded: it is sgt's own state, never mined as codebase
+        content (`_mine_one` skips it), and after any `get()`/`put()` the working tree carries
+        untracked `.sgt/ops/*` churn -- were that counted, the guard would never fire in a real
+        repo. Untracked *source* files, by contrast, are genuine pending adds and must still be
+        mined (they are, in the `save` golden). So on a tree clean by this measure the O(files)
+        pending pass would produce no source ops and is skipped. A git error degrades to `True`
+        (run the pass) rather than silently skipping."""
+        proc = self._git("status", "--porcelain", "--", ".", ":(exclude).sgt", check=False)
+        return proc.returncode != 0 or bool(proc.stdout.strip())
+
     def upstream(self) -> str | None:
         """`<remote>/<branch>` HEAD's branch tracks, or None (detached HEAD, or no upstream
         configured)."""

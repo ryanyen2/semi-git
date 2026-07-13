@@ -269,7 +269,12 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     # committed, not pending.
     new_committed_ids: set[str] = set()
     pending_ids: set[str] = set()
-    for op in mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=True):
+    # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
+    # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
+    # `.sgt/` path actually differs from HEAD (R16); on a tree whose only churn is `.sgt/` state
+    # it would rebuild the whole graph only to produce no source ops.
+    include_dirty = gb.has_dirty_source()
+    for op in mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=include_dirty):
         stored = store.add(op)
         (new_committed_ids if stored.provenance else pending_ids).add(stored.id)
 
