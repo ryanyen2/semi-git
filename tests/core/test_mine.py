@@ -65,7 +65,10 @@ def test_binary_change_yields_blob_oid_version(tmp_path):
 
 def test_unparseable_midedit_degrades_to_whole_file(tmp_path):
     """A Python file broken mid-edit degrades to a whole-file symbol for that commit -- not
-    zero entities, not a crash (R7)."""
+    zero entities, not a crash (R7). The degraded op must also actually be *live*: its
+    before_version has to chain onto a producer some prior op actually emitted (the entity
+    tier's chain never minted `symbol == path`), or it's permanently ungrounded and silently
+    dropped from every ideal despite appearing in `mine()`'s raw output."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("add foo")
@@ -76,6 +79,15 @@ def test_unparseable_midedit_degrades_to_whole_file(tmp_path):
     broken_ops = _ops_for_commit(ops, sha2)
     assert len(broken_ops) == 1
     assert list(broken_ops[0].footprint) == ["a.py"]
+
+    from sgt.core.fold import code
+    from sgt.core.lens import get
+    from sgt.core.store import Store
+
+    ideal = get(tmp_path)
+    assert broken_ops[0].id in ideal.op_ids
+    materialized = code(ideal, Store(tmp_path).all_ops())
+    assert materialized["a.py"] == (tmp_path / "a.py").read_bytes()
 
 
 def test_rename_with_reformat_links_as_one_move(tmp_path):

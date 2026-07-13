@@ -74,6 +74,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # path (the legacy flat G-Set stays at `declared` in v0 shape for old readers, D3 old-reader
     # policy); `sgt.core.lens` resolves this down to the plain live edge set every consumer expects.
     "declared_orset": _Artifact(("declared_edges.json",), committed=True),
+    # committed three-tier file-boundary overrides (`sgt tiers set`, U27/D4): explicit
+    # entity/opaque/ignored patterns, the escape hatch over the built-in grammar-presence
+    # default. Read from historical blobs at mining time (`sgt.core.tiers.load_tiers_at`) so
+    # tier assignment stays a pure function of the mined commit (LAW-0).
+    "tiers": _Artifact(("tiers.json",), committed=True),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
@@ -88,6 +93,10 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),
     "plan_sessions": _Artifact(("local", "plan_sessions.json"), committed=False),
     "plan_matches": _Artifact(("local", "plan_matches.json"), committed=False),
+    # local, gitignored record of scratch-tree sessions (`sgt session start`, U30/D5): name ->
+    # branch/scratch path/target branch/base op-ids/owning pid/start time. Per-clone, never
+    # travels -- a session's scratch tree is a `git worktree` of *this* clone's object store.
+    "sessions": _Artifact(("local", "sessions.json"), committed=False),
 }
 
 
@@ -139,6 +148,14 @@ def load_json(repo: str | Path, name: str, default=None):
     if not p.is_file():
         return default
     return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+
+
+def decode_blob_json(raw: bytes | None, default=None):
+    """`load_blob_json`'s decode step, given an already-fetched blob (or None) -- for a caller
+    that batched its own `blob_bytes_many` read instead of one `blob_bytes` call per artifact."""
+    if raw is None:
+        return default
+    return _unwrap(json.loads(raw.decode("utf-8")))
 
 
 def load_blob_json(gb, sha: str, name: str, default=None):
@@ -260,6 +277,57 @@ def load_blob_proposal(gb, sha: str, name: str, default=None):
     """The logical body of proposal file `name` as committed at `sha` (the historical-blob read
     path), or `default` if absent -- the same version dispatch as a working-tree read."""
     raw = gb.blob_bytes(sha, proposal_rel(name))
+    if raw is None:
+        return default
+    return _unwrap(json.loads(raw.decode("utf-8")))
+
+
+# -- committed reviews directory (plan U31, S7) --------------------------------------------------
+# A review record (`sgt review-queue ack`) marks an op-set reviewed -- content-addressed by the
+# sorted op-id set, so acking the same set twice is a no-op and, like claims (D8) and proposals
+# (C10), the file *set* is the artifact: sync's union is a trivial file-level G-Set
+# (`materialize._union_reviews`), no field merge.
+_REVIEW_ART = _Artifact(("reviews",), committed=True)
+
+
+def reviews_dir(repo: str | Path) -> Path:
+    return subdir(repo, "reviews")
+
+
+def review_rel(name: str) -> str:
+    """The repo-relative path (`.sgt/reviews/<name>`) of one review file -- a blob read's key."""
+    return "/".join((SGT_DIR, "reviews", name))
+
+
+def save_review(repo: str | Path, name: str, body) -> None:
+    """Write review file `name` (a full basename like `<review_id>.json`) to the working tree.
+    Review records are immutable once acked; a re-ack of the same op-set overwrites the identical
+    content-addressed key, a no-op on content."""
+    d = reviews_dir(repo)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(_encode(body, _REVIEW_ART), encoding="utf-8")
+
+
+def load_review(repo: str | Path, name: str, default=None):
+    """The logical body of review file `name` from the working tree, or `default` if absent."""
+    p = reviews_dir(repo) / name
+    if not p.is_file():
+        return default
+    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+
+
+def list_review_files(repo: str | Path) -> list[str]:
+    """Sorted basenames of every review file present in the working tree (empty if none)."""
+    d = reviews_dir(repo)
+    if not d.is_dir():
+        return []
+    return sorted(p.name for p in d.iterdir() if p.is_file())
+
+
+def load_blob_review(gb, sha: str, name: str, default=None):
+    """The logical body of review file `name` as committed at `sha` (the historical-blob read
+    path), or `default` if absent -- the same version dispatch as a working-tree read."""
+    raw = gb.blob_bytes(sha, review_rel(name))
     if raw is None:
         return default
     return _unwrap(json.loads(raw.decode("utf-8")))

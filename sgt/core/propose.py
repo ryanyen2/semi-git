@@ -248,9 +248,10 @@ def all_proposals(repo: str | Path) -> list[Proposal]:
 def render_github(view: dict) -> dict:
     """Render a `sgt.api.proposal_view` as a GitHub PR: `{"branch", "pr_title", "pr_body"}`. The
     `pr_body` is plain markdown a reviewer *without sgt* can act on -- a feature-delta table, the
-    oracle claim (status + runner identity), a provenance summary, and any staleness/fork warning up
-    top. A pure function of the view (no GitHub API, no `gh`): the template seam a follow-on
-    GitLab/other-forge renderer slots into (plan Open Questions)."""
+    oracle claim (status + runner identity), a provenance summary, any staleness/fork warning up
+    top, and an `<!-- sgt-proposal: <id> -->` footer (D7) so `sgt propose publish` can find the PR
+    to update in place on a later render. A pure function of the view (no GitHub API, no `gh`): the
+    template seam a follow-on GitLab/other-forge renderer slots into (plan Open Questions)."""
     pid = view["id"]
     title = view.get("title") or f"sgt proposal {pid}"
     lines: list[str] = []
@@ -270,6 +271,9 @@ def render_github(view: dict) -> dict:
     if not view["feature_delta"]:
         lines.append("| _(none)_ | | |")
     lines += ["", *_render_claim(view["claim"]), *_render_provenance(view["provenance"])]
+    # The footer carries the proposal id (D7) so a future unit (review-comment round-trip, publish
+    # update-in-place) can find its way back to this proposal from the PR alone.
+    lines += [f"<!-- sgt-proposal: {pid} -->"]
 
     return {
         "branch": _branch_name(pid, view.get("title")),

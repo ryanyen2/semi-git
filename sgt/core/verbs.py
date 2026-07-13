@@ -167,6 +167,30 @@ def plan_cherry_pick(repo: str | Path, target: str, source_ref: str) -> VerbPrev
     return _validated("cherry-pick", target, ideal.op_ids, after, ops, declared)
 
 
+def plan_revert_session(repo: str | Path, name: str) -> VerbPreview:
+    """Resolve a session name (plan U31, S7: addressing by provenance) to the op-set it landed --
+    `sgt.core.session.ops_by_session`, which reads structured attribution and so still resolves
+    long after the session record itself is gone -- then the exact ideal edit `I \\ (∪ upset_in(x))`
+    over `x∈X`, reusing `plan_revert_feature`'s grouped generalization verbatim."""
+    from sgt.core import session as session_mod
+
+    ops, ideal, declared = _load(repo)
+    all_session_ops = session_mod.ops_by_session(repo, name)
+    if not all_session_ops:
+        return _preview("revert", name, ideal.op_ids, ideal.op_ids, ops, ok=False,
+                        message=f"no op carries session {name!r} attribution")
+    op_ids = all_session_ops & ideal.op_ids
+    if not op_ids:
+        return _preview("revert", name, ideal.op_ids, ideal.op_ids, ops,
+                        message=f"session {name!r}'s ops are not in the current ideal; no change")
+
+    upset_union: set[str] = set()
+    for op_id in op_ids:
+        upset_union |= order.upset_in(op_id, ideal.op_ids, ops, declared)
+    after = ideal.op_ids - frozenset(upset_union)
+    return _validated("revert", name, ideal.op_ids, after, ops, declared)
+
+
 def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:
     ops, ideal, declared = _load(repo)
     a_id, ea = resolve_target(ideal, ops, a)
