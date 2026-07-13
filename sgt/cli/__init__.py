@@ -41,7 +41,7 @@ from . import (
 
 _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
-    "merge-op", "split-op", "transplant", "identity", "fulfill", "land",
+    "merge-op", "split-op", "transplant", "identity", "fulfill", "land", "unstage",
     "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
@@ -137,6 +137,7 @@ def _help() -> int:
         "  sgt fulfill <draft-id> --from-tree     supply a drafted hollow's image; stages, no commit\n"
         '  sgt land [--message ...] [--override pass|fail --reason "..."]   commit what\'s staged\n'
         "  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green (LAW-G)\n"
+        "  sgt unstage                 abandon the staged candidate; restore the committed ideal\n"
         "  sgt switch <branch>         materialize a branch's ideal (the sgt-native `git switch`)\n"
         '  sgt save [-m "<msg>"]       mine the working tree + commit a witness for it\n'
         "  sgt undo                    invert the last ideal edit (revert/restore/save/…)\n"

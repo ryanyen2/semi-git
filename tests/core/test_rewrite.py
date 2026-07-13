@@ -407,3 +407,175 @@ def test_rewrite_view_reports_pending_drafts_and_staged_candidate(tmp_path):
     assert view["drafts"] == []
     assert view["staged"]["verb"] == "split-op"
     assert view["staged"]["oracle_status"] == "pending"
+
+
+# -- U6: staged-remedy coherence ----------------------------------------------------------------
+
+def _stage_a_merge_op(tmp_path):
+    """The existing merge-op stage setup: a diverged_chain fork, checked out on main, drafted and
+    fulfilled from the working tree so `slugify.py` is a live staged (uncommitted) candidate."""
+    repo = corpus.CORPUS["diverged_chain"].build(tmp_path / "repo")
+    corpus.checkout(repo, "release")
+    release_ideal = get(repo)
+    corpus.checkout(repo, "main")
+    main_ideal = get(repo)
+    ops = Store(repo).all_ops()
+    main_tip = main_ideal.frontier(ops)["slugify.py::slugify"]
+    release_tip = release_ideal.frontier(ops)["slugify.py::slugify"]
+    draft = rewrite.merge_op(repo, main_tip, release_tip)
+    (repo / "slugify.py").write_text(
+        "def slugify(s):\n    return s.lower().strip().replace(' ', '-')\n", encoding="utf-8"
+    )
+    rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    return repo
+
+
+def test_unstage_abandons_the_stage_and_restores_the_committed_ideal(tmp_path):
+    """Abandon after stage (U6): `unstage` drops `staged.json` and rematerializes the committed
+    ideal, so the deliberately-dirty staged tree is fully reverted and a materializing edit (which
+    `put` refuses while staged) works again."""
+    from sgt.core import lens
+
+    repo = _stage_a_merge_op(tmp_path)
+    committed = lens.current_ideal(repo)
+    assert rewrite.staged_candidate(repo) is not None
+
+    # While staged, any materializing edit refuses rather than committing a mixture (the lens guard).
+    try:
+        lens.put(repo, committed)
+        assert False, "expected `put` to refuse while a candidate is staged"
+    except lens.DirtyWorkingTreeError as e:
+        assert "staged" in str(e)
+
+    restored = rewrite.unstage(repo)
+    assert rewrite.staged_candidate(repo) is None
+    assert restored.op_ids == committed.op_ids
+    # The tree is back to the committed ideal, byte for byte...
+    materialized = code(committed, Store(repo).all_ops())
+    assert (repo / "slugify.py").read_bytes() == materialized["slugify.py"]
+    # ...and `put` (the `switch`/`save` path) is unblocked again.
+    assert lens.put(repo, committed)
+    # Abandoning again is a clean refusal, not a crash.
+    try:
+        rewrite.unstage(repo)
+        assert False, "expected a refusal when nothing is staged"
+    except rewrite.RewriteError as e:
+        assert "nothing staged" in str(e)
+
+
+def test_land_refuses_a_stale_stage_and_unstage_still_recovers(tmp_path):
+    """Edit after stage, then land (U6): a working-tree edit after `fulfill` makes the stage stale,
+    so `land` refuses (rather than committing a mixture of the reviewed candidate and the drift);
+    the abandon path still recovers cleanly."""
+    repo = _stage_a_merge_op(tmp_path)
+
+    # Drift the staged candidate out from under the stage.
+    (repo / "slugify.py").write_text(
+        "def slugify(s):\n    return 'TAMPERED'\n", encoding="utf-8"
+    )
+    try:
+        rewrite.land(repo, override=("pass", "reviewed", "rev"))
+        assert False, "expected a staleness refusal"
+    except rewrite.RewriteError as e:
+        assert "stale" in str(e) and "slugify.py" in str(e)
+
+    # The abandon remedy still works after a stale edit.
+    rewrite.unstage(repo)
+    assert rewrite.staged_candidate(repo) is None
+
+
+def test_fsck_tree_classifies_a_staged_candidate_as_staged_not_drift(tmp_path):
+    """`fsck --tree` during staged state (U6, ties to U2): the divergent staged path is classified
+    `staged`, never `drift` -- an in-progress rewrite candidate is planned divergence."""
+    from sgt.core.lens import fsck_tree
+
+    repo = _stage_a_merge_op(tmp_path)
+    result = fsck_tree(repo)
+    assert "slugify.py" in result["staged"]
+    assert result["drift"] == []
+
+
+# -- U6: the review's end-to-end reproduction (two-clone sync fork) ------------------------------
+
+def _init_bare(root):
+    import subprocess
+
+    remote = root / "remote.git"
+    remote.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)],
+                   check=True, capture_output=True)
+    return remote
+
+
+def _clone(remote, dest):
+    import subprocess
+
+    from sgt.store.gitbind import GitBinding
+    subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
+    GitBinding(dest).init()
+    return dest
+
+
+def _edit_and_commit(repo, path, content, message):
+    from sgt.core import lens
+    from sgt.store.gitbind import GitBinding
+    (repo / path).write_text(content, encoding="utf-8")
+    GitBinding(repo).commit_all(message)
+    ideal = lens.get(repo)
+    put_sha = lens.put(repo, ideal, message=f"sgt: mine {message}")
+    lens.record_ideal(repo, ideal, put_sha)
+
+
+def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(tmp_path):
+    """Verification (U6): the advertised `sgt merge-op` remedy string in committed `forks.json`
+    executes end-to-end on a two-clone fixture. A sync parks the forked symbol at the common
+    ancestor (neither tip in the ideal) and records the fork; running that remedy -> `fulfill` ->
+    `land` reconciles it, and the fork record closes."""
+    import subprocess
+
+    from sgt.core import lens, sync
+    from sgt.store.gitbind import GitBinding
+    from sgt import state
+
+    base = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    _edit_and_commit(a, "main.py", base, "init")
+    subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "main"],
+                   check=True, capture_output=True)
+    b = _clone(remote, tmp_path / "b")
+    lens.get(b)
+
+    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A")
+    subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "main"],
+                   check=True, capture_output=True)
+    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B")
+
+    report = sync.sync(b, remote="origin", branch="main")
+    assert len(report.forks) == 1
+    records = state.load_json(b, "forks", default=[])
+    assert len(records) == 1 and records[0]["symbol"] == "main.py::foo"
+    # The remedy string names the two tips; run exactly that (`sgt merge-op <tip_a> <tip_b>`).
+    tip_a, tip_b = records[0]["tips"]
+    assert records[0]["remedy"] == f"sgt merge-op {tip_a[:8]} {tip_b[:8]}"
+
+    draft = rewrite.merge_op(b, tip_a, tip_b)
+    assert draft.ok
+    (b / "main.py").write_text(
+        "def foo():\n    return 1041\n\n\ndef bar():\n    return 2\n", encoding="utf-8"
+    )
+    candidate = rewrite.fulfill(b, draft.draft_id, from_tree=True)
+    assert is_valid_ideal(Store(b).all_ops(), candidate.op_ids)
+
+    sha = rewrite.land(b, override=("pass", "both diffs reconciled by hand", "rev"))
+    assert sha
+
+    # The fork record closes, the reconciliation is live and committed, the tree is clean.
+    assert state.load_json(b, "forks", default=[]) == []
+    assert rewrite.staged_candidate(b) is None
+    assert GitBinding(b).is_clean()
+    after = lens.get(b)
+    assert code(after, Store(b).all_ops())["main.py"] == (
+        b"def foo():\n    return 1041\n\n\ndef bar():\n    return 2\n"
+    )

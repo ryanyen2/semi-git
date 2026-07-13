@@ -1498,7 +1498,7 @@ propose publish` (the `gh`-CLI porcelain D7 specifies).
   deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
   land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
 
-### Kernel invariant & sync fixes — U1-U4 (2026-07-13)
+### Kernel invariant & sync fixes — U1-U6 (2026-07-13)
 
 Executing `docs/plans/2026-07-12-001-fix-kernel-invariants-and-sync-plan.md` (the multi-agent
 review's four failure classes). Phases A-C change no op identity and land individually.
@@ -1541,6 +1541,38 @@ review's four failure classes). Phases A-C change no op identity and land indivi
   bottleneck, and U1's per-status full fold for the maximal ideal roughly doubles it — worth a
   dedicated caching/incremental-reduction pass (or memoizing the maximal ideal across the two
   call sites) before claiming `sgt status` is fast on a large store.
+- **U5 transactional `land` (R7).** `sgt land <branch>` (the shared-branch CAS) now snapshots the
+  clean pre-land HEAD, stages the reconciled *source only* for the oracle gate, and flushes the six
+  reconciled-metadata artifacts (+claim/proposal/review unions) only once green — a red gate or a
+  lost CAS restores the worktree and persists nothing. `record_ideal` runs only after the CAS wins
+  (under the target branch's `ref_key`, not HEAD's). A `land_pending` journal (pre-land snapshot)
+  makes a mid-land crash recoverable: the next `land` rolls the tree back before touching it, and
+  `fsck` names the interrupted ref (advisory — never flips `ok`). Materialization split into
+  `stage_candidate` (source, monotone) + `flush_reconciled_metadata` (locked metadata).
+- **U6 staged-remedy coherence (R9).** Two real defects the review's end-to-end reproduction
+  surfaced, both fixed in the rewrite-staging path:
+  - **The advertised `merge-op` remedy didn't execute.** A sync parks a forked symbol at the common
+    *ancestor* (neither tip in the ideal) and records the fork in `forks.json` with a
+    `sgt merge-op <tip_a> <tip_b>` remedy. Running it failed: `merge_op` drafts a hollow
+    chain-extending `tip_a`, but `stage` folded `current_ideal ∪ fulfilled` — and `tip_a` isn't in
+    the parked ideal, so `Ideal.from_ops` rejected the union as ungrounded. Fix: `merge_op` records
+    `tip_a`'s whole downset as `meta["required_ids"]`, and `stage` unions it in before folding
+    (mirroring `revert --keep-dependents`' `removed_ids`). The remedy now lands end-to-end on a
+    two-clone fixture, and landing it **closes the fork record** (`_close_resolved_forks`: a fork is
+    closed when the landed ideal contains a reconciliation op chained *onto* a tip — "one tip
+    missing" can't be the signal, since a parked fork already has both tips excluded).
+  - **`land` re-mined the deliberately-dirty staged tree.** It routed through `lens.put`, whose
+    `get()` re-mines the un-landed candidate and whose fold could commit a mixture. `land` now
+    commits the staged bytes *directly* (`lens.commit_materialized` — no `get`, no re-materialize),
+    and refuses a **stale** stage (any managed path whose disk bytes ≠ the staged `code(I)`, i.e. an
+    edit or sync after `fulfill`) before gating. New `sgt unstage` abandons a stage: rematerialize
+    the committed ideal, drop `staged.json`. `lens.put` now refuses outright while a stage is live
+    (the "staged-awareness in the put path"), so no other materializing verb can clobber a candidate.
+  - **`fsck --tree`'s `staged` bucket was unreachable.** U2 added it but compared `code(current_ideal)`
+    against the *HEAD blob* — and a stage's committed ideal still equals HEAD, so the on-disk
+    candidate was invisible. Added an additive disk-vs-ideal check that fires only when a stage is
+    active, so a staged path classifies `staged`, never `drift`. No change to the drift/backstop
+    paths (they run unchanged when no stage is active).
 
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
