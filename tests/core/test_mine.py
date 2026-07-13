@@ -171,3 +171,39 @@ def test_rename_out_of_sgt_dir_stays_excluded_after_a_later_delete(tmp_path):
 
     ids = {op.id for op in ops}
     assert order.is_valid_ideal(ops, ids)
+
+
+def test_mine_skips_symlink_paths(tmp_path):
+    """U1/R3: a symlink (git mode 120000) is unmanaged. Mining must never record its
+    target-string blob as ordinary file content -- otherwise a later materialization would
+    splice the target string back as a regular file (or write it through the live link)."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "real.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add real")
+
+    (tmp_path / "link.py").symlink_to("/etc/hostname")  # points outside the repo
+    gb.commit_all("add symlink")
+
+    ops = mine(tmp_path)
+    assert not any("link.py" in sym for op in ops for sym in op.footprint), (
+        "symlink path leaked into the op stream"
+    )
+    # the ordinary file beside it is still mined
+    assert any("real.py::f" in sym for op in ops for sym in op.footprint)
+
+
+def test_mine_skips_symlink_delete(tmp_path):
+    """Deleting a symlink must not mine an (ungrounded) prune op for the link path -- the link
+    was never modeled, so its removal is a no-op to the DAG."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "real.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "link.py").symlink_to("/etc/hostname")
+    gb.commit_all("add real and link")
+
+    (tmp_path / "link.py").unlink()
+    gb.commit_all("drop link")
+
+    ops = mine(tmp_path)
+    assert not any("link.py" in sym for op in ops for sym in op.footprint)
+    ids = {op.id for op in ops}
+    assert order.is_valid_ideal(ops, ids)

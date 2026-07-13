@@ -965,7 +965,11 @@ def status_view(repo) -> dict:
     tree_result = load_tree(repo)
     feature_count = sum(1 for nd in tree_result["nodes"].values() if not nd["children"]) if tree_result else 0
 
-    drift = _drift_paths(repo, code(ideal, ops))
+    from sgt.core.lens import materialization_skips
+
+    materialized = code(ideal, ops)
+    drift = _drift_paths(repo, materialized)
+    skips = materialization_skips(repo, materialized, ops)
     open_forks = state_mod.load_json(repo, "forks", default=[])
 
     return {
@@ -978,5 +982,9 @@ def status_view(repo) -> dict:
             "status": overall_status(st["oracle_verdict"]) if st["oracle_configured"] else "unconfigured",
         },
         "drift": {"any": bool(drift), "paths": drift},
+        # R3/R4: paths a materializing verb refuses to touch -- symlinks (unmanaged) and files the
+        # current ideal dropped whose live bytes no valid ideal can regenerate (backstop-kept).
+        "unmanaged": skips["unmanaged"],
+        "backstop_kept": skips["backstop_kept"],
         "forks": {"open": len(open_forks), "records": open_forks},
     }

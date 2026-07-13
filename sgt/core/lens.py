@@ -336,13 +336,14 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
     gb = GitBinding(repo)
     get(repo)  # absorb any dirty tree / foreign commit first (R9)
     store = Store(repo)
-    materialized = code(ideal, store.all_ops())
+    all_ops = store.all_ops()
+    materialized = code(ideal, all_ops)
     conflicts = _dirty_conflicts(repo, gb, materialized)
     if conflicts:
         raise DirtyWorkingTreeError(
             f"put() would overwrite uncommitted changes: {sorted(conflicts)}"
         )
-    _write_working_tree(repo, materialized)
+    _write_working_tree(repo, materialized, all_ops)
     # Committed in-tree recovery record of *this* commit's ideal (C5): written before the commit
     # so the blob at the witness SHA describes that SHA's own ideal, recoverable after a
     # squash/rebase strips the trailers below. The local per-ref table stays authoritative for the
@@ -432,8 +433,8 @@ def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes])
 
     conflicts: set[str] = set()
     for path in set(materialized) | tracked:
-        if path.startswith(".sgt/"):
-            continue
+        if path.startswith(".sgt/") or _writes_through_symlink(repo, path):
+            continue  # symlinks are unmanaged (R3) -- never read/written through here either
         full = repo / path
         on_disk = full.read_bytes() if full.is_file() else None
         committed = gb.blob_bytes(head, path) if head is not None else None
@@ -442,23 +443,93 @@ def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes])
     return conflicts
 
 
-def _write_working_tree(repo: Path, materialized: dict[str, bytes]) -> None:
-    """Write every materialized path; delete any git-tracked path the ideal no longer covers --
-    the fold is total, so an absent path means the ideal genuinely doesn't include it, not that
-    something was missed."""
+def _tracked_paths(repo: Path) -> list[str]:
     proc = subprocess.run(
         ["git", "-C", str(repo), "ls-files"], capture_output=True, text=True, check=True
     )
-    tracked = [line for line in proc.stdout.splitlines() if line]
+    return [line for line in proc.stdout.splitlines() if line]
 
+
+def _writes_through_symlink(repo: Path, path: str) -> bool:
+    """True if reaching ``path`` under ``repo`` would traverse a symlink -- the leaf itself is a
+    symlink, or any ancestor directory between the repo root and the leaf is. The on-disk twin of
+    mine's mode-120000 skip (R3): symlinks are unmanaged, so a verb must never write or delete
+    *through* one (following it could clobber a target outside the repo). `lstat` at each step,
+    never following."""
+    current = repo
+    for part in Path(path).parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def _reproducible_content(repo: Path, all_ops: list | None = None) -> dict[str, bytes]:
+    """Every path `code()` can produce from the store's *maximal valid ideal* -- all stored ops
+    reduced to a grounded, fork-free set. A path present here is recoverable, so deleting its live
+    bytes is safe; a path whose current bytes are absent (e.g. a dropped add/delete/re-add fork
+    tip) is not (R4)."""
+    ops = all_ops if all_ops is not None else Store(repo).all_ops()
+    maximal = order.reduce_to_ideal({op.id for op in ops}, ops)
+    return code(Ideal.from_ops(maximal, ops), ops)
+
+
+def materialization_skips(
+    repo: str | Path, materialized: dict[str, bytes], all_ops: list | None = None
+) -> dict[str, list[str]]:
+    """What `_write_working_tree` would refuse to touch, computed *without* writing -- for `status`
+    to surface (R3/R4). `unmanaged`: tracked symlink paths. `backstop_kept`: tracked paths the
+    current ideal dropped whose live bytes no valid ideal over the store can regenerate."""
+    repo = Path(repo)
+    tracked = _tracked_paths(repo)
+    unmanaged = [p for p in tracked if _writes_through_symlink(repo, p)]
+    to_delete = [
+        p for p in tracked
+        if p not in materialized and not p.startswith(".sgt/")
+        and (repo / p).is_file() and not _writes_through_symlink(repo, p)
+    ]
+    reproducible = _reproducible_content(repo, all_ops) if to_delete else {}
+    backstop_kept = [p for p in to_delete if (repo / p).read_bytes() != reproducible.get(p)]
+    return {"unmanaged": sorted(set(unmanaged)), "backstop_kept": sorted(backstop_kept)}
+
+
+def _write_working_tree(
+    repo: Path, materialized: dict[str, bytes], all_ops: list | None = None
+) -> dict[str, list[str]]:
+    """Write every materialized path; delete any git-tracked path the ideal no longer covers --
+    the fold is total, so an absent path means the ideal genuinely doesn't include it. Two safety
+    guards keep the fold non-destructive (R3/R4): never write or delete *through* a symlink (leaf
+    or ancestor), and never delete a tracked path whose live bytes no valid ideal can regenerate
+    (the backstop -- an add/delete/re-add fork drops a path from `code(I)` though its content is
+    genuinely live, and a silent delete there is unrecoverable). Returns the skipped paths
+    (`unmanaged`, `backstop_kept`) so the caller can surface them instead of losing them silently."""
+    tracked = _tracked_paths(repo)
+
+    unmanaged: list[str] = []
     for path, data in materialized.items():
+        if _writes_through_symlink(repo, path):
+            unmanaged.append(path)
+            continue
         full = repo / path
         full.parent.mkdir(parents=True, exist_ok=True)
         full.write_bytes(data)
 
-    for path in tracked:
-        if path in materialized or path.startswith(".sgt/"):
+    to_delete = [
+        p for p in tracked
+        if p not in materialized and not p.startswith(".sgt/") and (repo / p).is_file()
+    ]
+    backstop_kept: list[str] = []
+    reproducible: dict[str, bytes] | None = None
+    for path in to_delete:
+        if _writes_through_symlink(repo, path):
+            unmanaged.append(path)
             continue
+        if reproducible is None:
+            reproducible = _reproducible_content(repo, all_ops)
         full = repo / path
-        if full.is_file():
-            full.unlink()
+        if full.read_bytes() != reproducible.get(path):
+            backstop_kept.append(path)  # live bytes no valid ideal can regenerate -- keep (R4)
+            continue
+        full.unlink()
+
+    return {"unmanaged": sorted(set(unmanaged)), "backstop_kept": sorted(backstop_kept)}

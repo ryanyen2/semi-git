@@ -293,6 +293,13 @@ def _mine_one(
         if parent is not None else {}
     )
 
+    # Symlinks (git mode 120000) are unmanaged (R3): their blob is the target-path *string*, so
+    # mining must never record them as ordinary content. Skip a path that is a symlink on either
+    # side of the diff, scoped to just the changed paths so this stays one cheap `ls-tree`.
+    symlinked = gb.symlink_paths(sha, [fc.path for fc in diffs])
+    if parent is not None:
+        symlinked |= gb.symlink_paths(parent, [fc.old_path or fc.path for fc in diffs])
+
     for fc in diffs:
         old_ref_path = fc.old_path or fc.path
         if (
@@ -300,6 +307,8 @@ def _mine_one(
             or old_ref_path.startswith(".sgt/")
             or fc.path in excluded_paths
             or old_ref_path in excluded_paths
+            or fc.path in symlinked
+            or old_ref_path in symlinked
         ):
             # sgt's own state, never mined as codebase content -- and once excluded, a rename
             # carries the exclusion to its new path too (e.g. a `.sgt/` -> `.sgt.bak/` migration),

@@ -211,3 +211,23 @@ def test_full_daily_loop_runs_git_free(tmp_path, capsys):
         err = capsys.readouterr().err
         assert "sgt switch" in err and "--force" in err
         assert gb.symbolic_ref().rsplit("/", 1)[-1] == base  # refused: HEAD never moved
+
+
+def test_switch_preserves_a_symlink_in_both_directions(tmp_path):
+    """U1/R3: a symlink is unmanaged, so switching branches (each of which materializes an ideal
+    that never covers the link) must leave the link and its external target intact both ways."""
+    repo = tmp_path / "repo"
+    gb, base = _two_branches(repo)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("SECRET\n", encoding="utf-8")
+    with _in(repo):
+        cli.main(["switch", base])
+        (repo / "link.txt").symlink_to(outside)
+        gb.commit_all("add link on base")
+        get(repo)  # mine the link commit (skipped as unmanaged)
+
+        assert cli.main(["switch", "feature"]) == 0
+        assert cli.main(["switch", base]) == 0
+
+    assert outside.read_text() == "SECRET\n"      # target never clobbered
+    assert (repo / "link.txt").is_symlink()        # link survives both switches
