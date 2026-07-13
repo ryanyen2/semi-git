@@ -225,7 +225,14 @@ def _status(repo: str, as_json: bool = False) -> int:
         print(f"  ⚠ {view['forks']['open']} OPEN FORK(S) — run `sgt forks` for the merge-op remedies")
     if view["drift"]["any"]:
         print(f"  ⚠ drift: {', '.join(view['drift']['paths'])}")
-    elif not view["forks"]["open"]:
+    if view.get("backstop_kept"):
+        print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s): "
+              f"{', '.join(view['backstop_kept'])} — left on disk (not deleted); repair the chain "
+              f"(`sgt fsck --tree`) to materialize them")
+    if view.get("unmanaged"):
+        print(f"  ⚠ {len(view['unmanaged'])} unmanaged path(s) (symlinks, untouched): "
+              f"{', '.join(view['unmanaged'])}")
+    if not view["drift"]["any"] and not view["forks"]["open"]:
         print("  ✓ in sync")
     return 0
 

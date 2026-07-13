@@ -239,6 +239,7 @@
     "oracle_verdict": null
   },
   "status_view": {
+    "backstop_kept": [],
     "coverage_fraction": 0.5,
     "drift": {
       "any": false,
@@ -254,6 +255,7 @@
       "configured": false,
       "status": "unconfigured"
     },
-    "symbols": 10
+    "symbols": 10,
+    "unmanaged": []
   }
 }

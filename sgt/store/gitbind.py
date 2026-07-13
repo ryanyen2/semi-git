@@ -288,6 +288,26 @@ class GitBinding:
         fields = line.split()
         return fields[2] if len(fields) >= 3 else None
 
+    def symlink_paths(self, tree_ish: str, paths: list[str]) -> set[str]:
+        """The subset of ``paths`` that are symlinks (git mode ``120000``) in the tree at
+        ``tree_ish`` -- one ``git ls-tree`` scoped to just those paths, not a full recursive walk.
+        Symlinks are unmanaged (R3): their blob is the target-path *string*, so mining consults
+        this to skip mode-120000 entries before that string leaks into the DAG as ordinary
+        content. A missing path (deleted at ``tree_ish``) simply doesn't appear in the output."""
+        if not paths:
+            return set()
+        proc = self._git("ls-tree", "-z", tree_ish, "--", *paths, check=False)
+        if proc.returncode != 0:
+            return set()
+        out: set[str] = set()
+        for entry in proc.stdout.split("\0"):
+            if not entry:
+                continue
+            meta, _, path = entry.partition("\t")
+            if meta.split(" ", 1)[0] == "120000":
+                out.add(path)
+        return out
+
     def history(self, since: str | None = None, target: str = "HEAD") -> list[tuple[str, str | None, str]]:
         """``(sha, first_parent, subject)`` oldest-first. ``since``, if given, restricts to
         commits reachable from ``target`` (default HEAD) but not from ``since`` (``since..target``)

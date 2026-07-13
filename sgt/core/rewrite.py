@@ -423,7 +423,7 @@ def stage(
         raise RewriteError(f"fulfilling {draft.verb} would leave an invalid ideal, refused: {e}") from e
 
     materialized = code(candidate, ops)
-    lens._write_working_tree(repo, materialized)
+    lens._write_working_tree(repo, materialized, ops)
     _save_staged(repo, candidate, draft.verb, draft.target)
     return candidate
 

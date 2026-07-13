@@ -544,7 +544,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"files\": 6,\n  \"symbols\": 14,\n  \"features\": 1,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"forks\": {\n    \"open\": 0,\n    \"records\": []\n  }\n}\n"
+      "out": "{\n  \"files\": 6,\n  \"symbols\": 14,\n  \"features\": 1,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"unmanaged\": [],\n  \"backstop_kept\": [],\n  \"forks\": {\n    \"open\": 0,\n    \"records\": []\n  }\n}\n"
     },
     "text": {
       "argv": [

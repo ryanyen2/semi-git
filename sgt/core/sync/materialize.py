@@ -113,7 +113,7 @@ def persist_reconciled(
     _union_reviews(repo, gb, theirs_sha)  # trust-queue acks travel too (U31/S7)
 
     materialized = code(res.merged_ideal, ing.all_ops)
-    lens._write_working_tree(repo, materialized)
+    lens._write_working_tree(repo, materialized, ing.all_ops)
     state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery record (C5)
 
 

@@ -323,3 +323,69 @@ def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
     from sgt.core.lens import current_ideal
 
     assert current_ideal(repo).op_ids == ideal.op_ids
+
+
+# -- U1: safe materialization (symlink guard + deletion backstop) -----------------------------
+
+
+def test_put_does_not_write_or_delete_through_symlink(tmp_path):
+    """Review reproduction (data loss): a symlink pointing outside the repo must never be written
+    through nor removed by materialization. Mining leaves the link unmanaged (R3), and
+    `_write_working_tree`'s lstat guard refuses any write/delete at a symlink leaf or ancestor, so
+    an unrelated `put` leaves both the link and its external target intact."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("SECRET\n", encoding="utf-8")
+
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    gb.commit_all("add a")
+    (repo / "link.txt").symlink_to(outside)
+    gb.commit_all("add link")
+
+    (repo / "a.py").write_text("x = 2\n", encoding="utf-8")  # unrelated edit
+    ideal = get(repo)
+    put(repo, ideal)
+
+    assert outside.read_text() == "SECRET\n"          # external target never written through
+    assert (repo / "link.txt").is_symlink()           # link itself never deleted
+
+
+def test_write_working_tree_refuses_symlinked_ancestor(tmp_path):
+    """Defense in depth: even if a materialized path's ancestor directory is a symlink on disk,
+    the write is refused rather than following the link out of the repo."""
+    from sgt.core.lens import _write_working_tree
+
+    repo = tmp_path / "repo"
+    init_store(repo)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (repo / "pkg").symlink_to(outside, target_is_directory=True)
+
+    _write_working_tree(repo, {"pkg/mod.py": b"data\n"}, [])
+
+    assert not (outside / "mod.py").exists()          # never wrote through the symlinked dir
+
+
+def test_put_backstop_keeps_unreproducible_rebirth_file(tmp_path):
+    """AE1 / R4 (pre-U9): an add->delete->re-add history drops both `notes.txt` births as a fork,
+    so `code(ideal)` no longer covers the path. Its live bytes are *not* reproducible from any
+    valid ideal over the store, so `put` must NOT delete the working file -- the deletion is
+    surfaced (backstop-kept), never silent. A legitimately reproducible file is unaffected."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+
+    (repo / "keep.py").write_text("def keep():\n    return 1\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("alpha\n", encoding="utf-8")
+    gb.commit_all("add keep and notes")
+    (repo / "notes.txt").unlink()
+    gb.commit_all("delete notes")
+    (repo / "notes.txt").write_text("beta\n", encoding="utf-8")
+    gb.commit_all("re-add notes")
+
+    ideal = get(repo)
+    assert "notes.txt" not in code(ideal, Store(repo).all_ops())  # dropped from the ideal
+    put(repo, ideal)
+
+    assert (repo / "notes.txt").exists()                          # live file survives
+    assert (repo / "notes.txt").read_text() == "beta\n"           # with its live content
