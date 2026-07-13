@@ -1498,6 +1498,50 @@ propose publish` (the `gh`-CLI porcelain D7 specifies).
   deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
   land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
 
+### Kernel invariant & sync fixes — U1-U4 (2026-07-13)
+
+Executing `docs/plans/2026-07-12-001-fix-kernel-invariants-and-sync-plan.md` (the multi-agent
+review's four failure classes). Phases A-C change no op identity and land individually.
+
+- **U1 safe materialization (R3/R4).** `_write_working_tree` no longer writes or deletes through a
+  symlink (leaf or ancestor), and no longer deletes a tracked path whose live bytes no *valid*
+  ideal can regenerate — the add/delete/re-add rebirth fork drops such a path from `code(I)` though
+  its content is genuinely live, and a silent delete there was unrecoverable. "Reproducible" is
+  defined as `code(reduce_to_ideal(all_ops), all_ops)` (the maximal valid ideal): a rebirth file
+  is kept (backstop), a legitimate revert stays reproducible and is deleted. Skips surface as
+  `unmanaged`/`backstop_kept` rather than being lost silently.
+- **U2 fsck completion + `sgt fsck --tree` (R11).** fsck now also checks ideal-table validity,
+  witness reachability (peeled `^{commit}`, so a well-formed but absent SHA is caught), and a
+  mixed-miner-version backstop; chain-gaps stay advisory (real single-clone histories carry benign
+  off-ref-predecessor gaps, so they never flip `ok`). `--tree` classifies every HEAD-vs-`code(I)`
+  divergence into drift/unmanaged/backstop_kept/staged/unseeded. On this repo `--tree` reports 156
+  drift — correct visibility of the documented ~20% U22.5 closure loss, not a new regression; a
+  freshly `put` kernel repo shows zero drift.
+- **U3 atomic writes + paired locked RMW (R5/R6).** Every `.sgt` registry write goes through an
+  atomic temp+fsync+rename; sync's union byte-copies too (a torn copy would otherwise be skipped
+  forever by their `exists()` guard). Pairs that must move together (ideal-table+witness,
+  journal-push+table, forks+ops, staged-bytes+record) write under one flock; ops are always added
+  *before* the section (flock is non-reentrant — nesting self-deadlocks). Torn *local* artifacts
+  reseed; torn *committed* artifacts fail loudly to fsck.
+- **U4 clean-tree guard (R16).** `_sync` now runs the dirty mining pass only when
+  `GitBinding.has_dirty_source()` is true — some path outside `.sgt/` has an uncommitted
+  working-tree change (modified/deleted/staged/untracked source). `.sgt/` is excluded because every
+  `get()`/`put()` leaves untracked `.sgt/ops/*` churn that would otherwise keep the guard
+  permanently dirty; untracked *source* files still read dirty and are still mined (the `save`
+  golden depends on it). Goldens byte-identical; behavior proven by a `working_tree_snapshot`
+  call-count fake.
+
+  **Wall-clock, honestly:** the guard does what it claims — the dirty pass costs **~1.8s** on this
+  repo (`mine(include_dirty=True)` 1.85s vs `False` 0.03s at an up-to-date witness) and U4 removes
+  it on a source-clean tree. But it does **not** measurably move `sgt status` here (~71s both
+  before and after), because `sgt status` is dominated by a *different* cost: `order.reduce_to_ideal`
+  over the full 7840-op store takes **~28s per call**, and `status_view` invokes it more than once
+  (once inside `get()`/`_sync`, once via U1's `materialization_skips` → `_reproducible_content`).
+  Flagged, not fixed under U4 (out of scope): the reduce-to-ideal cost is the real `sgt status`
+  bottleneck, and U1's per-status full fold for the maximal ideal roughly doubles it — worth a
+  dedicated caching/incremental-reduction pass (or memoizing the maximal ideal across the two
+  call sites) before claiming `sgt status` is fast on a large store.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
