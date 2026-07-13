@@ -493,6 +493,56 @@ def materialization_skips(
     return {"unmanaged": sorted(set(unmanaged)), "backstop_kept": sorted(backstop_kept)}
 
 
+_TREE_CLASSES = ("drift", "unmanaged", "backstop_kept", "staged", "unseeded")
+
+
+def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
+    """`sgt fsck --tree` (R2): compare `code(current_ideal)` against the HEAD tree and classify
+    every divergent path. Only `drift` is a real finding -- bytes at HEAD that sgt never absorbed
+    (`get` to absorb, or `put` to enforce the ideal, with opposite data-loss profiles). The rest
+    are planned divergence: `unmanaged` (a symlink), `backstop_kept` (a path the ideal dropped
+    whose HEAD bytes no valid ideal can regenerate), `staged` (an in-progress rewrite candidate),
+    or `unseeded` (a ref this lens never tracked -- a fresh clone or detached HEAD, not drift)."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+    result: dict[str, list[str]] = {k: [] for k in _TREE_CLASSES}
+    head = gb.head()
+    if head is None:
+        return result
+
+    all_ops = Store(repo).all_ops()
+    materialized = code(current_ideal(repo), all_ops)
+    key = _ref_key(gb) or head
+    seeded = key in _load_ideal_table(repo)
+    staged_active = state.load_json(repo, "staged", default=None) is not None
+
+    candidates = (set(materialized) | set(_tracked_paths(repo))) - {
+        p for p in materialized if p.startswith(".sgt/")
+    }
+    reproducible: dict[str, bytes] | None = None
+    for path in sorted(candidates):
+        if path.startswith(".sgt/"):
+            continue
+        mat = materialized.get(path)
+        head_bytes = gb.blob_bytes(head, path)
+        if mat == head_bytes:
+            continue  # the ideal reproduces HEAD's bytes exactly -- no divergence
+        if _writes_through_symlink(repo, path):
+            result["unmanaged"].append(path)
+        elif not seeded:
+            result["unseeded"].append(path)
+        elif staged_active:
+            result["staged"].append(path)
+        elif mat is None and head_bytes is not None:
+            if reproducible is None:
+                reproducible = _reproducible_content(repo, all_ops)
+            (result["backstop_kept"] if head_bytes != reproducible.get(path)
+             else result["drift"]).append(path)
+        else:
+            result["drift"].append(path)
+    return result
+
+
 def _write_working_tree(
     repo: Path, materialized: dict[str, bytes], all_ops: list | None = None
 ) -> dict[str, list[str]]:

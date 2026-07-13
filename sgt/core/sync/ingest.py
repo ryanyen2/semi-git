@@ -14,6 +14,7 @@ what it's handed (`repo`, `gb`, `theirs_sha`), never assuming a network fetch ra
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -64,8 +65,12 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
     theirs_ops: list[Op] = []
     for path in gb.list_tree(theirs_sha, ".sgt/ops/"):
         raw = gb.blob_bytes(theirs_sha, path)
-        if raw is not None:
+        if raw is None:
+            continue
+        try:
             theirs_ops.append(_deserialize(raw))
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            continue  # a corrupt op blob in theirs' tree degrades to a read-side skip (R1)
 
     # Recover theirs' ideal, and mine foreign commits when there's no sgt record to read (C3/C5).
     theirs_ideal_ids, mined_ops = _theirs_ideal(repo, gb, theirs_sha, ours_sha)

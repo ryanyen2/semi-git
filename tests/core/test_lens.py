@@ -389,3 +389,61 @@ def test_put_backstop_keeps_unreproducible_rebirth_file(tmp_path):
 
     assert (repo / "notes.txt").exists()                          # live file survives
     assert (repo / "notes.txt").read_text() == "beta\n"           # with its live content
+
+
+# -- U2: fsck --tree classification (code(current_ideal) vs HEAD tree) -------------------------
+
+
+def test_fsck_tree_clean_after_put_has_no_drift(tmp_path):
+    """R2: after `put` writes `code(ideal)` and commits, the HEAD tree *is* `code(current_ideal)`,
+    so `fsck --tree` finds zero real drift (the self-hosting invariant in miniature)."""
+    from sgt.core.lens import fsck_tree
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal = get(repo)
+    put(repo, ideal)
+    result = fsck_tree(repo)
+    assert result["drift"] == []
+
+
+def test_fsck_tree_classifies_rebirth_file_as_backstop_kept_not_drift(tmp_path):
+    """R2: an add->delete->re-add file is dropped from `code(I)` but kept on disk by the backstop.
+    `--tree` classifies it as backstop-kept planned divergence, never as real drift (AE1)."""
+    from sgt.core.lens import fsck_tree
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "keep.py").write_text("def keep():\n    return 1\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("alpha\n", encoding="utf-8")
+    gb.commit_all("add keep and notes")
+    (repo / "notes.txt").unlink()
+    gb.commit_all("delete notes")
+    (repo / "notes.txt").write_text("beta\n", encoding="utf-8")
+    gb.commit_all("re-add notes")
+
+    get(repo)
+    result = fsck_tree(repo)
+    assert "notes.txt" in result["backstop_kept"]
+    assert "notes.txt" not in result["drift"]
+
+
+def test_fsck_tree_reports_real_drift_for_a_foreign_edit(tmp_path):
+    """R2: a committed edit sgt never absorbed (bytes at HEAD differ from `code(current_ideal)`)
+    is real drift -- surfaced with a remedy direction, not hidden."""
+    from sgt.core.lens import fsck_tree, current_ideal, record_ideal
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal = get(repo)
+    put(repo, ideal)
+    # a foreign commit that changes a tracked file's bytes without going through sgt; pin the
+    # recorded ideal/witness so `fsck_tree` compares the *old* ideal against the drifted HEAD.
+    gb = GitBinding(repo)
+    tracked = [p for p in _tracked_after(repo) if p.endswith(".py")][0]
+    (repo / tracked).write_text("# drifted\n", encoding="utf-8")
+    gb.commit_all("foreign edit outside sgt")
+
+    result = fsck_tree(repo)
+    assert result["drift"], "a foreign edit at HEAD should surface as real drift"
+
+
+def _tracked_after(repo):
+    import subprocess
+    out = subprocess.run(["git", "-C", str(repo), "ls-files"], capture_output=True, text=True).stdout
+    return [l for l in out.splitlines() if l and not l.startswith(".sgt/")]
