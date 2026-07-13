@@ -209,6 +209,90 @@ def test_dirty_edit_is_mined_as_pending_and_visible_but_not_persisted(tmp_path):
     assert not (pending_ids & persisted), "a pending op leaked into .sgt/local/ideal.json"
 
 
+def _count_snapshot_calls(monkeypatch):
+    """Spy on `working_tree_snapshot` -- taken only when the dirty mining pass runs (R16), so its
+    call count is a direct probe of whether the O(tracked files) pending pass fired."""
+    calls = {"n": 0}
+    real = GitBinding.working_tree_snapshot
+
+    def counting(self):
+        calls["n"] += 1
+        return real(self)
+
+    monkeypatch.setattr(GitBinding, "working_tree_snapshot", counting)
+    return calls
+
+
+def test_clean_tree_skips_the_dirty_mining_pass(tmp_path, monkeypatch):
+    """R16 (U4): on a tree whose only working-tree churn is untracked `.sgt/ops/*` (what every
+    `get()` leaves behind), the pending pass never runs -- the snapshot it begins with is never
+    taken -- so `sgt status` on a real, source-clean repo stops paying the O(files) cost."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)  # mines ops into .sgt/ops/, left untracked -- the realistic "clean source" state
+    assert any((repo / ".sgt" / "ops").iterdir()), "expected untracked .sgt/ops churn"
+
+    calls = _count_snapshot_calls(monkeypatch)
+    get(repo)  # source-clean tree
+    assert calls["n"] == 0
+    assert not gb.has_dirty_source()
+
+
+def test_untracked_source_file_triggers_the_dirty_pass(tmp_path, monkeypatch):
+    """R16 (U4): an untracked *source* file is a genuine pending add and must still be mined -- it
+    reads dirty and the pass runs, so it lands as a pending (empty-provenance) op in the overlay."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+
+    (repo / "new.py").write_text("def bar():\n    return 2\n", encoding="utf-8")  # untracked source
+    assert gb.has_dirty_source()
+    calls = _count_snapshot_calls(monkeypatch)
+    ideal = get(repo)
+    assert calls["n"] >= 1
+    pending = {op.id for op in Store(repo).all_ops() if not op.provenance}
+    assert pending and pending <= ideal.op_ids  # the new file is visible in the overlay
+
+
+def test_sgt_dir_change_is_not_mineable_dirt(tmp_path):
+    """R16 (U4): churn under `.sgt/` -- sgt's own state, never mined as codebase content -- is not
+    counted, whether the changed `.sgt/` file is untracked or tracked. Without this exclusion the
+    untracked `.sgt/ops/*` every `get()` writes would keep the guard permanently dirty."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)  # untracked .sgt/ops churn present
+    assert not gb.has_dirty_source()
+
+    gb.commit_all("commit sgt state")  # now .sgt/ops/* are tracked
+    op_files = sorted((repo / ".sgt" / "ops").iterdir())
+    assert op_files, "expected committed .sgt/ops files"
+    with op_files[0].open("a", encoding="utf-8") as f:
+        f.write("\n")  # a *tracked* .sgt/ file now differs from HEAD
+    assert not gb.has_dirty_source()
+
+
+def test_tracked_edit_triggers_the_dirty_pass(tmp_path, monkeypatch):
+    """R16 (U4), the other side: a genuine tracked-file edit reads dirty, so the pending pass runs
+    and the pending overlay behavior is preserved unchanged."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+
+    (repo / "a.py").write_text("def foo():\n    return 42\n", encoding="utf-8")  # tracked edit
+    assert gb.has_dirty_source()
+    calls = _count_snapshot_calls(monkeypatch)
+    get(repo)
+    assert calls["n"] >= 1
+
+
 def test_put_refuses_to_clobber_an_unabsorbed_dirty_edit(tmp_path):
     """R9 (U7.5): `put()` of an ideal that targets *different* bytes than an uncommitted edit on
     disk raises rather than silently reverting the edit; it refuses before touching the tree."""
