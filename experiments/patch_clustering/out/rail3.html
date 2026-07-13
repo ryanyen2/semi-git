@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sgt · composition workbench (rail 3)</title>
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     Warm-monochrome tool palette. One accent (blue) locked to the
+     playhead / "now" state only. Muted pastels carry semantic state.
+     ───────────────────────────────────────────────────────────── */
+  :root{
+    --bg:#FBFBFA; --panel:#FFFFFF; --panel2:#F9F9F8;
+    --line:#ECECEA; --line-soft:rgba(0,0,0,.055); --line-strong:#DDDDD9;
+    --ink:#1B1B1A; --ink2:#3A3A37; --dim:#8B8B85; --faint:#B7B7B1;
+
+    --accent:#3B5BDB;            /* playhead + live "now" — the ONLY blue-accent use */
+    --accent-soft:#E7ECFC;
+
+    --blast-bg:#FBEBE0; --blast:#B45A24;   /* amber  = blast radius (dependents)     */
+    --found-bg:#E4F2FB; --found:#1F6C9F;   /* blue   = foundation (depends-on)        */
+    --land-bg:#EAF3E9;  --land:#357a3e;    /* green  = landed / oracle pass           */
+    --drift-bg:#FBF2D7; --drift:#8f6200;   /* yellow = drift / pending / proposed      */
+    --fail-bg:#FCE9EA;  --fail:#9F2F2D;    /* red    = oracle fail / conflict          */
+
+    --sans:'SF Pro Display',-apple-system,'Segoe UI','Helvetica Neue',system-ui,sans-serif;
+    --mono:'SF Mono','Geist Mono','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+
+    --row-h:30px;
+    --rail-w:352px;   /* left tree/track column */
+    --insp-w:300px;   /* right inspector        */
+  }
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important; transition:none!important} }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:#EDEDEA; color:var(--ink);
+    font-family:var(--sans); font-size:13px; line-height:1.45;
+    -webkit-font-smoothing:antialiased; letter-spacing:-0.006em;
+    display:flex; align-items:center; justify-content:center; padding:22px;
+  }
+
+  /* ── faux-OS window chrome ─────────────────────────────────── */
+  .win{
+    width:min(1320px,100%); height:min(840px,calc(100vh - 44px));
+    background:var(--panel); border:1px solid var(--line-strong);
+    border-radius:13px; overflow:hidden; display:flex; flex-direction:column;
+    box-shadow:0 1px 0 rgba(0,0,0,.02), 0 24px 60px -28px rgba(20,20,30,.28);
+  }
+  .titlebar{
+    height:42px; flex:none; display:flex; align-items:center; gap:14px;
+    padding:0 15px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#FFFFFF,#FBFBFA);
+  }
+  .dots{display:flex; gap:8px}
+  .dots i{width:12px; height:12px; border-radius:50%; display:block}
+  .dots .r{background:#F0655A} .dots .y{background:#F5BE4F} .dots .g{background:#61C554}
+  .brand{font-weight:600; font-size:13px; letter-spacing:-0.01em}
+  .brand .repo{color:var(--dim); font-weight:450}
+  .brand .mono{font-family:var(--mono); font-size:11.5px}
+  .titlebar .spacer{flex:1}
+
+  /* live oracle chip in the titlebar */
+  .oraclechip{
+    display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--ink2);
+    border:1px solid var(--line); border-radius:7px; padding:4px 9px; background:var(--panel);
+    font-family:var(--mono); letter-spacing:-0.01em; cursor:default; user-select:none;
+  }
+  .oraclechip .lamp{width:9px; height:9px; border-radius:50%; background:var(--faint); position:relative}
+  .oraclechip[data-state=pass] .lamp{background:var(--land)}
+  .oraclechip[data-state=fail] .lamp{background:var(--fail)}
+  .oraclechip[data-state=pending] .lamp{background:var(--drift); animation:pulse 1.25s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1} 50%{opacity:.32}}
+
+  .branchsel{
+    display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink2);
+    border:1px solid var(--line); border-radius:7px; padding:4px 10px; cursor:pointer; background:var(--panel);
+  }
+  .branchsel:hover{border-color:var(--line-strong)}
+  .branchsel .car{color:var(--faint); font-size:9px}
+
+  /* ── main 3-pane grid ──────────────────────────────────────── */
+  .body{flex:1; display:grid; grid-template-columns:var(--rail-w) 1fr var(--insp-w); min-height:0}
+  .rail{border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; background:var(--panel)}
+  .center{display:flex; flex-direction:column; min-height:0; background:var(--panel2)}
+  .insp{border-left:1px solid var(--line); display:flex; flex-direction:column; min-height:0; background:var(--panel)}
+
+  .panehead{
+    height:32px; flex:none; display:flex; align-items:center; gap:8px; padding:0 13px;
+    border-bottom:1px solid var(--line); font-size:10.5px; text-transform:uppercase;
+    letter-spacing:0.09em; color:var(--dim); font-weight:600; background:var(--panel);
+  }
+  .panehead .spacer{flex:1}
+  .panehead .mini{
+    font-family:var(--mono); text-transform:none; letter-spacing:-0.01em; font-weight:450;
+    color:var(--ink2); font-size:11px; cursor:pointer; padding:2px 6px; border-radius:5px;
+  }
+  .panehead .mini:hover{background:var(--panel2); color:var(--ink)}
+
+  /* ── LEFT: branch-rooted tree / tracks ─────────────────────── */
+  .tree{flex:1; overflow:auto; padding:5px 0}
+  .node{
+    height:var(--row-h); display:flex; align-items:center; gap:6px; padding:0 12px;
+    cursor:pointer; position:relative; white-space:nowrap;
+  }
+  .node:hover{background:var(--panel2)}
+  .node.sel{background:var(--accent-soft)}
+  .node.sel::before{content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); border-radius:2px}
+  .node .car{width:11px; font-size:9px; color:var(--faint); flex:none; text-align:center; transition:transform .16s}
+  .node.collapsed .car{transform:rotate(-90deg)}
+  .node .swatch{width:8px; height:8px; border-radius:2px; flex:none}
+  .node .name{overflow:hidden; text-overflow:ellipsis}
+  .node .fid{font-family:var(--mono); font-size:10px; color:var(--faint); margin-left:auto; flex:none}
+  .node .cnt{font-family:var(--mono); font-size:10px; color:var(--dim); flex:none}
+
+  /* branch (root) rows read as track headers */
+  .node.branch{font-weight:600; font-size:12.5px}
+  .node.branch .btag{
+    font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:0.05em;
+    padding:1px 6px; border-radius:9999px; flex:none; margin-left:6px;
+  }
+  .btag.main{background:var(--land-bg); color:var(--land)}
+  .btag.agent{background:var(--drift-bg); color:var(--drift)}
+  .btag.drift{background:var(--fail-bg); color:var(--fail)}
+  .node.subsys{color:var(--ink2)}
+  .node.leaf{color:var(--ink2)}
+  .node.leaf.dim{opacity:.42}
+  .depth1{padding-left:26px} .depth2{padding-left:42px} .depth3{padding-left:58px}
+
+  /* ── CENTER top: timeline ──────────────────────────────────── */
+  .timeline-wrap{flex:1 1 58%; min-height:0; position:relative; overflow:hidden; border-bottom:1px solid var(--line)}
+  .rail-scroll{position:absolute; inset:0; overflow:auto}
+  svg#rail{display:block}
+  svg text{font-family:var(--mono); font-size:10.5px; fill:var(--dim)}
+  .gridline{stroke:var(--line); stroke-width:1}
+  .gridline.major{stroke:var(--line-strong)}
+  .rowsep{stroke:var(--line-soft); stroke-width:1}
+  .after-head{fill:rgba(140,140,150,.05)}      /* not-yet-folded region tint */
+  .lifebar{stroke-width:6; stroke-linecap:round; opacity:.9}
+  .lifebar.dimd{opacity:.16}
+  .glyph{font-size:12px; cursor:pointer; -webkit-user-select:none; user-select:none}
+  .glyph.after{opacity:.28}
+  .glyph.dimd{opacity:.14}
+  .glyph.ghost{opacity:.3}
+  .rowg{transition:opacity .16s cubic-bezier(.16,1,.3,1)}
+  svg.focus .rowg{opacity:.22}
+  svg.focus .rowg.foundation{opacity:1}
+  svg.focus .rowg.blast{opacity:1}
+  svg.focus .rowg.selrow{opacity:1}
+  .blast-ring{fill:none; stroke:var(--blast); stroke-width:1.4; opacity:0}
+  .found-ring{fill:none; stroke:var(--found); stroke-width:1.4; opacity:0}
+
+  /* proposed (LLM) clip band + drift band */
+  .clip{fill:var(--drift-bg); stroke:var(--drift); stroke-width:1; stroke-dasharray:3 3; rx:6; opacity:.9}
+  .clip-lab{fill:var(--drift); font-size:9.5px}
+  .driftband{fill:var(--fail-bg); stroke:var(--fail); stroke-width:1; stroke-dasharray:2 3; rx:6; opacity:.75}
+  .driftband-lab{fill:var(--fail); font-size:9.5px}
+
+  /* playhead */
+  .ph-line{stroke:var(--accent); stroke-width:1.5}
+  .ph-hit{cursor:ew-resize; fill:transparent}
+  .ph-head{fill:var(--accent)}
+  .ph-flag{fill:var(--accent)}
+  .ph-flag-t{fill:#fff; font-size:9.5px; font-weight:600; font-family:var(--mono)}
+
+  /* ── CENTER bottom: code / diff ────────────────────────────── */
+  .code{flex:1 1 42%; min-height:0; display:flex; flex-direction:column; background:var(--panel)}
+  .codehead{
+    height:31px; flex:none; display:flex; align-items:center; gap:9px; padding:0 13px;
+    border-bottom:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--ink2);
+  }
+  .codehead .path{color:var(--ink)}
+  .codehead .athead{margin-left:auto; color:var(--dim); font-size:10.5px}
+  .codebody{flex:1; overflow:auto; padding:9px 0; font-family:var(--mono); font-size:11.5px; line-height:1.65}
+  .cl{display:flex; padding:0 14px; white-space:pre}
+  .cl .ln{width:30px; color:var(--faint); flex:none; text-align:right; padding-right:12px; user-select:none}
+  .cl .tx{color:var(--ink2)}
+  .cl.add{background:var(--land-bg)} .cl.add .tx{color:var(--land)} .cl.add .ln{color:var(--land)}
+  .cl.del{background:var(--fail-bg)} .cl.del .tx{color:var(--fail)} .cl.del .ln{color:var(--fail)}
+  .cl.add .ln::after{content:"+"} .cl.del .ln::after{content:"\2212"}
+  .cl .tx .kw{color:#9a4dab} .cl .tx .fn{color:var(--found)} .cl .tx .st{color:var(--land)} .cl .tx .cm{color:var(--faint)}
+  .code-empty{padding:26px 16px; color:var(--dim); font-family:var(--sans)}
+
+  /* ── RIGHT: inspector ──────────────────────────────────────── */
+  .inspbody{flex:1; overflow:auto; padding:15px 15px 30px}
+  .inspbody .empty{color:var(--dim); padding:8px 0}
+  .insp h2{font-size:14.5px; margin:0 0 2px; letter-spacing:-0.015em}
+  .insp .sub{color:var(--dim); font-size:11.5px; margin:0 0 3px; font-family:var(--mono)}
+  .insp .why{color:var(--ink2); font-style:italic; margin:6px 0 12px; font-size:12px; line-height:1.5}
+  .tag{
+    display:inline-flex; align-items:center; gap:5px; font-family:var(--mono); font-size:9.5px;
+    text-transform:uppercase; letter-spacing:0.05em; padding:2px 8px; border-radius:9999px; margin:0 4px 4px 0;
+  }
+  .tag.land{background:var(--land-bg); color:var(--land)}
+  .tag.drift{background:var(--drift-bg); color:var(--drift)}
+  .tag.fail{background:var(--fail-bg); color:var(--fail)}
+  .tag.found{background:var(--found-bg); color:var(--found)}
+  .tag.blast{background:var(--blast-bg); color:var(--blast)}
+  .isec{margin-top:15px; border-top:1px solid var(--line); padding-top:11px}
+  .isec .lab{font-size:10px; text-transform:uppercase; letter-spacing:0.09em; color:var(--dim); font-weight:600; margin-bottom:7px}
+  .kv{display:flex; justify-content:space-between; font-size:12px; margin:4px 0; color:var(--dim)}
+  .kv b{color:var(--ink); font-weight:550; font-family:var(--mono); font-size:11.5px}
+  .mem{font-family:var(--mono); font-size:11px; color:var(--dim); margin:3px 0; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .mem:hover{color:var(--found)} .mem .q{color:var(--ink2)}
+  .oraclebox{display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:8px; background:var(--panel2); border:1px solid var(--line)}
+  .oraclebox .lamp{width:11px; height:11px; border-radius:50%; flex:none}
+  .oraclebox .txt{font-size:12px}
+  .oraclebox .txt .s{font-weight:600}
+  .oraclebox .txt .d{color:var(--dim); font-size:11px}
+  .hist{font-family:var(--mono); font-size:12.5px; line-height:2}
+  .hist .g{padding:1px 5px; border-radius:4px; margin-right:2px; cursor:pointer}
+
+  /* ── ACTION BAR ────────────────────────────────────────────── */
+  .actionbar{
+    height:56px; flex:none; border-top:1px solid var(--line); display:flex; align-items:center;
+    gap:14px; padding:0 16px; background:linear-gradient(180deg,#FBFBFA,#F6F6F4);
+  }
+  .actionbar .ctx{font-size:12px; color:var(--dim); min-width:0; flex:1}
+  .actionbar .ctx b{color:var(--ink); font-family:var(--mono); font-size:11.5px; font-weight:550}
+  .actionbar .ctx .preview{color:var(--ink2); font-style:italic}
+  .actionbar .ctx .preview .amber{color:var(--blast); font-style:normal; font-weight:600}
+  .actionbar .ctx .preview .grn{color:var(--land); font-style:normal; font-weight:600}
+  .btnrow{display:flex; gap:8px; flex:none}
+  .btn{
+    font-family:var(--sans); font-size:12px; font-weight:500; border:1px solid var(--line-strong);
+    background:var(--panel); color:var(--ink2); border-radius:7px; padding:7px 13px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px; transition:transform .1s, border-color .15s, background .15s;
+  }
+  .btn .k{font-size:13px}
+  .btn:hover:not(:disabled){border-color:var(--dim)}
+  .btn:active:not(:disabled){transform:scale(.97)}
+  .btn:disabled{opacity:.4; cursor:default}
+  .btn.primary{background:var(--ink); color:#fff; border-color:var(--ink)}
+  .btn.primary:hover:not(:disabled){background:#000}
+  .btn.armed{border-color:var(--accent); background:var(--accent-soft); color:var(--accent)}
+  .btn.danger.armed{border-color:var(--fail); background:var(--fail-bg); color:var(--fail)}
+  .btn.confirm{background:var(--fail); color:#fff; border-color:var(--fail)}
+  .btn.confirm.grn{background:var(--land); border-color:var(--land)}
+
+  .hint{font-size:11px; color:var(--faint); font-family:var(--mono)}
+  kbd{font-family:var(--mono); font-size:10px; border:1px solid var(--line-strong); border-bottom-width:2px;
+      border-radius:4px; padding:1px 5px; background:var(--panel2); color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="win">
+  <!-- title bar -->
+  <div class="titlebar">
+    <div class="dots"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+    <div class="brand">sgt <span class="repo">· <span class="mono">semi-git</span></span></div>
+    <div class="spacer"></div>
+    <div class="branchsel" id="branchSel">composition: <b style="font-weight:600" id="compName">HEAD</b> <span class="car">▾</span></div>
+    <div class="oraclechip" id="oracleChip" data-state="pass"><span class="lamp"></span><span id="oracleChipTxt">oracle · pass</span></div>
+  </div>
+
+  <div class="body">
+    <!-- LEFT: branch-rooted tree / tracks -->
+    <div class="rail">
+      <div class="panehead">
+        <span>tracks · features</span><span class="spacer"></span>
+        <span class="mini" id="collapseAll">collapse branches</span>
+      </div>
+      <div class="tree" id="tree"></div>
+    </div>
+
+    <!-- CENTER: timeline + code -->
+    <div class="center">
+      <div class="timeline-wrap">
+        <div class="rail-scroll" id="railScroll"><svg id="rail"></svg></div>
+      </div>
+      <div class="code">
+        <div class="codehead" id="codeHead">
+          <span class="path" id="codePath">— select a feature</span>
+          <span class="athead" id="codeAt"></span>
+        </div>
+        <div class="codebody" id="codeBody">
+          <div class="code-empty">The code panel shows <b>code(I)</b> at the playhead. Select a feature to view the bytes the current ideal folds to, or arm an action to preview the diff.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: inspector -->
+    <div class="insp">
+      <div class="panehead"><span>inspector</span></div>
+      <div class="inspbody" id="insp">
+        <div class="empty">Click a feature to inspect its members, blame, dependencies and oracle verdict. Click an op glyph to target a single operation.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTION BAR -->
+  <div class="actionbar">
+    <div class="ctx" id="ctx">
+      <span class="hint">drag the <span style="color:var(--accent)">playhead</span> to scrub the ideal · click a glyph to target an op · <kbd>R</kbd> revert · <kbd>L</kbd> land · <kbd>P</kbd> pin</span>
+    </div>
+    <div class="btnrow" id="btnrow">
+      <button class="btn danger" id="btnRevert" disabled><span class="k">⤺</span> Revert</button>
+      <button class="btn" id="btnPin" disabled><span class="k">◈</span> Pin</button>
+      <button class="btn primary" id="btnLand" disabled><span class="k">✓</span> Land</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   SCENARIO  — hand-authored, grounded in sgt's kernel vocabulary.
+   Not the 480KB real op store; a curated composite that exercises
+   every interaction (drift, an LLM proposal, blast/foundation, land,
+   revert, oracle pass/pending/fail).  op-order is the x axis.
+   ════════════════════════════════════════════════════════════════ */
+const OPS = {
+  // main (landed trunk) ───────────────────────────────────────────
+  o1:{f:'login',    t:'◆', c:0,  prov:'main', req:[],           lab:'born · session cookie login'},
+  o2:{f:'login',    t:'+', c:2,  prov:'main', req:['o1'],       lab:'extended · rate-limit guard'},
+  o3:{f:'tokens',   t:'◆', c:1,  prov:'main', req:[],           lab:'born · JWT issue/verify'},
+  o4:{f:'tokens',   t:'+', c:3,  prov:'main', req:['o3'],       lab:'extended · refresh rotation'},
+  o5:{f:'chunking', t:'◆', c:1,  prov:'main', req:[],           lab:'born · fixed-window splitter'},
+  o6:{f:'chunking', t:'~', c:4,  prov:'main', req:['o5'],       lab:'reworked · semantic boundaries'},
+  o7:{f:'embed',    t:'◆', c:3,  prov:'main', req:['o5'],       lab:'born · embed(chunks)'},
+  o8:{f:'embed',    t:'+', c:5,  prov:'main', req:['o6'],       lab:'extended · batch + cache'},
+  o9:{f:'search',   t:'◆', c:6,  prov:'main', req:['o7','o4'],  lab:'born · /search over embeddings'},
+  // agent-1/refactor-embeddings (LLM proposal — pending clip) ──────
+  p1:{f:'embed',    t:'~', c:7,  prov:'agent', req:['o8'],      lab:'reworked · swap to bge-small model'},
+  p2:{f:'vecstore', t:'◆', c:8,  prov:'agent', req:['p1'],      lab:'born · pluggable vector store'},
+  p3:{f:'search',   t:'+', c:9,  prov:'agent', req:['p2','o9'], lab:'extended · route via vecstore'},
+  // human-wip (drift — unattributed working-tree edits) ────────────
+  d1:{f:'chunking', t:'~', c:8,  prov:'drift', req:['o6'],      lab:'uncommitted · tweak overlap=48'},
+};
+
+// feature metadata (leaf nodes of the tree)
+const FEAT = {
+  login:   {id:'F12', name:'auth/login',   sub:'auth',   members:['login.py::authenticate','login.py::_rate_gate'], why:'Session-cookie sign in with a per-IP rate gate.'},
+  tokens:  {id:'F13', name:'auth/tokens',  sub:'auth',   members:['tokens.py::issue','tokens.py::verify','tokens.py::rotate'], why:'JWT issue / verify with refresh rotation.'},
+  chunking:{id:'F20', name:'ingest/chunking', sub:'ingest', members:['chunk.py::split','chunk.py::_boundaries'], why:'Split documents on semantic boundaries before embedding.'},
+  embed:   {id:'F21', name:'ingest/embeddings', sub:'ingest', members:['embed.py::embed','embed.py::_batch'], why:'Turn chunks into vectors; batched and cached.'},
+  search:  {id:'F22', name:'api/search',   sub:'api',    members:['search.py::query'], why:'Rank stored embeddings for a query. Gated by auth/tokens.'},
+  vecstore:{id:'F23', name:'ingest/vector-store', sub:'ingest', members:['vecstore.py::VectorStore'], why:'Proposed: pluggable backend so embeddings aren’t pinned to one index.'},
+};
+
+// branches → the top-level tracks. subsystems group features inside.
+const BRANCHES = [
+  {id:'main',  kind:'main',  label:'main',                       collapsed:false,
+    tree:[ {sub:'auth', feats:['login','tokens']}, {sub:'ingest', feats:['chunking','embed']}, {sub:'api', feats:['search']} ]},
+  {id:'agent', kind:'agent', label:'agent-1/refactor-embeddings', collapsed:false,
+    tree:[ {sub:'ingest', feats:['embed','vecstore']}, {sub:'api', feats:['search']} ]},
+  {id:'drift', kind:'drift', label:'human-wip · drift',           collapsed:true,
+    tree:[ {sub:'ingest', feats:['chunking']} ]},
+];
+
+// synthetic folded code(I) per feature, plus the diff a proposal/revert previews.
+const CODE = {
+  chunking:{path:'ingest/chunk.py', head:[
+    ['def', 'def split(doc, size=512, overlap=32):'],
+    ['',    '    spans = _boundaries(doc)'],
+    ['',    '    return _window(spans, size, overlap)'],
+  ], driftDiff:[
+    ['ctx','def split(doc, size=512, overlap=32):'],
+    ['del','    return _window(spans, size, overlap)'],
+    ['add','    return _window(spans, size, overlap=48)  # drift'],
+  ]},
+  embed:{path:'ingest/embed.py', head:[
+    ['cm',  '# code(I) at head · model=ada-002'],
+    ['def', 'def embed(chunks):'],
+    ['',    '    vecs = _batch(chunks, model="ada-002")'],
+    ['',    '    return cache.put(vecs)'],
+  ], propDiff:[
+    ['ctx','def embed(chunks):'],
+    ['del','    vecs = _batch(chunks, model="ada-002")'],
+    ['add','    vecs = _batch(chunks, model="bge-small")'],
+    ['add','    return store.upsert(vecs)   # via VectorStore'],
+  ], revDiff:[
+    ['ctx','def embed(chunks):'],
+    ['del','    vecs = _batch(chunks, model="ada-002")   # reverted'],
+    ['del','    return cache.put(vecs)                   # reverted'],
+  ]},
+  search:{path:'api/search.py', head:[
+    ['def','def query(q, token):'],
+    ['',   '    verify(token)          # auth/tokens'],
+    ['',   '    return rank(embed([q]))'],
+  ]},
+  vecstore:{path:'ingest/vecstore.py', head:[
+    ['cm', '# proposed — not yet in code(I)'],
+    ['kw', 'class VectorStore:'],
+    ['',   '    def upsert(self, vecs): ...'],
+  ]},
+  login:{path:'auth/login.py', head:[
+    ['def','def authenticate(req):'],
+    ['',   '    _rate_gate(req.ip)'],
+    ['',   '    return session_for(req.user)'],
+  ]},
+  tokens:{path:'auth/tokens.py', head:[
+    ['def','def issue(user): ...'],
+    ['def','def verify(tok): ...'],
+    ['def','def rotate(tok): ...'],
+  ]},
+};
+
+const N_COLS = 10;
+const KIND_SW = {main:'#357a3e', agent:'#8f6200', drift:'#9F2F2D'};
+
+/* ── derived edges ─────────────────────────────────────────────── */
+const opByFeat = {};
+for(const [id,o] of Object.entries(OPS)){ (opByFeat[o.f] ||= []).push(id); }
+// feature-level requires: union of its ops' requires' features
+function featDeps(f){
+  const out=new Set();
+  for(const id of opByFeat[f]||[]) for(const r of OPS[id].req){ const rf=OPS[r].f; if(rf!==f) out.add(rf); }
+  return [...out];
+}
+function featDependents(f){ // who depends ON f
+  const out=new Set();
+  for(const g of Object.keys(FEAT)) if(featDeps(g).includes(f)) out.add(g);
+  return [...out];
+}
+function closure(seed, fn){ const seen=new Set(), q=[...seed]; while(q.length){const x=q.pop(); if(seen.has(x))continue; seen.add(x); for(const y of fn(x)) if(!seen.has(y)) q.push(y);} seen.delete(...seed); return seen; }
+
+/* ══════════════════════════════════════════════════════════════════
+   STATE
+   ════════════════════════════════════════════════════════════════ */
+let head = 6.5;              // playhead position on op-order axis (ideal frontier)
+let sel = null;             // {kind:'feat'|'op', f, opId?}
+let armed = null;           // {action:'revert'|'land'|'pin', ...}
+let pins = {};              // feature -> pinned op col (composition)
+const SVGNS='http://www.w3.org/2000/svg';
+
+/* ══════════════════════════════════════════════════════════════════
+   LAYOUT — flatten the visible branch→subsystem→feature tree into rows
+   ════════════════════════════════════════════════════════════════ */
+function buildRows(){
+  const rows=[]; // {type, depth, branch, sub?, feat?, label, kind}
+  for(const b of BRANCHES){
+    rows.push({type:'branch', depth:0, branch:b.id, kind:b.kind, label:b.label, collapsed:b.collapsed});
+    if(b.collapsed) continue;
+    for(const grp of b.tree){
+      rows.push({type:'subsys', depth:1, branch:b.id, sub:grp.sub, label:grp.sub});
+      for(const f of grp.feats)
+        rows.push({type:'leaf', depth:2, branch:b.id, feat:f, label:FEAT[f].name.split('/').pop(), kind:b.kind});
+    }
+  }
+  return rows;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER: left tree
+   ════════════════════════════════════════════════════════════════ */
+const rows = ()=>buildRows();
+function renderTree(){
+  const el=document.getElementById('tree'); el.innerHTML='';
+  for(const r of rows()){
+    const d=document.createElement('div');
+    d.className='node '+(r.type==='branch'?'branch':r.type==='subsys'?'subsys':'leaf')+' depth'+r.depth;
+    if(r.type==='branch' && r.collapsed) d.classList.add('collapsed');
+    if(sel && sel.kind==='feat' && sel.f===r.feat && sel.branch===r.branch) d.classList.add('sel');
+
+    if(r.type==='branch'){
+      d.innerHTML = `<span class="car">▾</span>
+        <span class="swatch" style="background:${KIND_SW[r.kind]}"></span>
+        <span class="name">${r.label}</span>
+        <span class="btag ${r.kind}">${r.kind==='main'?'landed':r.kind==='agent'?'proposal':'drift'}</span>`;
+      d.onclick=()=>{ const b=BRANCHES.find(x=>x.id===r.branch); b.collapsed=!b.collapsed; renderAll(); };
+    } else if(r.type==='subsys'){
+      d.innerHTML=`<span class="car"></span><span class="name" style="color:var(--dim)">${r.label}/</span>`;
+    } else {
+      const F=FEAT[r.feat];
+      d.innerHTML=`<span class="car"></span>
+        <span class="name">${r.label}</span>
+        <span class="fid">${F.id}</span>`;
+      d.dataset.branch=r.branch; d.dataset.feat=r.feat;
+      d.onclick=()=>selectFeat(r.feat, r.branch);
+    }
+    el.appendChild(d);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER: timeline SVG (Gantt aligned to the same rows)
+   ════════════════════════════════════════════════════════════════ */
+const PADL=14, PADR=26, PADT=30, ROWH=30;
+function colX(c, W){ const inner=W-PADL-PADR; return PADL + (c/(N_COLS-1))*inner; }
+
+function renderRail(){
+  const svg=document.getElementById('rail');
+  const scroll=document.getElementById('railScroll');
+  const W=Math.max(scroll.clientWidth, 560);
+  const R=rows();
+  const H=PADT + R.length*ROWH + 14;
+  svg.setAttribute('width',W); svg.setAttribute('height',H);
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.innerHTML='';
+  const focus = !!sel;
+  svg.classList.toggle('focus', focus);
+
+  // blast/foundation sets when a feature is selected
+  let blastSet=new Set(), foundSet=new Set();
+  if(sel){
+    foundSet = closure([sel.f], featDeps);
+    blastSet = closure([sel.f], featDependents);
+  }
+
+  // after-head tint region
+  const hx=colX(head,W);
+  add(svg,'rect',{x:hx, y:PADT-18, width:W-hx, height:H-PADT+18, class:'after-head'});
+
+  // gridlines + ruler
+  for(let c=0;c<N_COLS;c++){
+    const x=colX(c,W);
+    add(svg,'line',{x1:x,y1:PADT-10,x2:x,y2:H-8,class:'gridline'+(c%2?'':' major')});
+    add(svg,'text',{x:x,y:PADT-16,'text-anchor':'middle'}, 'op'+c);
+  }
+
+  // rows
+  R.forEach((r,i)=>{
+    const y=PADT + i*ROWH + ROWH/2;
+    add(svg,'line',{x1:PADL-6,y1:PADT+i*ROWH,x2:W-8,y2:PADT+i*ROWH,class:'rowsep'});
+
+    if(r.type==='branch' && r.collapsed){
+      renderCollapsedTrack(svg,r,y,W); return;
+    }
+    if(r.type!=='leaf') return;
+
+    const g=add(svg,'g',{class:'rowg'});
+    if(sel){
+      if(r.feat===sel.f && r.branch===sel.branch) g.classList.add('selrow');
+      else if(foundSet.has(r.feat)) g.classList.add('foundation');
+      else if(blastSet.has(r.feat)) g.classList.add('blast');
+    }
+    // ops on this feature within this branch's provenance domain
+    const ids=(opByFeat[r.feat]||[]).filter(id=>opProvMatchesBranch(OPS[id].prov, r.branch));
+    renderFeatureRow(g, r, ids, y, W, {blastSet,foundSet});
+  });
+
+  // proposal clip bracket (agent branch, embed+vecstore span) & drift band handled per-row above;
+  // draw the playhead last so it sits on top
+  drawPlayhead(svg,W,H);
+}
+
+function opProvMatchesBranch(prov, branch){
+  if(branch==='main') return prov==='main';
+  if(branch==='agent') return prov==='main' || prov==='agent';
+  if(branch==='drift') return prov==='main' || prov==='drift';
+  return prov==='main';
+}
+
+function renderFeatureRow(g, r, ids, y, W, sets){
+  if(!ids.length) return;
+  const cols=ids.map(id=>OPS[id].c);
+  const x0=colX(Math.min(...cols),W), x1=colX(Math.max(...cols),W);
+  // lifespan bar, coloured by dominant provenance on this branch row
+  const prov = OPS[ids[ids.length-1]].prov;
+  const barColor = prov==='agent'?'var(--drift)':prov==='drift'?'var(--fail)':'#c9c9c4';
+  add(g,'line',{x1:x0,y1:y,x2:x1,y2:y,class:'lifebar',stroke:barColor});
+
+  // proposal / drift bracket behind glyphs
+  const pendIds = ids.filter(id=>OPS[id].prov!=='main');
+  if(pendIds.length){
+    const pc=pendIds.map(id=>OPS[id].c);
+    const bx=colX(Math.min(...pc),W)-9, bw=colX(Math.max(...pc),W)-colX(Math.min(...pc),W)+18;
+    const isDrift = OPS[pendIds[0]].prov==='drift';
+    add(g,'rect',{x:bx,y:y-11,width:bw,height:22,class:isDrift?'driftband':'clip'});
+  }
+
+  for(const id of ids){
+    const o=OPS[id]; const x=colX(o.c,W);
+    const after = o.c>head;
+    const pinned = pins[r.feat]!=null && o.c===pins[r.feat];
+    let cls='glyph';
+    if(after && o.prov==='main') cls+=' after';
+    // armed-revert ghosting
+    if(armed && armed.action==='revert'){
+      if(id===armed.opId || (armed.dropFeats && armed.dropFeats.has(o.f) && o.prov==='main' && o.c>=(armed.fromCol||0)))
+        cls+=' ghost';
+    }
+    const t=add(g,'text',{x:x,y:y+4,'text-anchor':'middle',class:cls,
+      fill: o.prov==='agent'?'var(--drift)':o.prov==='drift'?'var(--fail)':'var(--ink)'}, o.t);
+    t.style.cursor='pointer';
+    t.onclick=(e)=>{ e.stopPropagation(); selectOp(id); };
+    if(pinned) add(g,'text',{x:x+9,y:y-6,'text-anchor':'middle',class:'glyph',fill:'var(--accent)','font-size':'10px'},'◈');
+  }
+}
+
+function renderCollapsedTrack(svg,r,y,W){
+  // one aggregate lane for a collapsed branch: full lifespan bar of all its ops
+  const b=BRANCHES.find(x=>x.id===r.branch);
+  const feats=new Set(); b.tree.forEach(gp=>gp.feats.forEach(f=>feats.add(f)));
+  const ids=Object.keys(OPS).filter(id=>feats.has(OPS[id].f) && opProvMatchesBranch(OPS[id].prov,r.branch));
+  if(!ids.length) return;
+  const cols=ids.map(id=>OPS[id].c);
+  const g=add(svg,'g',{class:'rowg'});
+  const barColor = r.kind==='agent'?'var(--drift)':r.kind==='drift'?'var(--fail)':'#c9c9c4';
+  add(g,'line',{x1:colX(Math.min(...cols),W),y1:y,x2:colX(Math.max(...cols),W),y2:y,class:'lifebar',stroke:barColor});
+  // glyph density as small ticks
+  for(const id of ids){ const o=OPS[id];
+    add(g,'text',{x:colX(o.c,W),y:y+4,'text-anchor':'middle',class:'glyph'+(o.c>head&&o.prov==='main'?' after':''),
+      fill:r.kind==='drift'?'var(--fail)':r.kind==='agent'?'var(--drift)':'var(--dim)','font-size':'11px'},o.t); }
+  add(g,'text',{x:colX(Math.max(...cols),W)+12,y:y+3,fill:'var(--faint)','font-size':'9.5px'},`${ids.length} ops`);
+}
+
+function drawPlayhead(svg,W,H){
+  const x=colX(head,W);
+  const g=add(svg,'g',{});
+  add(g,'line',{x1:x,y1:PADT-22,x2:x,y2:H-6,class:'ph-line'});
+  // flag with the op-count of the current ideal
+  const inCount = Object.values(OPS).filter(o=>o.prov==='main'&&o.c<=head).length;
+  add(g,'rect',{x:x-2,y:PADT-30,width:44,height:15,rx:3,class:'ph-flag'});
+  add(g,'text',{x:x+20,y:PADT-19,'text-anchor':'middle',class:'ph-flag-t'},'I·'+inCount);
+  add(g,'circle',{cx:x,cy:PADT-22,r:4,class:'ph-head'});
+  // wide invisible hit target for dragging
+  const hit=add(g,'rect',{x:x-9,y:PADT-30,width:18,height:H-PADT+24,class:'ph-hit'});
+  hit.onpointerdown=startDragPlayhead;
+}
+
+function startDragPlayhead(e){
+  e.preventDefault();
+  const scroll=document.getElementById('railScroll');
+  const svg=document.getElementById('rail');
+  const W=svg.getBoundingClientRect().width;
+  const move=(ev)=>{
+    const rect=svg.getBoundingClientRect();
+    const x=ev.clientX-rect.left;
+    const inner=W-PADL-PADR;
+    let c=(x-PADL)/inner*(N_COLS-1);
+    head=Math.max(0,Math.min(N_COLS-1,c));
+    renderRail(); refreshCodeForHead(); updateOracle();
+  };
+  const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+  window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
+}
+
+/* small svg helper */
+function add(parent,tag,attrs,text){
+  const e=document.createElementNS(SVGNS,tag);
+  for(const k in attrs) e.setAttribute(k,attrs[k]);
+  if(text!=null) e.textContent=text;
+  parent.appendChild(e); return e;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SELECTION + INSPECTOR
+   ════════════════════════════════════════════════════════════════ */
+function selectFeat(f, branch){ sel={kind:'feat', f, branch:branch||'main'}; armed=null; renderAll(); }
+function selectOp(id){ const o=OPS[id]; sel={kind:'op', f:o.f, opId:id, branch: o.prov==='main'?'main':o.prov}; armed=null; renderAll(); }
+
+function updateInspector(){
+  const el=document.getElementById('insp');
+  if(!sel){ el.innerHTML='<div class="empty">Click a feature to inspect its members, blame, dependencies and oracle verdict. Click an op glyph to target a single operation.</div>'; return; }
+  const F=FEAT[sel.f];
+  const deps=featDeps(sel.f), dependents=featDependents(sel.f);
+  const ids=opByFeat[sel.f]||[];
+  const prov = new Set(ids.map(i=>OPS[i].prov));
+  const provTag = prov.has('agent')?'<span class="tag drift">proposed</span>':prov.has('drift')?'<span class="tag fail">drift</span>':'<span class="tag land">landed</span>';
+
+  let opLine='';
+  if(sel.kind==='op'){ const o=OPS[sel.opId]; opLine=`<div class="sub">op ${sel.opId} · ${o.t} · col op${o.c}</div>`; }
+
+  el.innerHTML=`
+    <h2>${F.name}</h2>
+    <div class="sub">${F.id} · ${F.members.length} members</div>
+    ${opLine}
+    <div>${provTag}${deps.length?'<span class="tag found">depends on '+deps.length+'</span>':''}${dependents.length?'<span class="tag blast">'+dependents.length+' depend on it</span>':''}</div>
+    <div class="why">${sel.kind==='op'?OPS[sel.opId].lab:F.why}</div>
+
+    <div class="isec"><div class="lab">oracle</div><div id="inspOracle"></div></div>
+
+    <div class="isec"><div class="lab">blame · history</div>
+      <div class="hist">${ids.map(i=>`<span class="g" style="background:${OPS[i].prov==='main'?'var(--land-bg)':OPS[i].prov==='agent'?'var(--drift-bg)':'var(--fail-bg)'};color:${OPS[i].prov==='main'?'var(--land)':OPS[i].prov==='agent'?'var(--drift)':'var(--fail)'}" title="${OPS[i].lab}" onclick="selectOp('${i}')">${OPS[i].t}</span>`).join('')}</div>
+    </div>
+
+    <div class="isec"><div class="lab">dependencies</div>
+      ${deps.length?deps.map(d=>`<div class="mem" onclick="selectFeat('${d}','${sel.branch}')"><span style="color:var(--found)">↓</span> ${FEAT[d].name} <span class="q">(foundation)</span></div>`).join(''):'<div class="kv">none</div>'}
+      ${dependents.length?dependents.map(d=>`<div class="mem" onclick="selectFeat('${d}','${sel.branch}')"><span style="color:var(--blast)">↑</span> ${FEAT[d].name} <span class="q">(blast radius)</span></div>`).join(''):''}
+    </div>
+
+    <div class="isec"><div class="lab">members</div>
+      ${F.members.map(m=>{const [p,q]=m.split('::'); return `<div class="mem">${p}::<span class="q">${q}</span></div>`;}).join('')}
+    </div>`;
+  renderInspOracle();
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ORACLE — verdict keyed to the exact op-set (pass / pending / fail)
+   ════════════════════════════════════════════════════════════════ */
+function idealState(){
+  // fail iff a foundation is missing: an in-ideal op requires an op not in the ideal
+  const inSet=new Set(Object.keys(OPS).filter(id=>OPS[id].prov==='main'&&OPS[id].c<=head));
+  for(const id of inSet){ for(const r of OPS[id].req){ if(OPS[r].prov==='main' && !inSet.has(r)) return {s:'fail',d:`op ${id} needs ${r}, not folded in`}; } }
+  if(armed) return {s:'pending', d:`recompute for armed ${armed.action}`};
+  return {s:'pass', d:`${inSet.size} ops · build + tests green`};
+}
+function updateOracle(){
+  const st=idealState();
+  const chip=document.getElementById('oracleChip');
+  chip.dataset.state=st.s;
+  document.getElementById('oracleChipTxt').textContent='oracle · '+st.s;
+  renderInspOracle();
+}
+function renderInspOracle(){
+  const box=document.getElementById('inspOracle'); if(!box) return;
+  const st=idealState();
+  const col=st.s==='pass'?'var(--land)':st.s==='fail'?'var(--fail)':'var(--drift)';
+  box.innerHTML=`<div class="oraclebox"><span class="lamp" style="background:${col}"></span>
+    <div class="txt"><span class="s" style="color:${col}">${st.s.toUpperCase()}</span> <span class="d">— ${st.d}</span></div></div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   CODE / DIFF panel
+   ════════════════════════════════════════════════════════════════ */
+function hl(kind,tx){ if(kind==='def')return tx.replace(/^(def )(\w+)/,'<span class="kw">$1</span><span class="fn">$2</span>'); if(kind==='kw')return '<span class="kw">'+tx+'</span>'; if(kind==='cm')return '<span class="cm">'+tx+'</span>'; return tx; }
+function renderCode(path, lines, atLabel){
+  document.getElementById('codePath').textContent=path;
+  document.getElementById('codeAt').textContent=atLabel||'';
+  const b=document.getElementById('codeBody');
+  b.innerHTML=lines.map((l,i)=>{ const [k,tx]=l; const cls=(k==='add')?'add':(k==='del')?'del':''; const disp=(k==='add'||k==='del'||k==='ctx')?tx:hl(k,tx);
+    return `<div class="cl ${cls}"><span class="ln">${(k==='add'||k==='del')?'':i+1}</span><span class="tx">${disp}</span></div>`; }).join('');
+}
+function refreshCodeForHead(){
+  if(!sel){ return; }
+  const c=CODE[sel.f]; if(!c) return;
+  if(armed) return; // armed action owns the panel
+  const inIdeal = (opByFeat[sel.f]||[]).some(id=>OPS[id].prov==='main'&&OPS[id].c<=head);
+  if(!inIdeal && sel.f!=='vecstore'){
+    document.getElementById('codePath').textContent=c.path;
+    document.getElementById('codeAt').textContent='not yet folded in';
+    document.getElementById('codeBody').innerHTML=`<div class="code-empty">No op for <b>${FEAT[sel.f].name}</b> is left of the playhead. Drag the playhead right to fold it into <b>code(I)</b>.</div>`;
+    return;
+  }
+  renderCode(c.path, c.head, 'code(I) @ op'+Math.floor(head));
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ARMED ACTION PREVIEWS  (before → preview → confirm/cancel)
+   ════════════════════════════════════════════════════════════════ */
+function armRevert(){
+  if(!sel) return;
+  const target = sel.kind==='op'?sel.opId:(opByFeat[sel.f]||[]).filter(i=>OPS[i].prov==='main').pop();
+  if(!target) return;
+  const o=OPS[target];
+  const dropFeats = closure([o.f], featDependents); // dependents drop with it
+  dropFeats.add(o.f);
+  armed={action:'revert', opId:target, fromCol:o.c, dropFeats};
+  const c=CODE[o.f];
+  if(c && c.revDiff) renderCode(c.path, c.revDiff, 'preview · revert');
+  else if(c) renderCode(c.path, c.head.map(l=>['del',l[1]]), 'preview · revert');
+  renderAll(true);
+}
+function armLand(){
+  if(!sel) return;
+  // land the agent proposal touching this feature
+  const propIds=(opByFeat[sel.f]||[]).filter(i=>OPS[i].prov==='agent');
+  const feat = propIds.length?sel.f:'embed';
+  armed={action:'land', feat};
+  const c=CODE[feat];
+  if(c && c.propDiff) renderCode(c.path, c.propDiff, 'preview · land proposal');
+  renderAll(true);
+}
+function armPin(){
+  if(!sel || sel.kind!=='op') { flashCtx('Pin targets a single op — click a glyph first.'); return; }
+  armed={action:'pin', opId:sel.opId, feat:OPS[sel.opId].f, col:OPS[sel.opId].c};
+  renderAll(true);
+}
+function confirmArmed(){
+  if(!armed) return;
+  if(armed.action==='revert'){
+    // drop the op + dependents from main (visual: mark col past)
+    // (mockup) shift head just before the op and remove downstream main ops of dropFeats
+    for(const id of Object.keys(OPS)){ const o=OPS[id];
+      if(o.prov==='main' && armed.dropFeats.has(o.f) && o.c>=armed.fromCol){ delete OPS[id]; } }
+    rebuildIndex();
+  } else if(armed.action==='land'){
+    // promote the agent proposal ops on this feature into main
+    for(const id of Object.keys(OPS)){ const o=OPS[id]; if(o.prov==='agent' && (o.f===armed.feat)) o.prov='main'; }
+    // fold them in
+    head=Math.max(head, Math.max(...Object.values(OPS).filter(o=>o.prov==='main').map(o=>o.c)));
+  } else if(armed.action==='pin'){
+    pins[armed.feat]=armed.col;
+  }
+  armed=null; renderAll();
+}
+function cancelArmed(){ armed=null; renderAll(); refreshCodeForHead(); }
+function rebuildIndex(){ for(const k in opByFeat) delete opByFeat[k]; for(const [id,o] of Object.entries(OPS)) (opByFeat[o.f] ||= []).push(id); }
+
+/* ══════════════════════════════════════════════════════════════════
+   ACTION BAR + context line
+   ════════════════════════════════════════════════════════════════ */
+function updateActionBar(){
+  const ctx=document.getElementById('ctx');
+  const bR=document.getElementById('btnRevert'), bL=document.getElementById('btnLand'), bP=document.getElementById('btnPin');
+  const row=document.getElementById('btnrow');
+  bR.className='btn danger'; bL.className='btn primary'; bP.className='btn';
+  bR.disabled=bL.disabled=bP.disabled=!sel;
+
+  if(armed){
+    // swap to confirm/cancel
+    let msg='';
+    if(armed.action==='revert'){
+      const drops=[...armed.dropFeats].filter(f=>f!==OPS[armed.opId]?.f);
+      msg=`<span class="preview">Reverting <b>${armed.opId}</b> · <span class="amber">${armed.dropFeats.size} feature(s) drop</span> from the blast radius. Oracle recomputes.</span>`;
+      bR.classList.add('armed');
+    } else if(armed.action==='land'){
+      msg=`<span class="preview">Landing the <b>agent-1</b> proposal on <b>${FEAT[armed.feat].name}</b> · <span class="grn">2 lines added</span>, folds into main. Oracle recomputes for the new op-set.</span>`;
+      bL.classList.add('armed');
+    } else if(armed.action==='pin'){
+      msg=`<span class="preview">Pin <b>${FEAT[armed.feat].name}</b> @ op${armed.col} · lane stays fixed as the playhead moves (composition).</span>`;
+      bP.classList.add('armed');
+    }
+    ctx.innerHTML=msg;
+    row.innerHTML='';
+    const cancel=btn('Cancel','', cancelArmed); const conf=btn(armed.action==='revert'?'Confirm revert':armed.action==='land'?'Confirm land':'Confirm pin', armed.action==='land'?'confirm grn':(armed.action==='revert'?'confirm':'primary'), confirmArmed);
+    row.append(cancel,conf);
+    return;
+  }
+  // normal buttons
+  row.innerHTML='';
+  const bRR=btn('⤺ Revert','danger', armRevert), bPP=btn('◈ Pin','', armPin), bLL=btn('✓ Land','primary', armLand);
+  [bRR,bPP,bLL].forEach(b=>{ if(!sel) b.disabled=true; });
+  // Land only meaningful when a proposal touches the selection
+  const hasProp = sel && (opByFeat[sel.f]||[]).some(i=>OPS[i].prov==='agent');
+  row.append(bRR,bPP,bLL);
+
+  if(sel){
+    const F=FEAT[sel.f];
+    const deps=featDeps(sel.f), dependents=featDependents(sel.f);
+    ctx.innerHTML=`selected <b>${F.name}</b>${sel.kind==='op'?' · op '+sel.opId:''} `+
+      `<span class="hint">· ${dependents.length} dependents (blast) · ${deps.length} foundation`+
+      `${hasProp?' · <span style="color:var(--drift)">agent-1 proposal available to land</span>':''}</span>`;
+  } else {
+    ctx.innerHTML=`<span class="hint">drag the <span style="color:var(--accent)">playhead</span> to scrub the ideal · click a glyph to target an op · <kbd>R</kbd> revert · <kbd>L</kbd> land · <kbd>P</kbd> pin</span>`;
+  }
+}
+function btn(label,cls,fn){ const b=document.createElement('button'); b.className='btn '+cls; b.textContent=label; b.onclick=fn; return b; }
+function flashCtx(t){ const c=document.getElementById('ctx'); const old=c.innerHTML; c.innerHTML=`<span style="color:var(--drift)">${t}</span>`; setTimeout(()=>updateActionBar(),1600); }
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER ALL
+   ════════════════════════════════════════════════════════════════ */
+function renderAll(keepCode){
+  renderTree(); renderRail(); updateInspector(); updateActionBar(); updateOracle();
+  if(!keepCode) refreshCodeForHead();
+}
+
+/* composition switcher (demo toggle) */
+document.getElementById('branchSel').onclick=()=>{
+  const names=['HEAD','main@landed','+ agent-1 preview'];
+  const cur=document.getElementById('compName').textContent;
+  const nx=names[(names.indexOf(cur)+1)%names.length];
+  document.getElementById('compName').textContent=nx;
+  // toggle agent branch visibility as a stand-in for composition choice
+  const ag=BRANCHES.find(b=>b.id==='agent'); ag.collapsed = nx!=='+ agent-1 preview';
+  renderAll();
+};
+document.getElementById('collapseAll').onclick=()=>{ BRANCHES.forEach(b=>b.collapsed=true); renderAll(); };
+
+/* keyboard */
+window.addEventListener('keydown',e=>{
+  if(armed && e.key==='Escape'){ cancelArmed(); return; }
+  if(armed && e.key==='Enter'){ confirmArmed(); return; }
+  if(!sel) return;
+  if(e.key==='r'||e.key==='R') armRevert();
+  if(e.key==='l'||e.key==='L') armLand();
+  if(e.key==='p'||e.key==='P') armPin();
+});
+
+let _rt; window.addEventListener('resize',()=>{ clearTimeout(_rt); _rt=setTimeout(renderRail,120); });
+
+/* boot */
+renderAll();
+</script>
+</body>
+</html>
