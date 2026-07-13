@@ -1175,6 +1175,329 @@ closure it would materialize (files + op count) for the human to confirm. Improv
 docs/residue don't form large selectable nodes is the deferred path to a future green. Recorded in
 this plan's U29 status line.
 
+### Product surface — U26 porcelain completion: the D2 refusal table + D3 daily-loop verbs (2026-07-11)
+
+Gate-independent, run in parallel with the U25/U29 disposition above. Two small pieces, both data
+over conditionals (design doc §1):
+
+- **D2, `sgt git` refusal table (`sgt/cli/porcelain.py::REFUSALS`).** U18 shipped `sgt git
+  <tree-mutating-sub>` as *advisory* — it printed a hint but still ran git, so the working tree
+  could move behind sgt's tracking. This unit turns it into a **refusal**: 12 subcommands
+  (`checkout`/`switch`/`restore`/`pull`/`merge`/`reset`/`rebase`/`revert`/`cherry-pick`/`stash`/
+  `am`/`apply`) are refused outright, each naming the sgt verb that owns that job (`pull`/`merge`/
+  `rebase` all route to `sgt sync` — integration is op-set union + fork-surfacing, not a text
+  merge; `reset`→`sgt undo`; `stash`→`sgt save`, since a dirty tree is just ops not yet landed).
+  `--force` overrides: the token is consumed, the plain git command runs, and the existing
+  out-of-band detector (`gitbind`) re-mines on next contact — the same net that already catches a
+  raw `git` call made outside sgt entirely. Anything not in the table (read/inspect verbs, plumbing
+  like `remote`/`config`/`tag`) still passes through untouched, unchanged from U18.
+- **D3, three daily-loop verbs (`sgt switch`/`sgt save`/`sgt undo`).** Each composed from existing
+  lens machinery, no new kernel call: `switch <branch>` is `get` (absorb current reality, R9) +
+  `gitbind.checkout_branch` + `get` (mine the newly-current ref); `save [-m]` is the put-path sugar
+  (`get` + `lens.put` + `lens.record_ideal`), with "nothing to save" decided by **the ideal**, not
+  git's dirty flag (`get(repo).op_ids == current_ideal(repo).op_ids`) — necessary because an
+  unconfigured `.sgt/` reads as dirty to `gb.is_clean()` unconditionally (the pre-existing
+  `sync_refuses_dirty_tree` golden), which would make every `save` look dirty. `undo` inverts the
+  most recent recorded ideal edit.
+- **The ideal-edit journal, the one piece of new state.** `lens.record_ideal` previously kept only
+  the *latest* ideal per ref — sufficient for persistence, but nothing to invert. It now pushes the
+  outgoing ideal onto a local, gitignored per-ref stack (`.sgt/local/ideal_journal.json`, a new
+  non-committed artifact in `state.py`) before overwriting, guarded by a `journal: bool = True`
+  kwarg so `undo_ideal` itself can pop-and-restore without re-journaling its own write (`journal=
+  False`) — otherwise every undo would push a redo-able entry and the stack would never drain.
+  `undo_ideal` restores the popped ideal via a fresh witness commit (history is append-only; undo
+  is a forward edit, never a rewind) and reports `removed`/`added` op-id sets by set difference
+  against the ideal just replaced.
+- **Verified:** `tests/test_porcelain.py` — the journal's empty/single/repeated-pop semantics
+  directly against `lens.undo_ideal`, and `switch`/`save`/`undo` through `cli.main` on real repos,
+  ending in the plan's named scenario (switch → save → undo → a raw `git checkout` still refuses —
+  the whole loop is sgt verbs, never a direct git tree mutation). `tests/test_cli_git_passthrough.py`
+  (already updated) covers the refusal table + `--force` override end to end.
+- **Golden snapshot note.** `save`/`undo` are the only verbs that report their own witness commit's
+  sha (every other verb reports only content-addressed op ids) — and unlike the corpus fixtures'
+  pinned commit timestamps, that commit is made with the real wall clock, so its sha is not
+  reproducible run to run. `tests/golden/test_cli_golden.py::_redact_witness_sha` freezes a
+  placeholder instead of the literal value; confirmed stable across two independent runs before
+  committing.
+
+### Product surface — U27 the three-tier file boundary (D4) (2026-07-12)
+
+Config-driven tier resolution, plus a latent grounding bug this unit's verification surfaced.
+
+- **Three tiers, config over conditionals.** `sgt/core/tiers.py` resolves each mined path to
+  `entity` (tree-sitter grammar available, the existing default), `opaque` (whole-file
+  pseudo-symbol -- the built-in fallback for a grammar-less path, or an explicit override), or
+  `ignored` (excluded from mining entirely). Two config sources, both read via `.sgtignore`
+  (gitignore-style patterns, ignored-tier only) and `.sgt/tiers.json` (explicit
+  entity/opaque/ignored pattern lists); conflict priority is `ignored` > `opaque` > `entity`.
+  **LAW-0:** `tiers.load_tiers_at(gb, sha)` reads both files from the *mined commit's own tree*,
+  never the working tree -- tier assignment stays a pure function of the commit, so two replicas
+  with divergent uncommitted tier maps still re-mine identical history to byte-identical ops
+  (`test_divergent_working_tier_maps_mine_to_byte_identical_ops`).
+- **Two named safety guards (`sgt tiers set`, `sgt/cli/tiers.py`).** Promoting a grammar-less path
+  to `entity` before this kernel actually has a grammar for it is a content no-op -- it silently
+  degrades back to `opaque`, so earlier commits' ops are byte-identical and the chain just
+  continues linking before/after versions across the override boundary
+  (`test_entity_override_on_ungrammared_path_is_a_content_noop`). Marking a currently-covered path
+  `ignored` refuses outright (data loss shape: it would silently stop tracking live content) and
+  names `sgt revert` as the remedy (`test_ignoring_a_live_path_refuses_and_names_revert` --
+  reverting *every* content-bearing op touching the path, not just its entity op: a single-function
+  file mines an entity op plus head/tail residue ops, all three content-bearing and all three
+  independently covering the path).
+- **Genuine kernel bug found during verification, fixed in the same unit.** `mine.py`'s
+  opaque-tier branch and its pre-existing "unparseable mid-edit degrades to whole-file" branch
+  both unconditionally computed a new whole-file touch's `before_version` from the real git blob
+  OID whenever a parent commit existed -- correct only when the *old* version of the file was
+  itself mined as a whole-file symbol (`symbol == path`) at that parent. When the old version was
+  mined per-entity instead (exactly the entity→opaque demotion this unit adds, U27's own test 5),
+  no op with `symbol == path` ever produced that OID as an `after_version`, so `order.py`'s
+  `_grounded` fixpoint (`before is None OR (sym, before) in produced`) could never match it -- the
+  new whole-file op became **permanently ungrounded** and was silently dropped from every
+  `lens.get()`-derived ideal, despite still appearing in `mine()`'s raw output. This is not
+  U27-specific: it's a **pre-existing latent bug** in the mid-edit-degrade path too (the existing
+  `test_unparseable_midedit_degrades_to_whole_file` never caught it because it only inspected
+  `mine()`'s raw list, never materialized through `lens.get()`/`code()`). **Fix:** a shared helper,
+  `_prior_whole_file_version(gb, old_ref, parent, tier_cfg_parent)`, that returns the parent's real
+  blob OID only when a whole-file producer genuinely existed there (parent tier resolves to
+  `opaque`, or the old content itself failed to parse -- mirroring the exact existing degrade
+  condition), and `None` otherwise (including `ignored`, where no producer ever existed) -- a
+  `None` before_version is a fresh chain root, which *is* groundable. Both call sites now go
+  through this helper instead of a bare `gb.blob_oid(parent, old_ref) if parent else None`.
+  Strengthened `test_unparseable_midedit_degrades_to_whole_file` to assert the degraded op is
+  actually live (`op.id in ideal.op_ids`, `code()` materializes it) rather than only checking
+  `mine()`'s raw output, so this class of regression can't go uncaught again.
+- **Verified:** `tests/core/test_tiers.py` (5 tests: derived-flag collapse on lockfiles, the
+  entity-override content-no-op, the ignored-tier revert-then-refuse-then-succeed guard, LAW-0
+  divergent-working-tree determinism, and entity→opaque demotion materializing as whole-file
+  post-fix) plus the strengthened `test_unparseable_midedit_degrades_to_whole_file`. Full suite
+  green; three golden snapshots regenerated for the new `derived_paths` field (state/tiers views)
+  and the new `sgt tiers`/`sgt tiers set` help lines -- reviewed diffs, no unrelated drift.
+
+### Product surface — U29 closure-explanation UX, rerouted from branch-as-selection (2026-07-12)
+
+U25's gate came back red (median closure 34 ops, only 46% of feature nodes in bounds), so this
+unit ships the disposition it recorded: `sgt select`/`sgt why` explain a selection's closure --
+never materialize one.
+
+- **`sgt select <feature>...`** (`sgt/lens/select.py`) resolves each feature ref via
+  `lens.verbs.resolve_feature`, unions the op-sets, and computes the induced closure with
+  `order.downset_in` -- the same collision-safe, ideal-relative primitive the ideal-edit verbs
+  use. Reports direct op count, closure op count, touched files, and every op the closure pulled
+  in beyond the direct set, grouped by *that op's own feature* with one representative
+  chain/requires path each.
+- **Closure follows chain + `requires` edges only, never clustering co-membership** (the design
+  doc's true-vs-incidental-coupling rule, S2 point 3). The explanatory path is a BFS scoped to
+  the already-computed closure (`_closure_edges` restricts `order.chain_edges`/
+  `reference_edges`/declared edges to the closure set up front, so an edge naming an op outside
+  it can never appear) -- computed once, not re-derived per group.
+- **Hub diagnosis** (`_hub_diagnosis`) tallies, among `requires` edges whose consumer is in the
+  selected feature(s) and whose producer is in the closure but attributed elsewhere, which
+  referenced symbol accounts for the most distinct foreign producer ops -- only `requires` edges
+  count, since a chain edge is the same symbol and can't cross a feature boundary. Reports the
+  top symbol and its producer count, with `sgt split`/`sgt identity split` named as the remedy.
+- **`sgt why <op> [--for <feature>]`** (same module): with no target feature, the plurality vote
+  (`tree.assign_ops_to_leaves`'s own logic, re-run over one op's footprint via
+  `tree._leaf_member_index`) that assigned the op its feature, every leaf it touched and how many
+  symbols voted for each. With `--for`, the same chain `select` would report for that op's
+  group -- refusing by name (`"... is not part of ...'s selection closure"`) rather than
+  guessing when the op genuinely isn't in that feature's closure.
+- **Test fixture required committing the dependency and the dependent in separate commits.**
+  Two def-use-connected entities added in the *same* commit get unioned into one op by mining's
+  untangling, producing no cross-op `requires` edge -- confirmed empirically before writing the
+  fixture. `tests/lens/test_select.py` hand-crafts the feature tree directly (`tree.save`,
+  bypassing the Leiden clusterer -- consistent with U25's own finding that clustering quality,
+  not `requires`-closure, is this codebase's actual bottleneck) but still computes `op_leaf` via
+  the real `tree.assign_ops_to_leaves`, so membership stays consistent with genuinely mined ops.
+- **Verified:** 6 new tests -- a cross-feature `requires` chain reports exactly that chain and
+  the hub it names; three independent features never drag each other in; three callers of the
+  same foreign symbol still produce one hub op count, not an inflated closure; `why` with and
+  without `--for`, including the explicit refusal when the op isn't in the target closure. Full
+  suite green (no regressions), golden snapshots unchanged (the golden CLI-surface test doesn't
+  enumerate every verb's help line, so the two new verbs didn't require regeneration).
+
+### Product surface — U30 the session layer (D5) (2026-07-12)
+
+A thin named wrapper around a real `git worktree`, not a daemon -- `sgt session start`/`status`/
+`land`/`gc`, plus `fsck` surfacing (never reaping) leaked sessions.
+
+- **A session's scratch tree is a real `git worktree`** (`sgt/core/session.py`), checked out on a
+  fresh `sgt-session/<name>` branch off the current (or `--base`) branch, living at
+  `.sgt/local/sessions/<name>` -- nested inside the main repo's own gitignored `.sgt/local/`, so it
+  never shows up in the main tree's `git status`. `sgt/state.py` gets a new `sessions` artifact
+  slot (`.sgt/local/sessions.json`, local, gitignored, never travels) recording each session's
+  branch, scratch path, target branch, the op-ids present at its base, owning pid, and start time.
+- **`land` needed no new union machinery -- it reuses U23's CAS `sgt.core.sync.land` verbatim**,
+  called with `repo` = the scratch worktree's own path. Worktrees share one ref store, so the CAS
+  in `land()` operates on the *shared* `refs/heads/<branch>` regardless of which worktree issues
+  the call -- this was the key unblocking insight; no new op-union code was written for this unit.
+  `Session.target_branch` (a branch name, resolved at `start()` from `--base` or the current
+  checked-out branch) is tracked separately from `Session.base_ref` (the sha) -- a session always
+  lands onto a named branch, never a detached sha, matching `land`'s nature as a branch-record CAS.
+- **Provenance is stamped in the *main* repo's store, not the scratch tree's.** `session.land()`
+  computes `new_op_ids` before calling `sync.land`, then -- once the landing commit is mined into
+  the main repo (`lens.get(repo)`) -- calls `Store(repo).attribute(op_id, (Attribution(sha=sha,
+  session=name) for sha in op.provenance))` per new op, mirroring `sgt.loop.match._stamp_session`'s
+  existing convention (a different, unrelated notion of "session"). This must run against the main
+  repo's `Store`: `.sgt/ops/<id>` files are separate on-disk copies per worktree, so attribution
+  written into the scratch tree's copy would never be visible to anyone reading the main repo.
+- **A successful `land` is the session's terminal step**, unlike `gc` (crash-only reaping): it
+  removes the scratch worktree and drops the session record, since the session's job is done. A
+  *refused* land (fork/red oracle/contention) leaves both in place so the agent can fix and retry.
+- **Owning-pid liveness, not age, distinguishes a crash from a long-running session (D5's
+  pitfall).** `start()` records `os.getppid()` (the invoking agent/shell -- sgt's own CLI pid is
+  transient and meaningless by the time anyone checks); `gc` reaps a session once `os.kill(pid, 0)`
+  raises `ProcessLookupError` (POSIX, stdlib, no new dependency), or every session with `--force`.
+  `sgt fsck` now also reports (never reaps) any session whose owning pid has died -- a
+  `stale_sessions` JSON field / a printed line per leaked session, advisory only (doesn't flip
+  `ok`, since a leaked worktree isn't store corruption).
+- **The early-fork warning is a report, never a lock (S6).** `overlaps(repo)` diffs each live
+  session's new ops' footprints pairwise and names any pair that shares a symbol; `sgt session
+  status --watch` polls this every couple of seconds until interrupted -- the only thing that ever
+  loops, and only for as long as it's asked to. No daemon anywhere in this unit.
+- **Test-fixture bug found and fixed during verification.** A helper calling `gb.commit_all(...)`
+  then `lens.get(repo)` produces a base commit whose tree never includes `.sgt/local/.gitignore` or
+  `.sgt/ops/*`, since `get()`/`_sync()` is what writes those files, *after* the commit that would
+  need to carry them. A `git worktree` checked out at that base sha inherits the same gap and is
+  therefore permanently dirty per `git status` -- which trips `sync.land()`'s clean-tree
+  precondition. Fixed (matching `tests/core/test_land.py`'s existing `_seed_shared`/`_stage_local_op`
+  pattern) by following every `get()` with `lens.put(repo, ideal, message=...)` +
+  `lens.record_ideal(repo, ideal, put_sha)`, which materializes and commits a witness so the tree is
+  genuinely clean and `.sgt/ops/*` is tracked.
+- **A single `def bar(): ...` in a new file mines to 4 ops, not 1** (anchor + residue + HEAD-residue
+  + the symbol itself) -- the land-provenance test's initial `ops_added == 1` assumption was wrong
+  about the kernel's actual mining granularity, not about session semantics; fixed to compare
+  against `len(session_mod.new_op_ids(session))` computed before landing, rather than a hardcoded
+  count.
+- **Verified:** `tests/core/test_session.py`, 9 tests -- a session materializes a real worktree on
+  its own branch and refuses a name collision; two sessions editing the same symbol are reported
+  overlapping (and independent edits are not); a landed session's ops carry
+  `Attribution(session=...)` in the *main* repo's store and the scratch worktree + record are both
+  gone; a red-oracle land leaves the session fully intact; `gc` reaps only a dead-pid session (or
+  every session with `--force`) and `fsck` stays clean after; `stale_sessions` reports without
+  reaping. Full suite green (no regressions); golden CLI snapshot regenerated twice -- once for the
+  four new `sgt session ...` help lines, once for `fsck --json`'s new `stale_sessions: []` field --
+  both diffs reviewed, no unrelated drift.
+
+### Product surface — U31 provenance and trust surfaces (2026-07-12)
+
+Renders what U22 structured and U30 populates: `sgt.api.trust_view` (the trust queue) and
+`map_view`'s additive `sessions` rollup, plus the two verbs the plan scoped -- `sgt revert
+--session` (addressing by provenance) and `sgt review-queue ack` (the one new mutation, a
+committed G-Set review record).
+
+- **A review record is a fourth content-addressed G-Set artifact**, following D8/claims and
+  C10/proposals exactly: `sgt/core/review.py`'s `ReviewRecord` is keyed by the sorted op-id set
+  alone (`scope`/`note` ride along but aren't part of identity), so re-acking the same op-set is a
+  no-op on content and `sgt sync`'s union is the same trivial file-presence check as the other two
+  (`materialize._union_reviews`, added next to `_union_claims`/`_union_proposals`). No field-level
+  merge, no conflict possible -- confirmed by a two-clone sync test round-tripping a committed
+  review file byte-for-byte.
+- **Addressing by provenance resolves a session *name* to an op-set via structured attribution,
+  never the session record.** `session.ops_by_session(repo, name)` scans `Store(repo).all_ops()`
+  for `Attribution(session=name)` (D7, U22) -- this is deliberately independent of
+  `plan._load_sessions`/`land`'s bookkeeping, which is dropped the moment a session lands. The
+  effect: `sgt revert --session s1` still resolves correctly arbitrarily long after `s1` landed
+  and its record is gone, exactly as the plan's provenance framing requires. `verbs.
+  plan_revert_session` then reuses `plan_revert_feature`'s grouped `I \ (∪ upset_in(x))` closure
+  verbatim -- no new ideal-algebra code, just a different way to name the op-set going in.
+- **`trust_view` is a pure grouping read, not a new source of truth.** It walks every mined op
+  once, skips anything already covered by `review.reviewed_op_ids` (a review, once acked, is gone
+  from the queue for good -- there is no "unack"), and buckets the rest by provenance key: each
+  distinct `session`/`agent` string an op's `Attribution` list carries, or the literal string
+  `"drift"` for an op with no attribution at all but flagged by `compute_checkpoint(repo).
+  drift_op_ids` (U14). An op with *both* real attribution and drift status appears once, under its
+  attribution key, not under `"drift"` -- attribution is the more specific claim about who's
+  responsible, and the plan's own worked example groups by session/agent first.
+- **`map_view`'s `sessions` field is an additive rollup with the same recursion shape as the
+  pre-existing `op_count`**: a leaf feature node's sessions are exactly the set of `session`
+  strings among its ops' attribution; an interior node's is the union of its children's. This
+  keeps the tree's existing children-recursion invariant (every rollup is a fold over `children`,
+  never a second pass over the flat op list) and required no change to how the tree itself is
+  built -- only a new field on the already-emitted node dicts.
+- **No new mutation semantics, exactly per the plan's boundary.** `review-queue ack` is the *only*
+  new way to change state; acting on a trust-queue group (accepting, rejecting, retagging) is
+  entirely the pre-existing verb surface (`revert --session`, `feature move`). `trust_view` never
+  writes anything.
+- **Rail/TUI panel work deferred, following U29's precedent.** Per D6 (not yet implemented in
+  code), the live surface for the trust queue is scoped to core + `sgt.api` + CLI this unit --
+  `sgt review-queue list`/`ack` and `sgt revert --session` are the full deliverable; a dedicated
+  panel rendering `trust_view` interactively is left for whichever unit actually builds the rail.
+- **Verified:** `tests/core/test_review.py` (4 tests) -- ack/load round-trip and re-ack idempotence,
+  an empty op-set refusal, cross-record union, and G-Set travel across a sync. Three new
+  `plan_revert_session` tests in `tests/core/test_verbs.py` (removes exactly a landed session's
+  op-set; refuses an unknown session name; reports "no change" once already reverted) -- 12/12 in
+  that file. Six new `tests/test_api.py` tests for `map_view`'s `sessions` field and `trust_view`
+  (empty queue, a landed session's ops grouped under its name, dequeuing on ack, an unattributed
+  drift op grouped under `"drift"`). Full suite green (`uv run pytest -q`, live-LLM test
+  deselected as usual); golden snapshots regenerated once, diff reviewed as purely additive -- a
+  new `"sessions": []` field on every feature-tree node, plus the two new `sgt revert --session`/
+  `sgt review-queue` help lines in the captured `sgt help` output.
+
+### Product surface — U32 the review surface + GitHub publish (2026-07-12)
+
+Closes S8: `sgt.api.proposal_review_view` (the partial-accept checklist), `sgt propose land
+--subset` (the CLI half of the down-closed-subset flow D6 assigns to a future rail), and `sgt
+propose publish` (the `gh`-CLI porcelain D7 specifies).
+
+- **`proposal_review_view` computes the checklist's `requires` edges by reusing U29's closure
+  primitive, not new logic.** Each delta feature's `requires` is `order.downset_in(op, base∪Δ,
+  ops, declared)` unioned over that feature's own Δ ops, restricted to *other* delta features'
+  ids and to chain/reference/declared edges -- the same trace `sgt why`/`sgt select` walk, just
+  scoped to a proposal's op-set instead of the current ideal. `op_ids` rides along per feature so
+  a caller (the CLI, or a future rail) can build an `accept_ids` set without recomputing
+  attribution itself.
+- **`--subset` takes feature ids or labels**, resolved against the checklist: an unknown ref
+  refuses by name; a chosen feature that omits a feature it `requires` refuses naming the missing
+  one *by label* ("'Baz' requires Qux -- include it in --subset too") -- the CLI does this
+  resolution itself (`propose.land`'s own guard only checks `accept_ids <= Δ` and downward-closure,
+  not requires-completeness), matching the plan's "the rail computes nothing itself" framing by
+  keeping the closure computation in `proposal_review_view`, not duplicated in the CLI.
+- **A real, if narrow, kernel finding surfaced while testing partial acceptance: two ops from
+  adjacent insertions in the *same file* are not an independently-landable slice.** Adding two
+  functions back-to-back mints a shared `__residue__` op for the whitespace gap between them; a
+  feature-checklist entry built from *only* a function's own bare symbol op (no
+  anchor/residue) is `is_valid_ideal`-passing but not self-consistent -- materializing it alone
+  produced a corrupt file (one function's body spliced directly against another's with no
+  separator). This is not a `propose.land` bug: `land`'s own landing-commit trailers and the
+  materialized tree were exactly right for whatever op-set was actually accepted; the trap is
+  constructing an `accept_ids` set that looks like "one feature" but is missing a residue op a
+  positionally-adjacent feature also touches. Two features in two disjoint files have no such
+  coupling and partial-accept exactly as the plan's acceptance wording requires. Filed as a v1
+  limitation below rather than fixed -- `proposal_review_view`'s `op_ids`/`requires` fields
+  already give a caller everything needed to avoid it (a feature's full closure, computed the same
+  way `sgt why` would), and the plan's test scenario doesn't require intra-file adjacent-feature
+  acceptance to work.
+- **A second, unrelated trap while verifying the fix: `lens.ideal_for_ref` is not the right tool
+  to check what a `land` actually landed onto a *different* branch than the checked-out one.**
+  Its docstring already says so (a coarse provenance-scan over a ref's whole ancestry, never
+  consulting the persisted ideal table) but it is easy to reach for anyway. When `land` targets a
+  branch other than the checked-out one, the landing commit is a real 2-parent merge and that
+  merge's ancestry still reaches back through the pre-split commit that carried the *full* Δ's
+  trailers -- so a provenance-scan over-reports even though the landing commit's own trailers (and
+  the materialized tree) are exactly the accepted subset. The fix was in the test (read the landing
+  commit's own trailers / file content), not in `land`.
+- **`publish` resolves create-vs-update by branch, not by proposal id.** `gh pr list --head
+  <branch> --state open` before every publish; an existing open PR gets `gh pr edit` (title/body
+  refreshed from the current `render_github`), otherwise `gh pr create` -- so re-publishing after
+  a claim lands or the base moves updates the same PR rather than opening a second one, per D7. No
+  network call happens without `shutil.which("gh")` first; its absence refuses cleanly with the
+  install URL rather than a raw `FileNotFoundError`.
+- **Rail work deferred, following U29/U31's precedent (D6).** The checked-list UI, greyed-out
+  disabled-uncheck-with-requires-tooltip, and staleness banner are rail concerns explicitly out of
+  scope this unit; `proposal_review_view` is the complete API surface a rail would call, and `sgt
+  propose land --subset`/`sgt propose publish` are the complete CLI surface a scripted or
+  agent-driven caller has today.
+- **Verified:** `tests/core/test_propose_review.py` (8 tests) -- the checklist's disjoint
+  `op_ids`/empty `requires` for two unrelated features, the unknown-proposal-id error path, partial
+  land exactly landing the chosen feature's ops (checked via the landing commit's own trailers and
+  file presence, not `ideal_for_ref` -- see above), `propose.land`'s own subset-validity guard, the
+  CLI's requires-refusal naming the missing feature by label, `gh`-absent refusal, the
+  create-vs-edit branch (subprocess faked, no network), and a `gh`-present integration guard
+  (skipped when `gh` is absent) that pushes to a real local `origin` and confirms `gh pr create`
+  fails cleanly off a non-GitHub remote. Full suite green (`uv run pytest -q`, live-LLM test
+  deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
+  land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
@@ -1193,6 +1516,20 @@ this plan's U29 status line.
 - **Import lifecycle is not yet a verb.** Imports are ordinary residue bytes; no verb yet warns
   "this revert leaves an unused import" or offers to prune one, though the reference edges and
   `verb_preview_view`'s before/after diff already carry what such a verb would need.
+- **A feature's "own" ops are not always an independently-landable slice when it sits directly
+  adjacent to another feature in the same file** (U32). Two functions added back-to-back share a
+  `__residue__` op for the whitespace between them; accepting only one function's bare symbol op
+  via `propose.land(accept_ids=...)` passes `is_valid_ideal` but materializes corrupt content (no
+  separator between the accepted function and whatever followed it in the original edit). Two
+  features in disjoint files have no such coupling. `proposal_review_view`'s per-feature closure
+  (`requires`) does not currently surface this positional/residue coupling as a `requires` edge
+  (it only traces chain/reference/declared edges, and a shared residue op is attributed to
+  exactly one feature, not flagged as shared) -- a caller that builds `accept_ids` from anything
+  narrower than a feature's full owned-op set for adjacent same-file features can reproduce this.
+  Deferred rather than fixed: the plan's own test scenario is satisfied by disjoint features, and
+  a real fix (residue ops declaring a `requires` on whichever feature is positionally adjacent, or
+  rejecting a checklist split that would cut through a shared residue) touches feature-tree
+  construction, not this unit's scope.
 - **`revert --keep-dependents` is one-hop only** (U11): only direct reference-edge dependents of
   the target get a continuation hollow; anything further downstream drops like a plain revert.
 - **Two languages** (Python, TypeScript/TSX) via the tree-sitter grammars wired into

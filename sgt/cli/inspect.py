@@ -65,10 +65,16 @@ def _cmd_preview(args) -> int:
 
 def _fsck(repo: str, as_json: bool = False) -> int:
     """Verify the kernel op store's integrity (plan U3): every ``.sgt/ops/<id>`` file's content
-    hashes to its own filename. Repair (re-mining) is a follow-up step, not this verb's job."""
+    hashes to its own filename. Repair (re-mining) is a follow-up step, not this verb's job.
+
+    Also reports (never reaps -- that's `sgt session gc`'s job, D5's pitfall) any scratch-tree
+    session whose owning process has died -- a leaked worktree fsck should surface, not silently
+    ignore. This is advisory: a stale session doesn't flip `ok`, since it isn't store corruption."""
+    from sgt.core import session as session_mod
     from sgt.core.store import fsck as run_fsck
 
     report = run_fsck(repo)
+    stale = [s.name for s in session_mod.stale_sessions(repo)]
     if as_json:
         return _emit_json(
             {
@@ -76,6 +82,7 @@ def _fsck(repo: str, as_json: bool = False) -> int:
                 "checked": report.checked,
                 "bad_hash": list(report.bad_hash),
                 "corrupt": list(report.corrupt),
+                "stale_sessions": stale,
             }
         )
     icon = "✓" if report.ok else "✗"
@@ -84,6 +91,8 @@ def _fsck(repo: str, as_json: bool = False) -> int:
         print(f"    bad hash: {name}")
     for name in report.corrupt:
         print(f"    corrupt: {name}")
+    for name in stale:
+        print(f"    stale session: {name!r} (owning process died -- `sgt session gc` will reap it)")
     return 0 if report.ok else 1
 
 
@@ -119,9 +128,11 @@ def _state(repo: str, as_json: bool = False) -> int:
     print(f"{len(view['frontier'])} symbol(s) at the frontier; "
           f"{len(view['covered_paths'])} path(s) covered, "
           f"{len(view['entity_paths'])} at entity granularity ({pct:.0f}%)")
+    derived = set(view["derived_paths"])
     for path in view["covered_paths"]:
         mark = "entity" if path in set(view["entity_paths"]) else "whole-file"
-        print(f"  {path}  ({mark})")
+        tag = " [derived]" if path in derived else ""
+        print(f"  {path}  ({mark}){tag}")
     if view["oracle_configured"]:
         from sgt.core.oracle import overall_status
 

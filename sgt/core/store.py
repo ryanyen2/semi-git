@@ -70,6 +70,7 @@ def _serialize(op: Op) -> bytes:
         "intent": op.intent,
         "miner_version": op.miner_version,
         "off_chain": op.off_chain,
+        "derived": op.derived,
     }
     return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
 
@@ -105,6 +106,7 @@ def _deserialize(data: bytes) -> Op:
         intent=payload.get("intent"),
         miner_version=payload["miner_version"],
         off_chain=payload.get("off_chain", False),
+        derived=payload.get("derived", False),
     )
 
 
