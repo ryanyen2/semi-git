@@ -625,6 +625,18 @@ class GitBinding:
             raise GitError("merge commit succeeded but HEAD is unresolved")
         return head
 
+    # -- transactional land: snapshot / restore (plan U5, R7) ----------------
+    def restore_worktree_to(self, commit_ish: str) -> None:
+        """Roll the working tree and index back to `commit_ish`, then drop any untracked file the
+        rolled-back work left behind -- *except* under `.sgt/`, whose op store is monotone
+        (content-addressed, append-only) and must survive a rollback (R7). `land` snapshots its
+        clean pre-land HEAD and calls this on every non-landing exit (red gate, open fork, lost
+        CAS, contention, crash recovery), so a land that does not land leaves no trace. Safe
+        because `land` requires a clean tree at entry: any untracked file present at restore time
+        was created by the candidate materialization, not by the user."""
+        self._git("reset", "--hard", commit_ish)  # restore tracked files (source + `.sgt` metadata)
+        self._git("clean", "-fd", "-e", ".sgt")    # remove candidate-created untracked source only
+
 
 def init_store(repo_path: str | Path) -> tuple[GitBinding, Path]:
     """`sgt init`: bind (or create) a git repo and ensure `.sgt/` exists."""

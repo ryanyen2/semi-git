@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 from sgt import state
-from sgt.core import lens, sync
+from sgt.core import lens, oracle, sync
 from sgt.core.store import Store, fsck
 from sgt.store.gitbind import GitBinding
 
@@ -155,18 +155,178 @@ def test_land_blocked_on_a_red_oracle_does_not_move_the_tip(tmp_path):
     assert GitBinding(bare).rev_parse("refs/heads/main") == before  # tip frozen
 
 
+def _worktree_state(repo: Path) -> dict[str, bytes]:
+    """A byte snapshot of everything a land might mutate: `main.py` plus every `.sgt` file except
+    the monotone op store (`.sgt/ops/`, append-only) and the local verdict cache (`.sgt/local/
+    oracle.json`, the legitimate product of running the oracle) and the lock file. A transactional
+    land that does not land must leave this snapshot byte-identical (R7)."""
+    state_map: dict[str, bytes] = {}
+    main = repo / "main.py"
+    if main.is_file():
+        state_map["main.py"] = main.read_bytes()
+    sgt = repo / ".sgt"
+    for p in sorted(sgt.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(repo).as_posix()
+        if rel.startswith(".sgt/ops/") or rel in (
+            ".sgt/local/oracle.json", ".sgt/local/lock", ".sgt/local/land_pending.json"
+        ):
+            continue
+        if p.name.startswith(".tmp-"):
+            continue
+        state_map[rel] = p.read_bytes()
+    return state_map
+
+
+def test_red_land_leaves_no_trace_transactional(tmp_path):
+    """R7 (U5): a land blocked by a red oracle rolls back completely -- the working tree is
+    byte-identical to pre-land and not one reconciled `.sgt` artifact (pins/declared/aliases/tree/
+    forks/ideal or the ideal table) was written. The review's reproduction: a red-gated land used
+    to leave six mutated `.sgt` artifacts plus a rewritten tree."""
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 1")
+    wt = tmp_path / "wt"
+    _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
+    _stage_local_op(wt, "baz")  # a real local op that a green land would union onto the branch
+
+    before = _worktree_state(wt)
+    report = sync.land(wt, branch="main")
+    after = _worktree_state(wt)
+
+    assert not report.landed and "oracle-green" in report.blocked_reason
+    assert after == before, (
+        "red land mutated state that should have rolled back: "
+        f"{sorted(set(before) ^ set(after)) or [k for k in before if before[k] != after.get(k)]}"
+    )
+
+
 def test_land_refuses_without_an_oracle(tmp_path):
-    """No oracle configured -> a green verdict cannot exist, so `land` refuses (LAW-G)."""
+    """No oracle configured -> a green verdict cannot exist, so `land` refuses (LAW-G) with zero
+    mutation: not even a monotone op is added before the refusal (U5)."""
     bare = _seed_shared(tmp_path, oracle_cmd=None)
     wt = tmp_path / "wt"
     _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
     _stage_local_op(wt, "baz")
 
     before = GitBinding(bare).rev_parse("refs/heads/main")
+    before_state = _worktree_state(wt)
     report = sync.land(wt, branch="main")
 
     assert not report.landed and "no oracle configured" in report.blocked_reason
     assert GitBinding(bare).rev_parse("refs/heads/main") == before
+    assert _worktree_state(wt) == before_state  # refused before touching anything
+
+
+def test_cas_exhaustion_restores_and_persists_nothing(tmp_path, monkeypatch):
+    """R7 (U5): when every CAS attempt loses (forced here), the land reports contention and rolls
+    back completely -- the shared tip is frozen and no reconciled artifact survives."""
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
+    wt = tmp_path / "wt"
+    _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
+    _stage_local_op(wt, "baz")
+
+    before_tip = GitBinding(bare).rev_parse("refs/heads/main")
+    before_state = _worktree_state(wt)
+    monkeypatch.setattr(GitBinding, "update_ref_cas", lambda self, ref, new, old: False)
+    report = sync.land(wt, branch="main", retries=3)
+
+    assert not report.landed and "contention" in report.blocked_reason and report.attempts == 3
+    assert GitBinding(bare).rev_parse("refs/heads/main") == before_tip  # tip frozen
+    assert _worktree_state(wt) == before_state  # every attempt's flush was rolled back
+
+
+def test_crashed_land_is_recovered_on_next_land(tmp_path):
+    """R7 (U5): a `land` that crashed after materializing its candidate tree but before the CAS
+    leaves a `land_pending` journal; `fsck` names the interrupted ref, and the next `land` rolls
+    the working tree back to the journaled snapshot before proceeding to land cleanly."""
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
+    wt = tmp_path / "wt"
+    _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
+    _stage_local_op(wt, "baz")
+    snapshot = GitBinding(wt).head()
+
+    # simulate the crash: a half-written candidate tree plus the surviving pending journal
+    (wt / "main.py").write_text("HALF-WRITTEN CANDIDATE\n", encoding="utf-8")
+    state.save_json(wt, "land_pending", {"ref": "refs/heads/main", "snapshot": snapshot})
+    assert fsck(wt).pending_land == ("refs/heads/main",)  # fsck names the interrupted state
+
+    report = sync.land(wt, branch="main")
+    assert report.landed
+    assert fsck(wt).pending_land == ()  # journal cleared
+    assert "HALF-WRITTEN" not in (wt / "main.py").read_text(encoding="utf-8")  # rolled back first
+
+
+# -- checked-out vs other-branch landing (plan U5) ---------------------------------------------
+
+def _seed_checked_out(root: Path) -> tuple[GitBinding, str]:
+    """A normal (non-bare) repo checked out on its default branch, seeded with one green op-set.
+    Returns the binding and the checked-out ref (e.g. `refs/heads/main`)."""
+    from sgt.store.gitbind import init_store
+    gb, _ = init_store(root)
+    (root / "main.py").write_text(_BASE, encoding="utf-8")
+    state.save_json(root, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
+    gb.commit_all("init")
+    ideal = lens.get(root)
+    put = lens.put(root, ideal, message="sgt: init")
+    lens.record_ideal(root, ideal, put)
+    return gb, gb.symbolic_ref()
+
+
+def _commit_op(gb: GitBinding, root: Path, symbol: str) -> str:
+    """Commit a new op onto the checked-out branch via the normal put path (so `.sgt/ops` is
+    tracked and the tree is clean afterward). Returns the post-put HEAD."""
+    (root / "main.py").write_text(
+        (root / "main.py").read_text(encoding="utf-8") + f"\n\ndef {symbol}():\n    return 0\n",
+        encoding="utf-8",
+    )
+    gb.commit_all(f"add {symbol}")
+    ideal = lens.get(root)
+    put = lens.put(root, ideal, message=f"sgt: add {symbol}")
+    lens.record_ideal(root, ideal, put)
+    return put
+
+
+def test_green_land_on_checked_out_ref_leaves_no_phantom_diff(tmp_path):
+    """U5: landing the checked-out branch leaves working tree, index, and the moved ref in
+    agreement -- `git status` is clean afterward (no phantom diff)."""
+    repo = tmp_path / "repo"
+    gb, ref = _seed_checked_out(repo)
+    _commit_op(gb, repo, "baz")
+    branch = ref.rsplit("/", 1)[-1]
+
+    report = sync.land(repo, branch=branch)
+
+    assert report.landed
+    assert gb.rev_parse(ref) == report.land_sha  # the checked-out ref advanced to the landed commit
+    assert gb.head() == report.land_sha          # HEAD followed it (symbolic ref)
+    assert gb.is_clean()                          # no phantom git status diff
+    assert state.load_json(repo, "witness")[ref] == report.land_sha
+    # the landed ideal is left oracle-green, so later verbs see it verified (not pending)
+    assert oracle.overall_status(oracle.verdict_for(repo, lens.current_ideal(repo))) == "pass"
+
+
+def test_land_other_branch_updates_only_that_branch_and_restores_session_tree(tmp_path):
+    """U5: landing a *non-checked-out* branch advances only that branch's ref/table/witness, leaves
+    the checked-out ref untouched, and restores the session's own working tree (undo stays scoped
+    to the checked-out ref, so no journal entry is written for the landed branch)."""
+    repo = tmp_path / "repo"
+    gb, cur = _seed_checked_out(repo)
+    gb._git("branch", "release")           # a target branch at the seed tip, not checked out
+    session_head = _commit_op(gb, repo, "baz")  # advance the checked-out branch past release
+
+    session_tree_before = (repo / "main.py").read_bytes()
+    wit_before = dict(state.load_json(repo, "witness", default={}))
+    report = sync.land(repo, branch="release")
+
+    assert report.landed
+    assert gb.rev_parse("refs/heads/release") == report.land_sha  # release advanced
+    assert gb.rev_parse(cur) == session_head and gb.head() == session_head  # checked-out ref frozen
+    assert gb.is_clean()
+    assert (repo / "main.py").read_bytes() == session_tree_before  # session tree restored
+    wit_after = state.load_json(repo, "witness", default={})
+    assert wit_after["refs/heads/release"] == report.land_sha  # target branch's witness updated
+    assert wit_after[cur] == wit_before[cur]                    # checked-out ref's witness untouched
+    assert "refs/heads/release" not in state.load_json(repo, "ideal_journal", default={})  # no undo entry
 
 
 # -- concurrency (the SYNC-2 core) -------------------------------------------------------------

@@ -290,6 +290,9 @@ class FsckReport:
     invalid_ideals: tuple[str, ...] = ()      # ref keys whose stored ideal isn't a valid ideal
     unreachable_witnesses: tuple[str, ...] = ()  # ref keys whose witness SHA no longer resolves
     mixed_versions: tuple[str, ...] = ()      # distinct miner_versions present, only when >1 (U10)
+    pending_land: tuple[str, ...] = ()        # a `land` crashed mid-flight; the ref it was advancing
+    # (U5/R7). Advisory: the next `sgt land` auto-recovers by rolling back to the journaled snapshot,
+    # so this names an interrupted-but-recoverable state rather than corruption -- never flips `ok`.
 
 
 def _chain_gaps(ops: list[Op]) -> list[str]:
@@ -355,6 +358,11 @@ def fsck(repo: str | Path) -> FsckReport:
             unreachable.append(key)
 
     mixed = tuple(sorted(versions)) if len(versions) > 1 else ()
+
+    # A `land` crashed mid-flight leaves its journal behind (U5/R7); name the interrupted ref.
+    pending = state.load_json(repo, "land_pending", default=None)
+    pending_land = (pending["ref"],) if pending and pending.get("ref") else ()
+
     return FsckReport(
         ok=not (bad_hash or corrupt or invalid_ideals or unreachable or mixed),
         checked=len(names),
@@ -364,4 +372,5 @@ def fsck(repo: str | Path) -> FsckReport:
         invalid_ideals=tuple(sorted(invalid_ideals)),
         unreachable_witnesses=tuple(sorted(unreachable)),
         mixed_versions=mixed,
+        pending_land=pending_land,
     )
