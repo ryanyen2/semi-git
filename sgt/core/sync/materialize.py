@@ -82,30 +82,36 @@ def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
     ]
 
 
-def persist_reconciled(
-    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
-) -> None:
-    """Persist the reconciled union to the working tree -- everything `materialize` writes *before*
-    it commits: theirs' op files for real (unioning provenance a same-id collision would otherwise
-    drop, R8), the reconciled pins/declared/aliases/tree, the durable fork record, theirs' claim
-    G-Set, the folded source, and the in-tree ideal-recovery record. Does not stage or commit.
-
-    Shared verbatim by sync's `materialize` (which then runs a 2-parent `complete_merge`) and by
-    `land` (U23, which stages + builds the commit off-ref then CAS-advances the branch). Factored so
-    the branch-record CAS reuses the exact reconciled-tree construction sync already tests, with no
-    behavior change to sync itself."""
+def stage_candidate(
+    repo: Path, gb: GitBinding, ing: Ingested, res: Resolution
+) -> dict[str, bytes]:
+    """Persist the union's ops and write the reconciled *source* into the working tree -- but not
+    one byte of the reconciled `.sgt` metadata. This is the half that must run *before* `land`'s
+    oracle gate so the oracle sees the real candidate tree, yet leaves nothing that a non-landing
+    exit must clean up beyond a worktree restore: op adds are monotone (content-addressed, append-
+    only, R8) and the source is git-tracked, so `restore_worktree_to` rolls both back. Returns the
+    materialized `{path: bytes}` for the caller. Shared by sync (which flushes metadata straight
+    after) and land (which gates in between)."""
     store = Store(repo)
     store.init()
     for op in [*ing.theirs_ops, *ing.mined_ops]:
         store.add(op)  # re-unions provenance a same-id collision would otherwise drop (R8); the
         # mined foreign commits (C3) have no op file anywhere else, so they land for real here
-
-    # Ops are persisted above (each `Store.add` self-locked); the reconciled metadata -- forks and
-    # the ideal record that name those ops, pins, declared edges, aliases, tree -- then writes
-    # under one locked section so it stays mutually consistent and no reader sees a half-union
-    # (R5/R6). The op adds are deliberately *before* this section: `Store.add`'s own lock must not
-    # nest inside `locked_section` (self-deadlock; see its contract).
     materialized = code(res.merged_ideal, ing.all_ops)
+    lens._write_working_tree(repo, materialized, ing.all_ops)
+    return materialized
+
+
+def flush_reconciled_metadata(
+    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
+) -> None:
+    """Write the reconciled metadata -- the six artifacts the review found a red `land` leaking
+    (pins, declared OR-Set, aliases, tree, durable fork record, in-tree ideal recovery) plus the
+    claim/proposal/review G-Set unions -- under one locked section so no reader sees a half-union
+    (R5/R6). `land` calls this only once the oracle is green and just before it builds the landing
+    commit, so a refused land never persists it; sync calls it unconditionally right after
+    `stage_candidate`. Op adds happened in `stage_candidate` (before this section) -- `Store.add`'s
+    own lock must not nest inside `locked_section` (self-deadlock; see its contract)."""
     with locked_section(repo):
         save_pins(repo, res.unioned_pins)
         lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
@@ -115,8 +121,20 @@ def persist_reconciled(
         _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
         _union_proposals(repo, gb, theirs_sha)  # committed review objects travel too (C10)
         _union_reviews(repo, gb, theirs_sha)  # trust-queue acks travel too (U31/S7)
-        lens._write_working_tree(repo, materialized, ing.all_ops)
         state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery (C5)
+
+
+def persist_reconciled(
+    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
+) -> None:
+    """Persist the whole reconciled union -- ops, folded source, and all reconciled metadata --
+    without staging or committing. Sync's `materialize` uses this verbatim (then runs a 2-parent
+    `complete_merge`); `land` (U5) instead composes the two halves with its oracle gate between
+    them, so a refused land rolls back with nothing persisted. Factored so the branch-record CAS
+    reuses the exact reconciled-tree construction sync already tests, with no behavior change to
+    sync itself."""
+    stage_candidate(repo, gb, ing, res)
+    flush_reconciled_metadata(repo, gb, theirs_sha, ing, res)
 
 
 def materialize(

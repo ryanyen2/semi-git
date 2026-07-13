@@ -92,6 +92,7 @@ def _fsck(repo: str, as_json: bool = False) -> int:
                 "invalid_ideals": list(report.invalid_ideals),
                 "unreachable_witnesses": list(report.unreachable_witnesses),
                 "mixed_versions": list(report.mixed_versions),
+                "pending_land": list(report.pending_land),
                 "stale_sessions": stale,
             }
         )
@@ -113,6 +114,9 @@ def _fsck(repo: str, as_json: bool = False) -> int:
     for gap in report.chain_gaps:
         print(f"    chain gap (advisory): {gap} has no producing op "
               f"(off-ref predecessor -- benign unless unexpected)")
+    for ref in report.pending_land:
+        print(f"    interrupted land on {ref!r} (advisory): a crash left it mid-flight -- "
+              f"the next `sgt land` rolls the working tree back to its pre-land snapshot")
     for name in stale:
         print(f"    stale session: {name!r} (owning process died -- `sgt session gc` will reap it)")
     return 0 if report.ok else 1

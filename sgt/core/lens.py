@@ -361,7 +361,9 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
     return gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
 
 
-def record_ideal(repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True) -> None:
+def record_ideal(
+    repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True, ref_key: str | None = None
+) -> None:
     """Persist an explicitly-edited `ideal` as the current ref's authoritative committed set and
     advance the ref's witness to `witness_sha` -- the durability an ideal-edit verb (U8's
     revert/pin/restore/cherry-pick) needs after `put()` commits. Without it, the next `get()`
@@ -375,7 +377,9 @@ def record_ideal(repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: b
     itself records with it off, so a second undo reaches the edge before the one just undone rather
     than toggling)."""
     repo = Path(repo)
-    key = _ref_key(GitBinding(repo)) or witness_sha
+    # `ref_key` lets `land` (U5) record under the *target* branch's key rather than the checked-out
+    # ref -- landing a non-checked-out branch must advance that branch's table/witness, not HEAD's.
+    key = ref_key if ref_key is not None else (_ref_key(GitBinding(repo)) or witness_sha)
     # The journal push, the table overwrite, and the witness advance are one read-modify-write:
     # holding the lock across all three closes the double-journal-entry window (a concurrent
     # `record_ideal` reading the same journal and both appending) and keeps table+witness

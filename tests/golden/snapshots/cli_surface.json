@@ -80,7 +80,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"checked\": 29,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"stale_sessions\": []\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"checked\": 29,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"pending_land\": [],\n  \"stale_sessions\": []\n}\n"
     },
     "text": {
       "argv": [

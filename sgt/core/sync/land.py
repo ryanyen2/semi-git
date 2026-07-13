@@ -36,6 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sgt import state
 from sgt.config import load_oracle_config
 from sgt.core import lens, oracle
 from sgt.core.ideal import Ideal
@@ -63,30 +64,55 @@ class LandReport:
     identity_events: tuple[dict, ...] = field(default_factory=tuple)
 
 
+_NO_ORACLE = (
+    "no oracle configured -- `sgt land` refuses to advance a shared branch to an "
+    "unverified op-set (LAW-G); add `.sgt/oracle.json` and re-run"
+)
+
+
 def _oracle_gate(repo: Path, ideal: Ideal) -> str | None:
     """LAW-G: `None` iff the resulting op-set is oracle-green (safe to advance the shared tip);
     else a human reason the land is refused. A shared tip only ever points at a *verified* op-set,
     so *no oracle configured* also refuses (a green verdict cannot exist, so the tip must not move).
-    The oracle runs its tiers against the already-materialized candidate tree (the caller persists
-    the union before gating), keyed to `ideal_key(ideal)` exactly as U9 intends."""
+    The oracle runs its tiers against the already-materialized candidate tree (the caller stages the
+    union source before gating), recording the verdict keyed to `ideal_key(ideal)` -- so a green
+    land's merged ideal is left oracle-green for later verbs, exactly as U9 intends."""
     if load_oracle_config(repo) is None:
-        return ("no oracle configured -- `sgt land` refuses to advance a shared branch to an "
-                "unverified op-set (LAW-G); add `.sgt/oracle.json` and re-run")
-    verdict = oracle.run(repo, ideal=ideal)  # runs tiers against the materialized candidate
+        return _NO_ORACLE
+    verdict = oracle.run(repo, ideal=ideal)  # runs tiers against the staged candidate source
     if oracle.overall_status(verdict) != "pass":
         return "the resulting op-set is not oracle-green (LAW-G); fix the failure, then `sgt land`"
     return None
+
+
+def _recover_pending_land(repo: Path, gb: GitBinding) -> None:
+    """Roll back a land the previous process crashed out of (R7): if a `land_pending` journal
+    survives, its owning `land` died between materializing the candidate tree and the CAS (or
+    before clearing it on a clean exit), so the working tree may hold an un-landed candidate.
+    Restore it to the journaled pre-land snapshot and clear the journal. Called at the very start
+    of every `land`, before the clean-tree precondition, so a crashed land never wedges the next."""
+    pending = state.load_json(repo, "land_pending", default=None)
+    if pending and pending.get("snapshot"):
+        gb.restore_worktree_to(pending["snapshot"])
+    if pending:
+        state.save_json(repo, "land_pending", {})
 
 
 def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandReport:
     repo = Path(repo)
     gb = GitBinding(repo)
 
+    _recover_pending_land(repo, gb)  # undo any crashed prior land before touching the tree (R7)
     lens.get(repo)  # mine-on-contact: absorb local reality first (R9)
     if not gb.is_clean():
         raise lens.DirtyWorkingTreeError(
             "sgt land requires a clean working tree -- `sgt put` or commit first"
         )
+
+    # LAW-G with zero mutation: no oracle -> a green verdict cannot exist, so refuse before staging
+    # anything (not even the monotone op adds). Pre-checked here so this path leaves no trace at all.
+    if load_oracle_config(repo) is None:
+        return LandReport(branch=branch or "?", landed=False, blocked_reason=_NO_ORACLE)
 
     if branch is None:
         ref_name = gb.symbolic_ref()
@@ -99,6 +125,30 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     if ours is None:
         raise ValueError("sgt land requires at least one commit")
 
+    # The pre-land tree is clean (checked above), so `ours` (HEAD) is the exact snapshot to restore
+    # to on any non-landing exit (R7). Whether `ref` is the checked-out branch decides two things:
+    # a checked-out win leaves HEAD *on* the landed commit (keep the materialized tree, journal the
+    # edit for `sgt undo`); a non-checked-out win advanced only the shared ref, so the session's own
+    # tree is restored and undo stays scoped to the checked-out ref.
+    checked_out = gb.symbolic_ref() == ref
+    snapshot = ours
+    # Journal the pre-land snapshot so a crash mid-land is recoverable (R7). Cleared on every
+    # *normal* exit below; only an exception/crash leaves it, which is exactly when the next land's
+    # `_recover_pending_land` should roll the tree back to `snapshot`.
+    state.save_json(repo, "land_pending", {"ref": ref, "snapshot": snapshot})
+
+    def _blocked(reason: str, attempt: int, res=None, forks=()) -> LandReport:
+        gb.restore_worktree_to(snapshot)  # a land that does not land leaves no trace (R7)
+        state.save_json(repo, "land_pending", {})  # normal (non-crash) exit -- clear the journal
+        extra = {} if res is None else dict(
+            pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
+            identity_events=tuple(res.tree_result.get("identity_events", [])),
+        )
+        return LandReport(
+            branch=branch, landed=False, blocked_reason=reason, attempts=attempt, ops_added=0,
+            forks=forks, **extra,
+        )
+
     for attempt in range(1, retries + 1):
         old = gb.rev_parse(ref)  # the shared tip we race against (None if the branch is new)
         theirs_sha = old if old is not None else ours
@@ -108,31 +158,24 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
 
         # A genuine fork blocks the land (unlike sync, which advances the fork-free part): the shared
         # tip is a gated, single-lineage record, so a same-symbol fork must be reconciled with
-        # `sgt merge-op` before it can advance. Pure -- nothing is persisted yet, nothing to roll back.
+        # `sgt merge-op` before it can advance.
         if res.forks:
-            return LandReport(
-                branch=branch, landed=False, blocked_reason="open fork(s) -- run `sgt merge-op`",
-                forks=res.forks, attempts=attempt, ops_added=0,
-                pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
-                identity_events=tuple(res.tree_result.get("identity_events", [])),
-            )
+            return _blocked("open fork(s) -- run `sgt merge-op`", attempt, res, forks=res.forks)
 
-        # Persist the reconciled union into this session's own working tree/index (the same
-        # construction sync's `materialize` uses), so the LAW-G gate runs the oracle against the
-        # actual candidate tree. No ref has moved yet, so a red gate leaves nothing to undo.
-        _materialize.persist_reconciled(repo, gb, theirs_sha, ing, res)
+        # Stage the reconciled *source* only (ops are monotone; metadata waits), so the LAW-G gate
+        # runs the oracle against the real candidate tree. No metadata, no ref move yet -- a red gate
+        # rolls back with a worktree restore alone.
+        _materialize.stage_candidate(repo, gb, ing, res)
 
         gate = _oracle_gate(repo, res.merged_ideal)
         if gate is not None:
-            return LandReport(
-                branch=branch, landed=False, blocked_reason=gate, attempts=attempt, ops_added=0,
-                pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
-                identity_events=tuple(res.tree_result.get("identity_events", [])),
-            )
+            return _blocked(gate, attempt, res)
 
-        # Build the landing commit off-ref, then CAS the branch onto it. Parents: the branch tip we
-        # advance from, plus our own HEAD when it diverges (a real 2-parent merge); deduped and
-        # None-dropped so a fresh branch (old is None) roots at our HEAD alone.
+        # Green: now flush the reconciled metadata so the landing commit's tree carries it, build the
+        # commit off-ref, and CAS the branch onto it. Parents: the branch tip we advance from, plus
+        # our own HEAD when it diverges (a real 2-parent merge); deduped and None-dropped so a fresh
+        # branch (old is None) roots at our HEAD alone.
+        _materialize.flush_reconciled_metadata(repo, gb, theirs_sha, ing, res)
         gb.stage_all()
         tree = gb.write_tree()
         parents = [p for p in dict.fromkeys([old, ours]) if p is not None]
@@ -140,18 +183,24 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
         new = gb.commit_tree(tree, parents, f"sgt land: {branch}", trailers=trailers)
 
         if gb.update_ref_cas(ref, new, old):
-            lens.record_ideal(repo, res.merged_ideal, new)
+            # Won the race: the ref now durably points at `new`. Clear the crash journal *first* so
+            # a crash in the tiny post-CAS window can't make the next land roll back a landed commit.
+            state.save_json(repo, "land_pending", {})
+            # Persist the durable ideal table/witness for the *target* branch only after the CAS,
+            # journaling the edit (for `sgt undo`) only when landing the checked-out ref.
+            lens.record_ideal(repo, res.merged_ideal, new, ref_key=ref, journal=checked_out)
+            if not checked_out:
+                gb.restore_worktree_to(snapshot)  # advanced only the shared ref; restore our tree
             ops_added = len(res.merged_ideal.op_ids - ing.theirs_ideal_ids)
             return LandReport(
                 branch=branch, landed=True, land_sha=new, ops_added=ops_added, attempts=attempt,
                 pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
                 identity_events=tuple(res.tree_result.get("identity_events", [])),
             )
-        # CAS lost: another session advanced `ref` off `old`. Re-loop and re-ingest against the
-        # now-moved tip -- the re-union retry.
+        # CAS lost: another session advanced `ref` off `old`. Roll back this attempt's staged tree
+        # and metadata, then re-loop to re-ingest against the now-moved tip -- the re-union retry.
+        gb.restore_worktree_to(snapshot)
 
-    return LandReport(
-        branch=branch, landed=False,
-        blocked_reason=f"persistent contention -- branch moved on every one of {retries} attempts",
-        attempts=retries,
+    return _blocked(
+        f"persistent contention -- branch moved on every one of {retries} attempts", retries,
     )

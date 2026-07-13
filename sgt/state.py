@@ -119,6 +119,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # branch/scratch path/target branch/base op-ids/owning pid/start time. Per-clone, never
     # travels -- a session's scratch tree is a `git worktree` of *this* clone's object store.
     "sessions": _Artifact(("local", "sessions.json"), committed=False),
+    # local, gitignored transactional-land journal (`sgt land`, U5/R7): `{ref, snapshot}` written
+    # before the candidate tree is materialized and cleared on every landing/non-landing exit. A
+    # crash mid-land leaves it behind, so the next `land` finds it and rolls the working tree back
+    # to `snapshot`; `fsck` names the interrupted state. Per-clone, never travels.
+    "land_pending": _Artifact(("local", "land_pending.json"), committed=False),
 }
 
 
