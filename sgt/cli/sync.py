@@ -144,6 +144,14 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
     print(f"{icon} sync {report.remote}/{report.branch}: merged {report.merge_sha[:12]}")
     if report.ops_added:
         print(f"    +{report.ops_added} op(s)")
+    # R12 loudness: a degraded base or a lost-provenance tip fell back to weaker semantics -- never
+    # silent. `merged` above may read as clean, so name the recovery path that was refused.
+    if report.base_recovery == "none":
+        print("    ⚠ base recovery: none — no witnessed merge-base; used union semantics "
+              "(cannot delete work one side removed)")
+    if report.theirs_recovery == "none":
+        print("    ⚠ theirs' tip has sgt ops but no witnessed trailers/record — re-mine on their "
+              "side (`sgt log`) or restore the `Sgt-Op:` trailers, then sync again")
     if report.forks:
         print(f"    ⚠ {len(report.forks)} OPEN FORK(S) — forked symbol(s) sit at the common ancestor "
               f"until resolved:")

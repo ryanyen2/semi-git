@@ -47,6 +47,12 @@ class SyncReport:
     pin_contradictions: tuple[Contradiction, ...] = ()
     declared_cycles: tuple[tuple[str, str], ...] = ()
     identity_events: tuple[dict, ...] = field(default_factory=tuple)
+    # U7/R12: how the merge-base ideal was recovered for three-way resolve, and how theirs' tip was
+    # -- `trailers` | `ideal-record` | `mined` | `none`. `base_recovery == "none"` means the base
+    # degraded to ∅ (union semantics); `theirs_recovery == "none"` is the tip footgun (ops but no
+    # witnessed provenance). Either warrants a loud warning -- an unwitnessed claim was refused.
+    base_recovery: str = "none"
+    theirs_recovery: str = "mined"
 
 
 def sync(repo: str | Path, remote: str | None = None, branch: str | None = None) -> SyncReport:
@@ -80,11 +86,22 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
     else:
         message = "merged"
 
+    # R12: an unwitnessed base or a lost-provenance tip degraded to a set we couldn't trust, so the
+    # union fell back to weaker semantics. Name it loudly in the message -- a silent degrade reads
+    # as a clean merge when it isn't.
+    if ing.base_recovery == "none":
+        message += (" -- base recovery: none (no witnessed merge-base; using union semantics, "
+                    "which cannot delete work removed on one side)")
+    if ing.theirs_recovery == "none":
+        message += (" -- theirs' tip carries sgt ops but no witnessed trailers/record; re-mine on "
+                    "their side (`sgt log`) or restore the `Sgt-Op:` trailers, then sync again")
+
     return SyncReport(
         remote=fetched.remote, branch=fetched.branch, merged=not res.forks,
         fetched_sha=fetched.theirs_sha, merge_sha=merge_sha, ops_added=ing.ops_added,
         forks=res.forks,
         pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
         identity_events=tuple(res.tree_result.get("identity_events", [])),
+        base_recovery=ing.base_recovery, theirs_recovery=ing.theirs_recovery,
         message=message,
     )

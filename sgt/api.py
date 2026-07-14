@@ -751,6 +751,8 @@ def sync_view(report) -> dict:
         "ops_added": report.ops_added,
         "forks": [list(triple) for triple in report.forks],
         "open_fork_count": len(report.forks),
+        "base_recovery": report.base_recovery,  # U7/R12: how the merge-base ideal was recovered
+        "theirs_recovery": report.theirs_recovery,  # ...and theirs' tip; "none" = a refused claim
         "pin_contradictions": [
             {"kind": c.kind, "members": list(c.members), "detail": c.detail}
             for c in report.pin_contradictions

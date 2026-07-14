@@ -126,3 +126,140 @@ def test_sync_materializes_exactly_the_ideal_algebra(tmp_path):
     gb = GitBinding(b)
     parents = gb._git("rev-list", "--parents", "-n", "1", report.merge_sha).stdout.split()
     assert len(parents) == 3  # the merge commit itself + its two parents (ours, theirs)
+
+
+# -- U7: base recovery + trailer/record witness-containment (R12) --------------------------------
+
+import subprocess as _subprocess
+
+from sgt.core.store import _serialize
+from sgt.core.sync.ingest import recover_base
+from tests.core.test_sync import _clone, _init_bare
+
+
+def _squash(repo: Path, tip_sha: str, parent_sha: str, message: str) -> str:
+    """A single commit with `tip_sha`'s tree, a plain (trailer-less) message, and `parent_sha` as
+    parent -- exactly what GitHub's squash-merge produces (mirrors test_sync_hardening)."""
+    tree = _subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", f"{tip_sha}^{{tree}}"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return _subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", tree, "-p", parent_sha, "-m", message],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+def test_u7_base_recovery_from_witnessed_trailers(tmp_path):
+    """Scenario 1: the merge-base (an sgt-native `put` commit) carries witnessed `Sgt-Op:` trailers,
+    so its *full* ideal is recovered -- both foo and bar, not just a divergent contribution."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", _BASE + "\n\ndef baz():\n    return 42\n", "A: add baz")
+    _push(a)
+
+    gb = GitBinding(b)
+    fetched = fetch(Path(b), gb, "origin", "main")
+    ing = ingest(Path(b), gb, fetched.theirs_sha, fetched.ours_sha)
+
+    assert ing.base_recovery == "trailers"
+    by_id = {op.id: op for op in ing.all_ops}
+    base_syms = {sym for oid in ing.base_ideal_ids for sym in by_id[oid].footprint}
+    assert {"main.py::foo", "main.py::bar"} <= base_syms  # the base's full ideal (both symbols)
+
+
+def test_u7_base_recovery_rejects_a_stale_inherited_record_and_mines(tmp_path):
+    """Scenario 2: a plain-git commit that inherited (never wrote) `.sgt/ideal.json` is not a
+    witness of it, so the stale record is rejected and recovery falls through to a full-range mine."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    _edit_and_commit(a, "main.py", _BASE, "init")  # witnessed ideal.json + trailers
+
+    (a / "README.md").write_text("docs\n", encoding="utf-8")  # touches no .sgt path
+    plain = GitBinding(a).commit_all("plain: docs only, no trailers")  # inherits stale ideal.json
+
+    ids, method = recover_base(Path(a), GitBinding(a), plain)
+    assert method == "mined"  # the inherited record was not trusted; full-range mine instead
+    syms = {sym for op in Store(a).all_ops() if op.id in ids for sym in op.footprint}
+    assert {"main.py::foo", "main.py::bar"} <= syms  # still a full ideal, recovered by mining
+
+
+def test_u7_squash_tip_recovers_via_witnessed_record(tmp_path):
+    """Scenario 3: a squash-merge destroys theirs' tip trailers but the committed `.sgt/ideal.json`
+    survives and the tip witnesses it -- recovered via the record (existing C5 behavior preserved)."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    _edit_and_commit(a, "main.py", _BASE, "init")
+    _push(a)
+    base_sha = GitBinding(a).head()
+    b = _clone(remote, tmp_path / "b")
+    lens.get(b)
+
+    _edit_and_commit(a, "main.py", _BASE + "\n\ndef baz():\n    return 42\n", "A: add baz")
+    squash = _squash(a, GitBinding(a).head(), base_sha, "Squash merge (no trailers)")
+    _subprocess.run(["git", "-C", str(a), "push", "-q", "-f", "origin", f"{squash}:main"],
+                    check=True, capture_output=True)
+
+    report = sync.sync(b, remote="origin", branch="main")
+    assert report.theirs_recovery == "ideal-record"
+    assert "def baz" in (b / "main.py").read_text(encoding="utf-8")  # fine ideal, not a coarse re-mine
+
+
+def test_u7_disjoint_base_recovers_none_and_warns(tmp_path):
+    """Scenario 4: no witnessed merge-base (disjoint histories) -> `base_recovery: none`, a loud
+    warning, and union semantics. `recover_base(None)` is the ∅ case directly."""
+    assert recover_base(tmp_path, GitBinding(tmp_path), None) == (frozenset(), "none")
+
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    _edit_and_commit(a, "main.py", _BASE, "init")
+    _push(a)
+    b = _clone(remote, tmp_path / "b")
+    lens.get(b)
+
+    # A publishes an unrelated orphan branch -- no common ancestor with b's main.
+    _subprocess.run(["git", "-C", str(a), "checkout", "-q", "--orphan", "feature"],
+                    check=True, capture_output=True)
+    _subprocess.run(["git", "-C", str(a), "rm", "-rfq", "."], check=True, capture_output=True)
+    (a / "other.py").write_text("def unrelated():\n    return 0\n", encoding="utf-8")
+    GitBinding(a).commit_all("feature: orphan root")
+    _subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "feature"],
+                    check=True, capture_output=True)
+
+    report = sync.sync(b, remote="origin", branch="feature")
+    assert report.base_recovery == "none"
+    assert "base recovery: none" in report.message  # loud, not silent
+
+
+def test_u7_tip_with_new_ops_but_no_trailers_is_a_detected_footgun(tmp_path):
+    """Scenario 5: theirs' tip carries a *new* `.sgt/ops` blob (it ran sgt) but no trailers and no
+    witnessed record -- a detected footgun. Recovery degrades to ∅ with a named remedy rather than
+    mis-mining a coarse squash."""
+    a, b = _two_clones(tmp_path, _BASE)
+    new = make_op({"main.py::foo": ("v1", "v2")}, {"main.py::foo": b"x"}, kind="rework")
+    (a / ".sgt" / "ops" / new.id).write_bytes(_serialize(new))  # a raw op blob, no trailers/record
+    GitBinding(a).commit_all("A: raw op blob, no trailers")
+    _push(a)
+
+    report = sync.sync(b, remote="origin", branch="main")
+    assert report.theirs_recovery == "none"
+    assert "no witnessed trailers/record" in report.message  # named remedy
+
+
+def test_u7_forged_trailers_are_rejected(tmp_path):
+    """Scenario 6: a `Sgt-Op:` trailer naming an id no `.sgt/ops` blob backs is forged -- not
+    witnessed by the tip's tree -- so it is not trusted and recovery falls through to mining."""
+    a, b = _two_clones(tmp_path, _BASE)
+    forged = "f" * 64
+    (a / "main.py").write_text(_BASE.replace("return 1", "return 9"), encoding="utf-8")
+    GitBinding(a).commit_all(f"A: edit\n\nSgt-Op: {forged}")  # trailer with no backing blob
+    _push(a)
+
+    gb = GitBinding(b)
+    fetched = fetch(Path(b), gb, "origin", "main")
+    ing = ingest(Path(b), gb, fetched.theirs_sha, fetched.ours_sha)
+
+    assert ing.theirs_recovery == "mined"  # forged trailer rejected -> fell through to mine
+    assert forged not in ing.theirs_ideal_ids  # the forged id never enters theirs' ideal
