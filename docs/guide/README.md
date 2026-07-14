@@ -1,17 +1,18 @@
 # semi-git user guide
 
-`sgt` versions your codebase by its **features**, not its diffs. Start here.
+`sgt` tracks your codebase as a set of symbol-level edits on top of git, so you can remove or
+re-add one feature's worth of history on its own. Start here.
 
-1. **[The semantic tree](the-semantic-tree.md)** — the mental model. What's in the tree, the one
-   rule (sgt never writes your code), the `plan → checkpoint → revert/switch/reconcile` workflow,
-   and how the visual tools map onto it. **Read this first.**
-2. **[Getting started](getting-started.md)** — install, your first feature, plugging features in
-   and out, and where things live on disk.
-3. **[VS Code extension](vscode-extension.md)** — semantic blame, feature heatmap, CodeLens, the
-   feature DAG, and diff-based revision navigation, in-editor.
-4. **[Terminal UI](tui.md)** — browse the graph, inspect, preview, and apply ops from the shell.
-5. **[User workflows](workflows.md)** — solo, collaborative, and agent-session use cases with
-   concrete commands and real output, including what's still being hardened.
+1. [The model](the-semantic-tree.md) explains how `sgt` represents your code: ops, the ideal,
+   the fold back to files, and the feature tree. Read this first.
+2. [Getting started](getting-started.md) covers install, your first commit through `sgt`,
+   removing and re-adding a symbol, and where files live on disk.
+3. [User workflows](workflows.md) walks through the solo loop, working with other people, agent
+   sessions, and review, with real commands and output. It also says where each feature is
+   reliable today and where it is not.
+4. [VS Code extension](vscode-extension.md) covers the in-editor feature blame, the feature map,
+   and the revert preview.
 
-Reference material lives alongside: `docs/brainstorms/` (what it is), `docs/plans/` (how it's
-built), and `docs/design/` (design decisions).
+Reference material sits alongside this guide. `docs/brainstorms/` and `docs/ideation/` hold early
+thinking, `docs/design/` holds design decisions, and `docs/plans/` holds the implementation
+plans.

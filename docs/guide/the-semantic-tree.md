@@ -1,94 +1,78 @@
-# The semantic tree
+# The model
 
-git versions your codebase by its **text** — lines, diffs, commits. `sgt` versions it by its
-**features** — a graph of the capabilities, concepts, fixes, and infrastructure that make up
-your code, and which files/lines each one produced. This page is the mental model. If you only
-read one page, read this one.
+Git tracks your codebase as text: lines, diffs, and commits. `sgt` tracks it as symbol-level
+edits and rebuilds the files from them. This page explains how that works. If you read one page,
+read this one.
 
-## What's in the tree
+## Ops
 
-The tree (the *semantic DAG*) lives in `.sgt/` next to your `.git/`. It has two kinds of thing:
+`sgt` reads each git commit and breaks it into ops. An op is one change to one symbol, for
+example adding a function, editing its body, or removing it. Each op records which symbol it
+touched, the version it started from, the version it produced, and any other ops it depends on.
+`sgt` follows a symbol as it moves between files or gets renamed, so edits to the same logical
+function stay on one chain even when the text and location change.
 
-**Nodes** — one per feature/concept. Each node has:
+Every op has an id derived from its content, so the same edit always gets the same id, and two
+different edits never collide. The whole set of ops lives in `.sgt/ops/` and is committed to git
+along with your code.
 
-- a **kind**: `capability` (does something), `concept` (a domain idea), `infrastructure`
-  (plumbing), `fix` (revises earlier work), or `exploration`.
-- a **status**: `active` (in the materialized tree), `planned` (designed but not built yet),
-  `suspended` (temporarily switched off), or `quarantined` (held back because it doesn't yet
-  fit cleanly).
-- an **intent**: one sentence describing what it's for.
-- the **effects** it authored (the typed edits — add this function, replace that statement)
-  and the git **commits** that materialized them.
+## The ideal
 
-**Edges** — directed relationships between nodes:
+The current state of your codebase is an ideal. An ideal is a subset of all the ops, with two
+rules:
 
-- `depends_on`: this feature needs that one (inferred from which feature defines a name another
-  uses). This is what makes plug-out correct.
-- `revises`: a later fix of an earlier node.
-- `derives_from`: produced by iterating another node's intent.
+- It is closed downward. If an op is in the ideal, then every op it was built on is also in.
+- It is fork-free. For any one symbol, at most one version is in the ideal at a time. Two
+  competing versions of the same function is a fork, and an ideal never contains one.
 
-It is a **DAG**: dependencies point one way and never form a cycle.
+These two rules are what make removal clean. When you remove an op, `sgt` also removes everything
+that was built on it, so the result is still a valid ideal and still folds back to real files.
+
+## The fold
+
+`code(ideal)` folds the ideal back into files. It stitches each live symbol's bytes together in
+order, with the surrounding text between symbols preserved exactly. The output is byte for byte
+what is checked out. There is no separate copy of your files that can drift from the ops. The
+files are the fold of the current ideal.
+
+`sgt fsck` checks that the ideal is valid and that the fold matches what git has.
+
+## The feature tree
+
+Ops are fine-grained. A feature tree groups them into features so you can work at the level you
+think in. `sgt map` builds the tree by clustering symbols that change together and that reference
+each other across your history. Each feature gets an id like `F3` and a label, and the ids stay
+stable across rebuilds so a feature keeps its identity as the code grows.
+
+The automatic grouping needs history to work from. On a brand-new repo there is not enough signal
+to split features apart, so `sgt map` reports one feature for everything. As real commits
+accumulate, the seams appear. You can correct or seed the grouping by hand at any time with `sgt
+merge`, `sgt split`, `sgt rename`, and `sgt move`. These change labels and grouping only. They
+never touch your code.
 
 ## The one rule: sgt never writes your code
 
-Your coding agent (or you) writes the code, in your editor, however you like. `sgt` only ever
-reasons about and reorganizes the *graph*, and rebuilds the working tree from it. The test for
-"should sgt do this?" is: *does it invent logic that wasn't there?* If yes, that's the coding
-agent's job, not sgt's.
+You or your coding agent write the code, in your editor, however you like. `sgt` reads those
+edits, models them as ops, and rebuilds the working tree from the ideal. The test for whether a
+job belongs to `sgt` is whether it would invent logic that was not there. If it would, that is
+the coding agent's job.
 
-A consequence worth internalizing: **the working tree is a function of the graph.** Reverting a
-feature isn't a text patch — it's "drop that node's effects and re-materialize." That's why a
-plug-out is clean even months later.
+One thing follows from this. The working tree is the fold of the ideal. Reverting a feature drops
+that feature's ops and folds the ideal again. That is why a removal stays clean months later.
 
-## The workflow
+## Drift
 
-```
-   plan ──▶ implement (your agent) ──▶ checkpoint ──▶ revert / switch / reconcile
-    │            (you write code)         │                  (reshape the tree)
-    └─ decompose an intent into           └─ record what you built, distilled
-       reviewable PLANNED nodes              into typed effects under a node
-```
-
-1. **`sgt plan "…"`** — decompose an intent into reviewable `planned` nodes (no code yet). Each
-   carries its declared `provides`/`needs` and dependency edges, plus an authored **slug** (a short
-   ~5-word title), **context**, and **consequence** — so a planned decision reads as full rationale,
-   not just a one-line intent, before any code is written. (With no API key, planning degrades to the
-   intent line only.) A planned node that `provides` a name an existing decision already owns folds
-   into that lane as a **revision** — "enhance `preprocess`" stacks on the preprocess lane rather than
-   starting a new one. `sgt "…"` is shorthand.
-2. **Implement** a planned node with your own editor/agent.
-3. **`sgt checkpoint --fulfills <node> --intent "…"`** — record your on-disk edits under that
-   node and flip it `active`. A bare `sgt checkpoint` records ad-hoc edits as a new node.
-   Body edits are distilled at **statement** granularity, so two edits to different statements
-   of one function don't conflict.
-4. **Reshape** the tree without touching text:
-   - **`sgt revert <feature>`** — plug a feature out, by dependency closure.
-   - **`sgt switch <feature> off|on`** — suspend / restore (keeps history).
-   - **`sgt reconcile [<feature>]`** — re-gate quarantined work that now fits.
-   - Add **`--emit`** to any of the first two for a dry-run that writes nothing.
-
-Every mutation runs through the **confluence gate**: nothing lands unless it commutes with the
-current tree and preserves the codebase's invariants. Work that doesn't fit is *quarantined*
-(held, durable, visible) rather than silently dropped. Recover it by fixing the code and
-re-checkpointing (the superseded hold is swept automatically), or — when a *rival* changed — with
-`reconcile`. A checkpoint distills top-level defs, classes, imports, and single-name module
-bindings (`X = …`); other module-level statements are reported as needing manual review, not
-captured.
-
-## Drift: the tree vs. your editor
-
-When you edit files directly, the working tree **drifts** from the graph's replay. `sgt` detects
-this and refuses to mutate over un-recorded changes (so it never clobbers your work) until you
-`sgt checkpoint` them — or pass `--force`. Both UIs show drift so a stale overlay reads as stale.
+When you edit files directly, the working tree moves ahead of the recorded ideal. `sgt` calls the
+difference drift. It detects drift and refuses to change state on top of unrecorded edits, so it
+never overwrites your work. Run `sgt save` to record the edits as new ops, and the drift clears.
 
 ## How the visual tools map to this
 
-Both the [VS Code extension](vscode-extension.md) and the [TUI](tui.md) are windows onto this
-same tree (via `sgt … --json`):
+The [VS Code extension](vscode-extension.md) reads the same model through `sgt <verb> --json`.
 
-- **Semantic blame** = "which feature node owns this line" — the per-feature analogue of
-  `git blame`. Computed from the effect log, exact down to the statement.
-- **The graph view** = the DAG itself: nodes colored by a stable per-id hue, edges = `depends_on`,
-  status by shape/line-style, conflicts flagged.
-- **Revision navigation** = `revert`/`switch --emit` rendered as a read-only diff: see exactly
-  what plugging a feature out would do, before doing it.
+- Feature blame shows which feature owns each symbol in a file. It is the per-feature version of
+  `git blame`.
+- The feature map shows the tree itself, with each feature in its own color and a timeline of its
+  ops across commits.
+- The revert preview runs `sgt revert <feature> --emit` and shows what a removal would change,
+  before you commit to it.
