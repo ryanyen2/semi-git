@@ -35,7 +35,7 @@ from pathlib import Path
 import pytest
 
 from sgt import state
-from sgt.core import lens, oracle, sync
+from sgt.core import lens, oracle, sync, verbs
 from sgt.core.ideal import Ideal
 from sgt.core.lens import get
 from sgt.core.store import Store
@@ -383,3 +383,23 @@ def test_law_l_sync_does_not_move_a_bystander_or_switch_selection(tmp_path):
     assert b_head_after == report.merge_sha  # b advanced to its own merge commit, not to theirs
     assert b_head_before in set(GitBinding(b).commit_shas(b_head_after))  # old selection still an ancestor
     assert GitBinding(c).head() == c_head_before  # the bystander never moved
+
+
+# --- U8: reverts travel across replicas (three-way base subtraction) ----------------------------
+
+
+def test_u8_a_revert_travels_to_every_replica(tmp_path):
+    """U8/LAW-R: a revert computed on one replica removes the op on every other replica's next sync.
+    The three-way base subtraction stops the blind `ours ∪ theirs` from resurrecting what a teammate
+    removed -- the convergence-suite form of the two-clone reproduction in `test_sync.py`, and
+    idempotent (a second sync with the removal already applied is a no-op, LAW-I)."""
+    _, (r0, r1) = _replicas(tmp_path, _THREE, 2)
+    baz = next(o for o in Store(r0).all_ops() if "main.py::baz" in o.footprint)
+
+    verbs.revert(r0, baz.id)  # r0 reverts baz on its own clone...
+    _push(r0)
+
+    _sync_and_push(r1)  # ...and the revert travels on r1's next sync
+    assert baz.id not in lens.current_ideal(r1).op_ids
+    assert "def baz" not in (r1 / "main.py").read_text(encoding="utf-8")
+    assert _sync_and_push(r1).message == "already up to date"  # idempotent with a removal in play

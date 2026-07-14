@@ -349,6 +349,17 @@ def upset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = frozens
     return frozenset(ids - _grounded(ids - {target}, ops, declared))
 
 
+def upset_in_many(removed, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+    """The set generalization of `upset_in` (which is the single-target case): everything in
+    `ideal_ids` that stops being grounded once *all* of `removed` is taken out -- `ideal \\
+    _grounded(ideal - removed)`. Used by U8's three-way sync resolve: `removed` is the base ops one
+    side reverted, and this is exactly what must leave the union so a revert travels instead of
+    being resurrected. Collision-safe (grounding, not graph adjacency), and the complement is a
+    valid downward-closed ideal by construction, so the subtraction needs no further check."""
+    ids = set(ideal_ids)
+    return frozenset(ids - _grounded(ids - set(removed), ops, declared))
+
+
 def downset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
     """`target` and everything it builds on, within the (fork-free) source ideal `ideal_ids` --
     `restore/cherry-pick(target) = current_ideal | downset_in(target, source_ideal)`. Chain
