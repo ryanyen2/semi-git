@@ -1498,7 +1498,7 @@ propose publish` (the `gh`-CLI porcelain D7 specifies).
   deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
   land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
 
-### Kernel invariant & sync fixes — U1-U9 (2026-07-13)
+### Kernel invariant & sync fixes — U1-U10 (2026-07-13)
 
 Executing `docs/plans/2026-07-12-001-fix-kernel-invariants-and-sync-plan.md` (the multi-agent
 review's four failure classes). Phases A-C change no op identity and land individually.
@@ -1654,6 +1654,42 @@ review's four failure classes). Phases A-C change no op identity and land indivi
 
   `MINER_VERSION` 2→3 re-mints every op id (all three golden snapshots regenerated — symmetric
   op-id churn, structure unchanged). The full-store migration + closure re-measurement is U10.
+- **U10 store migration + re-measurement (R15/R13).** `sgt migrate ops-v3 [--apply]` carries an
+  existing v2 store to v3, following U21's gated pattern at full-store scope (`sgt/core/migrate.py`,
+  ~440 lines). Dry-run (default) re-mines the full history under v3 (which applies the rebirth/flip
+  chaining, recovering the closure a re-key alone would keep lost), builds the old→new id map — a
+  clean content re-hash for unchanged ops, a `{(symbol, after)}`-frontier match (bottoms
+  canonicalized) for rebirth/flip-remapped ops, orphan otherwise — and reports the split, writing
+  nothing. `--apply` writes a resume manifest (`local/migration_manifest.json`) with the map +
+  recovered ideal *before* the destructive phase, then writes the v3 ops → rewrites every op-id
+  artifact under one lock (ideal-table: current ref re-derived so closure lands, other refs
+  remapped+reduced; journal/forks/declared-OR-Set/staged/drafts/hollows/proposals remapped) →
+  prunes the pre-v3 op files. A crash leaves the manifest + a transiently-mixed store (fsck's U2
+  `mixed_versions` backstop flags it); a second `--apply` resumes from the manifest to the identical
+  final state (idempotent via a v3→v3 identity extension of the map). Claims orphan by design
+  (keyed by `ideal_key`, a hash over an op-id set that every re-key changes) — reported, never
+  re-keyed. `_check_miner_versions` now checks *both* stores and its `MinerVersionMismatch` text
+  names `sgt migrate ops-v3` with the team ordering rule (migrate the shared branch's landing clone
+  first, others re-sync after).
+
+  **Self-hosting migration of this repo's own store (local, gitignored, re-derivable):** 7840 v2
+  ops → 8152 v3 ops (the +312 are the rebirth prune+re-add ops v2's pseudo-fork collapsed).
+  5721 re-keyed cleanly, 1946 rebirth/flip-remapped, 173 orphaned (unreferenced off-ref/branch ops;
+  the ideal-table rewrite dropped **0** references). `sgt fsck` **clean** post-migration
+  (`ok=True`, `mixed_versions=()`, no bad hashes / invalid ideals).
+
+  **Closure re-measurement (the U9/U10 payoff), `code(current_ideal)` vs tracked source files:**
+
+  |                 | before (v2) | after (v3) |
+  |-----------------|-------------|------------|
+  | files covered   | 238 / 250   | 247 / 250  |
+  | files missing   | 12 (4.8%)   | 3 (1.2%)   |
+  | ops in ideal    | 6315        | 7050       |
+  | store ops excluded from ideal | 1525 (19.4%) | 1102 (13.5%) |
+
+  The ~20% op-level exclusion (the U22.5 figure) drops to 13.5%, and 9 of the 12 files the rebirth
+  pseudo-fork had erased from `code(I)` are recovered (file-level loss 4.8% → 1.2%). The 3 residual
+  missing files are genuine off-ref/unreproducible history (the orphan territory), not rebirth loss.
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
