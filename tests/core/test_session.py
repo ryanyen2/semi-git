@@ -115,8 +115,15 @@ def test_land_advances_the_target_branch_and_stamps_session_attribution(tmp_path
 
     get(tmp_path)  # absorb the landing commit into the main repo's store
     store = Store(tmp_path)
-    op = next(op for op in store.all_ops() if "b.py::bar" in op.footprint)
-    assert any(a.session == "s1" for a in op.attribution)
+    # The landed *add* op carries the attribution. Match by the attribution itself, not by
+    # `next(any b.py::bar op)`: mining the main repo's still-stale working tree (the land advanced
+    # the ref, not this checkout) also mints a transient pending drift-prune of the symbol, and
+    # which of the two sorts first by content-address id is not something to assert on.
+    attributed = [
+        op for op in store.all_ops()
+        if "b.py::bar" in op.footprint and any(a.session == "s1" for a in op.attribution)
+    ]
+    assert attributed, "the landed op should carry the session's attribution in the main store"
 
     # land is the terminal step: the scratch worktree and session record are both gone.
     assert session_mod.list_sessions(tmp_path) == ()

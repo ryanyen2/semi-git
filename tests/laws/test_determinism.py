@@ -80,3 +80,33 @@ def test_double_machine_mining_determinism(tmp_path):
     ops_a = mine(repo_a)
     ops_b = mine(repo_b)
     assert [op.id for op in ops_a] == [op.id for op in ops_b]
+
+
+@pytest.mark.skipif(not _HAS_MINE, reason=_MINE_SKIP)
+def test_rebirth_cycle_op_ids_deterministic_across_clones(tmp_path):
+    """R13 / LAW-0: the rebirth salt is derived from the *deleting commit's sha*, a pure function
+    of git history. An add->del->A->del->A cycle mined on two independent clones of the same
+    history yields byte-identical op ids -- the salt never leaks the local `.sgt` store or a
+    wall-clock, so the distinct-bottom-per-deletion chaining reproduces exactly."""
+    import subprocess
+
+    from sgt.store.gitbind import init_store
+    from sgt.core.mine import mine
+
+    origin = tmp_path / "origin"
+    gb, _ = init_store(origin)
+    (origin / "n.txt").write_text("A\n", encoding="utf-8")
+    gb.commit_all("add A")
+    (origin / "n.txt").unlink()
+    gb.commit_all("del 1")
+    (origin / "n.txt").write_text("A\n", encoding="utf-8")
+    gb.commit_all("re-add A")
+    (origin / "n.txt").unlink()
+    gb.commit_all("del 2")
+    (origin / "n.txt").write_text("A\n", encoding="utf-8")
+    gb.commit_all("re-add A again")
+
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "--quiet", "--local", str(origin), str(clone)], check=True)
+
+    assert [op.id for op in mine(origin)] == [op.id for op in mine(clone)]

@@ -1,7 +1,7 @@
 {
   "blame_view": {
     "features": {
-      "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46": {
+      "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d": {
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000"
       }
     },
@@ -9,7 +9,7 @@
     "spans": [
       {
         "end_line": 2,
-        "feature_id": "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
+        "feature_id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
         "sessions": [],
         "start_line": 1,
@@ -23,14 +23,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46"
+        "feature_id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "pkg.py",
-        "id": "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
+        "id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
         "kind": "feature",
         "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
         "op_count": 8,
@@ -42,7 +42,7 @@
       }
     ],
     "roots": [
-      "f-42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46"
+      "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d"
     ]
   },
   "oplog_view": {
@@ -54,74 +54,26 @@
           {
             "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
             "before": null,
+            "symbol": "util.py::__anchor__::helper"
+          }
+        ],
+        "id": "12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "before": null,
             "symbol": "pkg.py::__anchor__::compute"
           }
         ],
-        "id": "3402a2f25af875698d6630222f845156220a4dcd1890e834fe0b2bfe029afa20",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
-      {
-        "attribution": [],
-        "footprint": [
-          {
-            "after": "327dc8661b37b9002545f79befead311f59e04ef",
-            "before": null,
-            "symbol": "config.yaml"
-          }
-        ],
-        "id": "42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
-      {
-        "attribution": [],
-        "footprint": [
-          {
-            "after": "bc478fba9d4295b8c0b1f7ff43e06900780ced3b",
-            "before": null,
-            "symbol": "pkg.py::compute"
-          }
-        ],
-        "id": "4e236d78fb16962aff60d9b7fd949bdf77cdcf5448391ac44303a4b186596687",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
-      {
-        "attribution": [],
-        "footprint": [
-          {
-            "after": "bf24c3dc4546aa772b7afbd7c97a68addce989ee",
-            "before": null,
-            "symbol": "util.py::helper"
-          }
-        ],
-        "id": "601699063318ace2ef9f0c10d076e583b020998a2b73963dc5fc810cb4fc8d61",
-        "intent": null,
-        "kind": "add",
-        "provenance": [
-          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
-        ]
-      },
-      {
-        "attribution": [],
-        "footprint": [
-          {
-            "after": "7c88e8a591766f27635a5bdab01832a59b04cf2e",
-            "before": null,
-            "symbol": "notes.md"
-          }
-        ],
-        "id": "6b3a2ffacb14b982af10c9423cae3dd5ab2a9e0185ef9e6c7e8fe52aa4429bfd",
+        "id": "1400c67f250fcb140e9a7b9c7c4529b03f2c3214ee094c091a14a1536aa98c03",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -137,7 +89,7 @@
             "symbol": "util.py::__residue__::\u0000HEAD\u0000"
           }
         ],
-        "id": "85580ea5e2c2d1aedd589c2d1c4444360f1b2edaec29716d5be853ea7a5ccc79",
+        "id": "3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -153,7 +105,7 @@
             "symbol": "pkg.py::__residue__::\u0000HEAD\u0000"
           }
         ],
-        "id": "c84027a012851d149ea9f8082af7edd225edc5fd103b6309ab12c9185c2e246c",
+        "id": "3cfcd7617bd75cac5449bb6cd72193df80073cc9e16d13abbecd9dbc71d27ba4",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -164,12 +116,12 @@
         "attribution": [],
         "footprint": [
           {
-            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "after": "7c88e8a591766f27635a5bdab01832a59b04cf2e",
             "before": null,
-            "symbol": "util.py::__anchor__::helper"
+            "symbol": "notes.md"
           }
         ],
-        "id": "d8974b4a3b6813d143bcaf781bde049f714f9b7a56255dc5a0aeeb861cfaa349",
+        "id": "3fa51d51690cdbf25d75e423cd9b27ac88be4d519d3a2df9df81fe367dcc53fa",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -180,12 +132,12 @@
         "attribution": [],
         "footprint": [
           {
-            "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+            "after": "327dc8661b37b9002545f79befead311f59e04ef",
             "before": null,
-            "symbol": "util.py::__residue__::helper"
+            "symbol": "config.yaml"
           }
         ],
-        "id": "dd667198dadf3be0dce0878174b522e1c28b7cb387a5f11dec79a3f168614d59",
+        "id": "536b1e1e55f00e715cdf69c3c5218359bff355ba4bc8e68e40610c09ed5d4588",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -201,7 +153,55 @@
             "symbol": "pkg.py::__residue__::compute"
           }
         ],
-        "id": "ef2b9be5105b04fcbdb6d4565a9e48e3bdd59ed71f23bd5b1c8ff77d9887035c",
+        "id": "6b87308e74107b69def85797c97a4adeeffcf1e90b517946f718638a0f08a82b",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+            "before": null,
+            "symbol": "util.py::__residue__::helper"
+          }
+        ],
+        "id": "7ea6fe0e76421777dfb325da7a4805830734fe8727e7bfc609387eae93dd3c42",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "bf24c3dc4546aa772b7afbd7c97a68addce989ee",
+            "before": null,
+            "symbol": "util.py::helper"
+          }
+        ],
+        "id": "aa3321960d8f9018c3549c92932224fc1107686d27620a3223b58eb6337c51dd",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "97f1cbfaaf7ffb8916b6e8b447fae2414137a2c8"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "bc478fba9d4295b8c0b1f7ff43e06900780ced3b",
+            "before": null,
+            "symbol": "pkg.py::compute"
+          }
+        ],
+        "id": "cb8a40e2663fbc3a60c9fea08b0ac7ea537dd8e6c76cd56360d4005ca81c8d13",
         "intent": null,
         "kind": "add",
         "provenance": [
@@ -224,16 +224,16 @@
       "util.py"
     ],
     "frontier": {
-      "config.yaml": "42d57caace5dddcbc593a72f6bbce85939398dc8ffd07732b536c83fdbfb5c46",
-      "notes.md": "6b3a2ffacb14b982af10c9423cae3dd5ab2a9e0185ef9e6c7e8fe52aa4429bfd",
-      "pkg.py::__anchor__::compute": "3402a2f25af875698d6630222f845156220a4dcd1890e834fe0b2bfe029afa20",
-      "pkg.py::__residue__::\u0000HEAD\u0000": "c84027a012851d149ea9f8082af7edd225edc5fd103b6309ab12c9185c2e246c",
-      "pkg.py::__residue__::compute": "ef2b9be5105b04fcbdb6d4565a9e48e3bdd59ed71f23bd5b1c8ff77d9887035c",
-      "pkg.py::compute": "4e236d78fb16962aff60d9b7fd949bdf77cdcf5448391ac44303a4b186596687",
-      "util.py::__anchor__::helper": "d8974b4a3b6813d143bcaf781bde049f714f9b7a56255dc5a0aeeb861cfaa349",
-      "util.py::__residue__::\u0000HEAD\u0000": "85580ea5e2c2d1aedd589c2d1c4444360f1b2edaec29716d5be853ea7a5ccc79",
-      "util.py::__residue__::helper": "dd667198dadf3be0dce0878174b522e1c28b7cb387a5f11dec79a3f168614d59",
-      "util.py::helper": "601699063318ace2ef9f0c10d076e583b020998a2b73963dc5fc810cb4fc8d61"
+      "config.yaml": "536b1e1e55f00e715cdf69c3c5218359bff355ba4bc8e68e40610c09ed5d4588",
+      "notes.md": "3fa51d51690cdbf25d75e423cd9b27ac88be4d519d3a2df9df81fe367dcc53fa",
+      "pkg.py::__anchor__::compute": "1400c67f250fcb140e9a7b9c7c4529b03f2c3214ee094c091a14a1536aa98c03",
+      "pkg.py::__residue__::\u0000HEAD\u0000": "3cfcd7617bd75cac5449bb6cd72193df80073cc9e16d13abbecd9dbc71d27ba4",
+      "pkg.py::__residue__::compute": "6b87308e74107b69def85797c97a4adeeffcf1e90b517946f718638a0f08a82b",
+      "pkg.py::compute": "cb8a40e2663fbc3a60c9fea08b0ac7ea537dd8e6c76cd56360d4005ca81c8d13",
+      "util.py::__anchor__::helper": "12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736",
+      "util.py::__residue__::\u0000HEAD\u0000": "3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
+      "util.py::__residue__::helper": "7ea6fe0e76421777dfb325da7a4805830734fe8727e7bfc609387eae93dd3c42",
+      "util.py::helper": "aa3321960d8f9018c3549c92932224fc1107686d27620a3223b58eb6337c51dd"
     },
     "oracle_configured": false,
     "oracle_verdict": null

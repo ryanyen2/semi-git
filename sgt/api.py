@@ -119,7 +119,7 @@ def state_view(repo) -> dict:
     from sgt.core.fold import _symbol_kind
     from sgt.core.lens import ideal_for_ref
     from sgt.core.oracle import verdict_for
-    from sgt.core.op import BOTTOM
+    from sgt.core.op import is_bottom
     from sgt.core.store import Store
 
     store = Store(repo)
@@ -132,7 +132,7 @@ def state_view(repo) -> dict:
     entity_paths: set[str] = set()
     for sym, op_id in frontier.items():
         after = by_id[op_id].footprint[sym][1]
-        if after != BOTTOM and _symbol_kind(sym) in ("entity", "nested"):
+        if not is_bottom(after) and _symbol_kind(sym) in ("entity", "nested"):
             entity_paths.add(sym.split("::", 1)[0])
 
     from sgt.core import tiers
@@ -952,7 +952,7 @@ def status_view(repo) -> dict:
     from sgt.core.fold import code
     from sgt.core.lens import current_ideal
     from sgt.core.oracle import overall_status
-    from sgt.core.op import BOTTOM
+    from sgt.core.op import is_bottom
     from sgt.core.store import Store
     from sgt.lens.tree import load as load_tree
 
@@ -961,7 +961,7 @@ def status_view(repo) -> dict:
     ideal = current_ideal(repo)
     by_id = {op.id: op for op in ops}
     symbol_count = sum(
-        1 for sym, op_id in ideal.frontier(ops).items() if by_id[op_id].footprint[sym][1] != BOTTOM
+        1 for sym, op_id in ideal.frontier(ops).items() if not is_bottom(by_id[op_id].footprint[sym][1])
     )
 
     tree_result = load_tree(repo)

@@ -235,6 +235,38 @@ def test_fully_removed_file_leaves_no_phantom(tmp_path):
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
+def test_representation_flip_roundtrips_at_every_commit(tmp_path):
+    """R14 (U9): a file flipping parseable -> unparseable -> parseable must reproduce its exact
+    bytes at *every* commit across the flip, not just at HEAD. The losing representation's live
+    symbols are closed with BOTTOM transition ops and the winning representation is re-birthed by
+    chaining onto them, so there is never a second, competing live image of the same path (which is
+    what let the pre-U9 whole-file symbol win a later commit's fold and materialize foreign bytes).
+    The non-empty leading residue (an import line) stresses the residue-chain bridge specifically."""
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.mine import mine
+    from sgt.core.order import reduce_to_ideal
+    from sgt.store.gitbind import GitBinding, init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("import os\n\n\ndef foo():\n    return os.getpid()\n", encoding="utf-8")
+    gb.commit_all("c1: parseable")
+    (repo / "a.py").write_text("import os\n\n\ndef foo(: BROKEN >>> os\n", encoding="utf-8")
+    gb.commit_all("c2: unparseable")
+    (repo / "a.py").write_text("import sys\n\n\ndef foo():\n    return sys.maxsize\n", encoding="utf-8")
+    gb.commit_all("c3: parseable again, different content")
+
+    ops = mine(repo)
+    for sha in GitBinding(repo).commit_shas():
+        reachable = set(GitBinding(repo).commit_shas(sha))
+        ids = {op.id for op in ops if set(op.provenance) & reachable}
+        ideal = Ideal.from_ops(reduce_to_ideal(ids, ops), ops)
+        expected = GitBinding(repo).blob_bytes(sha, "a.py")
+        assert code(ideal, ops).get("a.py") == expected, f"flip roundtrip failed at {sha[:8]}"
+
+
+@pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
 def test_revert_to_original_bytes_survives_the_fold(tmp_path):
     """Regression (order.py's frontier/is_valid_ideal value-collision fix, U7.5): a symbol whose
     content reverts to an earlier byte-identical version must still materialize that content --

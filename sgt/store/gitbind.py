@@ -329,6 +329,25 @@ class GitBinding:
             rows.append((sha, first_parent, subject))
         return rows
 
+    def commits_touching(self, ref: str, path: str) -> list[tuple[str, str | None]]:
+        """``(sha, first_parent)`` for every commit reachable from ``ref`` that changed ``path``,
+        newest-first. Powers the miner's rebirth/flip lookback (U9): the ancestor commit that last
+        *closed* a symbol is found by walking the path's own history -- a pure function of git
+        (LAW-0), never the local op store, so it holds across clones and even when the closing
+        commit predates a ``since``-restricted incremental mine. First-parent of each row matches
+        the parent ``mine`` diffs that commit against."""
+        proc = self._git("log", "--format=%H%x1f%P", ref, "--", path, check=False)
+        if proc.returncode != 0:
+            return []
+        rows: list[tuple[str, str | None]] = []
+        for line in proc.stdout.splitlines():
+            if not line:
+                continue
+            sha, parents = line.split("\x1f", 1)
+            first_parent = parents.split()[0] if parents.strip() else None
+            rows.append((sha, first_parent))
+        return rows
+
     def tree_at(self, sha: str) -> dict[str, str]:
         """Every readable text file in the tree at ``sha`` -> its contents (the past snapshot).
 

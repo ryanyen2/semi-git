@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sgt.core import order
-from sgt.core.op import BOTTOM, Op, is_content_bearing
+from sgt.core.op import Op, is_bottom, is_content_bearing
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class Ideal:
         paths: set[str] = set()
         for sym, op_id in self.frontier(ops).items():
             after = by_id[op_id].footprint[sym][1]
-            if after != BOTTOM and is_content_bearing(sym):
+            if not is_bottom(after) and is_content_bearing(sym):
                 paths.add(sym.split("::", 1)[0])
         return frozenset(paths)
 
