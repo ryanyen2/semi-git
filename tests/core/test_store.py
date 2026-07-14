@@ -402,15 +402,16 @@ def test_fsck_flags_mixed_miner_versions(tmp_path):
     fsck lists the versions and flips `ok`. A single-version store reports nothing (mixed=())."""
     store = Store(tmp_path)
     store.init()
-    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
+    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))  # current (v3)
     from dataclasses import replace as _replace
     from sgt.core.store import _serialize
-    v3 = make_op({"a.py::bar": (None, "v0")}, {"a.py::bar": b"b1"}, provenance=("s1",))
-    v3 = _replace(v3, miner_version="3")
-    # re-mint id under the v3 version so the file still hashes to its own name
+    # A leftover op minted by a *prior* miner version (v2), the mid-migration hazard fsck must flag.
+    prior = make_op({"a.py::bar": (None, "v0")}, {"a.py::bar": b"b1"}, provenance=("s1",))
+    prior = _replace(prior, miner_version="2")
+    # re-mint id under the v2 version so the file still hashes to its own name
     from sgt.core.op import compute_id
-    v3 = _replace(v3, id=compute_id(v3.footprint, v3.images, v3.requires, v3.kind, "3"))
-    (store.ops_dir / v3.id).write_bytes(_serialize(v3))
+    prior = _replace(prior, id=compute_id(prior.footprint, prior.images, prior.requires, prior.kind, "2"))
+    (store.ops_dir / prior.id).write_bytes(_serialize(prior))
 
     report = fsck(tmp_path)
     assert not report.ok

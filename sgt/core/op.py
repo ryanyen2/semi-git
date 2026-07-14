@@ -18,12 +18,35 @@ from dataclasses import dataclass
 BOTTOM = "⊥"  # the ADR's "removed" version/image sentinel: a symbol's after_version at the
 # tip of its chain, meaning the symbol no longer exists in code(I).
 
-MINER_VERSION = "2"  # R12: bump on any change to mining/untangling/identity logic. Part of
+
+def salted_bottom(sha: str) -> str:
+    """A removal sentinel salted by the *deleting/flipping commit* (U9): ``⊥@<sha>``. A prune's
+    after_version is salted so a later re-add of the same symbol can chain onto its *specific*
+    deletion (before_version == this salt) instead of both births claiming ``(symbol, None)`` and
+    pseudo-forking. Each deletion mints a distinct salt, so an identical-content rebirth *cycle*
+    (add->del->A->del->A) forms one long chain rather than collapsing two deletions into one."""
+    return f"{BOTTOM}@{sha}"
+
+
+def is_bottom(version: str | None) -> bool:
+    """True iff ``version`` marks a removed chain tip -- the bare ``BOTTOM`` sentinel or any salted
+    bottom ``⊥@<sha>`` (U9). Every liveness test (`fold`, `ideal.covered_paths`, mine's prune-kind
+    detection, status/cluster surfaces) routes through this rather than an exact ``== BOTTOM`` so a
+    salted tip still reads dead; `order.py` treats versions as opaque strings so salted bottoms
+    chain and ground with no special-casing there."""
+    return version is not None and (version == BOTTOM or version.startswith(BOTTOM + "@"))
+
+
+MINER_VERSION = "3"  # R12: bump on any change to mining/untangling/identity logic. Part of
 # every op's content address, so an algorithm upgrade opens a new identity space rather than
 # silently colliding with -- or silently reusing -- ops minted under the old rules.
 # v2 (2026-07-08, kernel byte-fidelity audit): byte-native entity/residue addressing (was
 # line-based), decorator/export span-widening, duplicate-id coalescing, and positional
 # per-gap residue segments (was one blob per file) -- see FINDINGS.md.
+# v3 (2026-07-13, U9): rebirth chaining (add->delete->re-add is one chain via salted bottoms,
+# detected purely from git history) and representation-flip bridging (parseable<->whole-file
+# transitions close the losing side with BOTTOM ops and re-birth the winning side by chaining
+# onto them) -- kills the ~20% closure loss the U22.5 pseudo-fork caused. See FINDINGS.md.
 
 # symbol id -> (before_version, after_version); before_version is None for a fresh add.
 # A "version" is a content-addressed string (the symbol's content hash, or a git blob OID for

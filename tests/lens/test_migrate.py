@@ -137,7 +137,11 @@ _BASE = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
 
 
 def _commit(repo: Path, content: str, msg: str) -> None:
-    (repo / "main.py").write_text(content, encoding="utf-8")
+    _commit_file(repo, "main.py", content, msg)
+
+
+def _commit_file(repo: Path, path: str, content: str, msg: str) -> None:
+    (repo / path).write_text(content, encoding="utf-8")
     GitBinding(repo).commit_all(msg)
     ideal = lens.get(repo)
     put_sha = lens.put(repo, ideal, message=f"sgt: {msg}")
@@ -179,15 +183,20 @@ def test_divergent_clones_migrate_then_collide_and_resolve_via_alias_merge(tmp_p
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")
     lens.init(a)
-    _commit(a, _BASE, "init")
+    # A shared *empty* init: the two clones share a git ancestor (so sync works) but *no ops*, so
+    # each clone's single feature is founded on its own divergent op -- a birth id is `f-<min op>`,
+    # and with disjoint op stores that min is guaranteed different (robust across MINER_VERSION
+    # bumps: no shared op can accidentally become the lexicographic minimum and collide the ids).
+    subprocess.run(["git", "-C", str(a), "commit", "-q", "--allow-empty", "-m", "init"],
+                   check=True, capture_output=True)
     _push(a)
     b = _clone(remote, tmp_path / "b")
     lens.get(b)
 
-    # divergent unsynced curation: a and b each rework a *different* symbol, so their op stores (and
-    # hence any leaf's founding op) differ before they ever sync.
-    _commit(a, _BASE.replace("return 1", "return 100"), "a: rework foo")
-    _commit(b, _BASE.replace("return 2", "return 200"), "b: rework bar")
+    # divergent unsynced curation: a and b each add a *different* symbol in a *different* file, so
+    # their op stores are disjoint and each clone's F0 is founded on a distinct op.
+    _commit_file(a, "a.py", "def alpha():\n    return 11\n", "a: add alpha")
+    _commit_file(b, "b.py", "def beta():\n    return 22\n", "b: add beta")
 
     a_map = _seed_legacy(a)
     b_map = _seed_legacy(b)

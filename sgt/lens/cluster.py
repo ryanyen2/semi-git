@@ -29,7 +29,7 @@ import igraph as ig
 import leidenalg as la
 
 from sgt.core.ideal import Ideal
-from sgt.core.op import BOTTOM, Op, is_content_bearing
+from sgt.core.op import Op, is_bottom, is_content_bearing
 from sgt.entities.graph import build_entity_graph
 from sgt.store.gitbind import GitBinding
 
@@ -49,7 +49,7 @@ def alive_nodes(ideal: Ideal, ops: list[Op]) -> set[str]:
     frontier = ideal.frontier(ops)
     return {
         sym for sym, op_id in frontier.items()
-        if by_id[op_id].footprint[sym][1] != BOTTOM and is_content_bearing(sym)
+        if not is_bottom(by_id[op_id].footprint[sym][1]) and is_content_bearing(sym)
     }
 
 

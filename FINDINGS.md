@@ -1498,7 +1498,7 @@ propose publish` (the `gh`-CLI porcelain D7 specifies).
   deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
   land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
 
-### Kernel invariant & sync fixes — U1-U8 (2026-07-13)
+### Kernel invariant & sync fixes — U1-U9 (2026-07-13)
 
 Executing `docs/plans/2026-07-12-001-fix-kernel-invariants-and-sync-plan.md` (the multi-agent
 review's four failure classes). Phases A-C change no op identity and land individually.
@@ -1613,7 +1613,47 @@ review's four failure classes). Phases A-C change no op identity and land indivi
   (degraded recovery) makes `removed_seed` empty → zero removals → byte-identical to today's union,
   so pre-sgt and degraded histories keep status-quo semantics. New `order.upset_in_many` helper.
   Declared-OR-Set, pins, aliases, and fork *detection* are unchanged.
+- **U9 rebirth + representation-flip chaining (R13/R14, `MINER_VERSION` 2→3).** The direct fix for
+  the U22.5 ~20% closure loss. Two mining-identity changes ship together (one version bump re-keys
+  the whole store, so two bumps = two migrations):
+  - **Rebirth chaining.** `add→delete→re-add` minted two `(symbol, None)` births → pseudo-fork →
+    `fork_free` dropped both → the live file vanished from `code(I)`. Now the re-add chains FROM the
+    deletion: a prune's after-version is a **salted bottom** `⊥@<deleting-commit-sha>`
+    (`op.salted_bottom`), and a fresh birth is re-pointed (`mine._apply_rebirth_chaining`) onto the
+    salted bottom of the ancestor commit that last *closed* it — one valid chain
+    `add(None→v1) → prune(v1→⊥@D) → re-add(⊥@D→v2)`. Detection is a **pure function of git history**
+    (`gitbind.commits_touching` walks the path's own commits newest-first; LAW-0, never the local
+    store), so it finds the deletion even when it predates a `since`-restricted incremental mine (the
+    prune op is already in the append-only store). New `op.is_bottom` predicate routes every liveness
+    check (`fold`, `ideal.covered_paths`, `_build_ops` prune-kind, `api`, `cluster`) so a salted tip
+    still reads dead; `order` treats versions as opaque strings and needs no change.
+  - **Representation-flip bridging.** A file flipping parseable-entities ↔ whole-file (opaque tier,
+    unparseable degrade, or a rename across a language boundary) switched version schemes with no
+    bridge, so a later flip could materialize empty/foreign content. Now a flip closes the losing
+    representation's live symbols with BOTTOM ops (`_close_entity_rep` + the symmetric whole-file
+    close) and the winning side's births chain onto that bottom via the same rebirth mechanism; the
+    unparseable-degrade after-version was unified onto the blob-OID scheme so a text file flickering
+    parseable↔unparseable chains cleanly. The roundtrip law now reproduces exact bytes at every
+    commit across a flip. **Transition ops are suppressed in the dirty (pending) pass** — the salt is
+    bare `BOTTOM` there — so a transient mid-edit syntax error mints nothing permanent.
 
+  **Two honest caveats (verified, documented, not blockers):**
+  - *Identical-content rebirth cycles* (`add→del→A→del→A` with byte-identical `A`) still fork on the
+    *content* version — every prune's `before` is `hash(A)`, so two prunes claim `(sym, hash(A))`.
+    The salt fixes the *bottom* collision, but content-addressing fundamentally can't distinguish
+    identical-content states (salting the content version would break the R8 identification law).
+    `reduce_to_ideal` collapses the value-collision and the bytes still materialize correctly (no
+    data loss); the U9 cycle test uses *distinct* content (A→B→C) for a fully-valid raw ideal.
+  - *Backstop coverage follow-up.* U9 makes the add→delete→re-add file *reproducible*, so the two
+    former backstop fixtures (`test_put_reproduces_a_rebirth_file_via_its_chain`,
+    `test_fsck_tree_rebirth_file_reproduced_not_drift_or_backstop`, renamed from their pre-U9 names)
+    now assert the new reality. The U1 backstop *mechanism* and U2 `backstop_kept` *classification*
+    consequently no longer have a dedicated fixture — post-U9 a genuinely-unreproducible file arises
+    only from a real multi-clone content fork, not linear history. That fork-based fixture is a
+    U1/U2 follow-up, deliberately not fabricated here.
+
+  `MINER_VERSION` 2→3 re-mints every op id (all three golden snapshots regenerated — symmetric
+  op-id churn, structure unchanged). The full-store migration + closure re-measurement is U10.
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On

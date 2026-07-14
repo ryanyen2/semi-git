@@ -370,12 +370,12 @@ def test_init_on_large_corpus_repo_within_budgets(tmp_path):
 
 
 def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
-    """U22.5 regression: a single-clone, single-branch history where a file is added, deleted,
-    then re-added rebirths `(symbol, None)` twice -- two ops claim the same chain step, a fork by
-    `is_fork_free`'s definition. `get()` must reduce to a *valid* ideal (drop the forked file's
-    tips) rather than raise from `Ideal.from_ops`, and the reduction must be surgical: an unrelated
-    file added once still surfaces. Before the fix, `sgt state` on any such repo crashed with
-    'not a valid ideal', after having already persisted the invalid table to disk."""
+    """U22.5 / U9 regression: a single-clone, single-branch history where a file is added, deleted,
+    then re-added. Under v2 both births claimed `(symbol, None)` -- a fork whose two tips
+    `fork_free` dropped, so the live file vanished from `code(I)` (the ~20% closure loss). Under v3
+    (U9) the re-add chains FROM the deletion via a salted bottom, forming ONE valid chain, so the
+    file now *materializes completely* -- not merely 'survives on disk via the backstop'. The
+    reduction is still surgical: an unrelated single-add symbol is untouched."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
 
@@ -386,7 +386,7 @@ def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
     (repo / "notes.txt").unlink()
     gb.commit_all("delete notes")
 
-    (repo / "notes.txt").write_text("beta\n", encoding="utf-8")  # rebirth: before=None again
+    (repo / "notes.txt").write_text("beta\n", encoding="utf-8")  # rebirth: chains from the deletion
     gb.commit_all("re-add notes with different content")
 
     ideal = get(repo)  # must not raise
@@ -394,12 +394,12 @@ def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
     all_ops = store.all_ops()
     assert is_valid_ideal(all_ops, ideal.op_ids)  # grounded + fork-free
 
-    # The reduction is surgical: the unrelated single-add symbol survives, only the forked file's
-    # tips were dropped, and the materialized tree agrees (notes.txt does not resurrect).
+    # U9: the re-added file materializes completely with its live content -- the whole point of the
+    # rebirth-chaining fix, upgraded from the pre-U9 "not deleted" assertion.
     assert any("keep.py::keep" in store.get(o).footprint for o in ideal.op_ids)
     materialized = code(ideal, all_ops)
     assert "keep.py" in materialized
-    assert "notes.txt" not in materialized
+    assert materialized["notes.txt"] == b"beta\n"
 
     # The persisted table is itself a valid ideal -- a second read never re-raises, and the pure
     # read path (which reads the table straight back) constructs cleanly too.
@@ -451,11 +451,13 @@ def test_write_working_tree_refuses_symlinked_ancestor(tmp_path):
     assert not (outside / "mod.py").exists()          # never wrote through the symlinked dir
 
 
-def test_put_backstop_keeps_unreproducible_rebirth_file(tmp_path):
-    """AE1 / R4 (pre-U9): an add->delete->re-add history drops both `notes.txt` births as a fork,
-    so `code(ideal)` no longer covers the path. Its live bytes are *not* reproducible from any
-    valid ideal over the store, so `put` must NOT delete the working file -- the deletion is
-    surfaced (backstop-kept), never silent. A legitimately reproducible file is unaffected."""
+def test_put_reproduces_a_rebirth_file_via_its_chain(tmp_path):
+    """AE1 across the Phase-A -> Phase-D transition: pre-U9 an add->delete->re-add history dropped
+    both `notes.txt` births as a fork and the U1 *backstop* kept the live file on disk; post-U9 the
+    re-add chains FROM the deletion into one valid chain, so the path is now reproducible from the
+    ideal and `put` reproduces it directly -- rebirth no longer needs the backstop at all. (The
+    backstop mechanism itself is now only reachable via a genuine multi-clone content fork -- a
+    dedicated fixture for it is a U1/U2 follow-up; see FINDINGS.) `put` leaves the live bytes intact."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
 
@@ -468,7 +470,7 @@ def test_put_backstop_keeps_unreproducible_rebirth_file(tmp_path):
     gb.commit_all("re-add notes")
 
     ideal = get(repo)
-    assert "notes.txt" not in code(ideal, Store(repo).all_ops())  # dropped from the ideal
+    assert code(ideal, Store(repo).all_ops())["notes.txt"] == b"beta\n"  # U9: reproduced via the chain
     put(repo, ideal)
 
     assert (repo / "notes.txt").exists()                          # live file survives
@@ -489,9 +491,11 @@ def test_fsck_tree_clean_after_put_has_no_drift(tmp_path):
     assert result["drift"] == []
 
 
-def test_fsck_tree_classifies_rebirth_file_as_backstop_kept_not_drift(tmp_path):
-    """R2: an add->delete->re-add file is dropped from `code(I)` but kept on disk by the backstop.
-    `--tree` classifies it as backstop-kept planned divergence, never as real drift (AE1)."""
+def test_fsck_tree_rebirth_file_reproduced_not_drift_or_backstop(tmp_path):
+    """R2 across the Phase-A -> Phase-D transition: pre-U9 an add->delete->re-add file was dropped
+    from `code(I)` and `--tree` classified it backstop-kept; post-U9 (U9) the re-add chains into one
+    valid chain, so the file is reproduced by `code(current_ideal)` and matches the HEAD tree -- no
+    drift and no backstop entry. `--tree` must not misreport the now-reproducible file as drift (AE1)."""
     from sgt.core.lens import fsck_tree
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -505,8 +509,8 @@ def test_fsck_tree_classifies_rebirth_file_as_backstop_kept_not_drift(tmp_path):
 
     get(repo)
     result = fsck_tree(repo)
-    assert "notes.txt" in result["backstop_kept"]
-    assert "notes.txt" not in result["drift"]
+    assert "notes.txt" not in result["drift"]           # reproduced cleanly, never misreported
+    assert "notes.txt" not in result["backstop_kept"]   # U9: no longer needs the backstop
 
 
 def test_fsck_tree_reports_real_drift_for_a_foreign_edit(tmp_path):

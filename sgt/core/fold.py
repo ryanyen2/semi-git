@@ -43,7 +43,7 @@ file's bytes.
 from __future__ import annotations
 
 from sgt.core.ideal import Ideal
-from sgt.core.op import BOTTOM, Op, _symbol_kind, is_content_bearing
+from sgt.core.op import Op, _symbol_kind, is_bottom, is_content_bearing
 
 _ANCHOR_FIRST = "\x00FIRST\x00"  # mirrors sgt.core.mine._ANCHOR_FIRST
 _RESIDUE_HEAD = "\x00HEAD\x00"  # mirrors sgt.core.mine._RESIDUE_HEAD
@@ -143,7 +143,7 @@ def code(ideal: Ideal, ops: list[Op]) -> dict[str, bytes]:
     # anchor-only leftovers of a fully-pruned file and don't materialize (R7); matches covered_paths
     for sym, op_id in tip.items():
         after = by_id[op_id].footprint[sym][1]
-        if after == BOTTOM:
+        if is_bottom(after):
             continue
         path = sym.split("::", 1)[0]
         by_path.setdefault(path, {})[sym] = op_id  # anchors stay in a live path's set for ordering
