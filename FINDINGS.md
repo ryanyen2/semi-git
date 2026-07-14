@@ -1498,7 +1498,7 @@ propose publish` (the `gh`-CLI porcelain D7 specifies).
   deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
   land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
 
-### Kernel invariant & sync fixes — U1-U6 (2026-07-13)
+### Kernel invariant & sync fixes — U1-U7 (2026-07-13)
 
 Executing `docs/plans/2026-07-12-001-fix-kernel-invariants-and-sync-plan.md` (the multi-agent
 review's four failure classes). Phases A-C change no op identity and land individually.
@@ -1573,6 +1573,33 @@ review's four failure classes). Phases A-C change no op identity and land indivi
     candidate was invisible. Added an additive disk-vs-ideal check that fires only when a stage is
     active, so a staged path classifies `staged`, never `drift`. No change to the drift/backstop
     paths (they run unchanged when no stage is active).
+- **U7 base recovery + trailer/record witnessing (R12).** Sync now recovers the *merge-base's* full
+  ideal (feeding U8's three-way subtraction) under a uniform witness-containment rule, and no source
+  is trusted on its word: `_witnessed(sha, ids)` requires every claimed op-id to be present as a
+  `.sgt/ops/<id>` blob in that commit's tree. Applied to all sources — trailers (previously trusted
+  unconditionally; a *forged* trailer naming an op the tree lacks is now rejected), the committed
+  `.sgt/ideal.json` record (must be witnessed, not an inherited stale record), and full-range mining.
+  `recover_base(base_sha)`: `None` → `(∅, "none")`; witnessed trailers → `"trailers"`; witnessed
+  record → `"ideal-record"`; else full-range mine → `"mined"`. The tip path (`_theirs_ideal`) gains
+  a **footgun detector**: after mining theirs' divergent range, any fine `.sgt/ops` blob the mine
+  did *not* reproduce (`theirs_blobs − ours − mined`) is an orphan — a squash that collapsed an sgt
+  branch (mining yields coarse ops that fork the fine blobs) or a raw fixture blob with no matching
+  source — so recovery degrades to ∅ with a named remedy rather than mis-mining. The mine-reproduce
+  test is what separates the footgun from the *legitimate* trailer-less tips that must keep working:
+  a plain commit on top of a proper `put` (config/claim/proposal, `test_row12`) and a plain-git
+  hotfix on top of an sgt branch (C3) both have their ops reproduced by the mine, so they fall
+  through to the trusted mine. `SyncReport`/`sync --json` gain `base_recovery` and `theirs_recovery`;
+  a `"none"` on either prints a loud warning (an unwitnessed claim was refused; union semantics).
+
+  **Decision (deferred-unknown):** the plan's approach says "mine when the base is at or above the
+  horizon, else ∅", but the init `--horizon` is **never persisted** (`lens.init` uses it once and
+  discards it), so "at or above horizon" is undecidable. Per the user's call, the horizon is *not*
+  persisted; the sole `∅` trigger is a missing merge-base (`merge_base` → `None`: disjoint histories,
+  or a base sgt can't reach), tested via a disjoint-orphan-branch fixture. A repo explicitly init'd
+  with `--horizon` whose base sits below it would mine pre-horizon — a niche, pre-existing
+  out-of-scope limitation (plan Scope Boundaries), not introduced here. Base = ∅ reproduces today's
+  plain union exactly, so this costs nothing on the common path. `base_ideal_ids` is computed and
+  reported now; U8 wires it into resolve's three-way subtraction.
 
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
