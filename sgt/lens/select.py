@@ -18,7 +18,7 @@ order, pulled a given op in) is this module's own BFS, scoped to the already-com
 from __future__ import annotations
 
 from collections import Counter, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from sgt.core import lens as kernel_lens
@@ -56,7 +56,7 @@ class WhyResult:
     feature_id: str | None = None
     votes: tuple[dict, ...] = ()
     for_feature: str | None = None
-    chain: tuple[dict, ...] = field(default_factory=tuple)
+    chain: tuple[dict, ...] = ()
 
 
 def _resolve_selection(repo: str | Path, refs) -> tuple[frozenset[str], tuple[str, ...], str]:

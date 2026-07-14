@@ -230,34 +230,34 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
 
 def revert(repo: str | Path, target: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
     preview = plan_revert(repo, target)
-    if not (emit or not preview.ok):
+    if preview.ok and not emit:
         apply(repo, preview, message)
     return preview
 
 
 def pin(repo: str | Path, symbol: str, version: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
     preview = plan_pin(repo, symbol, version)
-    if not (emit or not preview.ok):
+    if preview.ok and not emit:
         apply(repo, preview, message)
     return preview
 
 
 def restore(repo: str | Path, target: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
     preview = plan_restore(repo, target)
-    if not (emit or not preview.ok):
+    if preview.ok and not emit:
         apply(repo, preview, message)
     return preview
 
 
 def cherry_pick(repo: str | Path, target: str, source_ref: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
     preview = plan_cherry_pick(repo, target, source_ref)
-    if not (emit or not preview.ok):
+    if preview.ok and not emit:
         apply(repo, preview, message)
     return preview
 
 
 def after(repo: str | Path, a: str, b: str, *, emit: bool = False) -> VerbPreview:
     preview = plan_after(repo, a, b)
-    if not (emit or not preview.ok):
+    if preview.ok and not emit:
         apply(repo, preview)
     return preview

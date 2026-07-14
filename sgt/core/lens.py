@@ -466,10 +466,7 @@ def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes])
     untracked file the ideal doesn't cover is left untouched by `_write_working_tree`, so it can't
     conflict. `.sgt/` is skipped -- it's sgt's own state, not codebase content `put()` owns."""
     head = gb.head()
-    proc = subprocess.run(
-        ["git", "-C", str(repo), "ls-files"], capture_output=True, text=True, check=True
-    )
-    tracked = {line for line in proc.stdout.splitlines() if line}
+    tracked = set(_tracked_paths(repo))
 
     conflicts: set[str] = set()
     for path in set(materialized) | tracked:
@@ -556,9 +553,7 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
     seeded = key in _load_ideal_table(repo)
     staged_active = state.load_json(repo, "staged", default=None) is not None
 
-    candidates = (set(materialized) | set(_tracked_paths(repo))) - {
-        p for p in materialized if p.startswith(".sgt/")
-    }
+    candidates = set(materialized) | set(_tracked_paths(repo))
     reproducible: dict[str, bytes] | None = None
     for path in sorted(candidates):
         if path.startswith(".sgt/"):

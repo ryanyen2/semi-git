@@ -10,7 +10,7 @@ mutation this unit adds -- acting on a group is still the existing verb surface 
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail_json
 
 _USAGE = ('usage: sgt review-queue list [--json] | '
           'sgt review-queue ack <op-id>... [--session <name>] [--note "..."] [--json]')
@@ -71,12 +71,12 @@ def _ack(repo: str, op_ids: list[str], session: str | None, note: str | None, as
         scope = f"op-set:{len(target)} ops"
     if not target:
         message = f"no op carries session {session!r} attribution" if session else "no op-ids given"
-        return _emit_json({"ok": False, "error": message}) if as_json else _fail(message)
+        return _fail_json(message, as_json)
 
     try:
         r = review.ack(repo, target, scope=scope, note=note)
     except ValueError as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
     view = {"ok": True, "id": r.id, "op_ids": list(r.op_ids), "scope": r.scope, "note": r.note}
     if as_json:
         return _emit_json(view)

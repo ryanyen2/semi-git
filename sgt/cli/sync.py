@@ -5,7 +5,7 @@ store, reconcile pins/declared-edges/the feature tree, and surface any same-symb
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail_json
 
 
 def register(subs, parent) -> None:
@@ -62,7 +62,7 @@ def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
     branch = branch or gb.default_branch()
     if branch is None:
         msg = "no branch to push -- HEAD has no upstream and isn't on a named branch"
-        return _emit_json({"ok": False, "error": msg}) if as_json else _fail(msg)
+        return _fail_json(msg, as_json)
 
     try:
         sha = gb.push(remote, branch)
@@ -73,7 +73,7 @@ def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
         print(f"✗ push {remote}/{branch}: rejected (the remote moved) -- run `{remedy}`, then push again")
         return 1
     except (GitError, ValueError) as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
 
     if as_json:
         return _emit_json({"ok": True, "remote": remote, "branch": branch, "pushed_sha": sha})
@@ -95,7 +95,7 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
     try:
         report = sync_mod.land(repo, branch=branch)
     except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
 
     from sgt.api import land_view
 
@@ -124,7 +124,7 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
     try:
         report = sync_mod.sync(repo, remote=remote, branch=branch)
     except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
 
     from sgt.api import sync_view
 

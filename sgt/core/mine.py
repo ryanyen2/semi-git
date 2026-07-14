@@ -30,7 +30,7 @@ from tree_sitter import Parser
 
 from sgt.config import IdentityConstraints, load_identity_constraints
 from sgt.core import tiers
-from sgt.core.identity import Snap, detect_splits_merges, link_residual, match_pair, snapshot
+from sgt.core.identity import Snap, link_residual, match_pair, snapshot
 from sgt.core.op import BOTTOM, Images, Op, _symbol_kind, is_bottom, make_op, salted_bottom
 from sgt.entities.extract import Entity, _language, _language_for, extract_file
 from sgt.entities.graph import EntityEdge, build_entity_graph
@@ -124,7 +124,7 @@ def _prior_whole_file_version(
         return None
     if parent_tier == "opaque":
         return gb.blob_oid(parent, old_ref)
-    if old_raw and not extract_file(old_ref, old_raw) and _parse_has_error(old_ref, old_raw):
+    if _is_unparseable_whole_file(old_ref, old_raw):
         return gb.blob_oid(parent, old_ref)
     return None
 
@@ -320,12 +320,12 @@ def _mine_one(
     gb: GitBinding, uf: _UnionFind, order: int, sha: str, parent: str | None, is_pending: bool = False,
     constraints: IdentityConstraints | None = None, excluded_paths: set[str] | None = None,
 ) -> list[_Touch]:
-    excluded_paths = set() if excluded_paths is None else excluded_paths
     """One commit's touched symbols -- the loop body `mine()` runs once per real commit, plus
     (when `include_dirty=True`) once more for the working tree's uncommitted state, diffed
     against real HEAD exactly the same way (Gap 2, U7.5). `sha` need only be a tree-ish (a real
     commit, or `GitBinding.working_tree_snapshot()`'s synthetic tree object) -- every
     `GitBinding` read used below accepts either."""
+    excluded_paths = set() if excluded_paths is None else excluded_paths
     # LAW-0: read from the mined commit's own tree, so tier assignment stays a pure function of
     # the commit, never the current working tier map. Batched (one `git cat-file --batch` for
     # both `sha` and `parent`'s `.sgt/tiers.json` + `.sgtignore`) instead of up to 4 separate

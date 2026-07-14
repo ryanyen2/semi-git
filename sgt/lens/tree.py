@@ -470,7 +470,7 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
     here."""
     if not pins.assign:
         return
-    member_leaf = {m: nid for nid, nd in result["nodes"].items() if not nd["children"] for m in nd["members"]}
+    member_leaf = _leaf_member_index(result["nodes"])
     amap = {
         leaf: fid
         for member, fid in pins.assign.items()
