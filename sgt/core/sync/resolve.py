@@ -42,7 +42,9 @@ class Resolution:
 
 
 def resolve(repo: Path, ing: Ingested) -> Resolution:
-    union_ids = ing.ours_ideal.op_ids | ing.theirs_ideal_ids
+    ours = ing.ours_ideal.op_ids
+    theirs = ing.theirs_ideal_ids
+    union_ids = ours | theirs
 
     # Declared edges union as an OR-Set by tag (U21/D6): the live edge set is every edge value with
     # a surviving (non-tombstoned) tag, so a retraction on one side travels while a concurrent add
@@ -53,18 +55,49 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
 
     fork_triples = order.forks(ing.all_ops, union_ids)
 
-    # Divergence-as-state (D5/C4): a fork does not block the fork-free remainder. `order.fork_free`
-    # drops each forked symbol's two tips and their up-sets, leaving a valid ideal by construction
-    # (a downward-closed set minus upward-closed up-sets stays downward-closed and, both claimants
-    # of every forked step gone, fork-free). The forked tips never enter this ideal.
-    fork_free_ids = order.fork_free(union_ids, ing.all_ops, declared)
-
     # A cyclic declared union can never be honored -- fold without the offending edges (report them
     # for `sgt after` retraction) rather than letting `Ideal.from_ops` raise on it. The full union
     # (cycles included) still travels to disk, so the retraction target is visible on both clones.
     declared_cycles = order.find_declared_cycles(ing.all_ops, declared)
     usable_declared = declared - set(declared_cycles)
-    merged_ideal = Ideal.from_ops(fork_free_ids, ing.all_ops, usable_declared)
+
+    # Three-way subtraction (U8/R10-R11): a blind `ours ∪ theirs` resurrects anything a teammate
+    # reverted -- the op is still in the *other* side's ideal, so the union re-adds it. An op present
+    # in the recovered `base` (U7) but dropped by a side's *full* ideal was reverted there, so it and
+    # everything grounded only through it (its up-set) must leave the union. `upset_in_many` computes
+    # that collision-safely (union minus what stays grounded once the reverted base ops are gone).
+    # `base == ∅` (base_recovery "none") -> `removed_seed == ∅` -> no removals -> today's plain union.
+    base = ing.base_ideal_ids
+    # The subtraction needs each side's *full* ideal against `base`. Ours always is (it's
+    # `current_ideal`, so `base - ours` is a genuine ours-side revert). Theirs' revert shows as an op
+    # *absent* from its ideal only when U7 recovered a full ideal (`trailers`/`ideal-record`). A
+    # `mined` recovery is theirs' *divergent* set (theirs kept `base` and added on top; a revert
+    # there rode in as a BOTTOM op via the union, not as an absence), and `none` is unknown -- so for
+    # those we do not infer a theirs-side revert, leaving today's union semantics for theirs.
+    removed_seed = set(base - ours)
+    if ing.theirs_recovery in ("trailers", "ideal-record"):
+        removed_seed |= base - theirs
+    removals = set(order.upset_in_many(removed_seed, union_ids, ing.all_ops, usable_declared))
+
+    # Divergence-as-state (D5/C4) survives subtraction: a fork-recorded tip present in `base` but
+    # dropped on one side would otherwise be swept into `removed_seed`'s up-set and silently deleted.
+    # Protect both tips of every detected fork (and their up-sets) from removal, so the fork is
+    # *surfaced* rather than resolved by deletion -- `reduce_to_ideal` below still excludes the tips
+    # from the folded ideal (parked at the common ancestor), exactly as before.
+    if fork_triples:
+        protected: set[str] = set()
+        for _sym, tip_a, tip_b in fork_triples:
+            protected |= order.upset(tip_a, ing.all_ops, usable_declared)
+            protected |= order.upset(tip_b, ing.all_ops, usable_declared)
+        removals -= protected
+
+    # `reduce_to_ideal` restores the grounding pass whose absence crashed today's resolve on an
+    # ungrounded union (grounding first, then fork-free): drop forked tips and their up-sets, keeping
+    # only the well-founded remainder -- a valid ideal by construction.
+    merged_seed = set(union_ids) - removals
+    merged_ideal = Ideal.from_ops(
+        order.reduce_to_ideal(merged_seed, ing.all_ops, usable_declared), ing.all_ops, usable_declared
+    )
 
     # Witness-topo tie-break (D6): the git DAG supplies the causal order over pin witnesses, so a
     # deliberate re-pin (its witness a descendant of the stale one) wins regardless of sync order.

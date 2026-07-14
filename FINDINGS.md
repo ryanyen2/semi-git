@@ -1498,7 +1498,7 @@ propose publish` (the `gh`-CLI porcelain D7 specifies).
   deselected as usual); golden snapshots regenerated -- diff is purely additive (`sgt propose
   land`'s summary line gains `[--subset ...]`, a new `sgt propose publish` help line).
 
-### Kernel invariant & sync fixes — U1-U7 (2026-07-13)
+### Kernel invariant & sync fixes — U1-U8 (2026-07-13)
 
 Executing `docs/plans/2026-07-12-001-fix-kernel-invariants-and-sync-plan.md` (the multi-agent
 review's four failure classes). Phases A-C change no op identity and land individually.
@@ -1600,6 +1600,19 @@ review's four failure classes). Phases A-C change no op identity and land indivi
   out-of-scope limitation (plan Scope Boundaries), not introduced here. Base = ∅ reproduces today's
   plain union exactly, so this costs nothing on the common path. `base_ideal_ids` is computed and
   reported now; U8 wires it into resolve's three-way subtraction.
+- **U8 three-way resolve (R10/R11).** `sync`'s resolve was a blind `ours ∪ theirs`, so a revert
+  never traveled: the op a teammate removed was still in the *other* side's ideal, and the union
+  resurrected it (the review's resurrection bug). Resolve now subtracts, against the U7-recovered
+  `base`: `removed_seed = (base − ours) ∪ (base − theirs)` (ops one side reverted), and
+  `removals = upset_in_many(removed_seed, union)` — the collision-safe set-generalization of
+  `upset_in` (`union − _grounded(union − removed_seed)`), so a reverted op *and everything grounded
+  only through it* leave the merge. Fork-recorded tips (and their up-sets) are protected from
+  removal so divergence-as-state survives subtraction — the fork is surfaced, not silently resolved
+  by deletion; `reduce_to_ideal` (grounding **then** fork-free — the grounding pass whose absence
+  crashed the old resolve on ungrounded unions) still parks the tips at the ancestor. `base == ∅`
+  (degraded recovery) makes `removed_seed` empty → zero removals → byte-identical to today's union,
+  so pre-sgt and degraded histories keep status-quo semantics. New `order.upset_in_many` helper.
+  Declared-OR-Set, pins, aliases, and fork *detection* are unchanged.
 
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 

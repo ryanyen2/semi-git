@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from sgt.core import lens, sync
+from sgt.core import lens, order, sync
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.op import make_op
@@ -263,3 +263,60 @@ def test_u7_forged_trailers_are_rejected(tmp_path):
 
     assert ing.theirs_recovery == "mined"  # forged trailer rejected -> fell through to mine
     assert forged not in ing.theirs_ideal_ids  # the forged id never enters theirs' ideal
+
+
+# -- U8: three-way resolve -- fork protection and base=∅ equivalence -----------------------------
+
+def _resolve_ingested(tmp_path, all_ops, ours_ids, theirs_ids, base_ids, theirs_recovery="trailers"):
+    """A minimal `Ingested` for driving `resolve` directly over hand-built op sets (U8). Defaults
+    `theirs_recovery` to "trailers" so `theirs_ids` is treated as theirs' *full* ideal and a
+    revert there (an op absent from it) drives the three-way subtraction."""
+    return Ingested(
+        ours_pins=Pins(), theirs_pins=Pins(),
+        ours_declared_orset=lens.DeclaredORSet(), theirs_declared_orset=lens.DeclaredORSet(),
+        ours_aliases=frozenset(), theirs_aliases=frozenset(),
+        ours_tree=None,
+        ours_ideal=Ideal.from_ops(ours_ids, all_ops),
+        theirs_ideal_ids=frozenset(theirs_ids),
+        all_ops=all_ops, theirs_ops=[], mined_ops=[], ops_added=0,
+        base_ideal_ids=frozenset(base_ids), theirs_recovery=theirs_recovery,
+    )
+
+
+def test_u8_fork_tips_survive_base_subtraction(tmp_path):
+    """Scenario 4: a fork whose one tip the base witnessed. Three-way subtraction would sweep that
+    tip into a removal (theirs lacks it), silently resolving the fork by deletion -- fork protection
+    keeps both tips, so the fork is *surfaced* and both tips survive; the fold parks them at the
+    common ancestor exactly as divergence-as-state requires."""
+    a0 = make_op({"foo": (None, "v1")}, {"foo": b"1"})
+    ta = make_op({"foo": ("v1", "va")}, {"foo": b"a"})
+    tb = make_op({"foo": ("v1", "vb")}, {"foo": b"b"})  # forks ta at (foo, v1)
+    all_ops = [a0, ta, tb]
+
+    ing = _resolve_ingested(
+        tmp_path, all_ops,
+        ours_ids={a0.id, ta.id}, theirs_ids={a0.id, tb.id}, base_ids={a0.id, ta.id},
+    )
+    res = resolve(tmp_path, ing)
+
+    assert len(res.forks) == 1  # the fork survives subtraction and is surfaced, not deleted
+    assert res.merged_ideal.op_ids == frozenset({a0.id})  # both tips parked at the ancestor
+
+
+def test_u8_empty_base_reproduces_the_plain_union(tmp_path):
+    """Scenario 5: `base == ∅` (base_recovery "none") makes `removed_seed` empty, so no removals --
+    the merged ideal is exactly today's grounded, fork-free union over the same ops."""
+    a0 = make_op({"foo": (None, "v1")}, {"foo": b"1"})
+    m1 = make_op({"foo": ("v1", "v2")}, {"foo": b"2"})   # ours extends foo
+    n1 = make_op({"bar": (None, "w1")}, {"bar": b"9"})   # theirs adds bar (disjoint)
+    all_ops = [a0, m1, n1]
+
+    ing = _resolve_ingested(
+        tmp_path, all_ops,
+        ours_ids={a0.id, m1.id}, theirs_ids={a0.id, n1.id}, base_ids=set(),
+    )
+    res = resolve(tmp_path, ing)
+
+    union = {a0.id, m1.id, n1.id}
+    expected = order.reduce_to_ideal(union, all_ops)  # today's semantics on a grounded union
+    assert res.merged_ideal.op_ids == expected == frozenset(union)  # full disjoint union, no loss

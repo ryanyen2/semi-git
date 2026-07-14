@@ -205,3 +205,49 @@ def test_sync_reports_a_declared_edge_cycle_and_declared_edges_travel(tmp_path):
     declared = lens._load_declared(b)
     assert (foo_id, bar_id) in declared  # A's declared edge travelled to B post-sync
     assert (bar_id, foo_id) in declared
+
+
+# -- U8: three-way resolve -- reverts travel, sync stops resurrecting removed work ---------------
+
+_WITH_BAZ = _BASE + "\n\ndef baz():\n    return 42\n"
+
+
+def test_sync_revert_travels_and_removes_the_bytes(tmp_path):
+    """The review's resurrection reproduction, inverted (U8/R10-R11): A adds baz, B syncs it, then A
+    *reverts* baz and pushes. On B's next sync the revert travels -- baz leaves B's ideal *and* its
+    bytes leave the working tree -- instead of the blind union resurrecting it from B's own side."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", _WITH_BAZ, "A: add baz")
+    _push(a)
+    sync.sync(b, remote="origin", branch="main")
+    assert "def baz" in (b / "main.py").read_text(encoding="utf-8")  # B has it after the first sync
+
+    baz_op = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
+    verbs.revert(a, baz_op.id)  # A reverts baz on its own clone
+    _push(a)
+
+    sync.sync(b, remote="origin", branch="main")
+    assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")  # the revert traveled
+    assert baz_op.id not in lens.current_ideal(b).op_ids  # ...in the ideal, not just the bytes
+
+
+def test_sync_revert_of_a_base_op_removes_the_dependents_that_rode_its_upset(tmp_path):
+    """Scenario 3: A reverts a base op while B extended that op's symbol. The extension rides the
+    reverted op's up-set and is removed with it (it stops being grounded once its base is gone) --
+    B's work is not silently duplicated onto a resurrected base."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", _WITH_BAZ, "A: add baz")  # base op for baz
+    _push(a)
+    sync.sync(b, remote="origin", branch="main")
+
+    # B extends baz (a new op chaining onto A's baz), A reverts baz's original add.
+    _edit_and_commit(b, "main.py", _BASE + "\n\ndef baz():\n    return 43\n", "B: bump baz")
+    baz_add = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
+    verbs.revert(a, baz_add.id)
+    _push(a)
+
+    sync.sync(b, remote="origin", branch="main")
+    # baz's whole chain (add + B's extension) leaves the ideal: reverting the base removes its up-set.
+    live = lens.current_ideal(b)
+    assert not any("main.py::baz" in Store(b).get(oid).footprint for oid in live.op_ids)
+    assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")
