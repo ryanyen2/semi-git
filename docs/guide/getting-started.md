@@ -1,83 +1,70 @@
 # Getting started
 
-`sgt` is **git for semantics**: it keeps a living graph of your codebase's *features* and
-rebuilds the working tree from it. This page gets you from zero to a feature you can plug in and
-out. For the why and the mental model, read [The semantic tree](the-semantic-tree.md) first.
+This page takes you from an empty repo to removing and re-adding a single function. Read
+[The model](the-semantic-tree.md) first for how `sgt` represents your code.
 
 ## Install
 
+You need [`uv`](https://docs.astral.sh/uv/). Two extras matter. Mining symbols needs the
+tree-sitter grammars in the `entities` extra, and the feature tree needs the clustering libraries
+in the `lens` extra. Install both for the full tool.
+
 ```bash
 uv venv --python 3.12
-uv pip install -e .            # core CLI (`sgt`)
-uv pip install -e ".[tui]"     # + the terminal UI
+uv pip install -e ".[entities,lens]"
 ```
 
-The graph ops need no API key. `sgt plan` uses an OpenAI key (from `.env`: `OPENAI_API_KEY`,
-optional `OPENAI_MODEL`) for **graph-level reasoning only** — decomposing an intent, never
-writing code. A bare `checkpoint` prefers the key to label a change but degrades to deterministic
-grouping offline, so the whole loop works with no key.
+The core loop needs no API key. One optional command, `sgt plan intake`, uses an OpenAI key to
+turn a written intent into a set of predicted ops. Set `OPENAI_API_KEY` (and optionally
+`OPENAI_MODEL`) in a `.env` file if you want it. Everything on this page works without a key.
 
-## Your first feature
+## Your first commit through sgt
+
+Run this inside a git repo.
 
 ```bash
-sgt init                                   # bind .sgt/ + git in the current repo
+sgt init                    # read existing git history into the op store under .sgt/
 
-# 1. plan — decompose an intent into reviewable PLANNED nodes (no code yet)
-sgt plan "validate and normalize an email address"
-sgt graph                                  # see the planned nodes and their dependencies
+# edit files with your editor or agent, the same as always
 
-# 2. implement one of them with your own editor / coding agent
-#    (sgt never writes code — you do)
-
-# 3. checkpoint — record your edits under the planned node, flipping it ACTIVE
-sgt checkpoint --fulfills "normalize" --intent "lowercase + strip the domain"
-
-# 4. inspect
-sgt status                                 # nodes, files, effects, and any drift
-sgt show normalize                         # one node: effects, deps, dependents
-sgt blame app.py                           # which feature owns each line
+sgt save -m "add email validation"   # read your edits into ops and commit a record
+sgt status                            # files, symbols, features, coverage, and any drift
+sgt map                               # the feature tree
+sgt blame app.py                      # which feature owns each symbol in a file
 ```
 
-Refs resolve fuzzily: `sgt show "email"`, `sgt revert normalize`, or a node id all work.
+`sgt save` is the commit step of the daily loop. It reads what you changed on disk, records the
+new ops, and commits. `sgt status` shows whether the working tree matches the recorded ideal or
+has drifted ahead of it.
 
-## Plug a feature in and out
+## Remove and re-add a symbol
+
+You name a target as `file::symbol`, an op id, or a feature id or label. `--emit` previews the
+change and writes nothing.
 
 ```bash
-sgt revert normalize --emit                # dry-run: preview the change, write nothing
-sgt revert normalize                       # plug it out (by dependency closure) + commit
-sgt switch normalize off                   # suspend instead (keeps history); `on` restores
+sgt revert app.py::validate_email --emit   # preview the removal
+sgt revert app.py::validate_email          # remove it and everything built on it, then commit
+sgt restore app.py::validate_email         # add it back, along with anything it needs
 ```
 
-If a change is held back because it doesn't yet fit (`quarantined`), you have two recoveries:
-
-```bash
-# the code was wrong: fix it on disk and checkpoint again — the stale hold is reclaimed
-sgt checkpoint --fulfills normalize --intent "fixed: lowercase + strip"
-
-# a rival changed (got reverted/suspended) and the held code now fits as-is:
-sgt reconcile                              # re-gate every pending quarantine
-```
-
-Either way you never need a manual revert + re-plan: a re-checkpoint that lands the fixed code
-automatically sweeps the superseded hold it replaced.
-
-## See it visually
-
-- **Terminal UI:** `sgt tui` — browse the DAG, inspect a node, preview a plug-out, apply ops.
-  See [the TUI guide](tui.md).
-- **VS Code:** install the extension in `editor/vscode/` for semantic blame, a feature heatmap,
-  CodeLens, a graph view, and diff previews. See [the extension guide](vscode-extension.md).
-
-## For coding agents
-
-`sgt mcp` runs a stdio MCP server exposing the same surface as tools (`sgt_graph`, `sgt_show`,
-`sgt_status`, `sgt_conflicts`, `sgt_blame`, `sgt_plan`, `sgt_checkpoint`, `sgt_revert`,
-`sgt_switch`, `sgt_reconcile`). Point your agent at it and it drives the same loop you do.
+After the revert, `validate_email` is gone from `app.py` and every other symbol is byte for byte
+the same. `sgt undo` inverts your last change if you want to step back.
 
 ## Where things live
 
-| Path | What |
+| Path | What it holds |
 | --- | --- |
-| `.sgt/graph.json` | the semantic DAG (nodes + edges) |
-| `.sgt/effects.json` | the append-only effect log + per-node bundles |
-| `.git/` | ordinary git — `sgt` commits the materialized tree here |
+| `.sgt/ops/` | the op store, committed to git with your code |
+| `.sgt/tree/` | the feature tree from `sgt map`, committed |
+| `.sgt/local/` | working state for this checkout, ignored by git (the current ideal, drafts, staged rewrites, sessions) |
+| `.git/` | ordinary git, where `sgt` commits the folded tree |
+
+## For coding agents
+
+`sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of shelling out. It
+exposes 11 tools today: `sgt_init`, `sgt_log`, `sgt_state`, `sgt_diff`, `sgt_fsck`, `sgt_revert`,
+`sgt_restore`, `sgt_oracle_run`, `sgt_plan_intake`, `sgt_checkpoint`, and `sgt_drift`. An agent on
+MCP can inspect state and do symbol-level revert and restore. The collaboration verbs (`sync`,
+`land`, `merge-op`, `session`, `propose`) have no MCP tool yet, so those still run from the
+terminal. See [User workflows](workflows.md) for the full picture.
