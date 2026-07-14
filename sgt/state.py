@@ -124,6 +124,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # crash mid-land leaves it behind, so the next `land` finds it and rolls the working tree back
     # to `snapshot`; `fsck` names the interrupted state. Per-clone, never travels.
     "land_pending": _Artifact(("local", "land_pending.json"), committed=False),
+    # local, gitignored resume manifest for the v2->v3 op-store migration (`sgt migrate ops-v3`,
+    # U10): written before the crossing (the old->new id map + recovered current ideal), cleared
+    # after. Its presence means a migration is in flight, so a crashed `--apply` resumes from the
+    # stored map rather than recomputing it against half-pruned op files. Per-clone, never travels.
+    "migration_manifest": _Artifact(("local", "migration_manifest.json"), committed=False),
 }
 
 

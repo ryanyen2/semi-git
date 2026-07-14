@@ -93,7 +93,7 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
     # Miner-version handshake (C6): a precondition, before any union is built. Theirs' op files
     # (mined by whatever sgt version committed them) are the only ones that can carry a foreign
     # version -- the mined ops are minted by this process -- but both are checked.
-    _check_miner_versions([*theirs_ops, *mined_ops])
+    _check_miner_versions(ours_ops, [*theirs_ops, *mined_ops])
 
     # Mirror `Store.add`'s provenance union on an id collision, in memory -- so `all_ops` matches
     # what `materialize` will persist, without any op file being written yet. Theirs' op files and
@@ -156,17 +156,30 @@ def _tip_witnesses_ideal(gb: GitBinding, sha: str) -> bool:
     return cur != prev
 
 
-def _check_miner_versions(ops: list[Op]) -> None:
-    """Refuse the sync if any of `ops` was mined by a version other than ours (C6). Reports every
-    foreign version seen and which side is behind, so the user knows exactly what to upgrade."""
-    foreign = sorted({op.miner_version for op in ops if op.miner_version != MINER_VERSION})
-    if not foreign:
+def _check_miner_versions(ours_ops: list[Op], theirs_ops: list[Op]) -> None:
+    """Refuse the sync unless both stores share one miner version (C6/R12): a union across versions
+    is exactly the mixed-version store `fsck` flags. Post-U9 *either* side can be behind -- an
+    un-migrated clone carries v2 ops while its binary is v3 -- so both stores are checked, and which
+    side to migrate is named. A pre-v3 store is fixed by `sgt migrate ops-v3` (not an sgt upgrade);
+    a store *newer* than this binary means this side must upgrade sgt first."""
+    ours = {op.miner_version for op in ours_ops if op.miner_version != MINER_VERSION}
+    theirs = {op.miner_version for op in theirs_ops if op.miner_version != MINER_VERSION}
+    if not ours and not theirs:
         return
-    behind = "theirs" if all(v < MINER_VERSION for v in foreign) else "ours"
+    foreign = sorted(ours | theirs)
+    if all(v < MINER_VERSION for v in foreign):
+        # A pre-v3 store on one (or both) side(s): a re-key migration, not an sgt upgrade, is the fix.
+        side = "ours" if ours else "theirs"
+        raise MinerVersionMismatch(
+            f"refusing to union op stores across miner versions: the {side} store carries "
+            f"{', '.join(foreign)} but this sgt mines {MINER_VERSION}. Run `sgt migrate ops-v3` on "
+            f"the {side} clone to re-key it to v3, then sync again -- and on a team, migrate the "
+            f"shared branch's landing clone first, then have the other clones re-sync after."
+        )
     raise MinerVersionMismatch(
-        f"refusing to union op stores across miner versions: theirs carries "
-        f"{', '.join(foreign)}, ours is {MINER_VERSION} -- the {behind} side is behind. "
-        f"Upgrade sgt on the {behind} side, re-run `sgt log` to re-mine, then sync again."
+        f"refusing to union op stores across miner versions: theirs carries {', '.join(foreign)}, "
+        f"this sgt mines {MINER_VERSION} -- theirs was mined by a newer sgt. Upgrade sgt on our side, "
+        f"then run `sgt migrate ops-v3` and sync again."
     )
 
 
