@@ -6,6 +6,12 @@ from __future__ import annotations
 from ._common import _emit_json, _fail
 
 
+def _fail_preview(preview, as_json: bool) -> int:
+    """A failed feature-verb preview, rendered per `--json`. The `"message"` envelope is the
+    feature family's own failure shape (distinct from `_common._fail_json`'s `"error"` key)."""
+    return _emit_json({"ok": False, "message": preview.message}) if as_json else _fail(preview.message)
+
+
 def register(subs, parent) -> None:
     m = subs.add_parser("merge", parents=[parent])
     m.add_argument("survivor")
@@ -51,7 +57,7 @@ def _feature_merge(repo: str, survivor_id: str, absorbed_id: str, as_json: bool 
 
     preview = lens_verbs.plan_merge(repo, survivor_id, absorbed_id)
     if not preview.ok:
-        return _emit_json({"ok": False, "message": preview.message}) if as_json else _fail(preview.message)
+        return _fail_preview(preview, as_json)
     lens_verbs.apply_merge(repo, preview)
     if as_json:
         return _emit_json({
@@ -70,7 +76,7 @@ def _feature_rename(repo: str, feature_id: str, new_label: str, as_json: bool = 
 
     preview = lens_verbs.plan_rename(repo, feature_id, new_label)
     if not preview.ok:
-        return _emit_json({"ok": False, "message": preview.message}) if as_json else _fail(preview.message)
+        return _fail_preview(preview, as_json)
     lens_verbs.apply_rename(repo, preview)
     if as_json:
         return _emit_json({
@@ -91,7 +97,7 @@ def _feature_move(repo: str, ops: list[str], target: str | None, as_json: bool =
         return 2
     preview = lens_verbs.plan_move(repo, ops, target)
     if not preview.ok:
-        return _emit_json({"ok": False, "message": preview.message}) if as_json else _fail(preview.message)
+        return _fail_preview(preview, as_json)
     lens_verbs.apply_move(repo, preview)
     if as_json:
         return _emit_json({"ok": True, "op_ids": list(preview.op_ids), "target": preview.target_id})
@@ -109,7 +115,7 @@ def _feature_split(repo: str, feature: str | None, do_apply: bool, as_json: bool
         return 2
     preview = lens_verbs.plan_split(repo, feature)
     if not preview.ok:
-        return _emit_json({"ok": False, "message": preview.message}) if as_json else _fail(preview.message)
+        return _fail_preview(preview, as_json)
 
     if not do_apply:
         if as_json:

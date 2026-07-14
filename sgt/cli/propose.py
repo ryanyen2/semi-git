@@ -14,7 +14,7 @@ creates or updates a GitHub PR from the same rendering via `gh`. `--json` gives 
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail, _fail_json
 
 _USAGE = ('usage: sgt propose create [--base REF] [--title "..."] [--description "..."] [--json] | '
           'sgt propose status <id> [--json] | '
@@ -71,7 +71,7 @@ def _create(repo, propose, base, title, description, as_json) -> int:
     try:
         p = propose.create(repo, base_ref=base, title=title, description=description)
     except ValueError as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
     if as_json:
         return _emit_json(proposal_view(repo, p.id))
     print(f"✓ proposal {p.id} (base {p.base_ref}, +{len(p.delta_ids)} op(s), "
@@ -124,12 +124,12 @@ def _land(repo, propose, pid, subset, as_json) -> int:
     if subset is not None:
         accept_ids, err = _resolve_subset(repo, pid, subset)
         if err is not None:
-            return _emit_json({"ok": False, "error": err}) if as_json else _fail(err)
+            return _fail_json(err, as_json)
 
     try:
         report = propose.land(repo, pid, accept_ids=accept_ids)
     except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
 
     view = land_view(report)
     if as_json:
@@ -192,7 +192,7 @@ def _publish(repo, propose, pid, remote, as_json) -> int:
 
     if shutil.which("gh") is None:
         msg = "the `gh` CLI is required for `sgt propose publish` (https://cli.github.com) -- not on PATH"
-        return _emit_json({"ok": False, "error": msg}) if as_json else _fail(msg)
+        return _fail_json(msg, as_json)
 
     view = proposal_view(repo, pid)
     if "error" in view:
@@ -203,7 +203,7 @@ def _publish(repo, propose, pid, remote, as_json) -> int:
     try:
         GitBinding(repo).push_head_as(remote, branch)
     except GitError as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
 
     existing = subprocess.run(
         ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "number"],
@@ -229,7 +229,7 @@ def _publish(repo, propose, pid, remote, as_json) -> int:
 
     if proc.returncode != 0:
         msg = f"gh pr {action} failed: {proc.stderr.strip()}"
-        return _emit_json({"ok": False, "error": msg}) if as_json else _fail(msg)
+        return _fail_json(msg, as_json)
 
     if as_json:
         return _emit_json({"ok": True, "action": action, "branch": branch, "gh_output": proc.stdout.strip()})

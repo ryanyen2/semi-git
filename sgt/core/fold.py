@@ -87,7 +87,7 @@ def _order_entities(names: set[str], anchor_of: dict[str, str | None]) -> list[s
     return order
 
 
-def _fold_file(path: str, symbols: dict[str, str], by_id: dict[str, Op], tip: dict[str, str]) -> bytes:
+def _fold_file(path: str, symbols: dict[str, str], by_id: dict[str, Op]) -> bytes:
     whole_file_op = symbols.get(path)
     if whole_file_op is not None:
         return by_id[whole_file_op].images[path] or b""
@@ -151,7 +151,7 @@ def code(ideal: Ideal, ops: list[Op]) -> dict[str, bytes]:
             content_paths.add(path)
 
     return {
-        path: _fold_file(path, symbols, by_id, tip)
+        path: _fold_file(path, symbols, by_id)
         for path, symbols in by_path.items()
         if path in content_paths
     }

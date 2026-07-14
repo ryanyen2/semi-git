@@ -240,7 +240,8 @@ def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
     neither bottoms out at the add), which is not a real ideal -- it has no frontier head to fold.
     Reasoning about *versions* produced (never picking a single canonical producer op) keeps it
     immune to the after-value collision that the graph-edge form mis-resolves."""
-    by_id = {op.id: op for op in ops if op.id in set(ideal_ids)}
+    ideal_set = set(ideal_ids)
+    by_id = {op.id: op for op in ops if op.id in ideal_set}
     declared_preds: dict[str, set[str]] = {}
     for a, b in declared:
         if b in by_id:
@@ -276,9 +277,8 @@ def is_valid_ideal(ops: list[Op], ideal_ids, declared: Declared = frozenset()) -
     collision (add->modify->revert) that a graph-edge form mis-resolves, and rejecting an
     originless cycle that a purely-existential check would wrongly accept. Declared edges fold
     into the same grounding (an op grounds only once its declared predecessors do)."""
-    by_id = {op.id: op for op in ops}
     ids = set(ideal_ids)
-    if not ids <= by_id.keys():
+    if not ids <= {op.id for op in ops}:
         return False
     if _grounded(ids, ops, declared) != ids:
         return False
@@ -345,8 +345,7 @@ def upset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = frozens
     could reach out of the result. The complement `_grounded(...)` is a valid ideal by
     construction (well-founded, and fork-free as a subset of a fork-free ideal), so
     `ideal \\ upset_in(...)` never needs a further validity check."""
-    ids = set(ideal_ids)
-    return frozenset(ids - _grounded(ids - {target}, ops, declared))
+    return upset_in_many({target}, ideal_ids, ops, declared)
 
 
 def upset_in_many(removed, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:

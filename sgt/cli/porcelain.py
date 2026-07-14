@@ -21,7 +21,7 @@ Two things live here, both small and both *data*:
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail_json
 
 # D2 routing table (design doc §1): git subcommand -> the sgt verb that owns that job. A subcommand
 # here is refused by `sgt git`; anything absent passes through untouched (read/inspect verbs, and
@@ -96,7 +96,7 @@ def _switch(repo: str, branch: str, as_json: bool) -> int:
         gb.checkout_branch(branch)  # move HEAD + materialize the branch's committed tree
         ideal = get(repo)  # reconcile the now-current ref's ideal
     except (GitError, DirtyWorkingTreeError, ValueError) as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
 
     n = len(ideal.op_ids)
     if as_json:
@@ -126,7 +126,7 @@ def _save(repo: str, message: str | None, as_json: bool) -> int:
     try:
         sha = put(repo, ideal, message=message or "sgt save")
     except (DirtyWorkingTreeError, GitError, ValueError) as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
     record_ideal(repo, ideal, sha)
 
     n = len(ideal.op_ids)
@@ -146,7 +146,7 @@ def _undo(repo: str, as_json: bool) -> int:
     try:
         result = undo_ideal(repo)
     except (DirtyWorkingTreeError, GitError, ValueError) as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _fail(str(e))
+        return _fail_json(str(e), as_json)
 
     if result is None:
         msg = "nothing to undo -- no recorded ideal edits"

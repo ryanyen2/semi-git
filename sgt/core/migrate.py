@@ -34,7 +34,7 @@ from sgt import state
 from sgt.core import order
 from sgt.core.mine import mine
 from sgt.core.op import BOTTOM, MINER_VERSION, Op, compute_id, is_bottom
-from sgt.core.store import Store, _serialize, locked_section
+from sgt.core.store import Store, _serialize, _write_atomic, locked_section
 from sgt.store.gitbind import GitBinding
 
 _MANIFEST = "migration_manifest"
@@ -273,7 +273,7 @@ def _rekey_hollows(store: Store, mapping_out: dict[str, str]) -> None:
         if new_id == op.id and op.miner_version == MINER_VERSION:
             continue
         new_op = replace(op, id=new_id, miner_version=MINER_VERSION)
-        (store.hollow_dir / new_id).write_bytes(_serialize(new_op))
+        _write_atomic(store.hollow_dir / new_id, _serialize(new_op))
         if new_id != op.id:
             (store.hollow_dir / op.id).unlink(missing_ok=True)
         mapping_out[op.id] = new_id

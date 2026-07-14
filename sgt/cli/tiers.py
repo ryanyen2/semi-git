@@ -10,7 +10,7 @@ drop the path's ops from the ideal first, then ignore it.
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail_json
 
 _TIERS = ("entity", "opaque", "ignored")
 
@@ -26,8 +26,6 @@ def register(subs, parent) -> None:
 
 
 def _cmd_tiers(args) -> int:
-    if getattr(args, "tiers_verb", None) == "set":
-        return _cmd_tiers_set(args)
     return _tiers(".", args.as_json)
 
 
@@ -79,7 +77,7 @@ def _tiers_set(repo: str, pattern: str, tier: str, as_json: bool) -> int:
                 "ignoring would silently stop tracking live content; "
                 "`sgt revert` those paths' ops first"
             )
-            return _emit_json({"ok": False, "error": msg}) if as_json else _fail(msg)
+            return _fail_json(msg, as_json)
 
     cfg = tiers.load_tiers(repo)
     overrides = {t: list(cfg.overrides.get(t, ())) for t in _TIERS}

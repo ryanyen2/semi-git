@@ -15,7 +15,7 @@ otherwise has no reason to reproduce a hand edit). Patterns reused rather than d
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from sgt.core import lens as kernel_lens

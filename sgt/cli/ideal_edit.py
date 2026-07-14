@@ -76,6 +76,29 @@ def _cmd_restore(args) -> int:
     return _kernel_edit_verb(".", "restore", args.ref, args.emit, args.as_json)
 
 
+def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool) -> int:
+    """Shared tail for the ideal-edit verbs: `--emit` renders the preview projection; otherwise
+    apply the edit (when the preview is ok) and render the plain result view. Identical on both
+    the revert/restore and the `--session` paths."""
+    from sgt.core import verbs
+
+    if emit:
+        from sgt.api import _project_verb_preview
+
+        view = _project_verb_preview(repo, preview)
+        return _emit_json(view) if as_json else _print_verb_view(view)
+
+    if preview.ok:
+        verbs.apply(repo, preview)
+    view = {
+        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
+        "removed": sorted(preview.removed), "added": sorted(preview.added),
+        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
+        "message": preview.message,
+    }
+    return _emit_json(view) if as_json else _print_verb_view(view)
+
+
 def _kernel_edit_verb(repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool) -> int:
     """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
     `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). `revert`'s target
@@ -102,21 +125,7 @@ def _kernel_edit_verb(repo: str, cmd: str, ref_tokens: list[str], emit: bool, as
     else:
         preview = verbs.plan_restore(repo, target)
 
-    if emit:
-        from sgt.api import _project_verb_preview
-
-        view = _project_verb_preview(repo, preview)
-        return _emit_json(view) if as_json else _print_verb_view(view)
-
-    if preview.ok:
-        verbs.apply(repo, preview)
-    view = {
-        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
-        "removed": sorted(preview.removed), "added": sorted(preview.added),
-        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
-        "message": preview.message,
-    }
-    return _emit_json(view) if as_json else _print_verb_view(view)
+    return _emit_verb_result(repo, preview, emit, as_json)
 
 
 def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:
@@ -131,21 +140,7 @@ def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:
     get(repo)  # mine-on-contact before resolving the session's ops (R9)
     preview = verbs.plan_revert_session(repo, name)
 
-    if emit:
-        from sgt.api import _project_verb_preview
-
-        view = _project_verb_preview(repo, preview)
-        return _emit_json(view) if as_json else _print_verb_view(view)
-
-    if preview.ok:
-        verbs.apply(repo, preview)
-    view = {
-        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
-        "removed": sorted(preview.removed), "added": sorted(preview.added),
-        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
-        "message": preview.message,
-    }
-    return _emit_json(view) if as_json else _print_verb_view(view)
+    return _emit_verb_result(repo, preview, emit, as_json)
 
 
 def _revert_keep_dependents(repo: str, ref_tokens: list[str], intent: str | None, as_json: bool) -> int:
