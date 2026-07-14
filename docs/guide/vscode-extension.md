@@ -1,8 +1,10 @@
 # VS Code extension
 
-A GitLens-style lens onto the semantic tree. It shows which **feature** owns each line, draws
-the feature DAG, and lets you plug features in and out — in-situ, with color and shape doing the
-work instead of labels. It never edits your code; it drives `sgt`'s read and graph-op verbs.
+A GitLens-style lens onto the operation-ideal kernel and its feature tree. It shows which
+**feature** owns each line, visualizes the feature tree as a rail alongside a shared commit-index
+timeline, and lets you merge/split/rename/move features or revert one — in-situ, with color and
+glyph doing the work instead of labels. It never edits your code directly; it drives `sgt`'s read
+views and feature/kernel verbs.
 
 ## Install (from source)
 
@@ -13,97 +15,84 @@ npm run compile        # type-check + bundle to dist/extension.js
 ```
 
 Then press `F5` in VS Code to launch an Extension Development Host, or package it with
-`npx vsce package` and install the `.vsix`. The extension activates automatically in any
-workspace that contains a `.sgt/graph.json`. It calls the `sgt` on your `PATH` — override with
-the `sgt.path` setting.
+`npx vsce package` and install the `.vsix`. The extension activates automatically in any workspace
+containing `.sgt/local/ideal.json` (written by `sgt init`). It calls the `sgt` on your `PATH` —
+override with the `sgt.path` setting.
 
 ## What you get
 
-| GitLens concept | semi-git equivalent |
+| Surface | What it shows |
 | --- | --- |
-| Inline / status-bar blame | **Semantic blame** — the current line's owning feature, end-of-line + status bar |
-| Git CodeLens | **Feature CodeLens** — the feature above each block + its dependent count |
-| Rich hovers | **Feature hover** — intent, deps, dependents, conflict, and *preview suspend/revert* links |
-| File heatmap | **Feature heatmap** — per-feature gutter band + overview-ruler color across the file |
-| Commit graph | **Feature Graph** — a row-based swim-lane graph in the bottom panel (+ a quick-nav sidebar tree) |
-| Revision navigation | **Preview revert / suspend** — a read-only diff of what the op would do |
+| Semantic blame | A colored gutter/border tint per line, by the feature that owns it (`blame_view`) |
+| **Feature Map** | A rail visualization of the feature tree: hierarchy + a commit-index timeline, with hover-preview on every mutating action |
+| Plan CodeLens + status bar | Lines matched or drifted from the active `sgt plan` session (U14) |
+| Preview revert | A read-only diff of what reverting a feature would change, before you commit to it |
 
 ### Semantic blame
 
-The active line shows a quiet `◆ <feature intent>` annotation, and the status bar shows the
-owner. Hover any line for the full detail and one-click previews. Toggle with **semi-git: Toggle
-Line Blame**. Attribution is exact down to the statement — an edited line belongs to the fix
-node that changed it, not the function's original author.
+Each line is tinted (background + left border + overview-ruler mark) in its owning feature's
+identity color; hovering shows the feature's label and id. Toggle with **semi-git: Toggle Feature
+Blame** (`sgt.blame.enabled`). Colors are generated deterministically from the feature id via an
+OKLCH golden-angle hash (`src/color.ts`), theme-aware for contrast — the same hue appears in the
+gutter and in the Feature Map.
 
-### Feature heatmap
+### Feature Map
 
-**semi-git: Toggle Feature Heatmap** tints the whole file: a colored gutter band per contiguous
-feature and a matching band on the overview ruler, so you see the distribution of features at a
-glance. Each feature's color is a stable hash of its id — the same hue in the editor, the graph,
-and everywhere else.
+**semi-git: Show Feature Map** (`sgt.showFeatureMap`) opens a webview panel with a rail
+visualization, redesigned around the pattern explored in
+`experiments/patch_clustering/out/rail2.html`:
 
-### Feature Graph
+- **Left column** — the feature tree (`map_view`'s nodes): subsystems and features, DFS-ordered
+  and depth-indented, each collapsible; a feature's identity-colored dot, its label, and a size
+  bar.
+- **Right column** — a shared commit-index axis (`history_view`): every mined commit in order,
+  with each feature's lifebar (its first→last op on that axis) and a glyph per op at its
+  commit-index, using the kernel's real op-kind vocabulary: `◆` add, `+` extend, `~` rework,
+  `−` prune, `⋔` move, `⋈` merge, `·` touched.
+- **Edges** — cross-feature structural dependency connectors (`map_view`'s `edges`, the fused
+  structural/co-change/scope coupling graph rolled up to feature pairs), thresholded per node with
+  the overflow reported rather than silently dropped.
 
-Modeled on GitLens's Commit Graph, but mapped from commits to **semantic nodes**. It lives in the
-**bottom panel** (run **semi-git: Open Feature Graph**, or open the *Feature Graph* panel view).
-The lightweight *Features* tree in the activity bar is the quick-nav companion.
+**Interaction.** Hovering a row or edge dims everything else and lights the hovered node plus its
+dependency neighbors (color still only ever means identity; status is always a glyph or a stroke
+treatment, never a second hue). Clicking a feature opens a detail panel with its label, rationale,
+size, and an action bar: **Rename, Merge into…, Split, Move ops…, Revert**. Hovering **Split** or
+**Revert** runs the real `plan_split`/`plan_revert_feature` preview live and paints the actual
+affected features as a blast-radius ghost — for Revert this can genuinely span more than the one
+feature named, since it is the real upset-closure of the kernel edit, not a guessed dependency
+edge. **Merge into…**/**Move ops…** arm a "pick target" mode: hovering a candidate feature
+live-previews the merge/move against it; clicking confirms and applies. Every preview is
+side-effect-free (`sgt preview <verb> ... --json`); only a click on Split/Revert or a confirmed
+Merge/Move target actually writes (`sgt merge`/`split --apply`/`rename`/`move`/`revert`).
 
-Each feature is a **row** (most-derived on top), laid out like a git graph:
+### Plan CodeLens + status bar
 
-- **KIND column** — a colored ref-pill: the feature's identity hue (left accent) + its kind, with a
-  status glyph. Status is a glyph, never the hue: `●` active, `○` planned, `◐` suspended (dimmed),
-  `⚠` conflict (red). A legend sits in the toolbar.
-- **GRAPH column** — git-style **swim lanes**: each feature is a node circle in its identity color,
-  connected by colored bezier edges down to the features it depends on. Planned nodes render hollow;
-  conflicts get a red ring.
-- **FEATURE column** — the decision's **slug**: a short ~5-word human title (authored by `sgt plan`
-  or distilled for landed work); the full decision sentence drops to the sub-line and detail pane.
-- **Minimap** — a canvas activity ribbon (effects per feature) with status-colored markers; click
-  to jump to a feature.
-- **Header** — feature count, a drift chip (`✓ in sync` / `⚠ drifted`), and **live agent presence**.
+When a plan session is active (`sgt plan intake`), matched and drifted lines get a one-line
+CodeLens (`✦ matches plan step N` / `◇ drift`) that opens a diff of the step's intent against the
+real edit, and a status bar item shows step progress (`○` pending / `●` matched). Toggle with
+`sgt.plan.enabled`. Both are invisible with no active session.
 
-**Live presence.** When your coding agent edits files, the affected features light up in
-near-real-time — a `✎ editing` badge, a pulsing node halo, and a header indicator (`✎ agent editing
-N: …`) — so you can watch the graph being worked, multiplayer-style. A just-checkpointed feature
-flashes as it lands.
+### Preview revert
 
-**Inspect in-situ — no popups.** Selecting a row (click, arrow keys + `Enter`, or a hover/tree
-"Inspect") opens a **detail pane** beside the graph (never a modal). It carries, top to bottom:
-
-- **Rationale (ADR)** — the decision's **Context / Decision / Consequence**. For a planned node these
-  come from `sgt plan`; for landed work, a one-click **✦ Distill** button reconstructs them via the
-  LLM (no-op offline). Status shows as a glyph + label (`○ Planned`, `● In force`, `● Landed`).
-- **Structure** — a *deterministic*, analysis-derived description read straight from the entity call
-  graph: what this decision **defines**, what those defs **use**, and what **uses** them. Unlike the
-  ADR prose this can't drift or hallucinate — it's recomputed from code (or, for a planned node, its
-  declared `provides`/`needs`). Distillation is fed this block as ground truth so the prose stays
-  anchored to real structure.
-- **Alternatives weighed**, the **git transaction** (commit chips), and the **footprint** (clickable
-  entity chips that reveal the def), then the **actions**.
-
-**Preview revert/suspend** opens a read-only diff; **Revert/Suspend** apply with a two-click inline
-confirm (no modal) since they're reversible. **Search** dims non-matches in place.
-
-### Revision navigation
-
-From a hover, the node inspector, the graph, or the sidebar context menu, choose **Preview
-revert** or **Preview suspend** to open a read-only diff (current vs. predicted) of exactly what
-the op would change — computed by `sgt emit` without writing anything. A refusal (e.g. a
-dependent still needs the feature) shows the reason instead of a diff. **Revert** / **Suspend**
-/ **Restore** apply for real, after a confirmation, and re-materialize + commit.
+From the Feature Map's action bar (or **semi-git: Preview Revert Feature**), open a read-only
+diff (current vs. predicted) of exactly what reverting a feature would change — computed by
+`sgt revert <feature> --emit` without writing anything. A refusal (e.g. a chain fork) shows the
+reason instead of a diff. **semi-git: Revert Feature** applies for real, after a confirmation, and
+re-materializes + commits.
 
 ## Settings
 
 | Setting | Default | Description |
 | --- | --- | --- |
 | `sgt.path` | `sgt` | Path to the `sgt` executable. |
-| `sgt.blame.enabled` | `true` | Current-line semantic blame annotation. |
-| `sgt.heatmap.enabled` | `false` | Whole-file per-feature gutter + ruler heatmap. |
-| `sgt.codeLens.enabled` | `true` | CodeLens naming the feature above each block. |
+| `sgt.blame.enabled` | `true` | Tint whole files by the feature that owns each span. |
+| `sgt.plan.enabled` | `true` | Show a CodeLens above lines matched or drifted from the active plan session. |
 
 ## How it talks to sgt
 
-Every read shells out to `sgt <verb> --json` (the [canonical JSON projection](the-semantic-tree.md))
-in the workspace root; results are cached and refreshed when `.sgt/*.json` changes or you save a
-Python file. Mutations call the same verbs the CLI does. There is no separate state — the
-extension, the TUI, the CLI, and MCP all read one schema.
+Every read shells out to `sgt <verb> --json` (the canonical JSON projection in `sgt/api.py`) in
+the workspace root; results are cached in `src/store.ts` and refreshed when `.sgt/**/*.json`
+changes or you save a Python file. Mutations call the same verbs the CLI does — the Feature Map's
+hover-preview and the CLI's `sgt preview <verb> ...` read the identical `feature_verb_preview_view`
+projection, so there is no separate state: the extension, the TUI, the CLI, and MCP all read one
+schema.

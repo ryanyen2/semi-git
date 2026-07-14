@@ -1,18 +1,20 @@
-// Shared state: one sgt client, a cached graph, and a per-file blame cache. Everything reactive
-// (decorations, CodeLens, tree, webview) listens to `onDidChange` and re-reads from here, so a
-// single refresh after a checkpoint/graph op updates every surface at once.
+// Shared state: one sgt client, a cached feature map, and a per-file blame cache. Everything
+// reactive (decorations, the tree) listens to `onDidChange` and re-reads from here, so a single
+// refresh after a checkpoint/feature-verb op updates every surface at once.
 
 import * as vscode from "vscode";
 import { Sgt } from "./sgt";
-import { BlameView, DecisionGraphView, GraphView, NodeView, StatusView } from "./types";
+import { BlameView, DriftView, HistoryView, MapNode, MapView, PlanView, StatusView } from "./types";
 
 export class Store {
   readonly sgt: Sgt;
-  private graphCache: GraphView | undefined;
+  private mapCache: MapView | undefined;
+  private historyCache: HistoryView | undefined;
   private statusCache: StatusView | undefined;
-  private decisionsCache: DecisionGraphView | undefined;
-  private nodeById = new Map<string, NodeView>();
+  private nodeById = new Map<string, MapNode>();
   private blameCache = new Map<string, BlameView>();
+  private planCache: PlanView | undefined;
+  private driftCache: DriftView | undefined;
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
@@ -20,22 +22,24 @@ export class Store {
     this.sgt = new Sgt(repoRoot, out);
   }
 
-  async graph(force = false): Promise<GraphView> {
-    if (!this.graphCache || force) {
-      this.graphCache = await this.sgt.export();
-      this.nodeById = new Map(this.graphCache.nodes.map((n) => [n.id, n]));
+  async map(force = false): Promise<MapView> {
+    if (!this.mapCache || force) {
+      this.mapCache = await this.sgt.map();
+      this.nodeById = new Map(this.mapCache.nodes.map((n) => [n.id, n]));
     }
-    return this.graphCache;
+    return this.mapCache;
   }
 
-  async decisions(force = false): Promise<DecisionGraphView> {
-    if (!this.decisionsCache || force) {
-      this.decisionsCache = await this.sgt.decisions();
+  // Cached alongside `map()` -- both are invalidated together off the same `.sgt/**/*.json`
+  // watcher (a feature verb or a new mined commit changes both the tree and the op DAG).
+  async history(force = false): Promise<HistoryView> {
+    if (!this.historyCache || force) {
+      this.historyCache = await this.sgt.history();
     }
-    return this.decisionsCache;
+    return this.historyCache;
   }
 
-  node(id: string): NodeView | undefined {
+  node(id: string): MapNode | undefined {
     return this.nodeById.get(id);
   }
 
@@ -56,12 +60,28 @@ export class Store {
     return view;
   }
 
+  async planView(force = false): Promise<PlanView> {
+    if (!this.planCache || force) {
+      this.planCache = await this.sgt.planStatus();
+    }
+    return this.planCache;
+  }
+
+  async driftView(force = false): Promise<DriftView> {
+    if (!this.driftCache || force) {
+      this.driftCache = await this.sgt.drift();
+    }
+    return this.driftCache;
+  }
+
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
-    this.graphCache = undefined;
+    this.mapCache = undefined;
+    this.historyCache = undefined;
     this.statusCache = undefined;
-    this.decisionsCache = undefined;
     this.blameCache.clear();
+    this.planCache = undefined;
+    this.driftCache = undefined;
     this._onDidChange.fire();
   }
 

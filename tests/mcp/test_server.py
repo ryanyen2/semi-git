@@ -1,25 +1,21 @@
-"""MCP server — JSON-RPC dispatch and the agent loop, driven through ``handle_request``.
-
-No subprocess: we call the pure dispatcher directly. The headline is the *checkpoint loop* — an
-agent edits a file on disk, then checkpoints it into the semantic tree with a declared intent,
-and the drift is gone (the tree now reproduces the edit).
+"""MCP server — JSON-RPC dispatch over the kernel-backed tools (plan U7/U8/U9, flipped onto MCP
+in U10). No subprocess: we call the pure dispatcher directly.
 """
 
 from __future__ import annotations
 
 import json
 
-from sgt.effects.model import Effect
 from sgt.mcp import handle_request
-from sgt.project import Project
-from sgt.store.graph import Node, NodeKind
+from sgt.store.gitbind import init_store
 
 
-def _seed(tmp_path) -> str:
-    p = Project.init(tmp_path, replica_id="R1")
-    p.add_feature(Node("shorten", NodeKind.CAPABILITY, "url shortener"),
-                  [Effect.add_def("app.py", "shorten", "def shorten(u):\n    return u[:6]")])
-    p.commit("feat: shorten", node_id="shorten")
+def _seed(tmp_path, n: int = 2) -> str:
+    """A repo whose a.py::foo is a linear chain of `n` versions, one per commit."""
+    gb, _ = init_store(tmp_path)
+    for i in range(1, n + 1):
+        (tmp_path / "a.py").write_text(f"def foo():\n    return {i}\n", encoding="utf-8")
+        gb.commit_all(f"foo v{i}")
     return str(tmp_path)
 
 
@@ -33,7 +29,7 @@ def _call(repo, name, arguments=None, mid=1):
 
 # -- protocol handshake -----------------------------------------------------
 def test_initialize_advertises_tools_capability(tmp_path):
-    repo = _seed(tmp_path)
+    repo = _seed(tmp_path, 1)
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 0, "method": "initialize",
                                  "params": {"protocolVersion": "2024-11-05"}})
     assert resp["result"]["capabilities"]["tools"] == {}
@@ -41,124 +37,183 @@ def test_initialize_advertises_tools_capability(tmp_path):
 
 
 def test_initialized_notification_has_no_response(tmp_path):
-    repo = _seed(tmp_path)
+    repo = _seed(tmp_path, 1)
     assert handle_request(repo, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
 
 
-def test_tools_list_advertises_full_agent_surface(tmp_path):
-    repo = _seed(tmp_path)
+def test_tools_list_advertises_kernel_surface(tmp_path):
+    repo = _seed(tmp_path, 1)
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = {t["name"] for t in resp["result"]["tools"]}
-    # full parity with the CLI's mutating verbs — a regression dropping any is caught here
-    assert {"sgt_graph", "sgt_show", "sgt_status", "sgt_conflicts", "sgt_plan", "sgt_checkpoint",
-            "sgt_revert", "sgt_restore", "sgt_reconcile", "sgt_init"} <= names
+    # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
+    assert names == {"sgt_init", "sgt_log", "sgt_state", "sgt_diff", "sgt_fsck",
+                      "sgt_revert", "sgt_restore", "sgt_oracle_run",
+                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
-    repo = _seed(tmp_path)
+    repo = _seed(tmp_path, 1)
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 9, "method": "nonsense"})
     assert resp["error"]["code"] == -32601
 
 
 def test_unknown_tool_is_reported_as_tool_error(tmp_path):
-    repo = _seed(tmp_path)
+    repo = _seed(tmp_path, 1)
     resp, payload = _call(repo, "sgt_nope")
     assert resp["result"]["isError"] is True and "unknown tool" in payload["error"]
 
 
 # -- read tools -------------------------------------------------------------
-def test_graph_lists_nodes(tmp_path):
-    repo = _seed(tmp_path)
-    _, payload = _call(repo, "sgt_graph")
-    assert payload["count"] == 1 and payload["nodes"][0]["id"] == "shorten"
+def test_log_lists_mined_ops(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_log")
+    assert payload["count"] >= 1
+    assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
 
 
-def test_show_resolves_fuzzy_ref(tmp_path):
-    repo = _seed(tmp_path)
-    _, payload = _call(repo, "sgt_show", {"ref": "shorten"})
-    assert payload["id"] == "shorten" and any(e["target"] == "shorten" for e in payload["effects"])
+def test_state_shows_frontier(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_state")
+    assert "a.py::foo" in payload["frontier"]
+    assert payload["oracle_configured"] is False
 
 
-def test_conflicts_empty_on_clean_tree(tmp_path):
-    repo = _seed(tmp_path)
-    _, payload = _call(repo, "sgt_conflicts")
-    assert payload == {"conflicts": [], "count": 0}
+def test_diff_requires_both_refs(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_diff", {"ref_a": "HEAD"})
+    assert "error" in payload
 
 
-# -- the checkpoint loop (the agent-facing reconcile path) ------------------
-def test_checkpoint_requires_intent(tmp_path):
-    repo = _seed(tmp_path)
-    resp, payload = _call(repo, "sgt_checkpoint", {})
-    assert resp["result"]["isError"] and "intent" in payload["error"]
+def test_fsck_reports_clean_store(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _call(repo, "sgt_log")  # mine, so the store isn't empty
+    _, payload = _call(repo, "sgt_fsck")
+    assert payload["ok"] is True and payload["checked"] >= 1
 
 
-def test_checkpoint_distills_disk_edit_under_declared_intent(tmp_path):
-    repo = _seed(tmp_path)
-    # an external agent edits the file on disk ...
-    (tmp_path / "app.py").write_text("def shorten(u):\n    return u[:8]\n")
-    _, before = _call(repo, "sgt_status")
-    assert before["drift"]["any"]                           # drift present before checkpoint
-    # ... then checkpoints its work with a declared intent
-    _, rep = _call(repo, "sgt_checkpoint", {"intent": "shorten to 8 chars"})
-    assert rep["ok"] and len(rep["landed"]) == 1            # a fix node landed
-    # the tree now reproduces the edit and the drift is gone
-    _, after = _call(repo, "sgt_status")
-    assert after["drift"]["any"] is False
-    _, node = _call(repo, "sgt_show", {"ref": rep["landed"][0]})
-    assert node["intent"] == "shorten to 8 chars"           # intent captured live, not guessed
-    assert "shorten" in node["depends_on"]                  # anchored to the function it edits
-    assert "u[:8]" in Project.open(tmp_path).materialize()["app.py"]
+# -- write tools --------------------------------------------------------------
+def test_revert_tool_removes_the_upset(tmp_path):
+    repo = _seed(tmp_path, 2)
+    _, payload = _call(repo, "sgt_revert", {"ref": "a.py::foo"})
+    assert payload["ok"] and payload["removed"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
 
 
-# -- graph verbs + the full agent loop through MCP --------------------------
-def test_revert_tool_plugs_a_feature_out(tmp_path):
-    repo = _seed(tmp_path)
-    _, payload = _call(repo, "sgt_revert", {"ref": "shorten"})
-    assert payload["ok"] and "shorten" in payload["landed"]
-    assert Project.open(tmp_path).materialize() == {}
+def test_revert_emit_previews_without_writing(tmp_path):
+    repo = _seed(tmp_path, 2)
+    _, payload = _call(repo, "sgt_revert", {"ref": "a.py::foo", "emit": True})
+    assert payload["ok"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
 
 
-def test_restore_tool_plugs_a_feature_back_in(tmp_path):
-    repo = _seed(tmp_path)
-    _call(repo, "sgt_revert", {"ref": "shorten"})
-    assert Project.open(tmp_path).materialize() == {}  # out of force
-    _, payload = _call(repo, "sgt_restore", {"ref": "shorten"})
-    assert payload["ok"] and "shorten" in payload["landed"]
-    assert "def shorten" in Project.open(tmp_path).materialize().get("app.py", "")
+def test_restore_tool_is_reverts_inverse(tmp_path):
+    repo = _seed(tmp_path, 2)
+    _call(repo, "sgt_revert", {"ref": "a.py::foo"})
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
+    _, payload = _call(repo, "sgt_restore", {"ref": "a.py::foo"})
+    assert payload["ok"] and payload["added"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
 
 
-def test_reconcile_tool_no_pending(tmp_path):
-    repo = _seed(tmp_path)
-    _, payload = _call(repo, "sgt_reconcile")
-    assert payload["ok"] and "no pending" in payload["message"]
+def test_revert_missing_ref_is_an_error(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_revert", {})
+    assert "error" in payload
 
 
 def test_init_tool_bootstraps_workspace(tmp_path):
     fresh = tmp_path / "fresh"
     fresh.mkdir()
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=fresh, check=True)
+    subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=fresh, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=fresh, check=True)
+    (fresh / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "a.py"], cwd=fresh, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=fresh, check=True)
+
     _, payload = _call(str(fresh), "sgt_init")
     assert payload["ok"] and (fresh / ".sgt").exists()
 
 
-def test_checkpoint_fulfills_flips_planned_via_mcp(tmp_path):
-    repo = _seed(tmp_path)
-    proj = Project.open(tmp_path)
-    proj.add_plan([Node("greet", NodeKind.CAPABILITY, "add a greeter")], edges=[])
-    proj.save()
-    (tmp_path / "greet.py").write_text("def greet():\n    return 'hi'\n")
-    _, payload = _call(repo, "sgt_checkpoint", {"intent": "greet returns hi", "fulfills": "greet"})
-    assert payload["ok"] and "greet" in payload["fulfilled"]
-    from sgt.store.graph import NodeStatus
-    assert Project.open(tmp_path).graph.get("greet").status is NodeStatus.ACTIVE
+def test_oracle_run_tool_with_no_config(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_oracle_run")
+    assert payload["configured"] is False
 
 
-def test_held_checkpoint_returns_witness_for_agent(tmp_path):
-    # When a fulfill is held, the agent must get the witness back (why + against what) so it can act.
-    repo = _seed(tmp_path)
-    proj = Project.open(tmp_path)
-    proj.add_plan([Node("reg", NodeKind.CAPABILITY, "register", needs=["missing"])], edges=[])
-    proj.save()
-    (tmp_path / "reg.py").write_text("def register():\n    return missing()\n")
-    _, payload = _call(repo, "sgt_checkpoint", {"intent": "register", "fulfills": "reg"})
-    assert "reg" in payload["quarantined"]
-    assert payload["witnesses"]["reg"].get("reason")        # actionable detail, not just for humans
+# -- agentic loop tools (plan U14) -------------------------------------------
+def _no_client(*args, **kwargs):
+    raise RuntimeError("no client")
+
+
+def test_plan_intake_tool_mints_steps_from_a_numbered_list(tmp_path, monkeypatch):
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(
+        repo, "sgt_plan_intake", {"plan_text": "1. step one\n2. step two\n", "session_id": "s1"}
+    )
+    assert payload["session_id"] == "s1"
+    assert payload["step_count"] == 2
+    assert [s["title"] for s in payload["steps"]] == ["step one", "step two"]
+
+
+def test_plan_intake_tool_requires_plan_text(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_plan_intake", {})
+    assert "error" in payload
+
+
+def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
+    from sgt.loop import plan as plan_mod
+    from sgt.store.gitbind import GitBinding
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    repo = _seed(tmp_path, 1)  # a.py::foo == "return 1"
+    repo_path = Path(repo)
+    store = Store(repo)
+    baseline = sorted(op.id for op in store.all_ops())
+
+    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    store.add_hollow(hollow)
+    table = plan_mod._load_sessions(repo_path)
+    table["s1"] = {
+        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
+        "baseline_op_ids": baseline,
+        "steps": [{
+            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }],
+    }
+    plan_mod._save_sessions(repo_path, table)
+
+    (repo_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+    GitBinding(repo).commit_all("touch foo")
+
+    _, preview = _call(repo, "sgt_checkpoint")
+    assert len(preview["matches"]) == 1
+    group = preview["matches"][0]
+    assert group["session_id"] == "s1"
+
+    _, confirmed = _call(
+        repo, "sgt_checkpoint",
+        {"confirm": [{"hollow_ids": group["hollow_ids"], "op_ids": group["op_ids"]}]},
+    )
+    assert confirmed["matches"] == []  # the step is no longer pending
+
+    from sgt.api import plan_view
+
+    assert plan_view(repo)["sessions"][0]["steps"][0]["status"] == "matched"
+
+
+def test_drift_tool_reports_nothing_with_no_active_session(tmp_path):
+    repo = _seed(tmp_path, 2)  # two commits, but no plan session at all
+    _, payload = _call(repo, "sgt_drift")
+    assert payload["entries"] == []

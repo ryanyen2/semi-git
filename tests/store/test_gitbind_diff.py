@@ -4,9 +4,8 @@ This is the diff helper P1 (git ``-M`` rename detection) and P3 (``analyze()`` i
 hunk ranges against unit line spans) build on. It parses ``git diff -M parent..sha`` for the
 status letter, the rename old→new paths, and the ``@@`` line ranges in the post-commit file.
 
-Tests diff from a baseline commit: ``init_store`` writes ``.sgt/graph.json`` and the first
-``commit_all`` (``git add -A``) sweeps it in, so a clean parent already carries the ``.sgt``
-files — mirroring how real checkpoint diffs run.
+Tests diff from a baseline commit (an empty placeholder file, since a commit needs something
+staged) so the parent-vs-child diff isolates exactly the change under test.
 """
 
 from sgt.store.gitbind import FileChange, init_store
@@ -18,7 +17,8 @@ def _write(gb, path, text):
 
 def test_added_file_reports_A_and_full_range(tmp_path):
     gb, _ = init_store(tmp_path)
-    base = gb.commit_all("baseline")  # sweeps in .sgt/graph.json
+    _write(gb, "README.md", "placeholder\n")
+    base = gb.commit_all("baseline")
     _write(gb, "a.py", "x = 1\ny = 2\nz = 3\n")
     sha = gb.commit_all("add a")
     changes = gb.diff_name_and_text(base, sha)

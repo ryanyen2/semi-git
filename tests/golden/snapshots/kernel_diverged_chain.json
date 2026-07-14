@@ -1,0 +1,202 @@
+{
+  "blame_view": {
+    "features": {
+      "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139": {
+        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify"
+      }
+    },
+    "file": "slugify.py",
+    "spans": [
+      {
+        "end_line": 2,
+        "feature_id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
+        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "sessions": [],
+        "start_line": 1,
+        "symbol": "slugify.py::slugify"
+      }
+    ]
+  },
+  "ideal_diff_view": {
+    "by_symbol": {
+      "slugify.py::slugify": {
+        "only_in_a": [
+          "4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139"
+        ],
+        "only_in_b": [
+          "73ca5ab500ec9a5a5aa409f5b3412416ef58d0f2a230095f29f1a506d004dcdb"
+        ]
+      }
+    },
+    "count": 2,
+    "ref_a": "main",
+    "ref_b": "release"
+  },
+  "map_view": {
+    "edges": [],
+    "feature_count": 1,
+    "identity_events": [
+      {
+        "event": "birth",
+        "feature_id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139"
+      }
+    ],
+    "nodes": [
+      {
+        "children": [],
+        "dir": "slugify.py",
+        "id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
+        "kind": "feature",
+        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "op_count": 5,
+        "parent": null,
+        "sessions": [],
+        "size": 3,
+        "split_reason": "max_leaf",
+        "why": "Auto-derived from slugify.py (no LLM label available)."
+      }
+    ],
+    "roots": [
+      "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139"
+    ]
+  },
+  "oplog_view": {
+    "count": 6,
+    "ops": [
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "b5812fd71f3de69bed000ad0238107a002de9d86",
+            "before": "bf135bc412b785389ca5025ec87188fcf21310bf",
+            "symbol": "slugify.py::slugify"
+          }
+        ],
+        "id": "4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
+        "intent": null,
+        "kind": "rework",
+        "provenance": [
+          "b9baae3f74b5f8ca12354e92d8a87589e75debfa"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "7fccf605018c6a70d85c4d6e99698a0d625b15e1",
+            "before": "bf135bc412b785389ca5025ec87188fcf21310bf",
+            "symbol": "slugify.py::slugify"
+          }
+        ],
+        "id": "73ca5ab500ec9a5a5aa409f5b3412416ef58d0f2a230095f29f1a506d004dcdb",
+        "intent": null,
+        "kind": "rework",
+        "provenance": [
+          "eacd3ebbf82ccf0a4a2f484bd3f99f4574086739"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            "before": null,
+            "symbol": "slugify.py::__residue__::\u0000HEAD\u0000"
+          }
+        ],
+        "id": "74002ad4828a39421e15341134625bb3bc544220e19177e913026b27b8c901be",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+            "before": null,
+            "symbol": "slugify.py::__anchor__::slugify"
+          }
+        ],
+        "id": "a4bb80b88207b3b223f82a1241efb2761b43416e16fc8caef9a1dab911905687",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "bf135bc412b785389ca5025ec87188fcf21310bf",
+            "before": null,
+            "symbol": "slugify.py::slugify"
+          }
+        ],
+        "id": "c0dd9783156481b0a35d2bb921946056d222a4f0aceab1898685f6e29b824b1c",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      },
+      {
+        "attribution": [],
+        "footprint": [
+          {
+            "after": "adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+            "before": null,
+            "symbol": "slugify.py::__residue__::slugify"
+          }
+        ],
+        "id": "c8e4f14034b4244a39de529b77b41f55e4e71fde9be2fd3d8bf15b9d873be443",
+        "intent": null,
+        "kind": "add",
+        "provenance": [
+          "01d9c5153bf185c5b8197d695dbdf799aa571ef8"
+        ]
+      }
+    ]
+  },
+  "state_view": {
+    "coverage_fraction": 1.0,
+    "covered_paths": [
+      "slugify.py"
+    ],
+    "derived_paths": [],
+    "entity_paths": [
+      "slugify.py"
+    ],
+    "frontier": {
+      "slugify.py::__anchor__::slugify": "a4bb80b88207b3b223f82a1241efb2761b43416e16fc8caef9a1dab911905687",
+      "slugify.py::__residue__::\u0000HEAD\u0000": "74002ad4828a39421e15341134625bb3bc544220e19177e913026b27b8c901be",
+      "slugify.py::__residue__::slugify": "c8e4f14034b4244a39de529b77b41f55e4e71fde9be2fd3d8bf15b9d873be443",
+      "slugify.py::slugify": "73ca5ab500ec9a5a5aa409f5b3412416ef58d0f2a230095f29f1a506d004dcdb"
+    },
+    "oracle_configured": false,
+    "oracle_verdict": null
+  },
+  "status_view": {
+    "backstop_kept": [],
+    "coverage_fraction": 1.0,
+    "drift": {
+      "any": false,
+      "paths": []
+    },
+    "features": 1,
+    "files": 1,
+    "forks": {
+      "open": 0,
+      "records": []
+    },
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "symbols": 4,
+    "unmanaged": []
+  }
+}

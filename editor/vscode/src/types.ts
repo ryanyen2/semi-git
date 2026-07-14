@@ -1,162 +1,202 @@
 // Mirror of the JSON shapes from `sgt.api` (the canonical projection). Keep in sync with
 // sgt/api.py — the CLI `--json` mode, MCP, and this extension all consume the same schema.
 
-export interface NodeView {
+export interface MapNode {
+  id: string;
+  label: string;
+  kind: "feature" | "subsystem";
+  parent: string | null;
+  children: string[];
+  size: number;
+  op_count: number;
+  dir: string;
+  why: string;
+  split_reason: string | null;
+}
+
+export interface IdentityEvent {
+  event: string;
+  feature_id: string;
+}
+
+// A cross-feature structural dependency edge (`sgt.lens.tree.feature_edges`) -- the fused
+// structural/co-change/scope coupling graph rolled up to leaf-feature pairs.
+export interface MapEdge {
+  a: string;
+  b: string;
+  weight: number;
+}
+
+export interface MapView {
+  nodes: MapNode[];
+  roots: string[];
+  identity_events: IdentityEvent[];
+  feature_count: number;
+  edges: MapEdge[];
+}
+
+// `sgt history --json`: the feature-map webview's shared commit-index axis.
+export interface HistoryCommit {
+  sha: string;
+  subject: string;
+  index: number;
+}
+
+export interface HistoryOp {
   id: string;
   kind: string;
-  status: string;
-  intent: string;
-  depends_on: string[];
-  dependents: string[];
-  provenance: string[];
-  commits: string[];
-  conflict: string | null;
-  effects?: EffectView[];
-  witness?: { reason: string; held: string[]; against: string[] };
+  feature_id: string | null;
+  commit_index: number;
 }
 
-export interface EffectView {
-  op: string;
-  target: string;
-  file: string;
+export interface HistoryView {
+  commits: HistoryCommit[];
+  ops: HistoryOp[];
 }
 
-export interface Edge {
-  src: string;
-  dst: string;
-  type: string;
-}
-
-export interface GraphView {
-  nodes: NodeView[];
-  edges: Edge[];
-  count: number;
-}
-
-export interface StatusView {
-  nodes: number;
-  files?: { path: string; lines: number }[];
-  effects?: number;
-  drift?: { any: boolean; modified: string[]; added: string[]; deleted: string[]; summary: string };
+// `sgt preview <verb> <args...> --json` -- a side-effect-free preview shared by every feature
+// verb + feature-grouped revert; fields beyond `ok`/`verb`/`message`/`affected_features` vary by
+// verb, so callers narrow on `verb` before reading them.
+export interface FeatureVerbPreview {
+  ok: boolean;
+  verb: string;
+  message: string;
+  affected_features: string[];
   error?: string;
+  [key: string]: unknown;
 }
 
 export interface BlameSpan {
-  start: number; // 1-based inclusive
-  end: number; // 1-based inclusive
-  node_id: string | null;
+  symbol: string;
+  start_line: number; // 1-based inclusive
+  end_line: number; // 1-based inclusive
+  feature_id: string;
+  label: string;
 }
 
 export interface BlameView {
   file: string;
   spans: BlameSpan[];
-  nodes: Record<string, { intent: string; kind: string; status: string }>;
-  drift: boolean;
+  features: Record<string, { label: string }>;
   error?: string;
 }
 
+export interface StatusView {
+  files: number;
+  symbols: number;
+  features: number;
+  coverage_fraction: number;
+  oracle: { configured: boolean; status: "pending" | "pass" | "fail" | "unconfigured" };
+  drift: { any: boolean; paths: string[] };
+}
+
+// `sgt revert <ref> --emit --json` — a sandboxed dry-run preview, shared by single-op and
+// feature-grouped revert (both resolve to the same `sgt.api._project_verb_preview` shape).
 export interface EmitView {
   ok: boolean;
-  action?: string;
-  node_id?: string;
+  verb: string;
+  target: string;
+  removed: string[];
+  added: string[];
+  affected_symbols: string[];
+  forked: boolean;
+  files: Record<string, { before: string; after: string }>;
+  message: string;
+}
+
+// `sgt merge <survivor> <absorbed> --json`.
+export interface MergeResult {
+  ok: boolean;
+  survivor?: string;
+  absorbed?: string;
+  op_count?: number;
+  member_count?: number;
   message?: string;
-  removed?: string[];
-  files?: Record<string, { before: string; after: string }>;
-  error?: string;
 }
 
-// The code-entity map (sgt.api entity_graph_view / timeframe_view). `color` is added by the
-// extension from color.ts so the webview need not re-implement the OKLCH generator (kept at
-// three impls per the color contract).
-export interface EntityView {
-  id: string;
-  name: string;
-  file: string;
-  kind: string;
-  start_line: number;
-  end_line: number;
-  container: string | null;
-  depends_on: string[];
-  node_id: string | null;
-  color?: string | null;
+// `sgt rename <feature> "<label>" --json`.
+export interface RenameResult {
+  ok: boolean;
+  feature?: string;
+  old_label?: string;
+  new_label?: string;
+  message?: string;
 }
 
-export interface EntityEdgeView {
-  src: string;
-  dst: string;
-  type: string;
-}
-
-export interface ClusterView {
-  cluster_id: string;
-  label: string;
-  members: string[];
-}
-
-export interface EntityMapView {
-  entities: EntityView[];
-  edges: EntityEdgeView[];
-  reduced_edges: EntityEdgeView[];
-  components: string[][];
-  clusters: ClusterView[];
-  count: number;
-  frame?: number;
-}
-
-// The decision DAG (sgt.api decision_graph_view). `color` is added by the extension from color.ts
-// (keyed on the feature/lane id) so the webview need not re-implement the OKLCH generator.
-export interface DecisionView {
-  id: string;
-  node_id: string;
-  feature: string;
-  landing: number;
-  intent: { context: string | null; decision: string; consequence: string | null };
-  footprint: string[];
-  commits: string[];
-  alternatives: { option: string; why_rejected: string; source: string; confidence: string }[];
-  lifecycle: { kind: string; of: string | null };
-  color?: string | null;
-}
-
-export interface DecisionEdge {
-  src: string;
-  dst: string;
-  type: string; // "revises" | "fork" | "builds-on"
-  derived?: boolean;
-}
-
-export interface DecisionClash {
-  a: string;
-  b: string;
-  entities: string[];
-}
-
-export interface DecisionGraphView {
-  decisions: DecisionView[];
-  edges: DecisionEdge[];
-  frontier: Record<string, string>; // feature -> in-force decision id
-  clash: DecisionClash[];
-  count: number;
-}
-
-// Live agent telemetry — NOT part of sgt.api (which projects the durable semantic graph). This is
-// an ephemeral presence sidecar tailed from the Claude Code session transcript so the graph reads
-// as "alive" while the agent works. Extension-local; never persisted.
-export interface ActivityEvent {
-  kind: "tool" | "thought";
-  /** Tool name for kind:"tool" (e.g. "Edit", "Bash"). */
-  name?: string;
-  /** Basename of the touched file, or the first token of a command/pattern. */
+// `sgt move <op>... --to <feature> --json`.
+export interface MoveResult {
+  ok: boolean;
+  op_ids?: string[];
   target?: string;
-  /** A short, truncated thinking/text snippet for kind:"thought". */
-  text?: string;
-  /** Monotonic sequence (host-assigned) so the webview can dedupe/order without clocks. */
-  seq: number;
+  message?: string;
 }
 
-// Work the agent is doing that has no graph node yet (uncommitted, unattributable drift). Rendered
-// as a pulsing "ghost" row so a brand-new feature being built is visible before its checkpoint.
-export interface PendingWork {
-  label: string;
-  file: string;
+// `sgt split <feature> --json` (preview, no `--apply`).
+export interface SplitPreviewResult {
+  ok: boolean;
+  feature?: string;
+  applied: boolean;
+  groups?: string[][];
+  message?: string;
+}
+
+// `sgt split <feature> --apply --json`.
+export interface SplitApplyResult {
+  ok: boolean;
+  feature?: string;
+  new_feature?: string;
+  applied: boolean;
+  message?: string;
+}
+
+// `sgt plan status --json` / `sgt checkpoint --json` (plan U14): one file's current line spans
+// for a set of symbols an op or a matched step touched.
+export interface PlanFileSpan {
+  path: string;
+  spans: { symbol: string; start_line: number; end_line: number }[];
+}
+
+export interface PlanStep {
+  hollow_id: string;
+  title: string;
+  predicted_footprint: string[];
+  predicted_feature: string | null;
+  rationale: string;
+  status: "pending" | "matched";
+  matched_op_ids: string[];
+  files: PlanFileSpan[];
+}
+
+export interface PlanSession {
+  session_id: string;
+  plan_text: string;
+  status: string;
+  created_ts: number;
+  last_activity_ts: number;
+  steps: PlanStep[];
+}
+
+export interface CheckpointGroup {
+  session_id: string;
+  hollow_ids: string[];
+  op_ids: string[];
+  files: PlanFileSpan[];
+}
+
+// `sgt plan status --json`.
+export interface PlanView {
+  sessions: PlanSession[];
+  checkpoint: { matches: CheckpointGroup[]; drift_op_ids: string[] };
+}
+
+export interface DriftEntry {
+  op_id: string;
+  kind: string;
+  footprint: string[];
+  files: PlanFileSpan[];
+}
+
+// `sgt drift --json`.
+export interface DriftView {
+  entries: DriftEntry[];
 }

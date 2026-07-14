@@ -1,0 +1,241 @@
+// Plan review, subtle by construction: a CodeLens above matched-step/drift lines only
+// (invisible everywhere else) plus a status-bar item that exists only while a plan session is
+// active. No sidebar view, no gutter color, no webview — this surface speaks in glyphs and
+// one-line text, leaving color.ts's hue channel reserved for feature identity as today.
+
+import * as path from "node:path";
+import * as vscode from "vscode";
+import { Store } from "./store";
+import { PlanView } from "./types";
+
+const SCHEME = "sgt-plan";
+const STATUS_ICON: Record<string, string> = { pending: "○", matched: "●" };
+
+export interface PlanLensTarget {
+  kind: "match" | "drift";
+  title: string;
+  rationale: string;
+  predictedFootprint: string[];
+  path: string;
+  startLine: number; // 1-based inclusive
+  endLine: number; // 1-based inclusive
+}
+
+// -- CodeLens: one per matched-step span and per drift span in the active file only ---------------
+
+export class PlanCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
+  private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
+  readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
+  private disposables: vscode.Disposable[] = [];
+
+  constructor(private store: Store) {
+    this.disposables.push(
+      this.store.onDidChange(() => this._onDidChangeCodeLenses.fire()),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration("sgt.plan")) {
+          this._onDidChangeCodeLenses.fire();
+        }
+      })
+    );
+  }
+
+  private enabled(): boolean {
+    return vscode.workspace.getConfiguration("sgt").get<boolean>("plan.enabled", true);
+  }
+
+  async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
+    if (!this.enabled()) {
+      return [];
+    }
+    let plan: PlanView;
+    try {
+      plan = await this.store.planView();
+    } catch {
+      return [];
+    }
+    if (plan.sessions.length === 0) {
+      return []; // no active session -- render nothing (zero cost, the common case)
+    }
+    const rel = vscode.workspace.asRelativePath(document.uri, false);
+    const lenses: vscode.CodeLens[] = [];
+
+    for (const session of plan.sessions) {
+      session.steps.forEach((step, idx) => {
+        if (step.status !== "matched") {
+          return;
+        }
+        for (const file of step.files) {
+          if (file.path !== rel) {
+            continue;
+          }
+          for (const span of file.spans) {
+            lenses.push(this.lens(span.start_line, `✦ matches plan step ${idx + 1}`, {
+              kind: "match", title: step.title, rationale: step.rationale,
+              predictedFootprint: step.predicted_footprint,
+              path: file.path, startLine: span.start_line, endLine: span.end_line,
+            }));
+          }
+        }
+      });
+    }
+
+    let drift;
+    try {
+      drift = await this.store.driftView();
+    } catch {
+      drift = { entries: [] };
+    }
+    for (const entry of drift.entries) {
+      for (const file of entry.files) {
+        if (file.path !== rel) {
+          continue;
+        }
+        for (const span of file.spans) {
+          lenses.push(this.lens(span.start_line, "◇ drift — not predicted by the active plan", {
+            kind: "drift", title: `${entry.kind}: ${entry.footprint.join(", ")}`, rationale: "",
+            predictedFootprint: [], path: file.path, startLine: span.start_line, endLine: span.end_line,
+          }));
+        }
+      }
+    }
+    return lenses;
+  }
+
+  private lens(startLine: number, title: string, target: PlanLensTarget): vscode.CodeLens {
+    const range = new vscode.Range(startLine - 1, 0, startLine - 1, 0);
+    return new vscode.CodeLens(range, { title, command: "sgt.showPlanDiff", arguments: [target] });
+  }
+
+  dispose(): void {
+    this.disposables.forEach((d) => d.dispose());
+    this._onDidChangeCodeLenses.dispose();
+  }
+}
+
+// -- status bar: hidden until >=1 active session ----------------------------------------------
+
+export class PlanStatusBar implements vscode.Disposable {
+  private item: vscode.StatusBarItem;
+  private disposables: vscode.Disposable[] = [];
+
+  constructor(private store: Store) {
+    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    this.item.command = "sgt.showPlanQuickPick";
+    this.disposables.push(this.item, this.store.onDidChange(() => void this.refresh()));
+  }
+
+  async refresh(): Promise<void> {
+    let plan: PlanView;
+    try {
+      plan = await this.store.planView();
+    } catch {
+      this.item.hide();
+      return;
+    }
+    if (plan.sessions.length === 0) {
+      this.item.hide();
+      return;
+    }
+    const glyphs = plan.sessions
+      .map((s) => s.steps.map((st) => STATUS_ICON[st.status] ?? "?").join(""))
+      .join(" ");
+    const matched = plan.sessions.reduce(
+      (n, s) => n + s.steps.filter((st) => st.status === "matched").length, 0
+    );
+    const total = plan.sessions.reduce((n, s) => n + s.steps.length, 0);
+    const driftCount = plan.checkpoint.drift_op_ids.length;
+    this.item.text = `Plan: ${matched}/${total} ${glyphs}` + (driftCount ? ` ◆${driftCount}` : "");
+    this.item.tooltip = plan.sessions
+      .flatMap((s) => s.steps.map((st) => `${STATUS_ICON[st.status] ?? "?"} ${st.title}`))
+      .join("\n");
+    this.item.show();
+  }
+
+  dispose(): void {
+    this.disposables.forEach((d) => d.dispose());
+  }
+}
+
+// -- diff: left = synthetic step/drift text, right = the real file at that span -----------------
+
+export class PlanDiffProvider implements vscode.TextDocumentContentProvider, vscode.Disposable {
+  private contents = new Map<string, string>();
+  private seq = 0;
+  private registration: vscode.Disposable;
+
+  constructor(private repoRoot: string) {
+    this.registration = vscode.workspace.registerTextDocumentContentProvider(SCHEME, this);
+  }
+
+  provideTextDocumentContent(uri: vscode.Uri): string {
+    return this.contents.get(uri.toString()) ?? "";
+  }
+
+  async showDiff(target: PlanLensTarget): Promise<void> {
+    const token = String(this.seq++);
+    const left = vscode.Uri.parse(`${SCHEME}:/${token}/${encodeURIComponent(target.title)}.md`);
+    const body = [
+      `# ${target.title}`,
+      "",
+      target.rationale || "(no rationale)",
+      "",
+      target.predictedFootprint.length
+        ? `Predicted footprint:\n${target.predictedFootprint.map((s) => `- ${s}`).join("\n")}`
+        : "(no predicted footprint)",
+    ].join("\n");
+    this.contents.set(left.toString(), body);
+
+    const right = vscode.Uri.file(path.join(this.repoRoot, target.path));
+    const label = target.kind === "match" ? "Plan step" : "Drift";
+    await vscode.commands.executeCommand(
+      "vscode.diff", left, right, `${target.path} — ${label}: ${target.title}`,
+      {
+        preview: true,
+        selection: new vscode.Range(target.startLine - 1, 0, target.endLine - 1, 0),
+      } as vscode.TextDocumentShowOptions
+    );
+  }
+
+  dispose(): void {
+    this.registration.dispose();
+  }
+}
+
+// -- quick pick: every step across active sessions; selecting a matched one opens its diff ------
+
+export async function showPlanQuickPick(store: Store, diff: PlanDiffProvider): Promise<void> {
+  let plan: PlanView;
+  try {
+    plan = await store.planView();
+  } catch (e: any) {
+    vscode.window.showErrorMessage(e.message);
+    return;
+  }
+  const items: (vscode.QuickPickItem & { target?: PlanLensTarget })[] = [];
+  for (const session of plan.sessions) {
+    session.steps.forEach((step, idx) => {
+      const item: vscode.QuickPickItem & { target?: PlanLensTarget } = {
+        label: `${STATUS_ICON[step.status] ?? "?"} step ${idx + 1}: ${step.title}`,
+        description: session.session_id,
+      };
+      const file = step.files[0];
+      const span = file?.spans[0];
+      if (step.status === "matched" && file && span) {
+        item.target = {
+          kind: "match", title: step.title, rationale: step.rationale,
+          predictedFootprint: step.predicted_footprint,
+          path: file.path, startLine: span.start_line, endLine: span.end_line,
+        };
+      }
+      items.push(item);
+    });
+  }
+  if (items.length === 0) {
+    vscode.window.showInformationMessage("No active plan sessions.");
+    return;
+  }
+  const pick = await vscode.window.showQuickPick(items, { placeHolder: "Plan steps" });
+  if (pick?.target) {
+    await diff.showDiff(pick.target);
+  }
+}

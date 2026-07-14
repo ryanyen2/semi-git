@@ -21,7 +21,7 @@ import pathlib
 
 import pytest
 
-from tests.golden.corpus import CORPUS, capture_views
+from tests.golden.corpus import KERNEL_CORPUS, capture_kernel_views
 
 _SNAPSHOTS = pathlib.Path(__file__).resolve().parent / "snapshots"
 
@@ -30,12 +30,8 @@ def _dump(views: dict) -> str:
     return json.dumps(views, indent=2, sort_keys=True) + "\n"
 
 
-@pytest.mark.parametrize("name", sorted(CORPUS))
-def test_api_projection_matches_golden(name, tmp_path):
-    case = CORPUS[name]
-    project = case.build(str(tmp_path))
-    actual = _dump(capture_views(project, case))
-    snapshot = _SNAPSHOTS / f"{name}.json"
+def _assert_matches_golden(snapshot_name: str, actual: str) -> None:
+    snapshot = _SNAPSHOTS / snapshot_name
 
     if os.environ.get("SGT_UPDATE_GOLDEN"):
         snapshot.write_text(actual, encoding="utf-8")
@@ -49,9 +45,15 @@ def test_api_projection_matches_golden(name, tmp_path):
             difflib.unified_diff(
                 expected.splitlines(),
                 actual.splitlines(),
-                fromfile=f"{name}.json (golden)",
-                tofile=f"{name}.json (actual)",
+                fromfile=f"{snapshot_name} (golden)",
+                tofile=f"{snapshot_name} (actual)",
                 lineterm="",
             )
         )
-        pytest.fail(f"sgt.api projection drifted for {name!r}:\n{diff}")
+        pytest.fail(f"sgt.api projection drifted for {snapshot_name!r}:\n{diff}")
+
+
+@pytest.mark.parametrize("name", sorted(KERNEL_CORPUS))
+def test_kernel_api_projection_matches_golden(name, tmp_path):
+    """The operation-ideal kernel's read views (U7) captured on deterministic git fixtures."""
+    _assert_matches_golden(f"kernel_{name}.json", _dump(capture_kernel_views(name, str(tmp_path))))

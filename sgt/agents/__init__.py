@@ -1,9 +1,6 @@
-"""semi-git's owned agents: prompt classification, fuzzy ref resolution.
+"""Graph-reasoning helpers kept for reuse by later units (U12 labeling, U14 plan intake).
 
-These policies are LLM/deterministic baselines architected to be RL-trainable later
-(plan KTD7). Resolution is deterministic-first; classification calls the model.
+Currently just `intent_dsl` (deterministic canonical-intent parsing/rendering) -- the pre-kernel
+`resolve`/`planner`/`distill`/`plan_context` modules were removed in U10 along with the legacy
+graph they depended on.
 """
-
-from sgt.agents.resolve import Ref, resolve
-
-__all__ = ["Ref", "resolve"]

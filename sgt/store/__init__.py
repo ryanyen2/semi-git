@@ -1,14 +1,5 @@
-"""Persistence layer: the semantic DAG (`.sgt`) and its binding to git."""
+"""Persistence layer: git binding for the operation-ideal kernel (`sgt.core`)."""
 
-from sgt.store.graph import (
-    CycleError,
-    Edge,
-    EdgeType,
-    Node,
-    NodeKind,
-    NodeStatus,
-    SemanticGraph,
-)
 from sgt.store.gitbind import (
     TRAILER_KEY,
     GitBinding,
@@ -20,13 +11,6 @@ from sgt.store.gitbind import (
 )
 
 __all__ = [
-    "CycleError",
-    "Edge",
-    "EdgeType",
-    "Node",
-    "NodeKind",
-    "NodeStatus",
-    "SemanticGraph",
     "TRAILER_KEY",
     "GitBinding",
     "GitError",
