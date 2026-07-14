@@ -1,25 +1,27 @@
-"""A dependency-free MCP stdio server exposing the semi-git semantic tree.
+"""A dependency-free MCP stdio server exposing the operation-ideal kernel (plan U7/U8/U9, flipped
+onto MCP in U10).
 
 The protocol is JSON-RPC 2.0 over newline-delimited stdin/stdout (the MCP stdio transport).
 We implement only the small surface a tool server needs — ``initialize``, ``tools/list``,
 ``tools/call`` — with no third-party dependency, matching the project's minimal footprint and
 keeping the dispatch (``handle_request``) a pure function that is unit-tested without a process.
 
-Tool surface (the agent-facing semantic API) — full parity with the CLI's mutating verbs:
+Tool surface — kernel parity with the CLI's registered verbs:
 
-* **read** (no API key): ``sgt_graph``, ``sgt_show``, ``sgt_status``, ``sgt_conflicts`` — pull
-  the semantic tree and any open conflicts (with full witnesses) into the agent's context.
-* **write/reconcile**: ``sgt_init`` (bootstrap a workspace), ``sgt_plan`` (decompose into PLANNED
-  nodes; accepts canonical intent-DSL like ``ADD …``/``EXTEND …`` for a deterministic single node),
-  ``sgt_merge`` / ``sgt_split`` (reshape the plan — fold drafts together or divide one),
-  ``sgt_checkpoint`` — *the* tool: after the agent edits files, distill the drift into the log under
-  the agent's **declared** intent (captured live, not reverse-guessed; ``fulfills`` lands it on a
-  PLANNED node), ``sgt_revert`` / ``sgt_restore`` (recompose HEAD), and ``sgt_reconcile`` (re-gate
-  held quarantines). A held checkpoint returns its witness so the agent can act on it.
+* **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_state`` (the current
+  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between two refs'
+  ideals), ``sgt_fsck`` (op-store integrity).
+* **write**: ``sgt_init`` (bind git + the kernel store, mine existing history), ``sgt_revert`` /
+  ``sgt_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run preview),
+  ``sgt_oracle_run`` (execute configured build/test tiers against the current ideal).
+* **agentic loop** (plan U14): ``sgt_plan_intake`` (decompose a plan into predicted hollow ops),
+  ``sgt_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given ``confirm`` --
+  the explicit, one-group-at-a-time write that resolves it), ``sgt_drift`` (ops no active plan
+  predicted).
 
-Every call opens the project fresh from disk, so it reflects whatever the agent just edited.
-``sgt_checkpoint`` uses the deterministic distiller (the agent supplies intent), so it needs no
-API key — the loop works fully offline.
+Every write tool mines the working tree on contact first (R9), so it reflects whatever the agent
+just edited. The feature-lens verbs (merge/split/rename/move) have no MCP surface yet -- CLI-only
+for now.
 """
 
 from __future__ import annotations
@@ -34,182 +36,157 @@ SERVER_INFO = {"name": "semi-git", "version": "0.1.0"}
 
 # ---------------------------------------------------------------------------
 # Tool handlers — each takes (repo_path, arguments) and returns a JSON-able dict.
-# ---------------------------------------------------------------------------
-def _open(repo_path: str):
-    from sgt.project import Project
-
-    return Project.open(repo_path)
-
-
 # The read tools delegate to the canonical JSON projection in ``sgt.api`` so the MCP surface
 # and the CLI's ``--json`` mode return the identical schema and never drift.
-def tool_graph(repo_path: str, args: dict) -> dict:
-    from sgt.api import graph_view
+# ---------------------------------------------------------------------------
+def tool_init(repo_path: str, args: dict) -> dict:
+    """Bind git + the kernel op store to a repo and mine its existing history. Idempotent."""
+    from sgt.core.lens import init as kernel_init
 
-    return graph_view(_open(repo_path))
-
-
-def tool_show(repo_path: str, args: dict) -> dict:
-    from sgt.api import show_view
-
-    ref = (args.get("ref") or "").strip()
-    if not ref:
-        return {"error": "missing 'ref'"}
-    return show_view(_open(repo_path), ref)
+    path = (args.get("path") or "").strip() or repo_path
+    kernel_init(path)
+    return {"ok": True, "message": f"initialized sgt kernel workspace at {path}"}
 
 
-def tool_status(repo_path: str, args: dict) -> dict:
-    from sgt.api import status_view
+def tool_log(repo_path: str, args: dict) -> dict:
+    from sgt.api import oplog_view
+    from sgt.core.lens import get
 
-    return status_view(_open(repo_path))
-
-
-def tool_conflicts(repo_path: str, args: dict) -> dict:
-    from sgt.api import conflicts_view
-
-    return conflicts_view(_open(repo_path))
+    get(repo_path)  # mine-on-contact before inspecting the store
+    return oplog_view(repo_path)
 
 
-def tool_blame(repo_path: str, args: dict) -> dict:
-    """Per-file semantic blame: which feature node owns each line of a materialized file."""
-    from sgt.api import blame_view
+def tool_state(repo_path: str, args: dict) -> dict:
+    from sgt.api import state_view
+    from sgt.core.lens import get
 
-    file = (args.get("file") or "").strip()
-    if not file:
-        return {"error": "missing 'file'"}
-    return blame_view(_open(repo_path), file)
+    get(repo_path)
+    return state_view(repo_path)
 
 
-def tool_decisions(repo_path: str, args: dict) -> dict:
-    """The decision DAG: decisions, lifecycle edges, derived builds-on, clashes, and the frontier."""
-    from sgt.api import decision_graph_view
+def tool_diff(repo_path: str, args: dict) -> dict:
+    from sgt.api import ideal_diff_view
+    from sgt.core.lens import get
 
-    return decision_graph_view(_open(repo_path))
+    ref_a = (args.get("ref_a") or "").strip()
+    ref_b = (args.get("ref_b") or "").strip()
+    if not ref_a or not ref_b:
+        return {"error": "missing 'ref_a'/'ref_b'"}
+    get(repo_path)
+    return ideal_diff_view(repo_path, ref_a, ref_b)
 
 
-def tool_checkpoint(repo_path: str, args: dict) -> dict:
-    """Reconcile the agent's on-disk edits into the log under a declared intent.
+def tool_fsck(repo_path: str, args: dict) -> dict:
+    from sgt.core.store import fsck as run_fsck
 
-    The intent the agent passes labels the new/extended nodes directly — better than the
-    reverse-guessing distiller — and statement-level body edits still split into their own fix
-    nodes so a later cross-agent merge stays statement-granular. Pass ``fulfills`` (a node ref)
-    to land the whole change under a PLANNED node and flip it ACTIVE.
-    """
-    from sgt.agents.distill import fallback_cluster
-    from sgt.agents.resolve import resolve
-    from sgt.orchestrate.sync import run_sync
-
-    project = _open(repo_path)
-    intent = (args.get("intent") or "").strip()
-    if not intent:
-        return {"error": "missing 'intent' — declare what this change accomplishes"}
-
-    fulfills_id = None
-    if (fulfills := (args.get("fulfills") or "").strip()):
-        r = resolve(project, fulfills)
-        if r.node_id is None:
-            return {"error": f"could not resolve fulfills {fulfills!r} ({r.kind})", "matches": r.matches}
-        fulfills_id = r.node_id
-
-    def clusterer(effects, proj):
-        clusters = fallback_cluster(effects, proj)
-        for c in clusters:
-            c.intent = intent  # the agent's declared intent overrides the structural label
-        return clusters
-
-    rep = run_sync(project, repo_path=repo_path, clusterer=clusterer, confirm=lambda c: True,
-                   fulfills=fulfills_id, intent=intent)
+    report = run_fsck(repo_path)
     return {
-        "ok": rep.ok,
-        "message": rep.message,
-        "landed": rep.landed,
-        "fulfilled": rep.fulfilled,
-        "extended": rep.extended,
-        "quarantined": rep.quarantined,
-        # Superseded (zombie) quarantines GC'd automatically — a fixed re-checkpoint that lands
-        # clean cleans up the prior hold here, so no manual revert + replan is needed.
-        "swept": rep.swept,
-        # The witness for each held node — *why* it did not commute and against what — so the
-        # agent can act (revise the code and re-checkpoint, or revert the rival) without guessing.
-        "witnesses": {q: project.witnesses.get(q, {}) for q in rep.quarantined},
-        "notes": rep.notes,
+        "ok": report.ok, "checked": report.checked,
+        "bad_hash": list(report.bad_hash), "corrupt": list(report.corrupt),
     }
 
 
-def _orchestrator(repo_path: str):
-    from sgt.orchestrate.loop import Orchestrator
-
-    # Graph-only: no coding backend. revert/switch/reconcile need no key; plan uses the
-    # graph-reasoning LLM (the planner) only.
-    return Orchestrator(_open(repo_path), repo_path=repo_path)
-
-
-def _report(rep) -> dict:
-    return {"ok": rep.ok, "action": rep.action, "node_id": rep.node_id, "message": rep.message,
-            "landed": list(rep.landed), "held": list(rep.held),
-            "quarantined": list(rep.quarantined)}
-
-
-def tool_plan(repo_path: str, args: dict) -> dict:
-    """Decompose an intent into reviewable PLANNED nodes (no code authored)."""
-    intent = (args.get("intent") or "").strip()
-    if not intent:
-        return {"error": "missing 'intent' — describe what to plan"}
-    return _report(_orchestrator(repo_path).plan(intent))
-
-
-def tool_merge(repo_path: str, args: dict) -> dict:
-    """Fold two or more PLANNED drafts into the first — reshape the plan before any code exists."""
-    refs = args.get("refs") or []
-    if not isinstance(refs, list) or len(refs) < 2:
-        return {"error": "provide 'refs': a list of two or more draft refs to merge"}
-    return _report(_orchestrator(repo_path).merge([str(r) for r in refs]))
-
-
-def tool_split(repo_path: str, args: dict) -> dict:
-    """Replace one PLANNED draft with several pieces (each canonical intent-DSL or freeform)."""
-    ref = (args.get("ref") or "").strip()
-    pieces = args.get("intents") or []
-    if not ref:
-        return {"error": "missing 'ref'"}
-    if not isinstance(pieces, list) or len(pieces) < 2:
-        return {"error": "provide 'intents': two or more pieces (canonical DSL or freeform)"}
-    return _report(_orchestrator(repo_path).split(ref, [str(p) for p in pieces]))
-
-
-def tool_reconcile(repo_path: str, args: dict) -> dict:
-    """Re-gate held quarantines on demand; resolve any that now commute.
-
-    With no ``ref``, retries every pending quarantine; with one, just that node. This closes
-    the quarantine loop from MCP — the agent can observe holds via ``sgt_conflicts`` and clear
-    them here once a rival was reverted/suspended (revise-the-code retries go through
-    ``sgt_checkpoint`` with ``fulfills`` instead).
-    """
-    ref = (args.get("ref") or "").strip() or None
-    return _report(_orchestrator(repo_path).reconcile(ref))
-
-
-def tool_init(repo_path: str, args: dict) -> dict:
-    """Bind a fresh ``.sgt`` store + git to a repo so the agent can bootstrap a workspace."""
-    from sgt.project import Project
-
-    path = (args.get("path") or "").strip() or repo_path
-    Project.init(path)
-    return {"ok": True, "message": f"initialized sgt workspace at {path}"}
+def _verb_result(preview) -> dict:
+    return {
+        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
+        "removed": sorted(preview.removed), "added": sorted(preview.added),
+        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
+        "message": preview.message,
+    }
 
 
 def tool_revert(repo_path: str, args: dict) -> dict:
+    """`I \\ ↑X`: remove an op and everything built on it. `emit=true` previews with no write."""
+    from sgt.core import verbs
+    from sgt.core.lens import get
+
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
-    return _report(_orchestrator(repo_path).revert(ref, emit=bool(args.get("emit", False))))
+    get(repo_path)  # mine-on-contact before planning/applying the edit (R9)
+    return _verb_result(verbs.revert(repo_path, ref, emit=bool(args.get("emit", False))))
 
 
 def tool_restore(repo_path: str, args: dict) -> dict:
+    """`I ∪ ↓X`: revert's inverse. `emit=true` previews with no write."""
+    from sgt.core import verbs
+    from sgt.core.lens import get
+
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
-    return _report(_orchestrator(repo_path).restore(ref, emit=bool(args.get("emit", False))))
+    get(repo_path)
+    return _verb_result(verbs.restore(repo_path, ref, emit=bool(args.get("emit", False))))
+
+
+def tool_oracle_run(repo_path: str, args: dict) -> dict:
+    """Run configured build/test tiers against the current ideal (plan U9, R13)."""
+    from sgt.core import oracle
+    from sgt.core.lens import get
+
+    get(repo_path)
+    tier = (args.get("tier") or "").strip() or None
+    try:
+        return oracle.run(repo_path, tier=tier)
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+def tool_plan_intake(repo_path: str, args: dict) -> dict:
+    """Decompose a plan into predicted hollow ops (plan U14). Mines the working tree first (R9)
+    so `baseline_op_ids` reflects current reality."""
+    from sgt.core.lens import get
+    from sgt.loop import plan as plan_mod
+
+    plan_text = (args.get("plan_text") or "").strip()
+    if not plan_text:
+        return {"error": "missing 'plan_text'"}
+    session_id = (args.get("session_id") or "").strip() or None
+    get(repo_path)
+    session = plan_mod.intake(repo_path, plan_text, session_id=session_id)
+    return {
+        "session_id": session.session_id, "status": session.status, "step_count": len(session.steps),
+        "steps": [
+            {"title": s["title"], "predicted_feature": s["predicted_feature"], "rationale": s["rationale"]}
+            for s in session.steps
+        ],
+    }
+
+
+def tool_checkpoint(repo_path: str, args: dict) -> dict:
+    """The pure step<->op footprint-overlap preview (plan U14); given `confirm` (a list of
+    `{hollow_ids, op_ids}` groups), applies exactly those groups via `confirm_match` first --
+    still "never auto-resolved" since nothing is confirmed unless a group is explicitly named."""
+    from sgt.api import plan_view
+    from sgt.core.lens import get
+    from sgt.loop import plan as plan_mod
+    from sgt.loop.match import confirm_match
+
+    get(repo_path)
+    confirm = args.get("confirm")
+    if confirm:
+        sessions = plan_mod.active_sessions(repo_path)
+        for group in confirm:
+            hollow_ids = group.get("hollow_ids") or []
+            op_ids = group.get("op_ids") or []
+            session_id = next(
+                (sid for sid, rec in sessions.items()
+                 if any(s["hollow_id"] in hollow_ids for s in rec["steps"])),
+                None,
+            )
+            if session_id is None:
+                return {"error": f"no active session owns hollow(s) {hollow_ids}"}
+            confirm_match(repo_path, session_id, hollow_ids, op_ids)
+    return plan_view(repo_path)["checkpoint"]
+
+
+def tool_drift(repo_path: str, args: dict) -> dict:
+    """Every op not predicted by any active plan session (plan U14)."""
+    from sgt.api import drift_view
+    from sgt.core.lens import get
+
+    get(repo_path)
+    return drift_view(repo_path)
 
 
 # ---------------------------------------------------------------------------
@@ -220,116 +197,87 @@ def _schema(props: dict, required: list[str]) -> dict:
 
 
 TOOLS: dict[str, tuple[str, dict, Any]] = {
-    "sgt_graph": (
-        "Read the semantic DAG: every node's id, kind, status, intent, dependencies, and any "
-        "open conflict. Call this before editing to see what features exist.",
+    "sgt_init": (
+        "Bind git + the kernel op store to a repo and mine its existing history. Idempotent.",
+        _schema({"path": {"type": "string", "description": "repo path (defaults to the server's root)"}}, []),
+        tool_init,
+    ),
+    "sgt_log": (
+        "Read the mined operation DAG: every op's id, derived kind, footprint (each symbol's "
+        "before->after version), witnessing-commit provenance, and intent if any.",
         _schema({}, []),
-        tool_graph,
+        tool_log,
     ),
-    "sgt_show": (
-        "Inspect one node by a fuzzy ref (id, name, or intent substring): its effects, "
-        "dependencies, dependents, and conflict witness.",
-        _schema({"ref": {"type": "string", "description": "node id, name, or intent substring"}}, ["ref"]),
-        tool_show,
-    ),
-    "sgt_status": (
-        "Summarize the project: node count, managed files, effect count, whether the working "
-        "tree has un-checkpointed drift, and any PLANNED decisions not yet implemented "
-        "(`pending`). On a clean tree with pending decisions, the work is to implement them — "
-        "not to report 'nothing to do'. Check this first when resuming a session.",
+    "sgt_state": (
+        "The current ref's ideal: per-symbol frontier, covered paths, entity-granularity "
+        "coverage fraction, and the async oracle's verdict (if `.sgt/oracle.json` is configured).",
         _schema({}, []),
-        tool_status,
+        tool_state,
     ),
-    "sgt_conflicts": (
-        "List open conflicts: each held node, the node(s) it lost to, and the reason — so you "
-        "can decide how to resolve them.",
+    "sgt_diff": (
+        "Semantic diff between two refs' ideals: the symmetric difference of their op sets, "
+        "grouped by symbol.",
+        _schema({"ref_a": {"type": "string"}, "ref_b": {"type": "string"}}, ["ref_a", "ref_b"]),
+        tool_diff,
+    ),
+    "sgt_fsck": (
+        "Verify the op store's content-address integrity.",
         _schema({}, []),
-        tool_conflicts,
-    ),
-    "sgt_blame": (
-        "Semantic blame for one file: the line spans of the materialized file mapped to the "
-        "feature node that owns each — the per-feature analogue of `git blame`.",
-        _schema({"file": {"type": "string", "description": "repo-relative path of a managed file"}}, ["file"]),
-        tool_blame,
-    ),
-    "sgt_decisions": (
-        "The decision DAG: every decision (Context/Decision/Consequence + alternatives + code "
-        "footprint + git commits), the stored lifecycle edges (revises/fork), the builds-on edges "
-        "and clashes DERIVED from the entity graph, and the current frontier (the in-force decision "
-        "per feature lane that materializes the working tree).",
-        _schema({}, []),
-        tool_decisions,
-    ),
-    "sgt_plan": (
-        "Decompose an intent into reviewable PLANNED nodes (the semantic outline) without "
-        "writing any code. Each node carries its declared provides/needs and dependency edges; "
-        "implement them with your own tools, then land each via sgt_checkpoint. A canonical "
-        "intent-DSL statement (e.g. `ADD validate_email USING re BECAUSE inline regex was brittle`, "
-        "`EXTEND auth TO support API keys`, `REPLACE bubble_sort WITH quicksort BECAUSE too slow`) "
-        "plans a single node deterministically and records a high-confidence rationale.",
-        _schema({"intent": {"type": "string", "description": "freeform, or a canonical intent-DSL statement"}}, ["intent"]),
-        tool_plan,
-    ),
-    "sgt_merge": (
-        "Reshape the plan: fold two or more PLANNED drafts into the first (the survivor), which "
-        "absorbs their provides/needs and inbound/outbound dependency edges. Drafts only — realized "
-        "(ACTIVE) nodes are refused. Inert: nothing materializes differently.",
-        _schema({"refs": {"type": "array", "items": {"type": "string"},
-                          "description": "two or more draft refs; the first is the survivor"}}, ["refs"]),
-        tool_merge,
-    ),
-    "sgt_split": (
-        "Reshape the plan: replace one PLANNED draft with several pieces. Each piece is a canonical "
-        "intent-DSL statement (precise provides/needs) or freeform text. Pieces relink to the rest "
-        "of the plan by their declared interface; any of the original's provides no piece claims is "
-        "reported as unassigned. Drafts only.",
-        _schema({"ref": {"type": "string", "description": "the draft to split"},
-                 "intents": {"type": "array", "items": {"type": "string"},
-                             "description": "two or more pieces (canonical DSL or freeform)"}}, ["ref", "intents"]),
-        tool_split,
-    ),
-    "sgt_checkpoint": (
-        "Reconcile your on-disk edits into the semantic log under a declared intent. Call this "
-        "after finishing a logical unit of work. Body edits land at statement granularity so a "
-        "later merge with another agent's edits stays conflict-aware. Pass 'fulfills' (a node "
-        "ref) to land the change under a PLANNED node and flip it ACTIVE.\n"
-        "Distillable code: top-level def/class, imports, and single-name bindings (`X = ...`, "
-        "`X: T = ...`) all round-trip. Arbitrary module-level executable statements (tuple-unpack, "
-        "bare expressions, `if __name__` blocks) are NOT captured and will be lost on "
-        "rematerialize — keep that logic inside a function. If a checkpoint is held "
-        "(invariant_violated), just fix the code on disk and checkpoint again with the same "
-        "`fulfills`: the superseded hold is reclaimed automatically (no revert/replan needed).",
-        _schema({"intent": {"type": "string", "description": "what this change accomplishes"},
-                 "fulfills": {"type": "string", "description": "PLANNED node ref this change implements (optional)"}},
-                ["intent"]),
-        tool_checkpoint,
+        tool_fsck,
     ),
     "sgt_revert": (
-        "Plug a feature out of HEAD: set its lane (and every lane that builds on it) out of force "
-        "in the frontier. Lossless and reversible via sgt_restore. Blocked if the tree has "
-        "un-checkpointed drift (checkpoint first). Pass emit=true for a dry-run preview.",
+        "Remove an op and everything built on it from the current ideal (I \\ upset X). `ref` is "
+        "an op-id, an op-id prefix, or a `file::name` symbol (resolves to its frontier tip). "
+        "Pass emit=true for a dry-run preview -- writes nothing.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
         tool_revert,
     ),
     "sgt_restore": (
-        "Plug a feature back into HEAD: set its lane in force at its tip, or pin it to an earlier "
-        "decision by passing that decision id as 'ref' (hold feature-A@v3 beside feature-B@latest). "
-        "Turns its out-of-force dependencies back on. Pass emit=true for a dry-run preview.",
-        _schema({"ref": {"type": "string", "description": "a lane, or a decision id (node@landing) to pin"},
-                 "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
+        "Re-add an op and its prerequisites to the current ideal (I union downset X) -- revert's "
+        "inverse. Pass emit=true for a dry-run preview -- writes nothing.",
+        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
         tool_restore,
     ),
-    "sgt_reconcile": (
-        "Re-gate held quarantines and resolve any that now commute (e.g. after a rival was "
-        "reverted/suspended). Omit 'ref' to retry all pending; pass one to target a single node.",
-        _schema({"ref": {"type": "string", "description": "a single quarantined node ref (optional)"}}, []),
-        tool_reconcile,
+    "sgt_oracle_run": (
+        "Run configured build/test tiers (declared in `.sgt/oracle.json`) against the current "
+        "ideal, in declared order, stopping at the first failure. Omit 'tier' to run the full "
+        "pipeline; pass it to re-run just that one.",
+        _schema({"tier": {"type": "string", "description": "run just this one tier (optional)"}}, []),
+        tool_oracle_run,
     ),
-    "sgt_init": (
-        "Bind a fresh .sgt store + git to a repo so you can start versioning semantics. "
-        "Idempotent-ish: run once per repo before planning or checkpointing.",
-        _schema({"path": {"type": "string", "description": "repo path (defaults to the server's root)"}}, []),
-        tool_init,
+    "sgt_plan_intake": (
+        "Decompose a plan (an agent's or human's stated intent before doing the work) into "
+        "predicted hollow ops -- one per step, off-chain, never touching the ideal algebra. "
+        "Grounds `predicted_feature` in the repo's own feature tree (`sgt map`) when one exists.",
+        _schema(
+            {"plan_text": {"type": "string"}, "session_id": {"type": "string", "description": "explicit id (optional; defaults to a fresh one)"}},
+            ["plan_text"],
+        ),
+        tool_plan_intake,
+    ),
+    "sgt_checkpoint": (
+        "Preview candidate step<->op groups (footprint-overlap between pending plan steps and "
+        "ops mined since each session's own baseline) plus drift op-ids. Pass `confirm` -- a "
+        "list of `{hollow_ids, op_ids}` groups -- to apply exactly those groups; omit it for a "
+        "pure, read-only preview.",
+        _schema(
+            {"confirm": {
+                "type": "array",
+                "items": _schema(
+                    {"hollow_ids": {"type": "array", "items": {"type": "string"}},
+                     "op_ids": {"type": "array", "items": {"type": "string"}}},
+                    ["hollow_ids", "op_ids"],
+                ),
+            }},
+            [],
+        ),
+        tool_checkpoint,
+    ),
+    "sgt_drift": (
+        "Every op not predicted by any active plan session, with its kind, footprint, and "
+        "current file/line spans.",
+        _schema({}, []),
+        tool_drift,
     ),
 }
 
@@ -374,7 +322,7 @@ def handle_request(repo_path: str, msg: dict) -> dict | None:
         name = params.get("name")
         try:
             data = call_tool(repo_path, name, params.get("arguments"))
-            is_error = isinstance(data, dict) and "error" in data
+            is_error = isinstance(data, dict) and ("error" in data or data.get("ok") is False)
         except KeyError:
             data, is_error = {"error": f"unknown tool: {name}"}, True
         except Exception as ex:  # noqa: BLE001 - report any handler failure as a tool error

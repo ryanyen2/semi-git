@@ -1,487 +1,992 @@
-"""The canonical JSON projection of the semantic tree — one schema, many clients.
+"""The canonical JSON projection of the operation-ideal kernel — one schema, many clients.
 
-Every machine-readable surface (the CLI's ``--json`` mode, the MCP server, the VSCode
-extension, and the Textual TUI) renders the *same* dicts produced here, so the views can
-never drift apart. The functions are pure over a freshly-opened ``Project`` and take no
-network/LLM dependency: reads are offline (origin: graph ops + read verbs need no key).
+Every machine-readable surface (the CLI's ``--json`` mode, the MCP server, and any future UI)
+renders the *same* dicts produced here, so the views can never drift apart (R21; schema changes
+are additive-only). Reads are offline (no LLM/network dependency) and pure over an *already-mined*
+store -- `sgt.core.lens.get` (mine-on-contact) is the caller's job, kept out of these functions so
+they stay side-effect-free. `sgt.core.*` is imported lazily inside each function so `import
+sgt.api` never pulls in the kernel's tree-sitter dependency just to define these shapes.
 
 Shapes (stable; additive changes only):
 
-* ``node_view``    — one node: id, kind, status, intent, deps, dependents, provenance, conflict.
-* ``graph_view``   — every node + the typed edge list + count.
-* ``show_view``    — ``node_view`` plus effects and the full conflict witness.
-* ``status_view``  — node/effect counts, materialized files (+ line counts), drift.
-* ``conflicts_view`` — open conflicts: each held node, what it lost to, and why.
-* ``blame_view``   — per-file line spans -> owning node, with the node metadata a UI needs.
-* ``export_view``  — the whole graph (nodes, edges, per-node effects, witnesses) for a graph view.
+* ``oplog_view``        — the mined operation DAG: every op's id, kind, footprint, provenance,
+  structured attribution (D7: session/agent/plan per witnessing sha), intent.
+* ``state_view``        — the current ref's ideal: frontier, coverage, entity-granularity fraction,
+  and the async oracle's verdict (U9).
+* ``ideal_diff_view``   — the semantic diff between two refs' ideals, grouped by symbol.
+* ``verb_preview_view`` — a side-effect-free preview of an ideal-edit verb (U8: revert/restore/
+  pin/cherry-pick/after): op-ids added/removed, affected symbols, fork refusal, before/after bytes.
+* ``rewrite_view``      — the U11 rewrite-verb review surface: pending drafts (hollow ops awaiting
+  fulfillment) and the currently staged candidate's oracle verdict, if any.
+* ``map_view``          — the U13 feature tree: every node's id/label/kind/parent/children/op_count,
+  the roots, the cross-feature structural dependency edges, and the last build's Greene identity
+  events (birth/death/merge/split/continuation).
+* ``history_view``      — the feature-map webview's commit-index axis: every mined commit in order,
+  and every op's derived kind/feature/commit-index, for Gantt-style lifebars.
+* ``feature_verb_preview_view`` — a side-effect-free preview of a feature verb (merge/split/move/
+  rename/revert), with a uniform ``affected_features`` ripple list for hover-preview UIs.
+* ``blame_view``        — per-file symbol spans (`sym -> max-op-in-I -> feature`) for the editor
+  gutter: each entity's line range, its feature id, that feature's label, and the plan sessions
+  (D7) that touched its tip op.
+* ``status_view``       — a kernel-backed summary: file/symbol/feature counts, coverage fraction,
+  the oracle's overall status, and working-tree drift from `code(current_ideal)`.
+* ``plan_view``         — the U14 plan review surface: every active plan session's steps (with
+  matched-step file/line spans) plus the pure checkpoint preview (candidate step<->op groups and
+  drift op-ids).
+* ``drift_view``        — the U14 "what extra happened" query: every op not predicted by any
+  active plan session, with its kind, footprint, and current file/line spans.
+* ``sync_view``         — the U15 `sgt sync` result: ops merged in, forks surfaced (with the
+  `merge-op` remedy), pin contradictions, declared-edge cycles, and tree identity events.
+* ``forks_view``        — the U20 open same-symbol forks recorded in committed `.sgt/forks.json`,
+  each with its two tips and the `sgt merge-op` remedy (divergence-as-state, C4).
+* ``proposal_view``     — the U24 proposal review object: feature delta, Δ op count, oracle claim,
+  provenance summary, and staleness `status` (current / clean-reunion / fork). `render_github`
+  projects exactly this shape into a PR body.
+* ``tiers_view``        — the U27 three-tier file boundary's effective configuration: `.sgt/
+  tiers.json`'s overrides, `.sgtignore`'s patterns, and each covered path's resolved tier + its
+  `derived` flag (S4).
+* ``selection_view``    — the U29 closure-explanation UX: a feature-tree selection's induced
+  closure (direct ops, files, ops pulled in grouped by their own feature with a representative
+  requires/chain path each), and the hub symbol when the pull crosses a feature boundary.
+* ``why_view``          — the U29 "why is this op here" query: an op's plurality-vote feature
+  attribution, or (given a target feature) the exact chain that pulled it into that feature's
+  selection closure.
+* ``trust_view``        — the U31 trust queue: every op with session/agent attribution or drift
+  status that isn't yet covered by a review record, grouped by provenance key (a session/agent
+  name, or ``"drift"`` for unattributed drift), so a teammate can act on or ack a whole group at
+  once (``sgt revert --session``, ``sgt review-queue ack``).
+* ``proposal_review_view`` — the U32 partial-accept surface: everything ``proposal_view`` has,
+  plus the U24 ``approvals`` schema and a ``feature_checklist`` naming, per delta feature, which
+  *other* delta features it requires — so ``sgt propose land --subset`` (or a future checkbox UI)
+  can validate or grey out a choice without recomputing the closure itself.
 """
 
 from __future__ import annotations
 
-from sgt.agents.resolve import resolve
-from sgt.decisions.structure import decision_structure
-from sgt.decisions.structure import resolve_footprint as _resolve_footprint
-from sgt.effects.attribute import attribute
-from sgt.effects.model import EffectError
-from sgt.store.graph import EdgeType, NodeStatus
 
+def oplog_view(repo) -> dict:
+    """The mined operation DAG: every stored op with its id, derived kind, footprint (each
+    symbol's before->after version), witnessing-commit provenance, and intent if any.
+    Deterministic order -- ops sorted by content-address id, every nested list sorted -- so set
+    iteration never leaks into the projection."""
+    from sgt.core.store import Store
 
-def node_view(project, n) -> dict:
-    w = project.witnesses.get(n.id)
+    ops = sorted(Store(repo).all_ops(), key=lambda op: op.id)
     return {
-        "id": n.id,
-        "kind": n.kind.value,
-        "status": n.status.value,
-        "intent": n.intent,
-        "depends_on": list(project.graph.successors(n.id)),
-        "dependents": list(project.graph.predecessors(n.id)),
-        "provenance": list(n.provenance),
-        "commits": [c[:8] for c in n.commit_ids],
-        "conflict": w.get("reason") if w else None,
+        "ops": [
+            {
+                "id": op.id,
+                "kind": op.kind,
+                "footprint": [
+                    {"symbol": sym, "before": before, "after": after}
+                    for sym, (before, after) in sorted(op.footprint.items())
+                ],
+                "provenance": sorted(op.provenance),
+                "attribution": _attribution_entries(op),
+                "intent": op.intent,
+            }
+            for op in ops
+        ],
+        "count": len(ops),
     }
 
 
-def graph_view(project) -> dict:
-    nodes = [node_view(project, n) for n in project.graph.nodes()]
-    edges = [
-        {"src": e.src, "dst": e.dst, "type": e.type.value} for e in project.graph.edges()
+def _attribution_entries(op) -> list[dict]:
+    """An op's structured provenance (D7) as a stable, sorted-by-sha list of `{sha, session?,
+    agent?, plan?}` dicts, omitting None fields -- additive to `provenance` (the bare sha list),
+    never replacing it. `[]` for an op with no attribution."""
+    return [
+        {"sha": a.sha, **{f: getattr(a, f) for f in ("session", "agent", "plan") if getattr(a, f) is not None}}
+        for a in sorted(op.attribution, key=lambda a: a.sha)
     ]
-    return {"nodes": nodes, "edges": edges, "count": len(nodes)}
 
 
-def show_view(project, ref: str) -> dict:
-    r = resolve(project, ref)
-    if not r.ok or r.node_id is None:
-        return {"error": f"could not resolve {ref!r} ({r.kind})", "matches": r.matches}
-    n = project.graph.get(r.node_id)
-    view = node_view(project, n)
-    view["effects"] = [
-        {"op": e.op.value, "target": e.target, "file": e.file}
-        for e in project.bundles.get(n.id, [])
-    ]
-    if (w := project.witnesses.get(n.id)):
-        view["conflict"] = {
-            "reason": w.get("reason"),
-            "held": w.get("held", []),
-            "against": w.get("against", []),
-        }
-    return view
+def state_view(repo) -> dict:
+    """The current ref's ideal: its per-chain frontier (symbol -> tip op id), the paths
+    `code(I)` covers, R7's entity-granularity coverage fraction, and the async oracle's verdict
+    (U9) -- `oracle_verdict` is `None` until `sgt oracle run` has recorded one for this exact
+    ideal, or always `None` when `oracle_configured` is False (no `.sgt/oracle.json`).
 
+    Coverage-fraction definition (R7): of the paths present in the materialized tree, the
+    fraction carried at *entity* granularity -- a path with at least one live top-level or nested
+    entity symbol at the frontier (a parseable def/class/method sgt can revert or cherry-pick on
+    its own) -- versus paths represented only by a whole-file pseudo-symbol or by module-level
+    residue / layout facts (coarse, file-granularity coverage). `entity_paths` is that numerator
+    as an explicit list, so `covered_paths` minus `entity_paths` is exactly the whole-file-only
+    remainder. A ref with nothing covered reports 1.0 (vacuously: nothing is stuck at whole-file
+    granularity)."""
+    from sgt.config import load_oracle_config
+    from sgt.core.fold import _symbol_kind
+    from sgt.core.lens import ideal_for_ref
+    from sgt.core.oracle import verdict_for
+    from sgt.core.op import is_bottom
+    from sgt.core.store import Store
 
-def status_view(project) -> dict:
-    try:
-        cb = project.materialize()
-    except EffectError as ex:
-        return {"nodes": len(project.graph.nodes()), "error": f"cannot materialize: {ex}"}
-    drift = project.check_drift()
-    # PLANNED nodes carry no effects, so they never show as on-disk drift. A reopened session
-    # whose only outstanding work is an unimplemented plan would otherwise read as "nothing to
-    # do" — surface it here so every client (MCP/CLI/TUI/extension) can prompt the user to
-    # continue implementing rather than report a clean tree as done.
-    planned = [
-        {
-            "id": n.id,
-            "intent": n.intent,
-            "kind": n.kind.value,
-            "provides": list(n.provides),
-            "needs": list(n.needs),
-        }
-        for n in project.graph.nodes()
-        if n.status is NodeStatus.PLANNED
-    ]
+    store = Store(repo)
+    ops = store.all_ops()
+    ideal = ideal_for_ref(repo, "HEAD", store)
+    frontier = ideal.frontier(ops)
+    by_id = {op.id: op for op in ops}
+
+    covered = ideal.covered_paths(ops)
+    entity_paths: set[str] = set()
+    for sym, op_id in frontier.items():
+        after = by_id[op_id].footprint[sym][1]
+        if not is_bottom(after) and _symbol_kind(sym) in ("entity", "nested"):
+            entity_paths.add(sym.split("::", 1)[0])
+
+    from sgt.core import tiers
+
+    oracle_configured = load_oracle_config(repo) is not None
     return {
-        "nodes": len(project.graph.nodes()),
-        "files": [{"path": p, "lines": len(cb[p].splitlines())} for p in sorted(cb)],
-        "effects": sum(len(b) for b in project.bundles.values()),
-        "drift": {
-            "any": drift.any,
-            "modified": drift.modified,
-            "added": drift.added,
-            "deleted": drift.deleted,
-            "summary": drift.summary(),
-        },
-        "pending": {
-            "count": len(planned),
-            "planned": planned,
-            "summary": (
-                f"{len(planned)} decision(s) planned but not yet implemented"
-                if planned else "no pending plan"
-            ),
+        "frontier": {sym: frontier[sym] for sym in sorted(frontier)},
+        "covered_paths": sorted(covered),
+        "entity_paths": sorted(entity_paths),
+        "coverage_fraction": (len(entity_paths) / len(covered)) if covered else 1.0,
+        "derived_paths": sorted(p for p in covered if tiers.is_derived(p)),  # S4/U27
+        "oracle_configured": oracle_configured,
+        "oracle_verdict": verdict_for(repo, ideal) if oracle_configured else None,
+    }
+
+
+def tiers_view(repo) -> dict:
+    """The three-tier file boundary's effective configuration (U27/D4): `.sgt/tiers.json`'s
+    explicit overrides, `.sgtignore`'s patterns, and -- for every path this ref's ideal
+    currently covers -- the tier it resolves to plus whether it's flagged `derived` (S4). Reads
+    the *working tree*'s config (a reporting/mutation surface); mining itself always reads via
+    `sgt.core.tiers.load_tiers_at` against the mined commit's own tree (LAW-0), never this."""
+    from sgt.core import tiers
+    from sgt.core.lens import ideal_for_ref
+    from sgt.core.store import Store
+
+    cfg = tiers.load_tiers(repo)
+    store = Store(repo)
+    ops = store.all_ops()
+    ideal = ideal_for_ref(repo, "HEAD", store)
+    covered = ideal.covered_paths(ops)
+    return {
+        "overrides": {t: list(cfg.overrides.get(t, ())) for t in ("entity", "opaque", "ignored")},
+        "sgtignore": list(cfg.sgtignore),
+        "paths": {
+            path: {"tier": tiers.resolve_tier(path, cfg), "derived": tiers.is_derived(path)}
+            for path in sorted(covered)
         },
     }
 
 
-def conflicts_view(project) -> dict:
-    from sgt.merge import conflicts
+def selection_view(repo, feature_refs) -> dict:
+    """The closure induced by selecting `feature_refs` (plan U29): direct op count, files, the
+    closure's total op count, ops additionally pulled in grouped by their own feature (each with
+    a representative requires/chain path), and the hub symbol when the pull crosses a feature
+    boundary. `select()` reports; it never materializes anything (see `sgt.lens.select`'s
+    module docstring for why -- the U25 BET-C gate that ruled out silent branch materialization)."""
+    from sgt.lens.select import select
 
-    out = []
-    for c in conflicts(project):
-        out.append({
-            "node_id": c.held.node_id,
-            "intent": c.held.intent,
-            "reason": c.reason,
-            "against": [{"node_id": s.node_id, "intent": s.intent} for s in c.against],
+    result = select(repo, feature_refs)
+    if not result.ok:
+        return {"ok": False, "message": result.message}
+    return {
+        "ok": True, "feature_ids": list(result.feature_ids), "files": list(result.files),
+        "direct_op_count": result.direct_op_count, "closure_op_count": result.closure_op_count,
+        "pulled": [
+            {"feature_id": g.feature_id, "op_count": g.op_count, "chain": list(g.chain)}
+            for g in result.pulled
+        ],
+        "hub": result.hub,
+        "message": result.message,
+    }
+
+
+def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
+    """One op's feature attribution (plan U29): with no `for_feature`, the plurality vote that
+    assigned it (every leaf its footprint touched, and how many symbols voted for each); with
+    `for_feature`, the exact chain that pulled it into that feature's selection closure."""
+    from sgt.lens.select import why
+
+    result = why(repo, op_ref, for_feature)
+    return {
+        "ok": result.ok, "message": result.message, "op_id": result.op_id,
+        "feature_id": result.feature_id, "for_feature": result.for_feature,
+        "votes": list(result.votes), "chain": list(result.chain),
+    }
+
+
+def ideal_diff_view(repo, ref_a: str, ref_b: str) -> dict:
+    """The semantic diff between two refs' ideals: the symmetric difference of their op sets
+    (`Ideal.diff`), grouped by symbol and labeled by side (`only_in_a` / `only_in_b`). A pure
+    read over the store -- both refs must already have been mined (via `get()` on each) for the
+    diff to be complete; this projects what the store holds onto each ref's own commit ancestry
+    without checking anything out."""
+    from sgt.core.lens import ideal_for_ref
+    from sgt.core.store import Store
+
+    store = Store(repo)
+    ideal_a = ideal_for_ref(repo, ref_a, store)
+    ideal_b = ideal_for_ref(repo, ref_b, store)
+    by_id = {op.id: op for op in store.all_ops()}
+
+    sym_diff = ideal_a.diff(ideal_b)
+    only_a = sym_diff & ideal_a.op_ids
+    only_b = sym_diff & ideal_b.op_ids
+
+    by_symbol: dict[str, dict[str, list[str]]] = {}
+    for op_id in only_a:
+        for sym in by_id[op_id].footprint:
+            by_symbol.setdefault(sym, {}).setdefault("only_in_a", []).append(op_id)
+    for op_id in only_b:
+        for sym in by_id[op_id].footprint:
+            by_symbol.setdefault(sym, {}).setdefault("only_in_b", []).append(op_id)
+
+    grouped = {
+        sym: {
+            "only_in_a": sorted(sides.get("only_in_a", [])),
+            "only_in_b": sorted(sides.get("only_in_b", [])),
+        }
+        for sym, sides in sorted(by_symbol.items())
+    }
+    return {"ref_a": ref_a, "ref_b": ref_b, "by_symbol": grouped, "count": len(sym_diff)}
+
+
+def verb_preview_view(
+    repo, verb: str, target: str, *, version: str | None = None,
+    source_ref: str | None = None, other: str | None = None,
+) -> dict:
+    """A side-effect-free preview of an ideal-edit verb (U8: revert/restore/pin/cherry-pick/after)
+    -- the op-ids it would add/remove, the symbols whose frontier tip moves, whether it would fork
+    (and so refuse), and the per-file before/after bytes of the fold. Pure: it runs the verb's
+    `plan_*` (no mining, no writes) and materializes both ideals in memory via `fold.code`, so a
+    UI can render `--emit` without a CLI flip. Output is fully sorted for a stable projection.
+
+    `version` is required for `pin` (target is the symbol); `source_ref` for `cherry-pick`;
+    `other` for `after` (target and other are the two ops of the `a <= b` edge)."""
+    from sgt.core import verbs
+
+    plans = {
+        "revert": lambda: verbs.plan_revert(repo, target),
+        "restore": lambda: verbs.plan_restore(repo, target),
+        "pin": lambda: verbs.plan_pin(repo, target, version),
+        "cherry-pick": lambda: verbs.plan_cherry_pick(repo, target, source_ref),
+        "after": lambda: verbs.plan_after(repo, target, other),
+    }
+    if verb not in plans:
+        return {"error": f"unknown verb {verb!r}", "verbs": sorted(plans)}
+    return _project_verb_preview(repo, plans[verb]())
+
+
+def _project_verb_preview(repo, preview) -> dict:
+    """Given an already-computed `sgt.core.verbs.VerbPreview`, the per-file before/after bytes
+    plus the rest of `verb_preview_view`'s shape. Factored out so a caller that resolves its own
+    preview -- `sgt.cli`'s `revert <feature>` (plan U13), which tries a feature id/label before
+    falling back to `verb_preview_view`'s op/symbol dispatch -- gets the identical projection
+    without re-deriving the byte diff."""
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.store import Store
+
+    ops = Store(repo).all_ops()
+    before = code(Ideal.from_ops(preview.before_ids, ops), ops)
+    after = code(Ideal.from_ops(preview.after_ids, ops), ops)
+    files = {
+        path: {
+            "before": before.get(path, b"").decode("utf-8", "replace"),
+            "after": after.get(path, b"").decode("utf-8", "replace"),
+        }
+        for path in sorted(set(before) | set(after))
+        if before.get(path) != after.get(path)
+    }
+    return {
+        "ok": preview.ok,
+        "verb": preview.verb,
+        "target": preview.target,
+        "removed": sorted(preview.removed),
+        "added": sorted(preview.added),
+        "affected_symbols": list(preview.affected_symbols),
+        "forked": preview.forked,
+        "files": files,
+        "message": preview.message,
+    }
+
+
+def rewrite_view(repo) -> dict:
+    """U11's review surface: every registered-but-unfulfilled rewrite draft (`merge-op`/
+    `split-op`/`transplant`/`revert --keep-dependents`) with its hollow ops' symbol/kind/intent,
+    plus the currently staged candidate ideal (if `sgt fulfill` has run) with its oracle verdict --
+    the thing `sgt land` is gated on (R14). `None` for ``staged`` means nothing is staged."""
+    from sgt.core import oracle, rewrite
+    from sgt.core.ideal import Ideal
+    from sgt.core.store import Store
+
+    store = Store(repo)
+    ops = store.all_ops()
+
+    drafts = []
+    for draft_id, rec in sorted(rewrite.pending_drafts(repo).items()):
+        hollows = [store.get_hollow(hid) for hid in rec["hollow_ids"]]
+        drafts.append({
+            "draft_id": draft_id,
+            "verb": rec["verb"],
+            "target": rec["target"],
+            "message": rec.get("message", ""),
+            "hollow_ops": [
+                {"id": h.id, "symbol": next(iter(h.footprint)), "kind": h.kind, "intent": h.intent}
+                for h in hollows if h is not None
+            ],
         })
-    return {"conflicts": out, "count": len(out)}
 
-
-def blame_view(project, file: str) -> dict:
-    """Line spans -> owning node for one materialized file, plus the node metadata a UI needs.
-
-    ``drift`` flags whether the working-tree copy of ``file`` diverges from the replay the
-    spans were computed against — so a UI can mark a stale overlay rather than mislead.
-    """
-    try:
-        spans_by_file = attribute(project)
-    except EffectError as ex:
-        return {"file": file, "error": f"cannot attribute: {ex}"}
-    spans = spans_by_file.get(file)
-    if spans is None:
-        return {"file": file, "error": "file is not managed by the semantic graph", "spans": []}
-    used = {s.node_id for s in spans if s.node_id}
-    nodes = {
-        nid: {
-            "intent": project.graph.get(nid).intent,
-            "kind": project.graph.get(nid).kind.value,
-            "status": project.graph.get(nid).status.value,
+    staged_record = rewrite.staged_candidate(repo)
+    staged = None
+    if staged_record is not None:
+        candidate = Ideal.from_ops(frozenset(staged_record["op_ids"]), ops)
+        verdict = oracle.verdict_for(repo, candidate)
+        staged = {
+            "verb": staged_record["verb"],
+            "target": staged_record["target"],
+            "op_count": len(candidate.op_ids),
+            "oracle_verdict": verdict,
+            "oracle_status": oracle.overall_status(verdict),
         }
-        for nid in used
-        if project.graph.has(nid)
-    }
-    drift = project.check_drift()
-    return {
-        "file": file,
-        "spans": [s.to_dict() for s in spans],
-        "nodes": nodes,
-        "drift": file in drift.modified or file in drift.deleted,
-    }
+
+    return {"drafts": drafts, "staged": staged}
 
 
-def entity_graph_view(project) -> dict:
-    """The deterministic code-entity graph parsed from the working tree (disk-canonical).
+def map_view(repo) -> dict:
+    """The feature tree (plan U13): a pure read of the last `sgt map`-built `.sgt/tree/tree.json`
+    -- building/labeling/saving it is `sgt.lens.map.build_map`'s job, kept out of this read-only,
+    dependency-light projection. Empty (`{"nodes": [], ...}`) if no tree has been built yet, so a
+    UI can render "run `sgt map`" rather than erroring.
 
-    Functions/classes/methods as entities; edges are containment + calls/imports. ``edges`` is
-    the full set; ``reduced_edges`` is the transitive reduction used for layout (KTD8). Each
-    entity carries ``depends_on`` (its direct reduced calls/imports targets). Pure over a
-    freshly-opened ``Project``; no LLM/network. The ``entities`` extra (tree-sitter) is imported
-    lazily so core surfaces without it still import ``sgt.api``.
-    """
-    from sgt.entities.graph import build_entity_graph, owning_nodes, read_entity_sources
+    Every node -- leaf (a `label_tree`/Greene-matched feature, `F<n>` id) or internal (a
+    structural subsystem grouping, build-local `N<n>` id) -- is emitted uniformly with
+    `kind: "feature" | "subsystem"` distinguishing them; `op_count` is the number of ops
+    `op_leaf` assigns to a feature, rolled up through subsystems. `edges` rolls the fused
+    structural/co-change/scope coupling graph (`sgt.lens.tree.fused_graph`, the same signal
+    `plan_split` reads) up to leaf-feature pairs -- the cross-feature dependency edges a
+    visualization draws between features. Fully sorted for a stable projection."""
+    from sgt.core.lens import current_ideal
+    from sgt.core.store import Store
+    from sgt.lens.tree import feature_edges, fused_graph
+    from sgt.lens.tree import load as load_tree
 
-    g = build_entity_graph(read_entity_sources(project.repo))
-    # Feature overlay: which feature owns each entity, from semantic blame (disk-vs-materialized
-    # line numbers align for tracked clean files; untracked/TS files have no blame -> None).
-    spans_by_file: dict[str, list[dict]] = {}
-    if hasattr(project, "log") and hasattr(project, "graph"):
-        try:
-            spans_by_file = {
-                f: [s.to_dict() for s in sps] for f, sps in attribute(project).items()
-            }
-        except EffectError:
-            spans_by_file = {}
-    owners = owning_nodes(g.entities, spans_by_file)
-    return _assemble_entity_view(project, g, owners)
+    result = load_tree(repo)
+    if result is None:
+        return {"nodes": [], "roots": [], "identity_events": [], "feature_count": 0, "edges": []}
 
+    nodes = result["nodes"]
+    op_leaf = result["op_leaf"]
+    leaf_op_count: dict[str, int] = {}
+    for leaf in op_leaf.values():
+        leaf_op_count[leaf] = leaf_op_count.get(leaf, 0) + 1
 
-def timeframe_view(project, frame: int) -> dict:
-    """The map as of checkpoint ordinal ``frame`` — the scrubber's per-frame projection.
+    def op_count(nid: str) -> int:
+        children = nodes[nid]["children"]
+        if not children:
+            return leaf_op_count.get(nid, 0)
+        return sum(op_count(c) for c in children)
 
-    Structure comes from ``materialize_at(frame)`` (tracked features at that frame); the overlay
-    is frame-accurate, derived from the very entries that frame replays (each carries its owning
-    ``node_id``) rather than current-state blame. Same shape as ``entity_graph_view`` plus
-    ``frame`` — so the webview can diff adjacent frames and highlight born/grown/retired regions.
-    """
-    from sgt.store.graph import NodeStatus
-    from sgt.entities.graph import build_entity_graph
+    ops = Store(repo).all_ops()
+    by_id = {op.id: op for op in ops}
+    leaf_sessions: dict[str, set[str]] = {}
+    for op_id, leaf in op_leaf.items():
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        sessions = {a.session for a in op.attribution if a.session}
+        if sessions:
+            leaf_sessions.setdefault(leaf, set()).update(sessions)
 
-    g = build_entity_graph(project.materialize_at(frame))
-    active = {
-        nid for nid in project.log.node_ids()
-        if project.graph.has(nid) and project.graph.get(nid).status is NodeStatus.ACTIVE
-    }
-    # Frame overlay: the entry that produced each entity (add/replace target) owns it; last wins.
-    owners: dict[str, str | None] = {e.id: None for e in g.entities}
-    for entry in sorted(project.log.live_entries(active), key=lambda e: e.order_key):
-        if 0 < entry.landing <= frame:
-            ent_id = f"{entry.effect.file}::{entry.effect.target}"
-            if ent_id in owners:
-                owners[ent_id] = entry.node_id
+    def node_sessions(nid: str) -> list[str]:
+        """Every session (plan U30/D5) whose attributed ops sit under this node -- additive
+        provenance rollup (plan U31, S7), same children-recursion shape as `op_count`."""
+        children = nodes[nid]["children"]
+        if not children:
+            return sorted(leaf_sessions.get(nid, ()))
+        merged: set[str] = set()
+        for c in children:
+            merged.update(node_sessions(c))
+        return sorted(merged)
 
-    view = _assemble_entity_view(project, g, owners)
-    view["frame"] = frame
-    return view
-
-
-def _assemble_entity_view(project, g, owners: dict) -> dict:
-    """Shared assembly: entity dicts (+depends_on, +node_id), edges, reduction, components, clusters."""
-    deps: dict[str, list[str]] = {e.id: [] for e in g.entities}
-    for e in g.reduced_edges:
-        if e.type in ("calls", "imports"):
-            deps[e.src].append(e.dst)
-    entities = []
-    for ent in g.entities:
-        d = ent.to_dict()
-        d["depends_on"] = deps.get(ent.id, [])
-        d["node_id"] = owners.get(ent.id)
-        entities.append(d)
-    return {
-        "entities": entities,
-        "edges": [e.to_dict() for e in g.edges],
-        "reduced_edges": [e.to_dict() for e in g.reduced_edges],
-        "components": g.components,
-        "clusters": _clusters(project, g, owners),
-        "count": len(g.entities),
-    }
-
-
-def _clusters(project, g, owners: dict) -> list[dict]:
-    """Read-only capability clustering for the projection (reports persisted identity, never writes).
-
-    Adjacency = features that co-own entities in a file, plus feature-dependency edges. Identity is
-    matched against the persisted store; refreshing/relabeling (and the LLM path) happen in
-    ``sgt.entities.cluster.refresh_clusters``, not on this read.
-    """
-    members = sorted({nid for nid in owners.values() if nid})
-    if not members:
-        return []
-    from sgt.entities.cluster import cluster_features, load_cluster_store
-
-    files_of: dict[str, set[str]] = {}
-    for ent in g.entities:
-        nid = owners.get(ent.id)
-        if nid:
-            files_of.setdefault(ent.file, set()).add(nid)
-    adjacency: set[frozenset] = set()
-    for feats in files_of.values():
-        fl = sorted(feats)
-        for i in range(len(fl)):
-            for j in range(i + 1, len(fl)):
-                adjacency.add(frozenset((fl[i], fl[j])))
-    if hasattr(project, "graph"):
-        for f in members:
-            if project.graph.has(f):
-                for dep in project.graph.successors(f):
-                    if dep in members:
-                        adjacency.add(frozenset((f, dep)))
-    prior = load_cluster_store(project.sgt_dir) if hasattr(project, "sgt_dir") else {}
-    return [c.to_dict() for c in cluster_features(members, adjacency, prior)]
-
-
-def decision_graph_view(project) -> dict:
-    """The decision DAG: decisions, lifecycle edges (stored), and derived dependency.
-
-    ``revises`` / ``fork`` edges are intrinsic (from each decision's lineage). ``builds-on``
-    edges and the ``clash`` set are **derived** by projecting the entity dependency graph
-    (``entity_graph_view``) through each decision's footprint — never authored — so the graph
-    is reproducible and cannot vibe. ``builds-on`` and clashes are computed among the
-    in-force (frontier) decisions, the nodes a "now" view draws. Pure, offline.
-    """
-    from sgt.decisions.store import build_decisions, load_frontier
-    from sgt.store.graph import EdgeType
-
-    decisions = build_decisions(project)
-    frontier = load_frontier(project, decisions)
-    in_force_ids = frontier.in_force()
-
-    try:
-        eg = entity_graph_view(project)
-    except Exception:
-        eg = {"entities": []}
-    entity_ids = {e["id"] for e in eg.get("entities", [])}
-    entity_dep = {e["id"]: set(e.get("depends_on", [])) for e in eg.get("entities", [])}
-    ent_of = {d.id: _resolve_footprint(d.footprint, entity_ids) for d in decisions}
-
-    edges: list[dict] = []
-    for d in decisions:
-        if d.lifecycle_of:
-            kind = "fork" if d.lifecycle_kind.value == "fork" else "revises"
-            edges.append({"src": d.id, "dst": d.lifecycle_of, "type": kind})
-
-    # Planned dependency lineage. A planned node has no footprint, so the entity-derived builds-on
-    # below never reaches it — without help it floats as an orphan. We connect it two ways, both
-    # derived (never authored): (1) its authored `depends_on` graph edges to sibling planned nodes;
-    # (2) a *name bridge* — the names a planned node `needs`/`provides`, resolved against what every
-    # other decision (landed or planned) provides, so "update run_pipeline to use retrieve_from_graph"
-    # links to both the landed `run_pipeline` lane and the planned `retrieve_from_graph` node.
-    seen_edges = {(e["src"], e["dst"], e["type"]) for e in edges}
-
-    def _add_builds_on(src: str, dst: str) -> None:
-        key = (src, dst, "builds-on")
-        if src != dst and key not in seen_edges:
-            seen_edges.add(key)
-            edges.append({"src": src, "dst": dst, "type": "builds-on", "derived": True})
-
-    feature_of = {d.id: d.feature for d in decisions}
-    if hasattr(project, "graph"):
-        graph = project.graph
-        # Declared plan dependencies persist as builds-on between the *decisions* of those nodes,
-        # even after they land. The call graph alone misses compositional deps — a stats fn that
-        # consumes a loader's output without calling it — which would otherwise orphan both. Map
-        # each node to its latest decision so a revised lane keeps a single incident edge.
-        dec_of_node: dict[str, str] = {}
-        for d in sorted(decisions, key=lambda d: d.landing):
-            dec_of_node[d.node_id] = d.id
-        for e in graph.edges():
-            if e.type is EdgeType.DEPENDS_ON:
-                s, t = dec_of_node.get(e.src), dec_of_node.get(e.dst)
-                if s and t and feature_of.get(s) != feature_of.get(t):
-                    _add_builds_on(s, t)
-
-        # The declared-`needs` bridge, persisted for the life of a decision (planned OR landed). The
-        # call graph alone loses a declared data-flow dependency once code lands — a JSON writer that
-        # takes `compute_summary`'s output as an argument never *calls* it — so we link each decision
-        # to whoever provides a name its node `needs`. name -> provider decision: landed decisions
-        # provide their footprint target def names, planned ones their declared `provides`; match the
-        # full target and its last dotted segment so `Class.method` and a bare `method` both resolve.
-        def _names(raw: str) -> set[str]:
-            return {raw, raw.rsplit(".", 1)[-1]}
-
-        provider_of: dict[str, str] = {}
-        for d in decisions:
-            if d.status.value == "planned":
-                node = graph.get(d.node_id) if graph.has(d.node_id) else None
-                provided = node.provides if node else []
-            else:
-                provided = [k.split("::", 1)[1] for k in d.footprint if "::" in k]
-            for raw in provided:
-                for nm in _names(raw):
-                    provider_of.setdefault(nm, d.id)  # first (deepest in time) provider wins
-
-        for d in decisions:
-            node = graph.get(d.node_id) if graph.has(d.node_id) else None
-            if node is None:
-                continue
-            wanted = {nm for raw in node.needs for nm in _names(raw)}
-            for nm in wanted:
-                owner = provider_of.get(nm)
-                if owner and owner != d.id and feature_of.get(owner) != d.feature:
-                    _add_builds_on(d.id, owner)
-
-    # builds-on / clash are derived at the LANE level: a lane owns the union of its footprints
-    # up to its in-force decision (an entity touched once and not re-touched is still owned), and
-    # the edge is drawn between the two lanes' in-force decision nodes.
-    in_force_of: dict[str, object] = {d.feature: d for d in decisions if d.id in frontier.in_force()}
-    cum_ent: dict[str, set] = {}
-    for feat, dec in in_force_of.items():
-        keys: set[str] = set()
-        for d in decisions:
-            if d.feature == feat and d.landing <= dec.landing:
-                keys |= set(d.footprint)
-        cum_ent[feat] = _resolve_footprint(list(keys), entity_ids)
-
-    clash: list[dict] = []
-    feats = sorted(in_force_of)
-    for fb in feats:
-        for fa in feats:
-            if fa == fb:
-                continue
-            if any(dep in cum_ent[fa] for eb in cum_ent[fb] for dep in entity_dep.get(eb, ())):
-                edges.append({
-                    "src": in_force_of[fb].id, "dst": in_force_of[fa].id,
-                    "type": "builds-on", "derived": True,
-                })
-            shared = cum_ent[fa] & cum_ent[fb]
-            if shared and fb < fa:
-                clash.append({
-                    "a": in_force_of[fa].id, "b": in_force_of[fb].id, "entities": sorted(shared),
-                })
-
-    # A landed decision the frontier selects is reported as in_force (a frontier property,
-    # not a log one — so it's stamped here in the projection, not in the store). Each decision
-    # also carries a deterministic `structure` (defines/uses/used_by) read from the entity graph
-    # (or, for a planned node, its declared provides/needs) — the faithful, offline description.
-    has_graph = hasattr(project, "graph")
-    out_decisions = []
-    for d in decisions:
-        dd = d.to_dict()
-        if d.id in in_force_ids:
-            dd["status"] = "in_force"
-        node = project.graph.get(d.node_id) if has_graph and project.graph.has(d.node_id) else None
-        dd["structure"] = decision_structure(node, eg, ent_of.get(d.id, set()))
-        out_decisions.append(dd)
+    emitted = [
+        {
+            "id": nid,
+            "label": nd.get("label", nid),
+            "kind": "feature" if not nd["children"] else "subsystem",
+            "parent": nd["parent"],
+            "children": sorted(nd["children"]),
+            "size": nd["size"],
+            "op_count": op_count(nid),
+            "dir": nd.get("dir", ""),
+            "why": nd.get("why", ""),
+            "split_reason": nd.get("split_reason"),
+            "sessions": node_sessions(nid),
+        }
+        for nid, nd in sorted(nodes.items())
+    ]
+    ideal = current_ideal(repo)
+    _, fused = fused_graph(repo, ops, ideal)
 
     return {
-        "decisions": out_decisions,
-        "edges": edges,
-        "frontier": frontier.selection,
-        "head": _primary_head(out_decisions, edges, in_force_ids),
-        "clash": clash,
-        "count": len(decisions),
+        "nodes": emitted,
+        "roots": sorted(result["roots"]),
+        "identity_events": sorted(result.get("identity_events", []), key=lambda e: (e["event"], e["feature_id"])),
+        "feature_count": sum(1 for nd in nodes.values() if not nd["children"]),
+        "edges": feature_edges(nodes, fused),
     }
 
 
-def _primary_head(decisions: list[dict], edges: list[dict], in_force_ids: set[str]) -> str | None:
-    """The one decision a human reads as HEAD: the integrator.
+def history_view(repo) -> dict:
+    """The feature-map webview's commit-index axis: every mined commit in chronological order
+    (`sgt.store.gitbind.GitBinding.history`, oldest-first), and every stored op's derived kind,
+    feature (`op_leaf`, if a tree has been built), and `commit_index` -- the position in that
+    chronological list of the *earliest* of the op's provenance commits that actually appears
+    there. An op none of whose provenance commits are in `history()` (e.g. mined from a detached
+    or since-rewritten commit) is omitted rather than assigned a misleading index."""
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+    from sgt.store.gitbind import GitBinding
 
-    The frontier holds one tip per lane (2–6 across the stress corpus), but every project has a single
-    dominant *integrator* — an in-force decision nothing builds on (zero builds-on in-degree) that
-    itself builds on the most others. We pick it by ``(out-degree, dependency depth, landing)``. With
-    no integrator (a pure spine / single lane) we fall back to the newest in-force tip. Deterministic.
-    """
-    if not in_force_ids:
-        return None
-    landing = {d["id"]: d["landing"] for d in decisions}
-    succ: dict[str, list[str]] = {d["id"]: [] for d in decisions}
-    indeg: dict[str, int] = {d["id"]: 0 for d in decisions}
-    for e in edges:
-        if e["type"] in ("builds-on", "revises") and e["src"] in succ and e["dst"] in succ:
-            succ[e["src"]].append(e["dst"])
-            indeg[e["dst"]] = indeg.get(e["dst"], 0) + 1
+    rows = GitBinding(repo).history()
+    commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
+    commits = [{"sha": sha, "subject": subject, "index": i} for i, (sha, _parent, subject) in enumerate(rows)]
 
-    memo: dict[str, int] = {}
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
 
-    def depth(n: str, seen: frozenset) -> int:
-        if n in memo:
-            return memo[n]
-        if n in seen:
-            return 0
-        memo[n] = max((1 + depth(m, seen | {n}) for m in succ[n]), default=0)
-        return memo[n]
+    ops_out = []
+    for op in sorted(Store(repo).all_ops(), key=lambda op: op.id):
+        idx = min((commit_index[sha] for sha in op.provenance if sha in commit_index), default=None)
+        if idx is None:
+            continue
+        ops_out.append({"id": op.id, "kind": op.kind, "feature_id": op_leaf.get(op.id), "commit_index": idx})
+    ops_out.sort(key=lambda o: (o["commit_index"], o["id"]))
 
-    integrators = [d for d in in_force_ids if indeg.get(d, 0) == 0 and succ.get(d)]
-    pool = integrators or list(in_force_ids)
-    # `in_force_ids` is a set, so ties in the ranking key must break on the id itself —
-    # otherwise HEAD flips with set-iteration order (a fan-out with equal-rank tips).
-    return max(pool, key=lambda d: (len(succ.get(d, [])), depth(d, frozenset()), landing.get(d, 0), d))
+    return {"commits": commits, "ops": ops_out}
 
 
-def frontier_view(project) -> dict:
-    """The current composition: the in-force decision per lane, and the lane list."""
-    from sgt.decisions.store import build_decisions, load_frontier
+def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
+    """A side-effect-free preview of a feature verb (U13's merge/split/move/rename) or a
+    feature-grouped revert (U8's kernel edit, resolved via `sgt.lens.verbs.plan_revert_feature`),
+    each verb's own `plan_*` fields plus a uniform ``affected_features`` list -- the real ripple
+    of that verb, so a hover-preview UI never needs per-verb-shaped logic: merge/rename affect the
+    named feature(s) directly; split's second id is the fresh id the *next* `sgt map` would mint
+    for the new group (previewed, not committed); move's are the op-losing source leaf(es) plus
+    the target; revert's is every feature whose ops sit in the real upset closure being removed --
+    the genuine cross-feature blast radius, not a guessed dependency edge."""
+    from sgt.lens import tree as tree_mod
+    from sgt.lens import verbs as lens_verbs
 
-    decisions = build_decisions(project)
-    return {
-        "selection": load_frontier(project, decisions).selection,
-        "lanes": sorted({d.feature for d in decisions}),
-    }
+    if verb == "merge":
+        if len(args) != 2:
+            return {"error": "merge requires <survivor> <absorbed>"}
+        preview = lens_verbs.plan_merge(repo, args[0], args[1])
+        return {
+            "ok": preview.ok, "verb": "merge", "message": preview.message,
+            "survivor_id": preview.survivor_id, "absorbed_id": preview.absorbed_id,
+            "op_count": preview.op_count, "member_count": preview.member_count,
+            "affected_features": [preview.survivor_id, preview.absorbed_id] if preview.ok else [],
+        }
+
+    if verb == "rename":
+        if len(args) != 2:
+            return {"error": "rename requires <feature> <new-label>"}
+        preview = lens_verbs.plan_rename(repo, args[0], args[1])
+        return {
+            "ok": preview.ok, "verb": "rename", "message": preview.message,
+            "feature_id": preview.feature_id, "old_label": preview.old_label, "new_label": preview.new_label,
+            "affected_features": [preview.feature_id] if preview.ok else [],
+        }
+
+    if verb == "split":
+        if len(args) != 1:
+            return {"error": "split requires <feature>"}
+        preview = lens_verbs.plan_split(repo, args[0])
+        affected: list[str] = []
+        if preview.ok:
+            tree_result = tree_mod.load(repo)
+            new_id = next(tree_mod._fresh_id_gen(set(tree_result["nodes"])))
+            affected = [preview.feature_id, new_id]
+        return {
+            "ok": preview.ok, "verb": "split", "message": preview.message,
+            "feature_id": preview.feature_id,
+            "groups": [list(g) for g in preview.groups] if preview.groups else None,
+            "reason": preview.reason,
+            "affected_features": affected,
+        }
+
+    if verb == "move":
+        if len(args) < 2:
+            return {"error": "move requires <op>... <target-feature>"}
+        *op_refs, target_id = args
+        preview = lens_verbs.plan_move(repo, list(op_refs), target_id)
+        affected = []
+        if preview.ok:
+            tree_result = tree_mod.load(repo)
+            op_leaf = tree_result["op_leaf"] if tree_result else {}
+            sources = {op_leaf[op] for op in preview.op_ids if op in op_leaf} - {preview.target_id}
+            affected = sorted(sources | {preview.target_id})
+        return {
+            "ok": preview.ok, "verb": "move", "message": preview.message,
+            "op_ids": list(preview.op_ids), "target_id": preview.target_id,
+            "affected_features": affected,
+        }
+
+    if verb == "revert":
+        if len(args) != 1:
+            return {"error": "revert requires <feature>"}
+        preview = lens_verbs.plan_revert_feature(repo, args[0])
+        affected = []
+        if preview.ok:
+            tree_result = tree_mod.load(repo)
+            op_leaf = tree_result["op_leaf"] if tree_result else {}
+            affected = sorted({op_leaf[op] for op in preview.removed if op in op_leaf})
+        return {
+            "ok": preview.ok, "verb": "revert", "message": preview.message,
+            "target": preview.target, "removed": sorted(preview.removed), "added": sorted(preview.added),
+            "affected_features": affected,
+        }
+
+    return {"error": f"unknown verb {verb!r}", "verbs": ["merge", "split", "move", "rename", "revert"]}
 
 
-def frontier_diff(a: dict, b: dict) -> dict:
-    """Decision-level delta between two frontier selections (feature -> decision id)."""
-    added, revised, revoked = [], [], []
-    for f in sorted(set(a) | set(b)):
-        if f in b and f not in a:
-            added.append({"feature": f, "decision": b[f]})
-        elif f in a and f not in b:
-            revoked.append({"feature": f, "decision": a[f]})
-        elif a[f] != b[f]:
-            revised.append({"feature": f, "from": a[f], "to": b[f]})
-    return {"added": added, "revised": revised, "revoked": revoked}
+def _entity_line_spans(repo, file: str) -> tuple[list[tuple[str, int, int]], str | None]:
+    """Materialize the current ideal and extract `file`'s live entities as `(symbol, start_line,
+    end_line)` triples, in document order -- the span lookup `blame_view`, `plan_view`, and
+    `drift_view` all need. Returns `(spans, error)`: `error` is set (and `spans` is `[]`) when the
+    current ideal doesn't cover `file`."""
+    from sgt.core.fold import code
+    from sgt.core.lens import current_ideal
+    from sgt.core.store import Store
+    from sgt.entities.extract import extract_file
+
+    ops = Store(repo).all_ops()
+    materialized = code(current_ideal(repo), ops)
+    source = materialized.get(file)
+    if source is None:
+        return [], f"{file!r} is not covered by the current ideal"
+    spans = [
+        (e.id, e.start_line, e.end_line)
+        for e in sorted(extract_file(file, source), key=lambda e: (e.start_line, e.id))
+    ]
+    return spans, None
 
 
-def export_view(project) -> dict:
-    """Everything a graph view needs in one payload: nodes, edges, effects, witnesses."""
-    g = graph_view(project)
-    bundles = project.bundles
-    for n in g["nodes"]:
-        n["effects"] = [
-            {"op": e.op.value, "target": e.target, "file": e.file}
-            for e in bundles.get(n["id"], [])
+def _spans_for_symbols(repo, symbols) -> dict[str, list[dict]]:
+    """`{file: [{"symbol", "start_line", "end_line"}, ...]}` for exactly `symbols`, grouped by
+    file -- the per-op/per-step span projection `plan_view` and `drift_view` share. A file no
+    longer covered by the current ideal, or a symbol no longer live in it, is silently omitted
+    (the op/step just gets fewer spans, never an error)."""
+    by_file: dict[str, set[str]] = {}
+    for sym in symbols:
+        by_file.setdefault(sym.split("::", 1)[0], set()).add(sym)
+    out: dict[str, list[dict]] = {}
+    for file, wanted in sorted(by_file.items()):
+        line_spans, error = _entity_line_spans(repo, file)
+        if error:
+            continue
+        matched = [
+            {"symbol": sym, "start_line": start, "end_line": end}
+            for sym, start, end in line_spans if sym in wanted
         ]
-        if (w := project.witnesses.get(n["id"])):
-            n["witness"] = {
-                "reason": w.get("reason"),
-                "held": w.get("held", []),
-                "against": w.get("against", []),
+        if matched:
+            out[file] = matched
+    return out
+
+
+def blame_view(repo, file: str) -> dict:
+    """Per-symbol feature attribution for one file (plan U13): for each of `file`'s live entities
+    (`_entity_line_spans`), resolve `sym -> max-op-in-I -> feature` via the frontier and the
+    feature tree's `op_leaf`. Returns `{"file", "spans", "features", "error"?}`; an entity whose
+    tip op has no feature assignment yet (tree stale, or `sgt map` never run) is omitted from
+    `spans` rather than guessed at."""
+    from sgt.core.lens import current_ideal
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+
+    line_spans, error = _entity_line_spans(repo, file)
+    if error:
+        return {"file": file, "spans": [], "features": {}, "error": error}
+
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    nodes = tree_result["nodes"] if tree_result else {}
+    ops = Store(repo).all_ops()
+    by_id = {op.id: op for op in ops}
+    frontier = current_ideal(repo).frontier(ops)
+
+    spans = []
+    features: dict[str, dict] = {}
+    for sym, start_line, end_line in line_spans:
+        tip = frontier.get(sym)
+        feature_id = op_leaf.get(tip) if tip else None
+        if feature_id is None:
+            continue
+        label = nodes.get(feature_id, {}).get("label", feature_id)
+        tip_op = by_id.get(tip)
+        sessions = sorted({a.session for a in tip_op.attribution if a.session is not None}) if tip_op else []
+        spans.append({
+            "symbol": sym, "start_line": start_line, "end_line": end_line,
+            "feature_id": feature_id, "label": label, "sessions": sessions,
+        })
+        features[feature_id] = {"label": label}
+    return {"file": file, "spans": spans, "features": features}
+
+
+def plan_view(repo) -> dict:
+    """The plan-session review surface (plan U14): every active session's steps (a matched
+    step's current file/line spans, via `_spans_for_symbols`) plus `sgt.loop.match.
+    compute_checkpoint`'s pure preview -- candidate step<->op groups and drift op-ids, each group
+    carrying its own per-op file/line spans. Never mutates anything (`compute_checkpoint` is
+    pure); `sgt checkpoint --confirm-...` (`sgt.loop.match.confirm_match`) is the only writer."""
+    from sgt.core.store import Store
+    from sgt.loop import plan as plan_mod
+    from sgt.loop.match import compute_checkpoint
+
+    by_id = {op.id: op for op in Store(repo).all_ops()}
+    checkpoint = compute_checkpoint(repo)
+
+    def _files_for_ops(op_ids) -> list[dict]:
+        symbols = {sym for op_id in op_ids if op_id in by_id for sym in by_id[op_id].footprint}
+        return [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, symbols).items())]
+
+    sessions = []
+    for session_id, rec in sorted(plan_mod.active_sessions(repo).items()):
+        steps = [
+            {**step, "files": _files_for_ops(step["matched_op_ids"]) if step["status"] == "matched" else []}
+            for step in rec["steps"]
+        ]
+        sessions.append({
+            "session_id": session_id, "plan_text": rec["plan_text"], "status": rec["status"],
+            "created_ts": rec["created_ts"], "last_activity_ts": rec["last_activity_ts"],
+            "steps": steps,
+        })
+
+    matches = [
+        {
+            "session_id": group.session_id, "hollow_ids": list(group.hollow_ids),
+            "op_ids": list(group.op_ids), "files": _files_for_ops(group.op_ids),
+        }
+        for group in checkpoint.matches
+    ]
+
+    return {
+        "sessions": sessions,
+        "checkpoint": {"matches": matches, "drift_op_ids": list(checkpoint.drift_op_ids)},
+    }
+
+
+def drift_view(repo) -> dict:
+    """The "what extra happened" query (plan U14): every drift op -- one not predicted by any
+    active plan session -- with its kind, footprint, and current file/line spans, decoupled from
+    full session detail (`plan_view`)."""
+    from sgt.core.store import Store
+    from sgt.loop.match import compute_checkpoint
+
+    by_id = {op.id: op for op in Store(repo).all_ops()}
+    checkpoint = compute_checkpoint(repo)
+
+    entries = []
+    for op_id in checkpoint.drift_op_ids:
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        footprint = sorted(op.footprint)
+        files = [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, footprint).items())]
+        entries.append({"op_id": op.id, "kind": op.kind, "footprint": footprint, "files": files})
+    return {"entries": entries}
+
+
+def trust_view(repo) -> dict:
+    """The U31 trust queue: every op carrying session/agent attribution (D7) or drift status
+    (`drift_view`) that isn't yet covered by a review record (`sgt.core.review`), grouped by
+    provenance key -- a session or agent name, or ``"drift"`` for an unattributed drift op. Acting
+    on a group (`sgt revert --session`) or acking it (`sgt review-queue ack`) is the existing verb
+    surface; this view only renders what's queued, per the plan's "report, don't invent mutation
+    semantics" boundary."""
+    from sgt.core import review
+    from sgt.core.store import Store
+    from sgt.loop.match import compute_checkpoint
+
+    ops = Store(repo).all_ops()
+    drift_ids = compute_checkpoint(repo).drift_op_ids
+    reviewed = review.reviewed_op_ids(repo)
+
+    groups: dict[str, list[dict]] = {}
+    for op in ops:
+        if op.id in reviewed:
+            continue
+        keys = sorted({a.session for a in op.attribution if a.session} |
+                      {a.agent for a in op.attribution if a.agent})
+        is_drift = op.id in drift_ids
+        if not keys and not is_drift:
+            continue
+        for key in keys or ["drift"]:
+            groups.setdefault(key, []).append({
+                "op_id": op.id,
+                "kind": op.kind,
+                "footprint": sorted(op.footprint),
+                "attribution": _attribution_entries(op),
+                "drift": is_drift,
+            })
+
+    group_list = [
+        {"provenance": key, "op_ids": [e["op_id"] for e in entries], "ops": entries}
+        for key, entries in sorted(groups.items())
+    ]
+    total_ops = len({e["op_id"] for entries in groups.values() for e in entries})
+    return {"groups": group_list, "total_ops": total_ops}
+
+
+def sync_view(report) -> dict:
+    """Project an already-run `sgt.core.sync.SyncReport` (plan U15/U20) -- `sync` performs a real
+    git fetch/merge/commit, so unlike this module's other views it isn't a pure read the CLI can
+    call on demand; the CLI runs `sync.sync(...)` itself and hands the result here for projection.
+    `open_fork_count` (additive, U20/C4) is the divergence-as-state loudness signal: nonzero means
+    the fork-free part merged but that many same-symbol forks are recorded and await resolution."""
+    return {
+        "remote": report.remote,
+        "branch": report.branch,
+        "merged": report.merged,
+        "message": report.message,
+        "fetched_sha": report.fetched_sha,
+        "merge_sha": report.merge_sha,
+        "ops_added": report.ops_added,
+        "forks": [list(triple) for triple in report.forks],
+        "open_fork_count": len(report.forks),
+        "base_recovery": report.base_recovery,  # U7/R12: how the merge-base ideal was recovered
+        "theirs_recovery": report.theirs_recovery,  # ...and theirs' tip; "none" = a refused claim
+        "pin_contradictions": [
+            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
+            for c in report.pin_contradictions
+        ],
+        "declared_cycles": [list(pair) for pair in report.declared_cycles],
+        "identity_events": list(report.identity_events),
+    }
+
+
+def land_view(report) -> dict:
+    """Project an already-run `sgt.core.sync.LandReport` (plan U23, C9) -- like `sync_view`, `land`
+    performs real git plumbing (a branch-record CAS), so the CLI runs `sync.land(...)` itself and
+    hands the result here. `landed` is the CAS outcome; `blocked_reason` is set (and `landed` False)
+    when the land was refused -- a red/absent oracle (LAW-G), an open fork, or persistent contention.
+    Additive-only (R21)."""
+    return {
+        "branch": report.branch,
+        "landed": report.landed,
+        "land_sha": report.land_sha,
+        "blocked_reason": report.blocked_reason,
+        "ops_added": report.ops_added,
+        "attempts": report.attempts,
+        "forks": [list(triple) for triple in report.forks],
+        "open_fork_count": len(report.forks),
+        "pin_contradictions": [
+            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
+            for c in report.pin_contradictions
+        ],
+        "declared_cycles": [list(pair) for pair in report.declared_cycles],
+        "identity_events": list(report.identity_events),
+    }
+
+
+def sessions_view(repo) -> dict:
+    """Every active scratch-tree session (plan U30, D5): name, branches, new-op count since its
+    base, and whether its owning pid is still alive. `overlaps` is the early-fork warning's data
+    -- pairs of sessions whose new ops touch a shared symbol -- that `sgt session status`/
+    `--watch` renders; it is a *report*, never a lock (S6)."""
+    from sgt.core import session as session_mod
+
+    sessions = session_mod.list_sessions(repo)
+    return {
+        "sessions": [
+            {
+                "name": s.name, "branch": s.branch, "target_branch": s.target_branch,
+                "scratch": s.scratch, "new_op_count": len(session_mod.new_op_ids(s)),
+                "owner_pid": s.owner_pid, "alive": session_mod.is_alive(s.owner_pid),
             }
-    return g
+            for s in sessions
+        ],
+        "overlaps": list(session_mod.overlaps(repo)),
+    }
+
+
+def forks_view(repo) -> dict:
+    """The open same-symbol forks a prior sync recorded in committed `.sgt/forks.json` (plan U20,
+    C4) -- for `sgt forks`. Each fork carries its symbol, its two tips, and the `sgt merge-op`
+    remedy that closes it. A pure read of shared state; empty (`{"open": 0, "forks": []}`) when
+    there are none."""
+    from sgt import state
+
+    records = state.load_json(repo, "forks", default=[])
+    return {"open": len(records), "forks": records}
+
+
+def proposal_view(repo, proposal_id: str) -> dict:
+    """The proposal review surface (plan U24, C10): a base+Δ review object projected for a client --
+    the feature delta (each touched feature's id/label/op-count), Δ's op count, the oracle claim for
+    base∪Δ, a provenance summary (the structured attribution + witnessing shas across Δ), and the
+    full staleness `status` (current / clean-reunion / fork, with the `merge-op` remedy). Pure and
+    deterministic; `{"error": ...}` for an unknown id. `render_github` is a pure projection of exactly
+    this shape."""
+    from sgt.core import propose
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+
+    p = propose.load(repo, proposal_id)
+    if p is None:
+        return {"error": f"no proposal {proposal_id!r}", "id": proposal_id}
+
+    st = propose.status(repo, proposal_id)
+    by_id = {op.id: op for op in Store(repo).all_ops()}
+    delta_ids = list(p.delta_ids)
+
+    tree_result = load_tree(repo)
+    nodes = tree_result["nodes"] if tree_result else {}
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    leaf_op_count: dict[str, int] = {}
+    for op_id in delta_ids:
+        leaf = op_leaf.get(op_id)
+        if leaf is not None:
+            leaf_op_count[leaf] = leaf_op_count.get(leaf, 0) + 1
+    feature_delta = [
+        {"feature_id": fid, "label": nodes.get(fid, {}).get("label", fid), "op_count": leaf_op_count.get(fid, 0)}
+        for fid in sorted(p.feature_delta)
+    ]
+
+    # Provenance across Δ: the structured attribution (D7) keyed by witnessing sha, with every bare
+    # provenance sha folded in even when it carries no session/agent/plan -- a sorted, stable list.
+    prov: dict[str, dict] = {}
+    for op_id in delta_ids:
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        for a in sorted(op.attribution, key=lambda a: a.sha):
+            entry = prov.setdefault(a.sha, {"sha": a.sha})
+            for f in ("session", "agent", "plan"):
+                if getattr(a, f) is not None:
+                    entry[f] = getattr(a, f)
+        for sha in op.provenance:
+            prov.setdefault(sha, {"sha": sha})
+    provenance = [prov[s] for s in sorted(prov)]
+
+    return {
+        "id": p.id,
+        "base_ref": p.base_ref,
+        "title": p.title,
+        "description": p.description,
+        "feature_delta": feature_delta,
+        "delta_op_count": len(delta_ids),
+        "claim": st["claim"],
+        "provenance": provenance,
+        "status": st,
+    }
+
+
+def proposal_review_view(repo, proposal_id: str) -> dict:
+    """`proposal_view` plus what a partial-accept UI needs (plan U32, S8) without computing
+    anything itself: the U24 ``approvals`` schema, and a ``feature_checklist`` -- each delta
+    feature's entry from `proposal_view`'s ``feature_delta``, plus ``op_ids`` (this feature's own Δ
+    op ids, so a caller can build an `accept_ids` set without recomputing feature attribution) and
+    ``requires``: the *other* delta features whose ops sit in this feature's closure over base∪Δ
+    (chain/reference/declared edges, `order.downset_in`, restricted to Δ -- the same closure
+    primitive `sgt select`/`sgt why` (U29) trace, just scoped to a proposal's op-set instead of the
+    current ideal). Un-checking a feature while a still-checked feature ``requires`` it would make
+    the accepted subset fail `propose.land`'s downward-closure check; this field lets a caller
+    (`sgt propose land --subset`, or a future checkbox rail) refuse/grey-out that choice with a
+    name, not just a raw op-id failure. `{"error": ...}` for an unknown id, same as `proposal_view`.
+    """
+    from sgt.core import lens, order, propose
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+
+    view = proposal_view(repo, proposal_id)
+    if "error" in view:
+        return view
+    p = propose.load(repo, proposal_id)
+    assert p is not None  # proposal_view already confirmed it loads
+
+    ops = Store(repo).all_ops()
+    declared = lens._load_declared(repo)
+    delta_ids = frozenset(p.delta_ids)
+    union_ids = frozenset(p.base_ideal_ids) | delta_ids
+
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    feature_ops: dict[str, set[str]] = {}
+    for op_id in delta_ids:
+        leaf = op_leaf.get(op_id)
+        if leaf is not None:
+            feature_ops.setdefault(leaf, set()).add(op_id)
+
+    checklist = []
+    for f in view["feature_delta"]:
+        fid = f["feature_id"]
+        closure: set[str] = set()
+        for op_id in feature_ops.get(fid, ()):
+            closure |= order.downset_in(op_id, union_ids, ops, declared)
+        requires = sorted({
+            op_leaf[oid] for oid in (closure & delta_ids)
+            if op_leaf.get(oid) not in (None, fid)
+        })
+        checklist.append({**f, "op_ids": sorted(feature_ops.get(fid, ())), "requires": requires})
+
+    return {**view, "approvals": list(p.approvals), "feature_checklist": checklist}
+
+
+def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:
+    from pathlib import Path
+
+    repo_path = Path(repo)
+    drift = []
+    for path, expected in materialized.items():
+        full = repo_path / path
+        actual = full.read_bytes() if full.is_file() else None
+        if actual != expected:
+            drift.append(path)
+    return sorted(drift)
+
+
+def status_view(repo) -> dict:
+    """A kernel-backed summary (plan U13): file/symbol/feature counts, R7's coverage fraction
+    (reusing `state_view`'s definition), the oracle's overall status, and working-tree drift --
+    paths whose on-disk bytes no longer match `code(current_ideal)` (e.g. an edit made outside
+    `sgt`, or a verb applied without re-writing the working tree)."""
+    from sgt import state as state_mod
+    from sgt.core.fold import code
+    from sgt.core.lens import current_ideal
+    from sgt.core.oracle import overall_status
+    from sgt.core.op import is_bottom
+    from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
+
+    st = state_view(repo)
+    ops = Store(repo).all_ops()
+    ideal = current_ideal(repo)
+    by_id = {op.id: op for op in ops}
+    symbol_count = sum(
+        1 for sym, op_id in ideal.frontier(ops).items() if not is_bottom(by_id[op_id].footprint[sym][1])
+    )
+
+    tree_result = load_tree(repo)
+    feature_count = sum(1 for nd in tree_result["nodes"].values() if not nd["children"]) if tree_result else 0
+
+    from sgt.core.lens import materialization_skips
+
+    materialized = code(ideal, ops)
+    drift = _drift_paths(repo, materialized)
+    skips = materialization_skips(repo, materialized, ops)
+    open_forks = state_mod.load_json(repo, "forks", default=[])
+
+    return {
+        "files": len(st["covered_paths"]),
+        "symbols": symbol_count,
+        "features": feature_count,
+        "coverage_fraction": st["coverage_fraction"],
+        "oracle": {
+            "configured": st["oracle_configured"],
+            "status": overall_status(st["oracle_verdict"]) if st["oracle_configured"] else "unconfigured",
+        },
+        "drift": {"any": bool(drift), "paths": drift},
+        # R3/R4: paths a materializing verb refuses to touch -- symlinks (unmanaged) and files the
+        # current ideal dropped whose live bytes no valid ideal can regenerate (backstop-kept).
+        "unmanaged": skips["unmanaged"],
+        "backstop_kept": skips["backstop_kept"],
+        "forks": {"open": len(open_forks), "records": open_forks},
+    }

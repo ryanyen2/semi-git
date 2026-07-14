@@ -1,7 +1,7 @@
-// Revision navigation: preview what plugging a feature out (revert) or suspending it would do,
-// without writing anything. Drives `sgt emit … --json` (a sandboxed dry-run), then opens a
-// read-only diff per changed file. Refusals (e.g. a dependent still needs it) surface the
-// witness instead of a diff. Content is served through a virtual `sgt-preview:` scheme.
+// Revision navigation: preview what reverting a feature would do, without writing anything.
+// Drives `sgt revert <feature> --emit --json` (a sandboxed dry-run), then opens a read-only diff
+// per changed file. Refusals (e.g. a fork) surface the message instead of a diff. Content is
+// served through a virtual `sgt-preview:` scheme.
 
 import * as vscode from "vscode";
 import { Store } from "./store";
@@ -26,37 +26,32 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
     return vscode.Uri.parse(`${SCHEME}:${side}/${token}/${path}`).with({ fragment: path });
   }
 
-  async preview(action: "revert" | "restore", ref: string): Promise<void> {
+  async preview(feature: string): Promise<void> {
     let res;
     try {
-      res = await this.store.sgt.emit(action, ref);
+      res = await this.store.sgt.emit(feature);
     } catch (e: any) {
-      vscode.window.showErrorMessage(`sgt emit failed: ${e.message}`);
-      return;
-    }
-    if (res.error) {
-      vscode.window.showErrorMessage(res.error);
+      vscode.window.showErrorMessage(`sgt revert --emit failed: ${e.message}`);
       return;
     }
     if (!res.ok) {
       vscode.window.showWarningMessage(
-        `Would be refused: ${res.message ?? "operation does not commute"}`
+        `Would be refused: ${res.message || "operation does not commute"}`
       );
       return;
     }
-    const files = res.files ?? {};
-    const paths = Object.keys(files);
+    const paths = Object.keys(res.files);
     if (paths.length === 0) {
-      vscode.window.showInformationMessage(`${verb(action)} ${ref}: no file changes.`);
+      vscode.window.showInformationMessage(`Revert ${feature}: no file changes.`);
       return;
     }
     const token = String(this.seq++);
-    const label = `${verb(action)}: ${res.node_id ?? ref}`;
+    const label = `Revert: ${res.target}`;
     for (const path of paths) {
       const left = this.uri(token, "current", path);
       const right = this.uri(token, "predicted", path);
-      this.contents.set(left.toString(), files[path].before);
-      this.contents.set(right.toString(), files[path].after);
+      this.contents.set(left.toString(), res.files[path].before);
+      this.contents.set(right.toString(), res.files[path].after);
       await vscode.commands.executeCommand(
         "vscode.diff",
         left,
@@ -65,15 +60,11 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
         { preview: true } as vscode.TextDocumentShowOptions
       );
     }
-    const removed = res.removed && res.removed.length ? ` (removes ${res.removed.join(", ")})` : "";
+    const removed = res.removed.length ? ` (removes ${res.removed.join(", ")})` : "";
     vscode.window.showInformationMessage(`Preview only — nothing written. ${label}${removed}`);
   }
 
   dispose(): void {
     this.registration.dispose();
   }
-}
-
-function verb(action: string): string {
-  return action === "revert" ? "Revert" : "Restore";
 }

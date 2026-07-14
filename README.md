@@ -1,26 +1,118 @@
 # semi-git (`sgt`)
 
-Version a codebase by its **features and concepts**, not its diffs.
+`sgt` versions a codebase by its **features and symbols**, not its line diffs.
 
-`sgt` is **git for semantics**: it maintains a living semantic DAG (`.sgt/`) over an ordinary
-git repo, and the coding agent (or a human) operates it the way it already operates `git`.
-**sgt never authors code** — your coding agent writes it; sgt plans, records, and reorganizes
-the *semantic graph* and reconstructs the tree from it. Every mutation runs through the **EICO
-confluence gate** so nothing lands unless it commutes and preserves the codebase's invariants.
+Git operates at the code-artifact level: a commit is a set of line changes, and that's the
+entire vocabulary. It has no notion of "this hunk belongs to feature X" or "this function is
+still the same logical thing it was three commits ago, even though it moved and got renamed
+along the way." `sgt` sits on top of an ordinary git repo and works one level up: it mines every
+commit down to symbol-level edits ("ops"), tracks each symbol's identity as it changes, and
+groups the live op graph into a **feature tree** — a map from "what changed" to "why" — while
+staying exactly faithful to the bytes on disk (folding the current op-set back together
+reproduces exactly what's checked out).
 
-The loop: **`plan`** an intent into reviewable nodes → implement with your own tools →
-**`checkpoint`** to record what you built (distilled into typed effects) → **`revert`/`restore`/
-`reconcile`** to plug features in and out. The LLM is used only to reason about the graph
-(decompose a plan, label a checkpoint), never to produce code.
+**`sgt` never authors code.** You, or your coding agent (Claude Code or anything else), write
+and edit files exactly as you always have. `sgt` only observes, models, and — when you ask —
+surgically edits *which parts of that history are currently "in."*
 
-**New to it? Start with the [user guide](docs/guide/README.md)** — the mental model, a
-getting-started walkthrough, and the VS Code extension + terminal UI.
+## Why this matters
 
-See:
-- `docs/guide/` — user-facing guide (mental model, getting started, the two UIs)
-- `docs/ideation/2026-06-17-semi-git-ideation.md` — where the idea came from
-- `docs/brainstorms/2026-06-17-semi-git-requirements.md` — what it is (requirements)
-- `docs/plans/2026-06-17-001-feat-semi-git-core-plan.md` — how it's built (plan)
+A coding agent runs for an hour, touches a dozen files, and lands rate limiting, a caching
+layer, and a retry policy in one pass. The caching layer turns out to be wrong. In git, pulling
+just that back out means bisecting scattered commits or hand-editing a diff, hoping you don't
+drag the other two features down with it.
+
+In `sgt`, each symbol's edits are already tracked individually, so removing exactly one of them
+is a single command — verified live on a scratch repo while writing this doc:
+
+```
+$ sgt revert cache.py::get_cached
+✓ [revert] cache.py::get_cached
+    removed 1 op(s): a776620b9b56
+    affected: cache.py::get_cached
+```
+
+`get_cached` is gone from `cache.py`; `set_cached` in the same file, and every symbol in
+`rate_limit.py` and `retry.py`, are untouched — byte for byte, not just "no visible diff."
+`sgt restore cache.py::get_cached` puts it straight back. The same edit works scoped to a whole
+**feature** (`sgt revert <feature>`) or a whole **agent session** (`sgt revert --session
+<name>`) once the map has grouped the ops that way — see
+[`docs/guide/workflows.md`](docs/guide/workflows.md) for what that grouping needs to actually
+kick in, candidly, rather than overclaiming it.
+
+## The model, briefly
+
+History = a content-addressed DAG of ops, one per symbol-level edit. A codebase's current state
+= an *ideal* — a downward-closed, fork-free subset of that DAG. `code(ideal)` is a deterministic
+byte-fold back into real files. Every mutating verb preserves that invariant; `sgt fsck` checks
+it.
+
+## Usage
+
+```bash
+sgt init                            # mine existing git history into the op store
+
+# daily loop
+sgt save -m "..."                   # mine your edits + commit a witness (the "commit" step)
+sgt switch <branch>                 # sgt-aware `git switch`
+sgt undo                            # invert your last ideal edit (forward-only, never rewinds)
+
+# inspect
+sgt status / sgt map / sgt blame <file>    # coverage, the feature tree, per-line attribution
+sgt log / sgt state / sgt diff <a> <b>     # the op DAG, current ideal, semantic diff
+sgt history                         # mined commits + every op's kind/feature/commit-index
+
+# surgical edits (ideal algebra)
+sgt revert [--emit] <ref>           # remove a symbol/op/feature + everything built on it
+sgt revert --session <name>         # ...or everything one agent session landed
+sgt restore [--emit] <ref>          # the inverse: re-add an op and its prerequisites
+
+# regroup the feature tree itself (metadata-only, instant, content untouched)
+sgt merge <survivor> <absorbed> / sgt split <feature> / sgt rename <feature> "..." / sgt move
+
+# where the ideal algebra can't express an edit exactly (a same-symbol fork, a two-concern op):
+sgt merge-op <a> <b> / sgt split-op <op> / sgt transplant <op>... --onto <ref>
+sgt fulfill <draft-id> --from-tree  # supply the reconciled content sgt drafted a hollow for
+sgt land                            # commit a staged rewrite, gated on the build/test oracle
+
+# collaboration
+sgt sync [remote] [branch]          # fetch + union a teammate's work; surfaces same-symbol forks
+sgt forks                           # open forks + their `sgt merge-op` remedies
+sgt push [remote] [branch]          # non-forcing push; a rejection routes you to `sgt sync`
+sgt land <branch>                   # CAS-advance a shared branch to a verified op-set
+
+# agent sessions
+sgt session start <name>            # a scratch git worktree on its own branch, for one agent
+sgt session status / land / gc      # early-fork warnings, CAS-land, reap dead sessions
+
+# review + publish
+sgt propose create/status/land/render/publish   # base+delta review object, partial-accept by
+                                                  # feature, GitHub PR create/update via `gh`
+
+sgt oracle run                      # build/test tiers against the current op-set
+sgt tui / sgt mcp                   # terminal UI / stdio MCP server for coding-agent clients
+```
+
+`merge`/`split`/`rename`/`move` relabel the feature tree; `merge-op`/`split-op`/`transplant` fix
+the op *chain* itself (a same-symbol fork, a op that mixes two concerns) — easy to conflate by
+name, distinct in purpose. Full verb reference: `sgt help`.
+
+## Multi-user collaboration
+
+Conflicts don't disappear — they change shape. Two people editing the same function
+independently still produces a genuine conflict, but `sgt sync` isolates it to exactly that
+symbol (a "fork") and merges everything else automatically and immediately; resolving it is
+`sgt merge-op` + `sgt fulfill` + `sgt land`, gated on your configured build/test oracle before it
+commits. [`docs/guide/workflows.md`](docs/guide/workflows.md) walks through this end to end,
+plus parallel agent sessions and where a human still has to step in today.
+
+## Docs
+
+- [`docs/guide/`](docs/guide/) — the mental model, getting started, VS Code extension, TUI, and
+  [`workflows.md`](docs/guide/workflows.md) for a use-case-by-use-case tour, including what's
+  still being hardened.
+- [`FINDINGS.md`](FINDINGS.md) — what's verified, and the known v1 limitations.
+- [`docs/plans/`](docs/plans/) — active and historical implementation plans.
 
 ## Development
 
@@ -32,52 +124,13 @@ uv pip install -e ".[dev]"
 uv run pytest
 ```
 
-## Usage
-
-```bash
-sgt init                                  # bind .sgt + git
-sgt plan "validate + normalize an email"  # decompose an intent into reviewable PLANNED nodes
-sgt "validate + normalize an email"       # shorthand for `sgt plan`
-sgt plan "ADD validate_email USING re BECAUSE inline regex was brittle"  # canonical DSL — parses offline
-sgt split <ref> "ADD validate_email" "ADD normalize_email"   # reshape: divide a draft into pieces
-sgt merge <ref> <ref>                     # reshape: fold drafts into the first (the survivor)
-# ...implement a planned node with your own editor / coding agent...
-sgt checkpoint --fulfills <node> --intent "..."   # record your edits under that node (-> ACTIVE)
-sgt checkpoint                            # or: record ad-hoc edits as a new node
-sgt graph                                 # the semantic DAG
-sgt revert <ref>                          # plug a feature out of HEAD (lane + dependents off; lossless)
-sgt revert <ref> --emit                   # dry-run: preview the change, write nothing
-sgt restore <ref>                         # plug it back in — or `restore <decision-id>` to pin a version
-sgt reconcile [<ref>]                     # re-gate held quarantines; resolve any that now commute
-sgt blame <file>                          # which feature owns each line (semantic blame)
-sgt graph --json / sgt export             # machine-readable projection for tools/UIs
-sgt tui                                    # terminal UI (needs `semi-git[tui]`)
-sgt mcp                                   # stdio MCP server so a coding agent can drive sgt
-```
-
-A **VS Code extension** (`editor/vscode/`) and a **terminal UI** (`sgt tui`) sit on top of the
-same `sgt … --json` surface: semantic blame, a feature DAG, a per-feature heatmap, and diff
-previews of plug-outs. See the [user guide](docs/guide/README.md).
-
-The graph ops (`revert`/`restore`/`reconcile`/`merge`/`split`/`checkpoint --fulfills`/
-`checkpoint --intent`) need no API key, and a **canonical intent-DSL** `plan`
-(`ADD`/`EXTEND`/`REPLACE`/`REMOVE` — uppercase verb is the opt-in) parses deterministically offline
-too. *Freeform* `plan` uses the OpenAI key (read from `.env`: `OPENAI_API_KEY`, optional
-`OPENAI_MODEL`) for **graph-level reasoning only** — decomposition (and rendering freeform into the
-canonical DSL for confirmation), never code. A bare,
-no-intent `checkpoint` *prefers* the LLM to label the distilled change but **degrades to
-deterministic grouping offline**, so the whole loop works with no key.
-
 ## Status
 
-Graph-only pivot complete: sgt no longer authors code (the OpenAI coding backend is removed).
-The spine is `plan` → implement (your agent) → `checkpoint`/`--fulfills` → `revert`/`restore`/
-`reconcile`, all gated by the confluence check, with an `--emit` dry-run. Verified by the test
-suite + a live walkthrough (`scripts/e2e_plan_checkpoint.py`). See `FINDINGS.md` for what's
-verified and the deferred items, and `docs/design/2026-06-19-graph-only-agent-driven-sgt.md`
-for the design.
-
-**Visual surfaces (2026-06-20).** A `sgt.api` JSON projection + line-level **semantic blame**
-(`sgt/effects/attribute.py`) feed a **VS Code extension** and a **terminal UI** — one schema, no
-drift. A feature's hue is its identity (same OKLCH color in every surface); status is a glyph, not
-a hue. See the [user guide](docs/guide/README.md) and `FINDINGS.md`.
+The current implementation is the **operation-ideal kernel** (mined op DAG → order-ideal state →
+deterministic fold) with a **feature lens** on top (the hierarchical map, `merge`/`split`/
+`rename`/`move`, session/provenance attribution, sync/land/propose collaboration). A 2026-07-12
+multi-agent review found real gaps in the kernel's invariant — ordinary git history (a file
+deleted and re-added) could violate it and previously caused silent file deletion; `land`
+persisted state before its gate; sync could resurrect a teammate's revert — and a
+[fix plan](docs/plans/2026-07-12-001-fix-kernel-invariants-and-sync-plan.md) is actively landing
+against it. See `FINDINGS.md` for the full, current disposition.

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Operation-Ideal Kernel</title>
+<style>
+:root{
+  --bg:#ffffff;
+  --ink:#1b1b1a;
+  --fg:#1b1b1a;
+  --muted:#6b6b63;
+  --faint:#9a9a90;
+  --hair:#e7e6e0;
+  --accent:#c24b32;
+  --accent-wash:#f7e9e3;
+  --accent-line:#d98a76;
+  --f1:#4e8676;
+  --f2:#b08641;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;overflow:hidden}
+.deck{position:relative;width:100vw;height:100vh}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;padding:52px 76px 44px}
+.slide.active{display:flex}
+.kicker{font-size:12.5px;color:var(--accent);text-transform:uppercase;letter-spacing:.09em;margin:0 0 10px;font-weight:600}
+h1{font-size:32px;margin:0 0 8px;font-weight:600;letter-spacing:-.01em;line-height:1.25;color:var(--ink)}
+h1 em{color:var(--accent);font-style:normal}
+.sub{font-size:15.5px;color:var(--muted);margin:0 0 20px;max-width:780px;line-height:1.55}
+.stage{flex:1;display:flex;flex-direction:column;justify-content:center;gap:16px;min-height:0}
+.cardrow{display:flex;gap:0;align-items:stretch}
+.card{flex:1;padding:2px 22px}
+.card:first-child{padding-left:0}
+.card:not(:first-child){border-left:1px dashed var(--hair)}
+.card .tag{display:block;font-size:10.5px;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+.card h3{margin:0 0 8px;font-size:14.5px;color:var(--ink);font-weight:600}
+.card p{margin:0;font-size:13.5px;color:var(--muted);line-height:1.5}
+.card.bad .tag{color:var(--accent)}
+.card.warn .tag{color:var(--accent)}
+[data-step]{opacity:0;transform:translateY(9px);transition:opacity .45s ease, transform .45s ease}
+[data-step].shown{opacity:1;transform:translateY(0)}
+svg{overflow:visible;display:block}
+.op{fill:#fff;stroke:var(--ink);stroke-width:1.6}
+.op.tip{fill:var(--accent-wash);stroke:var(--accent);stroke-width:2}
+.op.hot{fill:var(--accent);stroke:var(--accent)}
+.op.dim{fill:#fff;stroke:var(--faint);stroke-width:1.4;stroke-dasharray:3 3}
+.pin-ring{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:3 3}
+.edge{stroke:#54534e;stroke-width:1.6;fill:none}
+.edge.dim{stroke:var(--faint);stroke-width:1.4;fill:none;stroke-dasharray:3 3}
+.ref{stroke:var(--accent-line);stroke-width:1.5;fill:none;stroke-dasharray:5 4}
+.op-label{font-size:11px;fill:var(--muted)}
+.entity-label{font-size:12.5px;fill:var(--ink);font-weight:600;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.state-band{fill:var(--accent);fill-opacity:.07;stroke:none}
+.fork-dot{fill:var(--accent)}
+.feature-blob{fill-opacity:.14;stroke-width:1.2}
+.xlabel{font-size:12px;fill:#fff;font-weight:600;text-anchor:middle}
+.legend{display:flex;gap:22px;flex-wrap:wrap;margin:12px 0 0;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.legend svg{width:30px;height:18px;overflow:visible;flex:none}
+.callout{padding:2px 0 2px 16px;font-size:13.5px;line-height:1.5;color:var(--fg);border-left:1px dashed var(--hair)}
+.callout .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;display:block}
+.two-col{display:flex;gap:26px}
+.two-col>div{flex:1}
+.col-bad .lbl{color:var(--muted)}
+.col-good{border-color:var(--accent)!important}
+.col-good .lbl{color:var(--accent)}
+code,.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;
+  color:var(--accent)}
+.hud{position:fixed;bottom:14px;left:0;right:0;display:flex;align-items:center;justify-content:center;
+  gap:14px;color:var(--muted);font-size:13px;z-index:10}
+.navbtn{background:#fff;border:1px solid var(--hair);color:var(--fg);border-radius:6px;
+  width:30px;height:30px;cursor:pointer;font-size:16px;line-height:1}
+.navbtn:hover{border-color:var(--accent);color:var(--accent)}
+.check{color:var(--accent)}
+.cross{color:var(--accent)}
+.strip{display:flex;gap:0;align-items:center;justify-content:center}
+.strip .step{padding:10px 20px;font-size:12.5px;text-align:center;min-width:140px;line-height:1.4}
+.strip .step:not(:first-child){border-left:1px dashed var(--hair)}
+.strip .sep{color:var(--muted);font-size:16px;display:none}
+.tense{font-style:italic;color:var(--muted)}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="arw" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#54534e"/></marker>
+  <marker id="arwA" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#c24b32"/></marker>
+  <marker id="arwM" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#9a9a90"/></marker>
+</defs></svg>
+<div class="deck" id="deck">
+
+<section class="slide active" data-slide="1">
+  <div class="kicker">sgt &middot; the operation-ideal kernel</div>
+  <h1>One commit did five things. Now you need to undo just <em>one</em> of them.</h1>
+  <p class="sub">Mira's coding agent just landed a 40-minute autonomous session as a single commit.</p>
+  <div class="stage">
+    <div class="cardrow">
+      <div class="card" data-step="1">
+        <span class="tag">40 minutes, one commit</span>
+        <h3>The agent lands one commit</h3>
+        <p>A refactor of <code>ApiClient</code>, and a new <code>PriceCache</code> layer built on top of it &mdash; tangled together into a single commit.</p>
+      </div>
+      <div class="card bad" data-step="2">
+        <span class="tag">two days later</span>
+        <h3>Stale prices in prod</h3>
+        <p><code>PriceCache</code> is serving stale prices. A real bug. The refactor underneath is fine &mdash; two other features already depend on it.</p>
+      </div>
+      <div class="card warn" data-step="3">
+        <span class="tag">the only tool she has</span>
+        <h3><code>git revert</code> takes the whole commit</h3>
+        <p>Git only knows one commit went in. It has no idea two different changes are sitting inside it.</p>
+      </div>
+    </div>
+    <div class="callout col-bad" data-step="4">
+      <span class="lbl">the tension</span>
+      She needs to take back <strong>only the cache</strong>. Git doesn't work at that granularity &mdash; it never asked what was inside the commit, only what changed on disk.
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-slide="2">
+  <div class="kicker">why now</div>
+  <h1>Git tracks bytes. LLMs write more of them, faster, in bigger commits.</h1>
+  <p class="sub">So the first instinct is to log what the agent <em>meant</em> to do, alongside the commit. That doesn't survive.</p>
+  <div class="stage">
+    <svg viewBox="0 0 960 230" width="100%" height="300">
+      <text x="6" y="46" class="entity-label">commits</text>
+      <line x1="70" x2="900" y1="60" y2="60" class="edge"/>
+      <text x="6" y="176" class="entity-label">intent notes</text>
+      <line x1="70" x2="960" y1="170" y2="170" class="edge"/>
+
+      <g data-step="1">
+        <circle cx="90"  cy="60" r="7" class="op tip"/>
+        <rect x="82" y="163" width="16" height="14" rx="2" class="op tip"/>
+        <line x1="90" y1="67" x2="90" y2="163" class="ref"/>
+        <circle cx="230" cy="60" r="7" class="op tip"/>
+        <rect x="237" y="163" width="16" height="14" rx="2" class="op tip"/>
+        <line x1="230" y1="67" x2="245" y2="163" class="ref"/>
+      </g>
+      <g data-step="2">
+        <circle cx="370" cy="60" r="7" class="op"/>
+        <rect x="397" y="163" width="16" height="14" rx="2" class="op"/>
+        <line x1="370" y1="67" x2="405" y2="163" class="ref"/>
+        <circle cx="510" cy="60" r="7" class="op"/>
+        <rect x="562" y="163" width="16" height="14" rx="2" class="op"/>
+        <line x1="510" y1="67" x2="570" y2="163" class="ref"/>
+      </g>
+      <g data-step="3">
+        <circle cx="650" cy="60" r="7" class="op"/>
+        <rect x="727" y="163" width="16" height="14" rx="2" class="op ghost"/>
+        <line x1="650" y1="67" x2="735" y2="163" class="ref" stroke="var(--accent)"/>
+        <circle cx="800" cy="60" r="7" class="op"/>
+        <rect x="902" y="163" width="16" height="14" rx="2" class="op ghost"/>
+        <line x1="800" y1="67" x2="910" y2="163" class="ref" stroke="var(--accent)"/>
+        <text x="820" y="120" fill="var(--accent)" font-size="13" font-weight="600">&#10007; out of sync</text>
+      </g>
+    </svg>
+    <p class="sub" data-step="3" style="margin:0">
+      Notes describe intent at the moment they're written. Code keeps changing underneath them. By the thirtieth commit, the notes describe a codebase that no longer exists &mdash; and nobody goes back to fix the notes.
+    </p>
+  </div>
+</section>
+
+<section class="slide" data-slide="3">
+  <div class="kicker">the actual idea</div>
+  <h1>Track <em>entities</em>, not lines or words.</h1>
+  <p class="sub">Crack open Mira's commit and it's actually two changes to two different things: a refactor of <code>ApiClient</code>, and a new <code>PriceCache</code> that reads from it.</p>
+  <div class="stage">
+    <svg viewBox="0 0 760 340" width="100%" height="340">
+      <g data-step="1">
+        <line class="edge" x1="140" y1="286" x2="140" y2="204" marker-end="url(#arw)"/>
+        <circle class="op" cx="140" cy="300" r="14"/>
+        <circle class="op tip" cx="140" cy="190" r="14"/>
+        <text class="op-label" x="162" y="304">v1</text>
+        <text class="op-label" x="162" y="194">v2 &middot; refactor</text>
+        <text class="entity-label" x="140" y="330" text-anchor="middle">ApiClient</text>
+      </g>
+      <g data-step="2">
+        <circle class="op tip" cx="400" cy="190" r="14"/>
+        <text class="op-label" x="422" y="194">v1 &middot; new</text>
+        <text class="entity-label" x="400" y="330" text-anchor="middle">PriceCache</text>
+        <path class="ref" d="M386,190 H162" marker-end="url(#arwA)"/>
+        <text class="lbl-acc" x="270" y="178" text-anchor="middle" style="font-size:12px;fill:var(--accent)">reads from</text>
+      </g>
+      <g data-step="3">
+        <circle class="op tip" cx="640" cy="190" r="14"/>
+        <text class="op-label" x="662" y="194">v1 &middot; existing</text>
+        <text class="entity-label" x="640" y="330" text-anchor="middle">CheckoutFlow</text>
+        <path class="ref" d="M626,190 H162" marker-end="url(#arwA)"/>
+        <text class="lbl-acc" x="540" y="178" text-anchor="middle" style="font-size:12px;fill:var(--accent)">depends on</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> current tip</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="edge"/></svg> builds on (same entity)</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on (another entity)</span>
+    </div>
+    <p class="sub" data-step="3" style="margin:0">
+      <code>CheckoutFlow</code> already depends on <code>ApiClient</code>, from long before Mira's session. That's the fact her tangled commit is about to run into.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="4">
+  <div class="kicker">a state is just a set</div>
+  <h1>A "state" is a chosen set of versions &mdash; one per entity.</h1>
+  <p class="sub">The rule: you can't pick a version without also having what it needs underneath.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 400" width="100%" height="380">
+      <rect class="state-band" x="60" y="150" width="560" height="160" rx="8" data-step="1"/>
+      <line data-step="1" x1="60" y1="150" x2="620" y2="150" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="6 5"/>
+      <text data-step="1" x="60" y="134" style="fill:var(--accent);font-weight:600;font-size:13px">the selection</text>
+
+      <line class="edge" x1="130" y1="288" x2="130" y2="216" marker-end="url(#arw)"/>
+      <line class="edge dim" x1="130" y1="184" x2="130" y2="112" marker-end="url(#arwM)"/>
+      <circle class="op" cx="130" cy="300" r="13"/>
+      <circle class="op dim" cx="130" cy="100" r="13"/>
+      <text class="entity-label" x="130" y="332" text-anchor="middle">ApiClient</text>
+
+      <g data-step="1">
+        <line class="edge dim" x1="340" y1="184" x2="340" y2="112" marker-end="url(#arwM)"/>
+        <circle class="op dim" cx="340" cy="100" r="13"/>
+        <text class="entity-label" x="340" y="332" text-anchor="middle">PriceCache</text>
+
+        <line class="edge dim" x1="550" y1="212" x2="550" y2="140" marker-end="url(#arwM)"/>
+        <circle class="op dim" cx="550" cy="128" r="13"/>
+        <text class="entity-label" x="550" y="332" text-anchor="middle">CheckoutFlow</text>
+
+        <circle class="op hot" cx="130" cy="200" r="16"/>
+        <text class="xlabel" x="130" y="205">X</text>
+        <circle class="op tip" cx="340" cy="200" r="13"/>
+        <text class="op-label" x="358" y="204">v1</text>
+        <circle class="op tip" cx="550" cy="228" r="13"/>
+        <text class="op-label" x="568" y="232">v1</text>
+        <text class="op-label" x="150" y="304">v1</text>
+
+        <path class="ref" d="M325,192 C260,178 200,182 148,197" marker-end="url(#arwA)"/>
+        <path class="ref" d="M536,222 C420,176 250,172 148,193" marker-end="url(#arwA)"/>
+      </g>
+
+      <text data-step="2" x="60" y="360" style="fill:var(--accent);font-weight:600;font-size:13px">&#8593; up-set of X reaches sideways: PriceCache and CheckoutFlow both depend on it</text>
+      <text data-step="3" x="60" y="382" style="fill:var(--accent);font-weight:600;font-size:13px">&#8595; down-set of X reaches down to its own v1 &mdash; what it needs underneath</text>
+
+      <line class="edge dim" x1="672" y1="70" x2="672" y2="340" data-step="2"/>
+      <g data-step="2">
+        <text x="712" y="70" style="fill:var(--muted);font-weight:600;font-size:14px">three moves on the selection</text>
+        <text x="712" y="122" style="font-weight:600;font-size:15px">Revert X</text>
+        <text x="712" y="142" style="fill:var(--muted);font-size:12.5px">drop X and its up-set</text>
+        <text x="712" y="168" style="fill:var(--accent);font-weight:600;font-size:15px;font-family:ui-monospace,Menlo,Consolas,monospace">I &#92; &#8593;X</text>
+      </g>
+      <g data-step="3">
+        <text x="712" y="216" style="font-weight:600;font-size:15px">Cherry-pick X</text>
+        <text x="712" y="236" style="fill:var(--muted);font-size:12.5px">add X and its down-set</text>
+        <text x="712" y="262" style="fill:var(--accent);font-weight:600;font-size:15px;font-family:ui-monospace,Menlo,Consolas,monospace">I &#8746; &#8595;X</text>
+        <text x="712" y="306" style="font-weight:600;font-size:15px">Reorder commits</text>
+        <text x="712" y="326" style="fill:var(--muted);font-size:12.5px">nothing &mdash; a state is a set</text>
+        <text x="712" y="352" style="fill:var(--accent);font-weight:600;font-size:15px;font-family:ui-monospace,Menlo,Consolas,monospace">no-op</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> current tip</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op hot"/></svg> X &mdash; the op in question</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op dim"/></svg> not in the state yet</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on</span>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="5">
+  <div class="kicker">payoff &mdash; revert</div>
+  <h1>Mira reverts one op. Its up-set is just itself.</h1>
+  <p class="sub">Same three entities as before. This time X is the cache, not the refactor &mdash; and that's exactly why it's safe.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 300" width="100%" height="300">
+      <line class="edge" x1="130" y1="288" x2="130" y2="216" marker-end="url(#arw)"/>
+      <circle class="op" cx="130" cy="300" r="13"/>
+      <text class="op-label" x="150" y="304">v1</text>
+      <circle class="op tip" cx="130" cy="200" r="13" id="s5-a2"/>
+      <text class="op-label" x="150" y="204">v2</text>
+      <text class="entity-label" x="130" y="332" text-anchor="middle">ApiClient</text>
+
+      <circle class="op" cx="550" cy="228" r="13" id="s5-k1"/>
+      <text class="op-label" x="570" y="232">v1</text>
+      <text class="entity-label" x="550" y="332" text-anchor="middle">CheckoutFlow</text>
+      <path class="ref" d="M536,222 C420,176 250,172 148,193" marker-end="url(#arwA)"/>
+
+      <text class="entity-label" x="340" y="332" text-anchor="middle">PriceCache</text>
+      <path class="ref" d="M325,192 C260,178 200,182 148,197" marker-end="url(#arwA)" data-step="1"/>
+
+      <g data-step="1">
+        <circle class="op hot" cx="340" cy="200" r="16"/>
+        <text class="xlabel" x="340" y="205">X</text>
+        <text class="op-label" x="362" y="180">selected for revert</text>
+      </g>
+      <text data-step="2" x="60" y="30" style="fill:var(--muted);font-weight:600;font-size:13.5px">&#8593;X = { X } &mdash; nothing depends on the cache, so the up-set stops there</text>
+
+      <g data-step="3">
+        <circle class="op dim" cx="340" cy="200" r="16"/>
+        <text data-step="3" x="60" y="58" style="fill:var(--accent);font-weight:600;font-size:13.5px">I &#92; &#8593;X drops just PriceCache &mdash; ApiClient and CheckoutFlow never move</text>
+      </g>
+    </svg>
+    <div class="two-col" data-step="4">
+      <div class="callout col-bad">
+        <span class="lbl">git revert &lt;sha&gt;</span>
+        Takes the whole commit. The refactor comes out too &mdash; <code>CheckoutFlow</code> now depends on a version of <code>ApiClient</code> that no longer exists.
+      </div>
+      <div class="callout col-good">
+        <span class="lbl">sgt revert &lt;cache-op&gt;</span>
+        <code>I &#92; &#8593;{cache-op}</code> &mdash; drops exactly the cache op. The refactor and <code>CheckoutFlow</code> stay exactly as they were.
+      </div>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="6">
+  <div class="kicker">payoff &mdash; cherry-pick and pin</div>
+  <h1>Pull in exactly what you need. Nothing more, in either direction.</h1>
+  <p class="sub">Same cast, two more requests that show up the moment one commit stops being the unit of work.</p>
+  <div class="stage">
+    <div class="two-col">
+      <div data-step="1">
+        <h3 style="margin:0 0 10px;font-size:14.5px;color:var(--ink)">On-call needs Mira's fix on <code>release</code></h3>
+        <svg viewBox="0 0 380 260" width="100%" height="250">
+          <text x="10" y="20" style="fill:var(--accent);font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px">cherry-pick(fix) = I &#8746; &#8595;X</text>
+
+          <line class="edge dim" x1="120" y1="210" x2="120" y2="150" marker-end="url(#arwM)"/>
+          <circle class="op dim" cx="120" cy="140" r="13"/>
+          <circle class="op tip" cx="120" cy="140" r="13" data-step="2"/>
+          <text class="op-label" x="140" y="144">v2</text>
+          <circle class="op" cx="120" cy="220" r="13"/>
+          <text class="op-label" x="140" y="224">v1</text>
+          <text class="entity-label" x="120" y="248" text-anchor="middle">ApiClient</text>
+
+          <circle class="op" cx="280" cy="220" r="13"/>
+          <text class="op-label" x="300" y="224">v1 &middot; buggy</text>
+          <line class="edge" x1="280" y1="208" x2="280" y2="150" marker-end="url(#arw)"/>
+          <circle class="op hot" cx="280" cy="140" r="15"/>
+          <text class="xlabel" x="280" y="145">X</text>
+          <text class="op-label" x="300" y="130">fix</text>
+          <text class="entity-label" x="280" y="248" text-anchor="middle">PriceCache</text>
+
+          <path class="ref" d="M266,140 H134" marker-end="url(#arwA)"/>
+          <text data-step="2" x="10" y="60" style="fill:var(--accent);font-weight:600;font-size:12.5px">&#8595;X reaches down to ApiClient v2 &mdash; release gains exactly that, nothing else</text>
+        </svg>
+        <div class="callout col-good" data-step="2" style="margin-top:6px">
+          <code>sgt restore --emit &lt;fix-op&gt;</code> &mdash; <code>I &#8746; &#8595;X</code>. Brings the refactor along because the fix needs it, and stops there.
+        </div>
+      </div>
+      <div data-step="3">
+        <h3 style="margin:0 0 10px;font-size:14.5px;color:var(--ink)">A teammate pins the pre-refactor <code>ApiClient</code></h3>
+        <svg viewBox="0 0 380 260" width="100%" height="250">
+          <text x="10" y="20" style="fill:var(--muted);font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px">revert(v2) --keep-dependents</text>
+
+          <line class="edge dim" x1="120" y1="208" x2="120" y2="150" marker-end="url(#arwM)"/>
+          <circle class="op dim" cx="120" cy="140" r="13"/>
+          <text class="op-label" x="140" y="144">v2 &middot; excluded</text>
+          <circle class="op tip" cx="120" cy="220" r="14"/>
+          <circle class="pin-ring" cx="120" cy="220" r="20"/>
+          <text class="op-label" x="140" y="224">v1 &middot; pinned</text>
+          <text class="entity-label" x="120" y="248" text-anchor="middle">ApiClient</text>
+
+          <circle class="op tip" cx="280" cy="180" r="13"/>
+          <text class="op-label" x="300" y="184">v1</text>
+          <text class="entity-label" x="280" y="248" text-anchor="middle">CheckoutFlow</text>
+          <path d="M266,186 C220,200 170,212 134,220" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#arwA)"/>
+          <text x="10" y="60" style="fill:var(--accent);font-weight:600;font-size:12.5px">dashed = drafted continuation: CheckoutFlow keeps running against v1</text>
+        </svg>
+        <div class="callout col-good" style="margin-top:6px">
+          <code>sgt revert &lt;refactor-op&gt; --keep-dependents</code> &mdash; pins <code>v1</code> as the tip, drafts a hollow continuation for anything built on <code>v2</code> instead of breaking it outright.
+        </div>
+      </div>
+    </div>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> current tip</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op hot"/></svg> X &mdash; the op in question</span>
+      <span><svg><circle cx="9" cy="9" r="5" class="op tip"/><circle cx="9" cy="9" r="8" class="pin-ring"/></svg> pinned tip</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on</span>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="7">
+  <div class="kicker">how the split actually happens</div>
+  <h1>How did sgt know one commit was two operations?</h1>
+  <p class="sub">It never trusted the commit boundary. It looked at what each changed piece of code actually touches and uses.</p>
+  <div class="stage">
+    <svg viewBox="0 0 900 220" width="100%" height="240">
+      <g data-step="1">
+        <text x="20" y="16" class="op-label">Mira's commit</text>
+        <line x1="20" y1="26" x2="220" y2="26" class="edge" style="stroke:var(--hair)"/>
+        <text x="34" y="60" class="op-label">class ApiClient:</text>
+        <text x="44" y="80" class="op-label">def request(...):</text>
+        <text x="34" y="110" class="op-label">class PriceCache:</text>
+        <text x="44" y="130" class="op-label">def get(...):</text>
+        <text x="44" y="150" class="op-label">self.client.request(...)</text>
+      </g>
+      <path d="M226,100 L294,100" class="edge" data-step="2" marker-end="url(#arw)"/>
+      <g data-step="2">
+        <text x="300" y="20" class="op-label">function-level diff</text>
+        <text x="310" y="55" class="op-label">ApiClient.request changed</text>
+        <text x="310" y="125" class="op-label">PriceCache class added</text>
+        <text x="310" y="143" class="op-label">uses ApiClient.request</text>
+      </g>
+      <path d="M486,65 L560,65" class="edge" data-step="3" marker-end="url(#arw)"/>
+      <path d="M486,140 L560,140" class="edge" data-step="3" marker-end="url(#arw)"/>
+      <g data-step="3">
+        <text x="566" y="20" class="op-label">split by def/use connectivity</text>
+        <circle cx="600" cy="65" r="16" class="op tip"/>
+        <text x="600" y="70" text-anchor="middle" class="op-label" font-size="10">refactor</text>
+        <circle cx="600" cy="140" r="16" class="op tip" style="stroke:var(--accent)"/>
+        <text x="600" y="145" text-anchor="middle" font-size="10" class="op-label">cache</text>
+        <path d="M600,124 L600,81" class="ref"/>
+        <text x="640" y="105" class="op-label">references, doesn't modify</text>
+        <text x="640" y="120" class="op-label">&#8594; two ops, one commit</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op tip"/></svg> a version / op</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="edge"/></svg> builds on</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="ref"/></svg> depends on</span>
+    </div>
+  </div>
+</section>
+<section class="slide" data-slide="8">
+  <div class="kicker">robustness</div>
+  <h1>Same change, same id &mdash; no matter how git rearranges the commits.</h1>
+  <p class="sub">Ops are content-addressed: hashed from the change itself, not from where it happens to sit in history.</p>
+  <div class="stage">
+    <svg viewBox="0 0 780 220" width="100%" height="240">
+      <g data-step="1">
+        <text x="115" y="30" text-anchor="middle" class="op-label">Mira's fix commit</text>
+        <text x="115" y="46" text-anchor="middle" class="op-label" font-size="10">sha a1b2c3</text>
+        <path d="M115,54 C115,100 340,120 380,142" class="edge" marker-end="url(#arw)"/>
+      </g>
+      <g data-step="2">
+        <text x="390" y="30" text-anchor="middle" class="op-label">after teammate rebases</text>
+        <text x="390" y="46" text-anchor="middle" font-size="10" class="op-label">sha 7f9e21</text>
+        <path d="M390,54 L390,142" class="edge" marker-end="url(#arw)"/>
+      </g>
+      <g data-step="3">
+        <text x="665" y="30" text-anchor="middle" class="op-label">squash-merged copy</text>
+        <text x="665" y="46" text-anchor="middle" font-size="10" class="op-label">sha 44dd90</text>
+        <path d="M665,54 C665,100 440,120 400,142" class="edge" marker-end="url(#arw)"/>
+      </g>
+      <circle cx="390" cy="160" r="20" class="op tip"/>
+      <text x="390" y="165" text-anchor="middle" class="op-label" font-size="10">fix</text>
+      <text x="390" y="200" text-anchor="middle" class="op-label">one op &mdash; same content hash every time it shows up</text>
+    </svg>
+    <p class="sub" style="margin:0" data-step="3">
+      Three different commit shas, three different moments in git's history. sgt recognizes it's the same operation each time and never double-counts, never double-reverts.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="9">
+  <div class="kicker">the one case that needs a person</div>
+  <h1>Two ops that both start from the same version.</h1>
+  <p class="sub">A teammate was mid-edit on <code>ApiClient</code> at the same moment Mira's own quick follow-up touched it too.</p>
+  <div class="stage">
+    <svg viewBox="0 0 780 300" width="100%" height="300">
+      <line class="edge" x1="180" y1="270" x2="180" y2="200" marker-end="url(#arw)"/>
+      <circle class="op" cx="180" cy="280" r="14"/>
+      <text class="op-label" x="200" y="284">v1</text>
+      <circle class="op" cx="180" cy="190" r="14"/>
+      <text class="op-label" x="200" y="194">v2</text>
+      <text class="entity-label" x="180" y="308" text-anchor="middle">ApiClient</text>
+
+      <g data-step="1">
+        <path class="edge" d="M192,178 C230,130 260,100 280,90" marker-end="url(#arw)"/>
+        <circle class="op hot pulse" cx="300" cy="80" r="15"/>
+        <text class="xlabel" x="300" y="85">T</text>
+        <text class="op-label" x="322" y="60">teammate's edit</text>
+
+        <path class="edge" d="M192,202 C230,250 260,280 280,290" marker-end="url(#arw)"/>
+        <circle class="op hot pulse" cx="300" cy="300" r="15"/>
+        <text class="xlabel" x="300" y="305">M</text>
+        <text class="op-label" x="322" y="320">Mira's follow-up</text>
+
+        <text x="192" y="140" style="fill:var(--accent);font-weight:600;font-size:13px">chain fork &mdash; both claim to build on v2</text>
+      </g>
+
+      <g data-step="2">
+        <path class="ref" d="M316,86 C420,110 440,150 470,175" marker-end="url(#arwA)"/>
+        <path class="ref" d="M316,296 C420,270 440,220 470,190" marker-end="url(#arwA)"/>
+        <circle class="op tip" cx="490" cy="182" r="17"/>
+        <text class="op-label" x="490" y="187" text-anchor="middle" style="font-size:11px">v3</text>
+        <text x="520" y="150" style="font-weight:600;font-size:14px">one new version</text>
+        <text class="op-label" x="520" y="172">supersedes both T and M</text>
+        <text class="op-label" x="520" y="190"><tspan style="font-family:ui-monospace,Menlo,Consolas,monospace">sgt merge-op(T, M)</tspan></text>
+      </g>
+
+      <g data-step="3">
+        <path class="ref" d="M490,199 V228" marker-end="url(#arwA)"/>
+        <text x="440" y="256" style="fill:var(--accent);font-weight:600;font-size:13.5px">build &amp; test gate &mdash; v3 lands only if it passes</text>
+      </g>
+    </svg>
+    <div class="legend" data-step="1">
+      <span><svg><circle cx="9" cy="9" r="7" class="op"/></svg> a version</span>
+      <span><svg><line x1="2" y1="9" x2="26" y2="9" class="edge"/></svg> builds on</span>
+      <span><svg><circle cx="9" cy="9" r="7" class="op hot"/></svg> concurrent edit</span>
+    </div>
+    <p class="sub" style="margin:0" data-step="3">
+      Every other request in this deck resolved itself from the DAG. This is the one shape that can't: two ops with the same starting version. sgt surfaces it explicitly instead of silently interleaving the edits &mdash; a person (or agent) writes the reconciled version, and it lands only if it builds and passes tests.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="10">
+  <div class="kicker">naming groups of operations &mdash; <span class="tense">the next layer</span></div>
+  <h1>Why reverting the cache never touched the refactor.</h1>
+  <p class="sub">Underneath, they were never the same feature. sgt is building a lens that names that grouping instead of leaving it implicit.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 340" width="100%" height="340">
+      <g stroke="#54534e" stroke-width="1.4" fill="none">
+        <line x1="130" y1="288" x2="130" y2="216"/>
+        <line x1="550" y1="212" x2="550" y2="140"/>
+      </g>
+      <g fill="#fff" stroke="var(--faint)" stroke-width="1.4">
+        <circle cx="130" cy="300" r="13"/><circle cx="130" cy="200" r="13"/>
+        <circle cx="340" cy="200" r="13"/>
+        <circle cx="550" cy="228" r="13"/><circle cx="550" cy="128" r="13"/>
+      </g>
+      <text class="entity-label" x="130" y="332" text-anchor="middle" style="fill:var(--muted)">ApiClient</text>
+      <text class="entity-label" x="340" y="332" text-anchor="middle" style="fill:var(--muted)">PriceCache</text>
+      <text class="entity-label" x="550" y="332" text-anchor="middle" style="fill:var(--muted)">CheckoutFlow</text>
+
+      <g data-step="1">
+        <ellipse cx="150" cy="220" rx="110" ry="130" fill="var(--f1)" fill-opacity=".14" stroke="var(--f1)" stroke-width="1.3"/>
+        <text x="60" y="90" style="fill:var(--f1);font-weight:600;font-size:13.5px">checkout-client</text>
+      </g>
+      <g data-step="2">
+        <ellipse cx="340" cy="200" rx="80" ry="60" fill="var(--f2)" fill-opacity=".16" stroke="var(--f2)" stroke-width="1.3"/>
+        <text x="290" y="118" style="fill:var(--f2);font-weight:600;font-size:13.5px">pricing-cache</text>
+      </g>
+
+      <g data-step="3">
+        <line class="edge dim" x1="800" y1="40" x2="720" y2="90"/>
+        <line class="edge dim" x1="800" y1="40" x2="800" y2="90"/>
+        <circle cx="800" cy="32" r="9" fill="var(--ink)"/>
+        <text class="op-label" x="820" y="36">codebase</text>
+        <circle cx="720" cy="98" r="8" fill="var(--f1)"/>
+        <text class="op-label" x="740" y="102">checkout-client</text>
+        <circle cx="800" cy="98" r="8" fill="var(--f2)"/>
+        <text class="op-label" x="820" y="102">pricing-cache</text>
+        <text class="op-label" x="700" y="140" style="fill:var(--faint)">5&ndash;9 roots, nested &mdash; a leaf is a group of ops</text>
+      </g>
+    </svg>
+    <p class="sub" style="margin:0" data-step="2">
+      Two roots, not one commit. <code>sgt revert &lt;cache-op&gt;</code> only ever touched <code>pricing-cache</code> &mdash; <code>checkout-client</code> was never in scope. This tree isn't shipped yet: it's the layer sgt is building next on top of the kernel this deck has been describing.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="11">
+  <div class="kicker">how it's wired</div>
+  <h1>Git stays the substrate. sgt reads and writes through it.</h1>
+  <p class="sub">This is the pipeline that turned Mira's one commit into two independently revertable operations.</p>
+  <div class="stage">
+    <svg viewBox="0 0 980 360" width="100%" height="360">
+      <rect x="40" y="30" width="900" height="300" rx="14" fill="none" stroke="var(--hair)" stroke-width="1.4" stroke-dasharray="2 4" data-step="3"/>
+      <text data-step="3" x="52" y="50" class="op-label">git &mdash; the byte store &amp; transport, underneath the whole thing</text>
+
+      <circle class="op" cx="145" cy="185" r="15"/>
+      <text style="font-weight:600;font-size:14px" x="145" y="225" text-anchor="middle">working tree</text>
+      <text class="op-label" x="145" y="243" text-anchor="middle">your edits</text>
+
+      <circle class="op tip" cx="500" cy="95" r="15"/>
+      <text style="font-weight:600;font-size:14px" x="500" y="135" text-anchor="middle">op DAG</text>
+      <text class="op-label" x="500" y="153" text-anchor="middle">mined operations</text>
+
+      <circle class="op tip" cx="845" cy="185" r="15"/>
+      <text style="font-weight:600;font-size:14px" x="845" y="225" text-anchor="middle">the selection</text>
+      <text class="op-label" x="845" y="243" text-anchor="middle">one tip per chain</text>
+
+      <g data-step="1">
+        <path class="edge" d="M158,172 C260,110 340,95 483,95" marker-end="url(#arw)"/>
+        <text style="fill:var(--accent);font-weight:600;font-size:14px" x="300" y="108">get</text>
+        <text class="op-label" x="300" y="126">mine: your edits &#8594; ops in the DAG</text>
+      </g>
+      <g data-step="2">
+        <path class="edge" d="M517,95 C630,95 700,140 832,172" marker-end="url(#arw)"/>
+      </g>
+      <g data-step="2">
+        <path class="edge" d="M830,200 C620,300 380,300 160,210" marker-end="url(#arw)"/>
+        <text style="fill:var(--accent);font-weight:600;font-size:14px" x="470" y="300" text-anchor="middle">put</text>
+        <text class="op-label" x="470" y="318" text-anchor="middle">the selection &#8594; working tree &#8594; git commit (a witness)</text>
+      </g>
+      <g data-step="3">
+        <path class="ref" d="M845,201 V248" marker-end="url(#arwA)"/>
+        <text style="fill:var(--accent);font-weight:600;font-size:13.5px" x="660" y="278">build &amp; test gate</text>
+        <text class="op-label" x="660" y="296">the one check before a put lands</text>
+      </g>
+    </svg>
+    <p class="sub" style="margin:0" data-step="3">
+      Mira's cache revert was a single ideal edit &mdash; <code>I &#92; &#8593;{cache-op}</code> &mdash; through this same pipeline. No new mechanism, just this one loop run once.
+    </p>
+  </div>
+</section>
+<section class="slide" data-slide="12">
+  <div class="kicker">close</div>
+  <h1>One commit did five things. She undid <em>one</em> of them.</h1>
+  <p class="sub">Track entities, not lines or words &mdash; states are sets, and every verb is an exact edit to that set.</p>
+  <div class="stage">
+    <div class="strip">
+      <div class="step" data-step="1"><span class="check">&#10003;</span> commit landed<br><span style="color:var(--muted)">refactor + cache, tangled</span></div>
+      <div class="step" data-step="2"><span class="cross">&#10007;</span> bug found<br><span style="color:var(--muted)">stale prices in prod</span></div>
+      <div class="step" data-step="3"><code>sgt revert &lt;cache-op&gt;</code><br><span style="color:var(--muted)">I \ &#8593;{cache-op}</span></div>
+      <div class="step" data-step="4"><span class="check">&#10003;</span> clean commit<br><span style="color:var(--muted)">refactor, CheckoutFlow, OrdersPanel intact</span></div>
+    </div>
+    <p class="sub" style="margin:20px 0 0;max-width:900px" data-step="4">
+      The round trip works today, on sgt's own commit history. What's still being measured: how well untangling matches what a human would have split by hand, how often the mined dependency graph misses a real one, and how closely the feature tree lines up with the boundaries people actually think in.
+    </p>
+  </div>
+</section>
+
+</div>
+
+<div class="hud">
+  <button id="prevBtn" class="navbtn" aria-label="previous">&#8249;</button>
+  <span class="counter"><span id="slideNum">1</span> / 12</span>
+  <button id="nextBtn" class="navbtn" aria-label="next">&#8250;</button>
+</div>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var total=slides.length;
+  var cur=0, step=0;
+  var numEl=document.getElementById('slideNum');
+  function maxStep(s){
+    var m=0;
+    s.querySelectorAll('[data-step]').forEach(function(e){ m=Math.max(m, +e.dataset.step); });
+    return m;
+  }
+  function render(){
+    slides.forEach(function(s,i){ s.classList.toggle('active', i===cur); });
+    var s=slides[cur];
+    s.querySelectorAll('[data-step]').forEach(function(e){
+      e.classList.toggle('shown', +e.dataset.step<=step);
+    });
+    numEl.textContent = cur+1;
+  }
+  function next(){
+    var m=maxStep(slides[cur]);
+    if(step<m){ step++; }
+    else if(cur<total-1){ cur++; step=0; }
+    render();
+  }
+  function prev(){
+    if(step>0){ step--; }
+    else if(cur>0){ cur--; step=maxStep(slides[cur]); }
+    render();
+  }
+  document.getElementById('nextBtn').addEventListener('click', next);
+  document.getElementById('prevBtn').addEventListener('click', prev);
+  window.addEventListener('keydown', function(e){
+    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key===' '){ e.preventDefault(); next(); }
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp'){ e.preventDefault(); prev(); }
+  });
+  document.getElementById('deck').addEventListener('click', function(e){
+    if(e.target.closest('.navbtn')) return;
+    next();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
