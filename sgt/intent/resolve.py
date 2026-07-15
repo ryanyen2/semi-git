@@ -36,29 +36,54 @@ class IntentResolution(BaseModel):
     candidates: list[Candidate]  # ranked, <=5
 
 
-def _context(repo: Path) -> str:
-    """Compact, no-file-bytes context (mirrors `sgt.repair.context`): known features, the live
-    ops in the current ideal, and the frontier's live symbols -- the same three vocabularies a
-    candidate `ref` can be drawn from."""
-    from sgt.api import map_view, oplog_view, state_view
-    from sgt.core.lens import current_ideal
+def _user_symbols(op: dict) -> list[str]:
+    """An op's footprint symbols a user could actually mean, i.e. dropping sgt's synthetic
+    `__anchor__`/`__residue__` pseudo-symbols (`sgt.core.op._symbol_kind` == anchor/residue):
+    they're byte-fidelity/ordering internals, never a natural-language revert/restore target."""
+    from sgt.core.op import _symbol_kind
+
+    return sorted(
+        f["symbol"] for f in op["footprint"]
+        if _symbol_kind(f["symbol"]) not in ("anchor", "residue")
+    )
+
+
+def _context(repo: Path, verb: str) -> str:
+    """Compact, no-file-bytes context (mirrors `sgt.repair.context`): known features plus the op/
+    symbol vocabulary a candidate `ref` can be drawn from -- **verb-aware**, because `revert` and
+    `restore` target disjoint pools. `revert` removes something live, so its vocabulary is the ops
+    in the current ideal. `restore` re-adds something *removed*, so its vocabulary is the ops in
+    HEAD's provenance that are no longer in the ideal (the same set `plan_restore` resolves
+    against) -- listing the live frontier there would only ever yield no-op candidates. Synthetic
+    anchor/residue symbols are filtered from both (`_user_symbols`)."""
+    from sgt.api import map_view, oplog_view
+    from sgt.core.lens import current_ideal, ideal_for_ref
 
     tree = map_view(repo)
     features = "\n".join(f"{n['id']}: {n['label']}" for n in tree["nodes"] if n["kind"] == "feature")
 
     ideal_ids = current_ideal(repo).op_ids
-    live_ops = [op for op in oplog_view(repo)["ops"] if op["id"] in ideal_ids][:_MAX_OPS]
-    op_lines = "\n".join(
-        f"{op['id'][:8]} | {op['intent'] or ''} | " + ", ".join(sorted(f["symbol"] for f in op["footprint"]))
-        for op in live_ops
-    )
+    all_ops = oplog_view(repo)["ops"]
+    if verb == "restore":
+        restorable = ideal_for_ref(repo, "HEAD").op_ids
+        pool = [op for op in all_ops if op["id"] in restorable and op["id"] not in ideal_ids]
+        op_header = "Removed ops that `restore` can bring back (id | intent | symbols)"
+        sym_header = "Removed symbols that can be restored (file::name)"
+    else:
+        pool = [op for op in all_ops if op["id"] in ideal_ids]
+        op_header = "Live ops in the current ideal (id | intent | symbols)"
+        sym_header = "Live symbols at the frontier (file::name)"
 
-    symbols = "\n".join(sorted(state_view(repo)["frontier"]))
+    pool = [op for op in pool if _user_symbols(op)][:_MAX_OPS]
+    op_lines = "\n".join(
+        f"{op['id'][:8]} | {op['intent'] or ''} | " + ", ".join(_user_symbols(op)) for op in pool
+    )
+    symbols = "\n".join(sorted({s for op in pool for s in _user_symbols(op)}))
 
     return (
         f"Known features (id: label):\n{features or '(none -- no feature tree built yet)'}\n\n"
-        f"Live ops in the current ideal (id | intent | symbols):\n{op_lines or '(none)'}\n\n"
-        f"Live symbols at the frontier (file::name):\n{symbols or '(none)'}\n"
+        f"{op_header}:\n{op_lines or '(none)'}\n\n"
+        f"{sym_header}:\n{symbols or '(none)'}\n"
     )
 
 
@@ -73,12 +98,16 @@ def resolve_intent(repo: str | Path, query: str, *, verb: str | None = None) -> 
             f"A user wants to target something in their codebase's tracked history{for_verb} by "
             "describing it in plain language rather than naming it exactly.\n"
             f"Query: {query!r}\n\n"
-            f"{_context(repo)}\n"
+            f"{_context(repo, verb or 'revert')}\n"
             "Propose up to 5 ranked candidate targets that could be what they mean. Each "
             "candidate's ref must appear verbatim above -- an op id (the first 8 hex chars shown "
             "are enough), a `file::symbol` name, or a feature id -- never invent one. kind is "
             '"op", "symbol", or "feature" matching which list it came from. rationale is one line '
-            "explaining the match."
+            "explaining the match.\n"
+            "Only include a candidate you are genuinely confident the user means. If the query "
+            "does not plausibly refer to anything listed above (e.g. it names a concept that "
+            "isn't in this codebase), return an empty candidates list rather than guessing at "
+            "unrelated targets -- a wrong guess here can delete real work."
         )
         client = get_client(repo)
         r = client.responses.parse(

@@ -207,6 +207,75 @@ def test_revert_nl_drops_hallucinated_candidate(tmp_path, monkeypatch, capsys):
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # never applied
 
 
+def test_revert_nl_abstains_when_llm_returns_no_candidates(tmp_path, monkeypatch, capsys):
+    """An empty candidate list (the LLM declining to guess on an out-of-domain query) is a clean
+    exit 1, not a crash and never an applied edit -- the safety valve against confidently
+    reverting real work for a query that names nothing in this codebase."""
+    _seed(tmp_path, 2)
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[])
+    ))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "--yes", "the blockchain consensus module"]) == 1
+    out = capsys.readouterr().out
+    assert "plausibly matches" in out
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # never applied
+
+
+def test_revert_nl_dedups_candidates_with_identical_effect(tmp_path, monkeypatch, capsys):
+    """An op-id and its `file::symbol` that re-plan to the same edit are one choice, not two --
+    the user sees one entry per distinct outcome, not the same revert spelled several ways."""
+    _seed(tmp_path, 2)
+    dup_a = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="one phrasing")
+    dup_b = resolve_mod.Candidate(ref="a.py::foo", kind="op", rationale="same effect, other phrasing")
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[dup_a, dup_b])
+    ))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "--json", "the foo logic"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["candidates"]) == 1
+
+
+def test_restore_nl_drops_noop_candidate(tmp_path, monkeypatch, capsys):
+    """A `restore` of an already-live symbol adds nothing; it must be dropped, not offered as a
+    choice the user can't tell apart from doing nothing (the bug where restore's context only saw
+    the live frontier and every candidate was a no-op)."""
+    _seed(tmp_path, 2)  # nothing reverted -- a.py::foo is live
+    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="already present")
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[candidate])
+    ))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["restore", "bring back foo"]) == 1
+    assert "survived re-planning" in capsys.readouterr().out
+
+
+def test_revert_nl_feature_candidate_routes_through_feature_plan(tmp_path, monkeypatch, capsys):
+    """A `feature`-kind NL candidate must re-plan through `plan_revert_feature` (as the
+    deterministic feature rung does), not a single-op `plan_revert` that can't resolve a feature
+    id -- otherwise the prompt invites feature ids the survivor filter then silently drops."""
+    from sgt.api import map_view
+    from sgt.lens.map import build_map
+
+    _seed(tmp_path, 2)
+    _in(tmp_path, ["log"])  # mine
+    build_map(tmp_path)
+    fid = next(n["id"] for n in map_view(tmp_path)["nodes"] if n["kind"] == "feature")
+    candidate = resolve_mod.Candidate(ref=fid, kind="feature", rationale="the whole foo feature")
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[candidate])
+    ))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "--json", "the entire foo feature"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["candidates"] and payload["candidates"][0]["removed"] >= 1  # survived + actionable
+
+
 def test_revert_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _seed(tmp_path, 2)
