@@ -6,13 +6,15 @@
 from __future__ import annotations
 
 from ._common import _emit_json, _fail
-from .rewrite import _print_draft
+from .rewrite import _print_draft, _print_repair_result
 
 
 def register(subs, parent) -> None:
     r = subs.add_parser("revert", parents=[parent])
     r.add_argument("--emit", action="store_true")
     r.add_argument("--keep-dependents", action="store_true", dest="keep_dependents")
+    r.add_argument("--repair", action="store_true")
+    r.add_argument("--backend", default="api", choices=["api"])
     r.add_argument("--intent")
     r.add_argument("--session")
     r.add_argument("ref", nargs="*")
@@ -68,7 +70,7 @@ def _cmd_revert(args) -> int:
     if args.session:
         return _revert_session(".", args.session, args.emit, args.as_json)
     if args.keep_dependents:
-        return _revert_keep_dependents(".", args.ref, args.intent, args.as_json)
+        return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json)
     return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json)
 
 
@@ -143,18 +145,29 @@ def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:
     return _emit_verb_result(repo, preview, emit, as_json)
 
 
-def _revert_keep_dependents(repo: str, ref_tokens: list[str], intent: str | None, as_json: bool) -> int:
+def _revert_keep_dependents(
+    repo: str, ref_tokens: list[str], intent: str | None, do_repair: bool, as_json: bool,
+) -> int:
     """`revert <ref> --keep-dependents` (plan U11, R14): removes the target's up-set but drafts
-    a continuation hollow per direct reference-dependent, so its symbol stays live."""
+    a continuation hollow per direct reference-dependent, so its symbol stays live. `--repair`
+    (plan U6) hands the draft straight to the LLM-backed repair loop instead of printing it -- the
+    one-command happy path, symmetric with how `--keep-dependents` already routes to `rewrite`."""
     from sgt.core import rewrite
     from sgt.core.lens import get
 
     if not ref_tokens:
-        print("usage: sgt revert <ref> --keep-dependents")
+        print("usage: sgt revert <ref> --keep-dependents [--repair]")
         return 2
     get(repo)
     draft = rewrite.revert_keep_dependents(repo, " ".join(ref_tokens), intent=intent)
-    return _print_draft(draft, as_json)
+    if not do_repair or not draft.ok:
+        return _print_draft(draft, as_json)
+
+    from sgt.repair.api_backend import ApiBackend
+    from sgt.repair.loop import repair
+
+    result = repair(repo, draft, ApiBackend(repo))
+    return _print_repair_result(result, as_json)
 
 
 def _print_verb_view(view: dict) -> int:

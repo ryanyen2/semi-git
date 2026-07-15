@@ -1690,6 +1690,88 @@ review's four failure classes). Phases A-C change no op identity and land indivi
   The ~20% op-level exclusion (the U22.5 figure) drops to 13.5%, and 9 of the 12 files the rebirth
   pseudo-fork had erased from `code(I)` are recovered (file-level loss 4.8% → 1.2%). The 3 residual
   missing files are genuine off-ref/unreproducible history (the orphan territory), not rebirth loss.
+
+### Semantic repair loop — U1-U9 (2026-07-14)
+
+Executing `docs/plans/2026-07-14-001-feat-semantic-repair-loop.md`: automates fulfilling the
+hollow ops `revert --keep-dependents` drafts, via a pluggable LLM backend, through the existing
+`stage → oracle → land` gate — never bypassed. New package `sgt/repair/` (`backends.py`,
+`context.py`, `verify.py`, `api_backend.py`, `loop.py`); `sgt/core/rewrite.py` gained
+`build_candidate`, factored out of `stage`'s pure candidate-construction step so Tier-0 and
+`stage` share one source of truth. CLI: `sgt revert <ref> --keep-dependents --repair` and
+`sgt repair <draft-id>`.
+
+The plan's four confirmed-in-code kernel facts (empty-`requires` on repaired ops, `stage`'s
+single-slot destructiveness, Tier-0 running fully in memory, post-land per-SHA attribution) held
+as designed. Two more surfaced only once the code was run against real fixtures, not just
+imported:
+
+- **`rewrite.land()` never re-mines** (unlike `session.land()`, which explicitly does afterward).
+  A hollow-fulfilled op's `provenance` therefore stays permanently `()` unless something seeds
+  it — and `Store._serialize` (`sgt/core/store.py`) only persists an `Attribution` entry for a
+  SHA that is *also* present in `provenance`. First implementation of `loop.py`'s post-land
+  attribution step called `store.attribute(...)` directly and appeared to succeed (the in-memory
+  merge was correct), but every write silently vanished on disk. Fixed by seeding
+  `store.add(replace(op, provenance=(sha,)))` immediately before `store.attribute(...)`. Caught
+  by re-reading `sgt log --json` after a landing rather than trusting the in-memory trace —
+  without this fix every successful repair would have produced unattributed ops with no error
+  anywhere in the path.
+- **A graph-based dangling-reference check structurally cannot fire for the one case it exists to
+  catch.** `build_entity_graph`'s (`sgt/entities/graph.py`) name-resolution index is built
+  entirely from the codebase dict it's given; the reverted target's own definition is, by
+  construction, always absent from a candidate's codebase, so a call to it can never resolve into
+  an edge (an unresolved name is dropped, not turned into a dangling edge). `verify.tier0`'s first
+  draft built exactly this graph-based check and it verifiably approved (`ok=True`) a proposal
+  that still literally called the just-removed function — caught by a direct test before it ever
+  reached `loop.py`. Replaced with a lexical/regex check on the removed symbol's bare leaf name
+  (word-boundary match against the proposed image's decoded text), which is precise for the
+  direct-call case; an indirect reference (through some other still-live symbol) remains a
+  documented blind spot the real oracle round is the backstop for.
+
+Also fixed in passing: `sgt/cli/__init__.py`'s `_VERBS` allowlist — checked in `main()` before
+argparse ever runs — didn't have `"repair"` added alongside the new subparser, so `sgt repair`
+silently fell through to the generic top-level help text despite correct argparse wiring. Any new
+subcommand needs both the family module's `register()` *and* a `_VERBS` entry.
+
+Verification: `tests/repair/test_loop.py` (5 cases, `FakeBackend`-driven, real `.sgt/oracle.json`
+tiers, no live API) + `tests/core/test_rewrite.py` green; full suite green; golden CLI-surface
+snapshot regenerated with an empty diff (no existing captured verb's output changed, and the new
+repair surface isn't captured by that golden set). U7 (transitive-dependent hollows) and the CLI
+golden addition for the new repair surface are deferred, matching the plan's own scope boundary.
+
+### U7 — transitive-dependent hollows, resolved without a backend call per hop (2026-07-14)
+
+The v1 boundary above ("one hop only") meant a grand-dependent -- a symbol that calls a *direct*
+dependent but never the reverted target itself -- was silently dropped, exactly like a plain
+revert, even though its own bytes never referenced anything removed. The naive fix (walk the
+chain, draft a hollow at each hop, run every hop through the repair loop) would spend a backend
+call on every intermediate symbol for no reason: `order.upset_in` already proves a transitive
+dependent is only in the up-set because its own `requires` names an exact `(symbol, version)`
+pair a *direct* dependent produced, and that pair stops being produced once the direct dependent
+is rewritten to a new op id -- the transitive dependent's own text never needs to change, it just
+needs a new producer for the version it already has.
+
+`revert_keep_dependents` (`sgt/core/rewrite.py`) still drafts a real hollow (agent/backend-facing)
+for each *direct* reference-edge dependent, exactly as before. Everything else in `upset_in` that
+is still alive at the pre-removal frontier is recorded by symbol name in the new
+`draft.meta["carry_forward"]` list. `build_candidate` synthesizes those directly -- same
+footprint, same image bytes, `requires` cleared -- mirroring the existing `split-op` automatic-
+tail pattern (a real op minted at candidate-construction time, not a hollow anyone has to
+fulfill). Because `sgt.repair.loop.repair` only ever iterates `draft.hollow_ids`, this cost the
+repair loop, Tier-0, and the backend abstraction *zero* code changes -- the transitive tail is
+resolved once, deterministically, regardless of chain depth, before the backend ever sees a
+request. Verified with a 3-op chain fixture (`helper <- user <- caller`, `caller` calling only
+`user`): `revert_keep_dependents` drafts exactly one hollow (for `user`); `caller` survives in the
+landed ideal with byte-identical content and `requires == frozenset()`; a repair-loop run over
+the same fixture lands with `backend.calls == 1`, same as the direct-dependent-only case --
+`tests/core/test_rewrite.py::test_revert_keep_dependents_carries_transitive_dependent_forward_unchanged`
+and `tests/repair/test_loop.py::test_transitive_dependent_survives_without_costing_a_backend_call`.
+
+Same accepted blind spot as kernel fact 1 (empty `requires` on repaired ops): a carried-forward
+op's `requires` is cleared too, so a *later* revert won't cascade back through it structurally --
+only the oracle would catch a lingering dependency at that point. Not a new risk; the existing
+direct-dependent hollow already made this tradeoff.
+
 ## Known v1 limitations (kernel, deferred -- see the plan's Scope Boundaries)
 
 - **Local mining reduces a forked/ungrounded history silently, and it can be lossy** (U22.5). On
@@ -1722,8 +1804,11 @@ review's four failure classes). Phases A-C change no op identity and land indivi
   a real fix (residue ops declaring a `requires` on whichever feature is positionally adjacent, or
   rejecting a checklist split that would cut through a shared residue) touches feature-tree
   construction, not this unit's scope.
-- **`revert --keep-dependents` is one-hop only** (U11): only direct reference-edge dependents of
-  the target get a continuation hollow; anything further downstream drops like a plain revert.
+- **`revert --keep-dependents` only sends *direct* reference-edge dependents through an
+  agent/backend rewrite** (U11 + U7): everything further downstream that stays alive at the
+  pre-removal frontier is carried forward unchanged rather than dropped -- but its `requires` is
+  cleared in the process (see U7's note above), the same accepted tradeoff direct-dependent
+  hollows already make.
 - **Two languages** (Python, TypeScript/TSX) via the tree-sitter grammars wired into
   `sgt/entities/extract.py`'s `_DEFS`/`_EXT_LANG`; anything else materializes as faithful
   whole-file residue (R7), never mis-decomposed, just not independently addressable.

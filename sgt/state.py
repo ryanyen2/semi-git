@@ -113,6 +113,7 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "drafts": _Artifact(("local", "drafts.json"), committed=False),
     "staged": _Artifact(("local", "staged.json"), committed=False),
     "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),
+    "repair_cache": _Artifact(("local", "repair_cache.json"), committed=False, sort_keys=False, newline=False),
     "plan_sessions": _Artifact(("local", "plan_sessions.json"), committed=False),
     "plan_matches": _Artifact(("local", "plan_matches.json"), committed=False),
     # local, gitignored record of scratch-tree sessions (`sgt session start`, U30/D5): name ->

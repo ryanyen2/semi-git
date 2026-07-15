@@ -41,7 +41,7 @@ from . import (
 
 _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
-    "merge-op", "split-op", "transplant", "identity", "fulfill", "land", "unstage",
+    "merge-op", "split-op", "transplant", "identity", "fulfill", "land", "unstage", "repair",
     "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview", "compose", "fold",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",

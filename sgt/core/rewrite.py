@@ -299,11 +299,18 @@ def transplant(repo: str | Path, op_ids: list[str], onto_ref: str, intent: str |
 
 
 def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
-    """Removes `target`'s full up-set (chain + reference + declared), but drafts one continuation
-    hollow per *direct* reference-edge dependent so each dependent's own symbol stays present in
-    the ideal, only its content needing a rewrite that no longer depends on the removed symbol.
-    (v1 scope: only one-hop reference dependents get a continuation; anything further downstream
-    is dropped exactly like a plain revert -- see FINDINGS.md.)"""
+    """Removes `target`'s full up-set (chain + reference + declared). *Direct* reference-edge
+    dependents get a real continuation hollow -- their content actually names the removed symbol,
+    so an agent/human/backend must rewrite it (plan U5's repair loop). Everything else in the
+    up-set (U7, transitive-dependent hollows) is affected only because it structurally required a
+    direct dependent's *pre-removal* version, never the removed symbol itself: its own bytes don't
+    need to change at all. Those are carried forward mechanically -- same footprint, same image,
+    `requires` cleared (`build_candidate`'s `carry_forward` step, mirroring `split-op`'s automatic
+    tail) -- with no hollow, no agent, no LLM call. This is deliberately *not* "fix each downstream
+    dependent one hop at a time": walking the chain and re-drafting/re-repairing hop by hop would
+    spend a backend call on every intermediate symbol even though only the direct dependents' text
+    actually changes; the transitive tail is pure bookkeeping, resolved once, for free, regardless
+    of how deep the chain runs."""
     repo = Path(repo)
     store = Store(repo)
     ops = store.all_ops()
@@ -322,9 +329,11 @@ def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = N
     removed_symbol = next(iter(by_id[op_id].footprint))
 
     hollows = []
+    direct_syms: set[str] = set()
     for dep_id in direct_dependents:
         dep = by_id[dep_id]
         for sym, (before, _after) in dep.footprint.items():
+            direct_syms.add(sym)
             h = make_op(
                 {sym: (before, _PENDING)}, {}, kind="rework", off_chain=True,
                 intent=intent or f"rewrite {sym} to not depend on removed {removed_symbol}",
@@ -332,12 +341,24 @@ def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = N
             store.add_hollow(h)
             hollows.append(h)
 
+    # Every other symbol still alive at the pre-removal frontier whose tip op fell into
+    # `full_removed` (i.e. it's in the up-set only via a *chain* through a direct dependent, never
+    # via its own reference edge to `target`) is carried forward unchanged -- see `build_candidate`.
+    target_syms = set(by_id[op_id].footprint)
+    frontier = ideal.frontier(ops)
+    carry_forward = sorted(
+        sym for sym, tip_id in frontier.items()
+        if tip_id in full_removed and sym not in target_syms and sym not in direct_syms
+        and by_id[tip_id].images.get(sym) is not None
+    )
+
     draft = RewriteDraft(
         ok=True, verb="revert-keep-dependents", target=op_id,
         hollow_ids=tuple(h.id for h in hollows),
-        meta={"removed_ids": sorted(full_removed)},
+        meta={"removed_ids": sorted(full_removed), "carry_forward": carry_forward},
         message=f"removes {len(full_removed)} op(s); drafted {len(hollows)} continuation "
-                f"hollow(s) for {len(direct_dependents)} direct dependent(s)",
+                f"hollow(s) for {len(direct_dependents)} direct dependent(s); carries "
+                f"{len(carry_forward)} transitively affected symbol(s) forward unchanged",
     )
     return _register(repo, draft)
 
@@ -375,20 +396,23 @@ def identity_join(repo: str | Path, a: str, b: str) -> dict:
 
 # -- stage / fulfill / land (the only writers of real bytes and commits) --------------------------
 
-def stage(
+def build_candidate(
     repo: str | Path, draft: RewriteDraft, images: dict[str, bytes] | None = None, *,
     from_tree: bool = False,
-) -> Ideal:
-    """Fulfills every hollow in `draft` (agent-supplied `images`, keyed by hollow id, or
-    `from_tree=True` to read each hollow's symbol straight out of the working tree), builds the
-    real `Op`(s) and `store.add()`s them, computes the candidate ideal (current ideal, minus
-    `draft.meta["removed_ids"]`, plus the fulfilled ops), validates it, and folds + writes it to
-    the working tree -- **no commit**. Consumed hollow files are deleted (fulfilled, not pending
-    anymore); `land` is the only later step that commits."""
-    if not draft.ok:
-        raise RewriteError(draft.message or f"{draft.verb} draft refused")
+) -> tuple[Ideal, dict[str, Op]]:
+    """The pure half of `stage` (plan: semantic repair loop U3), factored out so Tier-0
+    verification (`sgt.repair.verify`) can build and validate the exact same candidate a real
+    `stage` would, without any side effect: no `store.add`, no hollow-file deletion, no working-
+    tree write. `make_op` is a pure, content-addressed constructor, so the ops built here are
+    byte-identical to what `stage` itself would build and add.
+
+    Fulfills every hollow in `draft` (agent-supplied `images`, keyed by hollow id, or
+    `from_tree=True` to read each hollow's symbol straight out of the working tree), computes the
+    candidate ideal (current ideal, minus `draft.meta["removed_ids"]`, plus
+    `draft.meta["required_ids"]`, plus the fulfilled ops), and validates it. Returns the fulfilled
+    ops keyed by hollow id (plus, for `split-op`, a `"<hollow_id>:tail"` entry for the
+    automatically-minted tail op) -- everything the caller needs to `store.add` and persist."""
     repo = Path(repo)
-    lens.get(repo)  # absorb any pre-existing dirty tree / foreign commit first (R9)
     store = Store(repo)
     ideal = lens.current_ideal(repo)
     # `removed_ids` subtracts (revert/split remedies); `required_ids` adds a fork tip's downset the
@@ -409,32 +433,73 @@ def stage(
             {sym: (before, after)}, {sym: image}, requires=hollow.requires, kind=hollow.kind,
             intent=hollow.intent,
         )
-        store.add(op)
-        fulfilled[sym] = op
+        fulfilled[hollow_id] = op
         candidate_ids.add(op.id)
-        (store.hollow_dir / hollow_id).unlink(missing_ok=True)
 
     if draft.verb == "split-op":
+        hollow_id, = draft.hollow_ids
         sym = draft.meta["symbol"]
         original = store.get(draft.meta["original_op_id"])
-        intermediate = fulfilled[sym]
+        intermediate = fulfilled[hollow_id]
         tail = make_op(
             {sym: (intermediate.footprint[sym][1], original.footprint[sym][1])},
             {sym: original.images[sym]}, requires=original.requires, kind="split",
             intent=f"split-op tail: continues {original.id[:12]}",
         )
-        store.add(tail)
+        fulfilled[f"{hollow_id}:tail"] = tail
         candidate_ids.add(tail.id)
 
-    ops = store.all_ops()
+    if draft.verb == "revert-keep-dependents" and draft.meta.get("carry_forward"):
+        # U7: symbols dragged into the up-set only through a chain to a direct dependent, never by
+        # their own reference edge to the removed target -- their bytes don't need a rewrite, only
+        # a fresh, requires-free producer for the exact (symbol, version) pair the removed tip
+        # produced. Mirrors the split-op tail above: minted here, not drafted as a hollow, since
+        # the content is already fully known (unchanged).
+        pre_removal_ops = store.all_ops()
+        by_pre_id = {op.id: op for op in pre_removal_ops}
+        frontier = ideal.frontier(pre_removal_ops)
+        for sym in draft.meta["carry_forward"]:
+            tip = by_pre_id[frontier[sym]]
+            before, after = tip.footprint[sym]
+            carry = make_op(
+                {sym: (before, after)}, {sym: tip.images[sym]}, kind="rework",
+                intent=f"carry {sym} forward unchanged (transitively affected, no direct reference)",
+            )
+            fulfilled[f"carry:{sym}"] = carry
+            candidate_ids.add(carry.id)
+
+    ops = store.all_ops() + list(fulfilled.values())
     try:
         candidate = Ideal.from_ops(candidate_ids, ops)
     except ValueError as e:
         raise RewriteError(f"fulfilling {draft.verb} would leave an invalid ideal, refused: {e}") from e
 
+    return candidate, fulfilled
+
+
+def stage(
+    repo: str | Path, draft: RewriteDraft, images: dict[str, bytes] | None = None, *,
+    from_tree: bool = False,
+) -> Ideal:
+    """Fulfills every hollow in `draft` via `build_candidate`, `store.add()`s the resulting real
+    `Op`(s), and folds + writes the validated candidate to the working tree -- **no commit**.
+    Consumed hollow files are deleted (fulfilled, not pending anymore); `land` is the only later
+    step that commits."""
+    if not draft.ok:
+        raise RewriteError(draft.message or f"{draft.verb} draft refused")
+    repo = Path(repo)
+    lens.get(repo)  # absorb any pre-existing dirty tree / foreign commit first (R9)
+    store = Store(repo)
+    candidate, fulfilled = build_candidate(repo, draft, images, from_tree=from_tree)
+    for op in fulfilled.values():
+        store.add(op)
+    for hollow_id in draft.hollow_ids:
+        (store.hollow_dir / hollow_id).unlink(missing_ok=True)
+
     # The staged bytes (working tree) and the staged record must move together (R5): a crash
     # between them would leave a dirty tree with no record, or a record for bytes never written.
     # Ops were added above, before this section, so `Store.add`'s lock never nests here.
+    ops = store.all_ops()
     materialized = code(candidate, ops)
     with locked_section(repo):
         lens._write_working_tree(repo, materialized, ops)
@@ -442,23 +507,33 @@ def stage(
     return candidate
 
 
-def fulfill(
-    repo: str | Path, draft_id: str, *, images: dict[str, bytes] | None = None, from_tree: bool = False,
-) -> Ideal:
-    """The CLI-facing entry point: look up a draft registered by `merge_op`/`split_op`/
-    `transplant`/`revert_keep_dependents` by its `draft_id` (so a separate `sgt fulfill` process
-    doesn't need the draft object itself), then `stage` it. Removes the draft record on success --
-    its hollows are consumed either way."""
+def resolve_draft(repo: str | Path, draft_id: str) -> RewriteDraft | None:
+    """Look up a draft registered by `merge_op`/`split_op`/`transplant`/`revert_keep_dependents`
+    by its `draft_id`, reconstructing the `RewriteDraft` a separate process -- a later `sgt
+    fulfill`, or `sgt.repair.loop.repair` (plan U5/U6) -- needs without holding the original
+    object. `None` if no such draft is registered."""
     repo = Path(repo)
-    table = _load_drafts(repo)
-    record = table.get(draft_id)
+    record = _load_drafts(repo).get(draft_id)
     if record is None:
-        raise RewriteError(f"no draft {draft_id!r} -- see merge-op/split-op/transplant/revert --keep-dependents")
-    draft = RewriteDraft(
+        return None
+    return RewriteDraft(
         ok=True, verb=record["verb"], target=record["target"], hollow_ids=tuple(record["hollow_ids"]),
         meta=record.get("meta", {}), draft_id=draft_id,
     )
+
+
+def fulfill(
+    repo: str | Path, draft_id: str, *, images: dict[str, bytes] | None = None, from_tree: bool = False,
+) -> Ideal:
+    """The CLI-facing entry point: look up a draft by its `draft_id` (so a separate `sgt fulfill`
+    process doesn't need the draft object itself), then `stage` it. Removes the draft record on
+    success -- its hollows are consumed either way."""
+    repo = Path(repo)
+    draft = resolve_draft(repo, draft_id)
+    if draft is None:
+        raise RewriteError(f"no draft {draft_id!r} -- see merge-op/split-op/transplant/revert --keep-dependents")
     candidate = stage(repo, draft, images, from_tree=from_tree)
+    table = _load_drafts(repo)
     del table[draft_id]
     _save_drafts(repo, table)
     return candidate
