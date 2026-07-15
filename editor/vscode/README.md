@@ -1,48 +1,69 @@
 # semi-git for VS Code
 
-Read your code by **feature**, not by diff. This extension is a GitLens-style lens onto the
-`sgt` semantic graph: it shows which feature owns each line, lets you see the whole feature
-DAG, and lets you plug features in and out — all in-situ, with color and shape doing the work
-instead of labels.
+Read your code by **feature**, not by diff. This extension is a full sgt workbench: it shows which
+feature owns each line, draws the feature tree as a rail alongside a commit timeline with a
+draggable playhead, lets you merge/split/rename/move/revert a feature or resolve a fork from the
+editor, and drives sgt's git bridge (`switch`/`save`/`undo`/`sync`/`push`/`land`) so day-to-day git
+work never has to leave VS Code.
 
-It never edits your code. `sgt` records and reorganizes the *semantic graph*; your coding
-agent (or you) writes the code, then checkpoints it. This extension visualizes that graph and
-drives `sgt`'s read and graph-op verbs.
+It never edits your code directly. `sgt` records and reorganizes the *semantic op graph*; your
+coding agent (or you) writes the code, then checkpoints it. This extension visualizes that graph
+and drives `sgt`'s read views and its feature, kernel, and git-bridge verbs.
 
 ## Features
 
-- **Semantic blame** — the current line shows the feature that owns it (end-of-line annotation
-  + status bar). Hover any line for the feature's intent, dependencies, dependents, and any
-  conflict, plus one-click *preview suspend / preview revert*.
-- **Feature heatmap** (`semi-git: Toggle Feature Heatmap`) — a per-feature gutter band and
-  overview-ruler color across the whole file. Each feature has a stable, theme-aware **OKLCH**
-  color (golden-angle hash of its id), identical in the editor, the graph, and the terminal UI.
-- **Feature CodeLens** — a lens above each block naming the feature that owns it and how many
-  features depend on it.
-- **Feature Graph** — a GitLens-style, row-based graph in the **bottom panel**
-  (`semi-git: Open Feature Graph`): a colored ref-pill KIND column, a git-style swim-lane GRAPH
-  column (identity-colored node circles + bezier dependency edges), a short-label FEATURE column,
-  and a canvas minimap. Hue is identity; **status is a glyph**. Selecting a feature opens an
-  **in-situ detail pane** (no modal popups) with the intent rendered as rich text + clickable
-  cross-references, dependency chips, effects, and two-click-confirm actions. **Live agent
-  presence** lights up features as the coding agent edits them. A quick-nav *Features* tree also
-  sits in the activity bar.
-- **Revision navigation** — *preview revert* / *preview suspend* open a read-only diff of what
-  the change would do to the working tree, computed by `sgt emit` without writing anything.
+- **Feature blame** — a colored tint per line, on the background, left border, and overview ruler,
+  by the feature that owns it. Hover for the feature's label and id. Colors are a deterministic
+  OKLCH hash of the feature id, identical across the editor, the workbench, and the terminal UI.
+- **Composition Workbench** (`semi-git: Open Composition Workbench`) — a full-window rail (feature
+  tree + commit timeline) and inspector, grounded in a GitKraken/GitHub-Graph-style layout. A
+  draggable playhead scrubs any commit-index frontier and re-folds `code(I)` + the oracle verdict
+  live, without materializing the working tree. Hovering an action paints its blast/foundation
+  effect before you commit to it.
+- **Activity bar** (`semi-git`) — four tree views: **Features** (the feature/subsystem tree),
+  **Forks** (the conflict inbox, badge = open count), **Changes** (drift, unmanaged paths, the
+  trust queue), **Compositions** (sessions and proposals — the switch/land/publish surface).
+- **Fork resolution** — an N-column view of a fork's tip images, plus the `merge-op` → hand-edit →
+  `fulfill` → `land` wizard, entirely through real kernel verbs.
+- **Hovers, diagnostics, inlay hints** — a symbol hover with label, rationale, and cross-feature
+  coupling; a Hint on drifted spans (with a "Save to clear" quick-fix) and a Warning on forked
+  ones; an opt-in `‹feature ·N ops›` inlay hint at each definition.
+- **Plan CodeLens and status bar** — lines that match or drift from an active `sgt plan` session.
+- **Revert preview** — a read-only diff of what reverting a feature would change, via `sgt revert
+  --emit`, before you commit to it.
+- **Git bridge** — palette commands and an always-visible status-bar oracle chip for
+  `switch`/`save`/`undo`/`sync`/`push`/`land`, so `git checkout`/`stash`/`reset`/`pull`/`push`
+  never have to run directly against a `.sgt`-tracked repo.
+
+## Using it
+
+In short: code as usual, and glance at the `semi-git` icon in the activity bar whenever you want
+to see what's going on. Colored stripes in the gutter show which feature owns each line. Open
+**semi-git: Open Composition Workbench** for the full picture (feature tree + timeline +
+inspector), drag its playhead to see the code at any past point, and use the six palette commands
+(Switch/Save/Undo/Sync/Push/Land) instead of typing git commands directly. A plain,
+step-by-step walkthrough of a real session — first open, everyday use, resolving a conflict, and
+so on — is in `docs/guide/vscode-extension.md` in the main repo.
 
 ## Requirements
 
 - The [`sgt`](../../README.md) CLI on your `PATH` (or set `sgt.path`).
-- A workspace initialized with `sgt init` (the extension activates when it finds `.sgt/graph.json`).
+- A workspace initialized with `sgt init`. A workspace with no `.sgt` store yet still activates the
+  extension — the Features view shows an **Initialize semi-git** welcome action instead of an
+  error.
 
 ## Settings
 
 | Setting | Default | Description |
 | --- | --- | --- |
 | `sgt.path` | `sgt` | Path to the `sgt` executable. |
-| `sgt.blame.enabled` | `true` | Current-line semantic blame annotation. |
-| `sgt.heatmap.enabled` | `false` | Whole-file per-feature gutter + ruler heatmap. |
-| `sgt.codeLens.enabled` | `true` | CodeLens naming the feature above each block. |
+| `sgt.blame.enabled` | `true` | Tint each line by the feature that owns it. |
+| `sgt.plan.enabled` | `true` | Show a CodeLens on lines that match or drift from the active plan session. |
+| `sgt.inlayHints.enabled` | `false` | Show a `‹feature-label ·N ops›` inlay hint at each symbol's definition line. |
+| `sgt.diagnostics.drift` | `true` | Show a Hint diagnostic (with a "Save to clear" quick-fix) on drifted spans. |
+| `sgt.diagnostics.forks` | `true` | Show a Warning diagnostic on symbols with an open fork. |
+
+See `docs/guide/vscode-extension.md` in the main repo for the full surface-by-surface reference.
 
 ## Develop
 

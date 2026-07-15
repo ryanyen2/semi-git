@@ -11,7 +11,7 @@ from ._common import _emit_json, _fail
 def register(subs, parent) -> None:
     for verb, fn in (
         ("log", _cmd_log), ("state", _cmd_state), ("status", _cmd_status),
-        ("map", _cmd_map), ("history", _cmd_history),
+        ("map", _cmd_map), ("history", _cmd_history), ("compose", _cmd_compose),
     ):
         subs.add_parser(verb, parents=[parent]).set_defaults(func=fn)
     pf = subs.add_parser("fsck", parents=[parent])
@@ -29,6 +29,11 @@ def register(subs, parent) -> None:
     p.add_argument("--to")
     p.add_argument("rest", nargs="*")
     p.set_defaults(func=_cmd_preview)
+    p = subs.add_parser("fold", parents=[parent])
+    p.add_argument("--at", required=True,
+                    help="a commit-index (int), an explicit op-id set (op:<id>,<id>,...), "
+                         "or a ref name")
+    p.set_defaults(func=_cmd_fold)
 
 
 def _cmd_log(args) -> int:
@@ -49,6 +54,14 @@ def _cmd_map(args) -> int:
 
 def _cmd_history(args) -> int:
     return _history(".", args.as_json)
+
+
+def _cmd_compose(args) -> int:
+    return _compose(".", args.as_json)
+
+
+def _cmd_fold(args) -> int:
+    return _fold(".", args.at, args.as_json)
 
 
 def _cmd_fsck(args) -> int:
@@ -300,6 +313,67 @@ def _history(repo: str, as_json: bool = False) -> int:
     print(f"{len(view['commits'])} commit(s), {len(view['ops'])} op(s) placed on the axis:")
     for c in view["commits"]:
         print(f"  [{c['index']}] {c['sha'][:12]}  {c['subject']}")
+    return 0
+
+
+def _compose(repo: str, as_json: bool = False) -> int:
+    """`sgt compose [--json]`: one aggregate read (`api.compose_view`) bundling map/history/status/
+    forks/plan/drift/sessions/trust + the oracle verdict + open proposals -- the composition
+    workbench's single-call refresh, replacing ~9 separate `sgt <verb> --json` invocations."""
+    from sgt.api import compose_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so the bundle reflects current reality (R9)
+    view = compose_view(repo)
+    if as_json:
+        return _emit_json(view)
+    status, oracle = view["status"], view["oracle_verdict"]
+    print(f"{status['files']} file(s), {status['symbols']} symbol(s), {status['features']} feature(s)")
+    print(f"  oracle: {status['oracle']['status']}")
+    if view["forks"]["open"]:
+        print(f"  ⚠ {view['forks']['open']} open fork(s)")
+    if status["drift"]["any"]:
+        print(f"  ⚠ drift: {', '.join(status['drift']['paths'])}")
+    if view["sessions"]["sessions"]:
+        print(f"  {len(view['sessions']['sessions'])} active session(s)")
+    if view["proposals"]:
+        print(f"  {len(view['proposals'])} open proposal(s)")
+    return 0
+
+
+def _parse_at(spec: str) -> dict:
+    """Parse `sgt fold --at <spec>` into one of `fold_view`'s three keyword-only frontier args: an
+    all-digit spec is a commit-index position on `history_view`'s axis; an `op:<id>,<id>,...` spec
+    is an explicit op-id set; anything else is a ref name."""
+    if spec.isdigit():
+        return {"at_commit_index": int(spec)}
+    if spec.startswith("op:"):
+        return {"op_ids": spec[3:].split(",")}
+    return {"ref": spec}
+
+
+def _fold(repo: str, at: str, as_json: bool = False) -> int:
+    """`sgt fold --at <spec> [--json]`: a side-effect-free fold of an arbitrary frontier
+    (`api.fold_view`) -- the composition workbench's draggable-playhead primitive. Never checks
+    anything out."""
+    from sgt.api import fold_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so the fold reflects current reality (R9)
+    view = fold_view(repo, **_parse_at(at))
+    if as_json:
+        return _emit_json(view)
+    if view.get("forked"):
+        print(f"✗ fold --at {at}: {view['message']}")
+        return 1
+    if "error" in view:
+        return _fail(view["error"])
+    from sgt.core.oracle import overall_status
+
+    print(f"code(I) at {at}: {view['op_count']} op(s), {len(view['files'])} file(s)")
+    for path in sorted(view["files"]):
+        print(f"  {path}")
+    print(f"  oracle verdict: {overall_status(view['oracle_verdict'])}")
     return 0
 
 
