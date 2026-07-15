@@ -51,6 +51,9 @@ sgt restore app.py::validate_email         # add it back, along with anything it
 After the revert, `validate_email` is gone from `app.py` and every other symbol is byte for byte
 the same. `sgt undo` inverts your last change if you want to step back.
 
+Don't know the exact name? `sgt revert "the email validation logic"` asks an LLM to propose
+candidates and previews each before applying — see [`workflows.md`](workflows.md#2-remove-one-thing-from-a-big-tangled-edit).
+
 ## Where things live
 
 | Path | What it holds |
