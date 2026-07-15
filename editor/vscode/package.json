@@ -13,7 +13,10 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:**/.sgt/local/ideal.json"
+    "workspaceContains:**/.sgt/local/ideal.json",
+    "onView:sgtFeatures",
+    "onCommand:sgt.init",
+    "onCommand:sgt.openWorkbench"
   ],
   "contributes": {
     "configuration": {
@@ -33,17 +36,114 @@
           "type": "boolean",
           "default": true,
           "description": "Show a CodeLens above lines matched or drifted from the active plan session."
+        },
+        "sgt.inlayHints.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a ‹feature-label ·N ops› inlay hint at each symbol's definition line."
+        },
+        "sgt.diagnostics.drift": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a Hint diagnostic (with a 'Save to clear' quick-fix) on drifted spans."
+        },
+        "sgt.diagnostics.forks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a Warning diagnostic on symbols with an open fork."
         }
       }
     },
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "semi-git", "title": "semi-git", "icon": "media/sgt-icon.svg" }
+      ]
+    },
+    "views": {
+      "semi-git": [
+        { "id": "sgtFeatures", "name": "Features", "icon": "media/sgt-icon.svg" },
+        { "id": "sgtForks", "name": "Forks", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
+        { "id": "sgtChanges", "name": "Changes", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
+        { "id": "sgtCompositions", "name": "Compositions", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "sgtFeatures",
+        "contents": "No `.sgt` store found in this workspace.\n[Initialize semi-git](command:sgt.init)\nReads your existing git history into the op store under `.sgt/` — your git history and working tree are left untouched.",
+        "when": "!sgt.hasRoot"
+      }
+    ],
     "commands": [
       { "command": "sgt.refresh", "title": "Refresh", "category": "semi-git", "icon": "$(refresh)" },
       { "command": "sgt.toggleBlame", "title": "Toggle Feature Blame", "category": "semi-git" },
-      { "command": "sgt.showFeatureMap", "title": "Show Feature Map", "category": "semi-git", "icon": "$(type-hierarchy)" },
+      { "command": "sgt.openWorkbench", "title": "Open Composition Workbench", "category": "semi-git", "icon": "$(type-hierarchy)" },
       { "command": "sgt.previewRevert", "title": "Preview Revert Feature (plug out)", "category": "semi-git", "icon": "$(diff)" },
       { "command": "sgt.revert", "title": "Revert Feature (plug out)", "category": "semi-git" },
       { "command": "sgt.showPlanQuickPick", "title": "Show Plan Steps", "category": "semi-git" },
-      { "command": "sgt.showPlanDiff", "title": "Show Plan Step Diff", "category": "semi-git" }
+      { "command": "sgt.showPlanDiff", "title": "Show Plan Step Diff", "category": "semi-git" },
+      { "command": "sgt.init", "title": "Initialize (sgt init)", "category": "semi-git" },
+      { "command": "sgt.resolveFork", "title": "Resolve Fork", "category": "semi-git" },
+      { "command": "sgt.reviewAck", "title": "Acknowledge (dequeue from trust queue)", "category": "semi-git" },
+      { "command": "sgt.proposeLand", "title": "Land Proposal", "category": "semi-git" },
+      { "command": "sgt.proposePublish", "title": "Publish Proposal (GitHub PR)", "category": "semi-git" },
+      { "command": "sgt.viewProposal", "title": "View Proposal", "category": "semi-git" },
+      { "command": "sgt.jumpToLocation", "title": "Jump to Location", "category": "semi-git" },
+      { "command": "sgt.switch", "title": "Switch Branch", "category": "semi-git" },
+      { "command": "sgt.save", "title": "Save", "category": "semi-git" },
+      { "command": "sgt.undo", "title": "Undo Last Ideal Edit", "category": "semi-git" },
+      { "command": "sgt.sync", "title": "Sync", "category": "semi-git", "icon": "$(sync)" },
+      { "command": "sgt.push", "title": "Push", "category": "semi-git", "icon": "$(repo-push)" },
+      { "command": "sgt.land", "title": "Land Branch", "category": "semi-git" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "sgt.refresh", "when": "view == sgtFeatures", "group": "navigation" },
+        { "command": "sgt.refresh", "when": "view == sgtForks", "group": "navigation" },
+        { "command": "sgt.refresh", "when": "view == sgtChanges", "group": "navigation" },
+        { "command": "sgt.refresh", "when": "view == sgtCompositions", "group": "navigation" },
+        { "command": "sgt.sync", "when": "view == sgtCompositions", "group": "navigation" },
+        { "command": "sgt.push", "when": "view == sgtCompositions", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "sgt.previewRevert", "when": "view == sgtFeatures && viewItem == sgtFeature" },
+        { "command": "sgt.revert", "when": "view == sgtFeatures && viewItem == sgtFeature" },
+        { "command": "sgt.resolveFork", "when": "view == sgtForks && viewItem == sgtFork" },
+        { "command": "sgt.reviewAck", "when": "view == sgtChanges && viewItem == sgtTrustGroup" },
+        { "command": "sgt.reviewAck", "when": "view == sgtChanges && viewItem == sgtTrustOp" },
+        { "command": "sgt.proposeLand", "when": "view == sgtCompositions && viewItem == sgtProposal" },
+        { "command": "sgt.proposePublish", "when": "view == sgtCompositions && viewItem == sgtProposal" }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "sgt.gettingStarted",
+        "title": "Get started with semi-git",
+        "description": "Set up sgt and see your codebase clustered by feature.",
+        "steps": [
+          {
+            "id": "install",
+            "title": "Install the sgt CLI",
+            "description": "This extension shells out to the `sgt` CLI on your PATH.",
+            "media": { "markdown": "walkthroughs/getting-started/install.md" },
+            "completionEvents": ["onContext:sgt.hasRoot"]
+          },
+          {
+            "id": "init",
+            "title": "Initialize this workspace",
+            "description": "Read your git history into the op store under `.sgt/`.",
+            "media": { "markdown": "walkthroughs/getting-started/init.md" },
+            "completionEvents": ["onCommand:sgt.init"]
+          },
+          {
+            "id": "explore",
+            "title": "Explore your feature tree",
+            "description": "See your codebase clustered into features.",
+            "media": { "markdown": "walkthroughs/getting-started/explore.md" },
+            "completionEvents": ["onView:sgtFeatures"]
+          }
+        ]
+      }
     ]
   },
   "scripts": {

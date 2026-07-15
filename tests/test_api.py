@@ -8,8 +8,8 @@ semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinn
 import json
 
 from sgt.api import (
-    drift_view, history_view, ideal_diff_view, map_view, oplog_view, plan_view, state_view,
-    trust_view,
+    compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, oplog_view,
+    plan_view, state_view, trust_view,
 )
 from sgt.core.lens import get
 from sgt.core.op import make_op
@@ -147,6 +147,93 @@ def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
     v = history_view(repo)
     assert v["ops"]
     assert any(op["feature_id"] is not None for op in v["ops"])
+
+
+def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
+    """`compose_view` is purely additive glue: each key is exactly what calling the underlying
+    view function directly would return, plus the current ideal's oracle verdict and an
+    open-proposal list -- a workbench refresh in one call instead of ~9 shell-outs."""
+    from sgt.api import drift_view as _drift, forks_view, sessions_view, status_view
+    from sgt.core.lens import current_ideal
+    from sgt.core.oracle import verdict_for
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    v = compose_view(repo)
+
+    assert set(v) == {
+        "map", "history", "status", "forks", "plan", "drift", "sessions", "trust",
+        "oracle_verdict", "proposals",
+    }
+    assert v["map"] == map_view(repo)
+    assert v["history"] == history_view(repo)
+    assert v["status"] == status_view(repo)
+    assert v["forks"] == forks_view(repo)
+    assert v["plan"] == plan_view(repo)
+    assert v["drift"] == _drift(repo)
+    assert v["sessions"] == sessions_view(repo)
+    assert v["trust"] == trust_view(repo)
+    assert v["oracle_verdict"] == verdict_for(repo, current_ideal(repo))
+    assert v["proposals"] == []  # nothing proposed in this fixture
+
+
+def test_fold_view_at_commit_index_matches_that_frontiers_code(tmp_path):
+    """`--at <commit-index>` folds every op at or before that position on `history_view`'s axis --
+    an earlier index yields fewer files/ops than a later one, and the returned bytes match a
+    direct `code()` fold of the same op-set."""
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.store import Store
+
+    repo = _mined(tmp_path, "linear_history")
+    hist = history_view(repo)
+    last_index = hist["commits"][-1]["index"]
+
+    v = fold_view(repo, at_commit_index=last_index)
+    assert "error" not in v and not v.get("forked")
+
+    ops = Store(repo).all_ops()
+    frontier_ids = frozenset(o["id"] for o in hist["ops"] if o["commit_index"] <= last_index)
+    ideal = Ideal.from_ops(frontier_ids, ops)
+    expected = {p: b.decode("utf-8", "replace") for p, b in code(ideal, ops).items()}
+    assert v["files"] == expected
+    assert v["op_count"] == len(frontier_ids)
+
+    earlier = fold_view(repo, at_commit_index=0)
+    assert earlier["op_count"] < v["op_count"]
+
+
+def test_fold_view_ref_matches_ideal_for_ref(tmp_path):
+    """`--at <ref>` folds a ref's own committed ideal (`lens.ideal_for_ref`), matching `state`'s
+    own notion of a ref -- HEAD here, since the fixture never branches."""
+    from sgt.core.fold import code
+    from sgt.core.lens import ideal_for_ref
+    from sgt.core.store import Store
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    v = fold_view(repo, ref="HEAD")
+    ops = Store(repo).all_ops()
+    expected = {p: b.decode("utf-8", "replace") for p, b in code(ideal_for_ref(repo, "HEAD"), ops).items()}
+    assert v["files"] == expected
+
+
+def test_fold_view_requires_exactly_one_frontier_kwarg(tmp_path):
+    repo = _mined(tmp_path, "mixed_coverage")
+    assert "error" in fold_view(repo)
+    assert "error" in fold_view(repo, ref="HEAD", at_commit_index=0)
+
+
+def test_fold_view_rejects_an_ungrounded_op_id_set_without_raising(tmp_path):
+    """An explicit `op_ids` set that isn't downward-closed (here: a single non-root op missing
+    its own chain prerequisites) is refused as `{"forked": True, "message": ...}` -- the same
+    `Ideal.from_ops` refusal `sgt.core.verbs._validated` turns into a preview outcome elsewhere,
+    never a raised `ValueError` through the API."""
+    repo = _mined(tmp_path, "linear_history")
+    hist = history_view(repo)
+    non_root = next(o["id"] for o in hist["ops"] if o["commit_index"] > 0)
+
+    v = fold_view(repo, op_ids=[non_root])
+    assert v.get("forked") is True
+    assert "message" in v
 
 
 def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):

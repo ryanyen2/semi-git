@@ -3,8 +3,20 @@
 // refresh after a checkpoint/feature-verb op updates every surface at once.
 
 import * as vscode from "vscode";
-import { Sgt } from "./sgt";
-import { BlameView, DriftView, HistoryView, MapNode, MapView, PlanView, StatusView } from "./types";
+import { FoldFrontier, Sgt } from "./sgt";
+import {
+  BlameView,
+  ComposeView,
+  DriftView,
+  ForksView,
+  HistoryView,
+  MapNode,
+  MapView,
+  PlanView,
+  ProposalView,
+  SessionsView,
+  StatusView,
+} from "./types";
 
 export class Store {
   readonly sgt: Sgt;
@@ -15,6 +27,10 @@ export class Store {
   private blameCache = new Map<string, BlameView>();
   private planCache: PlanView | undefined;
   private driftCache: DriftView | undefined;
+  private composeCache: ComposeView | undefined;
+  private forksCache: ForksView | undefined;
+  private sessionsCache: SessionsView | undefined;
+  private proposalCache = new Map<string, ProposalView>();
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
@@ -74,6 +90,44 @@ export class Store {
     return this.driftCache;
   }
 
+  // The workbench's primary poll -- one aggregate refresh instead of ~9 separate shell-outs.
+  async composeView(force = false): Promise<ComposeView> {
+    if (!this.composeCache || force) {
+      this.composeCache = await this.sgt.compose();
+    }
+    return this.composeCache;
+  }
+
+  async forksView(force = false): Promise<ForksView> {
+    if (!this.forksCache || force) {
+      this.forksCache = await this.sgt.forksView();
+    }
+    return this.forksCache;
+  }
+
+  async sessionsView(force = false): Promise<SessionsView> {
+    if (!this.sessionsCache || force) {
+      this.sessionsCache = await this.sgt.sessionsView();
+    }
+    return this.sessionsCache;
+  }
+
+  async proposalView(id: string, force = false): Promise<ProposalView> {
+    const cached = this.proposalCache.get(id);
+    if (cached && !force) {
+      return cached;
+    }
+    const view = await this.sgt.proposalView(id);
+    this.proposalCache.set(id, view);
+    return view;
+  }
+
+  // Never cached: each call is a live playhead position, and the host debounces drag events
+  // (250ms) before issuing one -- caching by frontier would just grow unboundedly.
+  foldAt(frontier: FoldFrontier) {
+    return this.sgt.foldAt(frontier);
+  }
+
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
     this.mapCache = undefined;
@@ -82,6 +136,10 @@ export class Store {
     this.blameCache.clear();
     this.planCache = undefined;
     this.driftCache = undefined;
+    this.composeCache = undefined;
+    this.forksCache = undefined;
+    this.sessionsCache = undefined;
+    this.proposalCache.clear();
     this._onDidChange.fire();
   }
 

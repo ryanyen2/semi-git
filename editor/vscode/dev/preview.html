@@ -1,118 +1,73 @@
 <!DOCTYPE html>
-<!-- Local dev preview of the Feature Graph webview, outside VS Code. Mocks acquireVsCodeApi,
-     supplies VS Code "Dark Modern" theme tokens, and feeds sample data. Open in a browser or
-     screenshot headless. Not shipped (under dev/, .vscodeignore'd). -->
+<!-- Local dev preview of the Composition Workbench webview, outside VS Code. Mocks
+     acquireVsCodeApi, supplies VS Code "Dark Modern" theme tokens (unused today -- workbench.css
+     is self-themed -- kept for when it adopts vscode-* tokens), and feeds a sample `compose_view`
+     bundle shaped like workbench.ts's `pushState` message. Open in a browser or screenshot
+     headless (per the visual-surfaces rule: "the user can't see a webview you can't
+     screenshot"). Not shipped (under dev/, .vscodeignore'd). -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<link href="../media/decision.css" rel="stylesheet">
-<style>
-  :root {
-    --vscode-font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
-    --vscode-font-size: 13px;
-    --vscode-editor-font-family: "SF Mono", Menlo, monospace;
-    --vscode-foreground: #cccccc;
-    --vscode-editor-background: #1f1f1f;
-    --vscode-editorWidget-background: #252526;
-    --vscode-editor-foreground: #cccccc;
-    --vscode-panel-border: #2b2b2b;
-    --vscode-input-foreground: #cccccc;
-    --vscode-input-background: #313131;
-    --vscode-input-border: #3c3c3c;
-    --vscode-focusBorder: #0078d4;
-    --vscode-list-hoverBackground: #2a2d2e;
-    --vscode-list-activeSelectionBackground: #04395e;
-    --vscode-list-activeSelectionForeground: #ffffff;
-    --vscode-list-focusOutline: #0078d4;
-    --vscode-list-warningForeground: #cca700;
-    --vscode-toolbar-hoverBackground: #2a2d2e;
-    --vscode-errorForeground: #f14c4c;
-    --vscode-descriptionForeground: #9d9d9d;
-    --vscode-textLink-foreground: #4daafc;
-    --vscode-button-secondaryBackground: #313131;
-    --vscode-button-secondaryForeground: #cccccc;
-    --vscode-inputValidation-warningBackground: #5a4d00;
-    --vscode-inputValidation-warningBorder: #cca700;
-    --vscode-charts-green: #89d185;
-    --vscode-charts-yellow: #cca700;
-    --vscode-charts-blue: #75beff;
-    --vscode-progressBar-background: #cf6edf;
-  }
-</style>
+<link href="../media/workbench.css" rel="stylesheet">
 </head>
-<body class="vscode-dark">
+<body>
 <div id="app">
-  <div id="header">
-    <span class="brand">◆ Feature Graph</span>
-    <span class="crumb-sep">›</span>
-    <span id="count" class="crumb"></span>
-    <span id="drift" class="chip"></span>
-    <span id="presence" class="presence" hidden></span>
-    <span class="spacer"></span>
-    <button id="refresh" class="icon-btn" title="Refresh">↻</button>
+  <div id="titlebar">
+    <button id="compositionBtn" class="composition-btn">HEAD</button>
+    <span id="oracleChip" class="oracle-chip" data-state="pending">oracle: pending</span>
   </div>
-  <div id="toolbar">
-    <span class="search-icon">⌕</span>
-    <input id="filter" type="text" placeholder="Search features…" aria-label="Search features" />
-    <span id="legend" aria-hidden="true">
-      <span><i class="g">◆</i>active</span>
-      <span><i class="g">◇</i>planned</span>
-      <span><i class="g dim">◆</i>suspended</span>
-      <span><i class="g">⚠</i>conflict</span>
-    </span>
-  </div>
-  <canvas id="minimap" aria-hidden="true"></canvas>
   <div id="main">
-    <div id="left">
-      <div id="colhead"><span class="c-refs">KIND</span><span class="c-graph">GRAPH</span><span class="c-msg">FEATURE</span></div>
-      <div id="scroll" tabindex="0">
-        <div id="ghosts"></div>
-        <div id="rows"><svg id="lanes" aria-hidden="true"></svg><div id="rowlist"></div></div>
-        <div id="empty" hidden>No features yet — run <code>sgt plan "…"</code>.</div>
-      </div>
-    </div>
-    <div id="divider" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize"></div>
-    <aside id="detail">
-      <div id="pane-tabs" role="tablist">
-        <button class="tab" data-tab="activity" role="tab">Activity</button>
-        <button class="tab" data-tab="inspect" role="tab">Inspect</button>
-      </div>
-      <div id="pane-body"></div>
-    </aside>
+    <div id="rail"></div>
+    <div id="inspector"></div>
   </div>
 </div>
-<div id="ctxmenu" hidden role="menu"></div>
 <script>
-  let _st = { detailW: 360 };
-  window.acquireVsCodeApi = () => ({ postMessage() {}, getState: () => _st, setState: (s) => { _st = s; } });
+  let _st = null;
+  window.acquireVsCodeApi = () => ({
+    postMessage(msg) { console.log("[webview -> host]", msg); },
+    getState: () => _st,
+    setState: (s) => { _st = s; },
+  });
 </script>
-<script src="../media/decision.js"></script>
+<script src="../media/workbench.js"></script>
 <script>
-  const E = (op) => ({ op, target: "t", file: "cli.py" });
-  // The user's knowledge-graph CLI plan (a wide-shallow DAG) — to compare layout compactness.
-  const cap = (id, intent, depends_on, dependents) =>
-    ({ id, kind: "capability", status: "planned", intent, depends_on, dependents, effects: [E("add_def")] });
-  const graph = {
-    count: 7, edges: [],
+  const node = (id, parent, children, extra) =>
+    Object.assign({ id, parent, children, label: id, size: 1, op_count: 1, dir: `src/${id}/`, why: `why ${id}`, split_reason: null }, extra);
+  const map = {
+    roots: ["subsys"],
     nodes: [
-      cap("integrate", "Integrate knowledge graph retrieval into the main flow", ["develop", "create"], []),
-      cap("main", "Implement the main integrate command entry point", ["parse", "display"], []),
-      cap("create", "Create functions to populate the knowledge graph", ["data"], ["integrate"]),
-      cap("develop", "Develop functions to query the `knowledge` graph for information retrieval", ["data"], ["integrate"]),
-      cap("parse", "Implement parse command line arguments", [], ["main"]),
-      cap("display", "Implement display help message", [], ["main"]),
-      cap("data", "Implement data structure to represent the graph", [], ["develop", "create"]),
+      node("subsys", null, ["auth", "billing"], { kind: "subsystem", label: "Core" }),
+      node("auth", "subsys", [], { kind: "feature" }),
+      node("billing", "subsys", [], { kind: "feature" }),
+    ],
+    edges: [{ a: "auth", b: "billing", weight: 2.0 }],
+    identity_events: [], feature_count: 2,
+  };
+  const history = {
+    commits: [{ sha: "a", subject: "c0", index: 0 }, { sha: "b", subject: "c1", index: 1 }, { sha: "c", subject: "c2", index: 2 }],
+    ops: [
+      { id: "op1", kind: "add", feature_id: "auth", commit_index: 0 },
+      { id: "op2", kind: "rework", feature_id: "billing", commit_index: 1 },
+      { id: "op3", kind: "extend", feature_id: "auth", commit_index: 2 },
     ],
   };
-  const status = { nodes: 7, files: [{ path: "cli.py", lines: 90 }], effects: 7, drift: { any: true, modified: ["cli.py"], added: ["retrieval.py"], deleted: [], summary: "2 files drifting" } };
-  // editing = an existing node the agent is touching; pending = brand-new work with no node yet.
-  window.dispatchEvent(new MessageEvent("message", { data: { type: "graph", graph, status, editing: ["develop"], pending: [{ label: "retrieval.py", file: "retrieval.py" }] } }));
-  // sample live Claude Code activity (normally tailed from the session transcript)
-  window.dispatchEvent(new MessageEvent("message", { data: { type: "activity", events: [
-    { kind: "thought", text: "Need a reranker before wiring retrieval into the main flow…", seq: 1 },
-    { kind: "tool", name: "Edit", target: "retrieval.py", seq: 2 },
-    { kind: "tool", name: "Bash", target: "pytest", seq: 3 },
-  ] } }));
+  const compose = {
+    map, history,
+    status: {
+      files: 4, symbols: 12, features: 2, coverage_fraction: 0.9,
+      oracle: { configured: true, status: "pass" },
+      drift: { any: false, paths: [] }, unmanaged: [], backstop_kept: [],
+      forks: { open: 0, records: [] },
+    },
+    forks: { open: 0, forks: [] },
+    plan: { sessions: [], checkpoint: { matches: [], drift_op_ids: [] } },
+    drift: { entries: [] },
+    sessions: { sessions: [{ name: "sess-1", branch: "feat/auth", target_branch: "main", scratch: "/tmp/x", new_op_count: 2, owner_pid: 123, alive: true }], overlaps: [] },
+    trust: { groups: [], total_ops: 0 },
+    oracle_verdict: null,
+    proposals: [{ id: "p1", title: "Ship auth", base_ref: "main", created_ts: 0, delta_op_count: 2, feature_delta: ["auth"] }],
+  };
+  window.dispatchEvent(new MessageEvent("message", { data: { type: "state", compose } }));
 </script>
 </body>
 </html>

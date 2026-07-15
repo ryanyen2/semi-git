@@ -17,7 +17,7 @@ from __future__ import annotations
 from ._common import _emit_json, _fail, _fail_json
 
 _USAGE = ('usage: sgt propose create [--base REF] [--title "..."] [--description "..."] [--json] | '
-          'sgt propose status <id> [--json] | '
+          'sgt propose status <id> [--checklist] [--json] | '
           'sgt propose land <id> [--subset <feature-id|label> ...] [--json] | '
           'sgt propose render <id> --github [--json] | '
           'sgt propose publish <id> [--remote origin] [--json]')
@@ -33,17 +33,18 @@ def register(subs, parent) -> None:
     p.add_argument("--github", action="store_true")
     p.add_argument("--subset", nargs="*", default=None)
     p.add_argument("--remote", default="origin")
+    p.add_argument("--checklist", action="store_true")
     p.set_defaults(func=_cmd_propose)
 
 
 def _cmd_propose(args) -> int:
     return _propose(".", args.sub, args.id, args.base, args.title, args.description,
-                    args.github, args.subset, args.remote, args.as_json)
+                    args.github, args.subset, args.remote, args.checklist, args.as_json)
 
 
 def _propose(repo: str, sub: str | None, pid: str | None, base: str, title: str | None,
              description: str | None, github: bool, subset: list[str] | None, remote: str,
-             as_json: bool) -> int:
+             checklist: bool, as_json: bool) -> int:
     from sgt.core import propose
 
     if sub not in ("create", "status", "land", "render", "publish"):
@@ -57,7 +58,7 @@ def _propose(repo: str, sub: str | None, pid: str | None, base: str, title: str 
         print(_USAGE)
         return 2
     if sub == "status":
-        return _status(repo, pid, as_json)
+        return _status(repo, pid, checklist, as_json)
     if sub == "render":
         return _render(repo, propose, pid, github, as_json)
     if sub == "publish":
@@ -79,10 +80,10 @@ def _create(repo, propose, base, title, description, as_json) -> int:
     return 0
 
 
-def _status(repo, pid, as_json) -> int:
-    from sgt.api import proposal_view
+def _status(repo, pid, checklist, as_json) -> int:
+    from sgt.api import proposal_review_view, proposal_view
 
-    view = proposal_view(repo, pid)
+    view = proposal_review_view(repo, pid) if checklist else proposal_view(repo, pid)
     if "error" in view:
         return _emit_json(view) if as_json else _fail(view["error"])
     if as_json:

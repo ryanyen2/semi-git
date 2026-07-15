@@ -138,6 +138,39 @@ def test_sync_records_a_fork_and_lands_the_forked_symbol_at_the_common_ancestor(
     assert gb.head() == report.merge_sha and gb.head() != before_head  # branch advanced past the fork
 
 
+def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
+    """`forks_view` adds a cheap `file` field per record; `fork_detail_view` folds each tip on its
+    own downward closure (`order.downset`) so a resolution UI sees both sides' real content -- the
+    forked symbol itself sits at the pre-fork common ancestor in `code(current_ideal)`, never
+    either tip, so this is the only way to see what each side actually wrote."""
+    from sgt.api import fork_detail_view, forks_view
+
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
+    _push(a)
+    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
+    report = sync.sync(b, remote="origin", branch="main")
+    assert len(report.forks) == 1
+    _symbol, tip_a, tip_b = report.forks[0]
+
+    fv = forks_view(b)
+    assert fv["open"] == 1
+    assert fv["forks"][0]["symbol"] == "main.py::foo"
+    assert fv["forks"][0]["file"] == "main.py"
+    assert fv["forks"][0]["tips"] == [tip_a, tip_b]  # untouched, still there alongside `file`
+
+    detail = fork_detail_view(b, "main.py::foo")
+    assert [t["op_id"] for t in detail["tips"]] == [tip_a, tip_b]
+    contents = {t["op_id"]: t["files"]["main.py"] for t in detail["tips"]}
+    assert "return 999" in contents[tip_a]
+    assert "return 42" in contents[tip_b]
+    assert detail["remedy"] == fv["forks"][0]["remedy"]
+
+    assert fork_detail_view(b, "main.py::no_such_symbol") == {
+        "error": "no open fork for 'main.py::no_such_symbol'", "symbol": "main.py::no_such_symbol",
+    }
+
+
 def test_sync_dedups_an_op_independently_mined_on_both_clones(tmp_path):
     """The identification law at sync time: the same symbol added identically on both clones
     mines to one op id on each side; the union must not double it, and must keep both sides'
