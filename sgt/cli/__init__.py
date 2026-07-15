@@ -43,7 +43,7 @@ _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
     "merge-op", "split-op", "transplant", "identity", "fulfill", "land", "unstage",
     "map", "blame", "status", "merge", "split", "rename", "move",
-    "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview",
+    "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview", "compose", "fold",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
     "review-queue",
 }
@@ -151,6 +151,10 @@ def _help() -> int:
         "  sgt revert <feature>        revert an entire feature's op-set (grouped ∪ upset X)\n"
         "  sgt history [--json]        mined commits in order + every op's kind/feature/commit-index\n"
         "  sgt preview <verb> <args>   side-effect-free preview of merge/split/rename/move/revert\n"
+        "  sgt compose [--json]        one aggregate read: map/history/status/forks/plan/drift/\n"
+        "                              sessions/trust + the oracle verdict + open proposals\n"
+        "  sgt fold --at <spec> [--json]   side-effect-free code(I) + oracle verdict at an arbitrary\n"
+        "                              frontier (a commit-index, `op:<id>,...`, or a ref); no checkout\n"
         '  sgt plan intake "<text>"    decompose a plan into predicted hollow ops (off-chain)\n'
         "  sgt plan abandon <session>  drop a session's pending hollows and its record\n"
         "  sgt plan status [--json]    active sessions and their steps' match status\n"
@@ -160,7 +164,8 @@ def _help() -> int:
         "  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile\n"
         "                              pins/declared-edges/tree, surface any chain fork\n"
         "  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n"
-        "  sgt forks [--json]          list open same-symbol forks + their `sgt merge-op` remedies\n"
+        "  sgt forks [<symbol>] [--json]   list open same-symbol forks + their `sgt merge-op`\n"
+        "                              remedies; given a symbol, show that fork's two tips' files\n"
         '  sgt propose create [--base REF] [--title "..."]   a base+Δ review object over REF (default main)\n'
         "  sgt propose status <id>     staleness by re-union: current / clean-reunion / fork\n"
         "  sgt propose land <id> [--subset <feature>...]   advance the base by CAS, all Δ or named features\n"

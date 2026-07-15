@@ -253,6 +253,60 @@ def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys)
     assert all(op["commit_index"] in (0, 1) for op in view["ops"])
 
 
+def test_compose_json_matches_the_api_view_byte_for_byte(tmp_path, capsys):
+    """R21: `sgt compose --json` is byte-identical to `sgt.api.compose_view` -- no CLI-side
+    reshaping of the workbench's single-call refresh."""
+    from sgt.api import compose_view
+
+    _seed(tmp_path, n=2)
+    capsys.readouterr()
+    assert _in(tmp_path, ["compose", "--json"]) == 0
+    out = capsys.readouterr().out
+    assert out.rstrip("\n") == json.dumps(compose_view(str(tmp_path)), indent=2)
+
+
+def test_compose_text_summarizes_status_and_oracle(tmp_path, capsys):
+    _seed(tmp_path, n=1)
+    capsys.readouterr()
+    assert _in(tmp_path, ["compose"]) == 0
+    out = capsys.readouterr().out
+    assert "file(s)" in out and "symbol(s)" in out and "feature(s)" in out
+    assert "oracle: unconfigured" in out
+
+
+def test_fold_at_commit_index_returns_that_frontiers_files(tmp_path, capsys):
+    _seed(tmp_path, n=2)  # a.py::foo v1 (index 0), then v2 (index 1)
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["fold", "--at", "0", "--json"]) == 0
+    early = json.loads(capsys.readouterr().out)
+    assert early["files"]["a.py"] == "def foo():\n    return 1\n"
+
+    assert _in(tmp_path, ["fold", "--at", "1", "--json"]) == 0
+    later = json.loads(capsys.readouterr().out)
+    assert later["files"]["a.py"] == "def foo():\n    return 2\n"
+    assert later["op_count"] > early["op_count"]
+
+
+def test_fold_at_ref_folds_head(tmp_path, capsys):
+    _seed(tmp_path, n=1)
+    capsys.readouterr()
+    assert _in(tmp_path, ["fold", "--at", "HEAD"]) == 0
+    out = capsys.readouterr().out
+    assert "a.py" in out and "oracle verdict: pending" in out
+
+
+def test_fold_at_bad_op_id_set_reports_forked_not_a_crash(tmp_path, capsys):
+    _seed(tmp_path, n=2)
+    capsys.readouterr()
+    assert _in(tmp_path, ["history", "--json"]) == 0
+    hist = json.loads(capsys.readouterr().out)
+    non_root = next(o["id"] for o in hist["ops"] if o["commit_index"] > 0)
+
+    assert _in(tmp_path, ["fold", "--at", f"op:{non_root}"]) == 1
+    assert "fold --at" in capsys.readouterr().out
+
+
 def test_preview_split_reports_affected_features_and_writes_nothing(tmp_path, capsys):
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")

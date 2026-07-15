@@ -59,6 +59,15 @@ Shapes (stable; additive changes only):
   plus the U24 ``approvals`` schema and a ``feature_checklist`` naming, per delta feature, which
   *other* delta features it requires — so ``sgt propose land --subset`` (or a future checkbox UI)
   can validate or grey out a choice without recomputing the closure itself.
+* ``compose_view``      — a workbench refresh's whole picture in one call: `map`/`history`/
+  `status`/`forks`/`plan`/`drift`/`sessions`/`trust`, the current ideal's oracle verdict, and the
+  open-proposal list, each delegated to its own view function with no reshaping.
+* ``fold_view``         — a side-effect-free fold of an arbitrary frontier (a ref's ideal, every op
+  at or before a commit-index position, or an explicit op-id set): `code(I)` plus that exact
+  op-set's oracle verdict, without checking anything out. Powers a draggable playhead and fork-tip
+  diffs; reports `forked`/`forks` instead of folding when the candidate isn't fork-free.
+* ``fork_detail_view``  — per-tip folded images for one open fork's symbol, so a resolution UI can
+  diff both tips' full file content without a separate frontier query per tip.
 """
 
 from __future__ import annotations
@@ -273,6 +282,29 @@ def verb_preview_view(
     return _project_verb_preview(repo, plans[verb]())
 
 
+def _affected_rows(repo, removed_ids, added_ids) -> list[dict]:
+    """`affected` rows for a verb preview's removed/added op ids: each touched feature, a
+    direction (`blast` for a feature losing ops, `foundation` for one gaining ops), and how many
+    of its ops are touched. Lets a hover-preview UI render off-screen affected-feature pills/a
+    minimap without re-deriving the DAG itself; `[]` when the tree hasn't been built or nothing
+    touched a feature (e.g. a whole-file pseudo-symbol)."""
+    from collections import Counter
+
+    from sgt.lens.tree import load as load_tree
+
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+
+    def tally(op_ids) -> Counter:
+        return Counter(op_leaf[op_id] for op_id in op_ids if op_id in op_leaf)
+
+    blast, foundation = tally(removed_ids), tally(added_ids)
+    return (
+        [{"feature_id": f, "direction": "blast", "op_count": c} for f, c in sorted(blast.items())]
+        + [{"feature_id": f, "direction": "foundation", "op_count": c} for f, c in sorted(foundation.items())]
+    )
+
+
 def _project_verb_preview(repo, preview) -> dict:
     """Given an already-computed `sgt.core.verbs.VerbPreview`, the per-file before/after bytes
     plus the rest of `verb_preview_view`'s shape. Factored out so a caller that resolves its own
@@ -304,6 +336,7 @@ def _project_verb_preview(repo, preview) -> dict:
         "forked": preview.forked,
         "files": files,
         "message": preview.message,
+        "affected": _affected_rows(repo, preview.removed, preview.added),
     }
 
 
@@ -471,6 +504,8 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
     for the new group (previewed, not committed); move's are the op-losing source leaf(es) plus
     the target; revert's is every feature whose ops sit in the real upset closure being removed --
     the genuine cross-feature blast radius, not a guessed dependency edge."""
+    from collections import Counter
+
     from sgt.lens import tree as tree_mod
     from sgt.lens import verbs as lens_verbs
 
@@ -483,6 +518,7 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
             "survivor_id": preview.survivor_id, "absorbed_id": preview.absorbed_id,
             "op_count": preview.op_count, "member_count": preview.member_count,
             "affected_features": [preview.survivor_id, preview.absorbed_id] if preview.ok else [],
+            "affected": [],  # metadata-only: no op moves, so no blast/foundation direction applies
         }
 
     if verb == "rename":
@@ -493,6 +529,7 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
             "ok": preview.ok, "verb": "rename", "message": preview.message,
             "feature_id": preview.feature_id, "old_label": preview.old_label, "new_label": preview.new_label,
             "affected_features": [preview.feature_id] if preview.ok else [],
+            "affected": [],  # metadata-only
         }
 
     if verb == "split":
@@ -510,6 +547,7 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
             "groups": [list(g) for g in preview.groups] if preview.groups else None,
             "reason": preview.reason,
             "affected_features": affected,
+            "affected": [],  # metadata-only
         }
 
     if verb == "move":
@@ -518,15 +556,26 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
         *op_refs, target_id = args
         preview = lens_verbs.plan_move(repo, list(op_refs), target_id)
         affected = []
+        affected_rows: list[dict] = []
         if preview.ok:
             tree_result = tree_mod.load(repo)
             op_leaf = tree_result["op_leaf"] if tree_result else {}
             sources = {op_leaf[op] for op in preview.op_ids if op in op_leaf} - {preview.target_id}
             affected = sorted(sources | {preview.target_id})
+            blast = Counter(
+                leaf for op in preview.op_ids
+                if (leaf := op_leaf.get(op)) is not None and leaf != preview.target_id
+            )
+            # every moved op lands in the target regardless of source, so it's one foundation row
+            affected_rows = (
+                [{"feature_id": f, "direction": "blast", "op_count": c} for f, c in sorted(blast.items())]
+                + [{"feature_id": preview.target_id, "direction": "foundation", "op_count": len(preview.op_ids)}]
+            )
         return {
             "ok": preview.ok, "verb": "move", "message": preview.message,
             "op_ids": list(preview.op_ids), "target_id": preview.target_id,
             "affected_features": affected,
+            "affected": affected_rows,
         }
 
     if verb == "revert":
@@ -542,6 +591,7 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
             "ok": preview.ok, "verb": "revert", "message": preview.message,
             "target": preview.target, "removed": sorted(preview.removed), "added": sorted(preview.added),
             "affected_features": affected,
+            "affected": _affected_rows(repo, preview.removed, preview.added),
         }
 
     return {"error": f"unknown verb {verb!r}", "verbs": ["merge", "split", "move", "rename", "revert"]}
@@ -810,12 +860,125 @@ def sessions_view(repo) -> dict:
 def forks_view(repo) -> dict:
     """The open same-symbol forks a prior sync recorded in committed `.sgt/forks.json` (plan U20,
     C4) -- for `sgt forks`. Each fork carries its symbol, its two tips, and the `sgt merge-op`
-    remedy that closes it. A pure read of shared state; empty (`{"open": 0, "forks": []}`) when
-    there are none."""
+    remedy that closes it, plus the cheap-to-derive `file` it lives in (`symbol.split("::", 1)[0]`).
+    There's no single "current" line span to add beyond that: both tips are, by construction,
+    excluded from every verb-visible ideal, so a resolution UI that needs each tip's own content
+    calls `fork_detail_view` instead. A pure read of shared state; empty (`{"open": 0, "forks":
+    []}`) when there are none."""
     from sgt import state
 
     records = state.load_json(repo, "forks", default=[])
-    return {"open": len(records), "forks": records}
+    return {
+        "open": len(records),
+        "forks": [{**r, "file": r["symbol"].split("::", 1)[0]} for r in records],
+    }
+
+
+def fork_detail_view(repo, symbol: str) -> dict:
+    """Per-tip folded images for one open same-symbol fork (plan U20, C4) -- `sgt forks <symbol>`.
+    Each tip is folded on its own downward closure (`order.downset`, over the whole op universe --
+    correct here because a fork's two tips are siblings, never each other's predecessor, so a tip's
+    own downset structurally excludes the other tip and anything reachable only through it) via
+    `Ideal.from_ops` + `code`, so a resolution UI can diff both tips' full file content without a
+    separate frontier query per tip. `{"error": ...}` when the symbol has no open fork."""
+    from sgt import state
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.lens import _load_declared
+    from sgt.core.order import downset
+    from sgt.core.store import Store
+
+    records = state.load_json(repo, "forks", default=[])
+    record = next((r for r in records if r["symbol"] == symbol), None)
+    if record is None:
+        return {"error": f"no open fork for {symbol!r}", "symbol": symbol}
+
+    ops = Store(repo).all_ops()
+    declared = _load_declared(repo)
+    tips = []
+    for tip in record["tips"]:
+        ideal = Ideal.from_ops(downset(tip, ops, declared), ops, declared)
+        materialized = code(ideal, ops)
+        tips.append({
+            "op_id": tip,
+            "files": {path: content.decode("utf-8", "replace") for path, content in materialized.items()},
+        })
+    return {"symbol": symbol, "tips": tips, "remedy": record["remedy"]}
+
+
+def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
+    """A side-effect-free fold of an arbitrary frontier -- a ref's ideal, every op at or before a
+    commit-index position on `history_view`'s axis, or an explicit op-id set -- without checking
+    anything out. Powers the composition workbench's draggable playhead and fork-tip diffs. Exactly
+    one of `ref`/`at_commit_index`/`op_ids` must be given. Returns `code(I)` (UTF-8 text, replacing
+    undecodable bytes -- this is a preview, not a byte-exact export) plus that exact op-set's
+    oracle verdict (`verdict_for`). A candidate that isn't a valid ideal (forked, or not downward-
+    closed) is never raised through the API: it's reported as `{"forked": True, "message": ...}`,
+    the same conversion `sgt.core.verbs._validated` already does for verb previews."""
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.lens import _load_declared, ideal_for_ref
+    from sgt.core.oracle import verdict_for
+    from sgt.core.store import Store
+
+    given = [x for x in (ref, at_commit_index, op_ids) if x is not None]
+    if len(given) != 1:
+        return {"error": "fold requires exactly one of ref, at_commit_index, op_ids"}
+
+    store = Store(repo)
+    ops = store.all_ops()
+    declared = _load_declared(repo)
+
+    if ref is not None:
+        ideal = ideal_for_ref(repo, ref, store)
+    else:
+        if at_commit_index is not None:
+            hist = history_view(repo)
+            frontier_ids = frozenset(o["id"] for o in hist["ops"] if o["commit_index"] <= at_commit_index)
+        else:
+            frontier_ids = frozenset(op_ids)
+        try:
+            ideal = Ideal.from_ops(frontier_ids, ops, declared)
+        except ValueError as e:
+            return {"forked": True, "message": str(e)}
+
+    materialized = code(ideal, ops)
+    return {
+        "op_count": len(ideal.op_ids),
+        "files": {path: content.decode("utf-8", "replace") for path, content in materialized.items()},
+        "oracle_verdict": verdict_for(repo, ideal),
+    }
+
+
+def compose_view(repo) -> dict:
+    """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
+    `sessions`/`trust`, the current ideal's oracle verdict, and a lightweight open-proposal list,
+    each delegated to its own view function with no reshaping. Collapses what would otherwise be
+    ~9 separate `sgt <verb> --json` shell-outs (each a fresh process) into one call -- the single
+    biggest responsiveness win for a UI that refreshes on every `.sgt/` change."""
+    from sgt.core import propose
+    from sgt.core.lens import current_ideal
+    from sgt.core.oracle import verdict_for
+
+    proposals = [
+        {
+            "id": p.id, "title": p.title, "base_ref": p.base_ref, "created_ts": p.created_ts,
+            "delta_op_count": len(p.delta_ids), "feature_delta": sorted(p.feature_delta),
+        }
+        for p in propose.all_proposals(repo)
+    ]
+    return {
+        "map": map_view(repo),
+        "history": history_view(repo),
+        "status": status_view(repo),
+        "forks": forks_view(repo),
+        "plan": plan_view(repo),
+        "drift": drift_view(repo),
+        "sessions": sessions_view(repo),
+        "trust": trust_view(repo),
+        "oracle_verdict": verdict_for(repo, current_ideal(repo)),
+        "proposals": proposals,
+    }
 
 
 def proposal_view(repo, proposal_id: str) -> dict:

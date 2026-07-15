@@ -87,6 +87,29 @@ def test_proposal_review_view_reports_error_for_unknown_id(tmp_path):
     assert api.proposal_review_view(a, "nope") == {"error": "no proposal 'nope'", "id": "nope"}
 
 
+def test_cli_propose_status_checklist_flag_emits_proposal_review_view(tmp_path, monkeypatch, capsys):
+    """R21: `sgt propose status <id> --checklist --json` is byte-identical to
+    `proposal_review_view` -- the extension's compositions view needs the feature checklist
+    (op_ids/requires per feature) to drive partial-accept review, and plain `propose status`
+    stays on the lighter `proposal_view` shape for everyone else."""
+    import json
+
+    from sgt.cli import main
+
+    a, p = _two_feature_proposal(tmp_path)
+    expected = api.proposal_review_view(a, p.id)
+
+    monkeypatch.chdir(a)
+    assert main(["propose", "status", p.id, "--checklist", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == expected
+
+    # without --checklist, still the lighter proposal_view (no feature_checklist key)
+    assert main(["propose", "status", p.id, "--json"]) == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert "feature_checklist" not in plain
+    assert plain == api.proposal_view(a, p.id)
+
+
 def test_land_subset_lands_exactly_the_chosen_feature_and_the_remainder_still_applies(tmp_path):
     """S8 / plan U32: `propose.land(..., accept_ids=<one feature's op_ids>)` advances the base with
     only that feature's ops; the other feature's ops never reach the base. The original proposal
@@ -143,7 +166,7 @@ def test_cli_land_subset_refuses_when_a_required_feature_is_left_out(tmp_path, m
         return view
 
     monkeypatch.setattr("sgt.api.proposal_review_view", _fake_view)
-    rc = propose_cli._propose(str(a), "land", p.id, "main", None, None, False, ["F-baz"], "origin", False)
+    rc = propose_cli._propose(str(a), "land", p.id, "main", None, None, False, ["F-baz"], "origin", False, False)
     assert rc == 1
     out = capsys.readouterr().out
     assert "Qux" in out
@@ -154,7 +177,7 @@ def test_cli_publish_refuses_cleanly_when_gh_is_absent(tmp_path, monkeypatch, ca
     from sgt.cli import propose as propose_cli
 
     monkeypatch.setattr("shutil.which", lambda _name: None)
-    rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False)
+    rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False, False)
     assert rc == 1
     assert "gh" in capsys.readouterr().out
 
@@ -185,7 +208,7 @@ def test_cli_publish_edits_an_existing_pr_instead_of_creating_a_second_one(tmp_p
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/gh" if name == "gh" else None)
     monkeypatch.setattr("subprocess.run", _fake_run)
 
-    rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False)
+    rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False, False)
     assert rc == 0
     assert any(c[:3] == ["gh", "pr", "edit"] for c in calls)
     assert not any(c[:3] == ["gh", "pr", "create"] for c in calls)
@@ -200,7 +223,7 @@ def test_cli_publish_pushes_the_pr_branch_and_reports_create_failure_off_github(
     a, p = _two_feature_proposal(tmp_path)
     from sgt.cli import propose as propose_cli
 
-    rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False)
+    rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False, False)
     assert rc == 1  # gh has no GitHub host to create a PR against for a local-only remote
 
     view = api.proposal_view(a, p.id)

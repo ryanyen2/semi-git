@@ -1,9 +1,9 @@
-"""The Feature Map webview's layout contract.
+"""The Composition Workbench webview's layout contract.
 
-`computeLayout` in `editor/vscode/media/map.js` is a pure function (no DOM/color dependency), so
-we slice it out and exercise it under node: DFS row order + collapse, per-feature op lifebars from
-the commit-index axis, and dependency-edge rerouting/top-K thresholding when an endpoint sits
-inside a collapsed subsystem.
+`computeLayout` in `editor/vscode/media/workbench.js` is a pure function (no DOM/color
+dependency), so we slice it out and exercise it under node: DFS row order + collapse, per-feature
+op lifebars from the commit-index axis, and dependency-edge rerouting/top-K thresholding when an
+endpoint sits inside a collapsed subsystem.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import subprocess
 
 import pytest
 
-_JS = pathlib.Path(__file__).resolve().parents[1] / "editor/vscode/media/map.js"
+_JS = pathlib.Path(__file__).resolve().parents[1] / "editor/vscode/media/workbench.js"
 
 
 def _run_layout(map_view: dict, history: dict | None = None, opts: dict | None = None) -> dict:
