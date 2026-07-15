@@ -208,6 +208,54 @@ def test_revert_keep_dependents_drops_target_but_keeps_dependent_symbol_live(tmp
     assert fulfilled_user.images["b.py::user"] == b"def user():\n    return 99"
 
 
+def test_revert_keep_dependents_carries_transitive_dependent_forward_unchanged(tmp_path):
+    """`caller` is two hops from `helper` (it calls `user`, never `helper` itself). U7: it must not
+    be dropped like a plain revert, but it also must not get a hollow -- its own bytes never
+    named the removed symbol, so it's carried forward unchanged (`build_candidate`'s
+    `carry_forward` step) rather than costing the repair loop a backend call it doesn't need."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("add user, depending on helper")
+    original_c_py = b"from b import user\n\ndef caller():\n    return user() + 1\n"
+    (repo / "c.py").write_bytes(original_c_py)
+    gb.commit_all("add caller, depending on user (not helper)")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+    caller_op = next(o for o in ops if "c.py::caller" in o.footprint)
+    assert (helper_op.id, user_op.id) in order.reference_edges(ops)  # sanity: real dependencies
+    assert (user_op.id, caller_op.id) in order.reference_edges(ops)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id)
+    assert draft.ok
+    assert set(draft.meta["removed_ids"]) == {helper_op.id, user_op.id, caller_op.id}
+    assert len(draft.hollow_ids) == 1  # only `user` names the removed symbol -- only it needs a rewrite
+    hollow = Store(repo).get_hollow(draft.hollow_ids[0])
+    assert "b.py::user" in hollow.footprint
+    assert draft.meta["carry_forward"] == ["c.py::caller"]
+
+    (repo / "b.py").write_text("def user():\n    return 99\n", encoding="utf-8")
+    candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    assert {helper_op.id, user_op.id, caller_op.id}.isdisjoint(candidate.op_ids)
+    ops = Store(repo).all_ops()
+    assert is_valid_ideal(ops, candidate.op_ids)
+    carried = next(o for o in ops if "c.py::caller" in o.footprint and o.id != caller_op.id)
+    assert carried.id in candidate.op_ids
+    assert carried.images["c.py::caller"] == caller_op.images["c.py::caller"]  # bytes unchanged
+    assert carried.requires == frozenset()  # cleared, same as a direct-dependent hollow's fulfillment
+
+    sha = rewrite.land(repo, override=("pass", "transitive dependent carried forward", "reviewer"))
+    assert sha
+    after = get(repo)
+    ops = Store(repo).all_ops()
+    assert "a.py::helper" not in after.frontier(ops)
+    assert code(after, ops)["c.py"] == original_c_py
+
+
 def test_revert_keep_dependents_refuses_an_unresolvable_target(tmp_path):
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)

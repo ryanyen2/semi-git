@@ -46,6 +46,11 @@ def register(subs, parent) -> None:
     up = subs.add_parser("unstage", parents=[parent])
     up.set_defaults(func=_cmd_unstage)
 
+    rp = subs.add_parser("repair", parents=[parent])
+    rp.add_argument("--backend", default="api", choices=["api"])
+    rp.add_argument("draft", nargs="?")
+    rp.set_defaults(func=_cmd_repair)
+
 
 def _cmd_merge_op(args) -> int:
     return _merge_op(".", args.tips, args.intent, args.as_json)
@@ -69,6 +74,10 @@ def _cmd_fulfill(args) -> int:
 
 def _cmd_unstage(args) -> int:
     return _unstage(".", args.as_json)
+
+
+def _cmd_repair(args) -> int:
+    return _repair(".", args.draft, args.as_json)
 
 
 def _cmd_land(args) -> int:
@@ -101,6 +110,43 @@ def _print_draft(draft, as_json: bool) -> int:
             print(f"    hollow: {hid[:12]}")
         print(f"    edit the working tree, then: sgt fulfill {draft.draft_id} --from-tree")
     return 0
+
+
+def _print_repair_result(result, as_json: bool) -> int:
+    """Shared printer for the semantic repair loop (plan U5/U6): `revert --keep-dependents
+    --repair` and `sgt repair <draft-id>` both return a `sgt.repair.loop.RepairResult`."""
+    if as_json:
+        return _emit_json({
+            "ok": result.ok, "sha": result.sha, "attempts": result.attempts,
+            "oracle_rounds": result.oracle_rounds, "message": result.message,
+        })
+    icon = "✓" if result.ok else "✗"
+    print(f"{icon} repair" + (f" — {result.message}" if result.message else ""))
+    if result.ok:
+        print(f"    landed {result.sha[:12]} ({result.attempts} attempt(s), "
+              f"{result.oracle_rounds} oracle round(s))")
+    if result.cost_line:
+        print(f"    {result.cost_line}")
+    return 0 if result.ok else 1
+
+
+def _repair(repo: str, draft_id: str | None, as_json: bool) -> int:
+    """`repair <draft-id>` (plan U5/U6): fulfills every hollow in an already-drafted rewrite via
+    the pluggable LLM backend, then lands it through the same oracle-gated path a human
+    `fulfill`/`land` pair would use."""
+    from sgt.core import rewrite
+    from sgt.repair.api_backend import ApiBackend
+    from sgt.repair.loop import repair
+
+    if not draft_id:
+        print("usage: sgt repair <draft-id>")
+        return 2
+    draft = rewrite.resolve_draft(repo, draft_id)
+    if draft is None:
+        print(f"✗ no draft {draft_id!r} -- see merge-op/split-op/transplant/revert --keep-dependents")
+        return 1
+    result = repair(repo, draft, ApiBackend(repo))
+    return _print_repair_result(result, as_json)
 
 
 def _merge_op(repo: str, tips: list[str], intent: str | None, as_json: bool) -> int:
