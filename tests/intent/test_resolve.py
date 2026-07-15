@@ -49,6 +49,43 @@ def test_resolve_intent_returns_none_when_get_client_raises(tmp_path, monkeypatc
     assert resolve_mod.resolve_intent(tmp_path, "the foo logic") is None
 
 
+def test_context_filters_synthetic_anchor_residue_symbols(tmp_path):
+    """`_context` must not surface sgt's `__anchor__`/`__residue__` pseudo-symbols -- they're
+    byte-fidelity internals a user would never name in a plain-language revert."""
+    _fixture(tmp_path)
+    ctx = resolve_mod._context(tmp_path, "revert")
+    assert "a.py::foo" in ctx
+    assert "__anchor__" not in ctx and "__residue__" not in ctx
+
+
+def test_context_is_verb_aware_restore_shows_removed_not_live(tmp_path):
+    """After reverting a symbol, `restore`'s context must list the *removed* op (so the LLM can
+    name it to bring it back) while `revert`'s context must not -- the bug where restore only ever
+    saw the live frontier and could only ever propose no-op candidates."""
+    from sgt.core import verbs
+    from sgt.core.lens import get
+
+    _fixture(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", "utf-8")
+    from sgt.store.gitbind import init_store
+
+    gb, _ = init_store(tmp_path)
+    gb.commit_all("add bar")
+    get(tmp_path)
+
+    preview = verbs.plan_revert(tmp_path, "a.py::bar")
+    assert preview.ok
+    verbs.apply(tmp_path, preview)
+
+    revert_ctx = resolve_mod._context(tmp_path, "revert")
+    restore_ctx = resolve_mod._context(tmp_path, "restore")
+    # bar is now removed: it belongs to restore's vocabulary, not revert's.
+    assert "a.py::bar" in restore_ctx
+    assert "a.py::bar" not in revert_ctx
+    # foo is still live: it stays in revert's vocabulary.
+    assert "a.py::foo" in revert_ctx
+
+
 def test_resolve_intent_returns_candidates_from_a_fake_client(tmp_path, monkeypatch):
     _fixture(tmp_path)
     candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")

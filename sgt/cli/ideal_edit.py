@@ -143,13 +143,25 @@ def _kernel_edit_verb(
     return _emit_verb_result(repo, preview, emit, as_json)
 
 
-def _plan_for(verb: str, repo: str, ref: str):
+def _plan_for(verb: str, repo: str, ref: str, kind: str = ""):
     """The one piece of verb-specific glue `resolve_intent`'s candidates need: re-plan a
     candidate ref through the same pure `plan_*` the deterministic rungs already used, so its
-    preview is truthful (and a hallucinated/no-longer-live ref reports `ok=False`)."""
+    preview is truthful (and a hallucinated/no-longer-live ref reports `ok=False`).
+
+    A `feature`-kind candidate is routed through `plan_revert_feature` -- the same feature-grouped
+    plan the deterministic feature rung uses -- since the prompt invites feature ids and a plain
+    single-op `plan_revert` can't resolve one (it would drop the very target the LLM found).
+    Restore has no feature plan (mirroring `_kernel_edit_verb`'s ladder), so a feature candidate
+    there falls through `plan_restore` and is dropped as unresolvable."""
     from sgt.core import verbs
 
-    return verbs.plan_revert(repo, ref) if verb == "revert" else verbs.plan_restore(repo, ref)
+    if verb == "revert":
+        if kind == "feature":
+            from sgt.lens import verbs as lens_verbs
+
+            return lens_verbs.plan_revert_feature(repo, ref)
+        return verbs.plan_revert(repo, ref)
+    return verbs.plan_restore(repo, ref)
 
 
 def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bool) -> int:
@@ -169,8 +181,28 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
             as_json,
         )
 
-    survivors = [(cand, preview) for cand in resolution.candidates
-                 if (preview := _plan_for(cmd, repo, cand.ref)).ok]
+    if not resolution.candidates:
+        return _fail_json(
+            f"nothing in this codebase's tracked history plausibly matches {target!r}", as_json,
+        )
+
+    survivors = []
+    seen_effects: set[tuple] = set()
+    for cand in resolution.candidates:
+        preview = _plan_for(cmd, repo, cand.ref, cand.kind)
+        # Drop refs that don't re-plan, and refs whose edit is a no-op (e.g. a `restore` of an
+        # already-live symbol, or a `revert` the LLM proposed for something not actually in the
+        # ideal): a candidate the user can't tell apart from doing nothing isn't a real choice.
+        if not preview.ok or not (preview.removed or preview.added):
+            continue
+        # Collapse candidates that re-plan to the *same* edit (e.g. an op-id and its `file::symbol`
+        # both resolving to one op) -- the higher-ranked phrasing wins, so the user sees one entry
+        # per distinct outcome rather than the same revert spelled several ways.
+        effect = (frozenset(preview.removed), frozenset(preview.added))
+        if effect in seen_effects:
+            continue
+        seen_effects.add(effect)
+        survivors.append((cand, preview))
     if not survivors:
         return _fail_json(f"no live candidate for {target!r} survived re-planning", as_json)
 
