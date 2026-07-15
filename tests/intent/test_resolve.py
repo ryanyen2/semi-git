@@ -1,0 +1,62 @@
+"""Tests for sgt.intent.resolve -- NL target resolution (fallback ladder's last rung).
+
+`FakeClient`/`_FakeResponses` mirror the `tests/loop/test_plan.py` idiom: a stand-in for
+`get_client(repo).responses.parse(...)` whose `.output_parsed` is scripted directly, so no
+network call or API key is needed to exercise the LLM-first / `None`-on-failure contract.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+from sgt.intent import resolve as resolve_mod
+from sgt.store.gitbind import init_store
+
+
+def _no_client(*args, **kwargs):
+    raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
+
+
+class _FakeResponses:
+    def __init__(self, output_parsed):
+        self._output_parsed = output_parsed
+        self.calls = 0
+
+    def parse(self, **kwargs):
+        self.calls += 1
+        return SimpleNamespace(output_parsed=self._output_parsed)
+
+
+class FakeClient:
+    def __init__(self, output_parsed):
+        self.responses = _FakeResponses(output_parsed)
+
+
+def _fixture(repo):
+    """One committed, mined symbol -- just enough of a real repo for `_context` to run."""
+    from sgt.core.lens import get
+
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+
+
+def test_resolve_intent_returns_none_when_get_client_raises(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    monkeypatch.setattr(resolve_mod, "get_client", _no_client)
+
+    assert resolve_mod.resolve_intent(tmp_path, "the foo logic") is None
+
+
+def test_resolve_intent_returns_candidates_from_a_fake_client(tmp_path, monkeypatch):
+    _fixture(tmp_path)
+    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
+    fake = FakeClient(resolve_mod.IntentResolution(candidates=[candidate]))
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: fake)
+
+    result = resolve_mod.resolve_intent(tmp_path, "the foo logic", verb="revert")
+
+    assert result is not None
+    assert result.candidates == [candidate]
+    assert fake.responses.calls == 1

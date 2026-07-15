@@ -88,6 +88,30 @@ revert works well once `sgt map`, or your own corrections, has had real history 
 `sgt blame <file>` to see whether the current grouping covers the file you care about before you
 trust it.
 
+### When you do not know the exact name
+
+If none of op-id, `file::symbol`, or feature label matches, `sgt revert`/`sgt restore` fall to
+one more rung: a natural-language target.
+
+```
+$ sgt revert "the caching layer"
+? [revert] 'the caching layer' did not resolve; did you mean:
+  1. cache.py::get_cached (symbol) — the only caching-related function in the diff
+     would remove 1 op(s), add 0 op(s)
+     re-invoke: sgt revert cache.py::get_cached
+```
+
+An LLM proposes ranked candidate refs grounded in your repo's own op ids, symbols, and feature
+labels — it never invents one. Each candidate is re-planned for real before it is shown, so a
+hallucinated or no-longer-live ref never makes it into the list. Nothing is applied by default;
+re-run with the printed concrete ref to apply deterministically, or pass `--yes` to apply the
+top candidate directly. Needs `OPENAI_API_KEY`; with no key set, the command fails with a clear
+message instead of guessing.
+
+This is the least reliable rung, by design: it is a proposal, always previewed, and every
+*applied* edit is still the same exact, deterministic op-id/symbol/feature revert as above —
+just addressed by an LLM's guess at what you meant, not by a fuzzy match on the code itself.
+
 ## 3. Working with other people: sync and forks
 
 Two people editing the same function at the same time is a real conflict, and `sgt` does not make

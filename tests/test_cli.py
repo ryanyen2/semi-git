@@ -5,9 +5,15 @@ Verb *behavior* (the algebra) is tested in `tests/core/`; this file is the thin 
 
 import json
 import os
+from types import SimpleNamespace
 
 from sgt.cli import main
+from sgt.intent import resolve as resolve_mod
 from sgt.store.gitbind import init_store
+
+
+def _boom(*args, **kwargs):
+    raise AssertionError("the NL intent resolver must never be called when a deterministic rung matches")
 
 
 def _in(tmp_path, argv):
@@ -100,10 +106,145 @@ def test_revert_then_restore_roundtrip(tmp_path, capsys):
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
 
 
-def test_revert_unknown_ref_fails_with_message(tmp_path, capsys):
+def test_revert_unknown_ref_fails_with_message(tmp_path, monkeypatch, capsys):
+    # An unresolved ref now falls to the NL rung (`_resolve_via_intent`) once every deterministic
+    # rung fails; force it offline so this stays the deterministic-failure case it always was,
+    # independent of whether some earlier test in the same process populated OPENAI_API_KEY.
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _seed(tmp_path, 1)
     assert _in(tmp_path, ["revert", "nope::nothing"]) == 1
     assert "✗" in capsys.readouterr().out
+
+
+# -- NL intent-resolution rung (fallback ladder's last step: op-id -> prefix -> file::symbol ->
+# feature label -> NL intent) -------------------------------------------------------------------
+
+class _FakeResponses:
+    def __init__(self, output_parsed):
+        self._output_parsed = output_parsed
+        self.calls = 0
+
+    def parse(self, **kwargs):
+        self.calls += 1
+        return SimpleNamespace(output_parsed=self._output_parsed)
+
+
+class FakeClient:
+    """Stands in for `get_client(repo).responses.parse(...)` -- the `tests/loop/test_plan.py`
+    idiom, applied to `sgt.intent.resolve`."""
+
+    def __init__(self, output_parsed):
+        self.responses = _FakeResponses(output_parsed)
+
+
+def test_revert_by_op_id_never_touches_the_intent_resolver(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(resolve_mod, "get_client", _boom)
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["log", "--json"]) == 0
+    op_id = json.loads(capsys.readouterr().out)["ops"][0]["id"]
+
+    assert _in(tmp_path, ["revert", "--emit", op_id]) == 0  # resolves as an op-id; NL rung never runs
+
+
+def test_revert_by_feature_label_never_touches_the_intent_resolver(tmp_path, monkeypatch, capsys):
+    from sgt.api import map_view
+    from sgt.lens.map import build_map
+
+    monkeypatch.setattr(resolve_mod, "get_client", _boom)
+    _seed(tmp_path, 2)
+    _in(tmp_path, ["log"])
+    build_map(tmp_path)
+    label = next(n["label"] for n in map_view(tmp_path)["nodes"] if n["kind"] == "feature")
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "--emit", label]) == 0  # resolves via resolve_feature; NL rung never runs
+
+
+def test_revert_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path, monkeypatch, capsys):
+    from sgt.core.lens import current_ideal, get
+
+    _seed(tmp_path, 2)
+    get(tmp_path)  # mine, so "before" reflects the real ideal the command itself would mine
+    before = current_ideal(tmp_path).op_ids
+    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[candidate])
+    ))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "the foo logic"]) == 2
+    out = capsys.readouterr().out
+    assert "a.py::foo" in out
+    assert "sgt revert a.py::foo" in out
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
+    assert current_ideal(tmp_path).op_ids == before
+
+
+def test_revert_nl_yes_applies_top_candidate(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, 2)
+    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[candidate])
+    ))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "--yes", "the foo logic"]) == 0
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
+
+
+def test_revert_nl_drops_hallucinated_candidate(tmp_path, monkeypatch, capsys):
+    _seed(tmp_path, 2)
+    hallucinated = resolve_mod.Candidate(ref="ghost.py::nope", kind="symbol", rationale="a guess")
+    real = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[hallucinated, real])
+    ))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "--json", "the foo logic"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert [c["ref"] for c in payload["candidates"]] == ["a.py::foo"]  # hallucinated ref dropped
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # never applied
+
+
+def test_revert_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _seed(tmp_path, 2)
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["revert", "something vague"]) == 1
+    out = capsys.readouterr().out
+    assert "✗" in out and "OPENAI_API_KEY" in out
+
+
+def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path, monkeypatch, capsys):
+    from sgt.core.lens import current_ideal
+
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    capsys.readouterr()
+    before = current_ideal(tmp_path).op_ids
+
+    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="the old foo")
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
+        resolve_mod.IntentResolution(candidates=[candidate])
+    ))
+
+    assert _in(tmp_path, ["restore", "bring back the old foo logic"]) == 2
+    out = capsys.readouterr().out
+    assert "sgt restore a.py::foo" in out
+    assert current_ideal(tmp_path).op_ids == before
+
+
+def test_restore_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["restore", "something vague"]) == 1
+    out = capsys.readouterr().out
+    assert "✗" in out and "OPENAI_API_KEY" in out
 
 
 def test_diff_between_refs(tmp_path, capsys):

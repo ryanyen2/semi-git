@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail, _fail_json
 from .rewrite import _print_draft, _print_repair_result
 
 
@@ -17,11 +17,13 @@ def register(subs, parent) -> None:
     r.add_argument("--backend", default="api", choices=["api"])
     r.add_argument("--intent")
     r.add_argument("--session")
+    r.add_argument("--yes", action="store_true")
     r.add_argument("ref", nargs="*")
     r.set_defaults(func=_cmd_revert)
 
     s = subs.add_parser("restore", parents=[parent])
     s.add_argument("--emit", action="store_true")
+    s.add_argument("--yes", action="store_true")
     s.add_argument("ref", nargs="*")
     s.set_defaults(func=_cmd_restore)
 
@@ -71,11 +73,11 @@ def _cmd_revert(args) -> int:
         return _revert_session(".", args.session, args.emit, args.as_json)
     if args.keep_dependents:
         return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json)
-    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json)
+    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes)
 
 
 def _cmd_restore(args) -> int:
-    return _kernel_edit_verb(".", "restore", args.ref, args.emit, args.as_json)
+    return _kernel_edit_verb(".", "restore", args.ref, args.emit, args.as_json, args.yes)
 
 
 def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool) -> int:
@@ -101,13 +103,20 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool) -> int:
     return _emit_json(view) if as_json else _print_verb_view(view)
 
 
-def _kernel_edit_verb(repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool) -> int:
+def _kernel_edit_verb(
+    repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool, yes: bool = False,
+) -> int:
     """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
     `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). `revert`'s target
     additionally accepts a feature id/label (plan U13): when it doesn't resolve as an op-id or
     symbol, `sgt.lens.verbs.resolve_feature` is tried next, routing to the feature-grouped
     `plan_revert_feature` preview -- applied through the exact same `sgt.core.verbs.apply` path
-    as a single-op revert, since both produce the same `VerbPreview` shape."""
+    as a single-op revert, since both produce the same `VerbPreview` shape.
+
+    Once every deterministic rung above is exhausted (`revert`: `plan_revert` refused and
+    `resolve_feature` found no feature either; `restore`: `plan_restore` refused -- it has no
+    feature-label rung), the target falls to the NL rung (`_resolve_via_intent`, plan U8/U13's
+    fallback ladder's last step)."""
     from sgt.core import verbs
     from sgt.core.lens import get
 
@@ -124,10 +133,80 @@ def _kernel_edit_verb(repo: str, cmd: str, ref_tokens: list[str], emit: bool, as
 
             if lens_verbs.resolve_feature(repo, target) is not None:
                 preview = lens_verbs.plan_revert_feature(repo, target)
+            else:
+                return _resolve_via_intent(repo, cmd, target, as_json, yes)
     else:
         preview = verbs.plan_restore(repo, target)
+        if not preview.ok:
+            return _resolve_via_intent(repo, cmd, target, as_json, yes)
 
     return _emit_verb_result(repo, preview, emit, as_json)
+
+
+def _plan_for(verb: str, repo: str, ref: str):
+    """The one piece of verb-specific glue `resolve_intent`'s candidates need: re-plan a
+    candidate ref through the same pure `plan_*` the deterministic rungs already used, so its
+    preview is truthful (and a hallucinated/no-longer-live ref reports `ok=False`)."""
+    from sgt.core import verbs
+
+    return verbs.plan_revert(repo, ref) if verb == "revert" else verbs.plan_restore(repo, ref)
+
+
+def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bool) -> int:
+    """The NL rung (plan B2/B3): an LLM (`sgt.intent.resolve.resolve_intent`) proposes candidate
+    refs for `target`; each is re-planned via `_plan_for` for a truthful preview, dropping any
+    that isn't `ok`. Default UX is did-you-mean -- print the survivors and the exact re-invoke
+    command, exit 2, apply nothing. `--yes` applies the top survivor directly. No key, no
+    network, or zero surviving candidates all report a clear message and exit 1 -- never a
+    crash, never a guess."""
+    from sgt.intent.resolve import resolve_intent
+
+    resolution = resolve_intent(repo, target, verb=cmd)
+    if resolution is None:
+        return _fail_json(
+            f"could not resolve {target!r} to a ref; set OPENAI_API_KEY to enable "
+            "natural-language targets",
+            as_json,
+        )
+
+    survivors = [(cand, preview) for cand in resolution.candidates
+                 if (preview := _plan_for(cmd, repo, cand.ref)).ok]
+    if not survivors:
+        return _fail_json(f"no live candidate for {target!r} survived re-planning", as_json)
+
+    if yes:
+        from sgt.core import verbs
+
+        _, top_preview = survivors[0]
+        verbs.apply(repo, top_preview)
+        view = {
+            "ok": True, "verb": cmd, "target": top_preview.target,
+            "removed": sorted(top_preview.removed), "added": sorted(top_preview.added),
+            "affected_symbols": list(top_preview.affected_symbols), "forked": top_preview.forked,
+            "message": f"resolved {target!r} -> {top_preview.target!r}",
+        }
+        return _emit_json(view) if as_json else _print_verb_view(view)
+
+    candidates_view = [
+        {
+            "ref": preview.target, "kind": cand.kind, "rationale": cand.rationale,
+            "removed": len(preview.removed), "added": len(preview.added),
+            "reinvoke": f"sgt {cmd} {preview.target}",
+        }
+        for cand, preview in survivors
+    ]
+    if as_json:
+        import json
+
+        print(json.dumps({"ok": False, "verb": cmd, "target": target, "candidates": candidates_view}, indent=2))
+        return 2
+
+    print(f"? [{cmd}] {target!r} did not resolve; did you mean:")
+    for i, c in enumerate(candidates_view, 1):
+        print(f"  {i}. {c['ref']} ({c['kind']}) — {c['rationale']}")
+        print(f"     would remove {c['removed']} op(s), add {c['added']} op(s)")
+        print(f"     re-invoke: {c['reinvoke']}")
+    return 2
 
 
 def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:

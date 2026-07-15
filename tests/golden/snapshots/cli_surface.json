@@ -451,8 +451,8 @@
         "nope::nothing",
         "--json"
       ],
-      "exit": 0,
-      "out": "{\n  \"ok\": false,\n  \"verb\": \"revert\",\n  \"target\": \"nope::nothing\",\n  \"removed\": [],\n  \"added\": [],\n  \"affected_symbols\": [],\n  \"forked\": false,\n  \"message\": \"symbol 'nope::nothing' is not live in the ideal\"\n}\n"
+      "exit": 1,
+      "out": "{\n  \"ok\": false,\n  \"error\": \"could not resolve 'nope::nothing' to a ref; set OPENAI_API_KEY to enable natural-language targets\"\n}\n"
     },
     "text": {
       "argv": [
@@ -460,7 +460,7 @@
         "nope::nothing"
       ],
       "exit": 1,
-      "out": "\u2717 [revert] nope::nothing \u2014 symbol 'nope::nothing' is not live in the ideal\n"
+      "out": "\u2717 could not resolve 'nope::nothing' to a ref; set OPENAI_API_KEY to enable natural-language targets\n"
     }
   },
   "save": {

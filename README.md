@@ -63,6 +63,8 @@ sgt history                         # mined commits, and each op's kind, feature
 sgt revert [--emit] <ref>           # remove a symbol, op, or feature, and anything built on it
 sgt revert --session <name>         # remove everything one agent session landed
 sgt restore [--emit] <ref>          # re-add an op and everything it needs
+sgt revert "<intent>" / sgt restore "<intent>"  # no exact ref? an LLM proposes candidates,
+                                                 # previews each, and asks before applying
 
 # regroup the feature tree (metadata only, instant, does not touch your code)
 sgt merge <survivor> <absorbed>     # fold one feature into another
@@ -99,6 +101,13 @@ sgt mcp                             # a stdio MCP server for coding-agent client
 `merge`, `split`, `rename`, and `move` change the feature tree's labels. `merge-op`, `split-op`,
 and `transplant` change the op chain itself. The names look similar and the jobs are different.
 Run `sgt help` for the full list.
+
+`sgt revert`/`sgt restore` also accept a natural-language target (`sgt revert "the caching
+layer"`) once no op-id, symbol, or feature label matches it exactly. An LLM proposes ranked
+candidate refs, each re-previewed for real; it names *what to point the verb at*, never authors
+code, and never applies without confirmation (`--yes` for the top candidate, or re-run with the
+printed concrete ref). Needs `OPENAI_API_KEY`; with no key it fails with a clear message instead
+of guessing.
 
 ## Working with other people
 
