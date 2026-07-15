@@ -19,7 +19,9 @@ def register(subs, parent) -> None:
     pp.add_argument("branch", nargs="?")
     pp.set_defaults(func=_cmd_push)
 
-    subs.add_parser("forks", parents=[parent]).set_defaults(func=_cmd_forks)
+    pf = subs.add_parser("forks", parents=[parent])
+    pf.add_argument("symbol", nargs="?")
+    pf.set_defaults(func=_cmd_forks)
 
 
 def _cmd_sync(args) -> int:
@@ -31,12 +33,29 @@ def _cmd_push(args) -> int:
 
 
 def _cmd_forks(args) -> int:
-    return _forks(".", args.as_json)
+    return _forks(".", args.symbol, args.as_json)
 
 
-def _forks(repo: str, as_json: bool) -> int:
-    """`sgt forks [--json]` (C4): list the open same-symbol forks a prior sync recorded in committed
-    `.sgt/forks.json`, each with the `sgt merge-op` remedy that closes it."""
+def _forks(repo: str, symbol: str | None, as_json: bool) -> int:
+    """`sgt forks [<symbol>] [--json]` (C4): list the open same-symbol forks a prior sync recorded
+    in committed `.sgt/forks.json`, each with the `sgt merge-op` remedy that closes it. Given a
+    symbol, instead show that one fork's two tips' folded file content (`api.fork_detail_view`) --
+    a resolution UI's per-tip diff, since neither tip is part of any current ideal to diff against."""
+    if symbol is not None:
+        from sgt.api import fork_detail_view
+
+        view = fork_detail_view(repo, symbol)
+        if "error" in view:
+            return _fail_json(view["error"], as_json)
+        if as_json:
+            return _emit_json(view)
+        for tip in view["tips"]:
+            print(f"  tip {tip['op_id'][:12]}:")
+            for path in sorted(tip["files"]):
+                print(f"    {path}")
+        print(f"  remedy: {view['remedy']}")
+        return 0
+
     from sgt.api import forks_view
 
     view = forks_view(repo)
@@ -47,7 +66,7 @@ def _forks(repo: str, as_json: bool) -> int:
         return 0
     print(f"⚠ {view['open']} open fork(s):")
     for rec in view["forks"]:
-        print(f"  {rec['symbol']}: {rec['remedy']}")
+        print(f"  {rec['symbol']} ({rec['file']}): {rec['remedy']}")
     return 0
 
 

@@ -1,0 +1,327 @@
+/* Composition Workbench webview — warm-monochrome rail aesthetic ported from
+   experiments/patch_clustering/out/rail3.html: dark, monospace, quiet color (identity only, never
+   status). Status/impact is always glyph shape, stroke, dash, or opacity — never a second hue
+   (the color=identity / glyph=status contract). --accent is reserved for the playhead/"now" state
+   (Phase 4); it isn't used yet. */
+
+:root {
+  --bg: #0f1115;
+  --line: #262b36;
+  --dim: #8b93a3;
+  --fg: #e6e6e6;
+  --blast: #d9a441;
+  --accent: #4daafc;
+  --land: #6bbf7b;
+  --fail: #e5675f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── Titlebar: composition selector + oracle chip ───────────────────────────────────────────── */
+#titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+.composition-btn {
+  background: #1b1f2a;
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.composition-btn:hover {
+  border-color: var(--accent);
+}
+
+.oracle-chip {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+}
+
+.oracle-chip[data-state="pass"] {
+  color: var(--land);
+  border-color: var(--land);
+}
+
+.oracle-chip[data-state="fail"] {
+  color: var(--fail);
+  border-color: var(--fail);
+}
+
+/* ── Main: rail (tree + timeline) | inspector ────────────────────────────────────────────────── */
+#main {
+  flex: 1 1 auto;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  overflow: hidden;
+}
+
+/* Off-screen affected pills: anchored to #main (not #rail), so they stay pinned over the rail
+   pane regardless of #rail's own scroll position -- a hover-preview affordance, cleared with the
+   rest of the ghost-blast paint. */
+.offscreen-pill {
+  position: absolute;
+  left: 12px;
+  z-index: 5;
+  background: #1b1f2a;
+  color: var(--blast);
+  border: 1px solid var(--blast);
+  border-radius: 10px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.offscreen-pill[hidden] {
+  display: none;
+}
+
+.offscreen-pill-top {
+  top: 8px;
+}
+
+.offscreen-pill-bottom {
+  bottom: 8px;
+}
+
+#rail {
+  overflow: auto;
+  padding: 8px;
+}
+
+#inspector {
+  overflow: auto;
+  padding: 12px;
+  border-left: 1px solid var(--line);
+  background: #131620;
+}
+
+svg.railsvg {
+  display: block;
+}
+
+.rail-divider {
+  stroke: var(--line);
+  stroke-width: 1px;
+}
+
+.row {
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.row .label {
+  fill: var(--fg);
+}
+
+.row .caret {
+  fill: var(--dim);
+  font-size: 10px;
+}
+
+.row .glyph {
+  fill: var(--dim);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.row .lifebar {
+  stroke-width: 2px;
+  opacity: 0.55;
+}
+
+/* Hover: transient dim/light — dim everything, then re-light the hovered row + its edge
+   neighbors (`.lit` / `.ctx`). Pure CSS opacity transition, no animation library. */
+svg.railsvg.focus .row {
+  opacity: 0.35;
+}
+
+svg.railsvg.focus .row.lit,
+svg.railsvg.focus .row.ctx {
+  opacity: 1;
+}
+
+svg.railsvg.focus .row.lit .label {
+  font-weight: 600;
+}
+
+.edges .edge {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1px;
+  opacity: 0.6;
+}
+
+/* Selection (click, sticky) */
+.row.selected .label {
+  text-decoration: underline;
+}
+
+/* Blast-radius ghost: the amber "affected by this action" treatment for hover-previewed verbs —
+   status via stroke/dash, never a hue swap on the identity dot. */
+.row.ghost-blast .dot {
+  stroke: var(--blast);
+  stroke-width: 2px;
+}
+
+.row.ghost-blast .lifebar {
+  opacity: 1;
+  stroke-dasharray: 3 2;
+}
+
+.row.ghost-target .dot {
+  stroke: var(--fg);
+  stroke-width: 2px;
+  stroke-dasharray: 2 1;
+}
+
+#rail.arming .row {
+  cursor: crosshair;
+}
+
+/* Playhead (Phase 4): the one place --accent is used — a "now/scrubbing" frontier, distinct from
+   identity (dot color) and from status (glyph/stroke). */
+.playhead-line {
+  stroke: var(--accent);
+  stroke-width: 1px;
+  stroke-dasharray: 2 2;
+  pointer-events: none;
+}
+
+.playhead-handle {
+  fill: var(--accent);
+  cursor: ew-resize;
+}
+
+.playhead-hidden {
+  display: none;
+}
+
+/* ── Inspector: detail + action bar + code(I) panel ──────────────────────────────────────────── */
+.detail-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.detail-why {
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+
+.detail-meta {
+  color: var(--dim);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.action-bar .action {
+  background: #1b1f2a;
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action-bar .action:hover {
+  border-color: var(--blast);
+}
+
+.code-panel-back {
+  display: block;
+  background: #1b1f2a;
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.code-panel-heading {
+  color: var(--dim);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.code-panel-status {
+  color: var(--dim);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.code-panel-status.error {
+  color: var(--fail);
+}
+
+.code-panel-status.warn {
+  color: var(--blast);
+}
+
+.code-file {
+  margin-bottom: 10px;
+}
+
+.code-file-path {
+  color: var(--dim);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.code-file-body {
+  margin: 0;
+  padding: 6px;
+  background: #0b0d11;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 240px;
+  overflow-y: auto;
+}
