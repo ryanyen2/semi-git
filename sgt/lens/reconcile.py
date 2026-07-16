@@ -136,7 +136,7 @@ def reconcile_tree(
     off disk -- mid-sync, the unioned op store and ideal exist only in memory until the merge
     commit lands."""
     result = tree.build(repo, ops, ideal, pins=pins, previous=ours_tree)
-    tree.label_tree(result, repo, pins=pins)
+    tree.label_tree(result, repo, pins=pins).save()  # persist label cache (see build_map)
     return result
 
 

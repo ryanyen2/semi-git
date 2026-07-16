@@ -78,7 +78,7 @@ sgt merge-op <a> <b>                # draft a placeholder op that reconciles a f
 sgt split-op <op>                   # draft an intermediate cut of a two-concern op
 sgt transplant <op>... --onto <ref> # draft ops backported onto another chain
 sgt fulfill <draft-id> --from-tree  # supply the real content for a drafted placeholder
-sgt land                            # commit a staged rewrite, once the build and test oracle passes
+sgt commit                          # commit a staged rewrite, once the build and test oracle passes
 
 # collaboration
 sgt sync [remote] [branch]          # fetch and merge a teammate's work, and report same-symbol forks
@@ -114,8 +114,8 @@ of guessing.
 Conflicts do not go away. Two people editing the same function at the same time is a real
 conflict. What `sgt` changes is the size of it. `sgt sync` isolates the conflict to that one
 symbol, which it calls a fork, and merges everything else right away. You resolve the fork with
-`sgt merge-op`, then `sgt fulfill`, then `sgt land`. `land` runs your build and test oracle first
-and refuses to commit a version that has not passed. [`docs/guide/workflows.md`](docs/guide/workflows.md)
+`sgt merge-op`, then `sgt fulfill`, then `sgt commit`. `commit` runs your build and test oracle
+first and refuses to commit a version that has not passed. [`docs/guide/workflows.md`](docs/guide/workflows.md)
 walks through this end to end, along with parallel agent sessions and the cases where a person
 still has to step in.
 

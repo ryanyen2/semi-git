@@ -1,18 +1,27 @@
-/* Composition Workbench webview — warm-monochrome rail aesthetic ported from
-   experiments/patch_clustering/out/rail3.html: dark, monospace, quiet color (identity only, never
-   status). Status/impact is always glyph shape, stroke, dash, or opacity — never a second hue
-   (the color=identity / glyph=status contract). --accent is reserved for the playhead/"now" state
-   (Phase 4); it isn't used yet. */
+/* Composition Workbench webview — native VS Code chrome (light/dark/high-contrast), same rail
+   aesthetic ported from experiments/patch_clustering/out/rail3.html: hierarchy + shared
+   commit-index timeline as one scrollable SVG, inspector pane on the right. Status/impact is
+   always glyph shape, stroke, dash, or opacity — never a second hue (the color=identity /
+   glyph=status contract; identity hues come from color.ts's theme-aware OKLCH generator and
+   arrive pre-resolved as concrete hex on each node, so they're set as SVG attributes, never as
+   `var(--vscode-*)` in an attribute string -- SVG presentation attributes don't resolve CSS custom
+   properties, only stylesheet declarations do). --accent is the "now/anticipated" channel: the
+   playhead (bounded to the real commit-index axis) and pending plan marks (confined to the future
+   band just past that axis -- see .future-boundary) share it, kept unambiguous by living in
+   adjacent but non-overlapping regions of the same row. Token choices mirror the set already
+   proven in forkResolution.ts's webview panel. */
 
 :root {
-  --bg: #0f1115;
-  --line: #262b36;
-  --dim: #8b93a3;
-  --fg: #e6e6e6;
-  --blast: #d9a441;
-  --accent: #4daafc;
-  --land: #6bbf7b;
-  --fail: #e5675f;
+  --bg: var(--vscode-editor-background);
+  --panel-bg: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --line: var(--vscode-panel-border, var(--vscode-widget-border, #262b36));
+  --dim: var(--vscode-descriptionForeground);
+  --fg: var(--vscode-foreground);
+  --blast: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #d9a441));
+  --accent: var(--vscode-focusBorder, var(--vscode-charts-blue, #4daafc));
+  --land: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #6bbf7b));
+  --fail: var(--vscode-testing-iconFailed, var(--vscode-charts-red, #e5675f));
+  --code-bg: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
 }
 
 * {
@@ -23,8 +32,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
   line-height: 1.45;
   height: 100vh;
   overflow: hidden;
@@ -36,7 +45,7 @@ body {
   height: 100%;
 }
 
-/* ── Titlebar: composition selector + oracle chip ───────────────────────────────────────────── */
+/* ── Titlebar: composition selector + oracle chip + daily-loop actions ──────────────────────── */
 #titlebar {
   display: flex;
   align-items: center;
@@ -47,8 +56,8 @@ body {
 }
 
 .composition-btn {
-  background: #1b1f2a;
-  color: var(--fg);
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--fg));
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 3px 10px;
@@ -57,6 +66,7 @@ body {
 }
 
 .composition-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
   border-color: var(--accent);
 }
 
@@ -66,6 +76,22 @@ body {
   border-radius: 10px;
   border: 1px solid var(--line);
   color: var(--dim);
+  cursor: pointer;
+  transition: color 200ms ease, border-color 200ms ease;
+}
+
+.oracle-chip:hover {
+  border-color: var(--accent);
+}
+
+.oracle-chip[data-state="pending"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.oracle-chip[data-state="unconfigured"] {
+  color: var(--dim);
+  border-style: dashed;
 }
 
 .oracle-chip[data-state="pass"] {
@@ -76,6 +102,29 @@ body {
 .oracle-chip[data-state="fail"] {
   color: var(--fail);
   border-color: var(--fail);
+}
+
+/* Compact daily-loop action group (save/commit/undo) -- icon-weight text buttons, no card. */
+.titlebar-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.titlebar-actions button {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.titlebar-actions button:hover {
+  color: var(--fg);
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
 }
 
 /* ── Main: rail (tree + timeline) | inspector ────────────────────────────────────────────────── */
@@ -94,7 +143,7 @@ body {
   position: absolute;
   left: 12px;
   z-index: 5;
-  background: #1b1f2a;
+  background: var(--panel-bg);
   color: var(--blast);
   border: 1px solid var(--blast);
   border-radius: 10px;
@@ -125,11 +174,12 @@ body {
   overflow: auto;
   padding: 12px;
   border-left: 1px solid var(--line);
-  background: #131620;
+  background: var(--panel-bg);
 }
 
 svg.railsvg {
   display: block;
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
 }
 
 .rail-divider {
@@ -160,6 +210,13 @@ svg.railsvg {
 .row .lifebar {
   stroke-width: 2px;
   opacity: 0.55;
+}
+
+/* Dense-leaf fallback: a feature with too many ops to show as discrete glyphs at this width
+   renders an opacity-graded density strip instead -- fill stays the row's own identity color,
+   never a second hue; opacity alone carries local density. */
+.row .heatcell {
+  stroke: none;
 }
 
 /* Hover: transient dim/light — dim everything, then re-light the hovered row + its edge
@@ -211,7 +268,7 @@ svg.railsvg.focus .row.lit .label {
   cursor: crosshair;
 }
 
-/* Playhead (Phase 4): the one place --accent is used — a "now/scrubbing" frontier, distinct from
+/* Playhead: the one place --accent is used — a "now/scrubbing" frontier, distinct from
    identity (dot color) and from status (glyph/stroke). */
 .playhead-line {
   stroke: var(--accent);
@@ -227,6 +284,25 @@ svg.railsvg.focus .row.lit .label {
 
 .playhead-hidden {
   display: none;
+}
+
+/* ── Drift: a rail-borne ring around the existing op glyph, never a second mark -- distinguished
+   from a pending plan-mark by living on the REAL commit axis (not the future band), by a SOLID
+   stroke (plan-marks are dashed), and by carrying the row's own identity color rather than
+   --accent (drift is past divergence, not an anticipated/now state). */
+.row .drift-ring {
+  fill: none;
+  stroke-width: 1.4px;
+}
+
+.row .drift-ring.entering {
+  animation: driftPulse 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Dense-heatstrip fallback: too many ops for a per-glyph ring, so a small solid tick stands in
+   above the drift op's column instead of silently dropping the signal. */
+.row .drift-tick {
+  stroke: none;
 }
 
 /* ── Inspector: detail + action bar + code(I) panel ──────────────────────────────────────────── */
@@ -254,8 +330,8 @@ svg.railsvg.focus .row.lit .label {
 }
 
 .action-bar .action {
-  background: #1b1f2a;
-  color: var(--fg);
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--fg));
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 4px 8px;
@@ -265,13 +341,14 @@ svg.railsvg.focus .row.lit .label {
 }
 
 .action-bar .action:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
   border-color: var(--blast);
 }
 
 .code-panel-back {
   display: block;
-  background: #1b1f2a;
-  color: var(--fg);
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--fg));
   border: 1px solid var(--accent);
   border-radius: 3px;
   padding: 4px 8px;
@@ -287,6 +364,11 @@ svg.railsvg.focus .row.lit .label {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 6px;
+  transition: color 200ms ease;
+}
+
+.code-panel-heading.oracle-fail {
+  color: var(--fail);
 }
 
 .code-panel-status {
@@ -316,12 +398,234 @@ svg.railsvg.focus .row.lit .label {
 .code-file-body {
   margin: 0;
   padding: 6px;
-  background: #0b0d11;
+  background: var(--code-bg);
   border: 1px solid var(--line);
   border-radius: 3px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   font-size: 12px;
   white-space: pre;
   overflow-x: auto;
   max-height: 240px;
   overflow-y: auto;
+}
+
+/* ── Future band + plan marks ─────────────────────────────────────────────────────────────────
+   A pending step is an open ring in the always-empty "future zone" past the real commit axis --
+   a hypothetical next op on its predicted feature's own row, not a separate ghost subtree. Motion
+   is transform/opacity/cx only; no new borders/boxes added to the rail. */
+.future-boundary {
+  stroke: var(--accent);
+  stroke-width: 1px;
+  stroke-dasharray: 2 3;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.plan-mark {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-dasharray: 2 2;
+  cursor: pointer;
+}
+
+/* Landed exactly where predicted: the JS sets a solid identity-color fill and slides `cx` onto
+   the real op's column -- by the next render it's just an ordinary glyph, so no lingering state. */
+.plan-mark.landing {
+  stroke: none;
+  stroke-dasharray: none;
+}
+
+.plan-mark.entering {
+  animation: markIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* A confirmable `sgt checkpoint` candidate already exists for this pending step -- a translucent
+   fill inside the still-dashed ring, distinct from both plain-pending (no fill) and landed
+   (solid fill, no stroke) so the three states read at a glance without opening the card. */
+.plan-mark.has-checkpoint-match {
+  fill: var(--accent);
+  opacity: 0.35;
+}
+
+/* Diverged: the real landing is carried by the comet-trail on the matched row instead -- this
+   side just fades out in place (a transient miss-marker, never permanent). */
+.plan-mark.departing {
+  animation: markDepart 1000ms ease forwards;
+}
+
+.plan-comet {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4px;
+  stroke-dasharray: 3 3;
+  animation: cometFade 1000ms ease forwards;
+}
+
+/* ── Fork: an unresolved same-symbol chain fork, anchored just past its feature's lifebar end
+   (never on the commit axis -- fork tips are excluded from the ideal, so there's no real column
+   to sit on). Shape carries the state; a dedicated glyph distinct from GLYPH.move (⋔). */
+.fork-mark {
+  fill: none;
+  stroke: var(--blast);
+  stroke-width: 1.5px;
+  cursor: pointer;
+}
+
+.fork-mark:hover {
+  stroke-width: 2.2px;
+}
+
+/* ── Titlebar plan session chip ───────────────────────────────────────────────────────────────
+   Replaces the old ghost-root row's progress ring now that predictions live on the rail itself. */
+.plan-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.plan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.plan-chip:hover {
+  border-color: var(--accent);
+}
+
+.plan-chip.complete {
+  color: var(--land);
+  border-color: var(--land);
+}
+
+.plan-ring-track {
+  stroke: var(--line);
+  opacity: 0.7;
+}
+
+.plan-ring-fill {
+  stroke: var(--accent);
+  transition: stroke-dashoffset 340ms ease;
+}
+
+.plan-chip.complete .plan-ring-fill {
+  stroke: var(--land);
+}
+
+.plan-ring-track,
+.plan-ring-fill {
+  fill: none;
+  stroke-width: 2px;
+}
+
+/* Predicted → matched target line (inspector card): colored identity dots, not text. */
+.plan-target-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.plan-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.plan-target.faint {
+  color: var(--dim);
+  opacity: 0.7;
+}
+
+.plan-target-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.plan-target-arrow {
+  color: var(--dim);
+}
+
+.footprint-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.chip {
+  background: var(--vscode-badge-background, var(--panel-bg));
+  color: var(--vscode-badge-foreground, var(--dim));
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+@keyframes markIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes markDepart {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cometFade {
+  from {
+    opacity: 0.9;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes driftPulse {
+  from {
+    opacity: 0;
+    r: 7;
+  }
+  to {
+    opacity: 1;
+    r: 5;
+  }
+}
+
+/* Motion is a comprehension aid, never a requirement -- every keyframe/transition above is purely
+   decorative, so reduced-motion users get the same end state instantly with no animation at all.
+   The FLIP composition-switch morph (workbench.js) checks this same query before animating. */
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .oracle-chip,
+  .code-panel-heading,
+  .plan-ring-fill {
+    transition: none !important;
+  }
+
+  .plan-mark.entering,
+  .plan-mark.departing,
+  .plan-comet,
+  .row .drift-ring.entering {
+    animation: none !important;
+  }
 }

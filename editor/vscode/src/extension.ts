@@ -19,6 +19,7 @@ import { ChangesTreeProvider } from "./tree/changesTree";
 import { CompositionsTreeProvider } from "./tree/compositionsTree";
 import { FeaturesTreeProvider } from "./tree/featuresTree";
 import { ForksTreeProvider } from "./tree/forksTree";
+import { WorkbenchProvider } from "./workbench";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const out = vscode.window.createOutputChannel("semi-git");
@@ -79,6 +80,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerCommands(context, store, preview, () => void blame.render(), planDiff, root);
   registerGitBridgeCommands(context, store);
 
+  const workbenchProvider = new WorkbenchProvider(context, store);
+  context.subscriptions.push(
+    workbenchProvider,
+    vscode.window.registerWebviewViewProvider("sgtWorkbench", workbenchProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
+  );
+
   const featuresTree = new FeaturesTreeProvider(store);
   const forksTree = new ForksTreeProvider(store);
   const changesTree = new ChangesTreeProvider(store);
@@ -104,34 +113,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   void refreshForksBadge();
   context.subscriptions.push(store.onDidChange(() => void refreshForksBadge()));
 
-  // Refresh on .sgt changes (a feature verb rewrites tree.json/pins.json under it) and on any
-  // *.py change — the latter is how newly-written symbols show up in blame before the next
-  // `sgt map` re-clusters them.
+  // Refresh only on .sgt changes -- a mined op, checkpoint, or feature verb rewrites the op store
+  // and tree.json/pins.json under `.sgt/`. We deliberately do NOT watch `**/*.py`: every read
+  // surface (blame/hover/inlay/tree) reaches the tree through `store.map()` -> `sgt map`, which
+  // *rebuilds* (re-clusters + labels). Watching every keystroke-save invalidated that cache and
+  // re-ran the rebuild on each edit -- a full Leiden re-cluster (and, before the label cache was
+  // persisted, a fresh non-deterministic LLM relabel) on every save. Scoping invalidation to
+  // `.sgt/` means the tree refreshes exactly when the op store actually changes; a symbol written
+  // between checkpoints shows up in blame on the next mined op rather than mid-typing.
   const sgtWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(root, ".sgt/**/*.json")
-  );
-  const pyWatcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(root, "**/*.py")
   );
   let pending: NodeJS.Timeout | undefined;
   const refresh = () => {
     clearTimeout(pending);
     pending = setTimeout(() => store.invalidate(), 250); // debounce write storms
   };
-  for (const w of [sgtWatcher, pyWatcher]) {
-    w.onDidChange(refresh);
-    w.onDidCreate(refresh);
-    w.onDidDelete(refresh);
-  }
-  context.subscriptions.push(
-    sgtWatcher,
-    pyWatcher,
-    vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (doc.languageId === "python") {
-        refresh();
-      }
-    })
-  );
+  sgtWatcher.onDidChange(refresh);
+  sgtWatcher.onDidCreate(refresh);
+  sgtWatcher.onDidDelete(refresh);
+  context.subscriptions.push(sgtWatcher);
 
   void blame.render();
   void planStatusBar.refresh();

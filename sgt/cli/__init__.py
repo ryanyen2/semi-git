@@ -12,8 +12,10 @@ the op store's integrity. Every verb mines the working tree on contact before ac
 Where the ideal algebra can't express an edit exactly, U11's rewrite verbs (`merge-op`,
 `split-op`, `transplant`, `revert --keep-dependents`, `identity split`/`identity join`) draft
 hollow ops for an agent/human to fulfill (`sgt fulfill <draft-id> --from-tree`) and stage to the
-working tree without committing; `sgt land` is the only verb that commits one, gated on a passing
-oracle verdict (R14).
+working tree without committing; `sgt commit` is the only verb that commits one, gated on a
+passing oracle verdict (R14). `sgt land <branch>` is a distinct verb (U23's shared-branch CAS
+advance) -- deliberately not named `commit` and not overloaded onto a bare `sgt land`, so "land"
+only ever means the branch advance.
 
 `sgt map` (re)builds the hierarchical feature tree over the op store and prints it; `blame`/
 `status` are its read views. `merge`/`split`/`rename`/`move` are metadata-only feature verbs --
@@ -41,8 +43,8 @@ from . import (
 
 _VERBS = {
     "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
-    "merge-op", "split-op", "transplant", "identity", "fulfill", "land", "unstage", "repair",
-    "map", "blame", "status", "merge", "split", "rename", "move",
+    "merge-op", "split-op", "transplant", "identity", "fulfill", "commit", "land", "unstage",
+    "repair", "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview", "compose", "fold",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
     "review-queue",
@@ -121,9 +123,11 @@ def _help() -> int:
         "  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing\n"
         "                              history, or (with --horizon) only from that commit on (R10)\n"
         "  sgt revert [--emit] <ref>   remove an op and everything built on it (I \\ upset X)\n"
-        "  sgt revert <ref> --keep-dependents   same, but drafts a continuation hollow per dependent\n"
+        "  sgt revert <ref> --keep-dependents [--repair]   same, but drafts a continuation hollow\n"
+        "                              per dependent (--repair hands it straight to the LLM repair loop)\n"
         "  sgt revert --session <name> [--emit]   revert every op a session's attribution covers\n"
         "  sgt restore [--emit] <ref>  re-add an op and its prerequisites (I ∪ downset X)\n"
+        "  sgt after <a> <b> [--retract]   declare (or retract) the order edge a ≤ b\n"
         "  sgt fsck [--json]           verify the op store's content-address integrity\n"
         "  sgt log [--json]            the mined operation DAG\n"
         "  sgt state [--json]          the current ref's ideal: frontier, coverage, oracle verdict\n"
@@ -135,7 +139,9 @@ def _help() -> int:
         "  sgt transplant <op>... --onto <ref>   draft hollows backported onto another chain (AE3)\n"
         "  sgt identity split|join <a> <b>       correct the matcher itself, not a chain\n"
         "  sgt fulfill <draft-id> --from-tree     supply a drafted hollow's image; stages, no commit\n"
-        '  sgt land [--message ...] [--override pass|fail --reason "..."]   commit what\'s staged\n'
+        "  sgt repair <draft-id> [--backend api]   fulfill an already-drafted hollow via the LLM\n"
+        "                              repair loop, then land it through the same oracle gate\n"
+        '  sgt commit [--message ...] [--override pass|fail --reason "..."]   commit what\'s staged\n'
         "  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green (LAW-G)\n"
         "  sgt unstage                 abandon the staged candidate; restore the committed ideal\n"
         "  sgt switch <branch>         materialize a branch's ideal (the sgt-native `git switch`)\n"
@@ -144,6 +150,10 @@ def _help() -> int:
         "  sgt map [--json]            (re)build + print the hierarchical feature tree\n"
         "  sgt blame [--json] <file>   per-symbol feature attribution for a file's live entities\n"
         "  sgt status [--json]        files/symbols/features, coverage, oracle status, drift\n"
+        "  sgt select <feature>...    explain the closure a feature selection induces (files, ops,\n"
+        "                              and the requires-chain that pulled in anything cross-feature)\n"
+        "  sgt why <op> [--for <feature>]   explain one op's feature attribution, or the chain\n"
+        "                              that pulled it into a given feature's closure\n"
         "  sgt merge <survivor> <absorbed>        union two features under the survivor id\n"
         "  sgt split <feature> [--apply]          preview (then confirm) a two-way feature split\n"
         '  sgt rename <feature> "<label>"         override a feature\'s label, durably\n'
@@ -184,5 +194,9 @@ def _help() -> int:
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"
         "  feature id/label (`revert` only)\n"
         "  (read verbs take --json for the machine-readable sgt.api projection)\n"
+        "\n"
+        "  advanced/maintenance (not part of the daily loop):\n"
+        "  sgt migrate [feature-ids|ops-v3] [--apply]   dry-run-by-default op-store schema\n"
+        "                              migration; a one-time repair step, not a repeat verb\n"
     )
     return 0

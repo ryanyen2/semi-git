@@ -105,7 +105,8 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
     by CAS -- union this session's HEAD onto the branch tip, gate the result oracle-green (LAW-G),
     and compare-and-swap the ref, re-unioning on a lost race. A blocked land (red/absent oracle, an
     open fork, or persistent contention) exits non-zero with the reason and the `sgt merge-op` remedy
-    for a fork. (Bare `sgt land`, with no branch, is U11's staged-rewrite-candidate commit.)"""
+    for a fork. (`sgt commit`, U11's staged-rewrite-candidate commit, is a distinct verb -- kept out
+    of `land`'s name so "land" only ever means the branch-CAS advance.)"""
     from sgt.core import sync as sync_mod
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.core.sync import MinerVersionMismatch
