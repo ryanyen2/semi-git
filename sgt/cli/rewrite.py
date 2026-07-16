@@ -1,8 +1,9 @@
 """Rewrite verbs (plan U11, R14): where the ideal algebra can't express an edit exactly, these
 draft hollow ops for an agent/human to fulfill. `merge-op`/`split-op`/`transplant` draft hollows;
 `identity split`/`join` correct the matcher itself; `fulfill` supplies a drafted hollow's image
-from the working tree (stages, no commit); `land` commits the staged candidate, gated on a
-passing oracle verdict."""
+from the working tree (stages, no commit); `commit` commits the staged candidate, gated on a
+passing oracle verdict. (`sgt land <branch>` is a separate verb -- U23's shared-branch CAS
+advance -- kept apart from `commit` precisely so "land" only ever means one thing.)"""
 
 from __future__ import annotations
 
@@ -35,12 +36,15 @@ def register(subs, parent) -> None:
     fp.add_argument("draft", nargs="?")
     fp.set_defaults(func=_cmd_fulfill)
 
+    cp = subs.add_parser("commit", parents=[parent])
+    cp.add_argument("--message")
+    cp.add_argument("--override")
+    cp.add_argument("--reason")
+    cp.add_argument("--by")
+    cp.set_defaults(func=_cmd_commit)
+
     lp = subs.add_parser("land", parents=[parent])
-    lp.add_argument("branch", nargs="?")  # given => the U23 SYNC-2 shared-branch CAS advance
-    lp.add_argument("--message")
-    lp.add_argument("--override")
-    lp.add_argument("--reason")
-    lp.add_argument("--by")
+    lp.add_argument("branch")  # the U23 SYNC-2 shared-branch CAS advance -- always required
     lp.set_defaults(func=_cmd_land)
 
     up = subs.add_parser("unstage", parents=[parent])
@@ -80,15 +84,14 @@ def _cmd_repair(args) -> int:
     return _repair(".", args.draft, args.as_json)
 
 
-def _cmd_land(args) -> int:
-    # Two distinct verbs share the `land` name (argparse allows only one subparser per name): a bare
-    # `sgt land` commits the last-staged rewrite candidate (U11, below); `sgt land <branch>` advances
-    # a shared branch record by CAS (U23 SYNC-2). The positional branch disambiguates.
-    if args.branch is not None:
-        from .sync import _land_branch
+def _cmd_commit(args) -> int:
+    return _commit(".", args.message, args.override, args.reason, args.by, args.as_json)
 
-        return _land_branch(".", args.branch, args.as_json)
-    return _land(".", args.message, args.override, args.reason, args.by, args.as_json)
+
+def _cmd_land(args) -> int:
+    from .sync import _land_branch
+
+    return _land_branch(".", args.branch, args.as_json)
 
 
 def _print_draft(draft, as_json: bool) -> int:
@@ -209,7 +212,7 @@ def _identity(repo: str, rest: list[str], as_json: bool) -> int:
 
 def _fulfill(repo: str, draft_id: str | None, from_tree: bool, as_json: bool) -> int:
     """`fulfill <draft-id> --from-tree` (plan U11): supplies a drafted hollow's image from the
-    working tree, validates + folds + writes the candidate — no commit; run `sgt land` next."""
+    working tree, validates + folds + writes the candidate — no commit; run `sgt commit` next."""
     from sgt.core import rewrite
 
     if not draft_id:
@@ -223,7 +226,7 @@ def _fulfill(repo: str, draft_id: str | None, from_tree: bool, as_json: bool) ->
     if as_json:
         return _emit_json({"ok": True, "op_ids": sorted(candidate.op_ids)})
     print(f"✓ staged {len(candidate.op_ids)} op(s) to the working tree (uncommitted) — "
-          "run `sgt oracle run` then `sgt land`")
+          "run `sgt oracle run` then `sgt commit`")
     return 0
 
 
@@ -244,9 +247,9 @@ def _unstage(repo: str, as_json: bool) -> int:
     return 0
 
 
-def _land(repo: str, message: str | None, status: str | None,
-          reason: str | None, by: str | None, as_json: bool) -> int:
-    """`land [--message "..."] [--override pass|fail --reason "..." [--by NAME]]` (plan U11,
+def _commit(repo: str, message: str | None, status: str | None,
+            reason: str | None, by: str | None, as_json: bool) -> int:
+    """`commit [--message "..."] [--override pass|fail --reason "..." [--by NAME]]` (plan U11,
     R14): commits the last-staged rewrite candidate, refusing unless its oracle verdict is
     "pass" (or the supplied override resolves to one)."""
     from sgt.core import rewrite
@@ -259,5 +262,5 @@ def _land(repo: str, message: str | None, status: str | None,
         return 1
     if as_json:
         return _emit_json({"ok": True, "sha": sha})
-    print(f"✓ landed {sha[:12]}")
+    print(f"✓ committed {sha[:12]}")
     return 0

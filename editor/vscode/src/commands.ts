@@ -9,7 +9,6 @@ import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
 import { ProposalChecklistEntry } from "./types";
-import { WorkbenchPanel } from "./workbench";
 
 async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
   if (provided) {
@@ -65,7 +64,7 @@ export function registerCommands(
     refreshBlame();
   });
   reg("sgt.toggleBlame", () => toggle("blame.enabled"));
-  reg("sgt.openWorkbench", () => WorkbenchPanel.createOrShow(context, store));
+  reg("sgt.openWorkbench", () => vscode.commands.executeCommand("sgtWorkbench.focus"));
 
   reg("sgt.previewRevert", async (id?: string) => {
     const feature = await pickFeature(store, id);

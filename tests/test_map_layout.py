@@ -155,3 +155,18 @@ def test_empty_map_has_no_rows_and_no_edges():
     assert out["rows"] == []
     assert out["edges"] == []
     assert out["lifebars"] == {}
+
+
+def test_computeLayout_never_synthesizes_plan_rows():
+    # Plan marks (Phase 6): a pending step renders as an open mark directly on its predicted
+    # feature's own row (workbench.js's collectPlanMarks + renderPlanMarksForRow) instead of a
+    # synthetic node injected ahead of computeLayout (Phase 5's now-retired injectPlanGhosts). The
+    # map computeLayout receives is always the pristine real map -- no `plan:`/`planstep:` ids.
+    m = {
+        "roots": ["F1"],
+        "nodes": [_node("F1", None, [])],
+        "edges": [],
+    }
+    out = _run_layout(m)
+    assert out["rows"] == ["F1"]
+    assert not any(r.startswith("plan:") or r.startswith("planstep:") for r in out["rows"])

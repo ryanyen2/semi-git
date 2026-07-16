@@ -466,7 +466,7 @@ export interface FulfillResult {
   op_ids?: string[];
 }
 
-// Bare `sgt land [--json]` (plan U11): commits the staged rewrite candidate. Distinct from
+// `sgt commit [--json]` (plan U11): commits the staged rewrite candidate. Distinct from
 // `sgt land <branch> --json` (`LandReport`, the U23 CAS shared-branch advance). Same caveat as
 // `FulfillResult` -- a refusal prints plain text even with `--json`.
 export interface LandCandidateResult {

@@ -517,7 +517,7 @@ def test_fold_at_bad_op_id_set_reports_forked_not_a_crash(tmp_path, capsys):
     assert "fold --at" in capsys.readouterr().out
 
 
-def test_preview_split_reports_affected_features_and_writes_nothing(tmp_path, capsys):
+def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys):
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
@@ -531,10 +531,12 @@ def test_preview_split_reports_affected_features_and_writes_nothing(tmp_path, ca
     from sgt.lens.tree import load as _load_tree
     feature_id = next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
 
-    assert _in(tmp_path, ["preview", "split", feature_id, "--json"]) == 0
+    # `sgt split <feature>` with no `--apply` *is* the preview -- there is no separate
+    # `sgt preview split` path (removed: it duplicated this exact read, see `_preview_verb`).
+    assert _in(tmp_path, ["split", feature_id, "--json"]) == 0
     view = json.loads(capsys.readouterr().out)
     assert view["ok"] is True
-    assert view["affected_features"] == [feature_id, "F0"]
+    assert view["applied"] is False
     assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # preview writes nothing
 
 
@@ -544,6 +546,14 @@ def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):
     assert _in(tmp_path, ["preview", "not-a-verb"]) == 2
     assert "usage: sgt preview" in capsys.readouterr().out
     assert _in(tmp_path, ["preview", "merge", "only-one-arg"]) == 2
+    assert "usage: sgt preview" in capsys.readouterr().out
+
+
+def test_preview_split_is_no_longer_a_verb(tmp_path, capsys):
+    """Removed: bare `sgt split <feature>` already previews without `--apply` (see above)."""
+    _seed(tmp_path, n=1)
+    capsys.readouterr()
+    assert _in(tmp_path, ["preview", "split", "whatever"]) == 2
     assert "usage: sgt preview" in capsys.readouterr().out
 
 

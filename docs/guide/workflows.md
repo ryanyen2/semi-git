@@ -158,10 +158,10 @@ sgt merge-op <alice_op> <bob_op> --intent "reconcile foo fix"
 # drafts a placeholder op chained onto Alice's tip, needing real content
 # edit main.py by hand or with an agent to the real reconciled foo()
 sgt fulfill <draft-id> --from-tree
-sgt land
+sgt commit
 ```
 
-`land` runs your build and test oracle against the reconciled version and refuses to commit it
+`commit` runs your build and test oracle against the reconciled version and refuses to commit it
 unless the oracle passes, or you record a human override with a reason. A fork cannot be closed
 by a version nobody verified. Once it lands, `main.py::foo` is one continuous chain again and the
 fork record closes.

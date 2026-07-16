@@ -23,6 +23,9 @@ def build_map(repo: str | Path) -> dict:
     ops = Store(repo).all_ops()
     ideal = current_ideal(repo)
     result = tree.build(repo, ops, ideal)
-    tree.label_tree(result, repo)
+    labeler = tree.label_tree(result, repo)
+    labeler.save()  # persist the member-hash label cache so an unchanged cluster never re-pays
+    # the (non-deterministic) LLM call on the next build -- without this the cache is rebuilt cold
+    # every run and stable features get relabeled on every `sgt map`.
     tree.save(repo, result)
     return result

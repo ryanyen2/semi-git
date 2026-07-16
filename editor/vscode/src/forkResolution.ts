@@ -2,7 +2,7 @@
 // already carries full file content per tip -- no extra fold call needed) plus the compose-and-
 // fulfill wizard that used to be a copy-tip-ids-to-clipboard placeholder in commands.ts:
 // `sgt merge-op <a> <b>` drafts a reconciling hollow -> the user hand-edits the working tree to
-// match -> `sgt fulfill <draft-id> --from-tree` stages it -> bare `sgt land` commits it. Every
+// match -> `sgt fulfill <draft-id> --from-tree` stages it -> `sgt commit` commits it. Every
 // step but the hand-edit is a real, unmodified kernel verb; the wizard just keeps the draft id in
 // view state between steps. One panel per fork symbol.
 

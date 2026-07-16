@@ -380,12 +380,15 @@ def _fold(repo: str, at: str, as_json: bool = False) -> int:
 def _preview_verb(repo: str, rest: list[str], to: str | None, as_json: bool = False) -> int:
     """`sgt preview <verb> <args...> [--json]`: a side-effect-free preview of a feature verb or a
     feature-grouped revert (`api.feature_verb_preview_view`) -- the feature-map webview's
-    hover-preview primitive. Purely additive: `merge`/`split`/`rename`/`move`/`revert` themselves
-    are untouched and remain the only commands that actually apply one."""
-    usage = ("usage: sgt preview merge <survivor> <absorbed> | sgt preview split <feature> | "
+    hover-preview primitive. Purely additive: `merge`/`rename`/`move`/`revert` themselves are
+    untouched and remain the only commands that actually apply one. `split` has no entry here --
+    bare `sgt split <feature>` (no `--apply`) already *is* that preview, so a second path to the
+    same read would be a duplicate command, not an additive one."""
+    usage = ("usage: sgt preview merge <survivor> <absorbed> | "
              'sgt preview rename <feature> "<new label>" | '
-             "sgt preview move <op>... --to <feature> | sgt preview revert <feature>")
-    if not rest or rest[0] not in ("merge", "split", "rename", "move", "revert"):
+             "sgt preview move <op>... --to <feature> | sgt preview revert <feature> | "
+             "(for split, use: sgt split <feature>)")
+    if not rest or rest[0] not in ("merge", "rename", "move", "revert"):
         print(usage)
         return 2
 
@@ -400,7 +403,7 @@ def _preview_verb(repo: str, rest: list[str], to: str | None, as_json: bool = Fa
             print(usage)
             return 2
         args: tuple[str, ...] = (opts[0], opts[1])
-    elif verb in ("split", "revert"):
+    elif verb == "revert":
         if len(opts) != 1:
             print(usage)
             return 2

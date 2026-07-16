@@ -177,7 +177,7 @@ export class Sgt {
 
   // The fork-resolution wizard (plan Phase 6): draft a reconciling hollow, then, once the
   // working tree is hand-edited to match, stage it and commit. `sgt merge-op` is AE2's
-  // refusal turned into a draft; `fulfill`/bare `land` are U11's stage/commit split.
+  // refusal turned into a draft; `fulfill`/`commit` are U11's stage/commit split.
   mergeOp(tipA: string, tipB: string, intent?: string): Promise<RewriteDraft> {
     const args = ["merge-op", tipA, tipB, "--json"];
     if (intent) args.push("--intent", intent);
@@ -189,7 +189,7 @@ export class Sgt {
   }
 
   landCandidate(message?: string): Promise<LandCandidateResult> {
-    const args = ["land", "--json"];
+    const args = ["commit", "--json"];
     if (message) args.push("--message", message);
     return this.json<LandCandidateResult>(args);
   }

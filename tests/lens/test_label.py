@@ -126,3 +126,30 @@ def test_fallback_label_is_deterministic_and_derived_from_dominant_dir():
     second = label_mod._fallback_label(members)
     assert first == second
     assert "sgt/core" in first.rationale
+
+
+def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path, monkeypatch):
+    """Regression: `build_map` used to label the tree but never `save()` the labeler, so the
+    member-hash cache was rebuilt cold on every run -- a second `sgt map` re-called the (non-
+    deterministic) LLM for unchanged clusters and relabeled stable features. With the cache
+    persisted, an unchanged cluster hits the cache on the next build and makes zero new calls."""
+    from sgt.core.lens import get
+    from sgt.lens.map import build_map
+    from sgt.store.gitbind import init_store
+
+    fake_out = label_mod.FeatureLabel(label="Retrieval Pipeline", rationale="Embeds and retrieves.")
+    client = _FakeClient(fake_out)
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: client)
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "r.py").write_text("def embed(x):\n    return x\n\n\ndef search(q):\n    return q\n", encoding="utf-8")
+    gb.commit_all("add r.py")
+    get(tmp_path)
+
+    build_map(tmp_path)
+    assert (tmp_path / ".sgt" / "local" / "label_cache.json").is_file()
+    calls_after_first = client.responses.calls
+    assert calls_after_first > 0
+
+    build_map(tmp_path)  # unchanged clusters -> every label served from the persisted cache
+    assert client.responses.calls == calls_after_first

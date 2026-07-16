@@ -236,8 +236,8 @@ walks the real kernel verbs, one confirm at a time, and never guesses at a merge
    result you want.
 3. **Fulfill from working tree** runs `sgt fulfill <draft-id> --from-tree`, which stages your edit
    as the drafted hollow's image.
-4. **Land** runs bare `sgt land`, committing the staged candidate (gated on the oracle, same as
-   every other land).
+4. **Land** runs `sgt commit`, committing the staged candidate (gated on the oracle, same as
+   every other commit).
 
 `sgt pin` is not offered as an alternative here -- it exists only as a core-kernel verb, with no
 CLI entry point to call.

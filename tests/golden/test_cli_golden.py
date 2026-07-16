@@ -135,7 +135,7 @@ def capture_cli_surface(root: str) -> dict:
     views["revert_unknown"] = _both(fresh(), ["revert", "nope::nothing"])
     views["oracle_run_no_config"] = _both(fresh(), ["oracle", "run"])
     views["fulfill_no_draft"] = _both(fresh(), ["fulfill", "no-such-draft", "--from-tree"])
-    views["land_nothing_staged"] = _both(fresh(), ["land"])
+    views["commit_nothing_staged"] = _both(fresh(), ["commit"])
     views["sync_refuses_dirty_tree"] = _both(fresh(), ["sync"])  # untracked .sgt/ -> clean-tree guard
 
     # -- mutating verbs (text + --json each on its own fresh fixture) ---------------------------
