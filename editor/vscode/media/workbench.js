@@ -1293,12 +1293,13 @@ function computeLayout(map, history, opts) {
     bar.appendChild(btn("Split", "split"));
     bar.appendChild(btn("Move ops…", "move"));
     bar.appendChild(btn("Revert", "revert"));
+    bar.appendChild(btn("Restore", "restore"));
     return bar;
   }
 
   function previewAction(verb, id) {
     if (verb === "rename" || verb === "merge" || verb === "move") return; // needs a target/label first
-    if (verb === "revert") previewAndBlast(verb, [id]);
+    if (verb === "revert" || verb === "restore") previewAndBlast(verb, [id]);
     // Split has no `sgt preview split` branch server-side by design (`sgt split <feature>` with
     // no `--apply` already *is* that preview -- a second path would duplicate it), so this can't
     // go through the generic `previewVerb` round-trip the other verbs share.
@@ -1389,7 +1390,7 @@ function computeLayout(map, history, opts) {
       rail.classList.add("arming");
       return;
     }
-    if (verb === "split" || verb === "revert") {
+    if (verb === "split" || verb === "revert" || verb === "restore") {
       vscode.postMessage({ type: "applyVerb", verb, args: [id] });
     }
   }

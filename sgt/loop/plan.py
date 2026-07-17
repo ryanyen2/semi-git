@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 import time
 import uuid
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,15 +81,22 @@ def active_sessions(repo: str | Path) -> dict:
 
 def _llm_decompose(repo: Path, plan_text: str) -> PlanDecomposition | None:
     """Grounds the prompt in the real repo's own feature tree (if `sgt map` has run), so
-    `predicted_feature` names a real id, not a guess in a vacuum. Any failure (no API key, no
-    network, a malformed response) returns `None` -- the caller falls back."""
-    from sgt.api import map_view
+    `predicted_feature` names a real id, not a guess in a vacuum. Each feature is listed with its
+    file set, not just its label -- a label like "RAG pipeline" alone under-grounds a step like
+    "update model identifiers"; the files it actually owns are the stronger signal. Any failure
+    (no API key, no network, a malformed response) returns `None` -- the caller falls back."""
+    from sgt.lens.tree import load as load_tree
 
     try:
-        tree = map_view(repo)
-        features = "\n".join(
-            f"{n['id']}: {n['label']}" for n in tree["nodes"] if n["kind"] == "feature"
-        )
+        result = load_tree(repo)
+        nodes = result["nodes"] if result else {}
+        leaves = sorted(nid for nid, nd in nodes.items() if not nd["children"])
+        feature_lines = []
+        for nid in leaves:
+            nd = nodes[nid]
+            files = sorted({m.split("::", 1)[0] for m in nd["members"]})[:8]
+            feature_lines.append(f"{nid}: {nd.get('label', nid)} (files: {', '.join(files)})")
+        features = "\n".join(feature_lines)
         prompt = (
             "Decompose this engineering plan into discrete implementation steps for a coding "
             "agent to execute one at a time.\n"
@@ -96,8 +104,12 @@ def _llm_decompose(repo: Path, plan_text: str) -> PlanDecomposition | None:
             "`file::symbol` ids the step will touch -- [] if you can't guess any), "
             "predicted_feature (the id of the ONE feature below this step most likely belongs "
             "to, or null if none plausibly fit -- never invent an id not in the list), "
-            "rationale (one line).\n\n"
-            f"Known features (id: label):\n{features or '(none -- no feature tree built yet)'}\n\n"
+            "rationale (one line).\n"
+            "Match predicted_feature by file overlap first, label second -- if a step's likely "
+            "files sit under one feature's file set (or there is only one feature and the plan's "
+            "scope plausibly touches it), name that feature rather than defaulting to null; only "
+            "use null when truly no feature plausibly fits.\n\n"
+            f"Known features (id: label (files)):\n{features or '(none -- no feature tree built yet)'}\n\n"
             f"Plan:\n{plan_text}\n"
         )
         client = get_client(repo)
@@ -127,6 +139,29 @@ def _fallback_decompose(plan_text: str) -> PlanDecomposition:
     return PlanDecomposition(steps=[PlanStep(title=t) for t in titles])
 
 
+def _backfill_predicted_feature(repo: Path, steps: list[PlanStep]) -> None:
+    """Deterministic safety net for steps the LLM left unplaced: plurality-vote each step's
+    `predicted_footprint` symbols against the real tree's leaf membership (identical tie-break --
+    smallest leaf id -- to `sgt.lens.tree.assign_ops_to_leaves`), so a step whose guessed footprint
+    actually lands in a known feature gets placed even when the LLM's label-only guess nulled it.
+    A no-op when there's no tree yet, or a step's guessed symbols don't match anything real."""
+    from sgt.lens.tree import load as load_tree
+    from sgt.lens.tree import leaf_member_index
+
+    result = load_tree(repo)
+    if result is None:
+        return
+    member_leaf = leaf_member_index(result["nodes"])
+    for step in steps:
+        if step.predicted_feature is not None:
+            continue
+        votes = Counter(member_leaf[sym] for sym in step.predicted_footprint if sym in member_leaf)
+        if not votes:
+            continue
+        top_count = votes.most_common(1)[0][1]
+        step.predicted_feature = min(leaf for leaf, count in votes.items() if count == top_count)
+
+
 # -- intake / abandon / staleness sweep ------------------------------------------------------------
 
 def intake(repo: str | Path, plan_text: str, session_id: str | None = None) -> PlanSession:
@@ -139,6 +174,7 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None) -> P
     now = time.time()
 
     decomposition = _llm_decompose(repo, plan_text) or _fallback_decompose(plan_text)
+    _backfill_predicted_feature(repo, decomposition.steps)
     baseline_op_ids = tuple(sorted(op.id for op in store.all_ops()))
 
     steps: list[dict] = []

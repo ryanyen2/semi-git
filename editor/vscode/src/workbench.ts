@@ -267,10 +267,10 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   private async apply(verb: string, args: string[]): Promise<void> {
-    if (verb === "revert") {
-      // Reuse the existing `sgt.revert` command (commands.ts) rather than re-implementing its
-      // confirm-dialog + mutate + invalidate + report sequence here.
-      await vscode.commands.executeCommand("sgt.revert", args[0]);
+    if (verb === "revert" || verb === "restore") {
+      // Reuse the existing `sgt.revert`/`sgt.restore` command (commands.ts) rather than
+      // re-implementing its confirm-dialog + mutate + invalidate + report sequence here.
+      await vscode.commands.executeCommand(verb === "revert" ? "sgt.revert" : "sgt.restore", args[0]);
       return;
     }
     try {

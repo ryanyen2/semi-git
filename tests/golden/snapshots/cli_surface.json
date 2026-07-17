@@ -341,7 +341,7 @@
       "only-one-arg"
     ],
     "exit": 2,
-    "out": "usage: sgt preview merge <survivor> <absorbed> | sgt preview rename <feature> \"<new label>\" | sgt preview move <op>... --to <feature> | sgt preview revert <feature> | (for split, use: sgt split <feature>)\n"
+    "out": "usage: sgt preview merge <survivor> <absorbed> | sgt preview rename <feature> \"<new label>\" | sgt preview move <op>... --to <feature> | sgt preview revert <feature> | sgt preview restore <feature> | (for split, use: sgt split <feature>)\n"
   },
   "preview_revert_feature": {
     "json": {

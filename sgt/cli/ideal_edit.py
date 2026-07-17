@@ -107,16 +107,16 @@ def _kernel_edit_verb(
     repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool, yes: bool = False,
 ) -> int:
     """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
-    `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). `revert`'s target
-    additionally accepts a feature id/label (plan U13): when it doesn't resolve as an op-id or
+    `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). Both verbs' targets
+    additionally accept a feature id/label (plan U13): when it doesn't resolve as an op-id or
     symbol, `sgt.lens.verbs.resolve_feature` is tried next, routing to the feature-grouped
-    `plan_revert_feature` preview -- applied through the exact same `sgt.core.verbs.apply` path
-    as a single-op revert, since both produce the same `VerbPreview` shape.
+    `plan_revert_feature`/`plan_restore_feature` preview -- applied through the exact same
+    `sgt.core.verbs.apply` path as a single-op revert/restore, since both produce the same
+    `VerbPreview` shape.
 
-    Once every deterministic rung above is exhausted (`revert`: `plan_revert` refused and
-    `resolve_feature` found no feature either; `restore`: `plan_restore` refused -- it has no
-    feature-label rung), the target falls to the NL rung (`_resolve_via_intent`, plan U8/U13's
-    fallback ladder's last step)."""
+    Once every deterministic rung above is exhausted (single-op plan refused and `resolve_feature`
+    found no feature either), the target falls to the NL rung (`_resolve_via_intent`, plan
+    U8/U13's fallback ladder's last step)."""
     from sgt.core import verbs
     from sgt.core.lens import get
 
@@ -126,18 +126,15 @@ def _kernel_edit_verb(
     target = " ".join(ref_tokens)
     get(repo)  # mine-on-contact before planning/applying the edit (R9)
 
-    if cmd == "revert":
-        preview = verbs.plan_revert(repo, target)
-        if not preview.ok:
-            from sgt.lens import verbs as lens_verbs
+    plan_single = verbs.plan_revert if cmd == "revert" else verbs.plan_restore
+    preview = plan_single(repo, target)
+    if not preview.ok:
+        from sgt.lens import verbs as lens_verbs
 
-            if lens_verbs.resolve_feature(repo, target) is not None:
-                preview = lens_verbs.plan_revert_feature(repo, target)
-            else:
-                return _resolve_via_intent(repo, cmd, target, as_json, yes)
-    else:
-        preview = verbs.plan_restore(repo, target)
-        if not preview.ok:
+        if lens_verbs.resolve_feature(repo, target) is not None:
+            plan_feature = lens_verbs.plan_revert_feature if cmd == "revert" else lens_verbs.plan_restore_feature
+            preview = plan_feature(repo, target)
+        else:
             return _resolve_via_intent(repo, cmd, target, as_json, yes)
 
     return _emit_verb_result(repo, preview, emit, as_json)
@@ -148,20 +145,19 @@ def _plan_for(verb: str, repo: str, ref: str, kind: str = ""):
     candidate ref through the same pure `plan_*` the deterministic rungs already used, so its
     preview is truthful (and a hallucinated/no-longer-live ref reports `ok=False`).
 
-    A `feature`-kind candidate is routed through `plan_revert_feature` -- the same feature-grouped
-    plan the deterministic feature rung uses -- since the prompt invites feature ids and a plain
-    single-op `plan_revert` can't resolve one (it would drop the very target the LLM found).
-    Restore has no feature plan (mirroring `_kernel_edit_verb`'s ladder), so a feature candidate
-    there falls through `plan_restore` and is dropped as unresolvable."""
+    A `feature`-kind candidate is routed through `plan_revert_feature`/`plan_restore_feature` --
+    the same feature-grouped plan the deterministic feature rung uses (mirroring
+    `_kernel_edit_verb`'s ladder) -- since the prompt invites feature ids and a plain single-op
+    `plan_revert`/`plan_restore` can't resolve one (it would drop the very target the LLM found)."""
     from sgt.core import verbs
 
-    if verb == "revert":
-        if kind == "feature":
-            from sgt.lens import verbs as lens_verbs
+    plan_single = verbs.plan_revert if verb == "revert" else verbs.plan_restore
+    if kind == "feature":
+        from sgt.lens import verbs as lens_verbs
 
-            return lens_verbs.plan_revert_feature(repo, ref)
-        return verbs.plan_revert(repo, ref)
-    return verbs.plan_restore(repo, ref)
+        plan_feature = lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
+        return plan_feature(repo, ref)
+    return plan_single(repo, ref)
 
 
 def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bool) -> int:

@@ -377,3 +377,31 @@ def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
         upset_union |= order.upset_in(op_id, ideal.op_ids, ops, declared)
     after = ideal.op_ids - frozenset(upset_union)
     return core_verbs._validated("revert", feature_id, ideal.op_ids, after, ops, declared)
+
+
+def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
+    """`revert`'s inverse: resolve `ref` to a feature's op-set X (via `op_leaf`, which still
+    names a reverted feature's ops -- it's built from every mined op, not just the ones live in
+    the current ideal), then the exact ideal edit `I \\ union(downset_in(x))` over `x∈X` against
+    the full provenance ideal (`HEAD`, which still holds reverted ops) -- the feature-grouped
+    generalization of `core.verbs.plan_restore`'s single-op case."""
+    repo = Path(repo)
+    ops = Store(repo).all_ops()
+    ideal = kernel_lens.current_ideal(repo)
+    declared = kernel_lens._load_declared(repo)
+    source = kernel_lens.ideal_for_ref(repo, "HEAD")
+
+    resolved = resolve_feature(repo, ref)
+    if resolved is None:
+        return core_verbs._preview("restore", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
+                                    message=f"feature {ref!r} not found; run `sgt map`")
+    op_ids, feature_id, label = resolved
+    if not op_ids:
+        return core_verbs._preview("restore", feature_id, ideal.op_ids, ideal.op_ids, ops,
+                                    message=f"feature {label!r} has no ops; no change")
+
+    downset_union: set[str] = set()
+    for op_id in op_ids:
+        downset_union |= order.downset_in(op_id, source.op_ids, ops, declared)
+    after = ideal.op_ids | frozenset(downset_union)
+    return core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops, declared)
