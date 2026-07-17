@@ -31,7 +31,7 @@ def test_state_view_coverage_fraction_on_mixed_fixture(tmp_path):
     """R7: on a tree of two Python files + a YAML + a Markdown file, exactly the two code paths
     are entity-granular and the two non-parseable paths get whole-file coverage -- so the honest
     entity-granularity coverage fraction is 2/4 = 0.5."""
-    v = state_view(_mined(tmp_path, "mixed_coverage"))
+    v = state_view(_mined(tmp_path, "mixed_coverage"), full=True)
     assert v["covered_paths"] == ["config.yaml", "notes.md", "pkg.py", "util.py"]
     assert v["entity_paths"] == ["pkg.py", "util.py"]
     assert v["coverage_fraction"] == 0.5
@@ -63,7 +63,7 @@ def test_ideal_diff_view_lists_symmetric_difference_grouped_by_symbol(tmp_path):
 def test_oplog_view_is_sorted_and_carries_op_fields(tmp_path):
     """The op DAG is emitted in a deterministic (id-sorted) order with each op's kind, footprint,
     provenance, structured attribution (U22/D7), and intent -- no set-iteration leakage."""
-    v = oplog_view(_mined(tmp_path, "mixed_coverage"))
+    v = oplog_view(_mined(tmp_path, "mixed_coverage"), full=True)
     assert v["count"] == len(v["ops"]) > 0
     assert [op["id"] for op in v["ops"]] == sorted(op["id"] for op in v["ops"])
     op = v["ops"][0]
@@ -119,7 +119,7 @@ def test_history_view_orders_commits_chronologically_and_places_every_op_on_the_
     """`commits` is oldest-first (matching `GitBinding.history`); every op's `commit_index` is a
     valid position in that list, and the whole `ops` list is sorted by (commit_index, id)."""
     repo = _mined(tmp_path, "linear_history")
-    v = history_view(repo)
+    v = history_view(repo, full=True)
 
     assert [c["index"] for c in v["commits"]] == list(range(len(v["commits"])))
     subjects = [c["subject"] for c in v["commits"]]
@@ -144,7 +144,7 @@ def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
 
-    v = history_view(repo)
+    v = history_view(repo, full=True)
     assert v["ops"]
     assert any(op["feature_id"] is not None for op in v["ops"])
 
@@ -185,7 +185,7 @@ def test_fold_view_at_commit_index_matches_that_frontiers_code(tmp_path):
     from sgt.core.store import Store
 
     repo = _mined(tmp_path, "linear_history")
-    hist = history_view(repo)
+    hist = history_view(repo, full=True)
     last_index = hist["commits"][-1]["index"]
 
     v = fold_view(repo, at_commit_index=last_index)
@@ -228,7 +228,7 @@ def test_fold_view_rejects_an_ungrounded_op_id_set_without_raising(tmp_path):
     `Ideal.from_ops` refusal `sgt.core.verbs._validated` turns into a preview outcome elsewhere,
     never a raised `ValueError` through the API."""
     repo = _mined(tmp_path, "linear_history")
-    hist = history_view(repo)
+    hist = history_view(repo, full=True)
     non_root = next(o["id"] for o in hist["ops"] if o["commit_index"] > 0)
 
     v = fold_view(repo, op_ids=[non_root])
@@ -241,7 +241,7 @@ def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):
     no drift -- drift is only meaningful relative to a plan session's own predictions."""
     repo = _mined(tmp_path, "mixed_coverage")
     assert plan_view(repo) == {"sessions": [], "checkpoint": {"matches": [], "drift_op_ids": []}}
-    assert drift_view(repo) == {"entries": []}
+    assert drift_view(repo) == {"count": 0, "op_ids": [], "kinds": {}}
 
 
 def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredicted_op(tmp_path):
@@ -284,14 +284,14 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
 
     match_mod.confirm_match(repo, "s1", group["hollow_ids"], group["op_ids"])
 
-    view = plan_view(repo)
+    view = plan_view(repo, full=True)
     step = view["sessions"][0]["steps"][0]
     assert step["status"] == "matched"
     assert step["files"] == [{"path": "a.py", "spans": [{"symbol": "a.py::foo", "start_line": 1, "end_line": 2}]}]
 
     # mining also mints residue/anchor pseudo-symbol ops for the same two commits (their own,
     # unpredicted drift) -- assert on `bar`'s own entry specifically, not the total count.
-    drift = drift_view(repo)
+    drift = drift_view(repo, full=True)
     bar_entries = [e for e in drift["entries"] if e["footprint"] == ["a.py::bar"]]
     assert len(bar_entries) == 1
 
@@ -348,7 +348,7 @@ def test_trust_view_groups_a_landed_sessions_ops_under_its_session_name(tmp_path
     session_mod.land(tmp_path, "s1")
     get(tmp_path)
 
-    v = trust_view(tmp_path)
+    v = trust_view(tmp_path, full=True)
     assert [g["provenance"] for g in v["groups"]] == ["s1"]
     group = v["groups"][0]
     assert group["op_ids"]
@@ -368,7 +368,7 @@ def test_trust_view_dequeues_ops_covered_by_a_review_record(tmp_path):
     session_mod.land(tmp_path, "s1")
     get(tmp_path)
 
-    op_ids = trust_view(tmp_path)["groups"][0]["op_ids"]
+    op_ids = trust_view(tmp_path, full=True)["groups"][0]["op_ids"]
     review.ack(tmp_path, op_ids, scope="session:s1")
 
     assert trust_view(tmp_path) == {"groups": [], "total_ops": 0}
@@ -404,8 +404,169 @@ def test_trust_view_includes_an_unattributed_drift_op_under_the_drift_key(tmp_pa
     gb.commit_all("add bar")
     get(repo)
 
-    v = trust_view(repo)
+    v = trust_view(repo, full=True)
     assert [g["provenance"] for g in v["groups"]] == ["drift"]
     drift_ops = v["groups"][0]["ops"]
     assert drift_ops and all(op["drift"] for op in drift_ops)
     assert any(op["footprint"] == ["a.py::bar"] for op in drift_ops)
+
+
+# -- compact-by-default view contracts (plan: optimize the sgt agent surface for context +
+# retrieval speed, Part B) -----------------------------------------------------------------------
+
+
+def test_oplog_view_default_is_compact_and_full_restores_today_shape(tmp_path):
+    repo = _mined(tmp_path, "mixed_coverage")
+    compact = oplog_view(repo)
+    full = oplog_view(repo, full=True)
+
+    assert set(compact) == {"count", "kinds", "truncated", "ops"}
+    assert compact["count"] == full["count"]
+    assert sum(compact["kinds"].values()) == compact["count"]
+    op = compact["ops"][0]
+    assert set(op) == {"id", "kind", "symbols", "intent"}
+    assert op["symbols"] == sorted(op["symbols"])
+    assert set(full) == {"ops", "count"}
+    assert set(full["ops"][0]) == {"id", "kind", "footprint", "provenance", "attribution", "intent"}
+
+
+def test_oplog_view_paginates_and_reports_truncated(tmp_path):
+    repo = _mined(tmp_path, "mixed_coverage")
+    total = oplog_view(repo)["count"]
+    assert total > 1  # the fixture mints more than one op
+
+    page = oplog_view(repo, limit=1, offset=0)
+    assert len(page["ops"]) == 1
+    assert page["truncated"] is True
+
+    rest = oplog_view(repo, limit=total, offset=0)
+    assert len(rest["ops"]) == total
+    assert rest["truncated"] is False
+
+
+def test_state_view_default_is_compact_and_full_restores_frontier(tmp_path):
+    repo = _mined(tmp_path, "mixed_coverage")
+    compact = state_view(repo)
+    full = state_view(repo, full=True)
+
+    assert "frontier" not in compact and "entity_paths" not in compact
+    assert compact["frontier_count"] == len(full["frontier"])
+    assert compact["entity_path_count"] == len(full["entity_paths"])
+    # fields status_view depends on stay present at the default
+    for key in ("covered_paths", "coverage_fraction", "derived_paths", "oracle_configured", "oracle_verdict"):
+        assert compact[key] == full[key]
+
+
+def test_history_view_default_is_compact_with_latest_commits_most_recent_first(tmp_path):
+    repo = _mined(tmp_path, "linear_history")
+    compact = history_view(repo)
+    full = history_view(repo, full=True)
+
+    assert set(compact) == {"commit_count", "op_count", "kinds", "features", "latest_commits"}
+    assert compact["commit_count"] == len(full["commits"])
+    assert compact["op_count"] == len(full["ops"])
+    assert [c["index"] for c in compact["latest_commits"]] == sorted(
+        (c["index"] for c in full["commits"]), reverse=True
+    )
+
+
+def test_history_view_latest_commits_respects_limit_and_offset(tmp_path):
+    repo = _mined(tmp_path, "linear_history")
+    full = history_view(repo, full=True)
+    n = len(full["commits"])
+    assert n > 1
+
+    first = history_view(repo, limit=1)["latest_commits"]
+    assert len(first) == 1
+    assert first[0]["index"] == n - 1  # most recent
+
+    second = history_view(repo, limit=1, offset=1)["latest_commits"]
+    assert len(second) == 1
+    assert second[0]["index"] == n - 2
+
+
+def test_drift_view_default_is_compact(tmp_path):
+    repo = _mined(tmp_path, "mixed_coverage")
+    compact = drift_view(repo)
+    assert set(compact) == {"count", "op_ids", "kinds"}
+    assert compact["op_ids"] == sorted(compact["op_ids"])
+
+
+def test_plan_view_default_reports_step_counts_not_steps(tmp_path):
+    """Compact `plan_view` drops the per-step list (and its spans) in favor of counts, but keeps
+    the checkpoint's small op-id lists intact -- `sgt checkpoint --confirm-...` needs them."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    store = Store(repo)
+    baseline = sorted(op.id for op in store.all_ops())
+
+    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    store.add_hollow(hollow)
+    table = plan_mod._load_sessions(repo)
+    table["s1"] = {
+        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
+        "baseline_op_ids": baseline,
+        "steps": [{
+            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }],
+    }
+    plan_mod._save_sessions(repo, table)
+
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("touch foo")
+    get(repo)
+
+    compact = plan_view(repo)
+    session = compact["sessions"][0]
+    assert "steps" not in session
+    assert session["step_count"] == 1
+    assert session["matched_count"] == 0
+
+    checkpoint = compact["checkpoint"]
+    assert checkpoint["matches"]  # the real op matches the predicted footprint
+    match = checkpoint["matches"][0]
+    assert "files" not in match
+    assert match["hollow_ids"] and match["op_ids"]  # kept -- `--confirm-...` needs them
+
+    full = plan_view(repo, full=True)["checkpoint"]["matches"][0]
+    assert "files" in full
+
+
+def test_trust_view_default_reports_op_count_not_op_detail(tmp_path):
+    from pathlib import Path
+
+    from sgt.core import session as session_mod
+    from tests.core.test_session import _seed_repo, _write_and_commit
+
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
+    session_mod.land(tmp_path, "s1")
+    get(tmp_path)
+
+    compact = trust_view(tmp_path)
+    full = trust_view(tmp_path, full=True)
+    group = compact["groups"][0]
+    assert "op_ids" not in group and "ops" not in group
+    assert group["op_count"] == len(full["groups"][0]["op_ids"]) > 0
+    assert compact["total_ops"] == full["total_ops"]
+
+
+def test_compose_view_full_threads_into_children(tmp_path):
+    from sgt.api import status_view
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    v = compose_view(repo, full=True)
+
+    assert v["history"] == history_view(repo, full=True)
+    assert v["plan"] == plan_view(repo, full=True)
+    assert v["drift"] == drift_view(repo, full=True)
+    assert v["trust"] == trust_view(repo, full=True)
+    # unaffected children are unchanged regardless of `full`
+    assert v["map"] == map_view(repo)
+    assert v["status"] == status_view(repo)

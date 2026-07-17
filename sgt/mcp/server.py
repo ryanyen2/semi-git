@@ -53,7 +53,12 @@ def tool_log(repo_path: str, args: dict) -> dict:
     from sgt.core.lens import get
 
     get(repo_path)  # mine-on-contact before inspecting the store
-    return oplog_view(repo_path)
+    kwargs = {"full": bool(args.get("full", False))}
+    if args.get("limit") is not None:
+        kwargs["limit"] = int(args["limit"])
+    if args.get("offset") is not None:
+        kwargs["offset"] = int(args["offset"])
+    return oplog_view(repo_path, **kwargs)
 
 
 def tool_state(repo_path: str, args: dict) -> dict:
@@ -61,7 +66,7 @@ def tool_state(repo_path: str, args: dict) -> dict:
     from sgt.core.lens import get
 
     get(repo_path)
-    return state_view(repo_path)
+    return state_view(repo_path, full=bool(args.get("full", False)))
 
 
 def tool_diff(repo_path: str, args: dict) -> dict:
@@ -177,7 +182,9 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
             if session_id is None:
                 return {"error": f"no active session owns hollow(s) {hollow_ids}"}
             confirm_match(repo_path, session_id, hollow_ids, op_ids)
-    return plan_view(repo_path)["checkpoint"]
+    # full=True: the agent needs span-carrying match detail to act on a group, regardless of the
+    # new compact default (Part D).
+    return plan_view(repo_path, full=True)["checkpoint"]
 
 
 def tool_drift(repo_path: str, args: dict) -> dict:
@@ -186,7 +193,7 @@ def tool_drift(repo_path: str, args: dict) -> dict:
     from sgt.core.lens import get
 
     get(repo_path)
-    return drift_view(repo_path)
+    return drift_view(repo_path, full=bool(args.get("full", False)))
 
 
 # ---------------------------------------------------------------------------
@@ -203,15 +210,23 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_init,
     ),
     "sgt_log": (
-        "Read the mined operation DAG: every op's id, derived kind, footprint (each symbol's "
-        "before->after version), witnessing-commit provenance, and intent if any.",
-        _schema({}, []),
+        "Read the mined operation DAG. Compact by default: {count, kinds, truncated, ops} where "
+        "each op is {id, kind, symbols, intent}, windowed by limit/offset. Pass full=true for "
+        "each op's before->after footprint, witnessing-commit provenance, and attribution, unpaged.",
+        _schema(
+            {"full": {"type": "boolean", "description": "the full per-op payload instead of the compact default"},
+             "limit": {"type": "integer", "description": "compact mode only: window size (default 100)"},
+             "offset": {"type": "integer", "description": "compact mode only: window start (default 0)"}},
+            [],
+        ),
         tool_log,
     ),
     "sgt_state": (
-        "The current ref's ideal: per-symbol frontier, covered paths, entity-granularity "
-        "coverage fraction, and the async oracle's verdict (if `.sgt/oracle.json` is configured).",
-        _schema({}, []),
+        "The current ref's ideal: covered paths, entity-granularity coverage fraction, and the "
+        "async oracle's verdict (if `.sgt/oracle.json` is configured). Compact by default "
+        "(frontier_count/entity_path_count instead of the full per-symbol frontier map and "
+        "entity_paths list); pass full=true to restore them.",
+        _schema({"full": {"type": "boolean", "description": "restore the full frontier map and entity_paths list"}}, []),
         tool_state,
     ),
     "sgt_diff": (
@@ -274,9 +289,9 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_checkpoint,
     ),
     "sgt_drift": (
-        "Every op not predicted by any active plan session, with its kind, footprint, and "
-        "current file/line spans.",
-        _schema({}, []),
+        "Every op not predicted by any active plan session. Compact by default: {count, op_ids, "
+        "kinds}, no spans. Pass full=true for each entry's footprint and current file/line spans.",
+        _schema({"full": {"type": "boolean", "description": "restore per-op footprint and file/line spans"}}, []),
         tool_drift,
     ),
 }
@@ -327,7 +342,7 @@ def handle_request(repo_path: str, msg: dict) -> dict | None:
             data, is_error = {"error": f"unknown tool: {name}"}, True
         except Exception as ex:  # noqa: BLE001 - report any handler failure as a tool error
             data, is_error = {"error": f"{type(ex).__name__}: {ex}"}, True
-        return _ok(mid, {"content": [{"type": "text", "text": json.dumps(data, indent=2)}],
+        return _ok(mid, {"content": [{"type": "text", "text": json.dumps(data, separators=(",", ":"))}],
                          "isError": is_error})
 
     if mid is None:

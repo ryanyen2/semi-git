@@ -51,7 +51,7 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
     assert not (tmp_path / "--horizon").exists()  # not misparsed as the repo path
 
     capsys.readouterr()
-    assert _in(tmp_path, ["log", "--json"]) == 0
+    assert _in(tmp_path, ["log", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     foo_ops = [op for op in payload["ops"] if "a.py::foo" in [f["symbol"] for f in op["footprint"]]]
     # v1 (pre-horizon) is never mined at all; v2 becomes one root "add", v3 one modify on top --
@@ -73,6 +73,14 @@ def test_log_json_is_machine_readable(tmp_path, capsys):
     assert _in(tmp_path, ["log", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["count"] >= 1
+    assert any("a.py::foo" in op["symbols"] for op in payload["ops"])
+
+
+def test_log_json_full_is_machine_readable(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["log", "--json", "--full"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["count"] >= 1
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
 
 
@@ -80,10 +88,16 @@ def test_state_shows_frontier_and_coverage(tmp_path, capsys):
     _seed(tmp_path, 1)
     assert _in(tmp_path, ["state", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert "a.py::foo" in payload["frontier"]
     assert payload["covered_paths"] == ["a.py"]
     assert payload["oracle_configured"] is False
     assert payload["oracle_verdict"] is None
+
+
+def test_state_json_full_shows_frontier(tmp_path, capsys):
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["state", "--json", "--full"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "a.py::foo" in payload["frontier"]
 
 
 def test_revert_emit_previews_without_writing(tmp_path, capsys):
@@ -373,7 +387,7 @@ def test_plan_intake_and_status_json(tmp_path, capsys, monkeypatch):
     assert _in(tmp_path, ["plan", "intake", "1. step one\n2. step two"]) == 0
     assert "step one" in capsys.readouterr().out
 
-    assert _in(tmp_path, ["plan", "status", "--json"]) == 0
+    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert len(payload["sessions"]) == 1
     assert [s["title"] for s in payload["sessions"][0]["steps"]] == ["step one", "step two"]
@@ -441,7 +455,7 @@ def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
     confirmed = json.loads(capsys.readouterr().out)
     assert confirmed["session_id"] == "s1"
 
-    assert _in(tmp_path, ["plan", "status", "--json"]) == 0
+    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["sessions"][0]["steps"][0]["status"] == "matched"
 
@@ -450,13 +464,13 @@ def test_drift_json_reports_nothing_with_no_active_session(tmp_path, capsys):
     _seed(tmp_path, 2)
     capsys.readouterr()
     assert _in(tmp_path, ["drift", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["entries"] == []
+    assert json.loads(capsys.readouterr().out)["op_ids"] == []
 
 
 def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys):
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["history", "--json"]) == 0
+    assert _in(tmp_path, ["history", "--json", "--full"]) == 0
     view = json.loads(capsys.readouterr().out)
     assert [c["index"] for c in view["commits"]] == [0, 1]
     assert view["ops"]
@@ -509,7 +523,7 @@ def test_fold_at_ref_folds_head(tmp_path, capsys):
 def test_fold_at_bad_op_id_set_reports_forked_not_a_crash(tmp_path, capsys):
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["history", "--json"]) == 0
+    assert _in(tmp_path, ["history", "--json", "--full"]) == 0
     hist = json.loads(capsys.readouterr().out)
     non_root = next(o["id"] for o in hist["ops"] if o["commit_index"] > 0)
 

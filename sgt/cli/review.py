@@ -45,7 +45,10 @@ def _review_queue(repo: str, sub: str | None, op_ids: list[str], session: str | 
 def _list(repo: str, as_json: bool) -> int:
     from sgt.api import trust_view
 
-    view = trust_view(repo)
+    # full=True: this verb's whole purpose is handing op ids to a follow-up `ack` (and, in text
+    # mode, each op's kind/drift flag) -- the same "output feeds another verb's input" rule
+    # `tool_checkpoint` and `intent/resolve.py` follow for their own trust_view/oplog_view calls.
+    view = trust_view(repo, full=True)
     if as_json:
         return _emit_json(view)
     if not view["groups"]:

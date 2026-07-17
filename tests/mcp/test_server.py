@@ -63,19 +63,43 @@ def test_unknown_tool_is_reported_as_tool_error(tmp_path):
     assert resp["result"]["isError"] is True and "unknown tool" in payload["error"]
 
 
+def test_tool_call_response_text_has_no_indent_whitespace(tmp_path):
+    """Part D: the JSON-RPC tool-call response body is `json.dumps(..., separators=(",", ":"))`,
+    not `indent=2` -- a cold MCP process's response payload should carry no pretty-printing
+    whitespace, whatever the tool's own shape."""
+    repo = _seed(tmp_path, 1)
+    msg = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+           "params": {"name": "sgt_log", "arguments": {}}}
+    resp = handle_request(repo, msg)
+    text = resp["result"]["content"][0]["text"]
+    assert "\n" not in text and ": " not in text
+
+
 # -- read tools -------------------------------------------------------------
 def test_log_lists_mined_ops(tmp_path):
     repo = _seed(tmp_path, 1)
     _, payload = _call(repo, "sgt_log")
     assert payload["count"] >= 1
+    assert any("a.py::foo" in op["symbols"] for op in payload["ops"])  # compact by default
+
+
+def test_log_full_carries_footprint(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_log", {"full": True})
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
 
 
 def test_state_shows_frontier(tmp_path):
     repo = _seed(tmp_path, 1)
     _, payload = _call(repo, "sgt_state")
-    assert "a.py::foo" in payload["frontier"]
     assert payload["oracle_configured"] is False
+    assert "frontier" not in payload  # compact by default
+
+
+def test_state_full_carries_frontier(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_state", {"full": True})
+    assert "a.py::foo" in payload["frontier"]
 
 
 def test_diff_requires_both_refs(tmp_path):
@@ -210,10 +234,16 @@ def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
 
     from sgt.api import plan_view
 
-    assert plan_view(repo)["sessions"][0]["steps"][0]["status"] == "matched"
+    assert plan_view(repo, full=True)["sessions"][0]["steps"][0]["status"] == "matched"
 
 
 def test_drift_tool_reports_nothing_with_no_active_session(tmp_path):
     repo = _seed(tmp_path, 2)  # two commits, but no plan session at all
     _, payload = _call(repo, "sgt_drift")
+    assert payload["op_ids"] == []  # compact by default
+
+
+def test_drift_full_carries_entries(tmp_path):
+    repo = _seed(tmp_path, 2)
+    _, payload = _call(repo, "sgt_drift", {"full": True})
     assert payload["entries"] == []

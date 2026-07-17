@@ -73,30 +73,51 @@ Shapes (stable; additive changes only):
 from __future__ import annotations
 
 
-def oplog_view(repo) -> dict:
+def oplog_view(repo, *, full: bool = False, limit: int = 100, offset: int = 0) -> dict:
     """The mined operation DAG: every stored op with its id, derived kind, footprint (each
     symbol's before->after version), witnessing-commit provenance, and intent if any.
     Deterministic order -- ops sorted by content-address id, every nested list sorted -- so set
-    iteration never leaks into the projection."""
-    from sgt.core.store import Store
+    iteration never leaks into the projection.
 
-    ops = sorted(Store(repo).all_ops(), key=lambda op: op.id)
+    Compact by default (R21's context-economy contract): `{count, kinds, truncated, ops}`, each
+    op reduced to `{id, kind, symbols, intent}` and sliced by `offset`/`limit` -- an agent's
+    default read never pays for every op's before/after versions, provenance, and attribution.
+    `full=True` restores today's per-op payload, unpaged. Neither mode touches `op.images` --
+    this view never needed it -- so both source from the footprint-only `opindex` sidecar."""
+    from sgt.core import opindex
+
+    ops = sorted(opindex.index_ops(repo), key=lambda op: op.id)
+    if full:
+        return {
+            "ops": [
+                {
+                    "id": op.id,
+                    "kind": op.kind,
+                    "footprint": [
+                        {"symbol": sym, "before": before, "after": after}
+                        for sym, (before, after) in sorted(op.footprint.items())
+                    ],
+                    "provenance": sorted(op.provenance),
+                    "attribution": _attribution_entries(op),
+                    "intent": op.intent,
+                }
+                for op in ops
+            ],
+            "count": len(ops),
+        }
+
+    kinds: dict[str, int] = {}
+    for op in ops:
+        kinds[op.kind] = kinds.get(op.kind, 0) + 1
+    window = ops[offset:offset + limit]
     return {
-        "ops": [
-            {
-                "id": op.id,
-                "kind": op.kind,
-                "footprint": [
-                    {"symbol": sym, "before": before, "after": after}
-                    for sym, (before, after) in sorted(op.footprint.items())
-                ],
-                "provenance": sorted(op.provenance),
-                "attribution": _attribution_entries(op),
-                "intent": op.intent,
-            }
-            for op in ops
-        ],
         "count": len(ops),
+        "kinds": kinds,
+        "truncated": len(window) < len(ops),
+        "ops": [
+            {"id": op.id, "kind": op.kind, "symbols": sorted(op.footprint), "intent": op.intent}
+            for op in window
+        ],
     }
 
 
@@ -110,7 +131,7 @@ def _attribution_entries(op) -> list[dict]:
     ]
 
 
-def state_view(repo) -> dict:
+def state_view(repo, *, full: bool = False) -> dict:
     """The current ref's ideal: its per-chain frontier (symbol -> tip op id), the paths
     `code(I)` covers, R7's entity-granularity coverage fraction, and the async oracle's verdict
     (U9) -- `oracle_verdict` is `None` until `sgt oracle run` has recorded one for this exact
@@ -123,17 +144,22 @@ def state_view(repo) -> dict:
     residue / layout facts (coarse, file-granularity coverage). `entity_paths` is that numerator
     as an explicit list, so `covered_paths` minus `entity_paths` is exactly the whole-file-only
     remainder. A ref with nothing covered reports 1.0 (vacuously: nothing is stuck at whole-file
-    granularity)."""
+    granularity).
+
+    Compact by default: drops the per-chain `frontier` map and the `entity_paths` list (one
+    entry per symbol/path -- unbounded on a large ideal) in favor of their counts.
+    `covered_paths`/`coverage_fraction`/`oracle_*` stay in both modes -- `status_view` reads
+    them, never `frontier`/`entity_paths`, so it can keep calling this at its default. `full=True`
+    restores `frontier` and `entity_paths`."""
     from sgt.config import load_oracle_config
+    from sgt.core import opindex
     from sgt.core.fold import _symbol_kind
     from sgt.core.lens import ideal_for_ref
     from sgt.core.oracle import verdict_for
     from sgt.core.op import is_bottom
-    from sgt.core.store import Store
 
-    store = Store(repo)
-    ops = store.all_ops()
-    ideal = ideal_for_ref(repo, "HEAD", store)
+    ops = opindex.index_ops(repo)
+    ideal = ideal_for_ref(repo, "HEAD")
     frontier = ideal.frontier(ops)
     by_id = {op.id: op for op in ops}
 
@@ -147,14 +173,23 @@ def state_view(repo) -> dict:
     from sgt.core import tiers
 
     oracle_configured = load_oracle_config(repo) is not None
-    return {
-        "frontier": {sym: frontier[sym] for sym in sorted(frontier)},
+    base = {
         "covered_paths": sorted(covered),
-        "entity_paths": sorted(entity_paths),
         "coverage_fraction": (len(entity_paths) / len(covered)) if covered else 1.0,
         "derived_paths": sorted(p for p in covered if tiers.is_derived(p)),  # S4/U27
         "oracle_configured": oracle_configured,
         "oracle_verdict": verdict_for(repo, ideal) if oracle_configured else None,
+    }
+    if full:
+        return {
+            "frontier": {sym: frontier[sym] for sym in sorted(frontier)},
+            "entity_paths": sorted(entity_paths),
+            **base,
+        }
+    return {
+        "frontier_count": len(frontier),
+        "entity_path_count": len(entity_paths),
+        **base,
     }
 
 
@@ -466,14 +501,20 @@ def map_view(repo) -> dict:
     }
 
 
-def history_view(repo) -> dict:
+def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0) -> dict:
     """The feature-map webview's commit-index axis: every mined commit in chronological order
     (`sgt.store.gitbind.GitBinding.history`, oldest-first), and every stored op's derived kind,
     feature (`op_leaf`, if a tree has been built), and `commit_index` -- the position in that
     chronological list of the *earliest* of the op's provenance commits that actually appears
     there. An op none of whose provenance commits are in `history()` (e.g. mined from a detached
-    or since-rewritten commit) is omitted rather than assigned a misleading index."""
-    from sgt.core.store import Store
+    or since-rewritten commit) is omitted rather than assigned a misleading index.
+
+    Compact by default: drops the full per-op `ops` list (unbounded on a large history) for
+    `{commit_count, op_count, kinds, features, latest_commits}` -- `latest_commits` is the
+    `offset`/`limit` window of the *most recent* commits (reverse-chronological), the summary an
+    agent actually wants ("what happened recently"). `full=True` restores today's unpaged
+    `{commits, ops}` -- required by `fold_view`'s internal use of the `ops`/`commit_index` axis."""
+    from sgt.core import opindex
     from sgt.lens.tree import load as load_tree
     from sgt.store.gitbind import GitBinding
 
@@ -485,14 +526,30 @@ def history_view(repo) -> dict:
     op_leaf = tree_result["op_leaf"] if tree_result else {}
 
     ops_out = []
-    for op in sorted(Store(repo).all_ops(), key=lambda op: op.id):
+    for op in sorted(opindex.index_ops(repo), key=lambda op: op.id):
         idx = min((commit_index[sha] for sha in op.provenance if sha in commit_index), default=None)
         if idx is None:
             continue
         ops_out.append({"id": op.id, "kind": op.kind, "feature_id": op_leaf.get(op.id), "commit_index": idx})
     ops_out.sort(key=lambda o: (o["commit_index"], o["id"]))
 
-    return {"commits": commits, "ops": ops_out}
+    if full:
+        return {"commits": commits, "ops": ops_out}
+
+    kinds: dict[str, int] = {}
+    features: dict[str, int] = {}
+    for o in ops_out:
+        kinds[o["kind"]] = kinds.get(o["kind"], 0) + 1
+        if o["feature_id"] is not None:
+            features[o["feature_id"]] = features.get(o["feature_id"], 0) + 1
+    latest_first = list(reversed(commits))
+    return {
+        "commit_count": len(commits),
+        "op_count": len(ops_out),
+        "kinds": kinds,
+        "features": features,
+        "latest_commits": latest_first[offset:offset + limit],
+    }
 
 
 def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
@@ -682,17 +739,23 @@ def blame_view(repo, file: str) -> dict:
     return {"file": file, "spans": spans, "features": features}
 
 
-def plan_view(repo) -> dict:
+def plan_view(repo, *, full: bool = False) -> dict:
     """The plan-session review surface (plan U14): every active session's steps (a matched
     step's current file/line spans, via `_spans_for_symbols`) plus `sgt.loop.match.
     compute_checkpoint`'s pure preview -- candidate step<->op groups and drift op-ids, each group
     carrying its own per-op file/line spans. Never mutates anything (`compute_checkpoint` is
-    pure); `sgt checkpoint --confirm-...` (`sgt.loop.match.confirm_match`) is the only writer."""
-    from sgt.core.store import Store
+    pure); `sgt checkpoint --confirm-...` (`sgt.loop.match.confirm_match`) is the only writer.
+
+    Compact by default: each session reports `step_count`/`matched_count` instead of the full
+    `steps` list, and each checkpoint match drops its `files` (the `_spans_for_symbols`->`code()`
+    fold) while keeping `hollow_ids`/`op_ids` -- small, activity-bounded lists `sgt checkpoint`'s
+    default preview and `--confirm-...` workflow still need. `full=True` restores per-step detail
+    (with spans) and per-match `files`; the MCP `tool_checkpoint` always requests it."""
+    from sgt.core import opindex
     from sgt.loop import plan as plan_mod
     from sgt.loop.match import compute_checkpoint
 
-    by_id = {op.id: op for op in Store(repo).all_ops()}
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
     checkpoint = compute_checkpoint(repo)
 
     def _files_for_ops(op_ids) -> list[dict]:
@@ -701,20 +764,26 @@ def plan_view(repo) -> dict:
 
     sessions = []
     for session_id, rec in sorted(plan_mod.active_sessions(repo).items()):
-        steps = [
-            {**step, "files": _files_for_ops(step["matched_op_ids"]) if step["status"] == "matched" else []}
-            for step in rec["steps"]
-        ]
-        sessions.append({
+        steps = rec["steps"]
+        base = {
             "session_id": session_id, "plan_text": rec["plan_text"], "status": rec["status"],
             "created_ts": rec["created_ts"], "last_activity_ts": rec["last_activity_ts"],
-            "steps": steps,
-        })
+        }
+        if full:
+            base["steps"] = [
+                {**step, "files": _files_for_ops(step["matched_op_ids"]) if step["status"] == "matched" else []}
+                for step in steps
+            ]
+        else:
+            base["step_count"] = len(steps)
+            base["matched_count"] = sum(1 for s in steps if s["status"] == "matched")
+        sessions.append(base)
 
     matches = [
         {
             "session_id": group.session_id, "hollow_ids": list(group.hollow_ids),
-            "op_ids": list(group.op_ids), "files": _files_for_ops(group.op_ids),
+            "op_ids": list(group.op_ids),
+            **({"files": _files_for_ops(group.op_ids)} if full else {}),
         }
         for group in checkpoint.matches
     ]
@@ -725,39 +794,53 @@ def plan_view(repo) -> dict:
     }
 
 
-def drift_view(repo) -> dict:
+def drift_view(repo, *, full: bool = False) -> dict:
     """The "what extra happened" query (plan U14): every drift op -- one not predicted by any
     active plan session -- with its kind, footprint, and current file/line spans, decoupled from
-    full session detail (`plan_view`)."""
-    from sgt.core.store import Store
+    full session detail (`plan_view`).
+
+    Compact by default: `{count, op_ids, kinds}` -- no per-op file/line spans, which also skips
+    `_spans_for_symbols`'s `code()` fold entirely. `full=True` restores today's `{entries: [...]}`
+    with each entry's footprint and spans."""
+    from sgt.core import opindex
     from sgt.loop.match import compute_checkpoint
 
-    by_id = {op.id: op for op in Store(repo).all_ops()}
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
     checkpoint = compute_checkpoint(repo)
+    op_ids = sorted(oid for oid in checkpoint.drift_op_ids if oid in by_id)
+
+    if not full:
+        kinds: dict[str, int] = {}
+        for oid in op_ids:
+            kinds[by_id[oid].kind] = kinds.get(by_id[oid].kind, 0) + 1
+        return {"count": len(op_ids), "op_ids": op_ids, "kinds": kinds}
 
     entries = []
-    for op_id in checkpoint.drift_op_ids:
-        op = by_id.get(op_id)
-        if op is None:
-            continue
+    for op_id in op_ids:
+        op = by_id[op_id]
         footprint = sorted(op.footprint)
         files = [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, footprint).items())]
         entries.append({"op_id": op.id, "kind": op.kind, "footprint": footprint, "files": files})
     return {"entries": entries}
 
 
-def trust_view(repo) -> dict:
+def trust_view(repo, *, full: bool = False) -> dict:
     """The U31 trust queue: every op carrying session/agent attribution (D7) or drift status
     (`drift_view`) that isn't yet covered by a review record (`sgt.core.review`), grouped by
     provenance key -- a session or agent name, or ``"drift"`` for an unattributed drift op. Acting
     on a group (`sgt revert --session`) or acking it (`sgt review-queue ack`) is the existing verb
     surface; this view only renders what's queued, per the plan's "report, don't invent mutation
-    semantics" boundary."""
-    from sgt.core import review
-    from sgt.core.store import Store
+    semantics" boundary.
+
+    Compact by default: each group reports `op_count` instead of the full `op_ids`/`ops` detail
+    (footprint + attribution per op). `sgt review-queue list` -- which hands the listed op ids to
+    a follow-up `ack` -- always requests `full=True`, the same "verb whose output feeds another
+    verb's input needs the full shape" rule `tool_checkpoint` (Part D) and `intent/resolve.py`
+    (Part E) follow."""
+    from sgt.core import opindex, review
     from sgt.loop.match import compute_checkpoint
 
-    ops = Store(repo).all_ops()
+    ops = opindex.index_ops(repo)
     drift_ids = compute_checkpoint(repo).drift_op_ids
     reviewed = review.reviewed_op_ids(repo)
 
@@ -779,10 +862,16 @@ def trust_view(repo) -> dict:
                 "drift": is_drift,
             })
 
-    group_list = [
-        {"provenance": key, "op_ids": [e["op_id"] for e in entries], "ops": entries}
-        for key, entries in sorted(groups.items())
-    ]
+    if full:
+        group_list = [
+            {"provenance": key, "op_ids": [e["op_id"] for e in entries], "ops": entries}
+            for key, entries in sorted(groups.items())
+        ]
+    else:
+        group_list = [
+            {"provenance": key, "op_count": len(entries)}
+            for key, entries in sorted(groups.items())
+        ]
     total_ops = len({e["op_id"] for entries in groups.values() for e in entries})
     return {"groups": group_list, "total_ops": total_ops}
 
@@ -935,7 +1024,7 @@ def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
         ideal = ideal_for_ref(repo, ref, store)
     else:
         if at_commit_index is not None:
-            hist = history_view(repo)
+            hist = history_view(repo, full=True)  # needs the unpaged per-op commit_index axis
             frontier_ids = frozenset(o["id"] for o in hist["ops"] if o["commit_index"] <= at_commit_index)
         else:
             frontier_ids = frozenset(op_ids)
@@ -952,12 +1041,18 @@ def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
     }
 
 
-def compose_view(repo) -> dict:
+def compose_view(repo, *, full: bool = False) -> dict:
     """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
     `sessions`/`trust`, the current ideal's oracle verdict, and a lightweight open-proposal list,
     each delegated to its own view function with no reshaping. Collapses what would otherwise be
     ~9 separate `sgt <verb> --json` shell-outs (each a fresh process) into one call -- the single
-    biggest responsiveness win for a UI that refreshes on every `.sgt/` change."""
+    biggest responsiveness win for a UI that refreshes on every `.sgt/` change.
+
+    `full` threads into every child that accepts it (`history`/`plan`/`drift`/`trust`); `map`/
+    `status`/`forks`/`sessions` take no `full` param and are always their own single shape. The
+    default (`full=False`) delegates each child at *its own* default, so `compose_view(repo) ==
+    {"map": map_view(repo), "history": history_view(repo), ...}` stays an exact identity --
+    R21's byte-equality guardrail, unchanged by this compaction."""
     from sgt.core import propose
     from sgt.core.lens import current_ideal
     from sgt.core.oracle import verdict_for
@@ -971,13 +1066,13 @@ def compose_view(repo) -> dict:
     ]
     return {
         "map": map_view(repo),
-        "history": history_view(repo),
+        "history": history_view(repo, full=full),
         "status": status_view(repo),
         "forks": forks_view(repo),
-        "plan": plan_view(repo),
-        "drift": drift_view(repo),
+        "plan": plan_view(repo, full=full),
+        "drift": drift_view(repo, full=full),
         "sessions": sessions_view(repo),
-        "trust": trust_view(repo),
+        "trust": trust_view(repo, full=full),
         "oracle_verdict": verdict_for(repo, current_ideal(repo)),
         "proposals": proposals,
     }
