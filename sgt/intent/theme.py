@@ -205,7 +205,17 @@ def build_themes(repo: str | Path) -> dict[str, dict]:
     (rung 2, `IntentThemer`), mint each theme a content-addressed id, and persist to committed
     `.sgt/intent/themes.json`. Every atom lands in exactly one theme -- even an unbundled,
     unlabeled singleton gets a trivial one-atom theme -- so `themes.json` always covers the full
-    atom partition (`sgt intent list` never needs a separate "uncategorized" case)."""
+    atom partition (`sgt intent list` never needs a separate "uncategorized" case).
+
+    Deliberately NOT auto-triggered by `sync`/`land`: unlike the feature tree (rebuilt in-memory,
+    pre-commit, from data `sync` already holds), a real rebuild here needs `GitBinding.history()`
+    -- which only reflects the *merged* history once the landing/merge commit actually exists.
+    Calling this transactionally, before that commit, would either see the wrong (pre-merge)
+    history or (called after) write a committed artifact into the working tree *after* the tree
+    was already committed, leaving it permanently uncommitted. So `themes.json` is explicitly
+    rebuilt on demand (`sgt intent build`, U7) -- like `sgt map` vs `map_view`, this write path is
+    kept out of every read/sync path. Content-hash caching (U4) makes a post-sync rebuild cheap:
+    atoms unchanged by the sync hit the cache; only genuinely new atoms cost a live call."""
     from sgt.intent.group import atoms as _atoms
     from sgt.intent.group import scope_bundles
 
