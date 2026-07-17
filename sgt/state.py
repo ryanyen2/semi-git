@@ -101,6 +101,10 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # default. Read from historical blobs at mining time (`sgt.core.tiers.load_tiers_at`) so
     # tier assignment stays a pure function of the mined commit (LAW-0).
     "tiers": _Artifact(("tiers.json",), committed=True),
+    # committed intent-overlay prompt sidecar (`sgt.intent.prompts`, plan U3/KTD5): key (a
+    # plan-id, session-name, or commit sha -- the same keys `Attribution` carries) -> prompt text.
+    # Write-once per key, so sync's merge is a trivial G-Set union (`sgt.intent.prompts.merge`).
+    "intent_prompts": _Artifact(("intent", "prompts.json"), committed=True, sort_keys=False),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
