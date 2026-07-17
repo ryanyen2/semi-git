@@ -19,8 +19,17 @@ from sgt import state
 _ARTIFACT = "intent_prompts"
 
 
-def _load(repo: str | Path) -> dict[str, str]:
+def load_prompts(repo: str | Path) -> dict[str, str]:
+    """The whole working-tree prompt sidecar -- `sync`'s `ingest` reads this for "ours" side,
+    mirroring `sgt.lens.reconcile.load_aliases`."""
     return state.load_json(repo, _ARTIFACT, default={})
+
+
+def prompts_at(gb, sha: str) -> dict[str, str]:
+    """A teammate's prompt sidecar as committed at `sha` -- the historical-blob read `sync`
+    unions, mirroring `sgt.lens.reconcile.aliases_at`."""
+    body = state.load_blob_json(gb, sha, _ARTIFACT)
+    return {} if body is None else dict(body)
 
 
 def record_prompt(repo: str | Path, key: str, text: str) -> bool:
@@ -29,7 +38,7 @@ def record_prompt(repo: str | Path, key: str, text: str) -> bool:
     key (write-once; a second write is a deliberate no-op, never an overwrite)."""
     if not key or not text:
         return False
-    prompts = _load(repo)
+    prompts = load_prompts(repo)
     if key in prompts:
         return False
     prompts[key] = text
@@ -39,7 +48,7 @@ def record_prompt(repo: str | Path, key: str, text: str) -> bool:
 
 def prompt_for(repo: str | Path, key: str) -> str | None:
     """The recorded prompt for `key`, or `None` if absent -- never raises on a missing key."""
-    return _load(repo).get(key)
+    return load_prompts(repo).get(key)
 
 
 def merge(ours: dict[str, str], theirs: dict[str, str]) -> dict[str, str]:
