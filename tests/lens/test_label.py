@@ -153,3 +153,29 @@ def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path,
 
     build_map(tmp_path)  # unchanged clusters -> every label served from the persisted cache
     assert client.responses.calls == calls_after_first
+
+
+def test_build_map_rerun_with_no_changes_does_not_touch_label_cache_mtime(tmp_path, monkeypatch):
+    """A `sgt map` rerun with nothing new must not bump `label_cache.json`'s mtime -- it's a
+    `.sgt/**/*.json` path a client's file watcher invalidates its cache on, so an unconditional
+    rewrite on every no-op read makes a client's own refresh retrigger another refresh, forever."""
+    from sgt import state
+    from sgt.core.lens import get
+    from sgt.lens.map import build_map
+    from sgt.store.gitbind import init_store
+
+    fake_out = label_mod.FeatureLabel(label="Retrieval Pipeline", rationale="Embeds and retrieves.")
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "r.py").write_text("def embed(x):\n    return x\n\n\ndef search(q):\n    return q\n", encoding="utf-8")
+    gb.commit_all("add r.py")
+    get(tmp_path)
+
+    build_map(tmp_path)  # settles the cache (first call is always a real write)
+    mtime_before = state.path(tmp_path, "label_cache").stat().st_mtime_ns
+
+    build_map(tmp_path)  # no new ops -- must not rewrite the cache file
+
+    mtime_after = state.path(tmp_path, "label_cache").stat().st_mtime_ns
+    assert mtime_after == mtime_before, "save() rewrote label_cache.json with no new state"

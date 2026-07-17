@@ -243,6 +243,30 @@ def test_load_save_round_trip(tmp_path):
     assert loaded["op_leaf"] == built["op_leaf"]
 
 
+def test_save_skips_the_write_when_byte_identical_to_disk(tmp_path):
+    """A rebuild with no new ops must not touch `tree.json`'s mtime -- it's a `.sgt/**/*.json`
+    path a client's file watcher invalidates its cache on, so an unconditional rewrite on every
+    no-op read makes a client's own refresh retrigger another refresh, forever."""
+    import sgt.state as state
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+
+    # The first build has no `previous` tree to Greene-match against (birth events); the second
+    # build's `previous` is auto-loaded from what the first just saved, so it settles into pure
+    # continuations -- only from the *third* build on is the result byte-identical to the prior
+    # save, which is the steady-state a repeated no-op read actually hits.
+    tree.save(repo, tree.build(repo, ops, ideal))
+    tree.save(repo, tree.build(repo, ops, ideal))
+    mtime_before = state.path(repo, "tree").stat().st_mtime_ns
+
+    rebuilt = tree.build(repo, ops, ideal)  # same ops/ideal, already-settled previous
+    tree.save(repo, rebuilt)
+
+    mtime_after = state.path(repo, "tree").stat().st_mtime_ns
+    assert mtime_after == mtime_before, "save() rewrote tree.json with no new state"
+
+
 def test_rebuild_on_unchanged_history_renames_nothing(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
