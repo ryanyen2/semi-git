@@ -116,7 +116,10 @@ class Labeler:
         return self._resolve(key, prompt, [*child_labels, *files])
 
     def save(self) -> None:
-        state.save_json(self._repo, "label_cache", self.cache)
+        """Skips the write when the cache is byte-identical to what's already on disk (see
+        `state.save_json_if_changed`) -- a build with zero new/changed labels shouldn't bump
+        `label_cache.json`'s mtime and retrigger a client's file watcher."""
+        state.save_json_if_changed(self._repo, "label_cache", self.cache)
 
     def cost_line(self) -> str:
         est = self.tokens_in / 1e6 * 0.25 + self.tokens_out / 1e6 * 2.0  # ~ballpark $/Mtok
