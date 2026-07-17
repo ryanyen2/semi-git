@@ -235,7 +235,7 @@ def why(repo: str | Path, op_ref: str, for_feature: str | None = None) -> WhyRes
     own_feature = op_leaf.get(op_id)
 
     if for_feature is None:
-        member_leaf = tree._leaf_member_index(nodes)
+        member_leaf = tree.leaf_member_index(nodes)
         op = ops_by_id[op_id]
         votes = Counter(member_leaf[sym] for sym in op.footprint if sym in member_leaf)
         vote_list = tuple(

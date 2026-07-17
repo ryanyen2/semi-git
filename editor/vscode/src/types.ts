@@ -55,8 +55,8 @@ export interface HistoryView {
 }
 
 // `sgt preview <verb> <args...> --json` -- a side-effect-free preview shared by every feature
-// verb + feature-grouped revert; fields beyond `ok`/`verb`/`message`/`affected_features` vary by
-// verb, so callers narrow on `verb` before reading them.
+// verb + feature-grouped revert/restore; fields beyond `ok`/`verb`/`message`/`affected_features`
+// vary by verb, so callers narrow on `verb` before reading them.
 export interface FeatureVerbPreview {
   ok: boolean;
   verb: string;

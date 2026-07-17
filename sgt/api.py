@@ -578,23 +578,25 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
             "affected": affected_rows,
         }
 
-    if verb == "revert":
+    if verb in ("revert", "restore"):
         if len(args) != 1:
-            return {"error": "revert requires <feature>"}
-        preview = lens_verbs.plan_revert_feature(repo, args[0])
+            return {"error": f"{verb} requires <feature>"}
+        plan_fn = lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
+        preview = plan_fn(repo, args[0])
         affected = []
         if preview.ok:
             tree_result = tree_mod.load(repo)
             op_leaf = tree_result["op_leaf"] if tree_result else {}
-            affected = sorted({op_leaf[op] for op in preview.removed if op in op_leaf})
+            touched = preview.removed if verb == "revert" else preview.added
+            affected = sorted({op_leaf[op] for op in touched if op in op_leaf})
         return {
-            "ok": preview.ok, "verb": "revert", "message": preview.message,
+            "ok": preview.ok, "verb": verb, "message": preview.message,
             "target": preview.target, "removed": sorted(preview.removed), "added": sorted(preview.added),
             "affected_features": affected,
             "affected": _affected_rows(repo, preview.removed, preview.added),
         }
 
-    return {"error": f"unknown verb {verb!r}", "verbs": ["merge", "split", "move", "rename", "revert"]}
+    return {"error": f"unknown verb {verb!r}", "verbs": ["merge", "split", "move", "rename", "revert", "restore"]}
 
 
 def _entity_line_spans(repo, file: str) -> tuple[list[tuple[str, int, int]], str | None]:

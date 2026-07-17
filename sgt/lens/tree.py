@@ -177,7 +177,7 @@ def _leaf_ids(nodes: dict, nid: str) -> list[str]:
     return out
 
 
-def _leaf_member_index(nodes: dict) -> dict[str, str]:
+def leaf_member_index(nodes: dict) -> dict[str, str]:
     return {m: nid for nid, nd in nodes.items() if not nd["children"] for m in nd["members"]}
 
 
@@ -186,7 +186,7 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
     id, for determinism, not numeric order). An op whose footprint touches no leaf-assigned
     symbol (fully dead, or off-chain) gets no entry -- this is the hook U13's blame (`sym ->
     max-op-in-I -> feature`) and feature verbs (`merge` unions "op-sets") consume."""
-    member_leaf = _leaf_member_index(nodes)
+    member_leaf = leaf_member_index(nodes)
     op_leaf: dict[str, str] = {}
     for op in ops:
         votes = Counter(member_leaf[sym] for sym in op.footprint if sym in member_leaf)
@@ -216,7 +216,7 @@ def feature_edges(nodes: dict, fused: dict[frozenset, float]) -> list[dict]:
     whose two symbols land in different leaves, add its weight to that leaf pair's total. Used by
     `sgt.api.map_view` to expose cross-feature structural dependency edges (the same signal
     `plan_split` already reads, at feature-pair rather than symbol-pair granularity)."""
-    member_leaf = _leaf_member_index(nodes)
+    member_leaf = leaf_member_index(nodes)
     totals: dict[frozenset[str], float] = defaultdict(float)
     for pair, w in fused.items():
         a, b = tuple(pair)
@@ -470,7 +470,7 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
     here."""
     if not pins.assign:
         return
-    member_leaf = _leaf_member_index(result["nodes"])
+    member_leaf = leaf_member_index(result["nodes"])
     amap = {
         leaf: fid
         for member, fid in pins.assign.items()

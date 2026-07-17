@@ -82,6 +82,16 @@ export function registerCommands(
       );
     }
   });
+  reg("sgt.restore", async (id?: string) => {
+    const feature = await pickFeature(store, id);
+    if (feature) {
+      await applyMutation(
+        store,
+        ["restore", feature],
+        `Restore feature ${feature}? This rewrites the working tree and commits.`
+      );
+    }
+  });
 
   reg("sgt.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));
   reg("sgt.showPlanDiff", (target) => planDiff.showDiff(target));
