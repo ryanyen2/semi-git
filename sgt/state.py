@@ -130,6 +130,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # after. Its presence means a migration is in flight, so a crashed `--apply` resumes from the
     # stored map rather than recomputing it against half-pruned op files. Per-clone, never travels.
     "migration_manifest": _Artifact(("local", "migration_manifest.json"), committed=False),
+    # local, gitignored footprint-only sidecar over the op store (`sgt.core.opindex`): every op's
+    # payload minus `images`, so read-only projection views skip `Store.all_ops()`'s per-op images
+    # hex-decode (85%+ of the store's on-disk bytes) entirely. Self-healing (rebuilt on staleness),
+    # never authoritative -- the ops directory always is. Per-clone, never travels.
+    "op_index": _Artifact(("local", "op_index.json"), committed=False),
 }
 
 

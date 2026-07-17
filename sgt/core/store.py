@@ -45,11 +45,13 @@ class StoreError(Exception):
 _ATTR_FIELDS = ("session", "agent", "plan")
 
 
-def _serialize(op: Op) -> bytes:
-    # v1 provenance shape (D7): a list of `{sha, session?, agent?, plan?}` dicts, one per witnessing
-    # SHA, folding in any structured attribution for that SHA. Provenance is still excluded from the
-    # id (`compute_id` untouched), so this is pure on-disk enrichment -- old repos' v0 tuple-of-shas
-    # files keep round-tripping via `_deserialize`, and no committed op is bulk-rewritten.
+def _payload(op: Op) -> dict:
+    """`op`'s full on-disk payload (including `images`), shared by `_serialize` and
+    `sgt.core.opindex` (which strips `images` back off for its footprint-only sidecar). v1
+    provenance shape (D7): a list of `{sha, session?, agent?, plan?}` dicts, one per witnessing
+    SHA, folding in any structured attribution for that SHA. Provenance is still excluded from the
+    id (`compute_id` untouched), so this is pure on-disk enrichment -- old repos' v0 tuple-of-shas
+    files keep round-tripping via `_deserialize`, and no committed op is bulk-rewritten."""
     attr_by_sha = {a.sha: a for a in op.attribution}
     provenance = []
     for sha in sorted(op.provenance):
@@ -58,7 +60,7 @@ def _serialize(op: Op) -> bytes:
         if a is not None:
             entry.update({f: getattr(a, f) for f in _ATTR_FIELDS if getattr(a, f) is not None})
         provenance.append(entry)
-    payload = {
+    return {
         "id": op.id,
         "footprint": {k: list(v) for k, v in sorted(op.footprint.items())},
         "images": {
@@ -72,15 +74,17 @@ def _serialize(op: Op) -> bytes:
         "off_chain": op.off_chain,
         "derived": op.derived,
     }
-    return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
 
 
-def _deserialize(data: bytes) -> Op:
-    payload = json.loads(data)
+def _serialize(op: Op) -> bytes:
+    return json.dumps(_payload(op), indent=2, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def _op_from_payload(payload: dict, images: Images) -> Op:
+    """Reconstruct an `Op` from a decoded payload dict plus its already-resolved `images` --
+    shared by `_deserialize` (hex-decodes `payload["images"]`) and `sgt.core.opindex` (passes
+    `{}`, since the sidecar never stores images at all)."""
     footprint = {k: tuple(v) for k, v in payload["footprint"].items()}
-    images: Images = {
-        k: (bytes.fromhex(v) if v is not None else None) for k, v in payload["images"].items()
-    }
     prov = payload["provenance"]
     if prov and isinstance(prov[0], dict):  # v1: a list of `{sha, session?, ...}` dicts
         provenance = tuple(sorted(e["sha"] for e in prov))
@@ -108,6 +112,14 @@ def _deserialize(data: bytes) -> Op:
         off_chain=payload.get("off_chain", False),
         derived=payload.get("derived", False),
     )
+
+
+def _deserialize(data: bytes) -> Op:
+    payload = json.loads(data)
+    images: Images = {
+        k: (bytes.fromhex(v) if v is not None else None) for k, v in payload["images"].items()
+    }
+    return _op_from_payload(payload, images)
 
 
 @contextlib.contextmanager
@@ -293,6 +305,9 @@ class FsckReport:
     pending_land: tuple[str, ...] = ()        # a `land` crashed mid-flight; the ref it was advancing
     # (U5/R7). Advisory: the next `sgt land` auto-recovers by rolling back to the journaled snapshot,
     # so this names an interrupted-but-recoverable state rather than corruption -- never flips `ok`.
+    op_index_stale: bool = False  # the `sgt.core.opindex` sidecar is out of date. Advisory, like
+    # `mixed_versions` -- the next read self-heals via a rebuild, so this only surfaces that the
+    # *next* read view pays that rebuild cost rather than the cheap incremental path.
 
 
 def _chain_gaps(ops: list[Op]) -> list[str]:
@@ -317,7 +332,7 @@ def fsck(repo: str | Path) -> FsckReport:
     corrupt op file degrades to a reported skip -- no verb crashes on it. Repair (re-mining) is a
     caller concern; this only reports."""
     from sgt import state
-    from sgt.core import order
+    from sgt.core import opindex, order
     from sgt.store.gitbind import GitBinding
 
     store = Store(repo)
@@ -373,4 +388,5 @@ def fsck(repo: str | Path) -> FsckReport:
         unreachable_witnesses=tuple(sorted(unreachable)),
         mixed_versions=mixed,
         pending_land=pending_land,
+        op_index_stale=opindex.is_stale(repo),
     )

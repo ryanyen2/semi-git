@@ -18,6 +18,7 @@ def register(subs, parent) -> None:
     pf.add_argument("--tree", action="store_true",
                     help="compare code(current_ideal) against the HEAD tree (R2)")
     pf.set_defaults(func=_cmd_fsck)
+    subs.add_parser("reindex", parents=[parent]).set_defaults(func=_cmd_reindex)
     p = subs.add_parser("diff", parents=[parent])
     p.add_argument("a")
     p.add_argument("b")
@@ -70,6 +71,10 @@ def _cmd_fsck(args) -> int:
     return _fsck(".", args.as_json)
 
 
+def _cmd_reindex(args) -> int:
+    return _reindex(".", args.as_json)
+
+
 def _cmd_diff(args) -> int:
     return _diff(".", args.a, args.b, args.as_json)
 
@@ -106,6 +111,7 @@ def _fsck(repo: str, as_json: bool = False) -> int:
                 "unreachable_witnesses": list(report.unreachable_witnesses),
                 "mixed_versions": list(report.mixed_versions),
                 "pending_land": list(report.pending_land),
+                "op_index_stale": report.op_index_stale,
                 "stale_sessions": stale,
             }
         )
@@ -124,6 +130,9 @@ def _fsck(repo: str, as_json: bool = False) -> int:
     if report.mixed_versions:
         print(f"    mixed miner versions {', '.join(report.mixed_versions)} -- "
               f"run `sgt migrate ops-v3` to unify the store")
+    if report.op_index_stale:
+        print("    op index stale (advisory): the next read rebuilds it -- "
+              "`sgt reindex` forces it now")
     for gap in report.chain_gaps:
         print(f"    chain gap (advisory): {gap} has no producing op "
               f"(off-ref predecessor -- benign unless unexpected)")
@@ -156,6 +165,20 @@ def _fsck_tree(repo: str, as_json: bool = False) -> int:
         for path in result[cls]:
             print(f"    {label}: {path}")
     return 0 if not drift else 1
+
+
+def _reindex(repo: str, as_json: bool = False) -> int:
+    """`sgt reindex [--json]`: force-rebuild the `sgt.core.opindex` footprint-only sidecar. Every
+    read view self-heals this automatically, so this is a maintenance verb (rebalancing latency
+    into a deliberate moment) rather than a repeat step in the daily loop."""
+    from sgt.core import opindex
+
+    opindex.rebuild(repo)
+    count = len(opindex.index_ops(repo))
+    if as_json:
+        return _emit_json({"ok": True, "op_count": count})
+    print(f"✓ reindex — {count} op(s) indexed")
+    return 0
 
 
 def _log(repo: str, as_json: bool = False) -> int:

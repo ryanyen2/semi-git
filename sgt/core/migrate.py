@@ -31,7 +31,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sgt import state
-from sgt.core import order
+from sgt.core import opindex, order
 from sgt.core.mine import mine
 from sgt.core.op import BOTTOM, MINER_VERSION, Op, compute_id, is_bottom
 from sgt.core.store import Store, _serialize, _write_atomic, locked_section
@@ -399,6 +399,10 @@ def _execute(repo: Path, v3_ops, mapping, current_key, current_ideal) -> tuple[l
 
         _prune_pre_v3(store, {op.id for op in v3_ops})
 
+    # Every op just got a fresh id (miner_version bump) -- eagerly rebuild the opindex sidecar
+    # (rather than leaving it to self-heal on the next read) so a read right after `--apply`
+    # reflects the crossing immediately.
+    opindex.rebuild(repo, store)
     return changed, dropped
 
 
