@@ -5,7 +5,7 @@ predicted. Every verb mines the working tree on contact first (R9)."""
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _add_view_flags, _emit_json, _fail
 
 _STATUS_ICON = {"pending": "○", "matched": "●"}
 
@@ -13,6 +13,7 @@ _STATUS_ICON = {"pending": "○", "matched": "●"}
 def register(subs, parent) -> None:
     pl = subs.add_parser("plan", parents=[parent])
     pl.add_argument("rest", nargs="*")
+    _add_view_flags(pl)  # only meaningful for `plan status`
     pl.set_defaults(func=_cmd_plan)
 
     cp = subs.add_parser("checkpoint", parents=[parent])
@@ -20,11 +21,13 @@ def register(subs, parent) -> None:
     cp.add_argument("--confirm-op", action="append", dest="confirm_op", default=[])
     cp.set_defaults(func=_cmd_checkpoint)
 
-    subs.add_parser("drift", parents=[parent]).set_defaults(func=_cmd_drift)
+    dp = subs.add_parser("drift", parents=[parent])
+    _add_view_flags(dp)
+    dp.set_defaults(func=_cmd_drift)
 
 
 def _cmd_plan(args) -> int:
-    return _plan(".", args.rest, args.as_json)
+    return _plan(".", args.rest, args.as_json, args.full)
 
 
 def _cmd_checkpoint(args) -> int:
@@ -32,12 +35,14 @@ def _cmd_checkpoint(args) -> int:
 
 
 def _cmd_drift(args) -> int:
-    return _drift(".", args.as_json)
+    return _drift(".", args.as_json, args.full)
 
 
-def _plan(repo: str, rest: list[str], as_json: bool) -> int:
-    """`sgt plan intake "<text>"` / `sgt plan abandon <session>` / `sgt plan status [--json]`
-    (plan U14): plan-session intake, abandonment, and the read view over active sessions."""
+def _plan(repo: str, rest: list[str], as_json: bool, full: bool = False) -> int:
+    """`sgt plan intake "<text>"` / `sgt plan abandon <session>` / `sgt plan status [--json]
+    [--full]` (plan U14): plan-session intake, abandonment, and the read view over active
+    sessions. `status`'s default is compact (per-session step/matched counts, no per-step
+    detail); `--full` restores each step's title/status/spans."""
     usage = 'usage: sgt plan intake "<text>" | sgt plan abandon <session> | sgt plan status [--json]'
     if not rest or rest[0] not in ("intake", "abandon", "status"):
         print(usage)
@@ -78,17 +83,21 @@ def _plan(repo: str, rest: list[str], as_json: bool) -> int:
 
     from sgt.api import plan_view
 
-    view = plan_view(repo)
+    view = plan_view(repo, full=full)
     if as_json:
         return _emit_json(view)
     if not view["sessions"]:
         print("(no active plan sessions)")
         return 0
-    for s in view["sessions"]:
-        glyphs = "".join(_STATUS_ICON.get(st["status"], "?") for st in s["steps"])
-        print(f"  {s['session_id']}  {glyphs}")
-        for st in s["steps"]:
-            print(f"    [{_STATUS_ICON.get(st['status'], '?')}] {st['title']}")
+    if full:
+        for s in view["sessions"]:
+            glyphs = "".join(_STATUS_ICON.get(st["status"], "?") for st in s["steps"])
+            print(f"  {s['session_id']}  {glyphs}")
+            for st in s["steps"]:
+                print(f"    [{_STATUS_ICON.get(st['status'], '?')}] {st['title']}")
+    else:
+        for s in view["sessions"]:
+            print(f"  {s['session_id']}  {s['matched_count']}/{s['step_count']} step(s) matched")
     return 0
 
 
@@ -134,18 +143,27 @@ def _checkpoint(repo: str, hollow_ids: list[str], op_ids: list[str], as_json: bo
     return 0
 
 
-def _drift(repo: str, as_json: bool) -> int:
-    """`sgt drift [--json]` (plan U14): every op not predicted by any active plan session."""
+def _drift(repo: str, as_json: bool, full: bool = False) -> int:
+    """`sgt drift [--json] [--full]` (plan U14): every op not predicted by any active plan
+    session. Compact by default (`{count, op_ids, kinds}`, no spans); `--full` restores each
+    entry's footprint and current file/line spans."""
     from sgt.api import drift_view
     from sgt.core.lens import get
 
     get(repo)  # mine-on-contact so drift reflects current reality (R9)
-    view = drift_view(repo)
+    view = drift_view(repo, full=full)
     if as_json:
         return _emit_json(view)
-    if not view["entries"]:
+    if full:
+        if not view["entries"]:
+            print("(no drift — every recent op was predicted by an active plan)")
+            return 0
+        for e in view["entries"]:
+            print(f"  {e['op_id'][:12]} [{e['kind']}]: {', '.join(e['footprint'])}")
+        return 0
+    if not view["op_ids"]:
         print("(no drift — every recent op was predicted by an active plan)")
         return 0
-    for e in view["entries"]:
-        print(f"  {e['op_id'][:12]} [{e['kind']}]: {', '.join(e['footprint'])}")
+    for op_id in view["op_ids"]:
+        print(f"  {op_id[:12]}")
     return 0

@@ -5,15 +5,24 @@ Every verb mines the working tree on contact before reading (R9)."""
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _add_view_flags, _emit_json, _fail
 
 
 def register(subs, parent) -> None:
-    for verb, fn in (
-        ("log", _cmd_log), ("state", _cmd_state), ("status", _cmd_status),
-        ("map", _cmd_map), ("history", _cmd_history), ("compose", _cmd_compose),
-    ):
+    for verb, fn in (("status", _cmd_status), ("map", _cmd_map)):
         subs.add_parser(verb, parents=[parent]).set_defaults(func=fn)
+    lp = subs.add_parser("log", parents=[parent])
+    _add_view_flags(lp, paged=True)
+    lp.set_defaults(func=_cmd_log)
+    hp = subs.add_parser("history", parents=[parent])
+    _add_view_flags(hp, paged=True)
+    hp.set_defaults(func=_cmd_history)
+    sp = subs.add_parser("state", parents=[parent])
+    _add_view_flags(sp)
+    sp.set_defaults(func=_cmd_state)
+    cp = subs.add_parser("compose", parents=[parent])
+    _add_view_flags(cp)
+    cp.set_defaults(func=_cmd_compose)
     pf = subs.add_parser("fsck", parents=[parent])
     pf.add_argument("--tree", action="store_true",
                     help="compare code(current_ideal) against the HEAD tree (R2)")
@@ -38,11 +47,11 @@ def register(subs, parent) -> None:
 
 
 def _cmd_log(args) -> int:
-    return _log(".", args.as_json)
+    return _log(".", args.as_json, args.full, args.limit, args.offset)
 
 
 def _cmd_state(args) -> int:
-    return _state(".", args.as_json)
+    return _state(".", args.as_json, args.full)
 
 
 def _cmd_status(args) -> int:
@@ -54,11 +63,11 @@ def _cmd_map(args) -> int:
 
 
 def _cmd_history(args) -> int:
-    return _history(".", args.as_json)
+    return _history(".", args.as_json, args.full, args.limit, args.offset)
 
 
 def _cmd_compose(args) -> int:
-    return _compose(".", args.as_json)
+    return _compose(".", args.as_json, args.full)
 
 
 def _cmd_fold(args) -> int:
@@ -181,43 +190,59 @@ def _reindex(repo: str, as_json: bool = False) -> int:
     return 0
 
 
-def _log(repo: str, as_json: bool = False) -> int:
-    """The kernel op DAG (plan U7). Mine-on-contact first, then project via `sgt.api.oplog_view`."""
+def _log(repo: str, as_json: bool = False, full: bool = False,
+          limit: int | None = None, offset: int = 0) -> int:
+    """The kernel op DAG (plan U7). Mine-on-contact first, then project via `sgt.api.oplog_view`.
+    Compact by default (`--full` for today's per-op before/after/provenance/attribution payload);
+    `limit`/`offset` unset forward nothing, so the view's own default window applies (keeping
+    `sgt log --json`'s default byte-identical to `oplog_view(repo)`, R21)."""
     from sgt.api import oplog_view
     from sgt.core.lens import get
 
     get(repo)  # sync foreign commits into the store before inspecting it
-    view = oplog_view(repo)
+    kwargs = {"offset": offset} if not full else {}
+    if limit is not None and not full:
+        kwargs["limit"] = limit
+    view = oplog_view(repo, full=full, **kwargs)
     if as_json:
         return _emit_json(view)
     if not view["ops"]:
         print("(no ops — nothing mined yet; commit some work then run `sgt log`)")
         return 0
-    print(f"{view['count']} op(s):")
+    note = "" if full else (" (truncated)" if view["truncated"] else "")
+    print(f"{view['count']} op(s){note}:")
     for op in view["ops"]:
-        syms = ", ".join(f["symbol"] for f in op["footprint"])
+        syms = ", ".join(f["symbol"] for f in op["footprint"]) if full else ", ".join(op["symbols"])
         print(f"  {op['id'][:12]} [{op['kind']}]: {syms}")
     return 0
 
 
-def _state(repo: str, as_json: bool = False) -> int:
-    """The current ref's ideal (plan U7): frontier, coverage, entity-granularity fraction."""
+def _state(repo: str, as_json: bool = False, full: bool = False) -> int:
+    """The current ref's ideal (plan U7): frontier, coverage, entity-granularity fraction.
+    Compact by default (`--full` restores the per-symbol `frontier` map and `entity_paths`
+    list)."""
     from sgt.api import state_view
     from sgt.core.lens import get
 
     get(repo)  # mine-on-contact so the ideal reflects current reality
-    view = state_view(repo)
+    view = state_view(repo, full=full)
     if as_json:
         return _emit_json(view)
     pct = view["coverage_fraction"] * 100
-    print(f"{len(view['frontier'])} symbol(s) at the frontier; "
+    frontier_n = len(view["frontier"]) if full else view["frontier_count"]
+    entity_n = len(view["entity_paths"]) if full else view["entity_path_count"]
+    print(f"{frontier_n} symbol(s) at the frontier; "
           f"{len(view['covered_paths'])} path(s) covered, "
-          f"{len(view['entity_paths'])} at entity granularity ({pct:.0f}%)")
+          f"{entity_n} at entity granularity ({pct:.0f}%)")
     derived = set(view["derived_paths"])
+    entity_paths = set(view["entity_paths"]) if full else set()
     for path in view["covered_paths"]:
-        mark = "entity" if path in set(view["entity_paths"]) else "whole-file"
         tag = " [derived]" if path in derived else ""
-        print(f"  {path}  ({mark}){tag}")
+        if full:
+            mark = "entity" if path in entity_paths else "whole-file"
+            print(f"  {path}  ({mark}){tag}")
+        else:
+            print(f"  {path}{tag}")
     if view["oracle_configured"]:
         from sgt.core.oracle import overall_status
 
@@ -322,32 +347,45 @@ def _status(repo: str, as_json: bool = False) -> int:
     return 0
 
 
-def _history(repo: str, as_json: bool = False) -> int:
+def _history(repo: str, as_json: bool = False, full: bool = False,
+             limit: int | None = None, offset: int = 0) -> int:
     """`sgt history [--json]`: every mined commit in chronological order plus every op's derived
     kind/feature/commit-index -- the feature-map webview's Gantt commit-index axis
-    (`api.history_view`)."""
+    (`api.history_view`). Compact by default (`--full` for today's unpaged `{commits, ops}`;
+    `limit`/`offset` unset forward nothing, keeping the default byte-identical to
+    `history_view(repo)`, R21)."""
     from sgt.api import history_view
     from sgt.core.lens import get
 
     get(repo)  # mine-on-contact so history reflects current reality (R9)
-    view = history_view(repo)
+    kwargs = {"offset": offset} if not full else {}
+    if limit is not None and not full:
+        kwargs["limit"] = limit
+    view = history_view(repo, full=full, **kwargs)
     if as_json:
         return _emit_json(view)
-    print(f"{len(view['commits'])} commit(s), {len(view['ops'])} op(s) placed on the axis:")
-    for c in view["commits"]:
-        print(f"  [{c['index']}] {c['sha'][:12]}  {c['subject']}")
+    if full:
+        print(f"{len(view['commits'])} commit(s), {len(view['ops'])} op(s) placed on the axis:")
+        for c in view["commits"]:
+            print(f"  [{c['index']}] {c['sha'][:12]}  {c['subject']}")
+    else:
+        print(f"{view['commit_count']} commit(s), {view['op_count']} op(s) placed on the axis:")
+        for c in view["latest_commits"]:
+            print(f"  [{c['index']}] {c['sha'][:12]}  {c['subject']}")
     return 0
 
 
-def _compose(repo: str, as_json: bool = False) -> int:
+def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
     """`sgt compose [--json]`: one aggregate read (`api.compose_view`) bundling map/history/status/
     forks/plan/drift/sessions/trust + the oracle verdict + open proposals -- the composition
-    workbench's single-call refresh, replacing ~9 separate `sgt <verb> --json` invocations."""
+    workbench's single-call refresh, replacing ~9 separate `sgt <verb> --json` invocations.
+    `--full` threads into every child view that accepts it; the text rendering below only reads
+    fields no child's `full` flag touches, so it needs no branching."""
     from sgt.api import compose_view
     from sgt.core.lens import get
 
     get(repo)  # mine-on-contact so the bundle reflects current reality (R9)
-    view = compose_view(repo)
+    view = compose_view(repo, full=full)
     if as_json:
         return _emit_json(view)
     status, oracle = view["status"], view["oracle_verdict"]
