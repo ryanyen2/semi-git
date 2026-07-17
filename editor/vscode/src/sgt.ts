@@ -106,20 +106,24 @@ export class Sgt {
   }
 
   // Active plan sessions + the pure checkpoint preview (plan U14). A read, not a rebuild —
-  // mine-on-contact only, same as `status()`.
+  // mine-on-contact only, same as `status()`. `--full`: `sgt.api.plan_view` is compact by
+  // default (step/match counts, no spans); the webview's `PlanView` type still expects the full
+  // per-step detail and per-match file spans.
   planStatus(): Promise<PlanView> {
-    return this.json<PlanView>(["plan", "status", "--json"]);
+    return this.json<PlanView>(["plan", "status", "--json", "--full"]);
   }
 
-  // Ops mined that no active plan predicted (plan U14).
+  // Ops mined that no active plan predicted (plan U14). `--full`: compact `drift_view` drops the
+  // per-op footprint/spans this extension's `DriftView` type expects.
   drift(): Promise<DriftView> {
-    return this.json<DriftView>(["drift", "--json"]);
+    return this.json<DriftView>(["drift", "--json", "--full"]);
   }
 
   // The feature-map webview's shared commit-index axis: mined commits in order + every op's
-  // kind/feature/commit-index.
+  // kind/feature/commit-index. `--full`: compact `history_view` drops the per-op `ops` list this
+  // extension's `HistoryView` type expects.
   history(): Promise<HistoryView> {
-    return this.json<HistoryView>(["history", "--json"]);
+    return this.json<HistoryView>(["history", "--json", "--full"]);
   }
 
   // A side-effect-free preview of a feature verb or feature-grouped revert (the feature-map
@@ -157,8 +161,11 @@ export class Sgt {
 
   // One aggregate refresh -- map+history+status+forks+plan+drift+sessions+trust+oracle_verdict+
   // proposals in a single shell-out (the workbench's primary poll, plan API addition #1).
+  // `--full` threads into compose's history/plan/drift/trust children (a safe superset of the
+  // new compact defaults) so this extension's `ComposeView` type keeps matching every child's
+  // actual shape.
   compose(): Promise<ComposeView> {
-    return this.json<ComposeView>(["compose", "--json"]);
+    return this.json<ComposeView>(["compose", "--json", "--full"]);
   }
 
   // A side-effect-free fold of an arbitrary frontier -- the draggable-playhead primitive (API
