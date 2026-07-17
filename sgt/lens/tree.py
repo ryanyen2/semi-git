@@ -490,8 +490,9 @@ def load(repo: str | Path) -> dict | None:
 
 
 def save(repo: str | Path, result: dict) -> None:
-    """Persist the built tree so the next run's Greene matching can preserve feature ids."""
-    state.save_json(repo, "tree", result)
+    """Persist the built tree so the next run's Greene matching can preserve feature ids. Skips
+    the write when byte-identical to what's already on disk (see `state.save_json_if_changed`)."""
+    state.save_json_if_changed(repo, "tree", result)
 
 
 # --- labeling + DEDUP (plan R15/R17, promoted from the experiment's hierarchy.py) --------------
