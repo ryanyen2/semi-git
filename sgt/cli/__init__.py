@@ -193,6 +193,8 @@ def _help() -> int:
         "                              strength across features (coupled/co-changed/thematic)\n"
         "  sgt intent show <theme-id|commit-sha> [--json]   one theme's or commit's atom breakdown\n"
         "  sgt intent build [--json]  run the LLM theme pass, writing `.sgt/intent/themes.json`\n"
+        "  sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit]   revert the\n"
+        "                              theme's/commit's deterministic op-set (same gates as `revert`)\n"
         "  sgt git <args...>           pass through to real git (refuses tree-mutating verbs; --force overrides)\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"

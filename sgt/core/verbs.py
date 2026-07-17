@@ -191,6 +191,28 @@ def plan_revert_session(repo: str | Path, name: str) -> VerbPreview:
     return _validated("revert", name, ideal.op_ids, after, ops, declared)
 
 
+def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> VerbPreview:
+    """Revert an already-resolved op-set X as the exact ideal edit `I \\ (∪ upset_in(x))` over
+    `x∈X` -- the fully-generic form `plan_revert_session` and `lens.verbs.plan_revert_feature`
+    each specialize with their own resolution step (session attribution / feature `op_leaf`).
+    `sgt.intent.group.resolve_group` is a third resolution step (a theme or commit-sha's atom
+    union, plan U8): the LLM only ever decides *which* op-set this is; the actual removal is this
+    same collision-safe up-set union and `Ideal.from_ops` fork validation every other revert path
+    uses, so a wrong theme boundary is a mis-default the caller sees and can subset around, never
+    a silent destructive edit. `tag` is a human-facing label for the preview only."""
+    ops, ideal, declared = _load(repo)
+    op_ids = frozenset(op_ids) & ideal.op_ids
+    if not op_ids:
+        return _preview("revert", tag, ideal.op_ids, ideal.op_ids, ops,
+                        message=f"{tag}: none of its ops are in the current ideal; no change")
+
+    upset_union: set[str] = set()
+    for op_id in op_ids:
+        upset_union |= order.upset_in(op_id, ideal.op_ids, ops, declared)
+    after = ideal.op_ids - frozenset(upset_union)
+    return _validated("revert", tag, ideal.op_ids, after, ops, declared)
+
+
 def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:
     ops, ideal, declared = _load(repo)
     a_id, ea = resolve_target(ideal, ops, a)

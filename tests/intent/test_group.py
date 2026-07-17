@@ -216,3 +216,104 @@ def test_tier_is_stable_across_repeated_computation(tmp_path):
     first = group.tier(all_op_ids, frozenset({"c1"}), ops, frozenset(), op_leaf)
     second = group.tier(all_op_ids, frozenset({"c1"}), ops, frozenset(), op_leaf)
     assert first == second
+
+
+# -- U8: resolve_group / group_requires / apply_subset ----------------------------------------
+
+
+def test_resolve_group_by_exact_theme_id(tmp_path):
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(tmp_path)
+
+    all_atoms = group.atoms(tmp_path)
+    themes = {"theme-x": {"atom_shas": [all_atoms[0].commit_sha]}}
+
+    resolved = group.resolve_group("theme-x", themes, all_atoms)
+    assert resolved == ("theme", [all_atoms[0]])
+
+
+def test_resolve_group_by_unique_commit_prefix(tmp_path):
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    sha = gb.commit_all("add foo")
+    get(tmp_path)
+
+    all_atoms = group.atoms(tmp_path)
+    resolved = group.resolve_group(sha[:10], {}, all_atoms)
+    assert resolved == ("atom", [a for a in all_atoms if a.commit_sha == sha])
+
+
+def test_resolve_group_unknown_target_returns_none(tmp_path):
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(tmp_path)
+
+    assert group.resolve_group("no-such-target", {}, group.atoms(tmp_path)) is None
+
+
+def _two_commit_dependency_atoms(tmp_path):
+    """base (commit 1) <- caller (commit 2), a real reference edge -- returns
+    `(member_atoms, sha_base, sha_caller)`."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
+    sha_base = gb.commit_all("add a.py")
+    (tmp_path / "b.py").write_text(
+        "from a import base\n\n\ndef caller():\n    return base() + 1\n", encoding="utf-8",
+    )
+    sha_caller = gb.commit_all("add b.py calling base")
+    get(tmp_path)
+    return group.atoms(tmp_path), sha_base, sha_caller
+
+
+def test_group_requires_reverting_a_prerequisite_names_its_dependent(tmp_path):
+    all_atoms, sha_base, sha_caller = _two_commit_dependency_atoms(tmp_path)
+    ops = Store(tmp_path).all_ops()
+
+    requires = group.group_requires(all_atoms, ops, frozenset())
+
+    assert requires[sha_base] == [sha_caller]  # reverting base alone would sweep caller away too
+    assert requires[sha_caller] == []  # caller depends on nothing else in the group
+
+
+def test_apply_subset_no_subset_returns_the_whole_group(tmp_path):
+    all_atoms, sha_base, sha_caller = _two_commit_dependency_atoms(tmp_path)
+    ops = Store(tmp_path).all_ops()
+    requires = group.group_requires(all_atoms, ops, frozenset())
+
+    chosen, err = group.apply_subset(all_atoms, requires, None)
+    assert err is None
+    assert chosen == all_atoms
+
+
+def test_apply_subset_selecting_the_dependent_alone_is_fine(tmp_path):
+    all_atoms, sha_base, sha_caller = _two_commit_dependency_atoms(tmp_path)
+    ops = Store(tmp_path).all_ops()
+    requires = group.group_requires(all_atoms, ops, frozenset())
+
+    chosen, err = group.apply_subset(all_atoms, requires, [sha_caller[:10]])
+    assert err is None
+    assert [a.commit_sha for a in chosen] == [sha_caller]
+
+
+def test_apply_subset_selecting_the_prerequisite_alone_is_refused_by_name(tmp_path):
+    all_atoms, sha_base, sha_caller = _two_commit_dependency_atoms(tmp_path)
+    ops = Store(tmp_path).all_ops()
+    requires = group.group_requires(all_atoms, ops, frozenset())
+
+    chosen, err = group.apply_subset(all_atoms, requires, [sha_base[:10]])
+    assert chosen == []
+    assert err is not None
+    assert sha_caller[:8] in err
+
+
+def test_apply_subset_ambiguous_or_unknown_prefix_is_refused(tmp_path):
+    all_atoms, sha_base, sha_caller = _two_commit_dependency_atoms(tmp_path)
+    ops = Store(tmp_path).all_ops()
+    requires = group.group_requires(all_atoms, ops, frozenset())
+
+    chosen, err = group.apply_subset(all_atoms, requires, ["deadbeef"])
+    assert chosen == []
+    assert err is not None

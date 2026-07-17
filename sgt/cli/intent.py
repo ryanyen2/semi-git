@@ -6,6 +6,13 @@ persisted, LLM-named theme (rung 2), each with its dependency-graph-backed tier 
 span. `sgt intent build [--json]` is the one command that runs the LLM theme pass and writes
 `.sgt/intent/themes.json` (`sgt.intent.theme.build_themes`) -- kept out of the read verbs, exactly
 as `sgt map` (the write) is distinct from `map_view` (the read).
+
+`sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit] [--json]` (KTD6): resolves
+the target to its deterministic atom union (`sgt.intent.group.resolve_group` -- never from the
+LLM's own output) and runs the *exact same* `verbs.plan_revert_op_set` -> `_emit_verb_result` path
+as every other revert -- same up-set removal, same fork refusal, same oracle gate. The LLM only
+ever decided the theme's *default* membership; a wrong boundary is a mis-default visible in the
+preview and adjustable with `--subset`, never a silent destructive edit.
 """
 
 from __future__ import annotations
@@ -13,24 +20,30 @@ from __future__ import annotations
 from ._common import _emit_json, _fail_json
 
 _USAGE = ("usage: sgt intent list [--json] | sgt intent show <theme-id|commit-sha> [--json] | "
-          "sgt intent build [--json]")
+          "sgt intent build [--json] | "
+          "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit] [--json]")
 
 
 def register(subs, parent) -> None:
     p = subs.add_parser("intent", parents=[parent])
     p.add_argument("sub", nargs="?")
     p.add_argument("target", nargs="?")
+    p.add_argument("--subset", nargs="*")
+    p.add_argument("--emit", action="store_true")
     p.set_defaults(func=_cmd_intent)
 
 
 def _cmd_intent(args) -> int:
-    return _intent(".", args.sub, args.target, args.as_json)
+    return _intent(".", args.sub, args.target, args.subset, args.emit, args.as_json)
 
 
-def _intent(repo: str, sub: str | None, target: str | None, as_json: bool) -> int:
+def _intent(
+    repo: str, sub: str | None, target: str | None, subset: list[str] | None, emit: bool,
+    as_json: bool,
+) -> int:
     from sgt.core.lens import get
 
-    if sub not in ("list", "show", "build"):
+    if sub not in ("list", "show", "build", "revert"):
         print(_USAGE)
         return 2
     get(repo)  # mine-on-contact so the overlay reflects current reality (R9)
@@ -41,6 +54,8 @@ def _intent(repo: str, sub: str | None, target: str | None, as_json: bool) -> in
     if target is None:
         print(_USAGE)
         return 2
+    if sub == "revert":
+        return _revert(repo, target, subset, emit, as_json)
     return _show(repo, target, as_json)
 
 
@@ -105,3 +120,38 @@ def _build(repo: str, as_json: bool) -> int:
         return _emit_json({"themes": themes, "count": len(themes)})
     print(f"✓ intent build: {len(themes)} theme(s)")
     return 0
+
+
+def _revert(repo: str, target: str, subset: list[str] | None, emit: bool, as_json: bool) -> int:
+    from sgt import state
+    from sgt.core import verbs
+    from sgt.core.lens import _load_declared
+    from sgt.core.store import Store
+    from sgt.intent import group
+
+    all_ops = Store(repo).all_ops()
+    declared = _load_declared(repo)
+    all_atoms = group.atoms(repo)
+    themes = state.load_json(repo, "intent_themes", default={})
+
+    resolved = group.resolve_group(target, themes, all_atoms)
+    if resolved is None:
+        return _fail_json(f"no theme or commit {target!r} found in the intent overlay", as_json)
+    kind, member_atoms = resolved
+
+    requires = group.group_requires(member_atoms, all_ops, declared)
+    chosen, err = group.apply_subset(member_atoms, requires, subset)
+    if err is not None:
+        return _fail_json(err, as_json)
+
+    if not as_json and len(chosen) > 1:
+        print(f"reverting {len(chosen)} atom(s) as one group:")
+        for atom in chosen:
+            print(f"    {atom.commit_sha[:12]}  {atom.subject}  ({len(atom.op_ids)} op(s))")
+
+    op_ids = frozenset().union(*(a.op_ids for a in chosen)) if chosen else frozenset()
+    preview = verbs.plan_revert_op_set(repo, target, op_ids)
+
+    from .ideal_edit import _emit_verb_result
+
+    return _emit_verb_result(repo, preview, emit, as_json)
