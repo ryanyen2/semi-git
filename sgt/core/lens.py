@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sgt import state
-from sgt.core import order
+from sgt.core import opindex, order
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
@@ -216,7 +216,7 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     `order.reduce_to_ideal` grounds it and drops forked up-sets; forked tips live only in
     `.sgt/forks.json`, never a verb-visible ideal (D5)."""
     ref_commits = set(gb.commit_shas())
-    all_ops = store.all_ops()
+    all_ops = opindex.index_ops(store.repo)
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
     return set(order.reduce_to_ideal(included, all_ops))
 
@@ -233,7 +233,7 @@ def current_ideal(repo: str | Path) -> Ideal:
     key = _ref_key(gb)
     table = _load_ideal_table(repo)
     ids = frozenset(table[key]) if key is not None and key in table else _committed_ids_by_provenance(gb, store)
-    return Ideal.from_ops(ids, store.all_ops())
+    return Ideal.from_ops(ids, opindex.index_ops(repo))
 
 
 def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = None) -> Ideal:
@@ -243,12 +243,15 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
     ref, and never consults the persisted `.sgt/local/ideal.json` table (see `_sync`). A ref
     whose history was never mined yields an under-approximated ideal, so contact it with `get()`
     first for completeness. The read views (U7's `state_view`/`ideal_diff_view`) use this to
-    inspect and compare refs without disturbing the working tree."""
+    inspect and compare refs without disturbing the working tree.
+
+    `store` is accepted (unused) for call-site compatibility -- this is a pure ideal-derivation,
+    so it reads the footprint-only `opindex` sidecar (never `op.images`) rather than a caller-
+    supplied `Store`."""
     repo = Path(repo)
     gb = GitBinding(repo)
-    store = store or Store(repo)
     ref_commits = set(gb.commit_shas(ref))
-    all_ops = store.all_ops()
+    all_ops = opindex.index_ops(repo)
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
     return Ideal.from_ops(order.reduce_to_ideal(included, all_ops), all_ops)
 
@@ -269,6 +272,7 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     # committed, not pending.
     new_committed_ids: set[str] = set()
     pending_ids: set[str] = set()
+    stored_ops = []
     # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
     # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
     # `.sgt/` path actually differs from HEAD (R16); on a tree whose only churn is `.sgt/` state
@@ -276,7 +280,16 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     include_dirty = gb.has_dirty_source()
     for op in mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=include_dirty):
         stored = store.add(op)
+        stored_ops.append(stored)
         (new_committed_ids if stored.provenance else pending_ids).add(stored.id)
+
+    # Keep the footprint-only opindex sidecar current: a full rebuild pays the images decode once
+    # (cheaper than letting every read view re-derive staleness against a snapshot already known
+    # stale), otherwise an incremental upsert of just the ops this sync touched.
+    if opindex.is_stale(repo):
+        opindex.rebuild(repo, store)
+    else:
+        opindex.apply_delta(repo, stored_ops)
 
     # (3) Seed the persisted ideal from a provenance scan the first time this ref is tracked;
     # thereafter the stored set is authoritative (it can encode explicit exclusions -- U8's
@@ -292,7 +305,7 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     # (U22.5): real history mined cold contains add/delete/re-add forks and predecessors squashed
     # out of this ref, so the raw union is not directly constructible -- persisting it unreduced
     # would leave an invalid `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
-    all_ops = store.all_ops()
+    all_ops = opindex.index_ops(repo)
     committed_ids = set(order.reduce_to_ideal(base_ids | new_committed_ids, all_ops))
     # The ideal table and the witness must advance together (R5): a crash that moved the witness
     # without the table would make the next `get()` mine nothing new yet trust a stale ideal. One

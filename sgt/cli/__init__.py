@@ -47,7 +47,7 @@ _VERBS = {
     "repair", "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview", "compose", "fold",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
-    "review-queue",
+    "review-queue", "reindex",
 }
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
@@ -198,5 +198,6 @@ def _help() -> int:
         "  advanced/maintenance (not part of the daily loop):\n"
         "  sgt migrate [feature-ids|ops-v3] [--apply]   dry-run-by-default op-store schema\n"
         "                              migration; a one-time repair step, not a repeat verb\n"
+        "  sgt reindex [--json]        force-rebuild the opindex sidecar (self-heals otherwise)\n"
     )
     return 0

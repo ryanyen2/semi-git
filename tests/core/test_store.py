@@ -184,7 +184,10 @@ def test_fsck_clean_store(tmp_path):
     store.init()
     store.add(_op())
     report = fsck(tmp_path)
-    assert report == FsckReport(ok=True, checked=1, bad_hash=(), corrupt=())
+    # op_index_stale is True here: this test writes via `Store.add` directly, never through
+    # `sgt.core.lens`'s `_sync` (the only writer that keeps the opindex sidecar current) -- an
+    # advisory finding, not corruption, so `ok` stays True.
+    assert report == FsckReport(ok=True, checked=1, bad_hash=(), corrupt=(), op_index_stale=True)
 
 
 def test_fsck_detects_bit_flipped_op_file(tmp_path):
