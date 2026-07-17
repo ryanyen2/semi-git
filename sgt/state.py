@@ -215,6 +215,22 @@ def save_json(repo: str | Path, name: str, body) -> None:
     _atomic_write_text(path(repo, name), _encode(body, art))
 
 
+def save_json_if_changed(repo: str | Path, name: str, body) -> bool:
+    """Like `save_json`, but skips the write when the encoded bytes are byte-identical to what's
+    already on disk. Returns whether a write happened. Some artifacts (the map rebuild, the label
+    cache) get recomputed on every read even when nothing changed; an unconditional write there
+    bumps the file's mtime for no reason, and these are `.sgt/**/*.json` paths a client's file
+    watcher invalidates its cache on -- a no-op rewrite makes a no-op read retrigger another
+    refresh, forever."""
+    art = _ARTIFACTS[name]
+    text = _encode(body, art)
+    p = path(repo, name)
+    if p.is_file() and p.read_text(encoding="utf-8") == text:
+        return False
+    _atomic_write_text(p, text)
+    return True
+
+
 # -- committed claims directory (D8) -------------------------------------------------------------
 # Published oracle verdicts (`sgt oracle publish`) live one immutable file per (ideal_key, runner)
 # under `.sgt/claims/`, so sync's union is a trivial file-level G-Set: copy any file you don't have
