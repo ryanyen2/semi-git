@@ -35,30 +35,38 @@ def _from_op(op: Op) -> dict:
     return entry
 
 
-def _snapshot_body(ops: list[Op]) -> dict:
+def _snapshot_body(ops: list[Op], built_mtime_ns: int) -> dict:
     return {
         "miner_version": MINER_VERSION,
         "op_count": len(ops),
-        "built_mtime_ns": time.time_ns(),
+        "built_mtime_ns": built_mtime_ns,
         "ops": [_from_op(op) for op in sorted(ops, key=lambda o: o.id)],
     }
 
 
 def rebuild(repo: str | Path, store: Store | None = None) -> None:
     """Full backfill: iterate `Store.all_ops()` once (paying the images decode exactly once) and
-    write the snapshot."""
+    write the snapshot. `built_mtime_ns` is captured *before* that read starts, not after --
+    `Store.all_ops()` takes real wall-clock time on a large store (seconds, not instant) and holds
+    no lock, so a concurrent `Store.add`/`attribute` landing mid-read would otherwise timestamp
+    *before* a post-read capture and never be flagged stale. Stamping first guarantees any write
+    happening during or after the read has `mtime >= built_mtime_ns`, so it's correctly seen as
+    newer."""
     repo = Path(repo)
+    begin_ts = time.time_ns()
     store = store or Store(repo)
-    state.save_json(repo, "op_index", _snapshot_body(store.all_ops()))
+    state.save_json(repo, "op_index", _snapshot_body(store.all_ops(), begin_ts))
 
 
 def apply_delta(repo: str | Path, stored_ops: list[Op]) -> None:
     """Incremental upsert of `stored_ops` (the in-memory ops `_sync` just mined/merged -- no
     re-read of the store) into the existing snapshot. Rebuilds from scratch if the snapshot is
-    absent."""
+    absent. `built_mtime_ns` is captured at entry, before touching the existing snapshot, for the
+    same reason `rebuild` captures it before its read (see there)."""
     repo = Path(repo)
     if not stored_ops:
         return
+    begin_ts = time.time_ns()
     body = state.load_json(repo, "op_index", default=None)
     if body is None:
         rebuild(repo)
@@ -70,7 +78,7 @@ def apply_delta(repo: str | Path, stored_ops: list[Op]) -> None:
     state.save_json(repo, "op_index", {
         "miner_version": MINER_VERSION,
         "op_count": len(ops_sorted),
-        "built_mtime_ns": time.time_ns(),
+        "built_mtime_ns": begin_ts,
         "ops": ops_sorted,
     })
 
@@ -91,14 +99,10 @@ def _ops_dir_stat(repo: Path) -> tuple[int, int]:
     return count, max_mtime
 
 
-def is_stale(repo: str | Path) -> bool:
-    """True if the snapshot is missing or out of date with `.sgt/ops/`, checked stat-only (no op
-    file reads): absent, a miner-version mismatch (catches `migrate ops-v3`), a dirent-count
-    mismatch (catches sync ingest / prune), or a build timestamp at or before the newest op file's
-    mtime (catches `Store.add`'s provenance-merge and `Store.attribute` rewrites, which bump mtime
-    without changing count)."""
-    repo = Path(repo)
-    body = state.load_json(repo, "op_index", default=None)
+def _is_stale_body(repo: Path, body: dict | None) -> bool:
+    """`is_stale`'s check against an already-loaded (or absent) snapshot body -- factored out so
+    `index_ops` can check staleness against the body it already read instead of reloading the
+    file a second time."""
     if body is None:
         return True
     if body.get("miner_version") != MINER_VERSION:
@@ -109,14 +113,26 @@ def is_stale(repo: str | Path) -> bool:
     return body.get("built_mtime_ns", -1) <= max_mtime
 
 
+def is_stale(repo: str | Path) -> bool:
+    """True if the snapshot is missing or out of date with `.sgt/ops/`, checked stat-only (no op
+    file reads): absent, a miner-version mismatch (catches `migrate ops-v3`), a dirent-count
+    mismatch (catches sync ingest / prune), or a build timestamp at or before the newest op file's
+    mtime (catches `Store.add`'s provenance-merge and `Store.attribute` rewrites, which bump mtime
+    without changing count)."""
+    repo = Path(repo)
+    return _is_stale_body(repo, state.load_json(repo, "op_index", default=None))
+
+
 def index_ops(repo: str | Path) -> list[Op]:
     """Every stored op, `Op`s reconstructed with `images={}` -- the fast accessor for read-only
     projection views. Self-heals: rebuilds first if the snapshot is stale. Never pass the result
-    to `fold.code`."""
+    to `fold.code`. Loads the snapshot at most twice (once to check staleness, once more only if
+    a rebuild just ran) rather than `is_stale` + a separate reload on every call."""
     repo = Path(repo)
-    if is_stale(repo):
-        rebuild(repo)
     body = state.load_json(repo, "op_index", default=None)
+    if _is_stale_body(repo, body):
+        rebuild(repo)
+        body = state.load_json(repo, "op_index", default=None)
     if body is None:
         return []
     return [_to_op(entry) for entry in body["ops"]]

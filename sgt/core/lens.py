@@ -285,11 +285,16 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
 
     # Keep the footprint-only opindex sidecar current: a full rebuild pays the images decode once
     # (cheaper than letting every read view re-derive staleness against a snapshot already known
-    # stale), otherwise an incremental upsert of just the ops this sync touched.
-    if opindex.is_stale(repo):
-        opindex.rebuild(repo, store)
-    else:
-        opindex.apply_delta(repo, stored_ops)
+    # stale), otherwise an incremental upsert of just the ops this sync touched. Locked (R5/R6):
+    # apply_delta's read-modify-write would otherwise lose a concurrent _sync's own update --
+    # self-healing on the next read via is_stale's dirent-count check, but the lock avoids the
+    # transient loss entirely. Ops were added above, before this section, so `Store.add`'s own
+    # lock never nests inside this one (U23 / locked_section contract).
+    with locked_section(repo):
+        if opindex.is_stale(repo):
+            opindex.rebuild(repo, store)
+        else:
+            opindex.apply_delta(repo, stored_ops)
 
     # (3) Seed the persisted ideal from a provenance scan the first time this ref is tracked;
     # thereafter the stored set is authoritative (it can encode explicit exclusions -- U8's
