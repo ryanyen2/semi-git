@@ -166,3 +166,75 @@ def tier(
             return COUPLED
 
     return CO_CHANGED if len(commit_shas) <= 1 else THEMATIC
+
+
+# -- U8: resolve an intent-revert target + validate a --subset selection ---------------------------
+
+def resolve_group(
+    target: str, themes: dict[str, dict], all_atoms: list[IntentAtom],
+) -> tuple[str, list[IntentAtom]] | None:
+    """Resolve `sgt intent revert <target>` to `(kind, member_atoms)` -- `kind` is `"theme"` for
+    an exact theme-id match (`themes`, the persisted `.sgt/intent/themes.json` body) or `"atom"`
+    for a unique commit-sha prefix match against `all_atoms`; `None` if neither resolves. Mirrors
+    `cli.intent._show`'s lookup so `show` and `revert` agree on what a target names."""
+    entry = themes.get(target)
+    if entry is not None:
+        by_sha = {a.commit_sha: a for a in all_atoms}
+        member = [by_sha[sha] for sha in entry["atom_shas"] if sha in by_sha]
+        return "theme", member
+    matches = [a for a in all_atoms if a.commit_sha.startswith(target)]
+    if len(matches) == 1:
+        return "atom", matches
+    return None
+
+
+def group_requires(
+    member_atoms: list[IntentAtom], all_ops: list[Op], declared,
+) -> dict[str, list[str]]:
+    """Per member atom X, which *other* member atoms' ops would also be swept away by reverting
+    X alone -- `order.upset_in` (everything that transitively builds on X, restricted to the
+    group's own op-set), not `downset_in` (what X depends on): revert removes an op-set's up-set
+    (`plan_revert_op_set`), so the atom whose *removal cascades into* another atom is the one that
+    can't be selected without it, not the other way around (an atom X can always be reverted
+    without whatever X itself structurally requires -- that dependency stays untouched). This is
+    the U8 closure-validation input: selecting X for `--subset` while excluding an atom X's
+    removal would also remove must be refused by name, not a silent extra deletion."""
+    from sgt.core import order
+
+    group_op_ids = frozenset().union(*(a.op_ids for a in member_atoms)) if member_atoms else frozenset()
+    owner = {op_id: a.commit_sha for a in member_atoms for op_id in a.op_ids}
+
+    requires: dict[str, list[str]] = {}
+    for atom in member_atoms:
+        closure: set[str] = set()
+        for op_id in atom.op_ids:
+            closure |= order.upset_in(op_id, group_op_ids, all_ops, declared)
+        requires[atom.commit_sha] = sorted({
+            owner[oid] for oid in closure if oid in owner and owner[oid] != atom.commit_sha
+        })
+    return requires
+
+
+def apply_subset(
+    member_atoms: list[IntentAtom], requires: dict[str, list[str]], subset: list[str] | None,
+) -> tuple[list[IntentAtom], str | None]:
+    """Resolve `--subset <commit-sha>...` against a group's member atoms and validate the
+    closure `group_requires` computed: refuses (by name) selecting an atom whose own revert would
+    also sweep away an atom excluded from the subset. `subset=None` means "the whole group" --
+    returns `member_atoms` unchanged. Returns
+    `(chosen_atoms, error_message)`; exactly one is meaningful per call."""
+    if subset is None:
+        return member_atoms, None
+    chosen: list[IntentAtom] = []
+    for prefix in subset:
+        matches = [a for a in member_atoms if a.commit_sha.startswith(prefix)]
+        if len(matches) != 1:
+            return [], f"subset entry {prefix!r} does not match exactly one atom in this group"
+        chosen.append(matches[0])
+    chosen_shas = {a.commit_sha for a in chosen}
+    for atom in chosen:
+        missing = [sha for sha in requires.get(atom.commit_sha, ()) if sha not in chosen_shas]
+        if missing:
+            names = ", ".join(sha[:8] for sha in missing)
+            return [], f"cannot revert {atom.commit_sha[:8]} without also reverting {names} (required by closure)"
+    return chosen, None

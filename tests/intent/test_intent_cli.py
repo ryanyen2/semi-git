@@ -1,6 +1,8 @@
-"""Tests for `sgt intent` (plan U7): the thin CLI layer over `sgt.api.intent_view` and
-`sgt.intent.theme.build_themes`. Verb behavior is tested in tests/intent/; this is argument
-parsing, dispatch, and --json rendering only."""
+"""Tests for `sgt intent` (plan U7/U8): the thin CLI layer over `sgt.api.intent_view`,
+`sgt.intent.theme.build_themes`, and (U8) `sgt.intent.group.resolve_group` +
+`sgt.core.verbs.plan_revert_op_set` for `intent revert`. Verb behavior is tested in
+tests/intent/test_group.py; this is argument parsing, dispatch, and --json rendering, plus the
+revert correctness contract (equivalence to a hand-issued revert over the same op-set, KTD6)."""
 
 from __future__ import annotations
 
@@ -8,6 +10,8 @@ import json
 import os
 
 from sgt.cli import main
+from sgt.core import verbs
+from sgt.core.store import Store
 from sgt.intent import theme
 from sgt.store.gitbind import init_store
 
@@ -86,3 +90,119 @@ def test_intent_usage_on_missing_or_unknown_sub(tmp_path, capsys):
     _seed(tmp_path)
     assert _in(tmp_path, ["intent"]) == 2
     assert "usage: sgt intent" in capsys.readouterr().out
+
+
+# -- U8: sgt intent revert ---------------------------------------------------------------------
+
+
+def test_intent_revert_commit_equals_hand_issued_revert_over_the_same_op_set(tmp_path, capsys):
+    """The correctness contract for the whole feature (KTD6): resolving a commit sha to its
+    deterministic op-set and reverting it must be byte-identical -- removed, added, and the
+    resulting oracle-relevant ideal -- to calling `verbs.plan_revert_op_set` directly with that
+    exact op-set. The LLM/theme layer is never in this path at all for a bare commit target."""
+    from sgt.core.lens import get
+
+    gb = _seed(tmp_path)
+    sha = gb.rev_parse("HEAD")
+    get(tmp_path)  # mine-on-contact -- the CLI path does this too, before computing its own set
+    commit_op_ids = frozenset(op.id for op in Store(tmp_path).all_ops() if sha in op.provenance)
+
+    expected = verbs.plan_revert_op_set(tmp_path, sha, commit_op_ids)
+
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert sorted(payload["removed"]) == sorted(expected.removed)
+    assert sorted(payload["added"]) == sorted(expected.added)
+    assert payload["forked"] == expected.forked
+
+
+def test_intent_revert_emit_shows_diff_without_flipping_the_ideal(tmp_path, capsys):
+    gb = _seed(tmp_path)
+    sha = gb.rev_parse("HEAD")
+
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
+    capsys.readouterr()
+
+    from sgt.core.lens import current_ideal
+
+    before = current_ideal(tmp_path).op_ids
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
+    capsys.readouterr()
+    after = current_ideal(tmp_path).op_ids
+    assert before == after  # --emit never applies
+
+
+def test_intent_revert_unknown_target_fails(tmp_path, capsys):
+    _seed(tmp_path)
+    assert _in(tmp_path, ["intent", "revert", "no-such-target", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+
+
+def _seed_two_commits_with_dependency(tmp_path):
+    """`b.py::caller` (second commit) calls `a.py::base` (first commit) -- a real reference edge,
+    so the two commits' atoms genuinely require each other in `group.group_requires`'s sense."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
+    sha_a = gb.commit_all("feat(x): add a.py")
+    (tmp_path / "b.py").write_text(
+        "from a import base\n\n\ndef caller():\n    return base() + 1\n", encoding="utf-8",
+    )
+    sha_b = gb.commit_all("feat(x): add b.py calling base")
+    return gb, sha_a, sha_b
+
+
+def test_intent_revert_subset_deselecting_a_required_atom_is_refused_by_name(tmp_path, capsys, monkeypatch):
+    def _no_client(*args, **kwargs):
+        raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
+
+    monkeypatch.setattr(theme, "get_client", _no_client)
+    gb, sha_a, sha_b = _seed_two_commits_with_dependency(tmp_path)
+    from sgt.core.lens import get
+
+    get(tmp_path)
+    assert _in(tmp_path, ["intent", "build"]) == 0
+    capsys.readouterr()
+
+    from sgt.api import intent_view
+
+    (theme_entry,) = intent_view(tmp_path)["themes"]
+
+    # select only the earlier commit (base) while excluding the later, dependent one (caller) --
+    # reverting base would cascade into removing caller too, so this must be refused by name
+    # rather than silently sweeping caller away as an unselected side effect.
+    assert _in(
+        tmp_path, ["intent", "revert", theme_entry["theme_id"], "--subset", sha_a[:12], "--json"],
+    ) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert sha_b[:8] in payload["error"]
+
+
+def test_intent_revert_subset_reverts_only_chosen_atoms(tmp_path, capsys, monkeypatch):
+    def _no_client(*args, **kwargs):
+        raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
+
+    monkeypatch.setattr(theme, "get_client", _no_client)
+    gb, sha_a, sha_b = _seed_two_commits_with_dependency(tmp_path)
+    from sgt.core.lens import get
+
+    get(tmp_path)
+    assert _in(tmp_path, ["intent", "build"]) == 0
+    capsys.readouterr()
+
+    from sgt.api import intent_view
+
+    (theme_entry,) = intent_view(tmp_path)["themes"]
+    a_op_ids = frozenset(op.id for op in Store(tmp_path).all_ops() if sha_a in op.provenance)
+
+    # selecting only the later (dependent) commit is valid on its own -- nothing else requires it,
+    # so it must not cascade into removing anything from the earlier commit it depends on.
+    assert _in(
+        tmp_path,
+        ["intent", "revert", theme_entry["theme_id"], "--subset", sha_b[:12], "--emit", "--json"],
+    ) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["removed"]  # something was actually removed
+    assert not (frozenset(payload["removed"]) & a_op_ids)  # but never any op from the earlier commit
