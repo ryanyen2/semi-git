@@ -113,7 +113,9 @@ def oplog_view(repo, *, full: bool = False, limit: int = 100, offset: int = 0) -
     return {
         "count": len(ops),
         "kinds": kinds,
-        "truncated": len(window) < len(ops),
+        # Whether ops remain *beyond this window* -- not just whether the window is smaller
+        # than the total (that's also true, harmlessly, on a full last page once offset > 0).
+        "truncated": offset + len(window) < len(ops),
         "ops": [
             {"id": op.id, "kind": op.kind, "symbols": sorted(op.footprint), "intent": op.intent}
             for op in window
@@ -430,8 +432,8 @@ def map_view(repo) -> dict:
     structural/co-change/scope coupling graph (`sgt.lens.tree.fused_graph`, the same signal
     `plan_split` reads) up to leaf-feature pairs -- the cross-feature dependency edges a
     visualization draws between features. Fully sorted for a stable projection."""
+    from sgt.core import opindex
     from sgt.core.lens import current_ideal
-    from sgt.core.store import Store
     from sgt.lens.tree import feature_edges, fused_graph
     from sgt.lens.tree import load as load_tree
 
@@ -451,7 +453,9 @@ def map_view(repo) -> dict:
             return leaf_op_count.get(nid, 0)
         return sum(op_count(c) for c in children)
 
-    ops = Store(repo).all_ops()
+    # Never touches op.images (only footprint/attribution below, and fused_graph's clustering
+    # signals) -- the opindex sidecar, not Store.all_ops()'s images decode, is correct here.
+    ops = opindex.index_ops(repo)
     by_id = {op.id: op for op in ops}
     leaf_sessions: dict[str, set[str]] = {}
     for op_id, leaf in op_leaf.items():

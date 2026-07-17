@@ -444,6 +444,24 @@ def test_oplog_view_paginates_and_reports_truncated(tmp_path):
     assert rest["truncated"] is False
 
 
+def test_oplog_view_last_page_past_offset_is_not_truncated(tmp_path):
+    """A regression guard: `truncated` must mean "more ops remain beyond this window", not just
+    "this window is smaller than the total" -- the latter is trivially true for any page after
+    the first, which would make an agent paginating forward (offset += limit while truncated)
+    issue one guaranteed-empty extra request on every walk."""
+    repo = _mined(tmp_path, "mixed_coverage")
+    total = oplog_view(repo)["count"]
+    assert total > 2  # the fixture mints more than two ops
+
+    last_page = oplog_view(repo, limit=total, offset=total - 1)
+    assert len(last_page["ops"]) == 1
+    assert last_page["truncated"] is False  # nothing left after this partial-but-final page
+
+    past_the_end = oplog_view(repo, limit=total, offset=total)
+    assert past_the_end["ops"] == []
+    assert past_the_end["truncated"] is False
+
+
 def test_state_view_default_is_compact_and_full_restores_frontier(tmp_path):
     repo = _mined(tmp_path, "mixed_coverage")
     compact = state_view(repo)

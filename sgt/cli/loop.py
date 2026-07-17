@@ -19,6 +19,7 @@ def register(subs, parent) -> None:
     cp = subs.add_parser("checkpoint", parents=[parent])
     cp.add_argument("--confirm-hollow", action="append", dest="confirm_hollow", default=[])
     cp.add_argument("--confirm-op", action="append", dest="confirm_op", default=[])
+    _add_view_flags(cp)  # the preview reads plan_view's compact default; --full restores files
     cp.set_defaults(func=_cmd_checkpoint)
 
     dp = subs.add_parser("drift", parents=[parent])
@@ -31,7 +32,7 @@ def _cmd_plan(args) -> int:
 
 
 def _cmd_checkpoint(args) -> int:
-    return _checkpoint(".", args.confirm_hollow, args.confirm_op, args.as_json)
+    return _checkpoint(".", args.confirm_hollow, args.confirm_op, args.as_json, args.full)
 
 
 def _cmd_drift(args) -> int:
@@ -101,10 +102,14 @@ def _plan(repo: str, rest: list[str], as_json: bool, full: bool = False) -> int:
     return 0
 
 
-def _checkpoint(repo: str, hollow_ids: list[str], op_ids: list[str], as_json: bool) -> int:
-    """`sgt checkpoint [--json]` (preview) / `sgt checkpoint --confirm-hollow <id>...
+def _checkpoint(repo: str, hollow_ids: list[str], op_ids: list[str], as_json: bool,
+                 full: bool = False) -> int:
+    """`sgt checkpoint [--json] [--full]` (preview) / `sgt checkpoint --confirm-hollow <id>...
     --confirm-op <id>...` (plan U14): the pure footprint-overlap preview between pending plan
-    steps and unpredicted real ops, and the explicit, one-group-at-a-time confirmation."""
+    steps and unpredicted real ops, and the explicit, one-group-at-a-time confirmation. The
+    preview's default is `plan_view`'s compact checkpoint shape (`hollow_ids`/`op_ids`, no
+    `files`) -- `--full` restores each match's file/line spans for a JSON consumer that needs
+    them without going through the MCP `sgt_checkpoint` tool (which always requests `full=True`)."""
     from sgt.core.lens import get
 
     get(repo)  # mine-on-contact so the preview reflects current reality (R9)
@@ -128,7 +133,7 @@ def _checkpoint(repo: str, hollow_ids: list[str], op_ids: list[str], as_json: bo
 
     from sgt.api import plan_view
 
-    view = plan_view(repo)["checkpoint"]
+    view = plan_view(repo, full=full)["checkpoint"]
     if as_json:
         return _emit_json(view)
     if not view["matches"] and not view["drift_op_ids"]:

@@ -100,6 +100,79 @@ def test_state_json_full_shows_frontier(tmp_path, capsys):
     assert "a.py::foo" in payload["frontier"]
 
 
+def test_reindex_json_reports_op_count(tmp_path, capsys):
+    _seed(tmp_path, 2)
+    _in(tmp_path, ["log"])  # mine, so the store isn't empty
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["reindex", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["op_count"] >= 1
+
+
+def test_reindex_text_reports_op_count(tmp_path, capsys):
+    _seed(tmp_path, 2)
+    _in(tmp_path, ["log"])
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["reindex"]) == 0
+    out = capsys.readouterr().out
+    assert "reindex" in out and "op(s) indexed" in out
+
+
+def test_log_json_limit_and_offset_flags(tmp_path, capsys):
+    _seed(tmp_path, 3)  # a.py::foo v1/v2/v3, at least 3 distinct ops
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["log", "--json"]) == 0
+    total = json.loads(capsys.readouterr().out)["count"]
+    assert total > 1
+
+    assert _in(tmp_path, ["log", "--json", "--limit", "1", "--offset", "0"]) == 0
+    first_page = json.loads(capsys.readouterr().out)
+    assert len(first_page["ops"]) == 1
+
+    assert _in(tmp_path, ["log", "--json", "--limit", str(total), "--offset", "1"]) == 0
+    rest = json.loads(capsys.readouterr().out)
+    assert len(rest["ops"]) == total - 1
+    assert rest["ops"][0]["id"] != first_page["ops"][0]["id"]
+
+
+def test_history_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
+    """R21: `sgt history --json` (and `--full`) is byte-identical to `sgt.api.history_view` at
+    the same mode -- the compact default gained CLI-side limit/offset forwarding in this diff,
+    so it needs its own guardrail alongside `log`/`state`/`compose`'s existing ones."""
+    from sgt.api import history_view
+    from sgt.core.lens import get
+
+    _seed(tmp_path, 2)
+    get(tmp_path)  # mine before computing the expected payload directly
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["history", "--json"]) == 0
+    assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path)), indent=2)
+
+    assert _in(tmp_path, ["history", "--json", "--full"]) == 0
+    assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path), full=True), indent=2)
+
+
+def test_drift_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
+    """R21 guardrail for `drift`, mirroring `test_history_json_cli_matches_view_at_default_and_full`."""
+    from sgt.api import drift_view
+    from sgt.core.lens import get
+
+    _seed(tmp_path, 2)
+    get(tmp_path)
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["drift", "--json"]) == 0
+    assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path)), indent=2)
+
+    assert _in(tmp_path, ["drift", "--json", "--full"]) == 0
+    assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path), full=True), indent=2)
+
+
 def test_revert_emit_previews_without_writing(tmp_path, capsys):
     _seed(tmp_path, 2)
     assert _in(tmp_path, ["revert", "--emit", "a.py::foo"]) == 0
