@@ -209,6 +209,29 @@ def test_dirty_edit_is_mined_as_pending_and_visible_but_not_persisted(tmp_path):
     assert not (pending_ids & persisted), "a pending op leaked into .sgt/local/ideal.json"
 
 
+def test_second_get_with_no_new_commits_does_not_rewrite_ideal_and_witness(tmp_path):
+    """A `get()` that mines nothing new must not touch `.sgt/local/ideal.json` or
+    `.sgt/local/witness.json` on disk -- both are `.sgt/**/*.json` paths the VS Code extension
+    watches to invalidate its cache, so an unconditional rewrite on every read (even a no-op one)
+    makes every refresh retrigger another refresh, forever."""
+    import sgt.state as state
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)  # baseline: mines the commit, seeds ideal_table + witness
+
+    ideal_path = state.path(repo, "ideal_table")
+    witness_path = state.path(repo, "witness")
+    mtime_before = (ideal_path.stat().st_mtime_ns, witness_path.stat().st_mtime_ns)
+
+    get(repo)  # no new commits, no dirty tree -- should be a pure no-op read
+
+    mtime_after = (ideal_path.stat().st_mtime_ns, witness_path.stat().st_mtime_ns)
+    assert mtime_after == mtime_before, "get() rewrote ideal_table/witness with no new state"
+
+
 def _count_snapshot_calls(monkeypatch):
     """Spy on `working_tree_snapshot` -- taken only when the dirty mining pass runs (R16), so its
     call count is a direct probe of whether the O(tracked files) pending pass fired."""

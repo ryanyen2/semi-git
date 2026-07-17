@@ -283,7 +283,8 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     # revert/pin -- that a scan of git ancestry can't).
     key = _ref_key(gb) or head
     ideal_table = _load_ideal_table(repo)
-    base_ids = set(ideal_table[key]) if key in ideal_table else _committed_ids_by_provenance(gb, store)
+    already_seeded = key in ideal_table
+    base_ids = set(ideal_table[key]) if already_seeded else _committed_ids_by_provenance(gb, store)
 
     # (4) The durable ideal gains only newly-committed ops; the dirty overlay is never persisted,
     # so a discarded working-tree edit (e.g. `git checkout -- .`) simply stops appearing on the
@@ -297,12 +298,20 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     # without the table would make the next `get()` mine nothing new yet trust a stale ideal. One
     # locked section, each file landing atomically. Ops were added above, before this section, so
     # `Store.add`'s own lock never nests inside this one (U23 / locked_section contract).
-    with locked_section(repo):
-        ideal_table[key] = sorted(committed_ids)
-        _save_ideal_table(repo, ideal_table)
-        table = _load_witnesses(repo)
-        table[key] = head
-        _save_witnesses(repo, table)
+    #
+    # Skip the write entirely when nothing actually changed (unless this ref has never been
+    # seeded): `ideal.json`/`witness.json` are `.sgt/**/*.json` paths a client's file watcher
+    # invalidates its cache on, and every read calls `get()` -- an unconditional rewrite here
+    # would touch their mtime on every no-op read, making a client's own refresh retrigger
+    # another refresh forever.
+    prev_head = _load_witnesses(repo).get(key)
+    if not already_seeded or committed_ids != base_ids or head != prev_head:
+        with locked_section(repo):
+            ideal_table[key] = sorted(committed_ids)
+            _save_ideal_table(repo, ideal_table)
+            table = _load_witnesses(repo)
+            table[key] = head
+            _save_witnesses(repo, table)
 
     # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
     # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
