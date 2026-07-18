@@ -206,3 +206,150 @@ def test_intent_revert_subset_reverts_only_chosen_atoms(tmp_path, capsys, monkey
     payload = json.loads(capsys.readouterr().out)
     assert payload["removed"]  # something was actually removed
     assert not (frozenset(payload["removed"]) & a_op_ids)  # but never any op from the earlier commit
+
+
+# -- U4: revert surfaces tier ------------------------------------------------------------------
+
+
+def test_intent_revert_thematic_tier_prints_badge_in_non_json_output(tmp_path, capsys, monkeypatch):
+    """Two scope-less, structurally-disconnected commits the LLM coalesces into one theme (no
+    dependency edge between them, no tree built) revert at `thematic` tier -- the weakest tier,
+    since nothing in the dependency graph backs the cross-commit grouping. The tier line must
+    print even though it's not part of the pre-existing "reverting N atom(s)" listing."""
+    from types import SimpleNamespace
+
+    class _FakeResponses:
+        def __init__(self, output_parsed):
+            self._output_parsed = output_parsed
+
+        def parse(self, **kwargs):
+            return SimpleNamespace(
+                output_parsed=self._output_parsed,
+                usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+            )
+
+    class _FakeClient:
+        def __init__(self, output_parsed):
+            self.responses = _FakeResponses(output_parsed)
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    sha_a = gb.commit_all("add foo")
+    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    sha_b = gb.commit_all("add bar")
+
+    coalesced = theme.ThemeGroup(label="Misc", rationale="grouped by LLM", atom_shas=[sha_a[:8], sha_b[:8]])
+    fake = _FakeClient(theme.ThemeGroups(groups=[coalesced]))
+    monkeypatch.setattr(theme, "get_client", lambda repo: fake)
+
+    assert _in(tmp_path, ["intent", "build"]) == 0
+    capsys.readouterr()
+
+    from sgt.api import intent_view
+
+    (theme_entry,) = intent_view(tmp_path)["themes"]
+    assert theme_entry["tier"] == "thematic"  # sanity: intent_view agrees before we assert the CLI does
+
+    assert _in(tmp_path, ["intent", "revert", theme_entry["theme_id"], "--emit"]) == 0
+    out = capsys.readouterr().out
+    assert "tier: thematic" in out
+
+
+def test_intent_revert_json_preview_includes_tier_field(tmp_path, capsys):
+    gb = _seed(tmp_path)
+    sha = gb.rev_parse("HEAD")
+
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tier"] in ("coupled", "co-changed", "thematic")
+
+
+def test_intent_revert_single_atom_degrades_without_a_tree(tmp_path, capsys):
+    """No tree has been built at all (`op_leaf` unavailable) -- `tier()` must still degrade to a
+    valid tier rather than crashing, and the revert must still succeed."""
+    gb = _seed(tmp_path, subject="add foo")  # no conventional-commit scope -> scope-less atom
+    sha = gb.rev_parse("HEAD")
+
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["tier"] == "co-changed"  # single commit, no feature span available
+
+
+# -- U5: staleness signal + revert refusal ------------------------------------------------------
+
+
+def _build_one_theme(tmp_path, monkeypatch):
+    def _no_client(*args, **kwargs):
+        raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
+
+    monkeypatch.setattr(theme, "get_client", _no_client)
+    _seed(tmp_path)
+    assert _in(tmp_path, ["intent", "build"]) == 0
+    from sgt.api import intent_view
+
+    (theme_entry,) = intent_view(tmp_path)["themes"]
+    return theme_entry
+
+
+def _mark_theme_stale(tmp_path, theme_id: str) -> str:
+    from sgt import state
+
+    themes = state.load_json(tmp_path, "intent_themes", default={})
+    entry = themes[theme_id]
+    vanished_sha = "f" * 40
+    entry["atom_shas"] = sorted({*entry["atom_shas"], vanished_sha})
+    state.save_json(tmp_path, "intent_themes", themes)
+    return vanished_sha
+
+
+def test_intent_list_renders_stale_marker_for_a_theme_with_a_missing_member(tmp_path, capsys, monkeypatch):
+    theme_entry = _build_one_theme(tmp_path, monkeypatch)
+    capsys.readouterr()
+    vanished_sha = _mark_theme_stale(tmp_path, theme_entry["theme_id"])
+
+    assert _in(tmp_path, ["intent", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "stale" in out
+    assert vanished_sha[:8] in out
+
+
+def test_intent_show_renders_stale_marker_for_a_theme_with_a_missing_member(tmp_path, capsys, monkeypatch):
+    theme_entry = _build_one_theme(tmp_path, monkeypatch)
+    capsys.readouterr()
+    vanished_sha = _mark_theme_stale(tmp_path, theme_entry["theme_id"])
+
+    assert _in(tmp_path, ["intent", "show", theme_entry["theme_id"]]) == 0
+    out = capsys.readouterr().out
+    assert "stale" in out
+    assert vanished_sha[:8] in out
+
+
+def test_intent_revert_refuses_a_theme_with_one_missing_member(tmp_path, capsys, monkeypatch):
+    theme_entry = _build_one_theme(tmp_path, monkeypatch)
+    capsys.readouterr()
+    vanished_sha = _mark_theme_stale(tmp_path, theme_entry["theme_id"])
+
+    assert _in(tmp_path, ["intent", "revert", theme_entry["theme_id"], "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert "sgt intent build" in payload["error"]
+    assert vanished_sha[:8] in payload["error"]
+
+
+def test_intent_revert_refuses_a_theme_with_every_member_missing(tmp_path, capsys, monkeypatch):
+    """A theme whose *every* member sha vanished must refuse with the reconcile message, not
+    report a misleading "no change" the way `plan_revert_op_set` would on an empty op-set."""
+    from sgt import state
+
+    theme_entry = _build_one_theme(tmp_path, monkeypatch)
+    capsys.readouterr()
+    themes = state.load_json(tmp_path, "intent_themes", default={})
+    entry = themes[theme_entry["theme_id"]]
+    entry["atom_shas"] = ["f" * 40, "e" * 40]
+    state.save_json(tmp_path, "intent_themes", themes)
+
+    assert _in(tmp_path, ["intent", "revert", theme_entry["theme_id"], "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert "sgt intent build" in payload["error"]

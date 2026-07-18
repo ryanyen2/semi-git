@@ -7,6 +7,7 @@ from hypothesis import given, settings, strategies as st
 from sgt.core.op import make_op
 from sgt.core.order import (
     chain_edges,
+    components_in,
     downset,
     downset_in,
     frontier,
@@ -200,6 +201,51 @@ def test_downset_in_walks_chain_order_through_a_revert_collision():
     assert downset_in(rev.id, ideal, ops) == ideal            # revert <- modify <- add
     assert downset_in(mod.id, ideal, ops) == {add.id, mod.id}
     assert downset_in(add.id, ideal, ops) == {add.id}
+
+
+def test_components_in_links_ops_by_a_chain_edge():
+    ops = _chain("a.py::foo", 2)
+    comps = components_in({ops[0].id, ops[1].id}, ops)
+    assert comps == [frozenset({ops[0].id, ops[1].id})]
+
+
+def test_components_in_does_not_walk_through_an_op_outside_the_restricted_set():
+    # a -> x -> b: x links a and b, but x is excluded from the restricted set.
+    ops = _chain("a.py::foo", 3)
+    a, x, b = ops
+    comps = components_in({a.id, b.id}, ops)
+    assert set(comps) == {frozenset({a.id}), frozenset({b.id})}
+
+
+def test_components_in_ignores_an_op_whose_origin_is_outside_the_set():
+    """The exact shape that crashed the old tier() implementation: a modify op is included
+    without its chain head. components_in must not raise -- the modify op is simply its own
+    singleton component."""
+    ops = _chain("a.py::foo", 3)
+    add, modify, tip = ops
+    comps = components_in({modify.id, tip.id}, ops)
+    assert frozenset({modify.id, tip.id}) in comps  # modify<->tip still linked directly
+
+
+def test_components_in_finds_no_edge_when_the_producer_op_is_excluded():
+    ops = _chain("a.py::foo", 3)
+    add, modify, tip = ops
+    comps = components_in({add.id, tip.id}, ops)  # modify (the link) excluded
+    assert set(comps) == {frozenset({add.id}), frozenset({tip.id})}
+
+
+def test_components_in_includes_declared_edges():
+    a = make_op({"a.py::a": (None, "v0")}, {"a.py::a": b"a"})
+    b = make_op({"b.py::b": (None, "v0")}, {"b.py::b": b"b"})  # unrelated by chain/reference
+    ops = [a, b]
+    declared = frozenset({(a.id, b.id)})
+    assert set(components_in({a.id, b.id}, ops)) == {frozenset({a.id}), frozenset({b.id})}
+    assert components_in({a.id, b.id}, ops, declared) == [frozenset({a.id, b.id})]
+
+
+def test_components_in_empty_set_is_empty():
+    ops = _chain("a.py::foo", 2)
+    assert components_in(frozenset(), ops) == []
 
 
 @given(st.integers(min_value=2, max_value=6))

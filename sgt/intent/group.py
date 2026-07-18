@@ -10,8 +10,11 @@ store + git history + the built feature tree -- no network, no LLM, byte-stable 
     human label already, so the overlay is useful with zero further work.
   - rung 1 (`scope_bundles`): atoms sharing a conventional-commit scope (`fix(auth):` across
     three commits) coalesce into one bundle, reusing `cluster.commit_scope` -- the density plain
-    per-commit grouping lacks on a young repo. Scope-less atoms stay singleton bundles here; the
-    LLM rung (U4) may later reassign them.
+    per-commit grouping lacks on a young repo -- but only when they are also structurally
+    connected (`order.components_in`, plan U3): a scope string alone is a naming coincidence, not
+    evidence the commits are one change. Two same-scope atoms with no chain/reference/declared
+    edge between their ops become two separate bundles under the same scope, never one false
+    merge. Scope-less atoms stay singleton bundles here; the LLM rung (U4) may later reassign them.
 
 The "across features" claim is never asserted -- it is computed (`feature_span`) and *tiered*
 (`tier`) by how strongly a group's ops are connected in the op-DAG, so a reader knows which
@@ -104,11 +107,23 @@ def atoms(repo: str | Path) -> list[IntentAtom]:
     return out
 
 
-def scope_bundles(atom_list: list[IntentAtom]) -> list[Bundle]:
-    """Rung 1: coalesce atoms that share a conventional-commit scope into one bundle; every
-    scope-less atom stays its own singleton. Deterministically ordered (by each bundle's earliest
-    member, then scope). Reuses `cluster.commit_scope` (already stored on each atom as `.scope`)
-    -- never a reimplementation of scope parsing."""
+def scope_bundles(atom_list: list[IntentAtom], all_ops: list[Op], declared=frozenset()) -> list[Bundle]:
+    """Rung 1: coalesce atoms that share a conventional-commit scope into one bundle -- but only
+    the atoms within that scope that are also structurally connected (`order.components_in`,
+    restricted to the scope's own atoms' op-ids). Two same-scope atoms with no chain/reference/
+    declared edge between them (e.g. an unrelated CVE patch and a doc typo fix that coincidentally
+    both declared `fix(auth):`) become two separate same-scope bundles, not one false merge --
+    a same-scope atom that connects to no other same-scope atom is its own singleton bundle,
+    same shape as a scope-less singleton. Two atoms merge whenever *any* op of one shares a
+    component with *any* op of the other -- not a majority vote over each atom's own ops, which
+    an atom's off-chain anchor/residue bookkeeping ops (structurally isolated by construction)
+    would otherwise swamp with noise votes and split a genuinely connected pair. Every atom still
+    lands in exactly one bundle (the total-partition property is preserved; only which bundle
+    changes). Deterministically ordered (by each bundle's earliest member, then scope). Reuses
+    `cluster.commit_scope` (already stored on each atom as `.scope`) -- never a reimplementation
+    of scope parsing."""
+    from sgt.core import order
+
     by_scope: dict[str, list[IntentAtom]] = {}
     singletons: list[Bundle] = []
     for atom in atom_list:
@@ -117,10 +132,44 @@ def scope_bundles(atom_list: list[IntentAtom]) -> list[Bundle]:
         else:
             by_scope.setdefault(atom.scope, []).append(atom)
 
-    bundles = [
-        Bundle(scope=scope, atoms=tuple(sorted(members, key=_atom_sort_key)))
-        for scope, members in by_scope.items()
-    ]
+    bundles: list[Bundle] = []
+    for scope, members in by_scope.items():
+        scope_op_ids = frozenset().union(*(a.op_ids for a in members))
+        op_component: dict[str, int] = {}
+        for idx, component in enumerate(order.components_in(scope_op_ids, all_ops, declared)):
+            for op_id in component:
+                op_component[op_id] = idx
+
+        # Union-find over atoms: two atoms merge iff they share at least one op-component.
+        parent = list(range(len(members)))
+
+        def find(i: int) -> int:
+            while parent[i] != i:
+                i = parent[i]
+            return i
+
+        def union(i: int, j: int) -> None:
+            ri, rj = find(i), find(j)
+            if ri != rj:
+                parent[ri] = rj
+
+        component_atoms: dict[int, list[int]] = {}
+        for atom_idx, atom in enumerate(members):
+            for comp_idx in {op_component[oid] for oid in atom.op_ids}:
+                component_atoms.setdefault(comp_idx, []).append(atom_idx)
+        for atom_idxs in component_atoms.values():
+            for other in atom_idxs[1:]:
+                union(atom_idxs[0], other)
+
+        groups: dict[int, list[IntentAtom]] = {}
+        for atom_idx, atom in enumerate(members):
+            groups.setdefault(find(atom_idx), []).append(atom)
+
+        bundles.extend(
+            Bundle(scope=scope, atoms=tuple(sorted(group_atoms, key=_atom_sort_key)))
+            for group_atoms in groups.values()
+        )
+
     bundles.extend(singletons)
     bundles.sort(key=lambda b: (_atom_sort_key(min(b.atoms, key=_atom_sort_key)), b.scope or ""))
     return bundles
@@ -149,20 +198,21 @@ def tier(
     """`coupled | co-changed | thematic` for one group (KTD3). `commit_shas` is the set of
     distinct commits the group's atoms came from -- a single-commit group can only ever be
     `co-changed` (same-commit, cross-feature, no edge) or below `coupled`; a multi-commit group
-    with no dependency edge is `thematic`. Reuses `order.downset_in` exactly as
-    `proposal_review_view` does, restricted to the group's own op-set -- never a new closure walk."""
+    with no dependency edge is `thematic`. Uses `order.components_in` -- undirected connectivity
+    restricted to the group's own op-set -- rather than `downset_in`/`upset_in`: those assume
+    `group_op_ids` is itself a valid, downward-closed ideal (they walk `_ordered_chains`, which
+    raises `KeyError` on a modify op whose chain head is outside the set), and an arbitrary
+    commit's or scope-bundle's op-set is not guaranteed to be one. `components_in` has no such
+    precondition -- it answers "are these ops linked at all," which is exactly what a tier needs."""
     from sgt.core import order
 
     span = feature_span(group_op_ids, op_leaf)
     if len(span) < 2:
         return CO_CHANGED if len(commit_shas) <= 1 else THEMATIC
 
-    for op_id in group_op_ids:
-        leaf = op_leaf.get(op_id)
-        if leaf is None:
-            continue
-        closure = order.downset_in(op_id, group_op_ids, all_ops, declared)
-        if any(op_leaf.get(oid) not in (None, leaf) for oid in closure):
+    for component in order.components_in(group_op_ids, all_ops, declared):
+        leaves = {op_leaf[oid] for oid in component if oid in op_leaf}
+        if len(leaves) >= 2:
             return COUPLED
 
     return CO_CHANGED if len(commit_shas) <= 1 else THEMATIC

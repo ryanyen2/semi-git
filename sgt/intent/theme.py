@@ -22,7 +22,8 @@ from pydantic import BaseModel
 
 from sgt import state
 from sgt.config import get_client
-from sgt.intent.group import Bundle, IntentAtom
+from sgt.intent._guard import filter_to_shown
+from sgt.intent.group import Bundle, IntentAtom, _atom_sort_key
 
 MODEL = "gpt-5.4-mini"
 EFFORT = "low"
@@ -94,6 +95,7 @@ class IntentThemer:
         self.tokens_in = 0
         self.tokens_out = 0
         self.calls = 0
+        self.scopeless_chunk_key_by_sha: dict[str, str] = {}  # populated by group_scopeless (U6/R8)
 
     @property
     def client(self):
@@ -138,20 +140,40 @@ class IntentThemer:
         """Coalesce scope-less atoms into named themes. Unlike `label_bundle`, membership here
         *is* LLM-decided (this is the "coalescer" half of KTD4) -- so every returned `atom_shas`
         is validated as a subset of the shas actually shown, and any hallucinated sha is dropped
-        before persistence, never trusted."""
+        before persistence, never trusted.
+
+        Processes all atoms in bounded, chronologically-ordered chunks of `MAX_ATOMS` (R8/KTD5)
+        rather than truncating to the first `MAX_ATOMS` -- every scope-less atom gets a theme
+        regardless of backlog size, one LLM call + one content-hash cache entry per chunk (an
+        unchanged chunk on rebuild hits the cache; a chunk with a new atom does not). Populates
+        `scopeless_chunk_key_by_sha` so `build_themes` can look up which chunk's cache entry
+        produced a given returned group, without re-deriving the chunking here."""
         if not atoms:
             return []
-        key = _scopeless_key(atoms)
+        ordered = sorted(atoms, key=_atom_sort_key)
+        chunks = [ordered[i:i + MAX_ATOMS] for i in range(0, len(ordered), MAX_ATOMS)]
+        groups: list[ThemeGroup] = []
+        for chunk in chunks:
+            chunk_key = _scopeless_key(chunk)
+            for atom in chunk:
+                self.scopeless_chunk_key_by_sha[atom.commit_sha] = chunk_key
+            groups.extend(self._group_scopeless_chunk(chunk, chunk_key))
+        return groups
+
+    def _group_scopeless_chunk(self, chunk: list[IntentAtom], key: str) -> list[ThemeGroup]:
+        """One `MAX_ATOMS`-bounded chunk's LLM/cache call. `assigned` (R7) tracks which atom
+        shas an earlier group (in the LLM's own returned order) already claimed, so a later
+        group naming an already-claimed sha -- an overlapping LLM response -- drops it instead of
+        letting the atom land in two persisted themes; first group wins."""
         cached = self.cache.get(key)
-        valid_shas = frozenset(a.commit_sha for a in atoms)
+        valid_shas = frozenset(a.commit_sha for a in chunk)
         if cached is not None and cached.get("source") == "llm":
             return [
                 ThemeGroup(label=g["label"], rationale=g["rationale"], atom_shas=g["atom_shas"])
                 for g in cached["groups"]
             ]
 
-        shown = sorted(atoms, key=lambda a: a.commit_sha)[:MAX_ATOMS]
-        lines = "\n".join(f"{a.commit_sha[:8]} | {a.subject}" for a in shown)
+        lines = "\n".join(f"{a.commit_sha[:8]} | {a.subject}" for a in chunk)
         prompt = (
             "These commits in a semantic version-control tool declared no conventional-commit "
             "scope. Group any that plausibly share one underlying theme (e.g. fixing the same "
@@ -164,23 +186,27 @@ class IntentThemer:
         )
         try:
             result, source = self._request(prompt, ThemeGroups), "llm"
-            groups = []
+            groups: list[ThemeGroup] = []
+            assigned: set[str] = set()
             for g in result.groups:
-                kept = [sha for sha in g.atom_shas if any(sha == a.commit_sha[:8] for a in shown)]
-                resolved = [a.commit_sha for a in shown if a.commit_sha[:8] in kept]
+                kept = [sha for sha in g.atom_shas if any(sha == a.commit_sha[:8] for a in chunk)]
+                resolved = [
+                    a.commit_sha for a in chunk if a.commit_sha[:8] in kept and a.commit_sha not in assigned
+                ]
                 if resolved:
                     groups.append(ThemeGroup(label=g.label, rationale=g.rationale, atom_shas=resolved))
-            grouped_shas = {sha for g in groups for sha in g.atom_shas}
-            for atom in shown:
-                if atom.commit_sha not in grouped_shas:
+                    assigned.update(resolved)
+            for atom in chunk:
+                if atom.commit_sha not in assigned:
                     groups.append(ThemeGroup(
                         label=(atom.subject or atom.commit_sha[:8])[:60],
                         rationale="Ungrouped commit.", atom_shas=[atom.commit_sha],
                     ))
+                    assigned.add(atom.commit_sha)
         except Exception:
-            groups, source = _fallback_scopeless_groups(shown), "fallback"
+            groups, source = _fallback_scopeless_groups(chunk), "fallback"
 
-        groups = [g for g in groups if frozenset(g.atom_shas) <= valid_shas]
+        groups = filter_to_shown(groups, valid_shas, lambda g: g.atom_shas)
         self.cache[key] = {
             "source": source,
             "groups": [{"label": g.label, "rationale": g.rationale, "atom_shas": g.atom_shas} for g in groups],
@@ -216,13 +242,17 @@ def build_themes(repo: str | Path) -> dict[str, dict]:
     rebuilt on demand (`sgt intent build`, U7) -- like `sgt map` vs `map_view`, this write path is
     kept out of every read/sync path. Content-hash caching (U4) makes a post-sync rebuild cheap:
     atoms unchanged by the sync hit the cache; only genuinely new atoms cost a live call."""
+    from sgt.core.lens import _load_declared
+    from sgt.core.store import Store
     from sgt.intent.group import atoms as _atoms
     from sgt.intent.group import scope_bundles
 
     repo = Path(repo)
     themer = IntentThemer(repo)
     all_atoms = _atoms(repo)
-    bundles = scope_bundles(all_atoms)
+    all_ops = Store(repo).all_ops()
+    declared = _load_declared(repo)
+    bundles = scope_bundles(all_atoms, all_ops, declared)
 
     themes: dict[str, dict] = {}
     scopeless: list[IntentAtom] = []
@@ -245,7 +275,7 @@ def build_themes(repo: str | Path) -> dict[str, dict]:
         if not shas:
             continue
         tid = theme_id_for(shas)
-        cache_key = _scopeless_key(scopeless)
+        cache_key = themer.scopeless_chunk_key_by_sha[next(iter(shas))]
         source = themer.cache.get(cache_key, {}).get("source", "fallback")
         themes[tid] = {
             "label": group.label, "rationale": group.rationale,

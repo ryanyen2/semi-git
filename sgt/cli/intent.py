@@ -75,6 +75,9 @@ def _list(repo: str, as_json: bool) -> int:
         span = ", ".join(t["feature_span"]) or "(no feature)"
         print(f"  {_tier_badge(t['tier'])} {t['label']}  [{t['theme_id']}]  "
               f"{len(t['op_ids'])} op(s) across {span}  ({t['tier']}, {t['source']})")
+        if t["stale_shas"]:
+            names = ", ".join(sha[:8] for sha in t["stale_shas"])
+            print(f"    ⚠ stale: {len(t['stale_shas'])} member commit(s) no longer resolve ({names})")
     print(f"{len(view['themes'])} theme(s), {len(view['atoms'])} atom(s)")
     return 0
 
@@ -101,6 +104,9 @@ def _show(repo: str, target: str, as_json: bool) -> int:
         print(f"{result['label']}  [{result['theme_id']}]  ({result['tier']}, {result['source']})")
         print(f"  {result['rationale']}")
         print(f"  feature span: {', '.join(result['feature_span']) or '(none)'}")
+        if result["stale_shas"]:
+            names = ", ".join(sha[:8] for sha in result["stale_shas"])
+            print(f"  ⚠ stale: {len(result['stale_shas'])} member commit(s) no longer resolve ({names})")
         for a in result["atoms"]:
             print(f"    {a['commit_sha'][:12]}  {a['subject']}  ({len(a['op_ids'])} op(s))")
     else:
@@ -128,11 +134,23 @@ def _revert(repo: str, target: str, subset: list[str] | None, emit: bool, as_jso
     from sgt.core.lens import _load_declared
     from sgt.core.store import Store
     from sgt.intent import group
+    from sgt.lens.tree import load as load_tree
 
     all_ops = Store(repo).all_ops()
     declared = _load_declared(repo)
     all_atoms = group.atoms(repo)
     themes = state.load_json(repo, "intent_themes", default={})
+
+    theme_entry = themes.get(target)
+    if theme_entry is not None:
+        current_shas = {a.commit_sha for a in all_atoms}
+        stale = sorted(frozenset(theme_entry["atom_shas"]) - current_shas)
+        if stale:
+            names = ", ".join(sha[:8] for sha in stale)
+            return _fail_json(
+                f"run `sgt intent build` to reconcile -- {len(stale)} member commit(s) no longer "
+                f"resolve: {names}", as_json,
+            )
 
     resolved = group.resolve_group(target, themes, all_atoms)
     if resolved is None:
@@ -144,14 +162,21 @@ def _revert(repo: str, target: str, subset: list[str] | None, emit: bool, as_jso
     if err is not None:
         return _fail_json(err, as_json)
 
-    if not as_json and len(chosen) > 1:
-        print(f"reverting {len(chosen)} atom(s) as one group:")
-        for atom in chosen:
-            print(f"    {atom.commit_sha[:12]}  {atom.subject}  ({len(atom.op_ids)} op(s))")
-
     op_ids = frozenset().union(*(a.op_ids for a in chosen)) if chosen else frozenset()
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    commit_shas = frozenset(a.commit_sha for a in chosen if a.commit_sha != group.UNWITNESSED)
+    tier = group.tier(op_ids, commit_shas, all_ops, declared, op_leaf)
+
+    if not as_json:
+        if len(chosen) > 1:
+            print(f"reverting {len(chosen)} atom(s) as one group:")
+            for atom in chosen:
+                print(f"    {atom.commit_sha[:12]}  {atom.subject}  ({len(atom.op_ids)} op(s))")
+        print(f"  tier: {tier} {_tier_badge(tier)}")
+
     preview = verbs.plan_revert_op_set(repo, target, op_ids)
 
     from .ideal_edit import _emit_verb_result
 
-    return _emit_verb_result(repo, preview, emit, as_json)
+    return _emit_verb_result(repo, preview, emit, as_json, extra={"tier": tier})

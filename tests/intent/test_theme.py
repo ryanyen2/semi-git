@@ -31,10 +31,14 @@ def _no_client(*args, **kwargs):
 
 
 def _two_scope_commits(tmp_path):
+    """Two same-scope commits with a real reference edge between them (bar calls foo) -- so
+    structural gating (U3) merges them into one bundle, same as before that gating existed."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("fix(auth): add foo")
-    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text(
+        "from a import foo\n\n\ndef bar():\n    return foo() + 1\n", encoding="utf-8",
+    )
     gb.commit_all("fix(auth): add bar")
     get(tmp_path)
 
@@ -88,8 +92,10 @@ def test_cache_hit_makes_zero_live_calls_on_second_build(tmp_path, monkeypatch):
 
     first = theme.build_themes(tmp_path)
 
+    from sgt.core.store import Store
+
     themer = theme.IntentThemer(tmp_path)
-    bundles = group.scope_bundles(group.atoms(tmp_path))
+    bundles = group.scope_bundles(group.atoms(tmp_path), Store(tmp_path).all_ops())
     themer.label_bundle(bundles[0])
     assert themer.calls == 0  # cache hit -- the label was already persisted as "llm"
 
@@ -143,3 +149,79 @@ def test_scopeless_atom_with_no_client_becomes_a_singleton_theme(tmp_path, monke
     (t,) = themes.values()
     assert t["source"] == "fallback"
     assert len(t["atom_shas"]) == 1
+
+
+# -- U6: group_scopeless dedup + chunking (R7/R8) ------------------------------------------------
+
+
+def _scopeless_atoms(tmp_path, n: int) -> list:
+    gb, _ = init_store(tmp_path)
+    for i in range(n):
+        (tmp_path / f"f{i}.py").write_text(f"def fn{i}():\n    return {i}\n", encoding="utf-8")
+        gb.commit_all(f"touch f{i}.py")  # no scope -> every atom is scope-less
+    get(tmp_path)
+    return group.atoms(tmp_path)
+
+
+def test_group_scopeless_first_group_wins_on_an_overlapping_llm_response(tmp_path, monkeypatch):
+    """A crafted LLM response naming the same sha in two groups must not let that atom land in
+    both persisted themes -- the earlier group (in the LLM's own returned order) keeps it."""
+    atoms = _scopeless_atoms(tmp_path, 3)
+    shas = sorted(a.commit_sha for a in atoms)
+
+    overlapping = theme.ThemeGroups(groups=[
+        theme.ThemeGroup(label="Group A", rationale="first", atom_shas=[shas[0][:8], shas[1][:8]]),
+        theme.ThemeGroup(label="Group B", rationale="second", atom_shas=[shas[1][:8], shas[2][:8]]),
+    ])
+    fake = FakeClient(overlapping)
+    monkeypatch.setattr(theme, "get_client", lambda repo: fake)
+
+    themer = theme.IntentThemer(tmp_path)
+    result = themer.group_scopeless(atoms)
+
+    by_label = {g.label: set(g.atom_shas) for g in result}
+    assert by_label["Group A"] == {shas[0], shas[1]}
+    assert by_label["Group B"] == {shas[2]}  # shas[1] already claimed by Group A -- dropped here
+    all_shas = [sha for g in result for sha in g.atom_shas]
+    assert sorted(all_shas) == shas  # every atom still lands in exactly one group, none lost
+
+
+def test_group_scopeless_chunks_a_backlog_larger_than_max_atoms(tmp_path, monkeypatch):
+    """45 scope-less atoms (> MAX_ATOMS=40) must all get a theme -- regression for the review's
+    exact repro, which previously landed only the first 40 via `[:MAX_ATOMS]` truncation."""
+    monkeypatch.setattr(theme, "get_client", _no_client)
+    atoms = _scopeless_atoms(tmp_path, 45)
+
+    themer = theme.IntentThemer(tmp_path)
+    result = themer.group_scopeless(atoms)
+
+    all_shas = {sha for g in result for sha in g.atom_shas}
+    assert all_shas == {a.commit_sha for a in atoms}
+
+
+def test_group_scopeless_unchanged_chunk_hits_cache_changed_chunk_does_not(tmp_path, monkeypatch):
+    fake = FakeClient(theme.ThemeGroups(groups=[]))
+    monkeypatch.setattr(theme, "get_client", lambda repo: fake)
+    atoms = _scopeless_atoms(tmp_path, 45)  # two chunks: 40 + 5
+
+    themer = theme.IntentThemer(tmp_path)
+    themer.group_scopeless(atoms)
+    assert themer.calls == 2  # one live call per chunk
+    themer.save()
+
+    # rebuild with the exact same atoms -- both chunks are cache hits
+    themer2 = theme.IntentThemer(tmp_path)
+    themer2.group_scopeless(atoms)
+    assert themer2.calls == 0
+
+    # a 46th scope-less atom only changes the second (smaller) chunk's content hash
+    from sgt.store.gitbind import GitBinding
+
+    (tmp_path / "f45.py").write_text("def fn45():\n    return 45\n", encoding="utf-8")
+    GitBinding(tmp_path).commit_all("touch f45.py")
+    get(tmp_path)
+    grown = group.atoms(tmp_path)
+
+    themer3 = theme.IntentThemer(tmp_path)
+    themer3.group_scopeless(grown)
+    assert themer3.calls == 1  # only the changed (second) chunk re-requests

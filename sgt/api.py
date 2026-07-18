@@ -985,8 +985,11 @@ def intent_view(repo) -> dict:
     if `sgt intent build` has run; `[]` otherwise -- a UI renders "run `sgt intent build`", never
     an error). Each carries its dependency-graph-backed `tier` (`coupled` | `co-changed` |
     `thematic`, KTD3) and `feature_span` -- the "across features" claim is computed here, never
-    asserted by a client. Fully sorted for a stable projection, like every other view in this
-    module."""
+    asserted by a client. A theme also carries `stale_shas` (plan U5/KTD4): persisted member
+    shas that no longer resolve against the current atom partition (e.g. a rebase/amend) are
+    reported here rather than silently dropped, so a reader sees the theme is diminished before
+    acting on it -- this view never refuses to render, only `sgt intent revert` does. Fully
+    sorted for a stable projection, like every other view in this module."""
     from sgt import state
     from sgt.core import lens as _lens
     from sgt.core.store import Store
@@ -1020,6 +1023,7 @@ def intent_view(repo) -> dict:
     themes_out = []
     for theme_id, entry in sorted(themes_persisted.items()):
         member_shas = frozenset(entry["atom_shas"])
+        stale_shas = member_shas - frozenset(atoms_by_sha)
         op_ids = frozenset().union(*(atoms_by_sha[sha].op_ids for sha in member_shas if sha in atoms_by_sha))
         span = group.feature_span(op_ids, op_leaf)
         tier = group.tier(op_ids, member_shas, all_ops, declared, op_leaf)
@@ -1029,6 +1033,7 @@ def intent_view(repo) -> dict:
             "rationale": entry["rationale"],
             "source": entry["source"],
             "atom_shas": sorted(member_shas),
+            "stale_shas": sorted(stale_shas),
             "op_ids": sorted(op_ids),
             "feature_span": sorted(span),
             "tier": tier,
