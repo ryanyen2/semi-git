@@ -136,7 +136,12 @@ def reconcile_tree(
     off disk -- mid-sync, the unioned op store and ideal exist only in memory until the merge
     commit lands."""
     result = tree.build(repo, ops, ideal, pins=pins, previous=ours_tree)
-    tree.label_tree(result, repo, pins=pins).save()  # persist label cache (see build_map)
+    # Label the tree in-memory but don't persist the cache: this function is only ever called from
+    # `land`'s speculative attempt loop (via `resolve.resolve`), which may discard the result on a
+    # red oracle or lost CAS. The label cache is `committed=False` (not git-tracked), so a rolled-
+    # back attempt's `restore_worktree_to` can't undo a write here -- it would leak past R7's "no
+    # trace" guarantee. `result`'s nodes already carry the labels regardless of this save.
+    tree.label_tree(result, repo, pins=pins)
     return result
 
 

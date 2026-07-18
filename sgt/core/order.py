@@ -191,11 +191,18 @@ def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
     step it is now fork-free -- a valid ideal by construction (divergence-as-state, U20/C4). Used by
     `sgt sync`'s resolve to advance a branch by only the fork-free part, and by `lens.ideal_for_ref`
     so a ref whose committed history contains both tips of a fork still projects a valid ideal (the
-    forked tip never surfaces in `sgt state`/`sgt map`; only the common ancestor does)."""
+    forked tip never surfaces in `sgt state`/`sgt map`; only the common ancestor does).
+
+    Builds `_adjacency` once and reuses it across every fork tip's `upset` (`_reachable` over the
+    same successors map) rather than calling the public `upset()` helper per tip -- that would
+    rebuild `chain_edges`/`reference_edges` over the *whole* op universe on every call, turning a
+    repo with many forked rebirths (add/delete/re-add) into O(forks * ops) instead of O(ops)."""
     excluded: set[str] = set()
-    for _sym, tip_a, tip_b in forks(ops, ideal_ids):
-        excluded |= upset(tip_a, ops, declared)
-        excluded |= upset(tip_b, ops, declared)
+    tips = {tip for _sym, tip_a, tip_b in forks(ops, ideal_ids) for tip in (tip_a, tip_b)}
+    if tips:
+        _, successors = _adjacency(ops, declared)
+        for tip in tips:
+            excluded |= _reachable(tip, successors)
     return frozenset(ideal_ids) - excluded
 
 
@@ -259,16 +266,27 @@ def find_declared_cycles(ops: list[Op], declared: Declared) -> list[tuple[str, s
 
 def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
     """The largest *well-founded* downward-closed subset of `ideal_ids`: ops reachable from chain
-    heads (`before_version` None) by actual production, computed as a least fixpoint. An op joins
-    once every one of its before_versions is None or already produced by a grounded op, every
-    `requires` version is produced by a grounded op, and every declared predecessor is grounded.
+    heads (`before_version` None) by actual production. An op joins once every one of its
+    before_versions is None or already produced by a grounded op, every `requires` version is
+    produced by a grounded op, and every declared predecessor is grounded.
 
     Grounding -- not mere existence of *some* producer -- is the correct downward-closure. The
     existential check alone accepts an originless cycle (e.g. `{modify, revert}` lifted out of
     add->modify->revert: modify's `before` is produced by revert and revert's by modify, but
     neither bottoms out at the add), which is not a real ideal -- it has no frontier head to fold.
     Reasoning about *versions* produced (never picking a single canonical producer op) keeps it
-    immune to the after-value collision that the graph-edge form mis-resolves."""
+    immune to the after-value collision that the graph-edge form mis-resolves: two ops (e.g. an
+    add and a later revert) can legitimately produce the same `(symbol, version)` pair, so a
+    prerequisite on that pair is satisfied the moment *any one* of its producers grounds -- an
+    OR-group, not a fixed single edge.
+
+    Computed as a single Kahn's-algorithm topological pass, O(ops + edges): each distinct
+    `(symbol, version)` or declared-predecessor requirement is a *key* shared by every op that
+    needs it, resolved the instant any op in its producer group grounds; an op's indegree is its
+    count of distinct unresolved keys. A key with no producer, or a declared predecessor outside
+    `ideal_ids`, simply never resolves -- so ops that depend on it (directly or via a cycle) are
+    correctly left ungrounded, same as the fixpoint this replaces. Previously a `while changed:`
+    loop rescanning every remaining op each pass -- O(ops^2) on a long, mostly-linear chain."""
     ideal_set = set(ideal_ids)
     by_id = {op.id: op for op in ops if op.id in ideal_set}
     declared_preds: dict[str, set[str]] = {}
@@ -276,23 +294,47 @@ def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
         if b in by_id:
             declared_preds.setdefault(b, set()).add(a)
 
-    grounded: set[str] = set()
-    produced: set[tuple[str, str]] = set()
-    changed = True
-    while changed:
-        changed = False
-        for op_id, op in by_id.items():
-            if op_id in grounded:
+    # producer_of[key] = every in-ideal op producing that (symbol, version) pair as its
+    # footprint `after` -- a group, not a single op, per the after-value-collision note above.
+    producer_of: dict[tuple, set[str]] = {}
+    for op_id, op in by_id.items():
+        for sym, (_before, after) in op.footprint.items():
+            producer_of.setdefault(("v", sym, after), set()).add(op_id)
+
+    def group_of(key: tuple) -> set[str]:
+        if key[0] == "d":
+            return {key[1]} if key[1] in by_id else set()
+        return producer_of.get(key, set())
+
+    needed: dict[str, set[tuple]] = {}
+    for op_id, op in by_id.items():
+        keys = {("v", sym, before) for sym, (before, _after) in op.footprint.items() if before is not None}
+        keys.update(("v", sym, ver) for sym, ver in op.requires)
+        keys.update(("d", p) for p in declared_preds.get(op_id, ()))
+        needed[op_id] = keys
+
+    key_dependents: dict[tuple, set[str]] = {}
+    for op_id, keys in needed.items():
+        for key in keys:
+            key_dependents.setdefault(key, set()).add(op_id)
+
+    producer_dependents: dict[str, set[tuple]] = {}
+    for key in key_dependents:
+        for member in group_of(key):
+            producer_dependents.setdefault(member, set()).add(key)
+
+    indegree = {op_id: len(keys) for op_id, keys in needed.items()}
+    resolved_keys: set[tuple] = set()
+    grounded: list[str] = [op_id for op_id, deg in indegree.items() if deg == 0]
+    for op_id in grounded:
+        for key in producer_dependents.get(op_id, ()):
+            if key in resolved_keys:
                 continue
-            if (
-                all(before is None or (sym, before) in produced
-                    for sym, (before, _a) in op.footprint.items())
-                and all(req in produced for req in op.requires)
-                and all(p in grounded for p in declared_preds.get(op_id, ()))
-            ):
-                grounded.add(op_id)
-                produced.update((sym, after) for sym, (_b, after) in op.footprint.items())
-                changed = True
+            resolved_keys.add(key)
+            for dep in key_dependents.get(key, ()):
+                indegree[dep] -= 1
+                if indegree[dep] == 0:
+                    grounded.append(dep)
     return frozenset(grounded)
 
 

@@ -145,6 +145,20 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # hex-decode (85%+ of the store's on-disk bytes) entirely. Self-healing (rebuilt on staleness),
     # never authoritative -- the ops directory always is. Per-clone, never travels.
     "op_index": _Artifact(("local", "op_index.json"), committed=False),
+    # local, gitignored cache of `sgt.entities.graph.build_entity_graph`'s edges at a given HEAD
+    # sha (`sgt.lens.cluster`): that full-repo source parse is by far the costliest step in the
+    # clustering signal build, yet its result is a pure function of HEAD alone -- so a no-op
+    # refresh or small edit (HEAD unchanged) skips the reparse entirely. Self-healing (a sha
+    # mismatch just triggers a rebuild), never authoritative. Per-clone, never travels.
+    "structural_edge_cache": _Artifact(("local", "structural_edges.json"), committed=False),
+    # local, gitignored cache of the fused coupling graph (`sgt.lens.tree.build`) that produced the
+    # last-saved `tree.json`, tagged with that tree's own leaf-structure fingerprint. Lets the next
+    # build detect cross-leaf coupling that gained/lost significance since then (Phase 2's
+    # cross-edge dirtying trigger) without re-deriving the old graph. A fingerprint mismatch (a
+    # foreign `previous`, e.g. from `reconcile`) or missing cache just means that trigger is
+    # skipped for this build -- member-set dirtying still applies. Self-healing, never
+    # authoritative, per-clone, never travels.
+    "fused_snapshot": _Artifact(("local", "fused_snapshot.json"), committed=False),
 }
 
 

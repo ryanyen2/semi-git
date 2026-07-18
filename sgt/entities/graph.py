@@ -210,7 +210,7 @@ def _transitive_reduction(ref_edges: list[EntityEdge]) -> list[EntityEdge]:
 
 
 # -- assembly ----------------------------------------------------------------
-def build_entity_graph(codebase: dict[str, str]) -> EntityGraph:
+def build_entity_graph(codebase: dict[str, str], *, edges_only: bool = False) -> EntityGraph:
     entities = extract_codebase(codebase)
     by_id = {e.id: e for e in entities}
     ents_by_file: dict[str, list[Entity]] = {}
@@ -258,8 +258,14 @@ def build_entity_graph(codebase: dict[str, str]) -> EntityGraph:
             ref_edges.append(EntityEdge(owner.id, target, etype))
 
     edges = contains + ref_edges
-    reduced_edges = contains + _transitive_reduction(ref_edges)
-    components = _components([e.id for e in entities], edges)
+    if edges_only:
+        # Skip the transitive reduction (Tarjan SCC + reachability) and component labeling --
+        # callers that only read `.edges`/`.entities` (the miner, `cluster.signals`) pay neither.
+        reduced_edges: list[EntityEdge] = []
+        components: list[list[str]] = []
+    else:
+        reduced_edges = contains + _transitive_reduction(ref_edges)
+        components = _components([e.id for e in entities], edges)
     return EntityGraph(entities, edges, reduced_edges, components)
 
 

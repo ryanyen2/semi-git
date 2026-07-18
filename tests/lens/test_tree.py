@@ -281,6 +281,29 @@ def test_rebuild_on_unchanged_history_renames_nothing(tmp_path):
     assert all(e["event"] == "continuation" for e in second["identity_events"])
 
 
+def test_dirty_subtree_rebuild_is_deterministic(tmp_path):
+    """Phase 2 (dirty-subtree reclustering): a real edit -- not just a no-op refresh -- must still
+    resplice/resplit deterministically. Two independent incremental builds from the same
+    `previous` + new commit must agree, member-for-member."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+    before = tree.build(repo, ops, ideal)
+    tree.save(repo, before)
+
+    corpus._write(repo, "d.py", "def quux():\n    return 4\n")
+    corpus._commit(repo, "add quux", 7)
+
+    ideal2, ops2 = get(repo), Store(repo).all_ops()
+    incremental_a = tree.build(repo, ops2, ideal2, previous=before)
+    incremental_b = tree.build(repo, ops2, ideal2, previous=before)
+
+    def leaves(result):
+        return {nid: sorted(nd["members"]) for nid, nd in result["nodes"].items() if not nd["children"]}
+
+    assert leaves(incremental_a) == leaves(incremental_b)
+    assert any("d.py::quux" in members for members in leaves(incremental_a).values())
+
+
 def test_assign_pin_overrides_greene_and_survives_reruns(tmp_path):
     from sgt.lens.pins import Pins, save_pins
 
@@ -361,6 +384,22 @@ class _StubLabeler:
 
     def label_super(self, child_labels, files):
         return self._fl(" / ".join(sorted(set(child_labels))))
+
+    def leaf_request(self, members, subjects=None):
+        return ("leaf", members, members)
+
+    def super_request(self, child_labels, files):
+        return ("super", (child_labels, files), [*child_labels, *files])
+
+    def label_many(self, entries):
+        out = []
+        for kind, payload, _members in entries:
+            if kind == "leaf":
+                out.append(self.label(payload))
+            else:
+                child_labels, files = payload
+                out.append(self.label_super(child_labels, files))
+        return out
 
 
 def test_dedup_merges_same_label_siblings_and_remaps_op_leaf():

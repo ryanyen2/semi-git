@@ -334,7 +334,7 @@ def _mine_one(
     tier_cfg = tier_cfgs[sha]
     tier_cfg_parent = tier_cfgs.get(parent) if parent else None
     codebase_after = gb.tree_at(sha)
-    graph_after = build_entity_graph(codebase_after)
+    graph_after = build_entity_graph(codebase_after, edges_only=True)
     calls_by_src: dict[str, set[str]] = {}
     for e in graph_after.edges:
         if e.type in ("calls", "imports"):

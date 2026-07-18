@@ -629,6 +629,19 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
     assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # preview writes nothing
 
 
+def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
+    """`sgt map --rebuild` is the escape hatch out of dirty-subtree splicing (Phase 2): it must at
+    least run without error and still produce a valid tree, even though the common no-op-edit case
+    would otherwise splice everything through verbatim."""
+    _seed(tmp_path, n=2)
+    capsys.readouterr()
+    assert _in(tmp_path, ["map"]) == 0
+    capsys.readouterr()
+    assert _in(tmp_path, ["map", "--rebuild"]) == 0
+    out = capsys.readouterr().out
+    assert "feature(s)" in out
+
+
 def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):
     _seed(tmp_path, n=1)
     capsys.readouterr()
