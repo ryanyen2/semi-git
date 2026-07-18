@@ -101,6 +101,15 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # default. Read from historical blobs at mining time (`sgt.core.tiers.load_tiers_at`) so
     # tier assignment stays a pure function of the mined commit (LAW-0).
     "tiers": _Artifact(("tiers.json",), committed=True),
+    # committed intent-overlay prompt sidecar (`sgt.intent.prompts`, plan U3/KTD5): key (a
+    # plan-id, session-name, or commit sha -- the same keys `Attribution` carries) -> prompt text.
+    # Write-once per key, so sync's merge is a trivial G-Set union (`sgt.intent.prompts.merge`).
+    "intent_prompts": _Artifact(("intent", "prompts.json"), committed=True, sort_keys=False),
+    # committed intent-overlay LLM theme assignment (`sgt.intent.theme`, plan U4/KTD7): theme-id
+    # -> label/rationale/member atom-shas/source. Rebuilt-on-sync like the feature tree (re-derive
+    # over the merged op partition, never merged field-by-field) -- content-hash-keyed, so an
+    # unchanged partition re-derives byte-identically and never re-pays or re-names (U5).
+    "intent_themes": _Artifact(("intent", "themes.json"), committed=True, sort_keys=False),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
@@ -113,6 +122,7 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "drafts": _Artifact(("local", "drafts.json"), committed=False),
     "staged": _Artifact(("local", "staged.json"), committed=False),
     "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),
+    "intent_cache": _Artifact(("local", "intent_cache.json"), committed=False, sort_keys=False, newline=False),
     "repair_cache": _Artifact(("local", "repair_cache.json"), committed=False, sort_keys=False, newline=False),
     "plan_sessions": _Artifact(("local", "plan_sessions.json"), committed=False),
     "plan_matches": _Artifact(("local", "plan_matches.json"), committed=False),

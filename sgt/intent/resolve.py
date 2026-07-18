@@ -9,7 +9,10 @@ low repeat-hit rate, so the cache would mostly hold dead weight.
 
 **Discipline:** this module only ever names candidate refs. It never computes an op-set delta
 and never touches the ideal algebra -- the caller re-runs its own `plan_*` on each candidate to
-get a truthful preview, which also silently drops any hallucinated or no-longer-live ref.
+get a truthful preview, which also independently drops any no-longer-live ref. Confinement to
+the shown vocabulary (never inventing a ref) is enforced here directly, via the same shared
+guard `sgt.intent.theme` uses (`sgt.intent._guard.filter_to_shown`, plan U7/R9) -- not left to
+caller convention alone.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from sgt.config import get_client
+from sgt.intent._guard import filter_to_shown
 
 MODEL = "gpt-5.4-mini"
 EFFORT = "low"
@@ -48,19 +52,19 @@ def _user_symbols(op: dict) -> list[str]:
     )
 
 
-def _context(repo: Path, verb: str) -> str:
-    """Compact, no-file-bytes context (mirrors `sgt.repair.context`): known features plus the op/
-    symbol vocabulary a candidate `ref` can be drawn from -- **verb-aware**, because `revert` and
-    `restore` target disjoint pools. `revert` removes something live, so its vocabulary is the ops
-    in the current ideal. `restore` re-adds something *removed*, so its vocabulary is the ops in
-    HEAD's provenance that are no longer in the ideal (the same set `plan_restore` resolves
-    against) -- listing the live frontier there would only ever yield no-op candidates. Synthetic
-    anchor/residue symbols are filtered from both (`_user_symbols`)."""
+def _vocab(repo: Path, verb: str):
+    """The verb-aware pool of features/ops `_context` renders into prompt text and `_shown_refs`
+    reduces to a confinement set -- factored out so both read the exact same vocabulary rather
+    than risking the two lists drifting apart. `revert` removes something live, so its vocabulary
+    is the ops in the current ideal. `restore` re-adds something *removed*, so its vocabulary is
+    the ops in HEAD's provenance that are no longer in the ideal (the same set `plan_restore`
+    resolves against) -- listing the live frontier there would only ever yield no-op candidates.
+    Synthetic anchor/residue symbols are filtered from both (`_user_symbols`)."""
     from sgt.api import map_view, oplog_view
     from sgt.core.lens import current_ideal, ideal_for_ref
 
     tree = map_view(repo)
-    features = "\n".join(f"{n['id']}: {n['label']}" for n in tree["nodes"] if n["kind"] == "feature")
+    features = [n for n in tree["nodes"] if n["kind"] == "feature"]
 
     ideal_ids = current_ideal(repo).op_ids
     all_ops = oplog_view(repo, full=True)["ops"]  # needs each op's footprint (`_user_symbols`)
@@ -75,30 +79,53 @@ def _context(repo: Path, verb: str) -> str:
         sym_header = "Live symbols at the frontier (file::name)"
 
     pool = [op for op in pool if _user_symbols(op)][:_MAX_OPS]
+    return features, pool, op_header, sym_header
+
+
+def _context(repo: Path, verb: str) -> str:
+    """Compact, no-file-bytes context (mirrors `sgt.repair.context`): known features plus the op/
+    symbol vocabulary a candidate `ref` can be drawn from."""
+    features, pool, op_header, sym_header = _vocab(repo, verb)
+    feature_lines = "\n".join(f"{n['id']}: {n['label']}" for n in features)
     op_lines = "\n".join(
         f"{op['id'][:8]} | {op['intent'] or ''} | " + ", ".join(_user_symbols(op)) for op in pool
     )
     symbols = "\n".join(sorted({s for op in pool for s in _user_symbols(op)}))
 
     return (
-        f"Known features (id: label):\n{features or '(none -- no feature tree built yet)'}\n\n"
+        f"Known features (id: label):\n{feature_lines or '(none -- no feature tree built yet)'}\n\n"
         f"{op_header}:\n{op_lines or '(none)'}\n\n"
         f"{sym_header}:\n{symbols or '(none)'}\n"
     )
 
 
+def _shown_refs(repo: Path, verb: str) -> frozenset[str]:
+    """The exact set of refs (feature ids, op-id 8-char prefixes, symbol names) `_context` names
+    for `verb` -- the ground truth `resolve_intent` confines the LLM's `ref` candidates against
+    (KTD6/R9), via the same shared guard `sgt.intent.theme` uses."""
+    features, pool, _, _ = _vocab(repo, verb)
+    feature_ids = {n["id"] for n in features}
+    op_ids = {op["id"][:8] for op in pool}
+    symbols = {s for op in pool for s in _user_symbols(op)}
+    return frozenset(feature_ids | op_ids | symbols)
+
+
 def resolve_intent(repo: str | Path, query: str, *, verb: str | None = None) -> IntentResolution | None:
     """Ask the LLM which live refs `query` probably names, grounded in `repo`'s own op/feature/
     symbol ids. Any failure (no key, no network, malformed response) returns `None` -- the
-    caller falls back to a clear "could not resolve" message rather than guessing."""
+    caller falls back to a clear "could not resolve" message rather than guessing. Every returned
+    candidate's `ref` is confined to what `_context` actually showed (`filter_to_shown`, U7/R9) --
+    a candidate naming a ref never shown is dropped before this function returns, not left for the
+    caller to discover."""
     repo = Path(repo)
+    verb = verb or "revert"
     try:
         for_verb = f" for `sgt {verb}`" if verb else ""
         prompt = (
             f"A user wants to target something in their codebase's tracked history{for_verb} by "
             "describing it in plain language rather than naming it exactly.\n"
             f"Query: {query!r}\n\n"
-            f"{_context(repo, verb or 'revert')}\n"
+            f"{_context(repo, verb)}\n"
             "Propose up to 5 ranked candidate targets that could be what they mean. Each "
             "candidate's ref must appear verbatim above -- an op id (the first 8 hex chars shown "
             "are enough), a `file::symbol` name, or a feature id -- never invent one. kind is "
@@ -113,6 +140,11 @@ def resolve_intent(repo: str | Path, query: str, *, verb: str | None = None) -> 
         r = client.responses.parse(
             model=MODEL, input=prompt, text_format=IntentResolution, reasoning={"effort": EFFORT},
         )
-        return r.output_parsed
+        result = r.output_parsed
+        if result is None:
+            return None
+        shown = _shown_refs(repo, verb)
+        result.candidates = filter_to_shown(result.candidates, shown, lambda c: [c.ref])
+        return result
     except Exception:
         return None

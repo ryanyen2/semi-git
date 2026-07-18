@@ -15,7 +15,7 @@ what it's handed (`repo`, `gb`, `theirs_sha`), never assuming a network fetch ra
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from sgt import state
@@ -24,6 +24,7 @@ from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
 from sgt.core.op import MINER_VERSION, Op, merge_attribution
 from sgt.core.store import Store, _deserialize
+from sgt.intent import prompts as intent_prompts
 from sgt.lens import reconcile, tree
 from sgt.lens.pins import Pins, _pins_from_payload, load_pins
 from sgt.store.gitbind import GitBinding, parse_op_ids
@@ -62,6 +63,11 @@ class Ingested:
     # tip carries `.sgt/ops` blobs (it ran sgt) but lost its trailers and has no witnessed record,
     # so it degrades to ∅ with a remedy rather than mis-mining a coarse squash.
     theirs_recovery: str = "mined"
+    # Intent overlay prompt sidecar (U3/KTD5), unioned by key in `resolve` (U5) -- defaulted like
+    # every other post-U15 addition here so a pre-existing direct `Ingested(...)` construction
+    # (tests) doesn't need to know about it.
+    ours_prompts: dict[str, str] = field(default_factory=dict)
+    theirs_prompts: dict[str, str] = field(default_factory=dict)
 
 
 def _pins_at(gb: GitBinding, sha: str) -> Pins:
@@ -118,6 +124,8 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
         theirs_declared_orset=lens.declared_orset_at(gb, theirs_sha),
         ours_aliases=reconcile.load_aliases(repo),
         theirs_aliases=reconcile.aliases_at(gb, theirs_sha),
+        ours_prompts=intent_prompts.load_prompts(repo),
+        theirs_prompts=intent_prompts.prompts_at(gb, theirs_sha),
         ours_tree=tree.load(repo),
         ours_ideal=lens.current_ideal(repo),
         theirs_ideal_ids=theirs_ideal_ids,

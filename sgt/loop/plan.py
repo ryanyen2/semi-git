@@ -203,6 +203,10 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None) -> P
         "steps": steps,
     }
     _save_sessions(repo, table)
+
+    from sgt.intent.prompts import record_prompt
+
+    record_prompt(repo, session_id, plan_text)
     return PlanSession(
         session_id=session_id, plan_text=plan_text, created_ts=now, last_activity_ts=now,
         status="active", baseline_op_ids=baseline_op_ids, steps=tuple(steps),

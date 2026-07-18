@@ -97,3 +97,24 @@ def test_resolve_intent_returns_candidates_from_a_fake_client(tmp_path, monkeypa
     assert result is not None
     assert result.candidates == [candidate]
     assert fake.responses.calls == 1
+
+
+# -- U7: shared LLM-confinement guard (KTD6/R9) --------------------------------------------------
+
+
+def test_resolve_intent_drops_a_candidate_naming_a_ref_never_shown(tmp_path, monkeypatch):
+    """A fabricated LLM response naming a ref that never appeared in `_context`'s pool must not
+    reach the caller -- confinement is enforced by `resolve_intent` itself now (U7/R9), not left
+    for the caller's re-plan step to silently discover."""
+    _fixture(tmp_path)
+    real = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
+    invented = resolve_mod.Candidate(
+        ref="nonexistent.py::phantom", kind="symbol", rationale="hallucinated",
+    )
+    fake = FakeClient(resolve_mod.IntentResolution(candidates=[real, invented]))
+    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: fake)
+
+    result = resolve_mod.resolve_intent(tmp_path, "the foo logic", verb="revert")
+
+    assert result is not None
+    assert result.candidates == [real]

@@ -80,16 +80,20 @@ def _cmd_restore(args) -> int:
     return _kernel_edit_verb(".", "restore", args.ref, args.emit, args.as_json, args.yes)
 
 
-def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool) -> int:
+def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict | None = None) -> int:
     """Shared tail for the ideal-edit verbs: `--emit` renders the preview projection; otherwise
     apply the edit (when the preview is ok) and render the plain result view. Identical on both
-    the revert/restore and the `--session` paths."""
+    the revert/restore and the `--session` paths. `extra` (e.g. the intent overlay's `tier`) is
+    merged into `view` unconditionally in both branches, before either the JSON or plain-text
+    emission call -- so it's visible on both output paths, not JSON only."""
     from sgt.core import verbs
 
     if emit:
         from sgt.api import _project_verb_preview
 
         view = _project_verb_preview(repo, preview)
+        if extra:
+            view = {**view, **extra}
         return _emit_json(view) if as_json else _print_verb_view(view)
 
     if preview.ok:
@@ -100,6 +104,8 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool) -> int:
         "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
         "message": preview.message,
     }
+    if extra:
+        view = {**view, **extra}
     return _emit_json(view) if as_json else _print_verb_view(view)
 
 

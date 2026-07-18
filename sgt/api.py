@@ -59,9 +59,13 @@ Shapes (stable; additive changes only):
   plus the U24 ``approvals`` schema and a ``feature_checklist`` naming, per delta feature, which
   *other* delta features it requires — so ``sgt propose land --subset`` (or a future checkbox UI)
   can validate or grey out a choice without recomputing the closure itself.
+* ``intent_view``       — the U6 intent-clustering overlay: every commit-keyed `IntentAtom` (rung
+  0/1, recomputed on read) and every persisted LLM-named `theme` (rung 2, `sgt intent build`'s
+  output), each with its dependency-graph-backed `tier` (coupled/co-changed/thematic) and
+  cross-feature `feature_span` -- the "why" axis alongside `map_view`'s structural "what" axis.
 * ``compose_view``      — a workbench refresh's whole picture in one call: `map`/`history`/
-  `status`/`forks`/`plan`/`drift`/`sessions`/`trust`, the current ideal's oracle verdict, and the
-  open-proposal list, each delegated to its own view function with no reshaping.
+  `status`/`forks`/`plan`/`drift`/`sessions`/`trust`/`intent`, the current ideal's oracle verdict,
+  and the open-proposal list, each delegated to its own view function with no reshaping.
 * ``fold_view``         — a side-effect-free fold of an arbitrary frontier (a ref's ideal, every op
   at or before a commit-index position, or an explicit op-id set): `code(I)` plus that exact
   op-set's oracle verdict, without checking anything out. Powers a draggable playhead and fork-tip
@@ -1045,18 +1049,104 @@ def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
     }
 
 
+def _atom_prompt(repo, atom) -> str | None:
+    """The best available recorded prompt for one atom (plan U3/U6): try its own commit sha
+    first (`sgt session start --task` keys land here indirectly only via provenance, but a direct
+    per-commit key is checked too for forward-compat), then any plan-id, then any session-name --
+    the same three key kinds `Attribution` carries. `None` when nothing was ever recorded; the
+    commit subject (already present on every atom) is the fallback human label, never this."""
+    from sgt.intent.prompts import prompt_for
+
+    direct = prompt_for(repo, atom.commit_sha)
+    if direct is not None:
+        return direct
+    for plan_id in sorted(atom.plan_ids):
+        found = prompt_for(repo, plan_id)
+        if found is not None:
+            return found
+    for session_id in sorted(atom.session_ids):
+        found = prompt_for(repo, session_id)
+        if found is not None:
+            return found
+    return None
+
+
+def intent_view(repo) -> dict:
+    """The intent overlay's one canonical projection (plan U6, KTD3/KTD7): every commit-keyed
+    `IntentAtom` (rung 0/1, recomputed on read -- cheap and pure, like `map_view`'s coupling
+    edges) and every persisted, LLM-named `theme` (rung 2, read from `.sgt/intent/themes.json`
+    if `sgt intent build` has run; `[]` otherwise -- a UI renders "run `sgt intent build`", never
+    an error). Each carries its dependency-graph-backed `tier` (`coupled` | `co-changed` |
+    `thematic`, KTD3) and `feature_span` -- the "across features" claim is computed here, never
+    asserted by a client. A theme also carries `stale_shas` (plan U5/KTD4): persisted member
+    shas that no longer resolve against the current atom partition (e.g. a rebase/amend) are
+    reported here rather than silently dropped, so a reader sees the theme is diminished before
+    acting on it -- this view never refuses to render, only `sgt intent revert` does. Fully
+    sorted for a stable projection, like every other view in this module."""
+    from sgt import state
+    from sgt.core import lens as _lens
+    from sgt.core.store import Store
+    from sgt.intent import group
+    from sgt.lens.tree import load as load_tree
+
+    all_ops = Store(repo).all_ops()
+    declared = _lens._load_declared(repo)
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+
+    atoms = group.atoms(repo)
+    atoms_by_sha = {a.commit_sha: a for a in atoms}
+
+    atoms_out = []
+    for atom in atoms:
+        span = group.feature_span(atom.op_ids, op_leaf)
+        commit_shas = frozenset() if atom.commit_sha == group.UNWITNESSED else frozenset({atom.commit_sha})
+        tier = group.tier(atom.op_ids, commit_shas, all_ops, declared, op_leaf)
+        atoms_out.append({
+            "commit_sha": atom.commit_sha,
+            "subject": atom.subject,
+            "op_ids": sorted(atom.op_ids),
+            "feature_span": sorted(span),
+            "tier": tier,
+            "prompt": _atom_prompt(repo, atom),
+        })
+    atoms_out.sort(key=lambda a: (a["commit_sha"] == group.UNWITNESSED, a["commit_sha"]))
+
+    themes_persisted = state.load_json(repo, "intent_themes", default={})
+    themes_out = []
+    for theme_id, entry in sorted(themes_persisted.items()):
+        member_shas = frozenset(entry["atom_shas"])
+        stale_shas = member_shas - frozenset(atoms_by_sha)
+        op_ids = frozenset().union(*(atoms_by_sha[sha].op_ids for sha in member_shas if sha in atoms_by_sha))
+        span = group.feature_span(op_ids, op_leaf)
+        tier = group.tier(op_ids, member_shas, all_ops, declared, op_leaf)
+        themes_out.append({
+            "theme_id": theme_id,
+            "label": entry["label"],
+            "rationale": entry["rationale"],
+            "source": entry["source"],
+            "atom_shas": sorted(member_shas),
+            "stale_shas": sorted(stale_shas),
+            "op_ids": sorted(op_ids),
+            "feature_span": sorted(span),
+            "tier": tier,
+        })
+
+    return {"themes": themes_out, "atoms": atoms_out}
+
+
 def compose_view(repo, *, full: bool = False) -> dict:
     """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
-    `sessions`/`trust`, the current ideal's oracle verdict, and a lightweight open-proposal list,
-    each delegated to its own view function with no reshaping. Collapses what would otherwise be
-    ~9 separate `sgt <verb> --json` shell-outs (each a fresh process) into one call -- the single
-    biggest responsiveness win for a UI that refreshes on every `.sgt/` change.
+    `sessions`/`trust`/`intent`, the current ideal's oracle verdict, and a lightweight open-
+    proposal list, each delegated to its own view function with no reshaping. Collapses what
+    would otherwise be ~9 separate `sgt <verb> --json` shell-outs (each a fresh process) into one
+    call -- the single biggest responsiveness win for a UI that refreshes on every `.sgt/` change.
 
     `full` threads into every child that accepts it (`history`/`plan`/`drift`/`trust`); `map`/
-    `status`/`forks`/`sessions` take no `full` param and are always their own single shape. The
-    default (`full=False`) delegates each child at *its own* default, so `compose_view(repo) ==
-    {"map": map_view(repo), "history": history_view(repo), ...}` stays an exact identity --
-    R21's byte-equality guardrail, unchanged by this compaction."""
+    `status`/`forks`/`sessions`/`intent` take no `full` param and are always their own single
+    shape. The default (`full=False`) delegates each child at *its own* default, so
+    `compose_view(repo) == {"map": map_view(repo), "history": history_view(repo), ...}` stays an
+    exact identity -- R21's byte-equality guardrail, unchanged by this compaction."""
     from sgt.core import propose
     from sgt.core.lens import current_ideal
     from sgt.core.oracle import verdict_for
@@ -1077,6 +1167,7 @@ def compose_view(repo, *, full: bool = False) -> dict:
         "drift": drift_view(repo, full=full),
         "sessions": sessions_view(repo),
         "trust": trust_view(repo, full=full),
+        "intent": intent_view(repo),
         "oracle_verdict": verdict_for(repo, current_ideal(repo)),
         "proposals": proposals,
     }
