@@ -56,6 +56,30 @@ def test_ops_from_one_commit_form_one_atom(tmp_path):
 
 
 def test_two_commits_under_same_scope_form_one_bundle(tmp_path):
+    """A same-scope pair with a real reference edge between them (bar calls foo) merges into one
+    bundle -- structural gating (U3) preserves the legitimate case."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feat(store): add foo")
+    (tmp_path / "b.py").write_text(
+        "from a import foo\n\n\ndef bar():\n    return foo() + 1\n", encoding="utf-8",
+    )
+    gb.commit_all("fix(store): add bar")
+    get(tmp_path)
+
+    atoms = group.atoms(tmp_path)
+    assert len(atoms) == 2
+    ops = Store(tmp_path).all_ops()
+    bundles = group.scope_bundles(atoms, ops)
+    store_bundles = [b for b in bundles if b.scope == "store"]
+    assert len(store_bundles) == 1
+    assert len(store_bundles[0].atoms) == 2
+
+
+def test_two_commits_under_same_scope_with_no_structural_edge_split_into_two_bundles(tmp_path):
+    """The review's exact repro: an unrelated pair of commits coincidentally shares a scope
+    string (`store`) but touches disjoint, unconnected symbols -- structural gating (U3) refuses
+    to merge them into one revertable unit."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("feat(store): add foo")
@@ -65,10 +89,32 @@ def test_two_commits_under_same_scope_form_one_bundle(tmp_path):
 
     atoms = group.atoms(tmp_path)
     assert len(atoms) == 2
-    bundles = group.scope_bundles(atoms)
+    ops = Store(tmp_path).all_ops()
+    bundles = group.scope_bundles(atoms, ops)
     store_bundles = [b for b in bundles if b.scope == "store"]
-    assert len(store_bundles) == 1
-    assert len(store_bundles[0].atoms) == 2
+    assert len(store_bundles) == 2
+    assert {len(b.atoms) for b in store_bundles} == {1}
+
+
+def test_three_same_scope_atoms_two_connected_one_isolated(tmp_path):
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feat(store): add foo")
+    (tmp_path / "b.py").write_text(
+        "from a import foo\n\n\ndef bar():\n    return foo() + 1\n", encoding="utf-8",
+    )
+    gb.commit_all("fix(store): add bar calling foo")
+    (tmp_path / "c.py").write_text("def baz():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("fix(store): add baz")
+    get(tmp_path)
+
+    atoms = group.atoms(tmp_path)
+    assert len(atoms) == 3
+    ops = Store(tmp_path).all_ops()
+    bundles = group.scope_bundles(atoms, ops)
+    store_bundles = [b for b in bundles if b.scope == "store"]
+    assert len(store_bundles) == 2
+    assert sorted(len(b.atoms) for b in store_bundles) == [1, 2]
 
 
 def test_op_keyed_on_earliest_witnessing_commit_in_history(tmp_path):
@@ -200,6 +246,31 @@ def test_feature_span_skips_ops_with_no_leaf(tmp_path):
     foo_op = _op_for(tmp_path, "a.py::foo")
     span = group.feature_span(frozenset({foo_op.id}), op_leaf={})
     assert span == set()
+
+
+def test_tier_does_not_crash_on_a_group_missing_its_chain_head(tmp_path):
+    """Regression: a scope-bundle or commit's op-set is not guaranteed to be a valid ideal --
+    here `group_op_ids` holds a modify op for `a.py::foo` but not the earlier add op that
+    produced the version it modifies. The old `downset_in`-based `tier()` raised `KeyError` on
+    this shape (it assumes `group_op_ids` is downward-closed); `components_in` has no such
+    precondition."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feat(x): add foo")
+    (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("feat(x): modify foo")
+    (tmp_path / "b.py").write_text("def bar():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("feat(x): add bar")
+    get(tmp_path)
+
+    op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo"], "F-B": ["b.py::bar"]})
+    ops = Store(tmp_path).all_ops()
+    modify_op = next(op for op in ops if "a.py::foo" in op.footprint and op.footprint["a.py::foo"][0] is not None)
+    bar_op = _op_for(tmp_path, "b.py::bar")
+
+    group_op_ids = frozenset({modify_op.id, bar_op.id})  # missing modify_op's chain head
+    result = group.tier(group_op_ids, frozenset({"c1", "c2"}), ops, frozenset(), op_leaf)
+    assert result in (group.CO_CHANGED, group.THEMATIC, group.COUPLED)  # must not raise
 
 
 def test_tier_is_stable_across_repeated_computation(tmp_path):

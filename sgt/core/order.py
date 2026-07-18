@@ -92,6 +92,35 @@ def _reachable(start: str, adjacency: dict[str, frozenset[str]]) -> frozenset[st
     return frozenset(seen)
 
 
+def components_in(
+    op_ids, ops: list[Op], declared: Declared = frozenset(),
+) -> list[frozenset[str]]:
+    """Connected components of `op_ids` under the *undirected* union of chain/reference/declared
+    edges, restricted to edges whose both endpoints are in `op_ids`. Unlike every other function
+    in this module, this makes no downward-closure assumption about `op_ids` -- it never calls
+    `_ordered_chains`/`_grounded`, so it has no ideal-validity precondition an arbitrary commit's
+    or scope-bundle's op-set (not a valid ideal) can violate. Answers "are these ops linked at
+    all" (connectivity), not "does A build on B" (`upset`/`downset`'s directed reachability,
+    which requires a genuine ideal to mean anything)."""
+    ids = frozenset(op_ids)
+    adjacency: dict[str, set[str]] = {oid: set() for oid in ids}
+    for a, b in chain_edges(ops) | reference_edges(ops) | declared:
+        if a in ids and b in ids and a != b:
+            adjacency[a].add(b)
+            adjacency[b].add(a)
+    frozen_adjacency = {k: frozenset(v) for k, v in adjacency.items()}
+
+    seen: set[str] = set()
+    components: list[frozenset[str]] = []
+    for start in sorted(ids):
+        if start in seen:
+            continue
+        comp = _reachable(start, frozen_adjacency)
+        seen |= comp
+        components.append(comp)
+    return components
+
+
 def upset(op_id: str, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
     """`op_id` and everything that builds on it, over the *whole* op universe -- `↑X` in the
     ADR's set language.
