@@ -117,6 +117,7 @@ def flush_reconciled_metadata(
         lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
         reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
         tree.save(repo, res.tree_result)
+        state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
         state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
         _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
         _union_proposals(repo, gb, theirs_sha)  # committed review objects travel too (C10)

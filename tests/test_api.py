@@ -153,7 +153,7 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
     """`compose_view` is purely additive glue: each key is exactly what calling the underlying
     view function directly would return, plus the current ideal's oracle verdict and an
     open-proposal list -- a workbench refresh in one call instead of ~9 shell-outs."""
-    from sgt.api import drift_view as _drift, forks_view, sessions_view, status_view
+    from sgt.api import drift_view as _drift, forks_view, intent_view, sessions_view, status_view
     from sgt.core.lens import current_ideal
     from sgt.core.oracle import verdict_for
 
@@ -161,7 +161,7 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
     v = compose_view(repo)
 
     assert set(v) == {
-        "map", "history", "status", "forks", "plan", "drift", "sessions", "trust",
+        "map", "history", "status", "forks", "plan", "drift", "sessions", "trust", "intent",
         "oracle_verdict", "proposals",
     }
     assert v["map"] == map_view(repo)
@@ -172,6 +172,7 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
     assert v["drift"] == _drift(repo)
     assert v["sessions"] == sessions_view(repo)
     assert v["trust"] == trust_view(repo)
+    assert v["intent"] == intent_view(repo)
     assert v["oracle_verdict"] == verdict_for(repo, current_ideal(repo))
     assert v["proposals"] == []  # nothing proposed in this fixture
 

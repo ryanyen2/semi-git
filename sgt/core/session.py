@@ -96,10 +96,15 @@ def is_alive(pid: int) -> bool:
     return True
 
 
-def start(repo, name: str, base: str | None = None) -> Session:
+def start(repo, name: str, base: str | None = None, task: str | None = None) -> Session:
     """Materialize a fresh `git worktree` off `base` (a branch name; default: the repo's current
     branch) onto a new `sgt-session/<name>` branch, and record it. Refuses a name collision --
-    `sgt session land`/`gc` the existing one first, same as git refuses a duplicate worktree."""
+    `sgt session land`/`gc` the existing one first, same as git refuses a duplicate worktree.
+
+    `task`, if given, is the prompt/intent the agent was started with -- recorded in the intent
+    overlay's prompt sidecar (plan U3/KTD5) keyed by this session's `name`, the same key `land`
+    later stamps onto `Attribution.session`. Optional: a session started with no known task simply
+    has no prompt recorded, same as any other unwitnessed provenance key."""
     from sgt import state
 
     sessions = _load(repo)
@@ -134,6 +139,12 @@ def start(repo, name: str, base: str | None = None) -> Session:
     )
     sessions[name] = session
     _save(repo, sessions)
+
+    if task:
+        from sgt.intent.prompts import record_prompt
+
+        record_prompt(repo, name, task)
+
     return session
 
 

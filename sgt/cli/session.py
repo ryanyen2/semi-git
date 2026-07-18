@@ -15,7 +15,7 @@ import time
 
 from ._common import _emit_json, _fail
 
-_USAGE = ("usage: sgt session start <name> [--base <branch>] | "
+_USAGE = ("usage: sgt session start <name> [--base <branch>] [--task <text>] | "
           "sgt session status [<name>] [--watch] [--json] | "
           "sgt session land <name> [--json] | sgt session gc [--force] [--json]")
 
@@ -25,16 +25,17 @@ def register(subs, parent) -> None:
     p.add_argument("sub", nargs="?")
     p.add_argument("name", nargs="?")
     p.add_argument("--base")
+    p.add_argument("--task")
     p.add_argument("--watch", action="store_true")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=_cmd_session)
 
 
 def _cmd_session(args) -> int:
-    return _session(".", args.sub, args.name, args.base, args.watch, args.force, args.as_json)
+    return _session(".", args.sub, args.name, args.base, args.task, args.watch, args.force, args.as_json)
 
 
-def _session(repo, sub, name, base, watch, force, as_json) -> int:
+def _session(repo, sub, name, base, task, watch, force, as_json) -> int:
     from sgt.core import session as session_mod
 
     if sub not in ("start", "status", "land", "gc"):
@@ -44,7 +45,7 @@ def _session(repo, sub, name, base, watch, force, as_json) -> int:
         if name is None:
             print(_USAGE)
             return 2
-        return _start(repo, session_mod, name, base, as_json)
+        return _start(repo, session_mod, name, base, task, as_json)
     if sub == "status":
         return _status(repo, session_mod, name, watch, as_json)
     if sub == "land":
@@ -55,9 +56,9 @@ def _session(repo, sub, name, base, watch, force, as_json) -> int:
     return _gc(repo, session_mod, force, as_json)
 
 
-def _start(repo, session_mod, name, base, as_json) -> int:
+def _start(repo, session_mod, name, base, task, as_json) -> int:
     try:
-        session = session_mod.start(repo, name, base=base)
+        session = session_mod.start(repo, name, base=base, task=task)
     except session_mod.SessionError as e:
         return _fail(str(e)) if not as_json else _emit_json({"error": str(e)})
     if as_json:

@@ -328,8 +328,10 @@ def test_revert_nl_dedups_candidates_with_identical_effect(tmp_path, monkeypatch
 
 def test_restore_nl_drops_noop_candidate(tmp_path, monkeypatch, capsys):
     """A `restore` of an already-live symbol adds nothing; it must be dropped, not offered as a
-    choice the user can't tell apart from doing nothing (the bug where restore's context only saw
-    the live frontier and every candidate was a no-op)."""
+    choice the user can't tell apart from doing nothing. `a.py::foo` is live, so it was never in
+    `restore`'s shown vocabulary (only *removed* symbols are, per `_context`'s verb-aware pool) --
+    the shared confinement guard (U7/R9) now drops it before `resolve_intent` even returns, one
+    stage earlier than the caller's own re-plan-and-drop safety net."""
     _seed(tmp_path, 2)  # nothing reverted -- a.py::foo is live
     candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="already present")
     monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
@@ -338,7 +340,7 @@ def test_restore_nl_drops_noop_candidate(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
 
     assert _in(tmp_path, ["restore", "bring back foo"]) == 1
-    assert "survived re-planning" in capsys.readouterr().out
+    assert "plausibly matches" in capsys.readouterr().out
 
 
 def test_revert_nl_feature_candidate_routes_through_feature_plan(tmp_path, monkeypatch, capsys):

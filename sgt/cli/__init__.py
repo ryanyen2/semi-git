@@ -37,8 +37,8 @@ import subprocess
 import sys
 
 from . import (
-    feature, ideal_edit, init, inspect, loop, migrate, oracle, porcelain, propose, review, rewrite,
-    select, session, sync, tiers,
+    feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose, review,
+    rewrite, select, session, sync, tiers,
 )
 
 _VERBS = {
@@ -47,11 +47,11 @@ _VERBS = {
     "repair", "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview", "compose", "fold",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
-    "review-queue", "reindex",
+    "review-queue", "reindex", "intent",
 }
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review)
+             porcelain, tiers, select, session, review, intent)
 
 
 class _CLIExit(Exception):
@@ -189,6 +189,12 @@ def _help() -> int:
         "  sgt session gc [--force]    reap sessions whose owning process has died\n"
         "  sgt review-queue list [--json]   ops with session/agent/drift provenance, not yet reviewed\n"
         '  sgt review-queue ack <op-id>... [--session <name>] [--note "..."]   mark an op-set reviewed\n'
+        "  sgt intent list [--json]    intent themes: why an edit happened, tiered by dependency\n"
+        "                              strength across features (coupled/co-changed/thematic)\n"
+        "  sgt intent show <theme-id|commit-sha> [--json]   one theme's or commit's atom breakdown\n"
+        "  sgt intent build [--json]  run the LLM theme pass, writing `.sgt/intent/themes.json`\n"
+        "  sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit]   revert the\n"
+        "                              theme's/commit's deterministic op-set (same gates as `revert`)\n"
         "  sgt git <args...>           pass through to real git (refuses tree-mutating verbs; --force overrides)\n"
         "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"

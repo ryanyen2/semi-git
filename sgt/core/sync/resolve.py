@@ -17,11 +17,12 @@ explicitly and produces its outputs without persisting anything.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from sgt.core import lens, order
 from sgt.core.ideal import Ideal
+from sgt.intent import prompts as intent_prompts
 from sgt.lens import reconcile
 from sgt.lens.pins import Contradiction, Pins
 from sgt.store.gitbind import GitBinding
@@ -39,6 +40,7 @@ class Resolution:
     pin_contradictions: tuple[Contradiction, ...] = ()
     aliases: frozenset[tuple[str, str]] = frozenset()
     tree_result: dict | None = None
+    prompts: dict[str, str] = field(default_factory=dict)  # union-by-key (U5/KTD5)
 
 
 def resolve(repo: Path, ing: Ingested) -> Resolution:
@@ -111,6 +113,10 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     tree_result = reconcile.reconcile_tree(
         repo, ing.all_ops, merged_ideal, unioned_pins, ing.ours_tree
     )
+    # Prompt sidecar unions as a plain G-Set-by-key (U5/KTD5): write-once per key makes this
+    # conflict-free, unlike the tree (which is rebuilt, not merged -- themes follow the same
+    # re-derive rule and are rebuilt post-commit, once the merged history is real; see materialize).
+    prompts = intent_prompts.merge(ing.ours_prompts, ing.theirs_prompts)
 
     return Resolution(
         forks=tuple(fork_triples),
@@ -121,4 +127,5 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
         pin_contradictions=tuple(pin_contradictions),
         aliases=aliases,
         tree_result=tree_result,
+        prompts=prompts,
     )
