@@ -27,8 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from sgt.core import opindex
 from sgt.core.op import Op
-from sgt.core.store import Store
 from sgt.lens.cluster import commit_scope
 from sgt.store.gitbind import GitBinding
 
@@ -81,7 +81,7 @@ def atoms(repo: str | Path) -> list[IntentAtom]:
     rows = GitBinding(repo).history()
     commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
     subject_of = {sha: subject for sha, _parent, subject in rows}
-    ops = Store(repo).all_ops()
+    ops = opindex.index_ops(repo)  # footprint/provenance only -- atoms never reads .images
 
     buckets: dict[str, list[Op]] = {}
     for op in ops:

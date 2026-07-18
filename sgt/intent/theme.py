@@ -242,15 +242,15 @@ def build_themes(repo: str | Path) -> dict[str, dict]:
     rebuilt on demand (`sgt intent build`, U7) -- like `sgt map` vs `map_view`, this write path is
     kept out of every read/sync path. Content-hash caching (U4) makes a post-sync rebuild cheap:
     atoms unchanged by the sync hit the cache; only genuinely new atoms cost a live call."""
+    from sgt.core import opindex
     from sgt.core.lens import _load_declared
-    from sgt.core.store import Store
     from sgt.intent.group import atoms as _atoms
     from sgt.intent.group import scope_bundles
 
     repo = Path(repo)
     themer = IntentThemer(repo)
     all_atoms = _atoms(repo)
-    all_ops = Store(repo).all_ops()
+    all_ops = opindex.index_ops(repo)  # footprint/provenance only -- themes never reads .images
     declared = _load_declared(repo)
     bundles = scope_bundles(all_atoms, all_ops, declared)
 

@@ -26,6 +26,13 @@ class _FakeResponses:
 
     def parse(self, **kwargs):
         self.calls += 1
+        if kwargs.get("text_format") is label_mod._FeatureLabelBatch:
+            n = kwargs["input"].count("=== Group ")
+            batch = label_mod._FeatureLabelBatch(items=[
+                label_mod._BatchItem(index=i, label=self._out.label, rationale=self._out.rationale)
+                for i in range(n)
+            ])
+            return _FakeResponse(output_parsed=batch, usage=_FakeUsage(10, 5))
         return _FakeResponse(output_parsed=self._out, usage=_FakeUsage(10, 5))
 
 

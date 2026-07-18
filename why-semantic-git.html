@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Why semantic-git</title>
+<style>
+  :root {
+    --ink: #1b1b18;
+    --paper: #fbfaf7;
+    --rule: #dedad0;
+    --accent: #8a3b2f;
+    --accent-soft: #f4e9e2;
+    --git: #6b6b63;
+    --darcs: #7a5c96;
+    --pijul: #2f6f5e;
+    --jj: #2f5f8a;
+    --lazy: #b5892e;
+    --sgt: #8a3b2f;
+    --mono: "SFMono-Regular", "Menlo", "Consolas", monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", "Georgia", serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.6;
+  }
+  .page { max-width: 720px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.25; }
+  h1.title { font-size: 2.2rem; margin: 0 0 0.3rem; letter-spacing: -0.01em; }
+  .subtitle { font-size: 1.05rem; color: #58554c; margin: 0 0 2rem; }
+  h2 {
+    font-size: 1.4rem;
+    margin: 2.8rem 0 0.8rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--rule);
+  }
+  h2 .num { color: var(--accent); margin-right: 0.5rem; }
+  p { margin: 0 0 1.05rem; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-soft); }
+  code, .mono { font-family: var(--mono); font-size: 0.86em; }
+  code { background: #f1efe8; padding: 0.1em 0.35em; border-radius: 3px; }
+  nav.toc { margin: 1.5rem 0 2.5rem; font-size: 0.9rem; }
+  nav.toc ol { margin: 0; padding-left: 1.3rem; }
+  nav.toc li { margin-bottom: 0.3rem; }
+
+  .example {
+    margin: 1.4rem 0;
+    border-left: 3px solid var(--accent);
+    background: linear-gradient(to right, var(--accent-soft), transparent 85%);
+    padding: 0.8rem 1.2rem;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.96rem;
+  }
+  .example .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 0.1rem 0.4rem;
+    margin-bottom: 0.4rem;
+  }
+
+  table.cmp { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 1.4rem 0; }
+  table.cmp th, table.cmp td { border: 1px solid var(--rule); padding: 0.5rem 0.6rem; text-align: left; vertical-align: top; }
+  table.cmp th { background: #efece3; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.03em; text-transform: uppercase; }
+  table.cmp td.sys { font-weight: 700; white-space: nowrap; }
+  table.cmp tr:nth-child(even) td { background: #f7f5ee; }
+  .sw-git { color: var(--git); } .sw-darcs { color: var(--darcs); }
+  .sw-pijul { color: var(--pijul); } .sw-jj { color: var(--jj); }
+  .sw-lazy { color: var(--lazy); } .sw-sgt { color: var(--sgt); font-weight: 700; }
+  .table-scroll { overflow-x: auto; margin: 1.4rem 0; }
+  table.cmp.wide { min-width: 760px; margin: 0; font-size: 0.76rem; }
+
+  figure { margin: 1.6rem 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; }
+  figcaption { font-size: 0.8rem; color: #6b6858; margin-top: 0.5rem; font-family: var(--mono); }
+  .opnode { fill: #ffffff; stroke: var(--ink); stroke-width: 1.2; }
+  .opnode.fork { fill: #fbe9e4; stroke: var(--accent); stroke-width: 1.6; }
+  .opnode.excluded { fill: #ece9e0; stroke: #b3ae9f; stroke-width: 1.1; stroke-dasharray: 3,2; }
+  .opnode.hollow { fill: #ffffff; stroke: var(--ink); stroke-width: 1.2; stroke-dasharray: 4,3; }
+  .opedge { stroke: var(--ink); stroke-width: 1.2; fill: none; }
+  .opedge.dead { stroke: #b3ae9f; stroke-width: 1; stroke-dasharray: 3,2; fill: none; }
+  .id { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--ink); }
+  .fld { font-family: var(--mono); font-size: 9.5px; fill: #55524a; }
+  .diagram-bg { fill: #f4f2ec; }
+
+  .callout {
+    margin: 1.3rem 0;
+    padding: 0.8rem 1.1rem;
+    border: 1px solid var(--rule);
+    border-left: 3px solid #b23b2e;
+    background: #f6f5f0;
+    font-size: 0.92rem;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout .label {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #b23b2e;
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+
+  footer { margin-top: 4rem; padding-top: 1.3rem; border-top: 1px solid var(--rule); font-size: 0.8rem; color: #8a8677; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1 class="title">Why semantic-git</h1>
+<p class="subtitle">how sgt tracks code changes at the symbol level, and what that costs and buys compared to git, jj, Darcs, Pijul, and lazy merging</p>
+
+<nav class="toc">
+<ol>
+  <li><a href="#intro">What sgt is</a></li>
+  <li><a href="#unit">The unit of history is a symbol edit</a></li>
+  <li><a href="#example">A running example</a></li>
+  <li><a href="#revert">Removing one change</a></li>
+  <li><a href="#identity">Identity: carried or detected</a></li>
+  <li><a href="#fork">What a conflict is</a></li>
+  <li><a href="#merge">How a merge is computed</a></li>
+  <li><a href="#escape">When you have to step outside the algebra</a></li>
+  <li><a href="#sync">Syncing over git</a></li>
+  <li><a href="#granularity">The cost of symbol-level grain</a></li>
+  <li><a href="#table">Summary table</a></li>
+  <li><a href="#close">Closing</a></li>
+</ol>
+</nav>
+
+<h2 id="intro"><span class="num">&sect;1</span>What sgt is</h2>
+<p>
+sgt sits on top of a normal git repository. It watches commits and mines each diff into a set of
+operations, one per changed function, method, or class. Each operation records which symbol
+changed, the code before and after the change, and which other symbol-versions it depends on.
+sgt treats this set of operations as the history. The commit sequence that produced them is just how they arrived.
+</p>
+<p>
+Git already gives you commits and trees. sgt adds a second, finer index underneath that, built
+from symbols instead of files and dependencies instead of parent pointers. The commits still exist
+and still work with any other git tool. sgt's operations are derived from them and can be
+recomputed from them at any time.
+</p>
+<p>
+This document walks through the design choices behind that operation layer, covering the unit of
+history, how sgt recognizes that two edits touch the same thing, what happens when two edits
+collide, how a merge actually gets computed, and what happens when the automatic parts can't
+decide something on their own. Git, Darcs, Pijul, jj, and a formal model called lazy merging come
+up throughout, wherever their design answers the same question sgt is answering. Most of them got
+there first, and sgt's choices are often a direct reaction to trade-offs they already made
+explicit.
+</p>
+
+
+<h2 id="unit"><span class="num">&sect;2</span>The unit of history is a symbol edit</h2>
+<p>
+A git commit stores a whole tree. If ten files changed and only one line in one of them actually
+mattered, the commit still carries the full state of all ten. sgt's miner reads that same commit,
+parses the files with tree-sitter, and cuts the diff along symbol boundaries. Each function or
+method or class that changed becomes its own operation, with its own before and after content and
+its own list of dependencies on other symbol-versions. A commit that touched three unrelated
+functions becomes three operations.
+</p>
+<p>
+Darcs and Pijul made a related move earlier. Both store and reason about a patch instead of a full
+snapshot. The difference is where the boundary of that patch comes from. A darcs or Pijul patch is
+whatever hunks a person selected at record time. sgt draws its operation boundary by parsing, so
+nobody has to decide by hand where one operation ends and the next begins.
+</p>
+<p>
+jj keeps the commit as its stored unit, but gives each commit a change-id that survives rebases and
+edits. That's the same instinct, attaching a stable identity to something below the raw content,
+applied one level up to a whole commit instead of a symbol. Lazy merging's editor transactions are
+closer to sgt's grain in spirit, since both are drawn automatically rather than by hand. The
+difference is where the automatic boundary comes from. An editor transaction is grouped at the
+moment of typing, from paste and autocomplete events. sgt's operation boundary is drawn later, by
+parsing a diff after the fact.
+</p>
+<div class="callout">
+<span class="label">cost</span>
+Symbol-level parsing needs a grammar for the language and a file that actually parses. When a file
+doesn't parse cleanly, sgt falls back to treating the whole file as one symbol, which is exactly
+git's grain. This happens for generated files, badly formatted files, and languages without a
+tree-sitter grammar. The fallback is safe, but in that case sgt is not buying anything over a plain
+commit.
+</div>
+
+
+<h2 id="example"><span class="num">&sect;3</span>A running example</h2>
+<p>
+Here is a small case to make the rest of this concrete. A file <code>billing.py</code> has three
+functions, <code>charge</code>, <code>refund</code>, and <code>apply_discount</code>. A commit
+<code>C0</code> introduces all three. sgt mines <code>C0</code> into three operations, one per
+function, each with no dependency because each is a first version.
+</p>
+<p>
+From there, two things happen at the same time. A coding agent opens one commit, <code>C1</code>,
+that does three unrelated things. It adds a caching helper used by <code>charge</code>, tweaks
+rounding in <code>refund</code>, and changes the discount tiers in <code>apply_discount</code>.
+Separately, before pulling <code>C1</code>, Alicia fixes a one-line off-by-one bug directly in
+<code>apply_discount</code>, working from the same <code>C0</code> version of that function.
+</p>
+<figure>
+<svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1b1b18"/>
+  </marker>
+</defs>
+<rect class="diagram-bg" x="0" y="0" width="700" height="260" rx="8"/>
+<text class="fld" x="16" y="16">C0 (base commit, three first versions)</text>
+
+<rect class="opnode" x="20" y="26" width="150" height="50" rx="4"/>
+<text class="id" x="30" y="44">a3f1</text>
+<text class="fld" x="30" y="58">charge</text>
+<text class="fld" x="30" y="69">requires: none</text>
+
+<rect class="opnode" x="190" y="26" width="150" height="50" rx="4"/>
+<text class="id" x="200" y="44">b7e0</text>
+<text class="fld" x="200" y="58">refund</text>
+<text class="fld" x="200" y="69">requires: none</text>
+
+<rect class="opnode" x="360" y="26" width="150" height="50" rx="4"/>
+<text class="id" x="370" y="44">c91d</text>
+<text class="fld" x="370" y="58">apply_discount</text>
+<text class="fld" x="370" y="69">requires: none</text>
+
+<text class="fld" x="16" y="112">C1 (agent, one commit, three unrelated ops)</text>
+
+<rect class="opnode" x="20" y="122" width="150" height="50" rx="4"/>
+<text class="id" x="30" y="140">d2a5</text>
+<text class="fld" x="30" y="154">_charge_cache (new)</text>
+<text class="fld" x="30" y="165">requires: none</text>
+
+<rect class="opnode" x="190" y="122" width="150" height="50" rx="4"/>
+<text class="id" x="200" y="140">e88c</text>
+<text class="fld" x="200" y="154">refund</text>
+<text class="fld" x="200" y="165">requires: b7e0</text>
+<path class="opedge" d="M265,122 L265,80" marker-end="url(#ar1)"/>
+
+<rect class="opnode" x="360" y="122" width="150" height="50" rx="4"/>
+<text class="id" x="370" y="140">f009</text>
+<text class="fld" x="370" y="154">apply_discount</text>
+<text class="fld" x="370" y="165">requires: c91d</text>
+<path class="opedge" d="M435,122 L435,80" marker-end="url(#ar1)"/>
+
+<text class="fld" x="530" y="112">Alicia (concurrent, one op)</text>
+<rect class="opnode" x="530" y="122" width="150" height="50" rx="4"/>
+<text class="id" x="540" y="140">g5c2</text>
+<text class="fld" x="540" y="154">apply_discount</text>
+<text class="fld" x="540" y="165">requires: c91d</text>
+<path class="opedge" d="M560,122 C480,110 450,95 440,80" marker-end="url(#ar1)"/>
+
+<text class="fld" x="20" y="220">f009 and g5c2 both build on c91d. &sect;6 covers what happens when sgt sees both at once.</text>
+</svg>
+<figcaption>C0's three operations, C1's three operations, and Alicia's one concurrent operation</figcaption>
+</figure>
+<p>
+Nothing about this setup is unusual. It's the same thing that happens whenever two people, or a
+person and an agent, work from the same base and haven't synced yet. The next few sections use
+these seven operations to walk through what sgt actually does with them.
+</p>
+
+
+<h2 id="revert"><span class="num">&sect;4</span>Removing one change</h2>
+<p>
+Say the caching helper turns out to be a bad idea and has to go, while the refund and discount
+changes from the same commit should stay. In git, <code>C1</code> is one commit, so pulling the
+caching helper back out means editing the file by hand or splitting the commit after the fact. In
+sgt, <code>d2a5</code> is its own operation and nothing depends on it, so sgt drops it directly.
+<code>e88c</code> and <code>f009</code>, the other two operations mined from the same commit, are
+untouched.
+</p>
+<p>
+jj makes this easier than plain git with <code>jj split</code>, which pulls a commit apart into
+pieces you can abandon separately, but that split is still done by hand, choosing which lines go
+in which piece. Darcs and Pijul can unrecord a single patch directly, the same way sgt drops
+<code>d2a5</code>, as long as no later patch commutes past it. If a later patch touches the same
+lines, that patch has to be unrecorded first. sgt doesn't hit that requirement here because
+<code>d2a5</code> has no dependents.
+</p>
+<p>
+If something did depend on the caching helper, dropping it stops being free. sgt keeps its set of
+operations downward-closed, so removing one operation also removes everything built on top of it,
+unless you explicitly ask sgt to keep the dependents and give them something new to build on
+instead. &sect;8 covers that case.
+</p>
+
+
+<h2 id="identity"><span class="num">&sect;5</span>Identity: carried or detected</h2>
+<p>
+Two edits can only be recognized as touching the same thing if something ties them together
+across the edit. Systems solve this two ways. Some carry an identity forward from the moment
+something is created, so it never has to be re-derived later. Others detect identity after the
+fact, by comparing content or position.
+</p>
+<p>
+jj carries identity directly. A change-id is minted once when a commit is created and stays
+attached to that commit through every rebase and rewrite, even after the commit hash itself
+changes. Pijul carries identity at a finer grain. Each line gets a vertex identified by the hash of
+the change that introduced it plus its position, and that vertex identity survives edits happening
+around it. Lazy merging carries identity through the document's schema, since a cell's position in
+the schema is fixed and edits to it are tracked against that fixed position.
+</p>
+<p>
+git detects identity instead of carrying it. A blob's hash is its content, so a renamed file with
+unchanged content is recognized as a rename only because a heuristic spots the match afterward.
+Change the content even slightly during the rename and git usually stops connecting the two.
+Darcs is close to git here. A patch is tied to the exact file context it was recorded against, so a
+later restructuring can break the commutation check that identity depends on.
+</p>
+<p>
+sgt also detects identity rather than carrying it. A symbol gets a canonical id the first time
+it's seen, and later commits are matched against it by a tiered check, an exact hash match first,
+then a fuzzy match on the body and surrounding context if the hash moved. Renaming
+<code>apply_discount</code> or moving it to another file still resolves to the same id as long as
+enough of the body matches. A large rewrite bundled into the same commit as the rename can break
+that match, and sgt then treats it as a brand new symbol with no history. That's a real gap next to
+jj's change-id, which survives a rewrite with no matching step at all, because it was never
+re-derived in the first place.
+</p>
+<table class="cmp">
+<thead><tr><th>system</th><th>identity comes from</th><th>survives a rename</th></tr></thead>
+<tbody>
+<tr><td class="sys sw-git">git</td><td>content hash of the blob</td><td>only if content is unchanged</td></tr>
+<tr><td class="sys sw-darcs">Darcs</td><td>patch tied to its original file context</td><td>breaks if content shifted first</td></tr>
+<tr><td class="sys sw-pijul">Pijul</td><td>hash of introducing change plus position, carried</td><td>yes, at the line level</td></tr>
+<tr><td class="sys sw-jj">jj</td><td>change-id minted at creation, carried</td><td>yes, at the commit level</td></tr>
+<tr><td class="sys sw-lazy">lazy merging</td><td>fixed schema cell position</td><td>yes, as long as the schema is unchanged</td></tr>
+<tr><td class="sys sw-sgt">sgt</td><td>minted id, re-matched by hash then fuzzy content</td><td>usually, breaks on a rewrite bundled with the rename</td></tr>
+</tbody>
+</table>
+
+
+<h2 id="fork"><span class="num">&sect;6</span>What a conflict is</h2>
+<p>
+<code>f009</code> and <code>g5c2</code> both list <code>c91d</code> as their required version of
+<code>apply_discount</code>. That's a fork. Two different next versions were built from the same
+starting point. sgt detects this by checking for exactly that pattern, two operations claiming the
+same symbol and the same before-version, and once it finds one, it excludes both operations, and
+anything built on either of them, from the set it treats as valid history. Neither one wins. Both
+stay on record as an open fork, and everything else in the repository keeps working normally.
+</p>
+<figure>
+<svg viewBox="0 0 620 200" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1b1b18"/>
+  </marker>
+</defs>
+<rect class="diagram-bg" x="0" y="0" width="620" height="200" rx="8"/>
+<rect class="opnode" x="235" y="20" width="150" height="50" rx="4"/>
+<text class="id" x="245" y="38">c91d</text>
+<text class="fld" x="245" y="52">apply_discount</text>
+<text class="fld" x="245" y="63">requires: none</text>
+
+<rect class="opnode fork" x="90" y="110" width="150" height="50" rx="4"/>
+<text class="id" x="100" y="128">f009</text>
+<text class="fld" x="100" y="142">apply_discount (agent)</text>
+<text class="fld" x="100" y="153">requires: c91d</text>
+<path class="opedge" d="M165,110 L280,80" marker-end="url(#ar2)"/>
+
+<rect class="opnode fork" x="380" y="110" width="150" height="50" rx="4"/>
+<text class="id" x="390" y="128">g5c2</text>
+<text class="fld" x="390" y="142">apply_discount (alicia)</text>
+<text class="fld" x="390" y="153">requires: c91d</text>
+<path class="opedge" d="M455,110 L340,80" marker-end="url(#ar2)"/>
+
+<text class="fld" x="90" y="182">same symbol, same before-version, two different after-versions</text>
+<text class="fld" x="90" y="195">both excluded from the valid set until someone resolves it (&sect;8)</text>
+</svg>
+<figcaption>a fork, two operations requiring the same before-version of apply_discount</figcaption>
+</figure>
+<p>
+Other systems locate a conflict differently. git's three-way merge finds a conflict only when the
+same lines are touched on both sides, so if Alicia and the agent had touched different lines of the
+same function, git would merge them automatically with no conflict at all, whether or not that
+result was actually correct. Pijul finds a conflict as a shape in its line graph, two insertions
+with no ordering between them, which can be as fine as a single overlapping line. jj represents an
+unresolved conflict as a value stored in the commit itself, an algebraic list of the pieces that
+disagree, and materializes it into the file as ordinary-looking conflict markers so a person can
+resolve it by editing text. Darcs represents a conflict as its own kind of patch, called a
+conflictor, that stays in the history until something later supersedes it.
+</p>
+<p>
+sgt's fork is coarser than all of these because it compares whole symbols instead of lines or byte
+ranges. Two edits to different lines of the same function still fork in sgt, even in cases where
+they would merge cleanly under any line-based system. &sect;10 covers that cost directly.
+</p>
+
+
+<h2 id="merge"><span class="num">&sect;7</span>How a merge is computed</h2>
+<p>
+Once a fork is on record, sgt still has to decide what "current" means for everything that isn't
+part of the fork. It does this by grounding, which means starting from the set of all known
+operations and removing anything whose required version never landed. What's left after that
+pass is the valid set. This is a fixpoint computation over the whole op graph. It considers every
+operation sgt knows about, not only the two branches that happen to be in front of you at the
+moment.
+</p>
+<p>
+Run it over the seven ops from &sect;3. <code>a3f1</code>, <code>b7e0</code>, and <code>c91d</code>
+have no requirements, so they ground immediately. <code>d2a5</code> requires nothing either and
+grounds on its own. <code>e88c</code> requires <code>b7e0</code>, which is already grounded, so it
+grounds too. <code>f009</code> and <code>g5c2</code> both require <code>c91d</code>, and <code>c91d</code>
+is grounded, but sgt already flagged this pair as a fork in &sect;6, so neither one is added to the
+valid set. The result is five grounded ops and two excluded ones, sitting off to the side until
+someone resolves the fork.
+</p>
+<figure>
+<svg viewBox="0 0 620 230" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1b1b18"/>
+  </marker>
+</defs>
+<rect class="diagram-bg" x="0" y="0" width="620" height="230" rx="8"/>
+<rect class="opnode" x="20" y="20" width="90" height="40" rx="4"/>
+<text class="id" x="28" y="36">a3f1</text><text class="fld" x="28" y="49">charge</text>
+
+<rect class="opnode" x="130" y="20" width="90" height="40" rx="4"/>
+<text class="id" x="138" y="36">b7e0</text><text class="fld" x="138" y="49">refund</text>
+
+<rect class="opnode" x="240" y="20" width="90" height="40" rx="4"/>
+<text class="id" x="248" y="36">c91d</text><text class="fld" x="248" y="49">apply_discount</text>
+
+<rect class="opnode" x="20" y="90" width="90" height="40" rx="4"/>
+<text class="id" x="28" y="106">d2a5</text><text class="fld" x="28" y="119">_charge_cache</text>
+
+<rect class="opnode" x="130" y="90" width="90" height="40" rx="4"/>
+<text class="id" x="138" y="106">e88c</text><text class="fld" x="138" y="119">refund v2</text>
+<path class="opedge" d="M175,90 L175,60" marker-end="url(#ar3)"/>
+
+<rect class="opnode fork" x="240" y="90" width="90" height="40" rx="4"/>
+<text class="id" x="248" y="106">f009</text><text class="fld" x="248" y="119">discount v2</text>
+<path class="opedge" d="M285,90 L285,60" marker-end="url(#ar3)"/>
+
+<rect class="opnode fork" x="350" y="90" width="90" height="40" rx="4"/>
+<text class="id" x="358" y="106">g5c2</text><text class="fld" x="358" y="119">discount v2</text>
+<path class="opedge" d="M385,90 L285,60" marker-end="url(#ar3)"/>
+
+<text class="fld" x="20" y="165">grounded (valid set): a3f1, b7e0, c91d, d2a5, e88c</text>
+<text class="fld" x="20" y="185">excluded (fork, held aside): f009, g5c2</text>
+<text class="fld" x="20" y="205">everything else in the repo reads through the grounded five while the fork stays open</text>
+</svg>
+<figcaption>grounding the seven-op history. five settle, two stay excluded until the fork resolves</figcaption>
+</figure>
+<p>
+Pijul computes the analogous result with a pushout in its category of patches, which produces a
+new graph state directly from the two branches without ever naming intermediate steps, and proves
+the result is the smallest state consistent with both. That proof is stronger than anything sgt
+offers. sgt's grounding pass gives you a valid set and an excluded set. It comes with no proof that
+the result is minimal or unique, because it works over dependency edges between whole symbols
+instead of a line-level graph with an established algebra behind it. Darcs computes a similar
+result by commuting patches past each other one pair at a time, which is exactly why it can blow
+up combinatorially on repositories with a lot of concurrent history. jj takes a different approach
+again and does not try to resolve most conflicts automatically at all, it packages the disagreement
+as a value and lets the working copy carry it forward until a person edits it away. Lazy merging's
+lattice join is the closest formal cousin to sgt's grounding pass, both compute a result from
+partial, possibly conflicting inputs without requiring a total order first, though lazy merging's
+join is defined and proven over abstract cells and never claimed as a fit for real source files.
+</p>
+
+
+<h2 id="escape"><span class="num">&sect;8</span>When you have to step outside the algebra</h2>
+<p>
+Grounding tells you <code>f009</code> and <code>g5c2</code> are excluded. It does not pick one, and
+it does not write a third version that combines them. Someone has to look at both edits to
+<code>apply_discount</code> and decide what the function should actually say. sgt's answer for
+this step is a small set of rewrite verbs. <code>merge-op</code> folds two operations into one,
+<code>split-op</code> breaks one operation into smaller pieces, <code>transplant</code> moves
+an operation onto a different base, and <code>revert --keep-dependents</code> undoes an operation
+while leaving whatever was built on top of it alone. Running <code>merge-op</code> on
+<code>f009</code> and <code>g5c2</code> produces a new operation, hollow rather than mined from a
+diff, that chains onto one tip's own history instead of pointing at both parents. It never
+re-triggers the fork check, because the fork check only fires on two operations claiming the same
+before-version, and a hollow op has no before-version of its own to collide on.
+</p>
+<figure>
+<svg viewBox="0 0 620 190" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1b1b18"/>
+  </marker>
+</defs>
+<rect class="diagram-bg" x="0" y="0" width="620" height="190" rx="8"/>
+<rect class="opnode fork" x="60" y="20" width="130" height="45" rx="4"/>
+<text class="id" x="70" y="37">f009</text><text class="fld" x="70" y="50">discount v2 (agent)</text>
+
+<rect class="opnode fork" x="230" y="20" width="130" height="45" rx="4"/>
+<text class="id" x="240" y="37">g5c2</text><text class="fld" x="240" y="50">discount v2 (alicia)</text>
+
+<rect class="opnode hollow" x="140" y="110" width="180" height="50" rx="4"/>
+<text class="id" x="150" y="128">h4a1</text>
+<text class="fld" x="150" y="142">apply_discount (merged)</text>
+<text class="fld" x="150" y="153">chains onto f009's own tip</text>
+<path class="opedge" d="M125,65 L200,110" marker-end="url(#ar4)"/>
+<path class="opedge" d="M295,65 L260,110" marker-end="url(#ar4)"/>
+<text class="fld" x="60" y="90">merge-op reads both, writes one new tip</text>
+</svg>
+<figcaption>merge-op resolves the fork with a hollow op instead of a mined diff</figcaption>
+</figure>
+<p>
+git leaves this same step almost entirely to you. A conflicted merge drops both versions into the
+file with conflict markers, commits nothing until you edit them out by hand, and records no
+structured trace of what the two sides actually were once you're done. Pijul stays inside its own
+algebra here instead of stepping outside it, resolving a conflict by inserting a new patch that
+supplies an explicit order for the colliding lines, so the resolution is itself a first-class
+patch subject to the same laws as everything else. jj also stays inside its model, since the
+conflict is already a value living in the commit, and resolving it is just editing the file until
+the algebraic representation collapses back to a single value with no listed alternatives. Lazy
+merging does not attempt this step at all. The paper is explicit that producing a semantically
+correct merged result is outside its scope, and leaves conflict resolution to whatever system sits
+on top of the lattice.
+</p>
+<p>
+sgt's rewrite verbs are the one place in the whole design where a person, or an agent, makes a
+judgment call that the op graph itself cannot make. Everywhere else in this document, the answer
+comes out of dependency data alone.
+</p>
+
+
+<h2 id="sync"><span class="num">&sect;9</span>Syncing over git</h2>
+<p>
+sgt does not run its own server or its own network protocol. Operations, forks, and the metadata
+around them get pushed and pulled through ordinary git refs, the same transport everyone already
+has configured. Locking is local only, so two people syncing at the same moment don't coordinate
+through anything shared, they just each pull, merge what they see, and push. If both push at once,
+git's own ref update rejects the second one, and that person pulls again and retries.
+</p>
+<p>
+This is a real gap next to jj, which keeps an operation log for the whole repository. That log
+records every change anyone made to the view of the repo itself, including things like which
+commit is the working copy's parent, and it gives jj a consistent point to reason from when several
+people are editing at once.
+sgt has no equivalent. Its sync model is pairwise and eventually consistent, closer to how git
+itself behaves than to jj's more centralized log. For a small team pushing every few minutes this
+rarely matters in practice, since forks get recorded rather than silently dropped either way, but
+it means sgt inherits git's race conditions on the sync path itself, even though it does better
+than git once the data has landed.
+</p>
+
+
+<h2 id="granularity"><span class="num">&sect;10</span>The cost of symbol-level grain</h2>
+<p>
+Look again at what <code>f009</code> and <code>g5c2</code> actually changed inside
+<code>apply_discount</code>. The agent's edit touched the tier lookup near the top of the function.
+Alicia's one-line fix touched a boundary check near the bottom. The two edits don't overlap by a
+single line. A line-based system would merge them without any trouble, since nothing about the
+diffs themselves collides. sgt forks them anyway, because both operations declare the same
+before-version of the same symbol, and that symbol is the whole function. The lines inside it never
+enter the comparison.
+</p>
+<div class="example">
+<span class="tag">example</span>
+<pre>def apply_discount(cart, tier):
+    rate = TIERS[tier]          &larr; agent's edit is here
+    ...
+    if idx &gt;= len(items):        &larr; alicia's edit is here
+        idx = len(items) - 1
+    return cart.total * (1 - rate)</pre>
+</div>
+<p>
+This is the real price of choosing a symbol as the unit of history instead of a line or a hunk.
+Pijul and Darcs both work at line granularity, so this exact pair of edits would merge cleanly for
+either of them, with no fork and no rewrite step required. sgt trades that precision for a simpler
+identity story. A symbol has one name and one AST node to hang an identity on. A line has neither,
+since it is just a position that shifts every time something above it grows or shrinks. Coarser
+grain buys sgt a cheap, robust way to say "this is the same thing across two edits," at the cost of
+forking pairs of changes that a finer-grained system would have let through.
+</p>
+<p>
+In practice this shows up most on long functions with several unrelated concerns living inside
+them. Splitting a large function into smaller ones lowers the odds of a spurious fork, for the
+same reason smaller commits lower the odds of a merge conflict in git. That's a workaround. The
+underlying tradeoff is still there, and it's worth knowing about before you hit it the first time
+on a file you didn't write.
+</p>
+
+
+<h2 id="table"><span class="num">&sect;11</span>Summary table</h2>
+<p>
+The systems in this document differ along the same handful of axes. This table lays those axes
+out directly, without the surrounding argument.
+</p>
+<div class="table-scroll">
+<table class="cmp wide">
+<tr>
+  <th>system</th>
+  <th>unit of history</th>
+  <th>identity</th>
+  <th>conflict is detected at</th>
+  <th>who resolves a conflict</th>
+  <th>formal guarantee</th>
+</tr>
+<tr>
+  <td class="sys sw-git">git</td>
+  <td>whole-tree commit</td>
+  <td>content hash, breaks on rewrite</td>
+  <td>overlapping lines in a 3-way diff</td>
+  <td>the person merging, by hand</td>
+  <td>none</td>
+</tr>
+<tr>
+  <td class="sys sw-darcs">Darcs</td>
+  <td>patch (arbitrary hunk)</td>
+  <td>tied to the patch's own context</td>
+  <td>patches that don't commute</td>
+  <td>a conflictor patch, kept in history</td>
+  <td>commutation theory, exponential worst case</td>
+</tr>
+<tr>
+  <td class="sys sw-pijul">Pijul</td>
+  <td>patch over a line graph</td>
+  <td>vertex in the line graph, carried</td>
+  <td>unordered insertions in the graph</td>
+  <td>a new patch, inside the same algebra</td>
+  <td>categorical pushout, proven minimal</td>
+</tr>
+<tr>
+  <td class="sys sw-jj">jj</td>
+  <td>commit, plus a separate change-id</td>
+  <td>change-id, carried across rewrites</td>
+  <td>algebraic merge of commit contents</td>
+  <td>editing materialized conflict markers</td>
+  <td>none published for the conflict algebra itself</td>
+</tr>
+<tr>
+  <td class="sys sw-lazy">Lazy merging</td>
+  <td>cell (abstract, paper-only)</td>
+  <td>schema-defined cell address, carried</td>
+  <td>divergent variants in the causality graph</td>
+  <td>out of scope, left to the host system</td>
+  <td>lattice join, proven correct over cells</td>
+</tr>
+<tr>
+  <td class="sys sw-sgt">sgt</td>
+  <td>symbol edit (function, method, class)</td>
+  <td>tiered hash and fuzzy match, detected</td>
+  <td>two ops requiring the same symbol version</td>
+  <td>rewrite verbs, producing a hollow op</td>
+  <td>none, grounding is a fixpoint pass over dependency data</td>
+</tr>
+</table>
+</div>
+<p>
+Reading down the identity column and the formal-guarantee column together is the fastest way to
+see where each system spent its effort. Pijul and lazy merging paid for a proof up front and get a
+narrower, more abstract unit of history in return. git and sgt spent nothing on a proof and get a
+unit of history that maps directly onto something a person already recognizes, a commit or a
+function.
+</p>
+
+
+<h2 id="close"><span class="num">&sect;12</span>Closing</h2>
+<p>
+sgt tracks history at the level of a function or a class instead of a file or a line. That choice
+gives it a cheap, stable identity for the things it tracks, a straightforward way to notice when
+two edits collide, and a fixpoint pass that keeps the rest of the repository working while a
+collision sits unresolved. It gives up the proofs that Pijul and lazy merging built their systems
+around, and it forks pairs of edits that a line-based system would have merged without complaint.
+</p>
+<p>
+None of the other systems in this document are wrong. Darcs found the combinatorial edge of patch
+commutation and documented it honestly. Pijul built the category theory to fix that edge properly.
+jj showed that a working copy can be a commit like any other, and that a conflict can be a value
+instead of a crisis. Lazy merging proved a lattice join can work on partial, disordered input
+without a total order, and said plainly that turning that join into correct source code was
+somebody else's problem. sgt is that somebody else's attempt, built on a coarser unit than any of
+them, betting that symbol-level identity is precise enough to be useful for real code and simple
+enough that a team can actually run it.
+</p>
+<footer>
+Sources: Mimram &amp; Di Giusto, "A Categorical Theory of Patches" (arXiv:1311.3903). Jujutsu
+(jj) documentation and design docs, github.com/jj-vcs/jj. Darcs manual and wiki,
+darcs.net. Pijul manual, pijul.org/manual. sgt's own source, this repository.
+</footer>
+
+
+</div>
+</body>
+</html>

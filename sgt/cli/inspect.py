@@ -9,8 +9,11 @@ from ._common import _add_view_flags, _emit_json, _fail
 
 
 def register(subs, parent) -> None:
-    for verb, fn in (("status", _cmd_status), ("map", _cmd_map)):
-        subs.add_parser(verb, parents=[parent]).set_defaults(func=fn)
+    subs.add_parser("status", parents=[parent]).set_defaults(func=_cmd_status)
+    mp = subs.add_parser("map", parents=[parent])
+    mp.add_argument("--rebuild", action="store_true",
+                     help="force a full from-scratch recluster instead of splicing unchanged subtrees")
+    mp.set_defaults(func=_cmd_map)
     lp = subs.add_parser("log", parents=[parent])
     _add_view_flags(lp, paged=True)
     lp.set_defaults(func=_cmd_log)
@@ -59,7 +62,7 @@ def _cmd_status(args) -> int:
 
 
 def _cmd_map(args) -> int:
-    return _map(".", args.as_json)
+    return _map(".", args.as_json, args.rebuild)
 
 
 def _cmd_history(args) -> int:
@@ -284,15 +287,16 @@ def _print_map_tree(view: dict) -> None:
     print(f"{view['feature_count']} feature(s)")
 
 
-def _map(repo: str, as_json: bool = False) -> int:
+def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
     """`sgt map` (plan U13): (re)build the feature tree from the live op store -- clustering,
-    Greene identity, pins, labeling -- then print the kernel-backed projection (`api.map_view`)."""
+    Greene identity, pins, labeling -- then print the kernel-backed projection (`api.map_view`).
+    `--rebuild` forces a full from-scratch recluster, bypassing dirty-subtree splicing."""
     from sgt.api import map_view
     from sgt.core.lens import get
     from sgt.lens.map import build_map
 
     get(repo)  # mine-on-contact so the map reflects current reality (R9)
-    build_map(repo)
+    build_map(repo, rebuild=rebuild)
     view = map_view(repo)
     if as_json:
         return _emit_json(view)

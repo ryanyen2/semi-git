@@ -28,9 +28,10 @@ from pathlib import Path
 import igraph as ig
 import leidenalg as la
 
+from sgt import state
 from sgt.core.ideal import Ideal
 from sgt.core.op import Op, is_bottom, is_content_bearing
-from sgt.entities.graph import build_entity_graph
+from sgt.entities.graph import EntityEdge, build_entity_graph
 from sgt.store.gitbind import GitBinding
 
 HUB_OP_FRAC = 0.15  # a symbol touched by >= this fraction of all mined ops is a hub, stripped
@@ -158,14 +159,39 @@ def _leiden(nodes: list[str], weights: dict[frozenset, float], gamma: float) -> 
     return [[nodes[i] for i in comm] for comm in part]
 
 
+def _structural_edges_at(
+    repo: Path, gb: GitBinding, head: str, *, refresh_cache: bool = True,
+) -> list[EntityEdge]:
+    """`build_entity_graph`'s edges at `head`, reusing the persisted cache when `head` matches --
+    that full-repo source parse is a pure function of `head` alone, yet costs ~1.2s of `signals`'s
+    ~1.3s on this repo (measured), by far its most expensive step. A no-op refresh or small edit
+    (HEAD unchanged) skips the reparse entirely.
+
+    `refresh_cache=False` still reads a fresh cache but never writes one -- for a caller (`land`/
+    `reconcile`) that may build a candidate tree it discards: this cache is not git-tracked, so a
+    write here would survive a rolled-back land attempt (R7's "no trace" guarantee) even though
+    the cache itself is content-safe (keyed by the immutable `head` sha)."""
+    cached = state.load_json(repo, "structural_edge_cache")
+    if cached is not None and cached.get("head") == head:
+        return [EntityEdge(**e) for e in cached["edges"]]
+    edges = build_entity_graph(gb.tree_at(head), edges_only=True).edges
+    if refresh_cache:
+        state.save_json(repo, "structural_edge_cache", {
+            "head": head, "edges": [e.to_dict() for e in edges],
+        })
+    return edges
+
+
 def signals(
-    repo: Path, ops: list[Op], ideal: Ideal,
+    repo: Path, ops: list[Op], ideal: Ideal, *, refresh_cache: bool = True,
 ) -> tuple[set[str], set[str], dict[frozenset, float], dict[frozenset, float]]:
     """The clustering graph's raw ingredients: ``(nodes, hubs, cochange, structural)``. `ops`
     should be the *full* mined history (`Store.all_ops()`), not just `ideal`'s own op-set --
     co-change is a historical fact even about symbols whose current chain tip came from a later
     op. Structural edges are read from the ideal's materialized tree at HEAD (round-trip laws
-    guarantee this equals `fold.code(ideal, ops)`)."""
+    guarantee this equals `fold.code(ideal, ops)`).
+
+    `refresh_cache=False` propagates to `_structural_edges_at` -- see its docstring."""
     gb = GitBinding(repo)
     nodes = alive_nodes(ideal, ops)
 
@@ -186,7 +212,7 @@ def signals(
     structural: dict[frozenset, float] = defaultdict(float)
     head = gb.head()
     if head is not None:
-        for edge in build_entity_graph(gb.tree_at(head)).edges:
+        for edge in _structural_edges_at(repo, gb, head, refresh_cache=refresh_cache):
             if edge.src in nodes and edge.dst in nodes and edge.src != edge.dst:
                 structural[frozenset((edge.src, edge.dst))] += 1.0
 

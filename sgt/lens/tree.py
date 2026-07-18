@@ -35,7 +35,9 @@ from sgt import state
 from sgt.core.op import Op
 from sgt.lens import cluster
 from sgt.lens.cluster import _dominant_dir, _fuse, _leiden
-from sgt.lens.pins import Pins, _expand_members, apply_must_link, enforce_cannot_link, load_pins
+from sgt.lens.pins import (
+    Pins, _expand_members, _must_link_groups, apply_must_link, enforce_cannot_link, load_pins,
+)
 from sgt.store.gitbind import GitBinding
 
 MIN_LANE = 4        # a node must own >= this many symbols to stand alone (else folded into a sibling)
@@ -46,6 +48,9 @@ GAMMA_LO = 1e-4
 GAMMA_HI = 1.0
 MAX_SEARCH_ITER = 20
 THETA = 0.5         # Greene member-overlap threshold for feature identity across runs (plan D5)
+MIN_EDGE_SIGNAL = 0.1  # a leaf-pair cross-edge below this weight is noise, not a real coupling --
+# used only to detect a *gain*/*loss* of significant coupling between two previous leaves
+# (Phase 2's cross-edge dirtying trigger), not to threshold clustering itself.
 
 
 def _induced(fused: dict, member_set: set[str]) -> dict:
@@ -155,6 +160,142 @@ def _subdivide(
     return node
 
 
+def _resplit_real(
+    real_members: list[str], real_fused: dict, pins: Pins, depth: int, max_depth: int,
+    min_lane: int = MIN_LANE, max_leaf: int = MAX_LEAF,
+) -> dict:
+    """Cluster `real_members` from scratch in real (uncontracted) member space: contract must-link
+    pins scoped to this exact member set (`apply_must_link` self-restricts to `real_members`), run
+    the ordinary `_subdivide` over the contracted graph, then expand the synthetic pin-group
+    vertices back to real members. The one path that actually invokes Leiden -- both `build`'s
+    cold-start root and `_dirty_subdivide`'s per-subtree resplit (Phase 2) funnel through here, so
+    a dirty subtree is clustered exactly as if it had been built from scratch on its own."""
+    contracted_nodes, contracted_fused, expansion = apply_must_link(real_members, real_fused, pins)
+    contracted_adj = _adjacency(contracted_fused)
+    node = _subdivide(contracted_nodes, contracted_fused, contracted_adj, depth, max_depth, min_lane, max_leaf)
+    _expand_members(node, expansion)
+    return node
+
+
+def _splice(previous_nodes: dict, nid: str, depth: int) -> dict:
+    """Deep-copy a previous tree node (and its descendants) into the nested-dict shape `_subdivide`
+    produces, ready for `_register` -- verbatim reuse of a subtree Phase 2 decided is unchanged."""
+    nd = previous_nodes[nid]
+    members = list(nd["members"])
+    return {
+        "members": members, "size": len(members), "dir": _dominant_dir(members), "depth": depth,
+        "children": [_splice(previous_nodes, c, depth + 1) for c in nd["children"]],
+        "split_reason": nd.get("split_reason"),
+    }
+
+
+def _leaf_cross_edges(leaf_of: dict[str, str], fused: dict[frozenset, float]) -> dict[frozenset[str], float]:
+    """Roll `fused`'s symbol-pair edges up to leaf-pair totals, for whichever symbols `leaf_of`
+    covers (cross-leaf pairs only). Used both sides of Phase 2's cross-edge dirtying diff -- once
+    against the cached previous fused graph, once against the current one, same `leaf_of`."""
+    totals: dict[frozenset[str], float] = defaultdict(float)
+    for pair, w in fused.items():
+        a, b = tuple(pair)
+        la, lb = leaf_of.get(a), leaf_of.get(b)
+        if la is None or lb is None or la == lb:
+            continue
+        totals[frozenset((la, lb))] += w
+    return dict(totals)
+
+
+def _cross_edge_dirty_leaves(
+    old_leaf_of: dict[str, str], old_fused: dict, new_fused: dict, threshold: float = MIN_EDGE_SIGNAL,
+) -> set[str]:
+    """Previous leaves whose coupling to some other previous leaf crossed `threshold` (gained or
+    lost significant coupling) between the cached previous fused graph and the current one --
+    Phase 2's cross-edge dirtying trigger, independent of whether either leaf's own membership
+    changed."""
+    old_cross = _leaf_cross_edges(old_leaf_of, old_fused)
+    new_cross = _leaf_cross_edges(old_leaf_of, new_fused)
+    dirty: set[str] = set()
+    for pair in old_cross.keys() | new_cross.keys():
+        if (old_cross.get(pair, 0.0) >= threshold) != (new_cross.get(pair, 0.0) >= threshold):
+            dirty.update(pair)
+    return dirty
+
+
+def _dirty_subdivide(
+    members: list[str], real_fused: dict, real_adj: dict, depth: int, max_depth: int,
+    previous_nodes: dict, prev_id: str | None, dirty_leaves: set[str], pins: Pins,
+    min_lane: int = MIN_LANE, max_leaf: int = MAX_LEAF,
+) -> dict:
+    """Phase 2: splice a previous subtree through verbatim wherever its member set and cross-leaf
+    coupling are both unchanged; only re-cluster (`_resplit_real`) the subtrees that actually
+    changed. `prev_id`/`previous_nodes` locate the previous tree's node at this same logical
+    position (None, or a leaf, when there's no further previous structure to delegate to -- then a
+    plain resplit, same as a from-scratch build of just this subtree).
+
+    Operates in *real* (uncontracted) member space throughout, matching `previous_nodes`'s own
+    member space (`_expand_members` already ran on it at the end of the previous build) --
+    must-link contraction happens only locally, inside `_resplit_real`, for whichever subtree
+    actually needs reclustering. `build` guarantees this is only called when every must-link
+    group's alive members already sit in one previous leaf (see its `pins_consistent` check), so a
+    group can never be split across two independently-resplit subtrees here."""
+    cur = frozenset(members)
+    prev_node = previous_nodes.get(prev_id) if prev_id is not None else None
+
+    if prev_node is not None and frozenset(prev_node["members"]) == cur:
+        leaves_here = set(_leaf_ids(previous_nodes, prev_id))
+        if not (leaves_here & dirty_leaves):
+            return _splice(previous_nodes, prev_id, depth)
+
+    if prev_node is None or not prev_node["children"]:
+        return _resplit_real(sorted(members), real_fused, pins, depth, max_depth, min_lane, max_leaf)
+
+    prev_children_ids = prev_node["children"]
+    assigned: dict[str, set[str]] = {
+        cid: set(previous_nodes[cid]["members"]) & cur for cid in prev_children_ids
+    }
+    covered: set[str] = set().union(*assigned.values()) if assigned else set()
+    for m in sorted(cur - covered):  # a brand-new real member with no previous home in this subtree
+        best_cid, best_w = prev_children_ids[0], -1.0
+        for cid in prev_children_ids:
+            w = sum(wt for (o, wt) in real_adj.get(m, ()) if o in assigned[cid])
+            if w > best_w:
+                best_cid, best_w = cid, w
+        assigned[best_cid].add(m)
+
+    children = [
+        _dirty_subdivide(
+            sorted(assigned[cid]), real_fused, real_adj, depth + 1, max_depth,
+            previous_nodes, cid, dirty_leaves, pins, min_lane, max_leaf,
+        )
+        for cid in prev_children_ids
+    ]
+    return {
+        "members": sorted(members), "size": len(members), "dir": _dominant_dir(members),
+        "depth": depth, "children": children, "split_reason": prev_node.get("split_reason"),
+    }
+
+
+def _tree_fingerprint(nodes: dict) -> str:
+    """A content hash of `nodes`'s leaf structure -- ties a cached fused-graph snapshot to the
+    exact tree it was derived from, so a stale or foreign snapshot (e.g. `reconcile` building
+    against a `previous` other than the last local build) is detected and skipped rather than
+    misapplied."""
+    leaves = sorted((nid, tuple(sorted(nd["members"]))) for nid, nd in nodes.items() if not nd["children"])
+    return hashlib.sha256(repr(leaves).encode("utf-8")).hexdigest()
+
+
+def _load_fused_snapshot(repo: Path, fingerprint: str) -> dict | None:
+    snap = state.load_json(repo, "fused_snapshot")
+    if snap is None or snap.get("fingerprint") != fingerprint:
+        return None
+    return {frozenset((a, b)): w for a, b, w in snap["fused"]}
+
+
+def _save_fused_snapshot(repo: Path, fingerprint: str, fused: dict[frozenset, float]) -> None:
+    state.save_json(repo, "fused_snapshot", {
+        "fingerprint": fingerprint,
+        "fused": [[*sorted(pair), w] for pair, w in fused.items()],
+    })
+
+
 def _register(nodes: dict, node: dict, parent: str | None, counter: list[int]) -> str:
     """DFS: give every tree node a stable id, replace child dicts with child ids, index into nodes."""
     nid = f"N{counter[0]}"
@@ -198,12 +339,19 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
     return op_leaf
 
 
-def fused_graph(repo: Path, ops: list[Op], ideal) -> tuple[list[str], dict[frozenset, float]]:
+def fused_graph(
+    repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
+) -> tuple[list[str], dict[frozenset, float]]:
     """The fused (structural ⊕ co-change ⊕ scope) coupling graph over every alive symbol --
     shared by `build` (the full recursive tree) and `sgt.lens.verbs.plan_split` (a one-off split
-    of a single feature's induced subgraph), so both start from the identical signal."""
+    of a single feature's induced subgraph), so both start from the identical signal.
+
+    `refresh_structural_cache=False` (passed by `build` for `land`/`reconcile`) still reads the
+    head-keyed structural-edge cache but never writes it -- see `cluster._structural_edges_at`."""
     gb = GitBinding(repo)
-    nodes_set, hubs, cochange, structural = cluster.signals(repo, ops, ideal)
+    nodes_set, hubs, cochange, structural = cluster.signals(
+        repo, ops, ideal, refresh_cache=refresh_structural_cache,
+    )
     subjects = {sha: subject for sha, _parent, subject in gb.history()}
     scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
     structural = cluster.hub_normalize(structural)
@@ -231,7 +379,7 @@ def feature_edges(nodes: dict, fused: dict[frozenset, float]) -> list[dict]:
 
 def build(
     repo: Path, ops: list[Op], ideal, max_depth: int = MAX_DEPTH, pins: Pins | None = None,
-    previous: dict | None = None,
+    previous: dict | None = None, force_rebuild: bool = False, refresh_caches: bool = False,
 ) -> dict:
     """Build the tree from `ops`/`ideal` with stable feature ids and durable pins (no labeling --
     that is `tree.label_tree` / `sgt.lens.label`).
@@ -246,25 +394,36 @@ def build(
     `previous` defaults to `load(repo)` (the committed `.sgt/tree/tree.json`), and every leaf that
     continues a prior feature keeps that feature's id. An `assign`-pinned leaf overrides Greene and
     keeps its pinned feature id verbatim (D3). Internal (subsystem) nodes carry build-local `N*`
-    ids -- they are structural groupings, re-derived each run, not identity-bearing."""
+    ids -- they are structural groupings, re-derived each run, not identity-bearing.
+
+    `force_rebuild=True` (the `sgt map --rebuild` escape hatch) skips dirty-subtree splicing
+    entirely and re-clusters every alive symbol from scratch, regardless of `previous` -- feature
+    identity across the rebuild is still carried by the ordinary Greene matching below.
+
+    `refresh_caches=True` (only `sgt.lens.map.build_map` passes this) lets this build refresh the
+    head-keyed structural-edge cache. Default `False` because `land`/`reconcile` may build a
+    candidate tree it discards -- that cache is not git-tracked, so a write here would survive a
+    rolled-back land attempt (R7's "no trace" guarantee), even though the cache is itself always
+    content-safe (see `cluster._structural_edges_at`)."""
     if pins is None:
         pins = load_pins(repo)
     if previous is None:
         previous = load(repo)
 
-    all_nodes, fused = fused_graph(repo, ops, ideal)
+    all_nodes, fused = fused_graph(repo, ops, ideal, refresh_structural_cache=refresh_caches)
+    real_adj = _adjacency(fused)  # per-real-member weights: cannot-link's reassignment choice, and
+    # `_dirty_subdivide`'s new-member-attachment choice below.
 
-    contracted_nodes, contracted_fused, expansion = apply_must_link(all_nodes, fused, pins)
-    contracted_adj = _adjacency(contracted_fused)
-    root = _subdivide(contracted_nodes, contracted_fused, contracted_adj, 0, max_depth)
-    _expand_members(root, expansion)
+    if force_rebuild:
+        root = _resplit_real(all_nodes, fused, pins, 0, max_depth)
+    else:
+        root = _build_root(repo, all_nodes, fused, real_adj, pins, previous, max_depth)
 
     nodes: dict[str, dict] = {}
     counter = [0]
     root_id = _register(nodes, root, None, counter)
     roots = [root_id]
 
-    real_adj = _adjacency(fused)  # per-real-member weights, for cannot-link's reassignment choice
     cannot_link_moves = enforce_cannot_link(nodes, pins, real_adj)
 
     op_leaf = assign_ops_to_leaves(nodes, ops)
@@ -286,7 +445,48 @@ def build(
     _apply_id_map(result, id_map)
     _apply_assign_pins(result, pins)
     result["identity_events"] = events
+    result["_fused"] = fused  # not serialized -- `save()` pops this to write the fused-snapshot
+    # cache, so a speculative `build()` that's never `save()`d (land/reconcile evaluating a
+    # candidate it may discard) writes no local state at all.
     return result
+
+
+def _build_root(
+    repo: Path, all_nodes: list[str], fused: dict, real_adj: dict, pins: Pins,
+    previous: dict | None, max_depth: int,
+) -> dict:
+    """Decide whether this build can splice unchanged subtrees of `previous` through verbatim
+    (Phase 2), or must fall back to a full from-scratch resplit. Dirty-subtree splicing is only
+    sound when every must-link group's currently-alive members already sit in exactly one previous
+    leaf -- otherwise a group could be split across two independently-resplit subtrees, since
+    `_dirty_subdivide`/`_resplit_real` only contract must-link *within* whatever subtree they're
+    handed. A pin edit (rare, manual curation) or a first-ever build simply falls back to a full
+    resplit; the common "small code edit" case is unaffected."""
+    if previous is None or not previous.get("nodes"):
+        return _resplit_real(all_nodes, fused, pins, 0, max_depth)
+
+    previous_nodes = previous["nodes"]
+    old_leaf_of = leaf_member_index(previous_nodes)
+    alive_now = set(all_nodes)
+    groups = _must_link_groups(pins)
+    for grp in groups.values():
+        alive_members = grp & alive_now
+        if not alive_members:
+            continue
+        if not all(m in old_leaf_of for m in alive_members):
+            return _resplit_real(all_nodes, fused, pins, 0, max_depth)  # a pinned member is new
+        if len({old_leaf_of[m] for m in alive_members}) > 1:
+            return _resplit_real(all_nodes, fused, pins, 0, max_depth)  # pins now span 2+ leaves
+
+    fingerprint = _tree_fingerprint(previous_nodes)
+    old_fused = _load_fused_snapshot(repo, fingerprint)
+    dirty_leaves = (
+        _cross_edge_dirty_leaves(old_leaf_of, old_fused, fused) if old_fused is not None else set()
+    )
+    prev_root_id = previous["roots"][0] if previous.get("roots") else None
+    return _dirty_subdivide(
+        all_nodes, fused, real_adj, 0, max_depth, previous_nodes, prev_root_id, dirty_leaves, pins,
+    )
 
 
 # --- feature identity across runs (Greene member-overlap matching, plan D5) -------------------
@@ -384,10 +584,11 @@ def match_identities(
     references together). An *unreferenced* legacy id has nothing to corrupt, so it converges freely.
     `protected` is the set of pin-referenced feature ids (`assign` values + `labels` keys)."""
     pairs = [
-        (oid, nid, _jaccard(om, nm))
+        (oid, nid, j)
         for oid, om in old.items()
         for nid, nm in new.items()
-        if _jaccard(om, nm) >= theta
+        for j in (_jaccard(om, nm),)
+        if j >= theta
     ]
 
     def _best(cands: list[tuple[str, float]]) -> str | None:
@@ -489,10 +690,21 @@ def load(repo: str | Path) -> dict | None:
     return state.load_json(repo, "tree")
 
 
-def save(repo: str | Path, result: dict) -> None:
+def save(repo: str | Path, result: dict, *, refresh_fused_snapshot: bool = False) -> None:
     """Persist the built tree so the next run's Greene matching can preserve feature ids. Skips
-    the write when byte-identical to what's already on disk (see `state.save_json_if_changed`)."""
+    the write when byte-identical to what's already on disk (see `state.save_json_if_changed`).
+
+    `refresh_fused_snapshot=True` also persists `build()`'s `_fused` payload (Phase 2's dirty-
+    subtree cache, `.sgt/local/fused_snapshot.json`). Default `False` because, unlike `tree.json`,
+    that cache is not git-tracked, so `land`'s CAS-retry rollback (`GitBinding.restore_worktree_to`)
+    cannot undo a write to it -- `save` is called on every `land`/`reconcile` attempt *before* the
+    CAS resolves win or lose, so refreshing the cache there would leak local state across a rolled-
+    back attempt (the R7 "no trace" guarantee). Only `build_map` (the actual `sgt map` command,
+    which has no such retry loop) passes `True` -- see `sgt.lens.map.build_map`."""
+    fused = result.pop("_fused", None)
     state.save_json_if_changed(repo, "tree", result)
+    if refresh_fused_snapshot and fused is not None:
+        _save_fused_snapshot(repo, _tree_fingerprint(result["nodes"]), fused)
 
 
 # --- labeling + DEDUP (plan R15/R17, promoted from the experiment's hierarchy.py) --------------
@@ -573,6 +785,12 @@ def label_tree(
     Labeling is intentionally separate from `build` so the tree exists deterministically offline;
     the labeler carries its own member-hash cache and deterministic fallback (`sgt.lens.label`).
 
+    Runs level-by-level bottom-up (a node is only labeled once every child already is), but *all*
+    nodes ready in the same wave -- across every root, leaves and multi-child subsystems alike --
+    are named in one batched, concurrent `Labeler.label_many` call (Phase 3): far fewer serial
+    network round-trips than one call per node. A single-child node just inherits its child's
+    label/rationale, no call needed.
+
     After DEDUP, any leaf whose feature id has a user-pinned label (`pins.labels`, U13's
     `rename` verb) has that label substituted verbatim -- a user rename always wins over the
     LLM/fallback label, and survives every future re-cluster as long as the id persists."""
@@ -584,20 +802,32 @@ def label_tree(
         pins = load_pins(repo)
     nodes = result["nodes"]
     subjects_by_leaf = subjects_by_leaf or {}
+
+    remaining: set[str] = set()
     for rid in result["roots"]:
-        for nid in _post_order(nodes, rid):
+        remaining.update(_post_order(nodes, rid))
+
+    while remaining:
+        ready = [nid for nid in remaining if not (set(nodes[nid]["children"]) & remaining)]
+        batch: list[tuple[str, tuple[str, str, list[str]]]] = []  # (nid, (key, prompt, members))
+        for nid in ready:
             nd = nodes[nid]
             if not nd["children"]:
-                fl = labeler.label(nd["members"], subjects=subjects_by_leaf.get(nid))
-                nd["label"], nd["why"] = fl.label, fl.rationale
+                batch.append((nid, labeler.leaf_request(nd["members"], subjects_by_leaf.get(nid))))
             elif len(nd["children"]) == 1:
                 only = nodes[nd["children"][0]]
                 nd["label"], nd["why"] = only["label"], only["why"]
             else:
                 kid_labels = [nodes[c]["label"] for c in nd["children"]]
                 files = sorted({m.split("::", 1)[0] for m in nd["members"]})[:8]
-                fl = labeler.label_super(kid_labels, files)
-                nd["label"], nd["why"] = fl.label, fl.rationale
+                batch.append((nid, labeler.super_request(kid_labels, files)))
+
+        if batch:
+            outs = labeler.label_many([entry for _nid, entry in batch])
+            for (nid, _entry), fl in zip(batch, outs):
+                nodes[nid]["label"], nodes[nid]["why"] = fl.label, fl.rationale
+
+        remaining -= set(ready)
 
     remap = _dedup(nodes, result["roots"])
     if remap:
