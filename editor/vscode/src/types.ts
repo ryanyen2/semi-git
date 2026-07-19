@@ -27,12 +27,20 @@ export interface MapEdge {
   weight: number;
 }
 
+// Whether this ref's witness has caught up to head and any in-progress genesis backfill has
+// finished (sgt.core.lens.sync_status) -- a pure read, never triggers mining itself.
+export interface SyncStatus {
+  complete: boolean;
+  reached_genesis: boolean;
+}
+
 export interface MapView {
   nodes: MapNode[];
   roots: string[];
   identity_events: IdentityEvent[];
   feature_count: number;
   edges: MapEdge[];
+  sync_status: SyncStatus;
 }
 
 // `sgt history --json`: the feature-map webview's shared commit-index axis.
@@ -91,6 +99,7 @@ export interface StatusView {
   unmanaged: string[];
   backstop_kept: string[];
   forks: { open: number; records: ForkRecord[] };
+  sync_status: SyncStatus;
 }
 
 // `sgt revert <ref> --emit --json` — a sandboxed dry-run preview, shared by single-op and
