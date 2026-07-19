@@ -251,6 +251,39 @@ def test_backfill_state_missing_file_returns_empty_dict(tmp_path):
     assert _load_backfill_state(repo) == {}
 
 
+def test_sync_survives_a_witness_planted_without_backfill_state(tmp_path):
+    """A witness can land at a ref-key that never went through `_sync`'s own backward walk: every
+    materializing verb (`put()` + `record_ideal`, mirrored here) advances `witness[key]` straight
+    to the commit `put()` just made, and `record_ideal` never touches `backfill.json`. The next
+    ordinary `get()` on that same key then finds `prev_head == head` with a *missing* backfill
+    entry -- defaulted to `{"genesis_frontier": None, "reached_genesis": False}`. This key shape is
+    a detached-HEAD/throwaway-key artifact (every commit under a detached HEAD mints its own
+    never-reused `_ref_key`, e.g. `land`'s per-session worktrees): nothing ever queries
+    `sync_status` for a discarded commit sha, so `_sync` deliberately leaves it alone rather than
+    paying for a backward walk that would also have to survive `land`'s R7 rollback (which restores
+    the git-tracked worktree but never touches gitignored `.sgt/local/*.json`, see
+    `test_cas_exhaustion_restores_and_persists_nothing`). The one hard requirement is that this
+    shape must not crash `_sync` (no `gb.parent_of(None)` TypeError from mistaking a missing
+    backfill record for one that needs a fresh genesis walk)."""
+    from sgt.core.lens import record_ideal
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    gb = GitBinding(repo)
+    gb._git("checkout", "-q", "--detach")
+
+    ideal = get(repo)  # bootstraps *this* detached head's own witness + backfill state
+    put_sha = put(repo, ideal, message="materialize")  # a new commit; HEAD moves past it
+    record_ideal(repo, ideal, put_sha)  # plants witness[put_sha] = put_sha directly (no ref_key)
+
+    key = _ref_key(gb)
+    assert key == put_sha
+    assert key not in _load_backfill_state(repo), "record_ideal should not seed backfill state"
+
+    get(repo)  # must not raise TypeError from gb.parent_of(None)
+
+    assert key not in _load_backfill_state(repo), "a throwaway detached key stays a no-op, not a walk"
+
+
 def _count_snapshot_calls(monkeypatch):
     """Spy on `working_tree_snapshot` -- taken only when the dirty mining pass runs (R16), so its
     call count is a direct probe of whether the O(tracked files) pending pass fired."""

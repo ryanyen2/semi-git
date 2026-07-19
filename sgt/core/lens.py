@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +47,8 @@ class DirtyWorkingTreeError(Exception):
 
 
 _DECLARED_FILE = "declared.json"
+
+_CHUNK_BUDGET_SECONDS = 10.0  # KTD-3: one _sync() chunk's wall-clock ceiling on mine() work.
 
 
 def _load_witnesses(repo: Path) -> dict[str, str]:
@@ -267,7 +270,7 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
     return Ideal.from_ops(order.reduce_to_ideal(included, all_ops), all_ops)
 
 
-def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Ideal:
+def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     gb = GitBinding(repo)
     store = Store(repo)
     store.init()
@@ -276,20 +279,80 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     if head is None:
         return Ideal.from_ops(frozenset(), [])  # nothing committed yet
 
-    # (1,2) Mine committed history plus the current uncommitted working tree (R9), and persist
-    # each op. Partition by the *returned* (post-merge) op's provenance, not the mined op's: a
-    # dirty edit whose content is byte-identical to something already committed comes back from
-    # `store.add` as the existing op with its real provenance intact, so it rightly counts as
-    # committed, not pending.
-    new_committed_ids: set[str] = set()
-    pending_ids: set[str] = set()
-    stored_ops = []
+    key = _ref_key(gb) or head
+    prev_head = _load_witnesses(repo).get(key)
+    backfill_table = _load_backfill_state(repo)
+    has_backfill_record = key in backfill_table
+    backfill_state = backfill_table.get(key, {"genesis_frontier": None, "reached_genesis": False})
+    new_witness = prev_head
+    new_backfill_state = dict(backfill_state)
+
     # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
     # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
     # `.sgt/` path actually differs from HEAD (R16); on a tree whose only churn is `.sgt/` state
-    # it would rebuild the whole graph only to produce no source ops.
+    # it would rebuild the whole graph only to produce no source ops. `mine()` additionally skips
+    # it whenever a chunk's own deadline cuts the history loop short (U1), so passing the caller's
+    # true intent here -- even on a backward chunk -- is safe: it only actually runs once some
+    # chunk finishes its historical work inside budget.
     include_dirty = gb.has_dirty_source()
-    mined_ops, _last_sha = mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=include_dirty)
+
+    # (1, 2) Decide this call's one chunk (KTD-1/KTD-2). Each branch below mines a single,
+    # deadline-bounded piece of history; which piece depends on where this ref's witness and
+    # genesis-backfill frontier currently stand.
+    if treat_as_root is not None:
+        # R10 genesis-horizon (`init(horizon=...)`): unbounded and unchunked, exactly as before --
+        # a horizon seals its boundary permanently at `init` time, so this ref never backfills.
+        since = gb.parent_of(treat_as_root)
+        mined_ops, _last_sha = mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=include_dirty)
+        new_witness = head
+        new_backfill_state = {"genesis_frontier": None, "reached_genesis": True}
+    elif prev_head is None:
+        # True first contact: there is no earlier witness to catch up from, so this chunk walks
+        # backward from `head` instead (U2). Bootstraps `witness=head` at this same checkpoint --
+        # never via a separate forward mine -- so the ref is immediately "forward current" and
+        # every later call on it is pure backward backfill until `reached_genesis`.
+        deadline = time.monotonic() + _CHUNK_BUDGET_SECONDS
+        window = gb.history_backward(head)
+        mined_ops, last_sha = mine(repo, history_override=window, deadline=deadline, include_dirty=include_dirty)
+        new_witness = head
+        new_backfill_state = {
+            "genesis_frontier": last_sha,
+            "reached_genesis": last_sha is not None and gb.parent_of(last_sha) is None,
+        }
+    elif prev_head == head and has_backfill_record and not backfill_state.get("reached_genesis", False):
+        # Already forward-current, and a backward walk is actually in progress for *this* key:
+        # continue it one deadline-bounded window past where the last chunk stopped. Gated on
+        # `has_backfill_record` (not just `reached_genesis`) so a witness planted by `record_ideal`
+        # (as `put()` does for its own materialize commit, or as a detached HEAD's per-commit
+        # `_ref_key` fallback does on every new commit, KTD-3 follow-up) -- which never seeds a
+        # backfill entry for its key -- falls through to the ordinary catch-up branch below instead
+        # of mistaking "no entry" for "needs a fresh genesis walk" and re-mining history that was
+        # already fully accounted for under the ref's previous key.
+        deadline = time.monotonic() + _CHUNK_BUDGET_SECONDS
+        frontier = backfill_state.get("genesis_frontier")
+        start = head if frontier is None else gb.parent_of(frontier)
+        window = gb.history_backward(start) if start is not None else []
+        mined_ops, last_sha = mine(repo, history_override=window, deadline=deadline, include_dirty=include_dirty)
+        if last_sha is not None:
+            new_backfill_state = {"genesis_frontier": last_sha, "reached_genesis": gb.parent_of(last_sha) is None}
+    else:
+        # Ordinary forward catch-up: mine whatever landed on `head` since the last witness.
+        # Prioritized over backward backfill whenever the two compete (a ref mid-backfill that
+        # also gains new commits catches up forward first). Also the terminal steady state
+        # (`prev_head == head`, `reached_genesis` already `True`) -- an empty range that still
+        # carries the dirty pass, so `get()` keeps absorbing working-tree edits (R9) forever, not
+        # just until backfill finishes.
+        deadline = time.monotonic() + _CHUNK_BUDGET_SECONDS
+        mined_ops, _last_sha = mine(repo, since=prev_head, target=head, deadline=deadline, include_dirty=include_dirty)
+        new_witness = head
+
+    # (3) Persist each mined op. Partition by the *returned* (post-merge) op's provenance, not the
+    # mined op's: a dirty edit whose content is byte-identical to something already committed
+    # comes back from `store.add` as the existing op with its real provenance intact, so it
+    # rightly counts as committed, not pending.
+    new_committed_ids: set[str] = set()
+    pending_ids: set[str] = set()
+    stored_ops = []
     for op in mined_ops:
         stored = store.add(op)
         stored_ops.append(stored)
@@ -308,40 +371,46 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
         else:
             opindex.apply_delta(repo, stored_ops)
 
-    # (3) Seed the persisted ideal from a provenance scan the first time this ref is tracked;
+    # Seed the persisted ideal from a provenance scan the first time this ref is tracked;
     # thereafter the stored set is authoritative (it can encode explicit exclusions -- U8's
     # revert/pin -- that a scan of git ancestry can't).
-    key = _ref_key(gb) or head
     ideal_table = _load_ideal_table(repo)
     already_seeded = key in ideal_table
     base_ids = set(ideal_table[key]) if already_seeded else _committed_ids_by_provenance(gb, store)
 
-    # (4) The durable ideal gains only newly-committed ops; the dirty overlay is never persisted,
-    # so a discarded working-tree edit (e.g. `git checkout -- .`) simply stops appearing on the
-    # next `get()` rather than lingering in the table. Reduce to a valid ideal *before* persisting
+    # The durable ideal gains only newly-committed ops; the dirty overlay is never persisted, so a
+    # discarded working-tree edit (e.g. `git checkout -- .`) simply stops appearing on the next
+    # `get()` rather than lingering in the table. Reduce to a valid ideal *before* persisting
     # (U22.5): real history mined cold contains add/delete/re-add forks and predecessors squashed
     # out of this ref, so the raw union is not directly constructible -- persisting it unreduced
     # would leave an invalid `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
     all_ops = opindex.index_ops(repo)
     committed_ids = set(order.reduce_to_ideal(base_ids | new_committed_ids, all_ops))
-    # The ideal table and the witness must advance together (R5): a crash that moved the witness
-    # without the table would make the next `get()` mine nothing new yet trust a stale ideal. One
-    # locked section, each file landing atomically. Ops were added above, before this section, so
-    # `Store.add`'s own lock never nests inside this one (U23 / locked_section contract).
-    #
-    # Skip the write entirely when nothing actually changed (unless this ref has never been
-    # seeded): `ideal.json`/`witness.json` are `.sgt/**/*.json` paths a client's file watcher
-    # invalidates its cache on, and every read calls `get()` -- an unconditional rewrite here
-    # would touch their mtime on every no-op read, making a client's own refresh retrigger
-    # another refresh forever.
-    prev_head = _load_witnesses(repo).get(key)
-    if not already_seeded or committed_ids != base_ids or head != prev_head:
+
+    # (4) Checkpoint: the witness, the ideal table, and the backfill state must each land
+    # atomically whenever any of them changed (R5, widened to a triple by this unit) -- a crash
+    # that moved one without the others would make the next call trust stale state. One locked
+    # section; only the tables that actually changed get rewritten, so a no-op read still never
+    # touches a `.sgt/**/*.json` mtime a client's file watcher would react to. A backward-only
+    # chunk can advance `genesis_frontier` while leaving the witness and the reduced ideal set
+    # untouched, and that alone must still persist here -- otherwise backfill progress silently
+    # fails to checkpoint. Ops were added above, before this section, so `Store.add`'s own lock
+    # never nests inside this one (U23 / locked_section contract).
+    ideal_changed = not already_seeded or committed_ids != base_ids
+    witness_changed = new_witness != prev_head
+    backfill_changed = new_backfill_state != backfill_state
+    if ideal_changed or witness_changed or backfill_changed:
         with locked_section(repo):
-            ideal_table[key] = sorted(committed_ids)
-            _save_ideal_table(repo, ideal_table)
-            table = _load_witnesses(repo)
-            table[key] = head
-            _save_witnesses(repo, table)
+            if ideal_changed:
+                ideal_table[key] = sorted(committed_ids)
+                _save_ideal_table(repo, ideal_table)
+            if witness_changed:
+                table = _load_witnesses(repo)
+                table[key] = new_witness
+                _save_witnesses(repo, table)
+            if backfill_changed:
+                backfill_table[key] = new_backfill_state
+                _save_backfill_state(repo, backfill_table)
 
     # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
     # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
@@ -350,11 +419,7 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
 
 def get(repo: str | Path) -> Ideal:
     """Mine what's new to the current ref, persist it, and return the ref's current ideal."""
-    repo = Path(repo)
-    gb = GitBinding(repo)
-    key = _ref_key(gb)
-    since = _load_witnesses(repo).get(key) if key is not None else None
-    return _sync(repo, since=since)
+    return _sync(Path(repo))
 
 
 def init(repo: str | Path, horizon: str | None = None) -> Ideal:
@@ -372,7 +437,7 @@ def init(repo: str | Path, horizon: str | None = None) -> Ideal:
     horizon_sha = gb.rev_parse(horizon)
     if horizon_sha is None:
         raise ValueError(f"cannot resolve horizon {horizon!r}")
-    return _sync(repo, since=gb.parent_of(horizon_sha), treat_as_root=horizon_sha)
+    return _sync(repo, treat_as_root=horizon_sha)
 
 
 def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal") -> str:
