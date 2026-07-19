@@ -20,6 +20,13 @@ so the verb's own change lands on top of *current* reality, not stale state.
 mined at all -- everything at the horizon commit becomes one add-op per symbol (via `mine`'s
 `treat_as_root`), and mining continues normally from there to HEAD. Lazy background mining of
 pre-horizon history is deliberately out of scope here (plan Scope Boundaries).
+
+A ref with no horizon that `get()` meets for the first time does not mine its full history in one
+shot: `_sync` bootstraps its witness to HEAD immediately, then walks the rest of that history
+backward one deadline-bounded chunk per call, checkpointing its genesis-backfill frontier after
+every chunk (see `_sync`'s own comments). So a client with a bounded per-call timeout makes
+durable forward progress on a never-before-synced ref instead of restarting from scratch on every
+retry.
 """
 
 from __future__ import annotations
