@@ -30,7 +30,7 @@ def test_lockfile_edits_collapse_under_derived_flag(tmp_path):
     (tmp_path / "package-lock.json").write_text('{"v": 2}\n', encoding="utf-8")
     sha2 = gb.commit_all("bump lockfile")
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
 
     for sha in (sha1, sha2):
         touch = _ops_for_commit(ops, sha)
@@ -49,14 +49,14 @@ def test_entity_override_on_ungrammared_path_is_a_content_noop(tmp_path):
     (tmp_path / "config.yaml").write_text("setting: original\n", encoding="utf-8")
     sha1 = gb.commit_all("add config")
 
-    ops_before_override = mine(tmp_path)
+    ops_before_override, _last_sha = mine(tmp_path)
     op1 = _ops_for_commit(ops_before_override, sha1)[0]
 
     _write_tiers_json(tmp_path, {"entity": ["config.yaml"]})
     (tmp_path / "config.yaml").write_text("setting: changed\n", encoding="utf-8")
     sha2 = gb.commit_all("promote config.yaml to entity (still no grammar) + edit it")
 
-    ops_after = mine(tmp_path)
+    ops_after, _last_sha = mine(tmp_path)
 
     # the pre-override commit's op is byte-identical -- promoting later never re-mints it
     op1_after = _ops_for_commit(ops_after, sha1)[0]
@@ -123,14 +123,14 @@ def test_divergent_working_tier_maps_mine_to_byte_identical_ops(tmp_path):
     (tmp_path / "config.yaml").write_text("setting: value\n", encoding="utf-8")
     gb.commit_all("add foo and config")
 
-    ops_a = mine(tmp_path)
+    ops_a, _last_sha = mine(tmp_path)
 
     # An uncommitted, divergent working-tree override -- never committed, so it must have zero
     # effect on mining.
     _write_tiers_json(tmp_path, {"ignored": ["a.py"]})
     (tmp_path / ".sgtignore").write_text("config.yaml\n", encoding="utf-8")
 
-    ops_b = mine(tmp_path)
+    ops_b, _last_sha = mine(tmp_path)
 
     assert {op.id for op in ops_a} == {op.id for op in ops_b}
 
@@ -145,7 +145,7 @@ def test_demoted_path_post_demotion_edit_materializes_as_whole_file(tmp_path):
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("add foo")
 
-    ops_before = mine(tmp_path)
+    ops_before, _last_sha = mine(tmp_path)
     entity_op = next(op for op in ops_before if "a.py::foo" in op.footprint)
 
     _write_tiers_json(tmp_path, {"opaque": ["a.py"]})

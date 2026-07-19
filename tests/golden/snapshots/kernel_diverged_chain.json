@@ -58,7 +58,11 @@
     ],
     "roots": [
       "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139"
-    ]
+    ],
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true
+    }
   },
   "oplog_view": {
     "count": 6,
@@ -147,6 +151,10 @@
       "status": "unconfigured"
     },
     "symbols": 4,
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true
+    },
     "unmanaged": []
   }
 }

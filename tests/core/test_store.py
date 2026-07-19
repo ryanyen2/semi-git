@@ -358,7 +358,9 @@ def test_all_ops_skips_corrupt_file_instead_of_raising(tmp_path):
 def test_fsck_reports_chain_gap_naming_the_symbol(tmp_path):
     """R11 linearity: an op whose non-None before_version is produced by no op in the store is a
     chain gap. fsck names the symbol@version. Advisory only -- real histories carry benign
-    off-ref-predecessor gaps, so a gap does not by itself flip `ok`."""
+    off-ref-predecessor gaps, so a gap does not by itself flip `ok`. No ref is mid-backfill (no
+    `backfill.json` at all) here, so U5's split must leave it under `chain_gaps`, never
+    `pending_chain_gaps` -- the regression guard for "nothing is mid-backfill"."""
     store = Store(tmp_path)
     store.init()
     store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
@@ -367,6 +369,46 @@ def test_fsck_reports_chain_gap_naming_the_symbol(tmp_path):
 
     report = fsck(tmp_path)
     assert any("a.py::foo" in g for g in report.chain_gaps)
+    assert report.pending_chain_gaps == ()
+
+
+def test_fsck_moves_a_chain_gap_to_pending_when_it_sits_at_an_open_backfill_frontier(tmp_path):
+    """U5: a chain gap whose provenance sha equals a ref's still-open `genesis_frontier` is exactly
+    where a chunked backward walk (U3/U4) currently stopped -- expected and self-healing once the
+    walk reaches genesis, not a genuine gap. fsck reports it under `pending_chain_gaps` instead of
+    `chain_gaps`."""
+    from sgt import state
+    store = Store(tmp_path)
+    store.init()
+    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
+    # v1 is unproduced, but "s1" -- the op referencing it -- is exactly refs/heads/main's open
+    # backward-walk frontier, not yet reached genesis.
+    store.add(make_op({"a.py::foo": ("v1", "v2")}, {"a.py::foo": b"b2"}, provenance=("s1",)))
+    state.save_json(tmp_path, "backfill", {
+        "refs/heads/main": {"genesis_frontier": "s1", "reached_genesis": False},
+    })
+
+    report = fsck(tmp_path)
+    assert not any("a.py::foo" in g for g in report.chain_gaps)
+    assert any("a.py::foo" in g for g in report.pending_chain_gaps)
+
+
+def test_fsck_keeps_a_chain_gap_confirmed_once_its_ref_reached_genesis(tmp_path):
+    """A ref whose backward walk already finished (`reached_genesis=True`) no longer excuses a gap
+    at its old frontier -- a rebase/squash that drops an off-ref predecessor for good on a fully-
+    backfilled ref still reports under `chain_gaps`, unchanged from before U5."""
+    from sgt import state
+    store = Store(tmp_path)
+    store.init()
+    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
+    store.add(make_op({"a.py::foo": ("v1", "v2")}, {"a.py::foo": b"b2"}, provenance=("s1",)))
+    state.save_json(tmp_path, "backfill", {
+        "refs/heads/main": {"genesis_frontier": "s1", "reached_genesis": True},
+    })
+
+    report = fsck(tmp_path)
+    assert any("a.py::foo" in g for g in report.chain_gaps)
+    assert report.pending_chain_gaps == ()
 
 
 def test_fsck_reports_invalid_ideal_table_entry_with_ref_key(tmp_path):

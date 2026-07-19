@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from sgt.core import order
 from sgt.core.mine import mine
 from sgt.store.gitbind import GitBinding, init_store
@@ -29,7 +31,7 @@ def test_tangled_commit_untangles_into_two_ops(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     tangled_sha = corpus.commit_shas(repo)[4]  # "tangled: add baz ... and edit unrelated qux ..."
 
-    ops = mine(repo)
+    ops, _last_sha = mine(repo)
     entity_ops = _entity_ops(_ops_for_commit(ops, tangled_sha))
     assert len(entity_ops) == 2, [op.footprint for op in entity_ops]
     touched = {sym for op in entity_ops for sym in op.footprint}
@@ -41,7 +43,7 @@ def test_yaml_edit_yields_one_whole_file_op(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     yaml_sha = corpus.commit_shas(repo)[6]  # "edit non-parseable config"
 
-    ops = mine(repo)
+    ops, _last_sha = mine(repo)
     yaml_ops = _ops_for_commit(ops, yaml_sha)
     assert len(yaml_ops) == 1
     assert list(yaml_ops[0].footprint) == ["config.yaml"]
@@ -56,7 +58,7 @@ def test_binary_change_yields_blob_oid_version(tmp_path):
     expected_oid = gb.blob_oid(first_sha, "logo.bin")
     assert expected_oid is not None
 
-    ops = mine(repo)
+    ops, _last_sha = mine(repo)
     binary_ops = [op for op in _ops_for_commit(ops, first_sha) if "logo.bin" in op.footprint]
     assert len(binary_ops) == 1
     _before, after_version = binary_ops[0].footprint["logo.bin"]
@@ -82,7 +84,7 @@ def test_unparseable_midedit_degrades_to_whole_file(tmp_path):
 
     from sgt.core.op import is_bottom
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
     broken_ops = _ops_for_commit(ops, sha2)
     whole_file_ops = [op for op in broken_ops if list(op.footprint) == ["a.py"] and not is_bottom(op.footprint["a.py"][1])]
     assert len(whole_file_ops) == 1  # the live whole-file degrade symbol
@@ -119,7 +121,7 @@ def test_rename_with_reformat_links_as_one_move(tmp_path):
     )
     sha2 = gb.commit_all("rename foo -> bar, reformat body")
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
     moved = [op for op in _ops_for_commit(ops, sha2) if op.kind == "move"]
     assert len(moved) == 1
     assert set(moved[0].footprint) == {"a.py::foo"}  # canonical id anchors to the older side
@@ -141,7 +143,7 @@ def test_cross_scope_move_is_delete_add_not_silent_weld(tmp_path):
     )
     sha2 = gb.commit_all("move helper into Box as a method")
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
     reshape_ops = [
         op for op in _ops_for_commit(ops, sha2)
         if any("helper" in sym or sym == "a.py::Box" for sym in op.footprint)
@@ -153,8 +155,8 @@ def test_cross_scope_move_is_delete_add_not_silent_weld(tmp_path):
 def test_mining_is_repeatable_across_two_calls(tmp_path):
     """Mining the same history twice yields byte-identical Op payloads, not just ids."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    first = mine(repo)
-    second = mine(repo)
+    first, _last_sha = mine(repo)
+    second, _last_sha = mine(repo)
     assert first == second
 
 
@@ -178,7 +180,7 @@ def test_rename_out_of_sgt_dir_stays_excluded_after_a_later_delete(tmp_path):
     (bak_dir / "frontier.json").unlink()
     gb.commit_all("drop the old backup")  # a plain delete, not part of any rename this time
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
     assert not any(".sgt.bak/frontier.json" in op.footprint for op in ops)
 
     ids = {op.id for op in ops}
@@ -196,7 +198,7 @@ def test_mine_skips_symlink_paths(tmp_path):
     (tmp_path / "link.py").symlink_to("/etc/hostname")  # points outside the repo
     gb.commit_all("add symlink")
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
     assert not any("link.py" in sym for op in ops for sym in op.footprint), (
         "symlink path leaked into the op stream"
     )
@@ -215,7 +217,7 @@ def test_mine_skips_symlink_delete(tmp_path):
     (tmp_path / "link.py").unlink()
     gb.commit_all("drop link")
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
     assert not any("link.py" in sym for op in ops for sym in op.footprint)
     ids = {op.id for op in ops}
     assert order.is_valid_ideal(ops, ids)
@@ -246,7 +248,8 @@ def test_add_delete_readd_is_one_chain(tmp_path):
     (tmp_path / "notes.txt").write_text("beta\n", encoding="utf-8")
     gb.commit_all("re-add notes")
 
-    ops = [op for op in mine(tmp_path) if "notes.txt" in op.footprint]
+    mined, _last_sha = mine(tmp_path)
+    ops = [op for op in mined if "notes.txt" in op.footprint]
     assert len(ops) == 3
     kinds = sorted(op.kind for op in ops)
     assert kinds == ["add", "prune", "rework"]  # add, prune (salted), re-add chained off the prune
@@ -289,7 +292,8 @@ def test_readd_cycle_produces_distinct_chained_ops(tmp_path):
     (tmp_path / "n.txt").write_text("C\n", encoding="utf-8")
     gb.commit_all("re-add C")
 
-    ops = [op for op in mine(tmp_path) if "n.txt" in op.footprint]
+    mined, _last_sha = mine(tmp_path)
+    ops = [op for op in mined if "n.txt" in op.footprint]
     bottoms = {op.footprint["n.txt"][1] for op in ops if op.kind == "prune"}
     assert bottoms == {_readd_bottom(del1), _readd_bottom(del2)}  # two DISTINCT salted bottoms
 
@@ -313,7 +317,7 @@ def test_incremental_mine_chains_readd_when_deletion_predates_since(tmp_path):
     (tmp_path / "n.txt").write_text("B\n", encoding="utf-8")
     readd_sha = gb.commit_all("re-add long after the delete")
 
-    inc = mine(tmp_path, since=since)  # deletion at del_sha is BEFORE `since`
+    inc, _last_sha = mine(tmp_path, since=since)  # deletion at del_sha is BEFORE `since`
     readd = next(op for op in inc if readd_sha in op.provenance and "n.txt" in op.footprint)
     assert readd.footprint["n.txt"][0] == _readd_bottom(del_sha)  # chained past the range boundary
 
@@ -333,7 +337,7 @@ def test_extension_flip_bridges_without_scheme_mix(tmp_path):
     (tmp_path / "m.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("replace with parseable m.py")
 
-    ops = mine(tmp_path)
+    ops, _last_sha = mine(tmp_path)
     # the whole-file m.txt chain is closed (its tip is a bottom), and m.py materializes from entities
     txt_ops = [op for op in ops if "m.txt" in op.footprint]
     assert any(is_bottom(op.footprint["m.txt"][1]) for op in txt_ops)
@@ -366,3 +370,86 @@ def test_dirty_pass_syntax_error_mints_no_transition_ops(tmp_path):
     assert not any(is_bottom(op.footprint["a.py::foo"][1]) for op in foo_ops), (
         "a transient dirty-pass syntax error minted a permanent transition (BOTTOM) op"
     )
+
+
+# -- U1: deadline-bounded mining (groundwork for chunked incremental sync) --------------------
+
+
+def test_deadline_far_in_the_future_matches_unbounded_mine(tmp_path):
+    """A `deadline` that never triggers must leave `mine()`'s op output byte-identical to the
+    unbounded call -- the cutoff is purely a stopping condition, never a behavior change on the
+    ops actually mined."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+
+    bounded_ops, bounded_last_sha = mine(repo, deadline=time.monotonic() + 10_000.0)
+    unbounded_ops, unbounded_last_sha = mine(repo)
+
+    assert bounded_ops == unbounded_ops
+    assert bounded_last_sha == unbounded_last_sha == corpus.commit_shas(repo)[-1]
+
+
+def test_deadline_already_expired_mines_nothing(tmp_path):
+    """A `deadline` already in the past when `mine()` is called must not process even the first
+    commit -- zero ops, `last_sha` stays `None`."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+
+    ops, last_sha = mine(repo, deadline=time.monotonic() - 1.0)
+
+    assert ops == []
+    assert last_sha is None
+
+
+def test_deadline_mid_history_stops_after_the_in_flight_commit(tmp_path, monkeypatch):
+    """A deadline that expires partway through history stops the commit loop right after the
+    commit that was in flight finishes -- the result is exactly that prefix of commits' ops, and
+    `last_sha` names the last one actually processed. The clock is faked (monotonically increasing
+    by one per `time.monotonic()` call) rather than using real `time.sleep`, so the deadline is hit
+    deterministically after a chosen number of commits."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    shas = corpus.commit_shas(repo)
+    k = 3  # stop right after the k-th commit; linear_history has 7 commits total
+
+    counter = {"n": -1}
+
+    def fake_monotonic():
+        counter["n"] += 1
+        return float(counter["n"])
+
+    monkeypatch.setattr(time, "monotonic", fake_monotonic)
+
+    ops, last_sha = mine(repo, deadline=float(k))
+    assert last_sha == shas[k - 1]
+
+    monkeypatch.undo()  # restore the real clock for the unbounded reference mine below
+    full_ops, _full_last_sha = mine(repo)
+    expected_ids = {op.id for op in full_ops if set(op.provenance) & set(shas[:k])}
+    assert {op.id for op in ops} == expected_ids
+    assert expected_ids, "sanity: the first k commits should mint at least one op"
+
+
+def test_deadline_hit_before_target_skips_dirty_pass(tmp_path, monkeypatch):
+    """`include_dirty` only makes sense once a chunk actually reaches `target` -- a deadline that
+    stops the commit loop before that must skip the working-tree pass entirely, so no
+    `provenance=()` (the dirty-pass marker, per `_mine_one`) op ever lands in a partial chunk's
+    result."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("commit 1")
+    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("commit 2")
+    # a dirty, uncommitted change -- if the dirty pass ran, this would surface as a
+    # `provenance=()` op.
+    (tmp_path / "c.py").write_text("def baz():\n    return 3\n", encoding="utf-8")
+
+    counter = {"n": -1}
+
+    def fake_monotonic():
+        counter["n"] += 1
+        return float(counter["n"])
+
+    monkeypatch.setattr(time, "monotonic", fake_monotonic)
+
+    ops, last_sha = mine(tmp_path, deadline=1.0, include_dirty=True)
+
+    assert last_sha == gb.commit_shas()[-1]  # commit_shas() is newest-first; only the first (oldest) commit was processed
+    assert not any(op.provenance == () for op in ops), "dirty pass ran despite hitting the deadline"
