@@ -202,6 +202,7 @@ def merge_op(repo: str | Path, tip_a: str, tip_b: str, intent: str | None = None
         h = make_op(
             {sym: (before, _PENDING)}, {}, kind="merge", off_chain=True,
             intent=intent or f"merge-op: reconcile {a_id[:12]} and {b_id[:12]} on {sym}",
+            resolves=frozenset({a_id, b_id}),
         )
         store.add_hollow(h)
         hollows.append(h)
@@ -431,7 +432,7 @@ def build_candidate(
         after = _positional_version(sym, _content_version(image))
         op = make_op(
             {sym: (before, after)}, {sym: image}, requires=hollow.requires, kind=hollow.kind,
-            intent=hollow.intent,
+            intent=hollow.intent, resolves=hollow.resolves,
         )
         fulfilled[hollow_id] = op
         candidate_ids.add(op.id)

@@ -135,6 +135,10 @@ class Op:
     derived: bool = False  # S4/U27: touches a generated/vendored file (e.g. a lockfile) --
     # advisory only, like intent/provenance/attribution, so review surfaces can collapse it;
     # excluded from the id since re-tagging a path derived/not-derived is not a content change.
+    resolves: frozenset[str] = frozenset()  # D5: op id(s) of the fork tip(s) this op reconciles
+    # (structured counterpart to the free-text `intent` a `merge-op` hollow already carries) --
+    # advisory only, like intent/attribution; excluded from the id since which fork an op resolves
+    # is not itself part of its content.
 
 
 def compute_id(
@@ -173,10 +177,11 @@ def make_op(
     miner_version: str = MINER_VERSION,
     off_chain: bool = False,
     derived: bool = False,
+    resolves: frozenset[str] = frozenset(),
 ) -> Op:
     """Construct an Op with its id computed from its content -- the only supported way to make
-    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``/``derived``)
-    rides along but does not enter the id."""
+    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``/``derived``/
+    ``resolves``) rides along but does not enter the id."""
     op_id = compute_id(footprint, images, requires, kind, miner_version)
     return Op(
         id=op_id,
@@ -190,6 +195,7 @@ def make_op(
         miner_version=miner_version,
         off_chain=off_chain,
         derived=derived,
+        resolves=resolves,
     )
 
 
