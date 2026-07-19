@@ -233,7 +233,7 @@ def _theirs_ideal(
     # by the mine and dedup. Theirs' divergent ops alone form its ideal contribution -- the shared
     # base below `merge_base` already rides in `ours_ideal`, so the union covers it.
     base = gb.merge_base(ours_sha, theirs_sha)
-    mined = mine(repo, since=base, target=theirs_sha)
+    mined, _last_sha = mine(repo, since=base, target=theirs_sha)
     mined_ids = frozenset(op.id for op in mined)
 
     # Footgun (scenario 5): the tip carries *new* fine `.sgt/ops` blobs that the mine did NOT
@@ -285,5 +285,5 @@ def recover_base(
         if recovered is not None and _witnessed(gb, base_sha, frozenset(recovered)):
             return frozenset(recovered), "ideal-record"
 
-    mined = mine(repo, target=base_sha)  # full range (since=None) -> the base's whole ideal
+    mined, _last_sha = mine(repo, target=base_sha)  # full range (since=None) -> the base's whole ideal
     return frozenset(op.id for op in mined), "mined"

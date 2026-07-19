@@ -23,6 +23,7 @@ seen before `X`) is the store's job (U3/U6), which sees every previously-mined o
 from __future__ import annotations
 
 import hashlib
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -630,7 +631,9 @@ def mine(
     treat_as_root: str | None = None,
     include_dirty: bool = False,
     target: str = "HEAD",
-) -> list[Op]:
+    deadline: float | None = None,
+    history_override: list[tuple[str, str | None, str]] | None = None,
+) -> tuple[list[Op], str | None]:
     """Mine an ordered op stream from `repo`'s history. `since`, if given, restricts mining to
     commits after that witness SHA (`since..target`) -- each commit is still diffed against its
     own true parent, so incremental mining is exact, not an approximation. `target` (default HEAD)
@@ -641,7 +644,23 @@ def mine(
     one add-op per symbol, and deeper history is never mined at all. `include_dirty`, if set,
     additionally mines one virtual "pending commit" for the current uncommitted working tree
     (diffed against real HEAD) after the real-commit loop -- its ops carry `provenance=()`
-    until a real commit later witnesses that exact content (Gap 2, U7.5)."""
+    until a real commit later witnesses that exact content (Gap 2, U7.5).
+
+    `deadline`, if given, is a `time.monotonic()` cutoff: once reached, the commit loop stops
+    consuming further commits (the commit in flight when it's reached still finishes and stays in
+    the result). `None` (default) mines unbounded, exactly as before -- groundwork for a chunked
+    incremental sync that caps how long one `mine()` call runs; this unit only adds the primitive,
+    a later one drives the chunking. `history_override`, if given, is a pre-computed,
+    already-ordered `(sha, parent, subject)` list in the same shape `GitBinding.history` returns --
+    the commit loop iterates it directly instead of calling the binding, letting a caller hand
+    `mine()` a chunk of history it already sliced. `None` (default) derives history from the
+    binding exactly as before.
+
+    Returns `(ops, last_sha)`: `last_sha` is `None` if the history/override list was empty,
+    otherwise the sha of the last commit actually processed by the loop -- equal to `target`'s
+    resolved sha only when the loop ran to completion without hitting `deadline`. When the loop
+    stops early on `deadline`, the `include_dirty` pass is skipped entirely: a partial chunk never
+    mines the working tree, which only makes sense once a chunk actually reaches `target`."""
     repo = Path(repo)
     gb = GitBinding(repo)
     uf = _UnionFind()
@@ -653,15 +672,22 @@ def mine(
     # only, same tier as the union-find above (R14): a `since`-restricted incremental mine() that
     # starts after such a rename won't see it either.
 
-    history = gb.history(since, target)
-    for order, (sha, parent, _subject) in enumerate(history):
-        if sha == treat_as_root:
-            parent = None
-        touches.extend(
-            _mine_one(gb, uf, order, sha, parent, constraints=constraints, excluded_paths=excluded_paths)
-        )
+    history = history_override if history_override is not None else gb.history(since, target)
+    last_sha: str | None = None
+    hit_deadline = deadline is not None and time.monotonic() >= deadline
+    if not hit_deadline:
+        for order, (sha, parent, _subject) in enumerate(history):
+            if sha == treat_as_root:
+                parent = None
+            touches.extend(
+                _mine_one(gb, uf, order, sha, parent, constraints=constraints, excluded_paths=excluded_paths)
+            )
+            last_sha = sha
+            if deadline is not None and time.monotonic() >= deadline:
+                hit_deadline = True
+                break
 
-    if include_dirty:
+    if include_dirty and not hit_deadline:
         touches.extend(
             _mine_one(
                 gb, uf, len(history), gb.working_tree_snapshot(), gb.head(), is_pending=True,
@@ -670,7 +696,7 @@ def mine(
             )
         )
 
-    return _build_ops(touches, uf)
+    return _build_ops(touches, uf), last_sha
 
 
 def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:

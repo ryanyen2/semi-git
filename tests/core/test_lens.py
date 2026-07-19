@@ -13,8 +13,10 @@ import pytest
 from sgt.core.fold import code
 from sgt.core.lens import (
     DirtyWorkingTreeError,
+    _load_backfill_state,
     _load_ideal_table,
     _ref_key,
+    _save_backfill_state,
     _save_ideal_table,
     get,
     init,
@@ -230,6 +232,23 @@ def test_second_get_with_no_new_commits_does_not_rewrite_ideal_and_witness(tmp_p
 
     mtime_after = (ideal_path.stat().st_mtime_ns, witness_path.stat().st_mtime_ns)
     assert mtime_after == mtime_before, "get() rewrote ideal_table/witness with no new state"
+
+
+def test_backfill_state_round_trips(tmp_path):
+    """`_save_backfill_state`/`_load_backfill_state` are pure passthrough plumbing over
+    `.sgt/local/backfill.json` -- a later unit reads/writes the genesis-backfill frontier through
+    them, but this unit only wires the persistence, not any mining behavior."""
+    repo = tmp_path / "repo"
+    table = {"refs/heads/main": {"genesis_frontier": "abc123", "reached_genesis": False}}
+    _save_backfill_state(repo, table)
+    assert _load_backfill_state(repo) == table
+
+
+def test_backfill_state_missing_file_returns_empty_dict(tmp_path):
+    """Symmetric with `_load_witnesses`'s missing-file behavior: a fresh repo where
+    `_save_backfill_state` was never called loads as `{}`, not an error."""
+    repo = tmp_path / "repo"
+    assert _load_backfill_state(repo) == {}
 
 
 def _count_snapshot_calls(monkeypatch):

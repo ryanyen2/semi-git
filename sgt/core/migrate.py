@@ -141,7 +141,7 @@ def _plan(repo: Path) -> _Plan:
     gb = GitBinding(repo)
     store = Store(repo)
     v2_ops = [op for op in store.all_ops() if op.miner_version != MINER_VERSION]
-    v3_ops = mine(repo)
+    v3_ops, _last_sha = mine(repo)
     mapping, orphaned, clean, remapped = _build_map(v2_ops, v3_ops)
 
     from sgt.core.lens import _ref_key
@@ -430,7 +430,7 @@ def migrate_ops_v3(repo: str | Path, *, dry_run: bool = True) -> OpsV3Report:
     if manifest is not None:
         # Resume: v3 ops re-mine deterministically, but the map must come from the manifest -- the
         # pre-v3 op files it was built from may already be pruned.
-        v3_ops = mine(repo)
+        v3_ops, _last_sha = mine(repo)
         mapping = manifest["map"]
         current_key = manifest["current_key"]
         current_ideal = manifest["current_ideal"]

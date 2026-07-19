@@ -67,6 +67,17 @@ def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
     state.save_json(repo, "ideal_table", table)
 
 
+def _load_backfill_state(repo: Path) -> dict[str, dict]:
+    """The persisted per-ref genesis-backfill frontier: `{ref_key: {"genesis_frontier": ...,
+    "reached_genesis": ...}}`. Local, never travels -- like `_load_witnesses`, an absent file
+    loads as `{}`."""
+    return state.load_json(repo, "backfill", default={})
+
+
+def _save_backfill_state(repo: Path, table: dict[str, dict]) -> None:
+    state.save_json(repo, "backfill", table)
+
+
 def _load_ideal_journal(repo: Path) -> dict[str, list[dict]]:
     """The per-ref undo stack: `{ref_key: [{ideal: [op_ids], witness: sha}, ...]}` -- the prior
     ideals `record_ideal` pushed before each overwrite (U26). Local, never travels."""
@@ -278,7 +289,8 @@ def _sync(repo: Path, since: str | None, treat_as_root: str | None = None) -> Id
     # `.sgt/` path actually differs from HEAD (R16); on a tree whose only churn is `.sgt/` state
     # it would rebuild the whole graph only to produce no source ops.
     include_dirty = gb.has_dirty_source()
-    for op in mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=include_dirty):
+    mined_ops, _last_sha = mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=include_dirty)
+    for op in mined_ops:
         stored = store.add(op)
         stored_ops.append(stored)
         (new_committed_ids if stored.provenance else pending_ids).add(stored.id)
