@@ -21,6 +21,9 @@ TRAILER_KEY = "Sgt-Node-Id"
 # embodies. Multi-valued like `Co-Authored-By` -- a commit can witness many ops at once.
 OP_TRAILER_KEY = "Sgt-Op"
 
+# D1's append-only land-log trailer: the shared-branch commit sha a log entry records landing.
+LANDED_SHA_KEY = "Sgt-Landed-Sha"
+
 # git's canonical empty-tree object: diffing against it makes a root commit (no parent)
 # read as "everything added".
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -85,6 +88,19 @@ def parse_op_ids(commit_message: str) -> list[str]:
         for line in commit_message.splitlines()
         if (stripped := line.strip()).startswith(f"{OP_TRAILER_KEY}:")
     ]
+
+
+def format_landed_sha(sha: str) -> str:
+    return f"{LANDED_SHA_KEY}: {sha}"
+
+
+def parse_landed_sha(commit_message: str) -> str | None:
+    """The landed commit sha embedded in a D1 log entry's trailer, if any."""
+    for line in commit_message.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{LANDED_SHA_KEY}:"):
+            return stripped.split(":", 1)[1].strip()
+    return None
 
 
 def _hunk_new_range(header: str) -> tuple[int, int] | None:
@@ -533,6 +549,14 @@ class GitBinding:
     def fetch(self, remote: str, branch: str) -> None:
         self._git("fetch", remote, branch)
 
+    def fetch_ref(self, remote: str, refspec: str) -> bool:
+        """Best-effort `git fetch <remote> <refspec>` for an arbitrary ref (D1's land log lives
+        outside `refs/heads/`, so it needs its own refspec rather than `fetch`'s plain branch
+        name). Swallows failure -- an older remote that has never pushed the ref is not an error,
+        just nothing to recover from yet. Returns whether the fetch succeeded."""
+        proc = self._git("fetch", remote, refspec, check=False)
+        return proc.returncode == 0
+
     def checkout_branch(self, branch: str) -> None:
         """Move HEAD to an existing `branch`, materializing its committed tree -- the git mechanism
         behind `sgt switch` (U26). sgt mines-on-contact on either side of it so the op store never
@@ -566,6 +590,14 @@ class GitBinding:
                 f"git push {remote} HEAD:refs/heads/{branch} failed "
                 f"({proc.returncode}): {proc.stderr.strip()}"
             )
+
+    def push_ref(self, remote: str, refspec: str) -> bool:
+        """Best-effort `git push <remote> <refspec>` for an arbitrary ref (D1's land log). Never
+        forces and swallows failure -- the branch push it accompanies is the one that must
+        succeed; the log ref is advisory transport, not correctness-bearing. Returns whether the
+        push succeeded."""
+        proc = self._git("push", remote, refspec, check=False)
+        return proc.returncode == 0
 
     # -- worktrees: session scratch trees (plan U30, D5) --------------------
     def worktree_add(self, path: str | Path, branch: str, base_sha: str) -> None:

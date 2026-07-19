@@ -94,6 +94,12 @@ def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
     except (GitError, ValueError) as e:
         return _fail_json(str(e), as_json)
 
+    # D1: best-effort push of the land log ref, so teammates can use it for base recovery too. The
+    # branch push above is the one that must succeed; this is advisory transport, not correctness.
+    from sgt.core.sync import log as _log
+    log_ref = _log.log_ref(branch)
+    gb.push_ref(remote, f"{log_ref}:{log_ref}")
+
     if as_json:
         return _emit_json({"ok": True, "remote": remote, "branch": branch, "pushed_sha": sha})
     print(f"✓ push {remote}/{branch}: {sha[:12]}")
@@ -127,11 +133,15 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
         print(f"✓ land {report.branch}: {report.land_sha[:12]} (+{report.ops_added} op(s))")
         if report.attempts > 1:
             print(f"    re-unioned after losing {report.attempts - 1} CAS race(s)")
+        if report.advisory:
+            print(f"    ⚠ {report.advisory}")
         return 0
 
     print(f"✗ land {report.branch}: {report.blocked_reason}")
     for sym, a, b in report.forks:
         print(f"    {sym}: sgt merge-op {a[:8]} {b[:8]}")
+    if report.advisory:
+        print(f"    ⚠ {report.advisory}")
     return 1
 
 

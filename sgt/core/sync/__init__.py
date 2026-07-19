@@ -48,9 +48,9 @@ class SyncReport:
     declared_cycles: tuple[tuple[str, str], ...] = ()
     identity_events: tuple[dict, ...] = field(default_factory=tuple)
     # U7/R12: how the merge-base ideal was recovered for three-way resolve, and how theirs' tip was
-    # -- `trailers` | `ideal-record` | `mined` | `none`. `base_recovery == "none"` means the base
-    # degraded to ∅ (union semantics); `theirs_recovery == "none"` is the tip footgun (ops but no
-    # witnessed provenance). Either warrants a loud warning -- an unwitnessed claim was refused.
+    # -- `log` | `trailers` | `ideal-record` | `mined` | `none`. `base_recovery == "none"` means the
+    # base degraded to ∅ (union semantics); `theirs_recovery == "none"` is the tip footgun (ops but
+    # no witnessed provenance). Either warrants a loud warning -- an unwitnessed claim was refused.
     base_recovery: str = "none"
     theirs_recovery: str = "mined"
 
@@ -66,7 +66,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
             fetched_sha=fetched.theirs_sha, message="already up to date",
         )
 
-    ing = _ingest.ingest(repo, gb, fetched.theirs_sha, fetched.ours_sha)
+    ing = _ingest.ingest(repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch)
     res = _resolve.resolve(repo, ing)
 
     # Divergence-as-state (D5/C4): a fork no longer aborts. `materialize` always runs -- it lands

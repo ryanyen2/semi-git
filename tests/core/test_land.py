@@ -256,6 +256,109 @@ def test_crashed_land_is_recovered_on_next_land(tmp_path):
     assert "HALF-WRITTEN" not in (wt / "main.py").read_text(encoding="utf-8")  # rolled back first
 
 
+# -- D1: append-only land log ------------------------------------------------------------------
+
+def test_land_appends_an_entry_to_the_land_log(tmp_path):
+    """A green land writes a D1 log entry recording its landed sha and merged ideal, keyed by the
+    branch it advanced."""
+    from sgt.core.sync import log as _log
+
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
+    wt = tmp_path / "wt"
+    _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
+    _stage_local_op(wt, "baz")
+
+    report = sync.land(wt, branch="main")
+    assert report.landed
+
+    entries = _log.read(GitBinding(wt), "main")
+    assert len(entries) == 1
+    assert entries[0].landed_sha == report.land_sha
+    assert entries[0].ideal_ids == lens.current_ideal(wt).op_ids
+
+
+def test_a_blocked_land_writes_no_log_entry(tmp_path):
+    """The log records only real, gated advances -- a red-oracle refusal leaves it untouched,
+    matching the transactional no-trace contract (R7)."""
+    from sgt.core.sync import log as _log
+
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 1")
+    wt = tmp_path / "wt"
+    _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
+    _stage_local_op(wt, "baz")
+
+    report = sync.land(wt, branch="main")
+    assert not report.landed
+    assert _log.read(GitBinding(wt), "main") == []
+
+
+def test_log_append_contention_never_blocks_the_land(tmp_path, monkeypatch):
+    """Best-effort (D1): if the log ref's own CAS can't win (forced here), `land` still lands --
+    the log is advisory, not on the correctness path."""
+    from sgt.core.sync import log as _log
+
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
+    wt = tmp_path / "wt"
+    _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
+    _stage_local_op(wt, "baz")
+
+    orig = GitBinding.update_ref_cas
+
+    def _flaky(self, ref, new, old):
+        if ref.startswith(_log.LOG_REF_PREFIX):
+            return False
+        return orig(self, ref, new, old)
+
+    monkeypatch.setattr(GitBinding, "update_ref_cas", _flaky)
+    report = sync.land(wt, branch="main")
+
+    assert report.landed  # the branch itself still advanced
+    assert _log.read(GitBinding(wt), "main") == []  # the log append gave up cleanly, no corruption
+
+
+# -- D6: land pre-flight staleness advisory ----------------------------------------------------
+
+def test_land_surfaces_a_staleness_advisory_for_a_behind_worktree_but_still_lands(tmp_path):
+    """D6: a worktree whose HEAD predates a land already recorded in the D1 log gets a non-blocking
+    advisory naming the staleness -- the land itself still proceeds and completes via the ordinary
+    CAS re-union (the advisory is proactive information, not a gate)."""
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
+    old_tip = GitBinding(bare).rev_parse("refs/heads/main")
+
+    wt_a = tmp_path / "wt_a"
+    _add_worktree(bare, wt_a, old_tip)
+    _stage_local_op(wt_a, "baz")
+    report_a = sync.land(wt_a, branch="main")
+    assert report_a.landed
+    assert report_a.advisory is None  # nothing landed before this session's own land
+
+    # wt_b was created at the *old* tip -- it never saw A's land, exactly like a clone that hasn't
+    # synced since a teammate landed.
+    wt_b = tmp_path / "wt_b"
+    _add_worktree(bare, wt_b, old_tip)
+    _stage_local_op(wt_b, "qux")
+
+    report_b = sync.land(wt_b, branch="main")
+
+    assert report_b.landed  # non-blocking: the land still completes (re-unions onto A's tip)
+    assert report_b.advisory is not None
+    assert report_a.land_sha[:12] in report_b.advisory
+
+
+def test_land_has_no_advisory_when_the_worktree_is_already_caught_up(tmp_path):
+    """No staleness to report when the worktree's HEAD already contains the log's latest landed
+    sha (the common, non-racing case)."""
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
+    wt = tmp_path / "wt"
+    _add_worktree(bare, wt, GitBinding(bare).rev_parse("refs/heads/main"))
+    _stage_local_op(wt, "baz")
+
+    report = sync.land(wt, branch="main")
+
+    assert report.landed
+    assert report.advisory is None
+
+
 # -- checked-out vs other-branch landing (plan U5) ---------------------------------------------
 
 def _seed_checked_out(root: Path) -> tuple[GitBinding, str]:
