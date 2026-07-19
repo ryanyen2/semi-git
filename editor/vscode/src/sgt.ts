@@ -63,9 +63,23 @@ export class Sgt {
     return vscode.workspace.getConfiguration("sgt").get<string>("path", "sgt");
   }
 
+  // Every `sgt` invocation takes the store's exclusive flock (store.py's `_locked()`) for
+  // mining/rebuild work, and that flock has no timeout -- a process queued behind another
+  // just blocks. Activation fires several reads at once (blame, plan/git status, compose, ...),
+  // so without serializing here they race for the same lock and can get killed by the timeout
+  // below before any of them produce output, surfacing as a bare "Command failed" with no
+  // stderr. Running them one at a time through this queue means each gets its own fresh budget.
+  private queue: Promise<unknown> = Promise.resolve();
+
   // `sync`/`land`/`push` shell out to real git network I/O and CAS retry loops, well past the
   // default 30s budget for a local read.
   private async run(args: string[], timeout = 30_000): Promise<string> {
+    const task = this.queue.catch(() => undefined).then(() => this.exec(args, timeout));
+    this.queue = task;
+    return task;
+  }
+
+  private async exec(args: string[], timeout: number): Promise<string> {
     try {
       const { stdout } = await pExecFile(this.bin(), args, {
         cwd: this.repoRoot,
