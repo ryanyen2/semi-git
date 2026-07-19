@@ -54,6 +54,33 @@ def test_merge_op_drafts_a_hollow_for_the_forked_symbol(tmp_path):
     assert hollow.footprint["slugify.py::slugify"][0] == by_id[main_tip].footprint["slugify.py::slugify"][1]
     assert hollow.off_chain
     assert main_tip[:12] in hollow.intent and release_tip[:12] in hollow.intent
+    # D5: the same resolution is also recorded as a structured, queryable field.
+    assert hollow.resolves == frozenset({main_tip, release_tip})
+
+
+def test_merge_op_fulfilled_op_carries_resolves_forward(tmp_path):
+    """D5: fulfilling a merge-op hollow carries its `resolves` onto the real, committed op --
+    and doing so does not move the op's id (`resolves` is excluded from `compute_id`)."""
+    repo = corpus.CORPUS["diverged_chain"].build(tmp_path / "repo")
+    corpus.checkout(repo, "release")
+    release_ideal = get(repo)
+    corpus.checkout(repo, "main")
+    main_ideal = get(repo)
+    ops = Store(repo).all_ops()
+    main_tip = main_ideal.frontier(ops)["slugify.py::slugify"]
+    release_tip = release_ideal.frontier(ops)["slugify.py::slugify"]
+
+    draft = rewrite.merge_op(repo, main_tip, release_tip)
+    (repo / "slugify.py").write_text(
+        "def slugify(s):\n    return s.lower().strip().replace(' ', '-')\n", encoding="utf-8"
+    )
+    candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+
+    real = next(o for o in Store(repo).all_ops() if o.id in candidate.op_ids and o.resolves)
+    assert real.resolves == frozenset({main_tip, release_tip})
+    # id-exclusion: the same footprint+image without `resolves` hashes identically.
+    from sgt.core.op import compute_id
+    assert real.id == compute_id(real.footprint, real.images, real.requires, real.kind, real.miner_version)
 
 
 def test_merge_op_refuses_when_nothing_is_forked(tmp_path):

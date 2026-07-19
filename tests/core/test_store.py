@@ -400,6 +400,36 @@ def test_fsck_reports_unreachable_witness_with_ref_key(tmp_path):
     assert "refs/heads/main" in report.unreachable_witnesses
 
 
+# -- D5: structured resolution provenance -------------------------------------------------------
+
+def test_resolves_roundtrips_through_the_store(tmp_path):
+    store = Store(tmp_path)
+    store.init()
+    op = make_op(
+        {"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"},
+        resolves=frozenset({"tip-a", "tip-b"}),
+    )
+    store.add(op)
+
+    fetched = store.get(op.id)
+    assert fetched == op
+    assert fetched.resolves == frozenset({"tip-a", "tip-b"})
+
+
+def test_payload_missing_resolves_key_deserializes_to_empty_frozenset(tmp_path):
+    """A pre-D5 op file has no `resolves` key at all -- old shapes read back with `resolves ==
+    frozenset()` rather than raising (the same `.get(..., default)` discipline as `off_chain`)."""
+    store = Store(tmp_path)
+    store.init()
+    op = _op()
+    payload = json.loads(_serialize(op))
+    del payload["resolves"]
+    (store.ops_dir / op.id).write_bytes(json.dumps(payload, indent=2, sort_keys=True).encode() + b"\n")
+
+    fetched = store.get(op.id)
+    assert fetched.resolves == frozenset()
+
+
 def test_fsck_flags_mixed_miner_versions(tmp_path):
     """U10 backstop: a store containing ops from two miner versions is a mid-migration hazard.
     fsck lists the versions and flips `ok`. A single-version store reports nothing (mixed=())."""

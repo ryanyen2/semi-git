@@ -59,3 +59,15 @@ def test_merge_attribution_picks_min_on_a_field_conflict():
 def test_merge_attribution_drops_all_none_entries_and_sorts():
     a = (Attribution(sha="s2"), Attribution(sha="s1", session="a"))  # s2 all-None
     assert merge_attribution(a, ()) == (Attribution(sha="s1", session="a"),)
+
+
+def test_resolves_is_excluded_from_the_id():
+    """D5: an op carrying structured resolution provenance hashes to the same id as the bare op --
+    `resolves` is outside `compute_id`, same as `intent`/`provenance`/`attribution`."""
+    bare = make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"})
+    resolved = make_op(
+        {"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"},
+        resolves=frozenset({"tip-a", "tip-b"}),
+    )
+    assert bare.id == resolved.id
+    assert resolved.resolves == frozenset({"tip-a", "tip-b"})

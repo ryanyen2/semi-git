@@ -73,6 +73,7 @@ def _payload(op: Op) -> dict:
         "miner_version": op.miner_version,
         "off_chain": op.off_chain,
         "derived": op.derived,
+        "resolves": sorted(op.resolves),
     }
 
 
@@ -111,6 +112,7 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
         miner_version=payload["miner_version"],
         off_chain=payload.get("off_chain", False),
         derived=payload.get("derived", False),
+        resolves=frozenset(payload.get("resolves", [])),
     )
 
 
