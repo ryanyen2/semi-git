@@ -35,10 +35,14 @@ export class GitStatusBar implements vscode.Disposable {
     }
     const glyph = ORACLE_GLYPH[status.oracle.status] ?? "?";
     const forkFlag = status.forks.open > 0 ? ` · ◊${status.forks.open}` : "";
-    this.item.text = `oracle: ${glyph}${forkFlag}`;
-    this.item.tooltip = status.oracle.configured
+    const indexingPrefix = status.sync_status.complete ? "" : "$(sync~spin) indexing · ";
+    this.item.text = `${indexingPrefix}oracle: ${glyph}${forkFlag}`;
+    const tooltipBase = status.oracle.configured
       ? `Oracle: ${status.oracle.status}${status.forks.open ? ` — ${status.forks.open} open fork(s)` : ""}`
       : "Oracle not configured. Click to open the workbench.";
+    this.item.tooltip = status.sync_status.complete
+      ? tooltipBase
+      : `Indexing repository history — some results may be incomplete. ${tooltipBase}`;
     this.item.show();
   }
 
