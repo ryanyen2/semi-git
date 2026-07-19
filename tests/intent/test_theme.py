@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sgt.core.lens import get
+from sgt.core.lens import _load_backfill_state, _load_witnesses, _ref_key, get
 from sgt.intent import group, theme
-from sgt.store.gitbind import init_store
+from sgt.store.gitbind import GitBinding, init_store
 
 
 class _FakeResponses:
@@ -154,12 +154,27 @@ def test_scopeless_atom_with_no_client_becomes_a_singleton_theme(tmp_path, monke
 # -- U6: group_scopeless dedup + chunking (R7/R8) ------------------------------------------------
 
 
+def _sync_fully(tmp_path) -> None:
+    """`get()` now mines a fresh ref in deadline-bounded chunks (U1-U4) rather than genesis-to-HEAD
+    in one call -- poll it the way a real bounded-timeout client would, until the ref's witness
+    reaches HEAD and any backward genesis-backfill has finished."""
+    gb = GitBinding(tmp_path)
+    for _ in range(50):
+        get(tmp_path)
+        key = _ref_key(gb) or gb.head()
+        witness = _load_witnesses(tmp_path).get(key)
+        backfill = _load_backfill_state(tmp_path).get(key)
+        if witness == gb.head() and (backfill is None or backfill.get("reached_genesis")):
+            return
+    raise AssertionError("ref did not reach full sync within 50 get() calls")
+
+
 def _scopeless_atoms(tmp_path, n: int) -> list:
     gb, _ = init_store(tmp_path)
     for i in range(n):
         (tmp_path / f"f{i}.py").write_text(f"def fn{i}():\n    return {i}\n", encoding="utf-8")
         gb.commit_all(f"touch f{i}.py")  # no scope -> every atom is scope-less
-    get(tmp_path)
+    _sync_fully(tmp_path)
     return group.atoms(tmp_path)
 
 
