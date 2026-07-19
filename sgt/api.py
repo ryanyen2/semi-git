@@ -437,13 +437,20 @@ def map_view(repo) -> dict:
     `plan_split` reads) up to leaf-feature pairs -- the cross-feature dependency edges a
     visualization draws between features. Fully sorted for a stable projection."""
     from sgt.core import opindex
-    from sgt.core.lens import current_ideal
+    from sgt.core.lens import current_ideal, sync_status
     from sgt.lens.tree import feature_edges, fused_graph
     from sgt.lens.tree import load as load_tree
 
     result = load_tree(repo)
     if result is None:
-        return {"nodes": [], "roots": [], "identity_events": [], "feature_count": 0, "edges": []}
+        return {
+            "nodes": [],
+            "roots": [],
+            "identity_events": [],
+            "feature_count": 0,
+            "edges": [],
+            "sync_status": sync_status(repo),
+        }
 
     nodes = result["nodes"]
     op_leaf = result["op_leaf"]
@@ -506,6 +513,7 @@ def map_view(repo) -> dict:
         "identity_events": sorted(result.get("identity_events", []), key=lambda e: (e["event"], e["feature_id"])),
         "feature_count": sum(1 for nd in nodes.values() if not nd["children"]),
         "edges": feature_edges(nodes, fused),
+        "sync_status": sync_status(repo),
     }
 
 
@@ -1306,7 +1314,7 @@ def status_view(repo) -> dict:
     `sgt`, or a verb applied without re-writing the working tree)."""
     from sgt import state as state_mod
     from sgt.core.fold import code
-    from sgt.core.lens import current_ideal
+    from sgt.core.lens import current_ideal, sync_status
     from sgt.core.oracle import overall_status
     from sgt.core.op import is_bottom
     from sgt.core.store import Store
@@ -1345,4 +1353,5 @@ def status_view(repo) -> dict:
         "unmanaged": skips["unmanaged"],
         "backstop_kept": skips["backstop_kept"],
         "forks": {"open": len(open_forks), "records": open_forks},
+        "sync_status": sync_status(repo),
     }
