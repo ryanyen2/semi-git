@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from sgt.core.fold import code
+import sgt.core.lens as lens_mod
 from sgt.core.lens import (
     DirtyWorkingTreeError,
     _load_backfill_state,
@@ -21,6 +22,7 @@ from sgt.core.lens import (
     get,
     init,
     put,
+    sync_status,
 )
 from sgt.core.order import chain_edges, is_valid_ideal
 from sgt.core.store import Store
@@ -249,6 +251,28 @@ def test_backfill_state_missing_file_returns_empty_dict(tmp_path):
     `_save_backfill_state` was never called loads as `{}`, not an error."""
     repo = tmp_path / "repo"
     assert _load_backfill_state(repo) == {}
+
+
+def test_sync_status_reports_complete_on_a_fully_synced_ref(tmp_path):
+    """A freshly-mined ref with nothing left to backfill: `sync_status` (U6, a pure read -- no
+    mining) reports both `complete` and `reached_genesis` true."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    assert sync_status(repo) == {"complete": True, "reached_genesis": True}
+
+
+def test_sync_status_reports_incomplete_while_a_first_contact_chunk_is_still_backfilling(tmp_path, monkeypatch):
+    """A ref whose very first `get()` chunk gets deadline-cut short (U1/U4's chunking) has its
+    witness bootstrapped to head immediately but its genesis backfill still open -- `sync_status`
+    must report `complete=False` even though the ref is already forward-current."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", -1.0)  # deadline already past every check
+
+    get(repo)
+
+    status = sync_status(repo)
+    assert status["reached_genesis"] is False
+    assert status["complete"] is False
 
 
 def test_sync_survives_a_witness_planted_without_backfill_state(tmp_path):

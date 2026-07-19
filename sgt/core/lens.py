@@ -398,7 +398,11 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # never nests inside this one (U23 / locked_section contract).
     ideal_changed = not already_seeded or committed_ids != base_ids
     witness_changed = new_witness != prev_head
-    backfill_changed = new_backfill_state != backfill_state
+    # A true-first-contact chunk (prev_head is None) that hits its deadline before mining even one
+    # commit computes a `new_backfill_state` that coincidentally equals the never-seen-this-key
+    # default -- persist it anyway, or `has_backfill_record` stays False forever and the next call
+    # falls through to the no-op forward-catchup branch instead of resuming the backward walk.
+    backfill_changed = new_backfill_state != backfill_state or (prev_head is None and not has_backfill_record)
     if ideal_changed or witness_changed or backfill_changed:
         with locked_section(repo):
             if ideal_changed:
@@ -420,6 +424,26 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
 def get(repo: str | Path) -> Ideal:
     """Mine what's new to the current ref, persist it, and return the ref's current ideal."""
     return _sync(Path(repo))
+
+
+def sync_status(repo: str | Path, ref: str | None = None) -> dict:
+    """A pure read (no mining) of how far `ref`'s sync has progressed: whether its witness has
+    caught up to its head, and whether an in-progress genesis backfill (if any) has finished.
+    `ref=None` reports on the currently checked-out ref, using the same key `_sync` would use for
+    it. `complete` is `True` iff the witness equals head and any backfill has `reached_genesis`."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+    if ref is None:
+        key = _ref_key(gb) or gb.head()
+        head = gb.head()
+    else:
+        head = gb.rev_parse(ref)
+        key = ref if ref.startswith("refs/") else f"refs/heads/{ref}"
+    witness = _load_witnesses(repo).get(key)
+    backfill = _load_backfill_state(repo).get(key)
+    reached_genesis = backfill is None or bool(backfill.get("reached_genesis"))
+    complete = witness is not None and witness == head and reached_genesis
+    return {"complete": complete, "reached_genesis": reached_genesis}
 
 
 def init(repo: str | Path, horizon: str | None = None) -> Ideal:

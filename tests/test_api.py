@@ -9,7 +9,7 @@ import json
 
 from sgt.api import (
     compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, oplog_view,
-    plan_view, state_view, trust_view,
+    plan_view, state_view, status_view, trust_view,
 )
 from sgt.core.lens import get
 from sgt.core.op import make_op
@@ -330,6 +330,31 @@ def test_map_view_rolls_up_a_landed_session_onto_its_feature_node(tmp_path):
     named = [n for n in v["nodes"] if n["sessions"]]
     assert named, "at least one node should roll up the landed session"
     assert all(n["sessions"] == ["s1"] for n in named)
+
+
+def test_sync_status_reports_complete_from_both_views_on_a_fresh_fully_synced_fixture(tmp_path):
+    """U6: a freshly-mined, fully-synced fixture reports `sync_status.complete == True` from both
+    `map_view` and `status_view`, per the plan's own scenario (1)."""
+    repo = _mined(tmp_path, "mixed_coverage")
+
+    assert map_view(repo)["sync_status"] == {"complete": True, "reached_genesis": True}
+    assert status_view(repo)["sync_status"] == {"complete": True, "reached_genesis": True}
+
+
+def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(tmp_path, monkeypatch):
+    """U6 scenario (2): a ref whose first-contact `_sync()` chunk is cut short by a deadline (same
+    fixture technique as U4's tests) reports `complete == False` from both views, and reading
+    either view alone triggers no additional mining."""
+    import sgt.core.lens as lens_mod
+
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", -1.0)
+    get(repo)
+
+    op_count_before = len(Store(repo).all_ops())
+    assert map_view(repo)["sync_status"] == {"complete": False, "reached_genesis": False}
+    assert status_view(repo)["sync_status"] == {"complete": False, "reached_genesis": False}
+    assert len(Store(repo).all_ops()) == op_count_before
 
 
 def test_trust_view_is_empty_with_nothing_attributed_or_drifting(tmp_path):
