@@ -932,6 +932,7 @@ def land_view(report) -> dict:
         ],
         "declared_cycles": [list(pair) for pair in report.declared_cycles],
         "identity_events": list(report.identity_events),
+        "advisory": report.advisory,
     }
 
 

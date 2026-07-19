@@ -265,6 +265,76 @@ def test_u7_forged_trailers_are_rejected(tmp_path):
     assert forged not in ing.theirs_ideal_ids  # the forged id never enters theirs' ideal
 
 
+# -- D1: the land log as a rung-0 base/tip recovery method ---------------------------------------
+
+from sgt.core.sync import log as _log
+
+
+def test_base_recovery_via_the_land_log(tmp_path):
+    """A base sha that a prior `sgt land` recorded in the D1 log recovers as `"log"` -- checked
+    before trailers, since it survives a squash the same way a witnessed record does but without
+    depending on `.sgt/ideal.json` staying untouched by later commits."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    from sgt import state
+    state.save_json(a, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
+    _edit_and_commit(a, "main.py", _BASE, "init")
+    _push(a)
+
+    report = sync.land(a, branch="main")  # self-union land: gates green, logs an entry
+    assert report.landed
+    base_sha = report.land_sha
+
+    ids, method = recover_base(Path(a), GitBinding(a), base_sha, branch="main")
+    assert method == "log"
+    assert ids == _log.ideal_for_sha(GitBinding(a), "main", base_sha)
+
+
+def test_land_log_recovery_is_rejected_when_unwitnessed_and_falls_through(tmp_path):
+    """A forged log entry -- naming op ids the sha's tree never produced -- is not trusted, exactly
+    like a forged trailer (R12): recovery falls through to the next rung rather than trusting it."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", _BASE + "\n\ndef baz():\n    return 42\n", "A: add baz")
+    _push(a)
+
+    gb = GitBinding(b)
+    fetched = fetch(Path(b), gb, "origin", "main")
+    base_sha = gb.merge_base(fetched.ours_sha, fetched.theirs_sha)
+    _log.append(gb, "main", base_sha, frozenset({"f" * 64}))  # forged: no backing .sgt/ops blob
+
+    ids, method = recover_base(Path(b), gb, base_sha, branch="main")
+    assert method == "trailers"  # the forged log entry was rejected, fell through to trailers
+
+
+def test_land_log_ref_transports_across_clones_and_recovers_the_base(tmp_path):
+    """The log ref is best-effort transport, not just a local artifact: pushed alongside the
+    branch (`sgt push`), it's there for a *different* clone's base recovery after a plain fetch."""
+    from sgt import state
+    from sgt.cli.sync import _push as cli_push
+
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    state.save_json(a, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
+    _edit_and_commit(a, "main.py", _BASE, "init")
+    _push(a)
+
+    report = sync.land(a, branch="main")
+    assert report.landed
+    base_sha = report.land_sha
+    assert cli_push(str(a), "origin", "main", False) == 0  # pushes refs/heads/main + the log ref
+
+    b = _clone(remote, tmp_path / "b")
+    lens.get(b)
+    gb_b = GitBinding(b)
+    fetch(Path(b), gb_b, "origin", "main")
+    assert gb_b.rev_parse(_log.log_ref("main")) is not None  # the log ref transported
+
+    ids, method = recover_base(Path(b), gb_b, base_sha, branch="main")
+    assert method == "log"
+
+
 # -- U8: three-way resolve -- fork protection and base=∅ equivalence -----------------------------
 
 def _resolve_ingested(tmp_path, all_ops, ours_ids, theirs_ids, base_ids, theirs_recovery="trailers"):

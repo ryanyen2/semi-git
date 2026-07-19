@@ -29,6 +29,8 @@ from sgt.lens import reconcile, tree
 from sgt.lens.pins import Pins, _pins_from_payload, load_pins
 from sgt.store.gitbind import GitBinding, parse_op_ids
 
+from . import log as _log
+
 
 class MinerVersionMismatch(Exception):
     """Theirs' ops were mined by a different `miner_version` than ours (design doc §2.1, §5.1.5,
@@ -55,8 +57,10 @@ class Ingested:
     mined_ops: list[Op]  # theirs' foreign commits mined on contact (C3), for `materialize` too
     ops_added: int
     # U7/R12: the merge-base's recovered *full* ideal (for U8's three-way subtraction) and how it
-    # was recovered -- `trailers` | `ideal-record` | `mined` | `none`. `none` (no merge-base, or a
-    # base sgt can't witness) means the base degrades to ∅ and resolve keeps today's union semantics.
+    # was recovered -- `log` | `trailers` | `ideal-record` | `mined` | `none`. `none` (no merge-base,
+    # or a base sgt can't witness) means the base degrades to ∅ and resolve keeps today's union
+    # semantics. `log` (D1) is the append-only land log's record for that sha -- checked first, since
+    # it survives squashes and never goes stale the way an inherited `.sgt/ideal.json` can.
     base_ideal_ids: frozenset[str] = frozenset()
     base_recovery: str = "none"
     # How *theirs' tip* ideal was recovered, same vocabulary. `none` here is the footgun state: the
@@ -75,7 +79,9 @@ def _pins_at(gb: GitBinding, sha: str) -> Pins:
     return Pins() if body is None else _pins_from_payload(body)
 
 
-def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingested:
+def ingest(
+    repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str, *, branch: str | None = None
+) -> Ingested:
     ours_ops = Store(repo).all_ops()
     theirs_ops: list[Op] = []
     for path in gb.list_tree(theirs_sha, ".sgt/ops/"):
@@ -88,13 +94,13 @@ def ingest(repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str) -> Ingest
             continue  # a corrupt op blob in theirs' tree degrades to a read-side skip (R1)
 
     # Recover theirs' ideal, and mine foreign commits when there's no sgt record to read (C3/C5).
-    theirs_ideal_ids, mined_ops, theirs_recovery = _theirs_ideal(repo, gb, theirs_sha, ours_sha)
+    theirs_ideal_ids, mined_ops, theirs_recovery = _theirs_ideal(repo, gb, theirs_sha, ours_sha, branch)
 
     # Recover the *merge-base's* full ideal for U8's three-way subtraction (R12). Distinct from
     # theirs' divergent contribution above: used as a base, the divergent set would mass-delete, so
     # a base must be a *full* ideal or ∅. Same witness discipline as the tip.
     base_sha = gb.merge_base(ours_sha, theirs_sha)
-    base_ideal_ids, base_recovery = recover_base(repo, gb, base_sha)
+    base_ideal_ids, base_recovery = recover_base(repo, gb, base_sha, branch)
 
     # Miner-version handshake (C6): a precondition, before any union is built. Theirs' op files
     # (mined by whatever sgt version committed them) are the only ones that can carry a foreign
@@ -192,7 +198,7 @@ def _check_miner_versions(ours_ops: list[Op], theirs_ops: list[Op]) -> None:
 
 
 def _theirs_ideal(
-    repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str
+    repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str, branch: str | None = None
 ) -> tuple[frozenset[str], list[Op], str]:
     """Theirs' committed ideal, recovered by the most authoritative *witnessed* record available
     and, when none exists, by mining theirs' foreign commits (C3, the "adoption ⊂ sync, one code
@@ -201,6 +207,11 @@ def _theirs_ideal(
     `.sgt/ops/` blobs rather than re-mining the coarse squash (§2.1 path-dependence). Every claimed
     source is witness-checked (R12): a trailer or record naming an op the tip's tree never produced
     is *not* trusted and falls through."""
+    if branch is not None:
+        logged_ids = _log.ideal_for_sha(gb, branch, theirs_sha)
+        if logged_ids is not None and _witnessed(gb, theirs_sha, logged_ids):
+            return logged_ids, [], "log"  # D1: the land log's own record for this sha
+
     trailer_ids = frozenset(parse_op_ids(gb.commit_message(theirs_sha)))
     if trailer_ids and _witnessed(gb, theirs_sha, trailer_ids):
         return trailer_ids, [], "trailers"  # sgt-native tip, trailers witnessed by its own tree
@@ -240,7 +251,7 @@ def _theirs_ideal(
 
 
 def recover_base(
-    repo: Path, gb: GitBinding, base_sha: str | None
+    repo: Path, gb: GitBinding, base_sha: str | None, branch: str | None = None
 ) -> tuple[frozenset[str], str]:
     """The merge-base's *full* committed ideal for U8's three-way subtraction (R12), recovered
     under the same witness discipline as a tip and returning `(ideal_ids, method)`:
@@ -248,6 +259,8 @@ def recover_base(
     * no merge-base (disjoint histories, or a base sgt can't reach) -> `(∅, "none")`. Three-way
       over a ∅ base reproduces today's plain union exactly, so pre-sgt/degraded history costs
       nothing new -- resolve just keeps union semantics.
+    * the D1 land log's own record for `base_sha`, witnessed -> `(ids, "log")` -- checked first,
+      since it survives squashes and can't go stale the way an inherited `.sgt/ideal.json` can.
     * witnessed trailers -> `(ids, "trailers")`.
     * a committed `.sgt/ideal.json` the base commit *witnessed* (wrote, every op present) ->
       `(ids, "ideal-record")` -- an inherited stale record is rejected, exactly as for a tip.
@@ -257,6 +270,11 @@ def recover_base(
     """
     if base_sha is None:
         return frozenset(), "none"
+
+    if branch is not None:
+        logged_ids = _log.ideal_for_sha(gb, branch, base_sha)
+        if logged_ids is not None and _witnessed(gb, base_sha, logged_ids):
+            return logged_ids, "log"
 
     trailer_ids = frozenset(parse_op_ids(gb.commit_message(base_sha)))
     if trailer_ids and _witnessed(gb, base_sha, trailer_ids):

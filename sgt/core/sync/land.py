@@ -44,6 +44,7 @@ from sgt.lens.pins import Contradiction
 from sgt.store.gitbind import GitBinding, format_op_trailers
 
 from . import ingest as _ingest
+from . import log as _log
 from . import materialize as _materialize
 from . import resolve as _resolve
 
@@ -62,6 +63,7 @@ class LandReport:
     pin_contradictions: tuple[Contradiction, ...] = ()
     declared_cycles: tuple[tuple[str, str], ...] = ()
     identity_events: tuple[dict, ...] = field(default_factory=tuple)
+    advisory: str | None = None  # D6: non-blocking "someone landed since your last sync" notice
 
 
 _NO_ORACLE = (
@@ -137,6 +139,20 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     # `_recover_pending_land` should roll the tree back to `snapshot`.
     state.save_json(repo, "land_pending", {"ref": ref, "snapshot": snapshot})
 
+    # D6: pre-flight staleness advisory -- purely informational, never blocks or alters the CAS/
+    # retry logic below. If the log's latest landed sha for this branch is not an ancestor of our
+    # HEAD, someone landed since our last sync/land here; name it so the session can `sgt sync`
+    # before retrying, rather than only discovering it after losing a CAS race.
+    advisory = None
+    log_entries = _log.read(gb, branch)
+    if log_entries:
+        latest_landed = log_entries[0].landed_sha
+        if not gb.is_ancestor(latest_landed, ours):
+            advisory = (
+                f"{branch} has landed work since your last sync ({latest_landed[:12]} is not an "
+                f"ancestor of HEAD) -- `sgt sync` first to fold it in before landing"
+            )
+
     def _blocked(reason: str, attempt: int, res=None, forks=()) -> LandReport:
         gb.restore_worktree_to(snapshot)  # a land that does not land leaves no trace (R7)
         state.save_json(repo, "land_pending", {})  # normal (non-crash) exit -- clear the journal
@@ -146,14 +162,14 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
         )
         return LandReport(
             branch=branch, landed=False, blocked_reason=reason, attempts=attempt, ops_added=0,
-            forks=forks, **extra,
+            forks=forks, advisory=advisory, **extra,
         )
 
     for attempt in range(1, retries + 1):
         old = gb.rev_parse(ref)  # the shared tip we race against (None if the branch is new)
         theirs_sha = old if old is not None else ours
 
-        ing = _ingest.ingest(repo, gb, theirs_sha, ours)
+        ing = _ingest.ingest(repo, gb, theirs_sha, ours, branch=branch)
         res = _resolve.resolve(repo, ing)
 
         # A genuine fork blocks the land (unlike sync, which advances the fork-free part): the shared
@@ -189,6 +205,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
             # Persist the durable ideal table/witness for the *target* branch only after the CAS,
             # journaling the edit (for `sgt undo`) only when landing the checked-out ref.
             lens.record_ideal(repo, res.merged_ideal, new, ref_key=ref, journal=checked_out)
+            _log.append(gb, branch, new, res.merged_ideal.op_ids)  # D1: best-effort, never raises
             if not checked_out:
                 gb.restore_worktree_to(snapshot)  # advanced only the shared ref; restore our tree
             ops_added = len(res.merged_ideal.op_ids - ing.theirs_ideal_ids)
@@ -196,6 +213,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
                 branch=branch, landed=True, land_sha=new, ops_added=ops_added, attempts=attempt,
                 pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
                 identity_events=tuple(res.tree_result.get("identity_events", [])),
+                advisory=advisory,
             )
         # CAS lost: another session advanced `ref` off `old`. Roll back this attempt's staged tree
         # and metadata, then re-loop to re-ingest against the now-moved tip -- the re-union retry.

@@ -15,6 +15,8 @@ from pathlib import Path
 from sgt.core import lens
 from sgt.store.gitbind import GitBinding, GitError
 
+from . import log as _log
+
 
 @dataclass(frozen=True)
 class Fetched:
@@ -45,6 +47,11 @@ def fetch(repo: Path, gb: GitBinding, remote: str | None, branch: str | None) ->
     theirs_sha = gb.rev_parse("FETCH_HEAD")
     if theirs_sha is None:
         raise GitError(f"fetch of {remote}/{branch} produced no FETCH_HEAD")
+
+    # D1: best-effort secondary fetch of the land log ref, so base recovery can use it on this
+    # clone too. An older remote that has never pushed the ref simply yields nothing to recover.
+    log_ref = _log.log_ref(branch)
+    gb.fetch_ref(remote, f"{log_ref}:{log_ref}")
 
     return Fetched(
         remote=remote,
