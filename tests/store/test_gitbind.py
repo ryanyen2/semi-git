@@ -83,6 +83,44 @@ def test_history_oldest_first_with_parents(tmp_path):
     assert since_rows[0][1] == sha1  # still diffs against its true predecessor
 
 
+def test_history_backward_mirrors_history_reversed(tmp_path):
+    gb, _ = init_store(tmp_path)
+    shas = []
+    for i in range(5):
+        (tmp_path / "f.txt").write_text(f"v{i}", encoding="utf-8")
+        shas.append(gb.commit_all(f"feat: v{i}"))
+
+    forward = gb.history(since=None, target=shas[-1])
+    backward = gb.history_backward(tip=shas[-1])
+    assert backward == list(reversed(forward))
+
+
+def test_history_backward_root_commit_has_no_parent(tmp_path):
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "f.txt").write_text("v1", encoding="utf-8")
+    sha1 = gb.commit_all("feat: v1")
+    (tmp_path / "f.txt").write_text("v2", encoding="utf-8")
+    gb.commit_all("feat: v2")
+
+    rows = gb.history_backward(tip=sha1)
+    assert len(rows) == 1
+    assert rows[0][0] == sha1
+    assert rows[0][1] is None
+
+
+def test_history_backward_limit_caps_walk_to_newest_rows(tmp_path):
+    gb, _ = init_store(tmp_path)
+    shas = []
+    for i in range(5):
+        (tmp_path / "f.txt").write_text(f"v{i}", encoding="utf-8")
+        shas.append(gb.commit_all(f"feat: v{i}"))
+
+    full = gb.history_backward(tip=shas[-1])
+    limited = gb.history_backward(tip=shas[-1], limit=2)
+    assert limited == full[:2]
+    assert len(limited) == 2
+
+
 def test_detect_orphans_flags_out_of_band_commit(tmp_path):
     gb, _ = init_store(tmp_path)
     # a commit sgt knows about

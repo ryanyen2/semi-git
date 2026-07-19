@@ -310,22 +310,29 @@ class FsckReport:
     op_index_stale: bool = False  # the `sgt.core.opindex` sidecar is out of date. Advisory, like
     # `mixed_versions` -- the next read self-heals via a rebuild, so this only surfaces that the
     # *next* read view pays that rebuild cost rather than the cheap incremental path.
+    pending_chain_gaps: tuple[str, ...] = ()  # `chain_gaps` entries that sit exactly at a ref's
+    # in-progress genesis-backfill frontier (U5) -- expected, self-healing once the backfill
+    # finishes, so these are split out of `chain_gaps` and never flip `ok`.
 
 
-def _chain_gaps(ops: list[Op]) -> list[str]:
+def _chain_gaps(ops: list[Op]) -> dict[str, set[str]]:
     """Every `symbol@before_version` step whose predecessor version is produced by no op in the
-    store -- the R11 linearity check. Advisory: a squashed/rebased-away branch legitimately leaves
-    an off-ref predecessor gap (FINDINGS U22.5), so a gap is reported, never treated as corruption."""
+    store -- the R11 linearity check -- mapped to the provenance shas of the op(s) that reference
+    it. Advisory: a squashed/rebased-away branch legitimately leaves an off-ref predecessor gap
+    (FINDINGS U22.5), so a gap is reported, never treated as corruption. The provenance is returned
+    so callers (U5) can tell a genuine gap apart from one that sits at an in-progress backfill's
+    frontier -- the oldest op mined by a chunked backward walk carries the frontier sha as its own
+    provenance."""
     produced: set[tuple[str, str]] = set()
     for op in ops:
         for sym, (_before, after) in op.footprint.items():
             produced.add((sym, after))
-    gaps: set[str] = set()
+    gaps: dict[str, set[str]] = {}
     for op in ops:
         for sym, (before, _after) in op.footprint.items():
             if before is not None and (sym, before) not in produced:
-                gaps.add(f"{sym}@{before}")
-    return sorted(gaps)
+                gaps.setdefault(f"{sym}@{before}", set()).update(op.provenance)
+    return gaps
 
 
 def fsck(repo: str | Path) -> FsckReport:
@@ -380,15 +387,29 @@ def fsck(repo: str | Path) -> FsckReport:
     pending = state.load_json(repo, "land_pending", default=None)
     pending_land = (pending["ref"],) if pending and pending.get("ref") else ()
 
+    # Split chain gaps that sit exactly at an in-progress genesis-backfill's frontier (U5) out of
+    # the confirmed set: a ref whose chunked backward walk (U3/U4) hasn't reached genesis yet
+    # leaves its oldest-mined op referencing a predecessor version one chunk further back, which is
+    # indistinguishable from a genuine gap by footprint alone -- provenance is what tells them apart.
+    open_frontiers = {
+        entry["genesis_frontier"]
+        for entry in state.load_json(repo, "backfill", default={}).values()
+        if entry.get("genesis_frontier") and not entry.get("reached_genesis", False)
+    }
+    gap_provenance = _chain_gaps(ops)
+    pending_chain_gaps = sorted(g for g, prov in gap_provenance.items() if prov & open_frontiers)
+    confirmed_chain_gaps = sorted(g for g, prov in gap_provenance.items() if not (prov & open_frontiers))
+
     return FsckReport(
         ok=not (bad_hash or corrupt or invalid_ideals or unreachable or mixed),
         checked=len(names),
         bad_hash=tuple(bad_hash),
         corrupt=tuple(corrupt),
-        chain_gaps=tuple(_chain_gaps(ops)),
+        chain_gaps=tuple(confirmed_chain_gaps),
         invalid_ideals=tuple(sorted(invalid_ideals)),
         unreachable_witnesses=tuple(sorted(unreachable)),
         mixed_versions=mixed,
         pending_land=pending_land,
         op_index_stale=opindex.is_stale(repo),
+        pending_chain_gaps=tuple(pending_chain_gaps),
     )

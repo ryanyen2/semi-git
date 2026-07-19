@@ -40,7 +40,8 @@ def _ingest_ref_ops(repo: Path, ref: str) -> None:
     gb = GitBinding(repo)
     store = Store(repo)
     store.init()
-    for op in mine(repo, since=gb.merge_base("HEAD", ref), target=gb.rev_parse(ref)):
+    mined_ops, _last_sha = mine(repo, since=gb.merge_base("HEAD", ref), target=gb.rev_parse(ref))
+    for op in mined_ops:
         store.add(op)
 
 

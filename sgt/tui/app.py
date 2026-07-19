@@ -239,12 +239,16 @@ class SgtTui(App[None]):
             else Text("  ✓ in sync", style="green")
         )
         oracle_txt = f"  ·  oracle: {st['oracle']['status']}" if st["oracle"]["configured"] else ""
+        indexing_txt = (
+            ("  ·  ⟳ indexing history", "yellow") if not st["sync_status"]["complete"] else ""
+        )
         shown = f"  ·  showing {len(self._ids)}/{len(self._rows)}" if self._filter else ""
         msg = Text.assemble(
             (f"{st['features']} feature(s)", "bold"),
             f"  ·  {st['files']} file(s)  ·  {st['symbols']} symbol(s)  ·  "
             f"{st['coverage_fraction'] * 100:.0f}% coverage",
             oracle_txt,
+            indexing_txt,
             shown,
             drift_txt,
         )

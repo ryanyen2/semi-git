@@ -11,14 +11,18 @@ from __future__ import annotations
 import pytest
 
 from sgt.core.fold import code
+import sgt.core.lens as lens_mod
 from sgt.core.lens import (
     DirtyWorkingTreeError,
+    _load_backfill_state,
     _load_ideal_table,
     _ref_key,
+    _save_backfill_state,
     _save_ideal_table,
     get,
     init,
     put,
+    sync_status,
 )
 from sgt.core.order import chain_edges, is_valid_ideal
 from sgt.core.store import Store
@@ -230,6 +234,78 @@ def test_second_get_with_no_new_commits_does_not_rewrite_ideal_and_witness(tmp_p
 
     mtime_after = (ideal_path.stat().st_mtime_ns, witness_path.stat().st_mtime_ns)
     assert mtime_after == mtime_before, "get() rewrote ideal_table/witness with no new state"
+
+
+def test_backfill_state_round_trips(tmp_path):
+    """`_save_backfill_state`/`_load_backfill_state` are pure passthrough plumbing over
+    `.sgt/local/backfill.json` -- a later unit reads/writes the genesis-backfill frontier through
+    them, but this unit only wires the persistence, not any mining behavior."""
+    repo = tmp_path / "repo"
+    table = {"refs/heads/main": {"genesis_frontier": "abc123", "reached_genesis": False}}
+    _save_backfill_state(repo, table)
+    assert _load_backfill_state(repo) == table
+
+
+def test_backfill_state_missing_file_returns_empty_dict(tmp_path):
+    """Symmetric with `_load_witnesses`'s missing-file behavior: a fresh repo where
+    `_save_backfill_state` was never called loads as `{}`, not an error."""
+    repo = tmp_path / "repo"
+    assert _load_backfill_state(repo) == {}
+
+
+def test_sync_status_reports_complete_on_a_fully_synced_ref(tmp_path):
+    """A freshly-mined ref with nothing left to backfill: `sync_status` (U6, a pure read -- no
+    mining) reports both `complete` and `reached_genesis` true."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    assert sync_status(repo) == {"complete": True, "reached_genesis": True}
+
+
+def test_sync_status_reports_incomplete_while_a_first_contact_chunk_is_still_backfilling(tmp_path, monkeypatch):
+    """A ref whose very first `get()` chunk gets deadline-cut short (U1/U4's chunking) has its
+    witness bootstrapped to head immediately but its genesis backfill still open -- `sync_status`
+    must report `complete=False` even though the ref is already forward-current."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", -1.0)  # deadline already past every check
+
+    get(repo)
+
+    status = sync_status(repo)
+    assert status["reached_genesis"] is False
+    assert status["complete"] is False
+
+
+def test_sync_survives_a_witness_planted_without_backfill_state(tmp_path):
+    """A witness can land at a ref-key that never went through `_sync`'s own backward walk: every
+    materializing verb (`put()` + `record_ideal`, mirrored here) advances `witness[key]` straight
+    to the commit `put()` just made, and `record_ideal` never touches `backfill.json`. The next
+    ordinary `get()` on that same key then finds `prev_head == head` with a *missing* backfill
+    entry -- defaulted to `{"genesis_frontier": None, "reached_genesis": False}`. This key shape is
+    a detached-HEAD/throwaway-key artifact (every commit under a detached HEAD mints its own
+    never-reused `_ref_key`, e.g. `land`'s per-session worktrees): nothing ever queries
+    `sync_status` for a discarded commit sha, so `_sync` deliberately leaves it alone rather than
+    paying for a backward walk that would also have to survive `land`'s R7 rollback (which restores
+    the git-tracked worktree but never touches gitignored `.sgt/local/*.json`, see
+    `test_cas_exhaustion_restores_and_persists_nothing`). The one hard requirement is that this
+    shape must not crash `_sync` (no `gb.parent_of(None)` TypeError from mistaking a missing
+    backfill record for one that needs a fresh genesis walk)."""
+    from sgt.core.lens import record_ideal
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    gb = GitBinding(repo)
+    gb._git("checkout", "-q", "--detach")
+
+    ideal = get(repo)  # bootstraps *this* detached head's own witness + backfill state
+    put_sha = put(repo, ideal, message="materialize")  # a new commit; HEAD moves past it
+    record_ideal(repo, ideal, put_sha)  # plants witness[put_sha] = put_sha directly (no ref_key)
+
+    key = _ref_key(gb)
+    assert key == put_sha
+    assert key not in _load_backfill_state(repo), "record_ideal should not seed backfill state"
+
+    get(repo)  # must not raise TypeError from gb.parent_of(None)
+
+    assert key not in _load_backfill_state(repo), "a throwaway detached key stays a no-op, not a walk"
 
 
 def _count_snapshot_calls(monkeypatch):

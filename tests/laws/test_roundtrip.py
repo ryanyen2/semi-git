@@ -144,9 +144,9 @@ def test_anchor_disjoint_additions_compose():
         repo = corpus.CORPUS["commuting_features"].build(Path(tmp) / "repo")
 
         corpus.checkout(repo, "feature_a")
-        ops_a = mine(repo)
+        ops_a, _last_sha = mine(repo)
         corpus.checkout(repo, "feature_b")
-        ops_b = mine(repo)
+        ops_b, _last_sha = mine(repo)
         corpus.checkout(repo, "main")
 
         by_id = {op.id: op for op in [*ops_a, *ops_b]}  # content-addressed: shared base ops
@@ -178,9 +178,9 @@ def test_same_residue_segment_edited_on_both_branches_is_a_genuine_fork():
         repo = corpus.CORPUS["residue_fork"].build(Path(tmp) / "repo")
 
         corpus.checkout(repo, "feature_a")
-        ops_a = mine(repo)
+        ops_a, _last_sha = mine(repo)
         corpus.checkout(repo, "feature_b")
-        ops_b = mine(repo)
+        ops_b, _last_sha = mine(repo)
         corpus.checkout(repo, "main")
 
         by_id = {op.id: op for op in [*ops_a, *ops_b]}
@@ -257,7 +257,7 @@ def test_representation_flip_roundtrips_at_every_commit(tmp_path):
     (repo / "a.py").write_text("import sys\n\n\ndef foo():\n    return sys.maxsize\n", encoding="utf-8")
     gb.commit_all("c3: parseable again, different content")
 
-    ops = mine(repo)
+    ops, _last_sha = mine(repo)
     for sha in GitBinding(repo).commit_shas():
         reachable = set(GitBinding(repo).commit_shas(sha))
         ids = {op.id for op in ops if set(op.provenance) & reachable}
@@ -303,7 +303,7 @@ def test_locality(tmp_path):
     # One full mine(), then group by witnessing commit -- since=None means "from genesis", not
     # "just this one commit", so per-commit locality has to be checked by provenance, not by
     # re-mining with `since` set to each commit's own predecessor in turn.
-    ops = mine(repo)
+    ops, _last_sha = mine(repo)
     ops_by_sha: dict[str, list] = {}
     for op in ops:
         for sha in op.provenance:
@@ -355,7 +355,7 @@ def test_verb_output_is_valid_ideal(tmp_path_factory, data):
     from sgt.core.order import is_valid_ideal
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path_factory.mktemp("repo"))
-    ops = mine(repo)
+    ops, _last_sha = mine(repo)
     op_ids = [op.id for op in ops]
     subset = frozenset(data.draw(st.sets(st.sampled_from(op_ids)))) if op_ids else frozenset()
 

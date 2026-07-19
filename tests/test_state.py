@@ -45,6 +45,9 @@ def test_path_and_rel_agree_on_layout(tmp_path):
     # two distinct "oracle.json"s at different layers -- committed config vs. local verdict cache.
     assert state.path(tmp_path, "oracle_config") == tmp_path / ".sgt" / "oracle.json"
     assert state.path(tmp_path, "verdicts") == tmp_path / ".sgt" / "local" / "oracle.json"
+    # U3: the per-ref genesis-backfill frontier table, local like witness/ideal_table.
+    assert state.path(tmp_path, "backfill") == tmp_path / ".sgt" / "local" / "backfill.json"
+    assert state.rel("backfill") == ".sgt/local/backfill.json"
 
 
 def test_missing_artifact_returns_default(tmp_path):

@@ -148,7 +148,7 @@ def test_get_put_roundtrip_on_real_mined_corpus(tmp_path, case_name):
     Parametrized over the general-code-robustness fixtures (2026-07-08) as well as the original
     mining-edge-case corpus."""
     repo = corpus.CORPUS[case_name].build(tmp_path / "repo")
-    ops = mine(repo)
+    ops, _last_sha = mine(repo)
     ideal = Ideal.from_ops({op.id for op in ops}, ops)
     materialized = code(ideal, ops)
     for path in corpus.tracked_paths(repo):

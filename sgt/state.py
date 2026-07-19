@@ -114,6 +114,10 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
+    # local, gitignored per-ref genesis-backfill frontier: how far backward a backfill of
+    # pre-horizon history has progressed for a given ref. Never travels -- like `witness` and
+    # `ideal_table`, it's derived from *this* clone's own mining progress.
+    "backfill": _Artifact(("local", "backfill.json"), committed=False),
     # local, gitignored per-ref stack of prior committed ideals: `record_ideal` pushes the outgoing
     # ideal (+ its witness) before each overwrite, so `sgt undo` (U26) can restore the ideal a
     # revert/restore/rewrite/save last replaced. Never travels; there is no edit history to invert

@@ -394,7 +394,7 @@ def test_identity_split_persists_and_a_subsequent_remine_respects_it(tmp_path):
     (repo / "a.py").write_text(_LONG_BODY.format(name="bar"), encoding="utf-8")
     gb.commit_all("rename foo -> bar, same body")
 
-    before_ops = mine.mine(repo)
+    before_ops, _last_sha = mine.mine(repo)
     assert any(o.kind == "move" and "a.py::foo" in o.footprint for o in before_ops)  # linked by default
 
     result = rewrite.identity_split(repo, "a.py::foo", "a.py::bar")
@@ -402,7 +402,7 @@ def test_identity_split_persists_and_a_subsequent_remine_respects_it(tmp_path):
     constraints = load_identity_constraints(repo)
     assert ("a.py::bar", "a.py::foo") in constraints.never_link
 
-    after_ops = mine.mine(repo)
+    after_ops, _last_sha = mine.mine(repo)
     kinds = sorted(o.kind for o in after_ops)
     assert "move" not in kinds  # the weld is gone
     added = next(o for o in after_ops if o.kind == "add" and "a.py::bar" in o.footprint)
@@ -424,14 +424,14 @@ def test_identity_join_persists_and_a_subsequent_remine_links_it(tmp_path):
     )
     gb.commit_all("rewrite alpha -> beta -- same identity, unrelated-looking body")
 
-    before_ops = mine.mine(repo)
+    before_ops, _last_sha = mine.mine(repo)
     assert not any(o.kind == "move" for o in before_ops)  # not linked by default
 
     rewrite.identity_join(repo, "a.py::alpha", "a.py::beta")
     constraints = load_identity_constraints(repo)
     assert ("a.py::alpha", "a.py::beta") in constraints.force_link
 
-    after_ops = mine.mine(repo)
+    after_ops, _last_sha = mine.mine(repo)
     linked = [o for o in after_ops if o.kind == "move" and "a.py::alpha" in o.footprint]
     assert len(linked) == 1
     assert linked[0].footprint["a.py::alpha"][0] is not None  # a move, not a fresh add
