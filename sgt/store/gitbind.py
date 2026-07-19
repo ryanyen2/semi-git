@@ -345,6 +345,29 @@ class GitBinding:
             rows.append((sha, first_parent, subject))
         return rows
 
+    def history_backward(self, tip: str, limit: int | None = None) -> list[tuple[str, str | None, str]]:
+        """``(sha, first_parent, subject)`` newest-first from ``tip`` back toward the root --
+        the mirror image of :meth:`history`, which walks the same shape oldest-first via
+        ``--reverse``. ``limit``, if given, caps the underlying ``git log`` walk itself (``-n``)
+        so a bounded backward chunk never pays for walking history it doesn't need (e.g. very
+        deep repos during chunked genesis-backfill). First-parent only, matching ``history``'s
+        merge-commit convention."""
+        args = ["log", "--format=%H%x1f%P%x1f%s"]
+        if limit is not None:
+            args.extend(["-n", str(limit)])
+        args.append(tip)
+        proc = self._git(*args, check=False)
+        if proc.returncode != 0:
+            return []
+        rows: list[tuple[str, str | None, str]] = []
+        for line in proc.stdout.splitlines():
+            if not line:
+                continue
+            sha, parents, subject = line.split("\x1f", 2)
+            first_parent = parents.split()[0] if parents.strip() else None
+            rows.append((sha, first_parent, subject))
+        return rows
+
     def commits_touching(self, ref: str, path: str) -> list[tuple[str, str | None]]:
         """``(sha, first_parent)`` for every commit reachable from ``ref`` that changed ``path``,
         newest-first. Powers the miner's rebirth/flip lookback (U9): the ancestor commit that last

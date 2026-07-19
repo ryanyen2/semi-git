@@ -63,8 +63,8 @@ def test_mining_idempotence(tmp_path):
     from sgt.core.mine import mine
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    first = mine(repo)
-    second = mine(repo)
+    first, _last_sha = mine(repo)
+    second, _last_sha = mine(repo)
     assert [op.id for op in first] == [op.id for op in second]
 
 
@@ -77,8 +77,8 @@ def test_double_machine_mining_determinism(tmp_path):
 
     repo_a = corpus.CORPUS["linear_history"].build(tmp_path / "machine_a")
     repo_b = corpus.CORPUS["linear_history"].build(tmp_path / "machine_b")
-    ops_a = mine(repo_a)
-    ops_b = mine(repo_b)
+    ops_a, _last_sha = mine(repo_a)
+    ops_b, _last_sha = mine(repo_b)
     assert [op.id for op in ops_a] == [op.id for op in ops_b]
 
 
@@ -109,4 +109,6 @@ def test_rebirth_cycle_op_ids_deterministic_across_clones(tmp_path):
     clone = tmp_path / "clone"
     subprocess.run(["git", "clone", "--quiet", "--local", str(origin), str(clone)], check=True)
 
-    assert [op.id for op in mine(origin)] == [op.id for op in mine(clone)]
+    origin_ops, _last_sha = mine(origin)
+    clone_ops, _last_sha = mine(clone)
+    assert [op.id for op in origin_ops] == [op.id for op in clone_ops]
