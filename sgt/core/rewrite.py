@@ -469,6 +469,32 @@ def build_candidate(
             fulfilled[f"carry:{sym}"] = carry
             candidate_ids.add(carry.id)
 
+    if draft.meta.get("repoint"):
+        # R6 / U5: the mechanical, LLM-free companion to carry_forward. When the target advances to
+        # a new content version (an `edit`, or a revert-and-replace), every dependent that named the
+        # target's *old* version now points at a stale intermediate rather than the tip -- but its
+        # own bytes never change. Mint a fresh producer with the *same footprint and same image*,
+        # rewriting just that one `(symbol, old_version)` requires-edge to `(symbol, new_version)`.
+        # Pure and content-addressed like the split-op tail / carry mints above: no hollow, no
+        # `backend`, no LLM. Each entry names the dependent's current tip op-id plus the edge to
+        # remap; a dependent whose `requires` never named the old version has no edge to the target
+        # and is left untouched (no op minted for it).
+        by_repoint_id = {op.id: op for op in store.all_ops()}
+        for entry in draft.meta["repoint"]:
+            dep = by_repoint_id[entry["op_id"]]
+            old_edge = (entry["symbol"], entry["old_version"])
+            if old_edge not in dep.requires:
+                continue
+            new_requires = frozenset(dep.requires - {old_edge}) | {(entry["symbol"], entry["new_version"])}
+            repointed = make_op(
+                dict(dep.footprint), dict(dep.images), requires=new_requires, kind="repoint",
+                intent=f"repoint {entry['symbol']} onto {entry['new_version'][:12]} "
+                       f"(requires-only, mechanical, no LLM)",
+                resolves=dep.resolves,
+            )
+            fulfilled[f"repoint:{dep.id}"] = repointed
+            candidate_ids.add(repointed.id)
+
     ops = store.all_ops() + list(fulfilled.values())
     try:
         candidate = Ideal.from_ops(candidate_ids, ops)

@@ -16,7 +16,9 @@ from sgt.core import identity, mine, oracle, order, rewrite
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.lens import get, ideal_for_ref
+from sgt.core.op import make_op
 from sgt.core.order import is_valid_ideal
+from sgt.core.rewrite import RewriteDraft
 from sgt.core.store import Store
 from sgt.store.gitbind import init_store
 from tests.laws import corpus
@@ -291,6 +293,85 @@ def test_revert_keep_dependents_refuses_an_unresolvable_target(tmp_path):
     get(repo)
     draft = rewrite.revert_keep_dependents(repo, "not-a-real-op-id")
     assert not draft.ok and draft.hollow_ids == ()
+
+
+# -- U5: mechanical repoint (one crisp LLM rule; R6) --------------------------------------------
+
+def _helper_user_repo(tmp_path):
+    """The same separate-commit helper/user pair the revert tests use: a cross-op reference edge
+    (`user` requires `helper`'s exact version) is the edge a repoint rewrites."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("add user, depending on helper")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+    assert (helper_op.id, user_op.id) in order.reference_edges(ops)
+    return repo, helper_op, user_op
+
+
+def test_repoint_mints_a_requires_updated_op_byte_identical_in_image(tmp_path):
+    """U5/R6: when the target advances to a new content version, a dependent that named the target's
+    *old* version has a stale `requires` edge but unchanged bytes. `build_candidate`'s repoint step
+    mints a fresh producer with the *same footprint and same image*, rewriting only that one edge
+    old->new -- pure and content-addressed, no hollow, no backend, no LLM."""
+    repo, helper_op, user_op = _helper_user_repo(tmp_path)
+    helper_sym = "a.py::helper"
+    v1 = helper_op.footprint[helper_sym][1]
+    assert (helper_sym, v1) in user_op.requires  # the edge that will go stale
+
+    # A chain-extension of `helper` to a new version -- exactly what `edit` (U4) drafts for the target.
+    new_bytes = b"def helper():\n    return 2"
+    v2 = mine._positional_version(helper_sym, mine._content_version(new_bytes))
+    helper2 = make_op({helper_sym: (v1, v2)}, {helper_sym: new_bytes}, kind="extend")
+    Store(repo).add(helper2)
+
+    draft = RewriteDraft(
+        ok=True, verb="edit", target=helper_op.id,
+        meta={
+            "removed_ids": [user_op.id],
+            "required_ids": [helper2.id],
+            "repoint": [{"op_id": user_op.id, "symbol": helper_sym,
+                         "old_version": v1, "new_version": v2}],
+        },
+    )
+    candidate, fulfilled = rewrite.build_candidate(repo, draft)
+
+    repointed = fulfilled[f"repoint:{user_op.id}"]
+    assert repointed.images["b.py::user"] == user_op.images["b.py::user"]  # byte-identical image
+    assert repointed.footprint == user_op.footprint  # same footprint
+    assert (helper_sym, v2) in repointed.requires and (helper_sym, v1) not in repointed.requires
+    # distinct provenance label from carry_forward (kind "rework") and from LLM-filled hollows.
+    assert repointed.kind == "repoint"
+    assert user_op.id not in candidate.op_ids and repointed.id in candidate.op_ids
+    # `build_candidate` already validated the candidate via `Ideal.from_ops`; the fulfilled ops
+    # aren't in the store yet, so validate against the store plus what it just minted.
+    assert is_valid_ideal(Store(repo).all_ops() + list(fulfilled.values()), candidate.op_ids)
+
+
+def test_repoint_leaves_an_op_with_no_edge_to_the_target_untouched(tmp_path):
+    """U5: repoint only rewrites a dependent that actually named the (target, old_version) pair it's
+    asked to remap. An op with no such `requires` edge is left alone -- no op minted for it."""
+    repo, helper_op, user_op = _helper_user_repo(tmp_path)
+    helper_sym = "a.py::helper"
+    v1 = helper_op.footprint[helper_sym][1]
+
+    # `helper_op` is a fresh add with empty `requires`: it has no edge to the target, so repointing
+    # it is a no-op even though it's named in the repoint list.
+    assert (helper_sym, v1) not in helper_op.requires
+    draft = RewriteDraft(
+        ok=True, verb="edit", target=helper_op.id,
+        meta={"repoint": [{"op_id": helper_op.id, "symbol": helper_sym,
+                           "old_version": v1, "new_version": "brand-new-version"}]},
+    )
+    candidate, fulfilled = rewrite.build_candidate(repo, draft)
+    assert not any(k.startswith("repoint:") for k in fulfilled)  # nothing minted
+    assert helper_op.id in candidate.op_ids and user_op.id in candidate.op_ids
+    assert is_valid_ideal(Store(repo).all_ops(), candidate.op_ids)
 
 
 # -- transplant ---------------------------------------------------------------------------------
