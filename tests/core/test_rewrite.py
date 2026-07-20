@@ -295,6 +295,100 @@ def test_revert_keep_dependents_refuses_an_unresolvable_target(tmp_path):
     assert not draft.ok and draft.hollow_ids == ()
 
 
+# -- U3: per-dependent frontier (R4; caller-supplied kept-set) ----------------------------------
+
+def _fan_repo(tmp_path):
+    """`helper` (the revert target) with 2 direct dependents (`user1`, `user2`) and 3 transitive
+    ones (`t1`<-user1, `t2`<-t1, `t3`<-user2). Separate commits so def-use folding keeps each on
+    its own op with a real cross-op reference edge."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user1():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("user1")
+    (repo / "c.py").write_text("from a import helper\n\ndef user2():\n    return helper() + 2\n", encoding="utf-8")
+    gb.commit_all("user2")
+    (repo / "d.py").write_text("from b import user1\n\ndef t1():\n    return user1() + 1\n", encoding="utf-8")
+    gb.commit_all("t1")
+    (repo / "e.py").write_text("from d import t1\n\ndef t2():\n    return t1() + 1\n", encoding="utf-8")
+    gb.commit_all("t2")
+    (repo / "f.py").write_text("from c import user2\n\ndef t3():\n    return user2() + 1\n", encoding="utf-8")
+    gb.commit_all("t3")
+    get(repo)
+    return repo
+
+
+def test_revert_frontier_keep_all_drafts_a_hollow_per_blast_and_carries_every_transitive(tmp_path):
+    """Default (keep-all) preserves today's all-or-nothing behavior exactly: a symbol with 2 direct
+    + 3 transitive dependents drafts 2 continuation hollows and carries 3 forward."""
+    repo = _fan_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id)
+    assert draft.ok
+    hollow_syms = {next(iter(Store(repo).get_hollow(h).footprint)) for h in draft.hollow_ids}
+    assert hollow_syms == {"b.py::user1", "c.py::user2"}
+    assert draft.meta["carry_forward"] == ["d.py::t1", "e.py::t2", "f.py::t3"]
+
+
+def test_revert_frontier_keep_none_is_a_plain_full_upset_removal(tmp_path):
+    """An empty kept-set degenerates to `plan_revert`: no continuation hollows, nothing carried,
+    the full up-set removed."""
+    from sgt.core import verbs
+
+    repo = _fan_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id, keep=frozenset())
+    assert draft.ok
+    assert draft.hollow_ids == ()
+    assert draft.meta["carry_forward"] == []
+    assert set(draft.meta["removed_ids"]) == set(verbs.plan_revert(repo, helper_op.id).removed)
+
+
+def test_revert_frontier_keeping_only_a_transitive_dependent_drafts_no_hollow(tmp_path):
+    """Keeping a dependent whose only tie to the target is transitive carries it forward and drafts
+    *no* hollow -- its bytes never named the removed symbol. The dropped direct dependent gets no
+    hollow either (it's removed with the up-set)."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("user")
+    (repo / "c.py").write_text("from b import user\n\ndef caller():\n    return user() + 1\n", encoding="utf-8")
+    gb.commit_all("caller")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    caller_op = next(o for o in ops if "c.py::caller" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id, keep=frozenset({caller_op.id}))
+    assert draft.ok
+    assert draft.hollow_ids == ()  # `user` (blast) dropped -> no hollow; `caller` is a carry -> no hollow
+    assert draft.meta["carry_forward"] == ["c.py::caller"]
+
+
+def test_revert_frontier_with_no_dependents_equals_a_plain_revert(tmp_path):
+    """A symbol nothing builds on has an empty frontier: keep-all is identical to `plan_revert`."""
+    from sgt.core import verbs
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id)
+    assert draft.ok and draft.hollow_ids == () and draft.meta["carry_forward"] == []
+    assert set(draft.meta["removed_ids"]) == set(verbs.plan_revert(repo, helper_op.id).removed)
+
+
 # -- U5: mechanical repoint (one crisp LLM rule; R6) --------------------------------------------
 
 def _helper_user_repo(tmp_path):

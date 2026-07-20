@@ -13,6 +13,8 @@ def register(subs, parent) -> None:
     r = subs.add_parser("revert", parents=[parent])
     r.add_argument("--emit", action="store_true")
     r.add_argument("--keep-dependents", action="store_true", dest="keep_dependents")
+    r.add_argument("--keep", help="comma-separated dependent op-ids to keep (from the --emit "
+                                  "frontier); implies --keep-dependents. Empty = keep none.")
     r.add_argument("--repair", action="store_true")
     r.add_argument("--backend", default="api", choices=["api"])
     r.add_argument("--intent")
@@ -71,8 +73,13 @@ def _after(repo: str, a: str, b: str, retract: bool, as_json: bool) -> int:
 def _cmd_revert(args) -> int:
     if args.session:
         return _revert_session(".", args.session, args.emit, args.as_json)
-    if args.keep_dependents:
-        return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json)
+    if args.keep_dependents or args.keep is not None:
+        # `--keep a,b` (from the --emit frontier) keeps exactly those toggleable dependents; a bare
+        # `--keep-dependents` keeps them all (keep=None); `--keep ""` keeps none (a plain revert).
+        keep = None if args.keep is None else frozenset(
+            tok for tok in (t.strip() for t in args.keep.split(",")) if tok
+        )
+        return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json, keep=keep)
     return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes)
 
 
@@ -260,19 +267,22 @@ def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:
 
 def _revert_keep_dependents(
     repo: str, ref_tokens: list[str], intent: str | None, do_repair: bool, as_json: bool,
+    keep: frozenset[str] | None = None,
 ) -> int:
     """`revert <ref> --keep-dependents` (plan U11, R14): removes the target's up-set but drafts
-    a continuation hollow per direct reference-dependent, so its symbol stays live. `--repair`
-    (plan U6) hands the draft straight to the LLM-backed repair loop instead of printing it -- the
-    one-command happy path, symmetric with how `--keep-dependents` already routes to `rewrite`."""
+    a continuation hollow per direct reference-dependent, so its symbol stays live. `keep` (from
+    `--keep`, plan U3/R4) narrows that to a caller-chosen frontier of dependent op-ids; `None`
+    keeps them all. `--repair` (plan U6) hands the draft straight to the LLM-backed repair loop
+    instead of printing it -- the one-command happy path, symmetric with how `--keep-dependents`
+    already routes to `rewrite`."""
     from sgt.core import rewrite
     from sgt.core.lens import get
 
     if not ref_tokens:
-        print("usage: sgt revert <ref> --keep-dependents [--repair]")
+        print("usage: sgt revert <ref> --keep-dependents [--keep <id>,<id>] [--repair]")
         return 2
     get(repo)
-    draft = rewrite.revert_keep_dependents(repo, " ".join(ref_tokens), intent=intent)
+    draft = rewrite.revert_keep_dependents(repo, " ".join(ref_tokens), intent=intent, keep=keep)
     if not do_repair or not draft.ok:
         return _print_draft(draft, as_json)
 
