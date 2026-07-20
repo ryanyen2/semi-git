@@ -232,6 +232,8 @@ def selection_view(repo, feature_refs) -> dict:
     module docstring for why -- the U25 BET-C gate that ruled out silent branch materialization)."""
     from sgt.lens.select import select
 
+    if isinstance(feature_refs, str):  # a discriminated single spec → the universal resolver (U1)
+        return resolve_selection(repo, feature_refs)
     result = select(repo, feature_refs)
     if not result.ok:
         return {"ok": False, "message": result.message}
@@ -244,6 +246,24 @@ def selection_view(repo, feature_refs) -> dict:
         ],
         "hub": result.hub,
         "message": result.message,
+    }
+
+
+def resolve_selection(repo, spec: str) -> dict:
+    """The universal selection resolver's projection (plan U1/KTD1): resolve any `sgt select <spec>`
+    form -- exact `file::symbol`, glob, authored-feature ref, clustered-feature ref, explicit id set,
+    or an NL phrase -- into the resolved direct/closure op sets, the closure counts, a display label,
+    and (on an ambiguous NL phrase) the ranked candidates. Report-only, like `select` (see
+    `sgt.lens.select`'s docstring -- the U25 BET-C gate that ruled out silent materialization)."""
+    from sgt.lens.select import resolve
+
+    result = resolve(repo, spec)
+    return {
+        "ok": result.ok, "message": result.message, "label": result.label,
+        "direct_ops": sorted(result.direct_ops), "closure": sorted(result.closure),
+        "direct_op_count": result.direct_op_count, "closure_op_count": result.closure_op_count,
+        "files": list(result.files),
+        "candidates": list(result.candidates),
     }
 
 
