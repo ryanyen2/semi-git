@@ -30,15 +30,15 @@ from ._common import _emit_json, _fail_json
 # `revert` to `sgt revert`; `stash` dissolves into `sgt save` (a dirty tree is just ops not yet
 # landed). `rebase` has no sgt analogue -- history is a mined DAG -- so it routes to `sgt sync`.
 REFUSALS: dict[str, str] = {
-    "checkout": "sgt switch <branch>  (or `sgt restore <path>` to restore files)",
-    "switch": "sgt switch <branch>",
+    "checkout": "sgt advanced switch <branch>  (or `sgt restore <path>` to restore files)",
+    "switch": "sgt advanced switch <branch>",
     "restore": "sgt restore <ref>",
     "pull": "sgt sync [remote] [branch]",
     "merge": "sgt sync [remote] [branch]",
     "reset": "sgt undo  (or `sgt revert <ref>` to drop an op)",
     "rebase": "sgt sync  (history is a mined op DAG; sgt has no rebase)",
     "revert": "sgt revert <ref>",
-    "cherry-pick": "sgt restore <ref>  (or `sgt transplant <op>... --onto <ref>`)",
+    "cherry-pick": "sgt restore <ref>  (or `sgt advanced transplant <op>... --onto <ref>`)",
     "stash": "sgt save  (a dirty tree is just ops not yet landed)",
     "am": "git apply, then `sgt save` to record the change as ops",
 }

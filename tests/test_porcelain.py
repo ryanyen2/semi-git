@@ -111,7 +111,7 @@ def test_switch_materializes_the_target_branchs_ideal(tmp_path):
     repo = tmp_path / "repo"
     gb, base = _two_branches(repo)
     with _in(repo):
-        rc = cli.main(["switch", base])
+        rc = cli.main(["advanced", "switch", base])
     assert rc == 0
     assert current_ideal(repo).op_ids == get(repo).op_ids
     assert b"def bar" not in (repo / "a.py").read_bytes()  # base never had bar
@@ -122,7 +122,7 @@ def test_switch_reports_a_git_error_for_an_unknown_branch(tmp_path, capsys):
     repo = tmp_path / "repo"
     _two_branches(repo)
     with _in(repo):
-        rc = cli.main(["switch", "does-not-exist"])
+        rc = cli.main(["advanced", "switch", "does-not-exist"])
     assert rc == 1
     assert "✗" in capsys.readouterr().out  # _fail's "✗" marker
 
@@ -131,7 +131,7 @@ def test_switch_json_reports_branch_and_op_count(tmp_path, capsys):
     repo = tmp_path / "repo"
     gb, base = _two_branches(repo)
     with _in(repo):
-        rc = cli.main(["switch", base, "--json"])
+        rc = cli.main(["advanced", "switch", base, "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload == {"ok": True, "branch": base, "ops": len(get(repo).op_ids)}
@@ -194,7 +194,7 @@ def test_full_daily_loop_runs_git_free(tmp_path, capsys):
     repo = tmp_path / "repo"
     gb, base = _two_branches(repo)
     with _in(repo):
-        assert cli.main(["switch", base]) == 0
+        assert cli.main(["advanced", "switch", base]) == 0
         assert gb.symbolic_ref().rsplit("/", 1)[-1] == base
 
         before_ids = get(repo).op_ids
@@ -209,7 +209,7 @@ def test_full_daily_loop_runs_git_free(tmp_path, capsys):
         rc = cli.main(["git", "checkout", "feature"])
         assert rc == 1
         err = capsys.readouterr().err
-        assert "sgt switch" in err and "--force" in err
+        assert "sgt advanced switch" in err and "--force" in err
         assert gb.symbolic_ref().rsplit("/", 1)[-1] == base  # refused: HEAD never moved
 
 
@@ -221,13 +221,13 @@ def test_switch_preserves_a_symlink_in_both_directions(tmp_path):
     outside = tmp_path / "outside.txt"
     outside.write_text("SECRET\n", encoding="utf-8")
     with _in(repo):
-        cli.main(["switch", base])
+        cli.main(["advanced", "switch", base])
         (repo / "link.txt").symlink_to(outside)
         gb.commit_all("add link on base")
         get(repo)  # mine the link commit (skipped as unmanaged)
 
-        assert cli.main(["switch", "feature"]) == 0
-        assert cli.main(["switch", base]) == 0
+        assert cli.main(["advanced", "switch", "feature"]) == 0
+        assert cli.main(["advanced", "switch", base]) == 0
 
     assert outside.read_text() == "SECRET\n"      # target never clobbered
     assert (repo / "link.txt").is_symlink()        # link survives both switches
