@@ -829,3 +829,206 @@ def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(t
     assert code(after, Store(b).all_ops())["main.py"] == (
         b"def foo():\n    return 1041\n\n\ndef bar():\n    return 2\n"
     )
+
+
+# -- U4: `sgt edit <selection>` -- in-place change (KTD5, R5) -----------------------------------
+
+def _configure_oracle(repo, tiers):
+    """Same shell-tier oracle config the repair-loop tests use (`tests/repair/test_loop.py`)."""
+    payload = {"tiers": [{"name": name, "command": command} for name, command in tiers]}
+    (repo / ".sgt").mkdir(exist_ok=True)
+    (repo / ".sgt" / "oracle.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+class _CountingBackend:
+    """A repair backend that scripts one image per call and counts how often it's asked -- the
+    happy path must never touch it (`calls == 0`)."""
+
+    def __init__(self, images):
+        self.images = images
+        self.calls = 0
+
+    def propose(self, request):
+        from sgt.repair.backends import RepairProposal
+
+        idx = min(self.calls, len(self.images) - 1)
+        self.calls += 1
+        return RepairProposal(image=self.images[idx].decode("utf-8"), rationale="fake")
+
+
+def _helper_with_three_callers(repo):
+    """`helper` plus three direct callers, each in its own commit (a separate op with a real
+    reference edge to `helper` -- the same separate-commit trick the revert tests rely on)."""
+    gb, _ = init_store(repo)
+    (repo / "m.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    body = "def helper():\n    return 1\n"
+    for i in (1, 2, 3):
+        body += f"\n\ndef u{i}():\n    return helper() + {i}\n"
+        (repo / "m.py").write_text(body, encoding="utf-8")
+        gb.commit_all(f"add u{i}")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "m.py::helper" in o.footprint)
+    callers = [next(o for o in ops if f"m.py::u{i}" in o.footprint) for i in (1, 2, 3)]
+    for c in callers:
+        assert (helper_op.id, c.id) in order.reference_edges(ops)
+    return gb, helper_op, callers
+
+
+def test_edit_repoints_three_dependents_with_zero_model_calls_and_one_land(tmp_path):
+    """Happy path (R5/KTD5): a behavior-preserving edit of a symbol with 3 direct dependents
+    repoints all three mechanically (`kind == "repoint"`, byte-identical images, `requires` bumped
+    to the new version), the oracle passes, and it lands with **zero** model calls -- no op carries
+    integration/LLM attribution, and a counting backend is never asked."""
+    repo = tmp_path / "repo"
+    gb, helper_op, callers = _helper_with_three_callers(repo)
+    _configure_oracle(repo, [("py_compile", "python -m py_compile m.py")])
+    helper_sym = "m.py::helper"
+    old_v = helper_op.footprint[helper_sym][1]
+
+    draft = rewrite.edit_op(repo, helper_op.id)
+    assert draft.ok and len(draft.hollow_ids) == 1 and draft.verb == "edit"
+    hollow = Store(repo).get_hollow(draft.hollow_ids[0])
+    # KTD5: the edit hollow chain-extends the tip -- before == the target's *current* after_version.
+    assert hollow.footprint[helper_sym] == (old_v, rewrite._PENDING)
+    assert sorted(draft.meta["repoint_deps"]) == sorted(c.id for c in callers)
+
+    # The user edits the symbol in place -- behavior-preserving (adds a comment, returns 1 still).
+    edited = "def helper():\n    return 1  # tidy up\n"
+    for i in (1, 2, 3):
+        edited += f"\n\ndef u{i}():\n    return helper() + {i}\n"
+    (repo / "m.py").write_text(edited, encoding="utf-8")
+
+    backend = _CountingBackend([b"UNUSED"])
+    candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    assert is_valid_ideal(Store(repo).all_ops(), candidate.op_ids)
+
+    ops = Store(repo).all_ops()
+    by_id = {o.id: o for o in ops}
+    new_v = next(o.footprint[helper_sym][1] for o in ops if o.kind == "edit")
+    assert new_v != old_v
+    repoints = [o for o in ops if o.kind == "repoint" and o.id in candidate.op_ids]
+    assert len(repoints) == 3  # all three callers repointed, none hollowed
+    for rp in repoints:
+        sym = next(iter(rp.footprint))
+        orig = next(c for c in callers if sym in c.footprint)
+        assert rp.images[sym] == orig.images[sym]  # byte-identical -- the caller's bytes never change
+        assert (helper_sym, new_v) in rp.requires and (helper_sym, old_v) not in rp.requires
+
+    oracle.run(repo, ideal=candidate)  # a behavior-preserving edit passes the configured tier
+    assert oracle.overall_status(oracle.verdict_for(repo, candidate)) == "pass"
+    sha = rewrite.land(repo)  # oracle green -> one land, no override
+    assert sha
+    assert rewrite.staged_candidate(repo) is None
+    # Zero model calls: nothing was attributed to the integration agent, backend never asked.
+    landed = [by_id2 for by_id2 in Store(repo).all_ops() if by_id2.id in candidate.op_ids]
+    assert all(a.agent != "integration" for o in landed for a in o.attribution)
+    assert backend.calls == 0
+
+
+def test_edit_with_no_dependents_is_a_plain_chain_extension(tmp_path):
+    """Edge (KTD5): editing a symbol nothing references drafts just the edit hollow -- no repoint,
+    no continuation hollow beyond the edit itself."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "m.py").write_text("def lonely():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add lonely")
+    get(repo)
+    ops = Store(repo).all_ops()
+    lonely_op = next(o for o in ops if "m.py::lonely" in o.footprint)
+
+    draft = rewrite.edit_op(repo, lonely_op.id)
+    assert draft.ok and len(draft.hollow_ids) == 1
+    assert draft.meta["repoint_deps"] == [] and draft.meta["removed_ids"] == []
+
+    (repo / "m.py").write_text("def lonely():\n    return 2\n", encoding="utf-8")
+    candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    new_ops = Store(repo).all_ops()
+    assert not any(o.kind == "repoint" for o in new_ops if o.id in candidate.op_ids)
+    edit_op_ = next(o for o in new_ops if o.kind == "edit")
+    assert edit_op_.id in candidate.op_ids
+    assert is_valid_ideal(new_ops, candidate.op_ids)
+
+
+def test_edit_breaking_a_caller_repairs_the_blast_dependent_and_regates_green(tmp_path):
+    """Error path (R5/KTD5 bounded-safety): a behavior-changing edit breaks a caller's test, so the
+    oracle goes red. `edit_repair_op` drafts a continuation hollow for the blast (direct) dependent;
+    `--repair` (a fake backend) fills it and the oracle re-gates green."""
+    from sgt.repair.loop import repair
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "m.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    (repo / "m.py").write_text(
+        "def helper():\n    return 1\n\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
+    )
+    gb.commit_all("add user")
+    # The contract the edit will break, then repair must restore: user() == 2.
+    (repo / "test_m.py").write_text(
+        "import m\n\ndef test_user():\n    assert m.user() == 2\n", encoding="utf-8"
+    )
+    _configure_oracle(repo, [
+        ("py_compile", "python -m py_compile m.py"),
+        ("pytest", "python -m pytest test_m.py -q"),
+    ])
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "m.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "m.py::user" in o.footprint)
+
+    # edit helper to change its behavior (return 2), leaving user's bytes as helper() + 1 -> 3 != 2.
+    draft = rewrite.edit_op(repo, helper_op.id)
+    (repo / "m.py").write_text(
+        "def helper():\n    return 2\n\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
+    )
+    rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    try:
+        rewrite.land(repo)
+        assert False, "expected the oracle to refuse the behavior-changing edit"
+    except rewrite.RewriteError as e:
+        assert "oracle" in str(e)
+
+    # Red path: draft continuation hollows for all blast dependents, then repair via the LLM loop.
+    repair_draft = rewrite.edit_repair_op(repo, helper_op.id)
+    assert repair_draft.ok and len(repair_draft.hollow_ids) == 1  # `user` is the sole blast dep
+    assert repair_draft.verb == "edit-repair"
+
+    rewrite.unstage(repo)  # abandon the red happy-path stage; the edit op stays in the store
+    backend = _CountingBackend([b"def user():\n    return 2"])  # restores user() == 2
+    result = repair(repo, repair_draft, backend, max_oracle_rounds=1)
+    assert result.ok, result.message
+    assert backend.calls == 1  # only the blast dependent cost a model call
+
+    ops = Store(repo).all_ops()
+    by_id = {o.id: o for o in ops}
+    live = get(repo).frontier(ops)
+    # helper advanced to the edited version, user reworked to satisfy the restored contract.
+    assert b"return 2" in by_id[live["m.py::helper"]].images["m.py::helper"]
+    assert by_id[live["m.py::user"]].images["m.py::user"] == b"def user():\n    return 2"
+
+
+def test_edit_stale_stage_is_refused_like_other_rewrites(tmp_path):
+    """Integration (KTD5): a staged edit candidate is stale-guarded by `_stale_paths` -- a tree
+    edited after `fulfill` refuses to land, exactly like a staged merge-op."""
+    repo = tmp_path / "repo"
+    gb, helper_op, callers = _helper_with_three_callers(repo)
+    _configure_oracle(repo, [("py_compile", "python -m py_compile m.py")])
+
+    draft = rewrite.edit_op(repo, helper_op.id)
+    edited = "def helper():\n    return 1  # tidy\n"
+    for i in (1, 2, 3):
+        edited += f"\n\ndef u{i}():\n    return helper() + {i}\n"
+    (repo / "m.py").write_text(edited, encoding="utf-8")
+    rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+
+    # Drift the staged candidate out from under the stage, then land -> stale refusal.
+    (repo / "m.py").write_text("def helper():\n    return 999\n", encoding="utf-8")
+    try:
+        rewrite.land(repo, override=("pass", "reviewed", "rev"))
+        assert False, "expected a staleness refusal"
+    except rewrite.RewriteError as e:
+        assert "stale" in str(e) and "m.py" in str(e)
+    rewrite.unstage(repo)
+    assert rewrite.staged_candidate(repo) is None

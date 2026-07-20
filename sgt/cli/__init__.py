@@ -37,8 +37,8 @@ import subprocess
 import sys
 
 from . import (
-    feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose, review,
-    rewrite, select, session, sync, tiers,
+    edit, feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose,
+    review, rewrite, select, session, sync, tiers,
 )
 
 _VERBS = {
@@ -47,11 +47,11 @@ _VERBS = {
     "repair", "map", "blame", "status", "merge", "split", "rename", "move",
     "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview", "compose", "fold",
     "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
-    "review-queue", "reindex", "intent",
+    "review-queue", "reindex", "intent", "edit",
 }
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review, intent)
+             porcelain, tiers, select, session, review, intent, edit)
 
 
 class _CLIExit(Exception):
