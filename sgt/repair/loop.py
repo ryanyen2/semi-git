@@ -109,12 +109,18 @@ def repair(
         verdict_record = oracle.verdict_for(repo, candidate)
         if oracle.overall_status(verdict_record) == "pass":
             sha = rewrite.land(repo, message=f"sgt repair {draft.target}")
-            for op in fulfilled.values():
+            for key, op in fulfilled.items():
                 # `rewrite.land` deliberately doesn't re-mine (unlike `session.land`), so `op.provenance`
                 # never picks up `sha` on its own -- and `Store._serialize` only persists an `Attribution`
                 # entry for a sha present in `provenance`. Record the witness before attributing it.
                 store.add(replace(op, provenance=(sha,)))
-                store.attribute(op.id, (Attribution(sha=sha, agent="integration", plan=plan),))
+                # R6: only the ops the backend actually authored -- hollow fulfillments, keyed by
+                # their hollow id -- carry LLM/integration provenance. Mechanically-minted repairs
+                # (carry-forward, repoint, split-op tail; keyed `carry:`/`repoint:`/`:tail`) are
+                # witnessed by the landing commit but never attributed to the model, so a provenance
+                # grep separates mechanical repair from LLM-filled hollows.
+                if key in draft.hollow_ids:
+                    store.attribute(op.id, (Attribution(sha=sha, agent="integration", plan=plan),))
             return RepairResult(
                 ok=True, sha=sha, attempts=total_attempts, oracle_rounds=oracle_round,
                 cost_line=_cost_line(backend),
