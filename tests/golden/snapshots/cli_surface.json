@@ -207,7 +207,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"README.md residue__::\\u0000HEAD\\u0000 residue__::\\u0000HEAD\\u0000\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"op_count\": 12,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"continuation\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
+      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"README.md residue__::\\u0000HEAD\\u0000 residue__::\\u0000HEAD\\u0000\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 12,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"continuation\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -432,7 +432,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": []\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"frontier\": []\n}\n"
     },
     "text": {
       "argv": [
