@@ -25,7 +25,8 @@ from sgt.core.mine import mine
 from sgt.core.op import MINER_VERSION, Op, merge_attribution
 from sgt.core.store import Store, _deserialize
 from sgt.intent import prompts as intent_prompts
-from sgt.lens import reconcile, tree
+from sgt.lens import authored, reconcile, tree
+from sgt.lens.authored import AuthoredFeature
 from sgt.lens.pins import Pins, _pins_from_payload, load_pins
 from sgt.store.gitbind import GitBinding, parse_op_ids
 
@@ -72,6 +73,10 @@ class Ingested:
     # (tests) doesn't need to know about it.
     ours_prompts: dict[str, str] = field(default_factory=dict)
     theirs_prompts: dict[str, str] = field(default_factory=dict)
+    # Authored features (U6/R3/KTD3), merged field-by-field in `resolve` -- defaulted like the
+    # other post-U15 additions so a direct `Ingested(...)` construction (tests) needn't supply them.
+    ours_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
+    theirs_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
 
 
 def _pins_at(gb: GitBinding, sha: str) -> Pins:
@@ -132,6 +137,8 @@ def ingest(
         theirs_aliases=reconcile.aliases_at(gb, theirs_sha),
         ours_prompts=intent_prompts.load_prompts(repo),
         theirs_prompts=intent_prompts.prompts_at(gb, theirs_sha),
+        ours_authored=authored.load_authored(repo),
+        theirs_authored=authored.authored_at(gb, theirs_sha),
         ours_tree=tree.load(repo),
         ours_ideal=lens.current_ideal(repo),
         theirs_ideal_ids=theirs_ideal_ids,

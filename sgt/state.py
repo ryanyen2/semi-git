@@ -91,6 +91,12 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # that clone syncs; a same-old collision (divergent unsynced curation) resolves by the alias-
     # merge rule. Travels with the repo and is read from historical blobs, like every committed slot.
     "aliases": _Artifact(("aliases.json",), committed=True),
+    # committed collection of authored features (`sgt.lens.authored`, U6/R3/KTD3): af-id ->
+    # {label, label_witness, member OR-Set (adds+tombstones)}. A user-authored named selection that
+    # is first-class merged state, not a `tree.build` output -- merged field-by-field on sync (OR-Set
+    # membership + witness-topo LWW label + carried af- id), so it travels and is read from
+    # historical blobs like every committed slot.
+    "authored_features": _Artifact(("authored", "features.json"), committed=True, sort_keys=False),
     # committed OR-Set of declared order edges (`sgt after`/`sgt after --retract`, U21/D6): adds
     # carry a unique tag, retraction tombstones observed tags, live = adds minus tombstoned. A new
     # path (the legacy flat G-Set stays at `declared` in v0 shape for old readers, D3 old-reader
