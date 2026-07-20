@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from sgt.core.lens import get
 from sgt.core.store import Store
-from sgt.lens import select, tree
+from sgt.lens import authored, select, tree
 from sgt.store.gitbind import init_store
 
 
@@ -181,3 +181,133 @@ def test_why_for_feature_refuses_when_op_is_not_in_that_closure(tmp_path):
     result = select.why(tmp_path, other_op.id, for_feature="F-A")
     assert not result.ok
     assert "not part of" in result.message
+
+
+# -- resolve() : the universal selection resolver (U1) --------------------------------------------
+
+
+def _two_feature_repo(tmp_path):
+    """`a.py::base` and a caller `b.py::caller` that genuinely `requires` it (a real cross-file
+    edge, mined across two commits). Returns (base_op, caller_op)."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add a.py")
+    (tmp_path / "b.py").write_text(
+        "from a import base\n\n\ndef caller():\n    return base() + 1\n", encoding="utf-8",
+    )
+    gb.commit_all("add b.py calling base")
+    get(tmp_path)
+    return _op_for(tmp_path, "a.py::base"), _op_for(tmp_path, "b.py::caller")
+
+
+def test_resolve_exact_symbol_to_frontier_tip(tmp_path):
+    """`file::symbol` (no glob metachar) resolves to that symbol's frontier tip op -- exactly what
+    `resolve_target` does, so `sgt select a.py::base` and a single-op revert see the same op."""
+    base_op, _caller_op = _two_feature_repo(tmp_path)
+
+    result = select.resolve(tmp_path, "a.py::base")
+    assert result.ok, result.message
+    assert result.label == "a.py::base"
+    assert result.direct_ops == frozenset({base_op.id})
+    assert result.direct_op_count == 1
+    assert result.closure_op_count == 1  # base builds on nothing
+
+
+def test_resolve_glob_spans_two_features_reports_both_in_closure(tmp_path):
+    """A glob matching live symbols in two different files/features must resolve to both tips and
+    report both ops in the closure (design promise: you select what you mean, across cluster
+    boundaries)."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def pay_charge():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def pay_refund():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("add two independent pay symbols")
+    get(tmp_path)
+    charge_op = _op_for(tmp_path, "a.py::pay_charge")
+    refund_op = _op_for(tmp_path, "b.py::pay_refund")
+
+    result = select.resolve(tmp_path, "*::pay_*")
+    assert result.ok, result.message
+    assert result.label == "*::pay_*"
+    assert result.direct_op_count == 2
+    assert result.closure_op_count == 2
+    assert {charge_op.id, refund_op.id} <= result.closure
+    assert result.files == ("a.py", "b.py")
+
+
+def test_resolve_empty_glob_returns_not_ok_not_exception(tmp_path):
+    _two_feature_repo(tmp_path)
+    result = select.resolve(tmp_path, "nope/*.py::*")
+    assert not result.ok
+    assert result.message
+    assert result.candidates == ()
+
+
+def test_resolve_named_authored_feature_by_label_and_id(tmp_path):
+    """An authored feature resolves both by its exact label and by its `af-` id; its live members
+    become the direct op set (constructed directly via `sgt.lens.authored`, since no verb mints
+    authored features yet)."""
+    base_op, _caller_op = _two_feature_repo(tmp_path)
+    feat = authored.create(["a.py::base"], "payments")
+    authored.save_authored(tmp_path, {feat.id: feat})
+
+    by_label = select.resolve(tmp_path, "payments")
+    assert by_label.ok, by_label.message
+    assert by_label.label == "payments"
+    assert by_label.direct_ops == frozenset({base_op.id})
+
+    by_id = select.resolve(tmp_path, feat.id)
+    assert by_id.ok, by_id.message
+    assert by_id.direct_ops == frozenset({base_op.id})
+
+
+def test_resolve_explicit_two_op_set(tmp_path):
+    """A comma-separated list of `file::symbol`s resolves each element to its tip op and unions
+    them into one direct set."""
+    base_op, caller_op = _two_feature_repo(tmp_path)
+    result = select.resolve(tmp_path, "a.py::base,b.py::caller")
+    assert result.ok, result.message
+    assert result.direct_ops == frozenset({base_op.id, caller_op.id})
+    assert result.direct_op_count == 2
+
+
+def test_resolve_empty_match_returns_not_ok_with_message(tmp_path):
+    """An unmatchable phrase (below the fuzzy cutoff) returns `ok=False` with a message and no
+    candidates -- never an exception."""
+    _two_feature_repo(tmp_path)
+    feat = authored.create(["a.py::base"], "payments")
+    authored.save_authored(tmp_path, {feat.id: feat})
+
+    result = select.resolve(tmp_path, "quantum chromodynamics")
+    assert not result.ok
+    assert result.message
+    assert result.candidates == ()
+
+
+def test_resolve_ambiguous_nl_phrase_returns_ranked_candidates(tmp_path):
+    """A phrase equidistant from two authored labels returns `ok=False` carrying the ranked
+    candidates (so a UI can disambiguate), not an exception and not a silent pick."""
+    base_op, caller_op = _two_feature_repo(tmp_path)
+    fa = authored.create(["a.py::base"], "payment alpha")
+    fb = authored.create(["b.py::caller"], "payment gamma")
+    authored.save_authored(tmp_path, {fa.id: fa, fb.id: fb})
+
+    result = select.resolve(tmp_path, "payment")
+    assert not result.ok
+    assert len(result.candidates) >= 2
+    labels = {c["label"] for c in result.candidates}
+    assert {"payment alpha", "payment gamma"} <= labels
+    scores = [c["score"] for c in result.candidates]
+    assert scores == sorted(scores, reverse=True)  # ranked best-first
+
+
+def test_resolve_output_feeds_the_same_closure_select_reports(tmp_path):
+    """Integration: `resolve` over a symbol and `select` over the feature that owns it produce the
+    identical closure/op set -- one closure machine behind both entry points."""
+    base_op, _caller_op = _two_feature_repo(tmp_path)
+    _save_tree(tmp_path, {"F-A": ["a.py::base"], "F-B": ["b.py::caller"]})
+
+    r_res = select.resolve(tmp_path, "a.py::base")
+    r_sel = select.select(tmp_path, ["F-A"])
+    assert r_res.closure == r_sel.closure
+    assert r_res.direct_ops == r_sel.direct_ops
+    assert r_res.closure_op_count == r_sel.closure_op_count

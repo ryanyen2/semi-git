@@ -9,11 +9,12 @@ import json
 
 from sgt.api import (
     compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, oplog_view,
-    plan_view, state_view, status_view, trust_view,
+    plan_view, resolve_selection, state_view, status_view, trust_view,
 )
 from sgt.core.lens import get
 from sgt.core.op import make_op
 from sgt.core.store import Store
+from sgt.lens import authored
 from sgt.loop import match as match_mod
 from sgt.loop import plan as plan_mod
 from sgt.store.gitbind import init_store
@@ -58,6 +59,45 @@ def test_ideal_diff_view_lists_symmetric_difference_grouped_by_symbol(tmp_path):
     sides = v["by_symbol"]["slugify.py::slugify"]
     assert len(sides["only_in_a"]) == 1 and len(sides["only_in_b"]) == 1
     assert sides["only_in_a"] != sides["only_in_b"]  # a genuine fork, two distinct op ids
+
+
+def test_resolve_selection_view_projects_op_set_label_and_counts(tmp_path):
+    """`resolve_selection` is the thin projection over `select.resolve`: it exposes the resolved
+    direct/closure op sets, the closure counts, and the display label for any spec form."""
+    from sgt.store.gitbind import init_store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add a.py")
+    get(tmp_path)
+    base_op = next(op for op in Store(tmp_path).all_ops() if "a.py::base" in op.footprint)
+
+    v = resolve_selection(tmp_path, "a.py::base")
+    assert v["ok"] is True
+    assert v["label"] == "a.py::base"
+    assert v["direct_ops"] == [base_op.id]
+    assert v["closure"] == [base_op.id]
+    assert v["direct_op_count"] == 1
+    assert v["closure_op_count"] == 1
+    assert v["candidates"] == []
+
+
+def test_resolve_selection_view_reports_ambiguous_candidates(tmp_path):
+    """An ambiguous NL phrase projects `ok=False` with the ranked candidates, never raising."""
+    from sgt.store.gitbind import init_store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add a.py")
+    get(tmp_path)
+    fa = authored.create(["a.py::base"], "payment alpha")
+    fb = authored.create(["a.py::base"], "payment gamma")
+    authored.save_authored(tmp_path, {fa.id: fa, fb.id: fb})
+
+    v = resolve_selection(tmp_path, "payment")
+    assert v["ok"] is False
+    assert v["message"]
+    assert {c["label"] for c in v["candidates"]} >= {"payment alpha", "payment gamma"}
 
 
 def test_oplog_view_is_sorted_and_carries_op_fields(tmp_path):

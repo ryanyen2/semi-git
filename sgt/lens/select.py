@@ -17,6 +17,8 @@ order, pulled a given op in) is this module's own BFS, scoped to the already-com
 
 from __future__ import annotations
 
+import difflib
+import fnmatch
 from collections import Counter, deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,9 +26,14 @@ from pathlib import Path
 from sgt.core import lens as kernel_lens
 from sgt.core import order
 from sgt.core import verbs as core_verbs
+from sgt.core.op import _symbol_kind, is_bottom
 from sgt.core.store import Store
 from sgt.lens import tree
+from sgt.lens.authored import load_authored
 from sgt.lens.verbs import resolve_feature
+
+# Below this fuzzy ratio an NL phrase is treated as "no match" rather than a weak guess.
+_NL_CUTOFF = 0.5
 
 
 @dataclass(frozen=True)
@@ -40,12 +47,16 @@ class PulledGroup:
 class SelectionResult:
     ok: bool
     message: str = ""
+    label: str = ""  # resolved display label (the spec / feature label / matched symbol)
     feature_ids: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
+    direct_ops: frozenset[str] = frozenset()  # the resolved direct op set (verbs consume this)
+    closure: frozenset[str] = frozenset()  # the full induced closure
     direct_op_count: int = 0
     closure_op_count: int = 0
     pulled: tuple[PulledGroup, ...] = ()
     hub: dict | None = None  # {"symbol", "pulled_op_count"}
+    candidates: tuple[dict, ...] = ()  # ranked {"id","label","score"} on an ambiguous NL phrase
 
 
 @dataclass(frozen=True)
@@ -154,27 +165,24 @@ def _hub_diagnosis(ops_by_id: dict, closure: frozenset[str], feature_ids: tuple[
     return {"symbol": symbol, "pulled_op_count": len(producers)}
 
 
-def select(repo: str | Path, feature_refs) -> SelectionResult:
-    """The closure induced by selecting `feature_refs` (plurality-voted `op_leaf` membership,
-    plan U13): direct ops, the ops the closure additionally pulls in grouped by their own feature
-    (each group with one representative requires/chain path), and -- when the pull crosses a
-    feature boundary -- the hub symbol responsible."""
+def _closure_result(
+    repo: str | Path, direct_ops, feature_ids: tuple[str, ...], label: str, *, empty_message: str,
+) -> SelectionResult:
+    """The shared, report-only closure body behind both `select` and `resolve`: given a set of
+    directly-selected op-ids (pre-ideal-filter), the clustering `feature_ids` used only for the
+    hub diagnosis, and a display `label`, compute the induced closure (`order.downset_in`, chain +
+    reference edges only -- never clustering co-membership), the touched files, the ops the closure
+    additionally pulled in grouped by their own feature (each with one representative path), and the
+    hub symbol when a pull crosses a feature boundary. Materializes nothing (U25 BET-C gate)."""
     repo = Path(repo)
-    direct_ops, feature_ids, error = _resolve_selection(repo, feature_refs)
-    if error:
-        return SelectionResult(ok=False, message=error)
-
     ops = Store(repo).all_ops()
     ops_by_id = {op.id: op for op in ops}
     ideal = kernel_lens.current_ideal(repo)
     declared = kernel_lens._load_declared(repo)
 
-    direct_ops = frozenset(direct_ops & ideal.op_ids)
+    direct_ops = frozenset(direct_ops) & ideal.op_ids
     if not direct_ops:
-        return SelectionResult(
-            ok=True, feature_ids=feature_ids,
-            message="no op in the current ideal is attributed to this selection",
-        )
+        return SelectionResult(ok=True, label=label, feature_ids=feature_ids, message=empty_message)
 
     closure: set[str] = set()
     for op_id in direct_ops:
@@ -207,10 +215,167 @@ def select(repo: str | Path, feature_refs) -> SelectionResult:
     hub = _hub_diagnosis(ops_by_id, closure, feature_ids, op_leaf)
 
     return SelectionResult(
-        ok=True, feature_ids=feature_ids, files=tuple(files),
+        ok=True, label=label, feature_ids=feature_ids, files=tuple(files),
+        direct_ops=direct_ops, closure=closure,
         direct_op_count=len(direct_ops), closure_op_count=len(closure),
         pulled=tuple(pulled), hub=hub,
     )
+
+
+def select(repo: str | Path, feature_refs) -> SelectionResult:
+    """The closure induced by selecting `feature_refs` (plurality-voted `op_leaf` membership,
+    plan U13): direct ops, the ops the closure additionally pulls in grouped by their own feature
+    (each group with one representative requires/chain path), and -- when the pull crosses a
+    feature boundary -- the hub symbol responsible."""
+    repo = Path(repo)
+    direct_ops, feature_ids, error = _resolve_selection(repo, feature_refs)
+    if error:
+        return SelectionResult(ok=False, message=error)
+    return _closure_result(
+        repo, direct_ops, feature_ids, ", ".join(feature_ids),
+        empty_message="no op in the current ideal is attributed to this selection",
+    )
+
+
+def resolve(repo: str | Path, spec: str) -> SelectionResult:
+    """The one universal selection resolver (plan U1/R1/KTD1): turn any `sgt select <spec>` form
+    into the same op/symbol closure `select` reports plus a resolved display label -- the argument
+    type every operating verb and the TUI consume. Dispatch is by spec *shape*, first match wins:
+
+      1. explicit id set   -- a comma-separated list of op-ids / `file::symbol`s (unambiguous syntax)
+      2. glob              -- contains `*`, `?`, or `[`; matched against live symbol names → tips
+      3. exact symbol      -- contains `::`; the symbol's frontier tip op (`resolve_target` parity)
+      4. authored feature  -- an `af-` id, or an exact authored-feature label (`load_authored`, U6)
+      5. clustered feature -- a clustering leaf id / label, via `resolve_feature`
+      6. NL phrase         -- a fuzzy `difflib` match over authored-feature label + id (the fallback;
+                              no NL/embedding index exists today, so this is a new fuzzy match, not a
+                              reuse). An unmatched phrase returns `ok=False`; an ambiguous one returns
+                              the ranked `candidates`. Both are results, never exceptions.
+
+    Report-only: it computes the closure but materializes nothing (the U25 BET-C constraint)."""
+    repo = Path(repo)
+    spec = spec.strip()
+
+    if "," in spec:
+        return _resolve_id_set(repo, spec)
+    if any(ch in spec for ch in "*?["):
+        return _resolve_glob(repo, spec)
+    if "::" in spec:
+        return _resolve_symbol(repo, spec)
+
+    authored = load_authored(repo)
+    if spec in authored:  # an `af-` id
+        feat = authored[spec]
+        return _closure_result(repo, _symbols_to_tips(repo, feat.live_members()), (), feat.label,
+                               empty_message=f"feature {feat.label!r} has no live op in the ideal")
+    by_label = [f for f in authored.values() if f.label == spec]
+    if len(by_label) == 1:
+        feat = by_label[0]
+        return _closure_result(repo, _symbols_to_tips(repo, feat.live_members()), (), feat.label,
+                               empty_message=f"feature {feat.label!r} has no live op in the ideal")
+    if len(by_label) > 1:
+        return _ambiguous([(1.0, f.id, f.label) for f in by_label], spec)
+
+    resolved = resolve_feature(repo, spec)
+    if resolved is not None:
+        op_ids, feature_id, label = resolved
+        return _closure_result(repo, op_ids, (feature_id,), label,
+                               empty_message=f"feature {label!r} has no op in the current ideal")
+
+    return _resolve_nl(repo, spec, authored)
+
+
+def _resolve_id_set(repo: Path, spec: str) -> SelectionResult:
+    """A comma-separated explicit set: each element resolved to a single op via `resolve_target`
+    (op-id / prefix / `file::symbol`), unioned. Refuses on the first unresolvable element."""
+    ops = Store(repo).all_ops()
+    ideal = kernel_lens.current_ideal(repo)
+    direct: set[str] = set()
+    for part in (p.strip() for p in spec.split(",")):
+        if not part:
+            continue
+        op_id, err = core_verbs.resolve_target(ideal, ops, part)
+        if op_id is None:
+            return SelectionResult(ok=False, message=err, label=spec)
+        direct.add(op_id)
+    if not direct:
+        return SelectionResult(ok=False, message="empty selection", label=spec)
+    return _closure_result(repo, frozenset(direct), (), spec, empty_message="empty selection")
+
+
+def _live_tips(repo: Path) -> dict[str, str]:
+    """Frontier tips restricted to the *live, user-facing* symbols a glob/authored-member selection
+    resolves against: the tip must not be `BOTTOM` (mirroring `covered_paths`' liveness rule) and
+    the symbol must be one a user names -- `__residue__`/`__anchor__` are internal fold-ordering
+    pseudo-symbols and are never selectable, so a glob like `*::pay_*` matches the real entity, not
+    its residue twin."""
+    ops = Store(repo).all_ops()
+    ops_by_id = {op.id: op for op in ops}
+    tips = order.frontier(kernel_lens.current_ideal(repo).op_ids, ops)
+    return {
+        sym: tip for sym, tip in tips.items()
+        if _symbol_kind(sym) not in ("residue", "anchor")
+        and not is_bottom(ops_by_id[tip].footprint[sym][1])
+    }
+
+
+def _resolve_glob(repo: Path, spec: str) -> SelectionResult:
+    tips = _live_tips(repo)
+    matched = sorted(sym for sym in tips if fnmatch.fnmatch(sym, spec))
+    if not matched:
+        return SelectionResult(ok=False, message=f"glob {spec!r} matched no live symbol", label=spec)
+    return _closure_result(repo, frozenset(tips[sym] for sym in matched), (), spec,
+                           empty_message=f"glob {spec!r} matched no op in the current ideal")
+
+
+def _resolve_symbol(repo: Path, spec: str) -> SelectionResult:
+    ops = Store(repo).all_ops()
+    tip = order.frontier(kernel_lens.current_ideal(repo).op_ids, ops).get(spec)
+    if tip is None:
+        return SelectionResult(ok=False, message=f"symbol {spec!r} is not live in the ideal", label=spec)
+    return _closure_result(repo, frozenset({tip}), (), spec,
+                           empty_message=f"symbol {spec!r} is not live in the ideal")
+
+
+def _symbols_to_tips(repo: Path, symbols) -> frozenset[str]:
+    """The frontier tip op of each live symbol in `symbols` (dead / absent symbols drop out; the
+    closure body's `& ideal.op_ids` guard reports the empty case)."""
+    tips = _live_tips(repo)
+    return frozenset(tips[sym] for sym in symbols if sym in tips)
+
+
+def _resolve_nl(repo: Path, spec: str, authored: dict) -> SelectionResult:
+    """Fuzzy fallback over authored-feature label + id (stdlib `difflib`, no new dependency). A
+    unique best above the cutoff resolves; a tie at the top returns ranked candidates; nothing above
+    the cutoff returns `ok=False` -- never a silent weak guess."""
+    key = spec.lower()
+    scored = sorted(
+        (
+            (max(difflib.SequenceMatcher(None, key, f.label.lower()).ratio(),
+                 difflib.SequenceMatcher(None, key, fid.lower()).ratio()), fid, f.label)
+            for fid, f in authored.items()
+        ),
+        key=lambda c: (-c[0], c[1]),
+    )
+    above = [c for c in scored if c[0] >= _NL_CUTOFF]
+    if not above:
+        return SelectionResult(ok=False, message=f"no feature matches {spec!r}", label=spec)
+    if len(above) > 1 and above[0][0] == above[1][0]:
+        return _ambiguous(above, spec)
+    _score, fid, label = above[0]
+    feat = authored[fid]
+    return _closure_result(repo, _symbols_to_tips(repo, feat.live_members()), (), label,
+                           empty_message=f"feature {label!r} has no live op in the ideal")
+
+
+def _ambiguous(scored, spec: str) -> SelectionResult:
+    """An ambiguous phrase/label: `ok=False` carrying the ranked candidates so a caller can
+    disambiguate, rather than picking one silently."""
+    candidates = tuple(
+        {"id": fid, "label": label, "score": round(score, 3)} for score, fid, label in scored
+    )
+    return SelectionResult(ok=False, label=spec, candidates=candidates,
+                           message=f"{spec!r} is ambiguous ({len(candidates)} candidates)")
 
 
 def why(repo: str | Path, op_ref: str, for_feature: str | None = None) -> WhyResult:
