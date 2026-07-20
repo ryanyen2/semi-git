@@ -13,6 +13,8 @@ narrow terminal, matching the other surfaces' responsive discipline.
 
 from __future__ import annotations
 
+import difflib
+
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -22,7 +24,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Label, Static
 
 from sgt.tui.color import color_for
 
-_KIND_GLYPH = {"feature": "●", "subsystem": "▸"}
+_KIND_GLYPH = {"feature": "●", "subsystem": "▸", "symbol": "◦"}
 _NARROW = 100  # below this terminal width, fold the detail pane into a modal
 
 
@@ -43,6 +45,64 @@ def _flatten(view: dict) -> list[dict]:
     return rows
 
 
+# -- pure logic (no textual runtime; unit-tested directly) ---------------------
+
+
+def _subseq(needle: str, hay: str) -> bool:
+    """True when `needle`'s characters appear in order in `hay` (the classic fuzzy-finder match)."""
+    it = iter(hay)
+    return all(ch in it for ch in needle)
+
+
+def fuzzy_rank(rows: list[dict], query: str) -> list[dict]:
+    """Rank/filter display rows by a fuzzy match over ``label + id`` (plan U9/R8). An empty query
+    returns every row unchanged; otherwise a row survives only when the query is a subsequence of
+    ``f"{label} {id}"``, and survivors are ordered by a `difflib` similarity ratio (best first,
+    original order breaking ties). A query that matches nothing returns ``[]`` -- the caller's
+    empty-state, never a crash. Stdlib `difflib` only, mirroring U1's resolver (no new dependency)."""
+    q = query.strip().lower()
+    if not q:
+        return list(rows)
+    scored: list[tuple[float, int, dict]] = []
+    for i, r in enumerate(rows):
+        hay = f"{r['label']} {r['id']}".lower()
+        if not _subseq(q, hay):
+            continue
+        score = difflib.SequenceMatcher(None, q, hay).ratio()
+        if q in hay:  # a contiguous hit outranks a scattered subsequence
+            score += 1.0
+        scored.append((score, i, r))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    return [r for _, _, r in scored]
+
+
+def frontier_counts(rows: list[dict], kept: set[str]) -> dict:
+    """Classify a verb preview's ``frontier`` rows (``{op_id, bucket, toggleable}``) against the
+    user's kept-set (plan U9/U3, R4). ``blast``/``carry`` rows are toggleable -- keeping one
+    retains that op, so the revert removes the rest; ``foundation`` rows are read-only
+    prerequisites, never removed and never valid in the kept-set. Returns the live removed/kept
+    dependent counts plus which op-ids are toggleable/foundation, for the checklist header. A
+    kept-id that is not a toggleable row (a stale or foundation id) is ignored."""
+    toggleable = sorted(r["op_id"] for r in rows if r.get("toggleable"))
+    foundation = sorted(r["op_id"] for r in rows if not r.get("toggleable"))
+    kept_valid = set(kept) & set(toggleable)
+    return {
+        "toggleable": toggleable,
+        "foundation": foundation,
+        "kept": len(kept_valid),
+        "removed": len(toggleable) - len(kept_valid),
+    }
+
+
+def selection_specs(node_ids) -> list[str]:
+    """Map a multi-select set of table node-ids to the universal resolver's specs (plan U1). A
+    symbol row's id is already a ``file::symbol`` (the resolver's exact-symbol form); a feature
+    row's id is a clustering/authored feature ref the resolver resolves directly -- so the mapping
+    is one spec per selection, in a stable order, and the caller resolves each independently and
+    reports which succeeded/refused (the partial state)."""
+    return sorted({nid for nid in node_ids if nid})
+
+
 def _glyph(kind: str, nid: str) -> Text:
     return Text(_KIND_GLYPH.get(kind, "●"), style=color_for(nid))
 
@@ -50,6 +110,12 @@ def _glyph(kind: str, nid: str) -> Text:
 def _detail_text(n: dict) -> Text:
     """Render a node's detail view (shared by the side pane and the narrow-mode modal)."""
     ident = color_for(n["id"])
+    if n.get("kind") == "symbol":
+        t = Text()
+        t.append(f"{n['label']}\n\n", style=f"bold {ident}")
+        t.append(f"symbol · {n['id']}\n", style="dim")
+        t.append(f"member of {n.get('parent_feature', '—')}\n", style="dim")
+        return t
     t = Text()
     t.append(f"{n['label']}\n\n", style=f"bold {ident}")
     t.append(f"{n['kind']} · {n['id']}\n", style="dim")
@@ -127,6 +193,101 @@ class DetailScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class FrontierScreen(ModalScreen[None]):
+    """The revert frontier as a checkable list (plan U9/U3, R8/R4). Each ``blast``/``carry``
+    dependent is a row ``space`` toggles into the kept-set (keeping it retains that op, so the
+    revert removes the rest); ``foundation`` prerequisites render read-only (a revert cannot drop
+    an upstream prerequisite). The removed/kept counts recompute live off ``frontier_counts`` --
+    the same ``verb_preview_view`` frontier the CLI reads. The header shows the combined selection
+    closure (``resolve_selection``) and, for a multi-select, which targets refused: an all-refused
+    selection is the **refused** state (its message mirrors ``action_preview_revert``'s notify), a
+    mix is the **partial** state."""
+
+    BINDINGS = [Binding("space", "toggle", "Keep/drop"), Binding("escape,q,f", "close", "Close")]
+
+    def __init__(self, rows: list[dict], *, ok_labels: list[str], refused: list, closure_count: int) -> None:
+        super().__init__()
+        self._rows = rows
+        self._ok_labels = ok_labels
+        self._refused = refused
+        self._closure_count = closure_count
+        self._kept: set[str] = set()
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="frontier-modal"):
+            yield Static(self._header(), id="frontier-header")
+            if self._ok_labels:
+                yield DataTable(id="frontier-table", cursor_type="row")
+                yield Static("", id="frontier-counts")
+            if self._refused:
+                yield Static(self._refused_text(), id="frontier-refused")
+            yield Label("[b]space[/b] keep/drop   ·   [b]esc[/b] close", id="hint")
+
+    def on_mount(self) -> None:
+        if self._ok_labels:
+            table = self.query_one("#frontier-table", DataTable)
+            table.add_columns("", "op", "bucket")
+            self._fill()
+            table.focus()
+
+    def _header(self) -> Text:
+        t = Text()
+        if self._ok_labels:
+            t.append(f"{len(self._ok_labels)} selection(s) → {self._closure_count} op(s) in closure\n",
+                     style="bold")
+            t.append("  ".join(self._ok_labels) + "\n", style="dim")
+        if self._refused:
+            t.append(f"⚠ {len(self._refused)} refused", style="yellow")
+        return t
+
+    def _refused_text(self) -> Text:
+        t = Text()
+        t.append(("refused:\n" if not self._ok_labels else "partially refused:\n"), style="bold yellow")
+        for spec, msg in self._refused:
+            t.append(f"  ✗ {spec}: {msg or 'refused'}\n", style="yellow")
+        return t
+
+    def _fill(self) -> None:
+        table = self.query_one("#frontier-table", DataTable)
+        table.clear()
+        for r in self._rows:
+            oid, bucket = r["op_id"], r["bucket"]
+            if not r.get("toggleable"):
+                marker = Text("·", style="dim")  # foundation: read-only prerequisite
+            elif oid in self._kept:
+                marker = Text("✓", style=color_for(oid))  # kept (retained by the revert)
+            else:
+                marker = Text(" ")
+            table.add_row(marker, Text(oid[:12], style="dim"), Text(bucket, style="dim"), key=oid)
+        self._render_counts()
+
+    def _render_counts(self) -> None:
+        line = self.query_one("#frontier-counts", Static)
+        if not self._rows:
+            line.update(Text("no per-op dependents to toggle (feature-level revert)", style="dim"))
+            return
+        counts = frontier_counts(self._rows, self._kept)
+        line.update(Text.assemble(
+            (f"removes {counts['removed']} dependent(s)", "bold"),
+            f"  ·  keeps {counts['kept']}  ·  {len(counts['foundation'])} foundation (read-only)",
+        ))
+
+    def action_toggle(self) -> None:
+        table = self.query_one("#frontier-table", DataTable)
+        row = table.cursor_row
+        if row is None or not (0 <= row < len(self._rows)):
+            return
+        r = self._rows[row]
+        if not r.get("toggleable"):
+            return  # foundation is read-only, never toggled
+        self._kept.symmetric_difference_update({r["op_id"]})
+        self._fill()
+        table.move_cursor(row=row)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class SgtTui(App[None]):
     TITLE = "semi-git"
     CSS = """
@@ -139,13 +300,21 @@ class SgtTui(App[None]):
     #status-line { height: 1; background: $boost; color: $text; padding: 0 1; }
     ConfirmScreen, RenameScreen { align: center middle; }
     #dialog { width: 60; height: auto; padding: 1 2; border: thick $accent; background: $surface; }
-    DetailScreen { align: center middle; }
+    DetailScreen, FrontierScreen { align: center middle; }
     #detail-modal { width: 80%; height: 80%; padding: 1 2; border: thick $accent; background: $surface; }
+    #frontier-modal { width: 80%; height: 80%; padding: 1 2; border: thick $accent; background: $surface; }
+    #frontier-header { height: auto; }
+    #frontier-table { height: 1fr; border: round $panel; }
+    #frontier-counts { height: 1; color: $text-muted; }
+    #frontier-refused { height: auto; margin-top: 1; }
     #hint { color: $text-muted; margin-top: 1; }
     """
     BINDINGS = [
         Binding("f5", "refresh", "Refresh"),
         Binding("slash", "focus_filter", "Filter"),
+        Binding("space", "toggle_select", "Select"),
+        Binding("e", "expand", "Expand"),
+        Binding("f", "frontier", "Frontier"),
         Binding("r", "preview_revert", "Preview revert"),
         Binding("X", "apply_revert", "Revert!"),  # mutating ops are uppercase, apart from previews
         Binding("R", "rename", "Rename"),
@@ -157,6 +326,10 @@ class SgtTui(App[None]):
         self.repo = repo
         self._ids: list[str] = []
         self._rows: list[dict] = []
+        self._shown_rows: list[dict] = []  # the rows currently rendered, aligned to `_ids`
+        self._selected: set[str] = set()  # multi-select set (feature + symbol ids)
+        self._expanded: set[str] = set()  # feature ids expanded into their member symbols
+        self._n_display = 0  # unfiltered display-row count (for the "showing X/Y" indicator)
         self._last_status: dict = {}
         self._filter = ""
         self._narrow = False
@@ -173,7 +346,7 @@ class SgtTui(App[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#nodes", DataTable)
-        table.add_columns("", "feature", "size", "ops")
+        table.add_columns("", "", "feature", "size", "ops")  # select-marker, kind-glyph, ...
         self._apply_responsive()
         self.action_refresh()
         table.focus()  # the table (not the filter input) owns letter-key bindings by default
@@ -205,26 +378,66 @@ class SgtTui(App[None]):
         self._populate()
         self._render_status(self._last_status)
 
+    def _display_rows(self) -> list[dict]:
+        """The base display list: every feature/subsystem row, plus -- for each expanded feature --
+        its member entity symbols as deeper, selectable, fuzzy-matchable rows (R8's "and symbols").
+        A symbol row carries the member's ``file::symbol`` id (the universal resolver's exact-symbol
+        form), so a selected symbol resolves without a lookup table. Only ``entity`` members are
+        surfaced -- whole-file and residue/anchor pseudo-symbols are not user-selectable (the same
+        liveness rule the resolver's `_live_tips` applies)."""
+        from sgt.lens.select import _symbol_kind
+
+        out: list[dict] = []
+        for n in self._rows:
+            out.append(n)
+            if n["kind"] != "feature" or n["id"] not in self._expanded:
+                continue
+            for sym in n.get("members", []):
+                if _symbol_kind(sym) != "entity":
+                    continue
+                out.append({
+                    "id": sym,
+                    "label": sym.split("::")[-1] or sym,
+                    "kind": "symbol",
+                    "depth": n["depth"] + 1,
+                    "size": 0,
+                    "op_count": 0,
+                    "dir": "",
+                    "why": "",
+                    "split_reason": None,
+                    "members": [],
+                    "sessions": [],
+                    "parent_feature": n["id"],
+                })
+        return out
+
     def _populate(self) -> None:
-        """(Re)fill the table from the cached rows, honoring the active filter."""
+        """(Re)fill the table from the display rows, fuzzy-ranked by the active filter and marked
+        with the multi-select set."""
         table = self.query_one("#nodes", DataTable)
         prev = self._selected_id()
         table.clear()
         self._ids = []
-        f = self._filter
-        for n in self._rows:
-            if f and f not in f"{n['label']} {n['id']}".lower():
-                continue
+        self._shown_rows = []
+        all_rows = self._display_rows()
+        self._n_display = len(all_rows)
+        for n in fuzzy_rank(all_rows, self._filter):
+            nid = n["id"]
             indent = "  " * n["depth"]
-            ident = color_for(n["id"])
+            ident = color_for(nid)
+            marker = Text("✓", style=ident) if nid in self._selected else Text(" ")
+            label_style = "dim" if n["kind"] == "subsystem" else ident
+            is_sym = n["kind"] == "symbol"
             table.add_row(
-                _glyph(n["kind"], n["id"]),
-                Text(f"{indent}{n['label']}", style=ident if n["kind"] == "feature" else "dim"),
-                Text(str(n["size"]), style="dim"),
-                Text(str(n["op_count"]), style="dim"),
-                key=n["id"],
+                marker,
+                _glyph(n["kind"], nid),
+                Text(f"{indent}{n['label']}", style=label_style),
+                Text("" if is_sym else str(n["size"]), style="dim"),
+                Text("" if is_sym else str(n["op_count"]), style="dim"),
+                key=nid,
             )
-            self._ids.append(n["id"])
+            self._ids.append(nid)
+            self._shown_rows.append(n)
         if prev and prev in self._ids:
             table.move_cursor(row=self._ids.index(prev))
         if not self._narrow:
@@ -242,7 +455,7 @@ class SgtTui(App[None]):
         indexing_txt = (
             ("  ·  ⟳ indexing history", "yellow") if not st["sync_status"]["complete"] else ""
         )
-        shown = f"  ·  showing {len(self._ids)}/{len(self._rows)}" if self._filter else ""
+        shown = f"  ·  showing {len(self._ids)}/{self._n_display}" if self._filter else ""
         msg = Text.assemble(
             (f"{st['features']} feature(s)", "bold"),
             f"  ·  {st['files']} file(s)  ·  {st['symbols']} symbol(s)  ·  "
@@ -261,10 +474,11 @@ class SgtTui(App[None]):
         return self._ids[table.cursor_row]
 
     def _current_row(self) -> dict | None:
-        nid = self._selected_id()
-        if nid is None:
+        table = self.query_one("#nodes", DataTable)
+        row = table.cursor_row
+        if row is None or not (0 <= row < len(self._shown_rows)):
             return None
-        return next((n for n in self._rows if n["id"] == nid), None)
+        return self._shown_rows[row]
 
     def _render_detail(self) -> None:
         side = self.query_one("#side", Static)
@@ -299,6 +513,68 @@ class SgtTui(App[None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "filter":
             self.query_one("#nodes", DataTable).focus()
+
+    # -- multi-select + expand ----------------------------------------------
+    def action_toggle_select(self) -> None:
+        """Toggle the highlighted row into/out of the multi-select set (the ✓ marker column)."""
+        nid = self._selected_id()
+        if nid is None:
+            return
+        self._selected.symmetric_difference_update({nid})
+        self._populate()
+
+    def action_expand(self) -> None:
+        """Expand/collapse the highlighted feature into its member entity symbols (deeper rows)."""
+        row = self._current_row()
+        if row is None or row["kind"] != "feature":
+            return
+        self._expanded.symmetric_difference_update({row["id"]})
+        self._populate()
+
+    # -- frontier panel -----------------------------------------------------
+    def action_frontier(self) -> None:
+        """Open the revert frontier as a checkable list for the multi-select set (or, if none, the
+        highlighted row). Each selection is resolved through the U1 resolver for the combined
+        closure + refused summary, and each symbol target's per-dependent ``frontier`` is pulled
+        from the same ``verb_preview_view`` projection the CLI reads."""
+        ids = sorted(self._selected) if self._selected else (
+            [self._selected_id()] if self._selected_id() else [])
+        if not ids:
+            self.notify("select (space) or highlight a row first", severity="warning", title="Frontier")
+            return
+        from sgt.api import resolve_selection
+        from sgt.core.lens import get
+
+        get(self.repo)
+        resolved = [(s, resolve_selection(self.repo, s)) for s in selection_specs(ids)]
+        ok = [(s, r) for s, r in resolved if r["ok"]]
+        refused = [(s, r["message"]) for s, r in resolved if not r["ok"]]
+        rows: list[dict] = []
+        seen: set[str] = set()
+        for spec, _ in ok:
+            for fr in self._preview_for_id(spec).get("frontier", []):
+                if fr["op_id"] not in seen:
+                    seen.add(fr["op_id"])
+                    rows.append(fr)
+        closure: set[str] = set()
+        for _, r in ok:
+            closure.update(r["closure"])
+        self.push_screen(FrontierScreen(
+            rows, ok_labels=[r["label"] for _, r in ok], refused=refused, closure_count=len(closure)))
+
+    def _preview_for_id(self, node_id: str) -> dict:
+        """The revert preview for one selection id, via the same projection the CLI reads: a symbol
+        (``file::symbol``) reverts at op granularity (``verb_preview_view`` -- a real per-dependent
+        ``frontier``); a feature id reverts its whole op-set (``plan_revert_feature``), whose
+        frontier is aggregate, so the per-op checklist is empty (the header still shows the closure)."""
+        if "::" in node_id:
+            from sgt.api import verb_preview_view
+
+            return verb_preview_view(self.repo, "revert", node_id)
+        from sgt.lens.verbs import plan_revert_feature
+
+        p = plan_revert_feature(self.repo, node_id)
+        return {"ok": p.ok, "message": p.message, "removed": sorted(p.removed), "frontier": []}
 
     # -- preview (dry-run, nothing written) ---------------------------------
     def action_preview_revert(self) -> None:

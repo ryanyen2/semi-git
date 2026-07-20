@@ -562,6 +562,7 @@ def map_view(repo) -> dict:
             "parent": nd["parent"],
             "children": sorted(nd["children"]),
             "size": nd["size"],
+            "members": list(nd.get("members", [])),
             "op_count": op_count(nid),
             "dir": nd.get("dir", ""),
             "why": nd.get("why", ""),
