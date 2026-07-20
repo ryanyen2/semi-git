@@ -508,8 +508,15 @@ def map_view(repo) -> dict:
             merged.update(node_sessions(c))
         return sorted(merged)
 
-    emitted = [
-        {
+    # Authored features (U6/R3, KTD4) override the clustered proposal: where a user has authored a
+    # feature over a leaf's symbols, that leaf shows the authored label + `af-` id, not the cluster's.
+    # Guarded on presence so a repo with no authored features projects byte-identically to before.
+    from sgt.lens.authored import load_authored
+    from sgt.lens.tree import _authored_leaf_claims
+    authored_claims = _authored_leaf_claims(nodes, load_authored(repo))
+
+    def _emit(nid: str, nd: dict) -> dict:
+        row = {
             "id": nid,
             "label": nd.get("label", nid),
             "kind": "feature" if not nd["children"] else "subsystem",
@@ -522,8 +529,13 @@ def map_view(repo) -> dict:
             "split_reason": nd.get("split_reason"),
             "sessions": node_sessions(nid),
         }
-        for nid, nd in sorted(nodes.items())
-    ]
+        claim = authored_claims.get(nid)
+        if claim is not None:
+            row["label"] = claim.label
+            row["authored_id"] = claim.id
+        return row
+
+    emitted = [_emit(nid, nd) for nid, nd in sorted(nodes.items())]
     ideal = current_ideal(repo)
     _, fused = fused_graph(repo, ops, ideal)
 
@@ -631,9 +643,7 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
         preview = lens_verbs.plan_split(repo, args[0])
         affected: list[str] = []
         if preview.ok:
-            tree_result = tree_mod.load(repo)
-            new_id = next(tree_mod._fresh_id_gen(set(tree_result["nodes"])))
-            affected = [preview.feature_id, new_id]
+            affected = [preview.feature_id, preview.new_id]  # the content-addressed id apply mints (KTD4)
         return {
             "ok": preview.ok, "verb": "split", "message": preview.message,
             "feature_id": preview.feature_id,

@@ -15,13 +15,14 @@ otherwise has no reason to reproduce a hand edit). Patterns reused rather than d
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sgt.core import lens as kernel_lens
 from sgt.core import order
 from sgt.core import verbs as core_verbs
 from sgt.core.store import Store
+from sgt.lens import authored as authored_features
 from sgt.lens import tree
 from sgt.lens.cluster import _dominant_dir
 from sgt.lens.pins import Pins, load_pins, save_pins
@@ -64,6 +65,7 @@ class SplitPreview:
     groups: tuple[tuple[str, ...], tuple[str, ...]] | None = None
     reason: str | None = None
     message: str = ""
+    new_id: str = ""  # the content-addressed id the split will mint for the new group (KTD4)
 
 
 def _leaf(nodes: dict, feature_id: str) -> dict | None:
@@ -97,6 +99,34 @@ def _save_pins(repo: str | Path, pins: Pins, **overrides) -> None:
         cannot_link=overrides.get("cannot_link", pins.cannot_link),
         labels=overrides.get("labels", pins.labels),
     ))
+
+
+# -- authored features (U6/U7, R3): reorg verbs write authored ops beside their pins --------------
+
+
+def _authored_id_for(feature_id: str) -> str:
+    """The authored-feature (`af-`) id a reorg verb maintains for a cluster feature: a deterministic
+    ``af-<feature-id>`` handle so re-running a verb *updates* the same feature (idempotent) rather
+    than duplicating it. This is intentionally distinct from U6's `authored.create` uuid4 mint, whose
+    carried-UUID identity is for free-standing features a user authors directly and must not collide
+    when two clones author *different* features over the same seed. A reorg verb, by contrast, always
+    targets one specific existing cluster feature, so a content-derived handle is the correct, always-
+    collision-free correspondence -- and two clones renaming that same feature reconcile through the
+    LWW label register exactly as intended."""
+    return f"af-{feature_id}"
+
+
+def _open_authored(repo: str | Path, feature_id: str, *, label: str, seed_members) -> tuple[dict, str]:
+    """Load the authored-feature collection and ensure the feature for `feature_id` exists (creating
+    it from `seed_members`+`label`, stamped with the current head as its introducing witness, if
+    absent). Returns `(collection, af_id)`; the caller mutates `collection[af_id]` with the U6 ops
+    (`rename`/`add_member`/`remove_member`) and then `authored.save_authored`."""
+    af = authored_features.load_authored(repo)
+    aid = _authored_id_for(feature_id)
+    if aid not in af:
+        witness = GitBinding(repo).head()
+        af[aid] = replace(authored_features.create(seed_members, label, witness=witness), id=aid)
+    return af, aid
 
 
 # -- merge ------------------------------------------------------------------------------------
@@ -147,6 +177,23 @@ def apply_merge(repo: str | Path, preview: MergePreview) -> dict:
     for member in survivor["members"]:
         assign[member] = preview.survivor_id
     _save_pins(repo, pins, assign=assign)
+
+    # authored-feature op (R3): the survivor's authored feature absorbs the members; the absorbed
+    # feature's authored record (if any) is tombstoned (CRDT delete), its members now the survivor's.
+    af, aid = _open_authored(
+        repo, preview.survivor_id, label=survivor.get("label", preview.survivor_id),
+        seed_members=survivor["members"],
+    )
+    feat = af[aid]
+    live = feat.live_members()
+    for member in survivor["members"]:
+        if member not in live:
+            feat = authored_features.add_member(feat, member)
+    af[aid] = feat
+    absorbed_aid = _authored_id_for(preview.absorbed_id)
+    if absorbed_aid in af:
+        af[absorbed_aid] = authored_features.delete(af[absorbed_aid])
+    authored_features.save_authored(repo, af)
     return result
 
 
@@ -208,6 +255,28 @@ def apply_move(repo: str | Path, preview: MovePreview) -> dict:
     for sym in moved_members:
         assign[sym] = preview.target_id
     _save_pins(repo, pins, assign=assign)
+
+    # authored-feature op (R3): the target's authored feature gains the moved members; any authored
+    # feature for a source leaf drops them (OR-Set remove of just the tags it observed).
+    af, aid = _open_authored(
+        repo, preview.target_id, label=target.get("label", preview.target_id),
+        seed_members=target["members"],
+    )
+    feat = af[aid]
+    live = feat.live_members()
+    for sym in moved_members:
+        if sym not in live:
+            feat = authored_features.add_member(feat, sym)
+    af[aid] = feat
+    for sym in moved_members:
+        old_leaf = member_leaf.get(sym)
+        if old_leaf is None or old_leaf == preview.target_id:
+            continue
+        src_aid = _authored_id_for(old_leaf)
+        src = af.get(src_aid)
+        if src is not None and sym in src.live_members():
+            af[src_aid] = authored_features.remove_member(src, sym)
+    authored_features.save_authored(repo, af)
     return result
 
 
@@ -236,10 +305,50 @@ def apply_rename(repo: str | Path, preview: RenamePreview) -> dict:
     labels = dict(pins.labels)
     labels[preview.feature_id] = preview.new_label
     _save_pins(repo, pins, labels=labels)
+
+    # authored-feature op (R3): naming a cluster feature is an authoring act -- record the label on
+    # its authored feature (LWW register) beside the labels pin, seeding membership from the leaf.
+    af, aid = _open_authored(
+        repo, preview.feature_id, label=preview.new_label,
+        seed_members=result["nodes"][preview.feature_id]["members"],
+    )
+    af[aid] = authored_features.rename(af[aid], preview.new_label, witness=GitBinding(repo).head())
+    authored_features.save_authored(repo, af)
     return result
 
 
 # -- split ------------------------------------------------------------------------------------
+
+
+def _split_new_group_ops(result: dict, feature_id: str, keep, new, ops) -> list[str]:
+    """The ops that leave `feature_id` for the new group on a split: every op currently in the
+    feature whose footprint plurality-votes for `new` over `keep`. The single source of truth
+    shared by the id mint (`_mint_split_id`) and `apply_split`'s reassignment, so the previewed id
+    and the committed reassignment can never disagree."""
+    keep_set, new_set = set(keep), set(new)
+    ops_by_id = {op.id: op for op in ops}
+    moving: list[str] = []
+    for op_id, leaf in result["op_leaf"].items():
+        if leaf != feature_id:
+            continue
+        op = ops_by_id.get(op_id)
+        if op is None:
+            continue
+        votes_new = sum(1 for sym in op.footprint if sym in new_set)
+        votes_keep = sum(1 for sym in op.footprint if sym in keep_set)
+        if votes_new > votes_keep:
+            moving.append(op_id)
+    return moving
+
+
+def _mint_split_id(result: dict, feature_id: str, keep, new, ops) -> str:
+    """The content-addressed id a split mints for the new group (KTD4): ``f-<founding-op>`` where
+    the founding op is the lexicographically-smallest op reassigned to the new group (a pure
+    function of the shared op store). Two replicas splitting the identical members over a byte-
+    identical store mint the identical id -- closing the replica-local ``F<n>`` hazard."""
+    moving = _split_new_group_ops(result, feature_id, keep, new, ops)
+    founding = min(moving) if moving else None
+    return tree._content_birth_id(frozenset(new), founding, used=set(result["nodes"]))
 
 
 def plan_split(repo: str | Path, feature_id: str) -> SplitPreview:
@@ -268,7 +377,8 @@ def plan_split(repo: str | Path, feature_id: str) -> SplitPreview:
     if len(groups) > 2:  # this verb is always binary: largest community vs. the rest, folded
         groups = [groups[0], [m for g in groups[1:] for m in g]]
     keep, new = (tuple(sorted(groups[0])), tuple(sorted(groups[1])))
-    return SplitPreview(True, feature_id, groups=(keep, new), reason=result_split.reason)
+    new_id = _mint_split_id(result, feature_id, keep, new, ops)
+    return SplitPreview(True, feature_id, groups=(keep, new), reason=result_split.reason, new_id=new_id)
 
 
 def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = False) -> dict:
@@ -283,10 +393,10 @@ def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = Fals
     old_node = nodes[old_id]
     keep, new = (list(preview.groups[0]), list(preview.groups[1]))
 
-    new_id = next(tree._fresh_id_gen(set(nodes)))
+    new_id = preview.new_id  # content-addressed (KTD4), computed in plan_split from the same
+    # new-group op reassignment applied below -- replica-independent, not a local `F<n>`.
     old_node["members"] = sorted(keep)
     old_node["size"] = len(keep)
-    new_set = set(new)
     new_node = {
         "id": new_id, "parent": old_node["parent"], "depth": old_node["depth"],
         "members": sorted(new), "size": len(new), "dir": _dominant_dir(new),
@@ -299,17 +409,8 @@ def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = Fals
     else:
         result["roots"].append(new_id)
 
-    ops_by_id = {op.id: op for op in Store(repo).all_ops()}
-    for op_id, leaf in list(result["op_leaf"].items()):
-        if leaf != old_id:
-            continue
-        op = ops_by_id.get(op_id)
-        if op is None:
-            continue
-        votes_new = sum(1 for sym in op.footprint if sym in new_set)
-        votes_keep = sum(1 for sym in op.footprint if sym in keep)
-        if votes_new > votes_keep:
-            result["op_leaf"][op_id] = new_id
+    for op_id in _split_new_group_ops(result, old_id, keep, new, Store(repo).all_ops()):
+        result["op_leaf"][op_id] = new_id
     tree.save(repo, result)
 
     pins = load_pins(repo)
@@ -320,6 +421,18 @@ def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = Fals
     if keep and new:
         cannot_link.add(tuple(sorted((min(keep), min(new)))))
     _save_pins(repo, pins, assign=assign, cannot_link=frozenset(cannot_link))
+
+    # authored-feature op (R3): the new group is a fresh authored feature (`af-<new_id>`); its
+    # members leave the old feature's authored record (if any) via an OR-Set remove.
+    af, aid = _open_authored(repo, new_id, label=new_node["label"], seed_members=new)
+    old_aid = _authored_id_for(old_id)
+    old_af = af.get(old_aid)
+    if old_af is not None:
+        for member in new:
+            if member in old_af.live_members():
+                old_af = authored_features.remove_member(old_af, member)
+        af[old_aid] = old_af
+    authored_features.save_authored(repo, af)
     return result
 
 
