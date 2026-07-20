@@ -9,7 +9,7 @@ schedule converges. The `is_ancestor` callable is a plain in-memory fake -- no g
 from __future__ import annotations
 
 from sgt.lens.pins import Pins
-from sgt.lens.reconcile import resolve_alias, union_aliases, union_pins
+from sgt.lens.reconcile import _assign_winner, resolve_alias, union_aliases, union_pins
 
 
 def _ancestry(edges: set[tuple[str, str]]):
@@ -89,3 +89,21 @@ def test_union_aliases_collision_elects_one_winner_and_aliases_the_loser():
 def test_resolve_alias_follows_a_chain_to_the_terminal():
     aliases = frozenset({("F0", "f-a"), ("f-a", "f-b")})
     assert resolve_alias(aliases, "F0") == "f-b"  # F0 -> f-a -> f-b
+
+
+def test_authored_label_register_reuses_assign_winner_not_pins_labels():
+    # An authored feature's label must follow the witness-topological `assign`/`_assign_winner`
+    # register (causally-later rename wins), NOT the weaker hash-only `pins.labels` merge -- which
+    # has no witness input and so cannot guarantee "latest rename wins" (U6/KTD3). This pins that
+    # `authored.merge_feature` reuses the *exact* `_assign_winner` decision `union_pins`'s `assign`
+    # path makes for the same witness/label inputs.
+    from sgt.lens import authored
+
+    f = authored.create(["m1"], "Login")
+    ours = authored.rename(f, "Login", witness="sha_old")
+    theirs = authored.rename(f, "SignIn", witness="sha_new")
+    is_anc = _ancestry({("sha_old", "sha_new")})
+    merged = authored.merge_feature(ours, theirs, is_ancestor=is_anc)
+
+    winner, witness = _assign_winner("f1", "Login", "sha_old", "SignIn", "sha_new", is_anc)
+    assert (merged.label, merged.label_witness) == (winner, witness) == ("SignIn", "sha_new")

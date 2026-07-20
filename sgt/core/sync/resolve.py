@@ -23,7 +23,8 @@ from pathlib import Path
 from sgt.core import lens, order
 from sgt.core.ideal import Ideal
 from sgt.intent import prompts as intent_prompts
-from sgt.lens import reconcile
+from sgt.lens import authored, reconcile
+from sgt.lens.authored import AuthoredFeature
 from sgt.lens.pins import Contradiction, Pins
 from sgt.store.gitbind import GitBinding
 
@@ -41,6 +42,9 @@ class Resolution:
     aliases: frozenset[tuple[str, str]] = frozenset()
     tree_result: dict | None = None
     prompts: dict[str, str] = field(default_factory=dict)  # union-by-key (U5/KTD5)
+    # Authored features merged field-by-field (U6/R3): OR-Set membership + witness-topo LWW label +
+    # carried af- id -- first-class merged state, never rebuilt from the op store like the tree.
+    unioned_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
 
 
 def resolve(repo: Path, ing: Ingested) -> Resolution:
@@ -103,9 +107,14 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
 
     # Witness-topo tie-break (D6): the git DAG supplies the causal order over pin witnesses, so a
     # deliberate re-pin (its witness a descendant of the stale one) wins regardless of sync order.
+    is_ancestor = GitBinding(repo).is_ancestor
     unioned_pins, pin_contradictions = reconcile.union_pins(
-        ing.ours_pins, ing.theirs_pins, is_ancestor=GitBinding(repo).is_ancestor
+        ing.ours_pins, ing.theirs_pins, is_ancestor=is_ancestor
     )
+    # Authored features are first-class merged state (U6/R3/KTD3), not rebuilt from the op store like
+    # the tree below: membership unions as an OR-Set, the label uses the same witness-topo LWW rule
+    # as pins, and the carried af- id is never recomputed. Reuses the exact `_assign_winner` tie-break.
+    unioned_authored = authored.merge(ing.ours_authored, ing.theirs_authored, is_ancestor=is_ancestor)
     # Feature-id aliases union as a G-Set with the alias-merge rule (D6): a stale old-id reference
     # from either side still resolves, and a genuine collision (two clones minting different new ids
     # for one old id) picks a single deterministic winner on every replica.
@@ -128,4 +137,5 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
         aliases=aliases,
         tree_result=tree_result,
         prompts=prompts,
+        unioned_authored=unioned_authored,
     )
