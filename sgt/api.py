@@ -366,6 +366,44 @@ def _affected_rows(repo, removed_ids, added_ids) -> list[dict]:
     )
 
 
+def _frontier_rows(repo, preview) -> list[dict]:
+    """The per-dependent revert frontier (plan U3, R4): each op in the revert target's up-set
+    classified on ONE axis, plus the target's read-only prerequisites. Three buckets, one
+    vocabulary shared with `_affected_rows` and `rewrite.revert_keep_dependents`:
+
+    * ``blast``      -- a *direct* reference-edge dependent (its content names the reverted
+      symbol). Keeping it drafts a continuation hollow. ``toggleable``.
+    * ``carry``      -- a *transitive* dependent (in the up-set only via a chain through a direct
+      one). Keeping it repoints/carries mechanically (U5, free). ``toggleable``.
+    * ``foundation`` -- an upstream prerequisite the reverted core is built on (its downset). A
+      revert cannot drop it, so it is read-only (``toggleable: false``), never in the kept-set.
+
+    Each row is ``{op_id, bucket, toggleable}``. This is the exact data the TUI checklist (U9) and
+    the CLI ``--keep`` consume; blast/carry are derived the same way `revert_keep_dependents`
+    splits its up-set, so the projection matches what apply does. ``[]`` for any non-revert verb
+    or a refused preview (``edit`` -- plan U4 -- will reuse this same block)."""
+    if preview.verb != "revert" or not preview.ok:
+        return []
+    from sgt.core import lens, order
+    from sgt.core.store import Store
+
+    ops = Store(repo).all_ops()
+    target = preview.target
+    if target not in {op.id for op in ops}:
+        return []
+    declared = lens._load_declared(repo)
+    removed = preview.removed
+    direct = {b for a, b in order.reference_edges(ops) if a == target and b in removed}
+
+    rows = [
+        {"op_id": oid, "bucket": "blast" if oid in direct else "carry", "toggleable": True}
+        for oid in sorted(removed) if oid != target
+    ]
+    foundation = order.downset_in(target, preview.before_ids, ops, declared) - {target}
+    rows += [{"op_id": oid, "bucket": "foundation", "toggleable": False} for oid in sorted(foundation)]
+    return rows
+
+
 def _project_verb_preview(repo, preview) -> dict:
     """Given an already-computed `sgt.core.verbs.VerbPreview`, the per-file before/after bytes
     plus the rest of `verb_preview_view`'s shape. Factored out so a caller that resolves its own
@@ -398,6 +436,7 @@ def _project_verb_preview(repo, preview) -> dict:
         "files": files,
         "message": preview.message,
         "affected": _affected_rows(repo, preview.removed, preview.added),
+        "frontier": _frontier_rows(repo, preview),
     }
 
 

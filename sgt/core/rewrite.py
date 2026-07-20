@@ -299,19 +299,27 @@ def transplant(repo: str | Path, op_ids: list[str], onto_ref: str, intent: str |
     return _register(repo, draft)
 
 
-def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
-    """Removes `target`'s full up-set (chain + reference + declared). *Direct* reference-edge
-    dependents get a real continuation hollow -- their content actually names the removed symbol,
-    so an agent/human/backend must rewrite it (plan U5's repair loop). Everything else in the
-    up-set (U7, transitive-dependent hollows) is affected only because it structurally required a
-    direct dependent's *pre-removal* version, never the removed symbol itself: its own bytes don't
-    need to change at all. Those are carried forward mechanically -- same footprint, same image,
-    `requires` cleared (`build_candidate`'s `carry_forward` step, mirroring `split-op`'s automatic
-    tail) -- with no hollow, no agent, no LLM call. This is deliberately *not* "fix each downstream
-    dependent one hop at a time": walking the chain and re-drafting/re-repairing hop by hop would
-    spend a backend call on every intermediate symbol even though only the direct dependents' text
-    actually changes; the transitive tail is pure bookkeeping, resolved once, for free, regardless
-    of how deep the chain runs."""
+def revert_keep_dependents(
+    repo: str | Path, target: str, intent: str | None = None,
+    keep: frozenset[str] | set[str] | None = None,
+) -> RewriteDraft:
+    """Removes `target`'s full up-set (chain + reference + declared), keeping a caller-chosen
+    *frontier* of dependents (plan U3, R4). The up-set splits on one axis into two toggleable
+    buckets and one read-only one: **blast** = a *direct* reference-edge dependent whose content
+    names the removed symbol, so keeping it drafts a real continuation hollow an agent/human must
+    rewrite (plan U5's repair loop); **carry** = a *transitive* dependent, in the up-set only
+    because it structurally required a direct dependent's *pre-removal* version -- its own bytes
+    never named the removed symbol, so keeping it carries it forward mechanically (same footprint,
+    same image, `requires` cleared -- `build_candidate`'s `carry_forward` step, mirroring
+    `split-op`'s automatic tail -- no hollow, no agent, no LLM). This is deliberately *not* "fix
+    each downstream dependent one hop at a time": the transitive tail is pure bookkeeping, resolved
+    once, for free, regardless of how deep the chain runs.
+
+    `keep` is the set of toggleable (blast/carry) dependent op-ids to preserve, as chosen from the
+    `--preview` frontier (`sgt.api._frontier_rows`). `keep=None` keeps them **all** -- the original
+    all-or-nothing behavior, preserved exactly. A dependent *not* in `keep` is removed with the
+    up-set (a dropped blast drafts no hollow; a dropped carry is not carried). An empty `keep`
+    degenerates to a plain full-up-set removal (equivalently `verbs.plan_revert`)."""
     repo = Path(repo)
     store = Store(repo)
     ops = store.all_ops()
@@ -328,13 +336,28 @@ def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = N
         b for a, b in order.reference_edges(ops) if a == op_id and b in full_removed
     )
     removed_symbol = next(iter(by_id[op_id].footprint))
+    direct_syms = {sym for dep_id in direct_dependents for sym in by_id[dep_id].footprint}
+
+    # The transitive tail: symbols still alive at the pre-removal frontier whose tip op fell into
+    # `full_removed` only via a *chain* through a direct dependent, never via their own reference
+    # edge to `target`. `sym -> tip op-id`, so the kept-set (op-ids) can select them.
+    target_syms = set(by_id[op_id].footprint)
+    frontier = ideal.frontier(ops)
+    carry_tips = {
+        sym: tip_id for sym, tip_id in frontier.items()
+        if tip_id in full_removed and sym not in target_syms and sym not in direct_syms
+        and by_id[tip_id].images.get(sym) is not None
+    }
+
+    # The frontier's toggleable dependents are the blast (direct) + carry (transitive-tip) op-ids;
+    # `keep=None` keeps them all (today's behavior), an explicit set keeps only the named ids.
+    kept = set(direct_dependents) | set(carry_tips.values()) if keep is None else set(keep)
 
     hollows = []
-    direct_syms: set[str] = set()
-    for dep_id in direct_dependents:
+    kept_blast = [dep_id for dep_id in direct_dependents if dep_id in kept]
+    for dep_id in kept_blast:
         dep = by_id[dep_id]
         for sym, (before, _after) in dep.footprint.items():
-            direct_syms.add(sym)
             h = make_op(
                 {sym: (before, _PENDING)}, {}, kind="rework", off_chain=True,
                 intent=intent or f"rewrite {sym} to not depend on removed {removed_symbol}",
@@ -342,23 +365,14 @@ def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = N
             store.add_hollow(h)
             hollows.append(h)
 
-    # Every other symbol still alive at the pre-removal frontier whose tip op fell into
-    # `full_removed` (i.e. it's in the up-set only via a *chain* through a direct dependent, never
-    # via its own reference edge to `target`) is carried forward unchanged -- see `build_candidate`.
-    target_syms = set(by_id[op_id].footprint)
-    frontier = ideal.frontier(ops)
-    carry_forward = sorted(
-        sym for sym, tip_id in frontier.items()
-        if tip_id in full_removed and sym not in target_syms and sym not in direct_syms
-        and by_id[tip_id].images.get(sym) is not None
-    )
+    carry_forward = sorted(sym for sym, tip_id in carry_tips.items() if tip_id in kept)
 
     draft = RewriteDraft(
         ok=True, verb="revert-keep-dependents", target=op_id,
         hollow_ids=tuple(h.id for h in hollows),
         meta={"removed_ids": sorted(full_removed), "carry_forward": carry_forward},
         message=f"removes {len(full_removed)} op(s); drafted {len(hollows)} continuation "
-                f"hollow(s) for {len(direct_dependents)} direct dependent(s); carries "
+                f"hollow(s) for {len(kept_blast)} kept direct dependent(s); carries "
                 f"{len(carry_forward)} transitively affected symbol(s) forward unchanged",
     )
     return _register(repo, draft)
