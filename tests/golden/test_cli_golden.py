@@ -99,7 +99,7 @@ def capture_cli_surface(root: str) -> dict:
         repo = corpus.CORPUS[case].build(root / f"f{seq[0]}")
         get(repo)
         if mapped:
-            _capture(repo, ["map"])
+            _capture(repo, ["advanced", "map"])
         if prep:
             _capture(repo, prep)
         return repo
@@ -114,13 +114,18 @@ def capture_cli_surface(root: str) -> dict:
     rf = fresh(mapped=True)
     feat = _feature_ids(rf)[0]
     views["help"] = _capture(rf, ["help"])
-    for verb in ("log", "state", "status", "map", "history", "fsck", "drift"):
-        views[verb] = _both(rf, [verb])
-    views["blame"] = _both(rf, ["blame", "a.py"])
-    views["plan_status"] = _both(rf, ["plan", "status"])
-    views["checkpoint"] = _both(rf, ["checkpoint"])
-    views["split_preview"] = _both(fresh(mapped=True), ["split", feat])  # preview writes nothing
-    views["preview_revert_feature"] = _both(fresh(mapped=True), ["preview", "revert", feat])
+    # log/status stay top-level spine verbs; the rest re-homed under `advanced` (U2/KTD2).
+    for key, argv in (
+        ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["status"]),
+        ("map", ["advanced", "map"]), ("history", ["advanced", "history"]),
+        ("fsck", ["advanced", "fsck"]), ("drift", ["advanced", "drift"]),
+    ):
+        views[key] = _both(rf, argv)
+    views["blame"] = _both(rf, ["advanced", "blame", "a.py"])
+    views["plan_status"] = _both(rf, ["advanced", "plan", "status"])
+    views["checkpoint"] = _both(rf, ["advanced", "checkpoint"])
+    views["split_preview"] = _both(fresh(mapped=True), ["feature", "regroup", "split", feat])
+    views["preview_revert_feature"] = _both(fresh(mapped=True), ["advanced", "preview", "revert", feat])
     views["revert_emit"] = _both(fresh(), ["revert", "--emit", "c.py::qux"])  # --emit writes nothing
 
     # -- diff needs two refs (diverged_chain: main vs release) ---------------------------------
@@ -129,13 +134,13 @@ def capture_cli_surface(root: str) -> dict:
     get(dc)
     corpus.checkout(dc, "main")
     get(dc)
-    views["diff"] = _both(dc, ["diff", "main", "release"])
+    views["diff"] = _both(dc, ["advanced", "diff", "main", "release"])
 
     # -- deterministic error / refusal surfaces (fail before mutating; safe to re-run) ----------
     views["revert_unknown"] = _both(fresh(), ["revert", "nope::nothing"])
-    views["oracle_run_no_config"] = _both(fresh(), ["oracle", "run"])
-    views["fulfill_no_draft"] = _both(fresh(), ["fulfill", "no-such-draft", "--from-tree"])
-    views["commit_nothing_staged"] = _both(fresh(), ["commit"])
+    views["oracle_run_no_config"] = _both(fresh(), ["advanced", "oracle", "run"])
+    views["fulfill_no_draft"] = _both(fresh(), ["advanced", "fulfill", "no-such-draft", "--from-tree"])
+    views["commit_nothing_staged"] = _both(fresh(), ["advanced", "commit"])
     views["sync_refuses_dirty_tree"] = _both(fresh(), ["sync"])  # untracked .sgt/ -> clean-tree guard
 
     # -- mutating verbs (text + --json each on its own fresh fixture) ---------------------------
@@ -143,15 +148,17 @@ def capture_cli_surface(root: str) -> dict:
     views["restore"] = both_isolated(lambda r: ["restore", "c.py::qux"], prep=["revert", "c.py::qux"])
     # oracle override's --json carries a wall-clock `ts`; only its (deterministic) text is frozen.
     views["oracle_override"] = {
-        "text": _capture(fresh(), ["oracle", "override", "--status", "pass", "--reason", "manual"])
+        "text": _capture(fresh(), ["advanced", "oracle", "override", "--status", "pass", "--reason", "manual"])
     }
-    views["rename"] = both_isolated(lambda r: ["rename", _feature_ids(r)[0], "Renamed Feature"], mapped=True)
+    views["rename"] = both_isolated(
+        lambda r: ["feature", "rename", _feature_ids(r)[0], "Renamed Feature"], mapped=True
+    )
     views["move"] = both_isolated(
-        lambda r: ["move", _op_id(r, "c.py::qux"), "--to", _feature_ids(r)[0]], mapped=True
+        lambda r: ["feature", "regroup", "move", _op_id(r, "c.py::qux"), "--to", _feature_ids(r)[0]], mapped=True
     )
     views["merge"] = both_isolated(_merge_argv, mapped=True)
     views["identity_split"] = both_isolated(
-        lambda r: ["identity", "split", _op_id(r, "a.py::foo"), _op_id(r, "c.py::qux")]
+        lambda r: ["advanced", "identity", "split", _op_id(r, "a.py::foo"), _op_id(r, "c.py::qux")]
     )
 
     def _fork_repo() -> pathlib.Path:
@@ -163,12 +170,12 @@ def capture_cli_surface(root: str) -> dict:
         rt, rj = _fork_repo(), _fork_repo()
         return {"text": _capture(rt, argv_fn(rt)), "json": _capture(rj, [*argv_fn(rj), "--json"])}
 
-    views["merge_op"] = both_fork(lambda r: ["merge-op", *_slugify_tips(r)])
-    views["transplant"] = both_fork(lambda r: ["transplant", _slugify_tips(r)[1], "--onto", "main"])
+    views["merge_op"] = both_fork(lambda r: ["advanced", "merge-op", *_slugify_tips(r)])
+    views["transplant"] = both_fork(lambda r: ["advanced", "transplant", _slugify_tips(r)[1], "--onto", "main"])
 
-    # -- porcelain daily-loop verbs (U26/D3): switch/save/undo -----------------------------------
-    views["switch"] = both_isolated(lambda r: ["switch", "release"], case="diverged_chain")
-    views["switch_unknown_branch"] = _both(fresh(), ["switch", "no-such-branch"])
+    # -- porcelain daily-loop verbs (U26/D3): switch (advanced)/save/undo -------------------------
+    views["switch"] = both_isolated(lambda r: ["advanced", "switch", "release"], case="diverged_chain")
+    views["switch_unknown_branch"] = _both(fresh(), ["advanced", "switch", "no-such-branch"])
 
     def _dirty_repo() -> pathlib.Path:
         seq[0] += 1
@@ -202,7 +209,7 @@ def capture_cli_surface(root: str) -> dict:
 
     # -- usage / unknown-verb fall-throughs -----------------------------------------------------
     views["unknown_verb"] = _capture(rf, ["not-a-verb"])
-    views["preview_bad_arity"] = _capture(rf, ["preview", "merge", "only-one-arg"])
+    views["preview_bad_arity"] = _capture(rf, ["advanced", "preview", "merge", "only-one-arg"])
 
     return views
 
@@ -228,7 +235,7 @@ def _redact_witness_sha(capture: dict) -> dict:
 def _merge_argv(repo: pathlib.Path) -> list[str]:
     fids = _feature_ids(repo)
     absorbed = fids[1] if len(fids) > 1 else fids[0]  # single-feature tree -> self-merge surface
-    return ["merge", fids[0], absorbed]
+    return ["feature", "regroup", "merge", fids[0], absorbed]
 
 
 def _dump(views: dict) -> str:

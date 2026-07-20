@@ -87,8 +87,8 @@ def test_four_undos_walk_back_through_save_revert_rename_edit(tmp_path, capsys):
     (repo / "m.py").write_text(
         "def helper():\n    return 1  # tidy\n\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
     )
-    assert _in(repo, ["fulfill", draft_id, "--from-tree"]) == 0
-    assert _in(repo, ["commit", "--override", "pass", "--reason", "behavior-preserving edit"]) == 0
+    assert _in(repo, ["advanced", "fulfill", draft_id, "--from-tree"]) == 0
+    assert _in(repo, ["advanced", "commit", "--override", "pass", "--reason", "behavior-preserving edit"]) == 0
     capsys.readouterr()
 
     # Four undos, reverse-chronological, each restoring the prior state.

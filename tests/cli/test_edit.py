@@ -74,12 +74,12 @@ def test_edit_fulfill_from_tree_then_commit_lands_a_behavior_preserving_edit(tmp
         "def helper():\n    return 1  # tidy\n\n\ndef user():\n    return helper() + 1\n",
         encoding="utf-8",
     )
-    assert _in(tmp_path, ["fulfill", draft_id, "--from-tree"]) == 0
+    assert _in(tmp_path, ["advanced", "fulfill", draft_id, "--from-tree"]) == 0
     capsys.readouterr()
     # Land via the same commit spine the other rewrite verbs use (genuine oracle-green landing is
     # proven at the core level in tests/core/test_rewrite.py; the CLI `oracle run`->staged-candidate
     # keying is a pre-existing gap shared by all rewrite verbs, out of scope here).
-    assert _in(tmp_path, ["commit", "--override", "pass", "--reason", "behavior-preserving edit"]) == 0
+    assert _in(tmp_path, ["advanced", "commit", "--override", "pass", "--reason", "behavior-preserving edit"]) == 0
 
     ops = Store(tmp_path).all_ops()
     live = get(tmp_path).frontier(ops)

@@ -134,8 +134,9 @@ def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monk
                 "state": json.dumps(state_view(repo), indent=2)}
 
     monkeypatch.chdir(repo)
-    for verb in ("log", "state"):
-        assert main([verb, "--json"]) == 0
+    # `log` stays a top-level spine verb; `state` is re-homed under the `advanced` grouping (KTD2).
+    for verb, argv in (("log", ["log"]), ("state", ["advanced", "state"])):
+        assert main([*argv, "--json"]) == 0
         assert capsys.readouterr().out.rstrip("\n") == expected[verb]
 
 
@@ -151,7 +152,7 @@ def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch)
     expected = json.dumps(ideal_diff_view(repo, "main", "release"), indent=2)
 
     monkeypatch.chdir(repo)
-    assert main(["diff", "--json", "main", "release"]) == 0
+    assert main(["advanced", "diff", "--json", "main", "release"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == expected
 
 

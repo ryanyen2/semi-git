@@ -46,9 +46,9 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = {t["name"] for t in resp["result"]["tools"]}
     # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
-    assert names == {"sgt_init", "sgt_log", "sgt_state", "sgt_diff", "sgt_fsck",
-                      "sgt_revert", "sgt_restore", "sgt_oracle_run",
-                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift"}
+    assert names == {"sgt_init", "sgt_log", "sgt_status", "sgt_advanced_diff", "sgt_advanced_fsck",
+                      "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
+                      "sgt_advanced_plan_intake", "sgt_advanced_checkpoint", "sgt_advanced_drift"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -91,27 +91,27 @@ def test_log_full_carries_footprint(tmp_path):
 
 def test_state_shows_frontier(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_state")
+    _, payload = _call(repo, "sgt_status")
     assert payload["oracle_configured"] is False
     assert "frontier" not in payload  # compact by default
 
 
 def test_state_full_carries_frontier(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_state", {"full": True})
+    _, payload = _call(repo, "sgt_status", {"full": True})
     assert "a.py::foo" in payload["frontier"]
 
 
 def test_diff_requires_both_refs(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_diff", {"ref_a": "HEAD"})
+    _, payload = _call(repo, "sgt_advanced_diff", {"ref_a": "HEAD"})
     assert "error" in payload
 
 
 def test_fsck_reports_clean_store(tmp_path):
     repo = _seed(tmp_path, 1)
     _call(repo, "sgt_log")  # mine, so the store isn't empty
-    _, payload = _call(repo, "sgt_fsck")
+    _, payload = _call(repo, "sgt_advanced_fsck")
     assert payload["ok"] is True and payload["checked"] >= 1
 
 
@@ -162,7 +162,7 @@ def test_init_tool_bootstraps_workspace(tmp_path):
 
 def test_oracle_run_tool_with_no_config(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_oracle_run")
+    _, payload = _call(repo, "sgt_advanced_oracle_run")
     assert payload["configured"] is False
 
 
@@ -177,7 +177,7 @@ def test_plan_intake_tool_mints_steps_from_a_numbered_list(tmp_path, monkeypatch
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     repo = _seed(tmp_path, 1)
     _, payload = _call(
-        repo, "sgt_plan_intake", {"plan_text": "1. step one\n2. step two\n", "session_id": "s1"}
+        repo, "sgt_advanced_plan_intake", {"plan_text": "1. step one\n2. step two\n", "session_id": "s1"}
     )
     assert payload["session_id"] == "s1"
     assert payload["step_count"] == 2
@@ -186,7 +186,7 @@ def test_plan_intake_tool_mints_steps_from_a_numbered_list(tmp_path, monkeypatch
 
 def test_plan_intake_tool_requires_plan_text(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_plan_intake", {})
+    _, payload = _call(repo, "sgt_advanced_plan_intake", {})
     assert "error" in payload
 
 
@@ -221,13 +221,13 @@ def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
     (repo_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
     GitBinding(repo).commit_all("touch foo")
 
-    _, preview = _call(repo, "sgt_checkpoint")
+    _, preview = _call(repo, "sgt_advanced_checkpoint")
     assert len(preview["matches"]) == 1
     group = preview["matches"][0]
     assert group["session_id"] == "s1"
 
     _, confirmed = _call(
-        repo, "sgt_checkpoint",
+        repo, "sgt_advanced_checkpoint",
         {"confirm": [{"hollow_ids": group["hollow_ids"], "op_ids": group["op_ids"]}]},
     )
     assert confirmed["matches"] == []  # the step is no longer pending
@@ -239,11 +239,11 @@ def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
 
 def test_drift_tool_reports_nothing_with_no_active_session(tmp_path):
     repo = _seed(tmp_path, 2)  # two commits, but no plan session at all
-    _, payload = _call(repo, "sgt_drift")
+    _, payload = _call(repo, "sgt_advanced_drift")
     assert payload["op_ids"] == []  # compact by default
 
 
 def test_drift_full_carries_entries(tmp_path):
     repo = _seed(tmp_path, 2)
-    _, payload = _call(repo, "sgt_drift", {"full": True})
+    _, payload = _call(repo, "sgt_advanced_drift", {"full": True})
     assert payload["entries"] == []
