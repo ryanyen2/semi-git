@@ -116,6 +116,24 @@ def _authored_id_for(feature_id: str) -> str:
     return f"af-{feature_id}"
 
 
+def _reorg_snapshot(repo: str | Path) -> dict:
+    """A snapshot of the three artifacts a reorg verb mutates (`tree`/`pins`/`authored_features`),
+    captured *before* the mutation -- the inverse-descriptor `sgt undo` restores (U8/KTD6). A reorg
+    is byte-neutral for `code(I)` (it touches no op), so restoring these three metadata artifacts is
+    the whole inverse: prior membership, label, and pins all come back."""
+    from sgt.core import oplog
+
+    return oplog.snapshot(repo, ["tree", "pins", "authored_features"])
+
+
+def _journal_reorg(repo: str | Path, verb: str, snapshot: dict) -> None:
+    """Append the reorg to the unified operation log (U8) so `sgt undo` can reverse it -- the gap
+    the log closes (feature-reorg was previously un-journaled)."""
+    from sgt.core import oplog
+
+    oplog.append(repo, {"kind": "feature_reorg", "verb": verb, "snapshot": snapshot})
+
+
 def _open_authored(repo: str | Path, feature_id: str, *, label: str, seed_members) -> tuple[dict, str]:
     """Load the authored-feature collection and ensure the feature for `feature_id` exists (creating
     it from `seed_members`+`label`, stamped with the current head as its introducing witness, if
@@ -152,6 +170,7 @@ def apply_merge(repo: str | Path, preview: MergePreview) -> dict:
     if not preview.ok:
         raise VerbError(preview.message or "merge refused")
     repo = Path(repo)
+    snap = _reorg_snapshot(repo)
     result = tree.load(repo)
     nodes = result["nodes"]
     survivor, absorbed = nodes[preview.survivor_id], nodes[preview.absorbed_id]
@@ -194,6 +213,7 @@ def apply_merge(repo: str | Path, preview: MergePreview) -> dict:
     if absorbed_aid in af:
         af[absorbed_aid] = authored_features.delete(af[absorbed_aid])
     authored_features.save_authored(repo, af)
+    _journal_reorg(repo, "merge", snap)
     return result
 
 
@@ -227,6 +247,7 @@ def apply_move(repo: str | Path, preview: MovePreview) -> dict:
     if not preview.ok:
         raise VerbError(preview.message or "move refused")
     repo = Path(repo)
+    snap = _reorg_snapshot(repo)
     result = tree.load(repo)
     nodes = result["nodes"]
     ops_by_id = {op.id: op for op in Store(repo).all_ops()}
@@ -277,6 +298,7 @@ def apply_move(repo: str | Path, preview: MovePreview) -> dict:
         if src is not None and sym in src.live_members():
             af[src_aid] = authored_features.remove_member(src, sym)
     authored_features.save_authored(repo, af)
+    _journal_reorg(repo, "move", snap)
     return result
 
 
@@ -297,6 +319,7 @@ def apply_rename(repo: str | Path, preview: RenamePreview) -> dict:
     if not preview.ok:
         raise VerbError(preview.message or "rename refused")
     repo = Path(repo)
+    snap = _reorg_snapshot(repo)
     result = tree.load(repo)
     result["nodes"][preview.feature_id]["label"] = preview.new_label
     tree.save(repo, result)
@@ -314,6 +337,7 @@ def apply_rename(repo: str | Path, preview: RenamePreview) -> dict:
     )
     af[aid] = authored_features.rename(af[aid], preview.new_label, witness=GitBinding(repo).head())
     authored_features.save_authored(repo, af)
+    _journal_reorg(repo, "rename", snap)
     return result
 
 
@@ -387,6 +411,7 @@ def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = Fals
     if not confirm:
         raise VerbError("split requires confirm=True")
     repo = Path(repo)
+    snap = _reorg_snapshot(repo)
     result = tree.load(repo)
     nodes = result["nodes"]
     old_id = preview.feature_id
@@ -433,6 +458,7 @@ def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = Fals
                 old_af = authored_features.remove_member(old_af, member)
         af[old_aid] = old_af
     authored_features.save_authored(repo, af)
+    _journal_reorg(repo, "split", snap)
     return result
 
 

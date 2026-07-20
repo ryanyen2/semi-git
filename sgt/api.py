@@ -11,6 +11,9 @@ Shapes (stable; additive changes only):
 
 * ``oplog_view``        — the mined operation DAG: every op's id, kind, footprint, provenance,
   structured attribution (D7: session/agent/plan per witnessing sha), intent.
+* ``oplog_actions_view`` — the U8 unified *action* log (distinct from ``oplog_view``'s content
+  DAG): the current ref's undoable operation events (ideal-edit / feature-reorg / after /
+  land·propose), newest first, each with its kind and whether ``undo`` can invert it.
 * ``state_view``        — the current ref's ideal: frontier, coverage, entity-granularity fraction,
   and the async oracle's verdict (U9).
 * ``ideal_diff_view``   — the semantic diff between two refs' ideals, grouped by symbol.
@@ -123,6 +126,31 @@ def oplog_view(repo, *, full: bool = False, limit: int = 100, offset: int = 0) -
         "ops": [
             {"id": op.id, "kind": op.kind, "symbols": sorted(op.footprint), "intent": op.intent}
             for op in window
+        ],
+    }
+
+
+def oplog_actions_view(repo, *, ref: str | None = None) -> dict:
+    """The U8 unified *action* log for `ref` (the current ref by default) -- the append-only
+    operation-event history `sgt undo` walks, newest first. Distinct from ``oplog_view``, which
+    projects the mined *content* op-DAG; this is the user-action log that subsumes the old
+    ``ideal_journal``. Each event carries its ``kind`` (``ideal_edit``/``feature_reorg``/``after``/
+    ``land``/``propose``) and ``undoable`` -- False for a shared-out ``land``/``propose`` whose
+    inverse ``undo`` refuses to apply. A pure read (no mining, no undo)."""
+    from pathlib import Path
+
+    from sgt.core import oplog
+
+    key = ref if ref is not None else oplog._ref_key(Path(repo))
+    events = oplog.load(repo).get(key, []) if key is not None else []
+    _REFUSED = ("land", "propose")
+    return {
+        "ref": key,
+        "count": len(events),
+        # Newest first: `undo` pops the tail, so index 0 is the next event a bare `undo` reverses.
+        "events": [
+            {"kind": e.get("kind", "ideal_edit"), "undoable": e.get("kind", "ideal_edit") not in _REFUSED}
+            for e in reversed(events)
         ],
     }
 
