@@ -137,35 +137,50 @@ def _save(repo: str, message: str | None, as_json: bool) -> int:
 
 
 def _undo(repo: str, as_json: bool) -> int:
-    """`sgt undo` (D3): invert the last recorded ideal edit. Pops the ref's ideal-edit journal and
-    restores that prior ideal exactly (set arithmetic makes it exact), materialized as a fresh
-    witness commit (history is append-only -- undo is a forward edit, never a rewind)."""
-    from sgt.core.lens import DirtyWorkingTreeError, undo_ideal
+    """`sgt undo` (D3, R7): invert the last mutating operation. Walks the *unified* operation log
+    (U8/KTD6) reverse-chronologically -- popping the tail event and applying its inverse, whatever
+    its kind: an ideal edit re-materializes its prior ideal, a feature reorg restores its snapshot,
+    a shared-out `land`/`propose` is refused. History is append-only, so an undo is a forward edit,
+    never a ref rewind."""
+    from sgt.core import oplog
+    from sgt.core.lens import DirtyWorkingTreeError
     from sgt.store.gitbind import GitError
 
     try:
-        result = undo_ideal(repo)
+        outcome = oplog.undo(repo)
     except (DirtyWorkingTreeError, GitError, ValueError) as e:
         return _fail_json(str(e), as_json)
 
-    if result is None:
+    if outcome.status == "empty":
+        # Byte-identical to the pre-U8 message (a golden CLI snapshot pins it).
         msg = "nothing to undo -- no recorded ideal edits"
         if as_json:
             return _emit_json({"ok": True, "undone": False, "message": msg})
         print(f"✓ {msg}")
         return 0
 
+    if outcome.status == "refused":
+        return _fail_json(outcome.message, as_json)
+
+    if outcome.status == "ideal_edit":
+        result = outcome.ideal
+        if as_json:
+            return _emit_json({
+                "ok": True, "undone": True, "commit": result.witness_sha,
+                "restored_ops": len(result.ideal.op_ids),
+                "removed": sorted(result.removed), "added": sorted(result.added),
+            })
+        print(f"✓ undo {result.witness_sha[:12]}: restored {len(result.ideal.op_ids)} op(s)")
+        if result.removed:
+            print(f"    dropped {len(result.removed)} op(s): "
+                  + ", ".join(o[:12] for o in sorted(result.removed)))
+        if result.added:
+            print(f"    re-added {len(result.added)} op(s): "
+                  + ", ".join(o[:12] for o in sorted(result.added)))
+        return 0
+
+    # A metadata-snapshot kind (feature reorg / declared edge).
     if as_json:
-        return _emit_json({
-            "ok": True, "undone": True, "commit": result.witness_sha,
-            "restored_ops": len(result.ideal.op_ids),
-            "removed": sorted(result.removed), "added": sorted(result.added),
-        })
-    print(f"✓ undo {result.witness_sha[:12]}: restored {len(result.ideal.op_ids)} op(s)")
-    if result.removed:
-        print(f"    dropped {len(result.removed)} op(s): "
-              + ", ".join(o[:12] for o in sorted(result.removed)))
-    if result.added:
-        print(f"    re-added {len(result.added)} op(s): "
-              + ", ".join(o[:12] for o in sorted(result.added)))
+        return _emit_json({"ok": True, "undone": True, "kind": outcome.kind, "message": outcome.message})
+    print(f"✓ undo: {outcome.message}")
     return 0
