@@ -8,7 +8,7 @@ import { ForkResolutionPanel } from "./forkResolution";
 import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
-import { EmitView, ProposalChecklistEntry } from "./types";
+import { BlameView, EmitView, ProposalChecklistEntry } from "./types";
 
 async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
   if (provided) {
@@ -186,6 +186,33 @@ export function registerCommands(
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     }
+  });
+
+  // `sgt.revertSymbol`: revert the symbol under the cursor. This is the op/symbol-level entry
+  // point that actually surfaces the interactive frontier -- a feature-level revert removes a
+  // whole op-set and has no single-op dependent frontier (sgt.api._frontier_rows resolves the
+  // target to one op). The symbol ref (`file::name`) comes from the blame span over the cursor.
+  reg("sgt.revertSymbol", async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a file and put the cursor on a symbol to revert.");
+      return;
+    }
+    const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
+    let blame: BlameView;
+    try {
+      blame = await store.blame(rel);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    const line = editor.selection.active.line + 1; // blame spans are 1-based inclusive
+    const span = blame.spans.find((s) => s.start_line <= line && line <= s.end_line);
+    if (!span) {
+      vscode.window.showWarningMessage("No mined symbol under the cursor.");
+      return;
+    }
+    await revertWithFrontier(store, span.symbol);
   });
 
   reg("sgt.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));
