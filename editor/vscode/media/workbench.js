@@ -191,6 +191,84 @@ function computeGraphLayout(map, history, opts) {
 }
 // ---- end-graph-layout (test slice boundary) ----
 
+// The episodic projection (Stage C): roll the flat op stream into EPISODES -- one per commit that
+// carried ops -- and group episodes by their dominant feature into collapsible episode-groups (the
+// "co-commit cluster" a developer rewinds as a unit). Sessions are empty on mined history (only
+// sgt's own land/checkpoint stamp them), so the episode axis is projected from provenance: an op's
+// commit_index identifies its earliest provenance commit, so ops sharing a commit_index were
+// advanced in the same commit = one episode -- exactly the co-commit signal Stage B clusters on.
+// Real sgt sessions supersede this going forward; the shape is identical. Pure (no DOM); the Python
+// counterpart is `episodes()` in sgt/tui/graph.py, kept behaviour-parallel.
+function rollupEpisodes(map, history) {
+  const labels = {};
+  for (const n of (map && map.nodes) || []) labels[n.id] = n.label || n.id;
+  const subjectOf = {}, shaOf = {};
+  for (const c of (history && history.commits) || []) {
+    subjectOf[c.index] = c.subject || "";
+    shaOf[c.index] = c.sha;
+  }
+  const byIndex = new Map();
+  for (const op of (history && history.ops) || []) {
+    const idx = op.commit_index;
+    let ep = byIndex.get(idx);
+    if (!ep) {
+      ep = { index: idx, sha: shaOf[idx], subject: subjectOf[idx] || "", opIds: [], features: {}, kinds: {} };
+      byIndex.set(idx, ep);
+    }
+    ep.opIds.push(op.id);
+    if (op.feature_id != null) ep.features[op.feature_id] = (ep.features[op.feature_id] || 0) + 1;
+    if (op.kind) ep.kinds[op.kind] = (ep.kinds[op.kind] || 0) + 1;
+  }
+  const episodes = [...byIndex.keys()].sort((a, b) => a - b).map((idx) => {
+    const ep = byIndex.get(idx);
+    ep.opCount = ep.opIds.length;
+    // Dominant feature: most ops in this commit; ties broken by larger id for determinism.
+    let dom = null, best = -1;
+    for (const f of Object.keys(ep.features)) {
+      const c = ep.features[f];
+      if (c > best || (c === best && f > dom)) { best = c; dom = f; }
+    }
+    ep.dominantFeature = dom;
+    return ep;
+  });
+  // Episode-groups: episodes sharing a dominant feature (the collapsible "thing I was doing"),
+  // ordered by first appearance; unattributed episodes (no feature) fall under a null group.
+  const groups = new Map();
+  for (const ep of episodes) {
+    const key = ep.dominantFeature;
+    let g = groups.get(key);
+    if (!g) {
+      g = { featureId: key, label: key ? (labels[key] || key) : "(unattributed)",
+            episodeIndices: [], opCount: 0, kinds: {}, firstIndex: ep.index, lastIndex: ep.index };
+      groups.set(key, g);
+    }
+    g.episodeIndices.push(ep.index);
+    g.opCount += ep.opCount;
+    g.lastIndex = ep.index; // episodes are index-sorted, so the latest append is the last index
+    for (const k of Object.keys(ep.kinds)) g.kinds[k] = (g.kinds[k] || 0) + ep.kinds[k];
+  }
+  const groupsOut = [...groups.values()].sort(
+    (a, b) => a.firstIndex - b.firstIndex || String(a.featureId).localeCompare(String(b.featureId)));
+  return { episodes, groups: groupsOut };
+}
+// ---- end-episodes (test slice boundary) ----
+
+// Classify a verb preview's affected features into the three roles the closure overlay paints, so
+// the graph reads the same as `sgt revert`'s terminal preview (blast/foundation are the CLI's own
+// buckets -- sgt.api._affected_rows). `target` = the acted-on feature; `blast` = OTHER features
+// losing ops in the closure (collateral); `foundation` = features gaining re-drafted hollow ops.
+// Pure (no DOM); sliced for the node harness (tests/test_closure.py).
+function classifyAffected(result, targetId) {
+  const blast = [], foundation = [];
+  for (const r of (result && result.affected) || []) {
+    if (r.feature_id === targetId) continue; // the target is drawn as `target`, never collateral
+    if (r.direction === "foundation") foundation.push(r.feature_id);
+    else blast.push(r.feature_id);
+  }
+  return { target: targetId, blast, foundation };
+}
+// ---- end-closure (test slice boundary) ----
+
 // ─── Rendering + interaction ──────────────────────────────────────────────────────────────────
 // Everything below touches the DOM/vscode API and is not exercised by the node harness.
 
@@ -943,8 +1021,8 @@ function computeGraphLayout(map, history, opts) {
   }
 
   function clearGhosts() {
-    rail.querySelectorAll(".glane.ghost-blast, .glane.ghost-target").forEach((el) => {
-      el.classList.remove("ghost-blast", "ghost-target");
+    rail.querySelectorAll(".glane.ghost-blast, .glane.ghost-target, .glane.ghost-foundation").forEach((el) => {
+      el.classList.remove("ghost-blast", "ghost-target", "ghost-foundation");
     });
     clearOffscreenPills();
   }
@@ -955,11 +1033,11 @@ function computeGraphLayout(map, history, opts) {
     pendingPreview = { seq, onResult };
   }
 
-  // Every hover-preview site wants the same thing: paint the blast radius if the preview came
-  // back ok, do nothing otherwise.
+  // Every hover-preview site wants the same thing: paint the revert closure if the preview came
+  // back ok, do nothing otherwise. The target is args[0] (revert/restore take one feature).
   function previewAndBlast(verb, args) {
     requestPreview(verb, args, (res) => {
-      if (res && res.ok) paintBlast(res.affected_features || []);
+      if (res && res.ok) paintClosure(classifyAffected(res, args[0]));
     });
   }
 
@@ -1472,6 +1550,21 @@ function computeGraphLayout(map, history, opts) {
       if (featureIds.includes(el.getAttribute("data-id"))) el.classList.add("ghost-blast");
     });
     renderOffscreenPills(featureIds);
+  }
+
+  // Paint a revert closure (classifyAffected) with the three distinct roles, so a hover reads as
+  // "this one (target), these lose ops (blast), these get re-drafted (foundation)" -- not one
+  // undifferentiated amber blob. Off-screen pills cover every role so nothing affected hides
+  // outside the scroll window.
+  function paintClosure(closure) {
+    rail.querySelectorAll(".glane").forEach((el) => {
+      el.classList.remove("ghost-target", "ghost-blast", "ghost-foundation");
+      const id = el.getAttribute("data-id");
+      if (id === closure.target) el.classList.add("ghost-target");
+      else if (closure.blast.includes(id)) el.classList.add("ghost-blast");
+      else if (closure.foundation.includes(id)) el.classList.add("ghost-foundation");
+    });
+    renderOffscreenPills([closure.target, ...closure.blast, ...closure.foundation]);
   }
 
   // Off-screen affected (huge-tree scale): a blast can paint rows outside #rail's current scroll

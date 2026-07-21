@@ -358,9 +358,18 @@ svg.railsvg {
   cursor: pointer;
 }
 
-/* Blast-radius ghost: amber "affected by this action" for hover-previewed verbs. */
+/* Revert closure ghosts for hover-previewed verbs: the graph reads the same three roles as
+   `sgt revert`'s terminal preview. ghost-blast = a feature LOSING ops (collateral of the revert,
+   amber "affected"); ghost-foundation = a feature GAINING re-drafted hollow ops (green "will be
+   re-drafted"); ghost-target = the feature being acted on (its swatch outlined). */
 .glane.ghost-blast .gbar-track {
   stroke: var(--blast);
+  stroke-width: 1.5px;
+  fill-opacity: 0.3;
+}
+
+.glane.ghost-foundation .gbar-track {
+  stroke: var(--land);
   stroke-width: 1.5px;
   fill-opacity: 0.3;
 }

@@ -184,6 +184,73 @@ def graph_layout(
     }
 
 
+# ── Episodic projection (pure) ───────────────────────────────────────────────────────────────────
+
+
+def episodes(map_view: dict, history_view: dict) -> dict:
+    """Roll the flat op stream up into EPISODES -- one per commit that carried ops -- and group
+    episodes by their dominant feature into collapsible episode-groups (the "co-commit cluster" a
+    developer rewinds as a unit; Stage C).
+
+    Sessions are empty on mined history (only sgt's own land/checkpoint stamp them), so the episode
+    axis is projected from provenance: an op's ``commit_index`` identifies its earliest provenance
+    commit, so ops sharing a ``commit_index`` were advanced in the same commit = one episode --
+    exactly the co-commit signal Stage B clusters on. Real sgt sessions supersede this going
+    forward; the shape is identical. Pure over the same ``map_view``/``history_view(full=True)``
+    both surfaces already fetch. The VS Code counterpart is ``rollupEpisodes`` in workbench.js."""
+    labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
+    subject_of = {c["index"]: c.get("subject", "") for c in history_view.get("commits", [])}
+    sha_of = {c["index"]: c.get("sha") for c in history_view.get("commits", [])}
+
+    by_index: dict[int, dict] = {}
+    for op in history_view.get("ops", []):
+        idx = op["commit_index"]
+        ep = by_index.get(idx)
+        if ep is None:
+            ep = by_index[idx] = {
+                "index": idx, "sha": sha_of.get(idx), "subject": subject_of.get(idx, ""),
+                "op_ids": [], "features": {}, "kinds": {},
+            }
+        ep["op_ids"].append(op["id"])
+        fid = op.get("feature_id")
+        if fid is not None:
+            ep["features"][fid] = ep["features"].get(fid, 0) + 1
+        kind = op.get("kind")
+        if kind:
+            ep["kinds"][kind] = ep["kinds"].get(kind, 0) + 1
+
+    episodes_out = []
+    for idx in sorted(by_index):
+        ep = by_index[idx]
+        ep["op_count"] = len(ep["op_ids"])
+        # Dominant feature: most ops in this commit; ties broken by larger id for determinism.
+        ep["dominant_feature"] = (
+            max(ep["features"], key=lambda f: (ep["features"][f], f)) if ep["features"] else None
+        )
+        episodes_out.append(ep)
+
+    # Episode-groups: episodes sharing a dominant feature (the collapsible "thing I was doing"),
+    # ordered by first appearance; unattributed episodes (no feature) fall under a None group.
+    groups: dict = {}
+    for ep in episodes_out:
+        key = ep["dominant_feature"]
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {
+                "feature_id": key, "label": labels.get(key, key) if key else "(unattributed)",
+                "episode_indices": [], "op_count": 0, "kinds": {},
+                "first_index": ep["index"], "last_index": ep["index"],
+            }
+        g["episode_indices"].append(ep["index"])
+        g["op_count"] += ep["op_count"]
+        g["last_index"] = ep["index"]  # episodes are index-sorted, so the latest append is the last
+        for k, n in ep["kinds"].items():
+            g["kinds"][k] = g["kinds"].get(k, 0) + n
+    groups_out = sorted(groups.values(), key=lambda g: (g["first_index"], str(g["feature_id"])))
+
+    return {"episodes": episodes_out, "groups": groups_out}
+
+
 # ── Terminal render ────────────────────────────────────────────────────────────────────────────
 
 
