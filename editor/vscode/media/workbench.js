@@ -141,49 +141,66 @@ function computeGraphLayout(map, history, opts) {
     }
   }
 
-  // Group lanes into swimlanes and order by first appearance. A group is either an expanded
-  // subsystem (a header row + its feature lanes) or a "solo" row (a meta-lane, or a feature with no
-  // subsystem). Groups sort by their earliest firstCommit; lanes within a group likewise. Rows are
-  // assigned top-to-bottom, counting each subsystem header as its own row.
-  const headerGroups = {};
-  const groups = [];
-  for (const l of lanes) {
-    if (l.isMeta || l.subsystem == null) {
-      groups.push({ key: l.id, isHeader: false, laneIds: [l.id], firstCommit: l.firstCommit });
-      continue;
-    }
-    let g = headerGroups[l.subsystem];
-    if (!g) {
-      const sub = byId[l.subsystem];
-      g = headerGroups[l.subsystem] = {
-        key: l.subsystem, isHeader: true, label: (sub && sub.label) || l.subsystem,
-        collapsedId: l.subsystem, laneIds: [], firstCommit: Infinity,
-      };
-      groups.push(g);
-    }
-    g.laneIds.push(l.id);
-    g.firstCommit = Math.min(g.firstCommit, l.firstCommit);
+  // Emit rows in TREE order so nesting is visible: walk the map from its roots; at each level
+  // siblings are ordered by first appearance (min descendant firstCommit); an expanded subsystem is
+  // a header row with its descendants rendered one level deeper; a collapsed subsystem is a single
+  // meta-lane; a feature is a lane. `depth` (root = 0, +1 per subsystem level) drives the render
+  // indent, so a sub-subsystem steps in visually under its parent instead of flattening onto the
+  // same level. Ordering by first appearance is preserved WITHIN each level (the old flat behaviour,
+  // now applied recursively) rather than across the whole tree.
+  const laneSet = new Set(lanes.map((l) => l.id));
+  const childrenOf = (id) => (byId[id] && byId[id].children) || [];
+  // A node earns a row iff it's a lane, or an expanded subsystem with >=1 descendant lane.
+  const presentCache = {};
+  function isPresent(id) {
+    if (id in presentCache) return presentCache[id];
+    let present = laneSet.has(id);
+    if (!present) for (const c of childrenOf(id)) if (isPresent(c)) { present = true; break; }
+    return (presentCache[id] = present);
   }
-  groups.sort((a, b) => a.firstCommit - b.firstCommit || (a.key < b.key ? -1 : 1));
+  // Earliest firstCommit anywhere under a node (a lane returns its own) -- the per-level sort key.
+  const firstCache = {};
+  function subtreeFirst(id) {
+    if (id in firstCache) return firstCache[id];
+    const l = laneById[id];
+    let best = l ? l.firstCommit : Infinity;
+    if (!l) for (const c of childrenOf(id)) best = Math.min(best, subtreeFirst(c));
+    return (firstCache[id] = best);
+  }
+  // A header's rolled-up magnitude over every descendant feature lane (collapsed metas included).
+  function rollup(id) {
+    let opCount = 0, laneCount = 0, lastCommit = -Infinity;
+    (function walk(nid) {
+      const l = laneById[nid];
+      if (l) { opCount += l.opCount; lastCommit = Math.max(lastCommit, l.lastCommit); laneCount += l.isMeta ? l.leaves.length : 1; }
+      else for (const c of childrenOf(nid)) walk(c);
+    })(id);
+    return { opCount, laneCount, lastCommit };
+  }
+  const sortByFirst = (a, b) => subtreeFirst(a) - subtreeFirst(b) || (a < b ? -1 : 1);
 
   let row = 0;
   const headers = [];
-  for (const g of groups) {
-    const laneObjs = g.laneIds.map((id) => laneById[id])
-      .sort((a, b) => a.firstCommit - b.firstCommit || (a.id < b.id ? -1 : 1));
-    if (g.isHeader) {
-      headers.push({
-        key: g.key, label: g.label, collapsedId: g.collapsedId, row,
-        firstCommit: g.firstCommit, lastCommit: Math.max(...laneObjs.map((l) => l.lastCommit)),
-        opCount: laneObjs.reduce((s, l) => s + l.opCount, 0), laneCount: laneObjs.length,
-      });
-      row++; // the header occupies its own row
+  function emit(id, depth) {
+    const lane = laneById[id];
+    if (lane) { // a feature leaf or a collapsed-subsystem meta-lane -- one row, no recursion
+      lane.row = row++;
+      lane.depth = depth;
+      lane.groupKey = byId[id] ? byId[id].parent : null;
+      return;
     }
-    for (const l of laneObjs) {
-      l.row = row++;
-      l.groupKey = g.key;
-    }
+    const node = byId[id];
+    if (!node || node.kind !== "subsystem" || !isPresent(id)) return; // expanded subsystem header
+    const roll = rollup(id);
+    headers.push({
+      key: id, label: node.label || id, collapsedId: id, row, depth,
+      firstCommit: subtreeFirst(id), lastCommit: roll.lastCommit,
+      opCount: roll.opCount, laneCount: roll.laneCount,
+    });
+    row++; // the header occupies its own row
+    for (const c of childrenOf(id).filter(isPresent).sort(sortByFirst)) emit(c, depth + 1);
   }
+  for (const r of (map.roots || []).filter(isPresent).sort(sortByFirst)) emit(r, 0);
   const rowCount = Math.max(1, row);
 
   return { lanes, headers, edges, overflow, laneById, opsByFeature, rowCount,
@@ -391,6 +408,7 @@ function episodeRailLayout(epView) {
   const offscreenBelow = document.getElementById("offscreenBelow");
   let planChipsEl = null; // created lazily on first renderTitlebar(), inserted after oracleChip
   let viewToggleEl = null; // Gantt <-> Rail view switch, created lazily on first renderTitlebar()
+  let inspectorToggleEl = null; // minimize/restore the detail pane, created lazily in renderTitlebar
 
   const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line"]);
 
@@ -575,6 +593,22 @@ function episodeRailLayout(epView) {
       ? "Showing the episode rail (what I did, in order) — click for the feature timeline"
       : "Showing the feature timeline (Gantt) — click for the episode rail";
 
+    // Minimize/restore the detail pane -- collapsing it hands the full width to the timeline, which
+    // matters most when the workbench is docked narrow. Lives in the daily-loop action group.
+    if (!inspectorToggleEl) {
+      inspectorToggleEl = document.createElement("button");
+      inspectorToggleEl.addEventListener("click", () => {
+        state.inspectorCollapsed = !state.inspectorCollapsed;
+        saveState();
+        render(); // re-measures the rail against the now-full width via the ResizeObserver too
+      });
+      const actions = document.getElementById("titlebarActions");
+      actions.insertBefore(inspectorToggleEl, actions.firstChild);
+    }
+    inspectorToggleEl.textContent = state.inspectorCollapsed ? "◨" : "◧";
+    inspectorToggleEl.title = state.inspectorCollapsed ? "Show detail panel" : "Hide detail panel";
+    document.getElementById("app").classList.toggle("inspector-collapsed", !!state.inspectorCollapsed);
+
     if (!planChipsEl) {
       planChipsEl = document.createElement("div");
       planChipsEl.className = "plan-chips";
@@ -684,12 +718,15 @@ function episodeRailLayout(epView) {
   // are grouped into subsystem swimlanes. The width tracks the pane (time compresses to fit, no
   // horizontal scroll); it scrolls vertically only when there are more lanes than fit. A resize
   // re-runs render() via the ResizeObserver, so the axis reflows continuously.
-  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, gutterPad: 8, cellGap: 0.5 };
+  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, gutterPad: 8, cellGap: 0.5, indent: 14 };
   let graphView = null; // { geom, handleEl, frontierEl, veilEl } -- set each render for the scrubber
 
   function ganttGeom() {
     const paneW = Math.max(rail.clientWidth || 0, 320);
-    const labelW = Math.round(Math.max(92, Math.min(200, paneW * 0.36)));
+    // Keep the label column wide enough to stay legible even when the inspector is dragged wide and
+    // the rail is squeezed -- the labels never collapse; instead the plot compresses (and clips at
+    // the pane edge) when there isn't room, which is the acceptable trade here.
+    const labelW = Math.round(Math.max(130, Math.min(220, paneW * 0.4)));
     const plotX0 = labelW + GANTT.gutterPad;
     const plotW = Math.max(60, paneW - plotX0 - 16);
     const w = paneW;
@@ -826,11 +863,12 @@ function episodeRailLayout(epView) {
   // subsystem back to a single meta-lane (toggleCollapse), so it's the "fold this cluster" affordance.
   function renderSwimlaneHeader(hd, geom) {
     const y = geom.rowY(hd.row);
+    const ind = (hd.depth || 0) * GANTT.indent; // nested subsystems step in like their member lanes
     const g = mk("g", { class: "swimlane", "data-id": hd.collapsedId, "data-first": hd.firstCommit });
     g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "swimlane-band" }));
-    g.appendChild(mk("text", { x: 8, y: y + GANTT.rowH / 2 + 4, class: "swimlane-caret", text: "▾" }));
-    const label = mk("text", { x: 22, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
-    label.textContent = truncate(hd.label, Math.floor((geom.labelW - 30) / 6.5));
+    g.appendChild(mk("text", { x: 8 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-caret", text: "▾" }));
+    const label = mk("text", { x: 22 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
+    label.textContent = truncate(hd.label, Math.max(4, Math.floor((geom.labelW - 30 - ind) / 6.5)));
     g.appendChild(label);
     // The subsystem's own activity envelope in the plot, so the header still shows "when".
     const bx = geom.xOf(hd.firstCommit), bx2 = geom.xOf(hd.lastCommit);
@@ -858,8 +896,9 @@ function episodeRailLayout(epView) {
     // full-row hit target (so hovering/clicking the gutter or empty time works, not just the bar)
     g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "glane-hit" }));
 
-    // Left gutter: identity swatch (▸ caret for a folded subsystem), then the label.
-    const gx = GANTT.gutterPad;
+    // Left gutter: identity swatch (▸ caret for a folded subsystem), then the label. Indented by
+    // the lane's nesting depth so features step in under their (possibly nested) subsystem header.
+    const gx = GANTT.gutterPad + (l.depth || 0) * GANTT.indent;
     if (l.isMeta) {
       g.appendChild(mk("text", { x: gx, y: midY + 4, class: "glane-caret", text: "▸" }));
       g.appendChild(mk("rect", { x: gx + 12, y: midY - 4, width: 8, height: 8, rx: 2, class: "glane-swatch", fill: color }));
@@ -963,18 +1002,17 @@ function episodeRailLayout(epView) {
     });
     const line = mk("line", { x1: fx, x2: fx, y1: GANTT.padT - 2, y2: y, class: "frontier-line" + (playheadCommitIndex == null ? " at-head" : "") });
     const handle = mk("path", { d: `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`, class: "frontier-handle", "data-cx": fx });
+    // A wide invisible grab-band over the frontier line, spanning the plot height. Scrubbing is a
+    // deliberate "grab the playhead and drag" gesture -- via this band or the bottom handle -- never
+    // a plain click: a lane click still selects its feature, and clicking empty plot does nothing.
+    const band = mk("rect", { x: fx - 6, y: GANTT.padT - 2, width: 12, height: y - (GANTT.padT - 2), class: "frontier-band" });
     svg.appendChild(veil);
     svg.appendChild(line);
+    svg.appendChild(band);
     svg.appendChild(handle);
-    graphView = { geom, handleEl: handle, frontierEl: line, veilEl: veil };
+    graphView = { geom, handleEl: handle, frontierEl: line, veilEl: veil, scrubBandEl: band };
     handle.addEventListener("pointerdown", onScrubPointerDown);
-    // click anywhere in the plot (on the svg background, not a lane) jumps the frontier there
-    svg.addEventListener("pointerdown", (ev) => {
-      if (ev.target !== svg) return;
-      const lx = svgLocalX(svg, ev.clientX);
-      if (lx < geom.plotX0 - 4) return; // gutter clicks aren't scrubs
-      setPlayhead(geom.xToCommit(lx));
-    });
+    band.addEventListener("pointerdown", onScrubPointerDown);
   }
 
   function truncate(s, n) {
@@ -1022,6 +1060,7 @@ function episodeRailLayout(epView) {
     const hd = graphView.handleEl;
     const y = geom.axisY;
     hd.setAttribute("d", `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`);
+    if (graphView.scrubBandEl) graphView.scrubBandEl.setAttribute("x", fx - 6); // keep the grab-band on the line
     // Dim the gutter (label + swatch) of lanes/swimlanes not yet born; the veil handles the plot.
     for (const el of svg.querySelectorAll(".glane, .swimlane")) {
       const first = Number(el.getAttribute("data-first"));

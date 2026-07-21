@@ -9,7 +9,6 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "/Users/ryanyen2/repos/test-workspace/rag",
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],
       "outFiles": ["${workspaceFolder}/dist/**/*.js"]
