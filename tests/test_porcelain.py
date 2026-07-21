@@ -2,7 +2,7 @@
 
 The D2 refusal table itself (`sgt git <tree-mutating-sub>`) is covered end-to-end in
 tests/test_cli_git_passthrough.py. This file covers the other half: the ideal-edit journal that
-makes `undo` possible (`lens.record_ideal`/`lens.undo_ideal`), and `switch`/`save`/`undo`
+makes `undo` possible (`lens.record_ideal` -> `oplog.undo`), and `switch`/`save`/`undo`
 exercised through `cli.main` on real repos -- ending with the plan's named scenario, the full
 daily loop running git-free.
 """
@@ -15,7 +15,8 @@ import os
 
 import sgt.cli as cli
 from sgt.core import verbs
-from sgt.core.lens import current_ideal, get, undo_ideal
+from sgt.core import oplog
+from sgt.core.lens import current_ideal, get
 from sgt.core.store import Store
 from sgt.store.gitbind import init_store
 from tests.laws import corpus
@@ -46,19 +47,20 @@ def _two_branches(repo_path):
 
 
 # ---------------------------------------------------------------------------
-# The ideal-edit journal (lens.record_ideal / lens.undo_ideal)
+# The ideal-edit undo (lens.record_ideal -> unified oplog.undo)
 # ---------------------------------------------------------------------------
 
 
-def test_undo_ideal_is_none_when_nothing_has_been_recorded(tmp_path):
+def test_undo_reports_empty_when_nothing_has_been_recorded(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    assert undo_ideal(repo) is None
+    assert oplog.undo(repo).status == "empty"
 
 
-def test_undo_ideal_restores_the_ideal_from_before_the_last_apply(tmp_path):
-    """`verbs.revert`'s apply path calls `lens.put` + `lens.record_ideal`, which journals the
-    outgoing ideal; `undo_ideal` pops that entry and restores it exactly (set arithmetic)."""
+def test_undo_restores_the_ideal_from_before_the_last_apply(tmp_path):
+    """`verbs.revert`'s apply path calls `lens.put` + `lens.record_ideal`, which appends the
+    outgoing ideal as an `ideal_edit` event; `oplog.undo` pops that event and restores it exactly
+    (set arithmetic), reporting the delta via its `UndoResult`."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original_ids = get(repo).op_ids
     ops = Store(repo).all_ops()
@@ -68,8 +70,9 @@ def test_undo_ideal_restores_the_ideal_from_before_the_last_apply(tmp_path):
     reverted_ids = get(repo).op_ids
     assert baz.id not in reverted_ids
 
-    result = undo_ideal(repo)
-    assert result is not None
+    outcome = oplog.undo(repo)
+    assert outcome.status == "ideal_edit"
+    result = outcome.ideal
     assert result.ideal.op_ids == original_ids
     assert get(repo).op_ids == original_ids
     assert result.removed == set()  # nothing left over from the revert
@@ -77,7 +80,7 @@ def test_undo_ideal_restores_the_ideal_from_before_the_last_apply(tmp_path):
 
 
 def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
-    """Two applied edits push two journal entries; undo pops them one at a time, oldest last."""
+    """Two applied edits push two events; undo pops them one at a time, oldest last."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original_ids = get(repo).op_ids
     ops = Store(repo).all_ops()
@@ -91,15 +94,15 @@ def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
     after_second = get(repo).op_ids
     assert after_second != after_first
 
-    first_undo = undo_ideal(repo)
+    first_undo = oplog.undo(repo)
     assert get(repo).op_ids == after_first  # back to just the baz revert
 
-    second_undo = undo_ideal(repo)
+    second_undo = oplog.undo(repo)
     assert get(repo).op_ids == original_ids  # both edits inverted
 
-    assert undo_ideal(repo) is None  # journal exhausted
-    assert first_undo.ideal.op_ids == after_first
-    assert second_undo.ideal.op_ids == original_ids
+    assert oplog.undo(repo).status == "empty"  # log exhausted
+    assert first_undo.ideal.ideal.op_ids == after_first
+    assert second_undo.ideal.ideal.op_ids == original_ids
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +114,7 @@ def test_switch_materializes_the_target_branchs_ideal(tmp_path):
     repo = tmp_path / "repo"
     gb, base = _two_branches(repo)
     with _in(repo):
-        rc = cli.main(["advanced", "switch", base])
+        rc = cli.main(["switch", base])
     assert rc == 0
     assert current_ideal(repo).op_ids == get(repo).op_ids
     assert b"def bar" not in (repo / "a.py").read_bytes()  # base never had bar
@@ -122,7 +125,7 @@ def test_switch_reports_a_git_error_for_an_unknown_branch(tmp_path, capsys):
     repo = tmp_path / "repo"
     _two_branches(repo)
     with _in(repo):
-        rc = cli.main(["advanced", "switch", "does-not-exist"])
+        rc = cli.main(["switch", "does-not-exist"])
     assert rc == 1
     assert "✗" in capsys.readouterr().out  # _fail's "✗" marker
 
@@ -131,7 +134,7 @@ def test_switch_json_reports_branch_and_op_count(tmp_path, capsys):
     repo = tmp_path / "repo"
     gb, base = _two_branches(repo)
     with _in(repo):
-        rc = cli.main(["advanced", "switch", base, "--json"])
+        rc = cli.main(["switch", base, "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert payload == {"ok": True, "branch": base, "ops": len(get(repo).op_ids)}
@@ -194,7 +197,7 @@ def test_full_daily_loop_runs_git_free(tmp_path, capsys):
     repo = tmp_path / "repo"
     gb, base = _two_branches(repo)
     with _in(repo):
-        assert cli.main(["advanced", "switch", base]) == 0
+        assert cli.main(["switch", base]) == 0
         assert gb.symbolic_ref().rsplit("/", 1)[-1] == base
 
         before_ids = get(repo).op_ids
@@ -209,7 +212,7 @@ def test_full_daily_loop_runs_git_free(tmp_path, capsys):
         rc = cli.main(["git", "checkout", "feature"])
         assert rc == 1
         err = capsys.readouterr().err
-        assert "sgt advanced switch" in err and "--force" in err
+        assert "sgt switch" in err and "--force" in err
         assert gb.symbolic_ref().rsplit("/", 1)[-1] == base  # refused: HEAD never moved
 
 
@@ -221,13 +224,13 @@ def test_switch_preserves_a_symlink_in_both_directions(tmp_path):
     outside = tmp_path / "outside.txt"
     outside.write_text("SECRET\n", encoding="utf-8")
     with _in(repo):
-        cli.main(["advanced", "switch", base])
+        cli.main(["switch", base])
         (repo / "link.txt").symlink_to(outside)
         gb.commit_all("add link on base")
         get(repo)  # mine the link commit (skipped as unmanaged)
 
-        assert cli.main(["advanced", "switch", "feature"]) == 0
-        assert cli.main(["advanced", "switch", base]) == 0
+        assert cli.main(["switch", "feature"]) == 0
+        assert cli.main(["switch", base]) == 0
 
     assert outside.read_text() == "SECRET\n"      # target never clobbered
     assert (repo / "link.txt").is_symlink()        # link survives both switches

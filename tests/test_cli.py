@@ -166,10 +166,10 @@ def test_drift_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
     get(tmp_path)
     capsys.readouterr()
 
-    assert _in(tmp_path, ["advanced", "drift", "--json"]) == 0
+    assert _in(tmp_path, ["drift", "--json"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path)), indent=2)
 
-    assert _in(tmp_path, ["advanced", "drift", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["drift", "--json", "--full"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path), full=True), indent=2)
 
 
@@ -415,7 +415,7 @@ def test_diff_between_refs(tmp_path, capsys):
     gb._git("checkout", "-q", base)
     capsys.readouterr()  # drain the priming `log` output
 
-    assert _in(tmp_path, ["advanced", "diff", "--json", base, "feature"]) == 0
+    assert _in(tmp_path, ["diff", "--json", base, "feature"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert "b.py::bar" in payload["by_symbol"]
 
@@ -459,10 +459,10 @@ def test_plan_intake_and_status_json(tmp_path, capsys, monkeypatch):
     _seed(tmp_path, 1)
     capsys.readouterr()
 
-    assert _in(tmp_path, ["advanced", "plan", "intake", "1. step one\n2. step two"]) == 0
+    assert _in(tmp_path, ["plan", "intake", "1. step one\n2. step two"]) == 0
     assert "step one" in capsys.readouterr().out
 
-    assert _in(tmp_path, ["advanced", "plan", "status", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert len(payload["sessions"]) == 1
     assert [s["title"] for s in payload["sessions"][0]["steps"]] == ["step one", "step two"]
@@ -473,15 +473,15 @@ def test_plan_abandon(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)
-    _in(tmp_path, ["advanced", "plan", "intake", "1. step one", "--json"])
+    _in(tmp_path, ["plan", "intake", "1. step one", "--json"])
     session_id = json.loads(capsys.readouterr().out)["session_id"]
 
-    assert _in(tmp_path, ["advanced", "plan", "abandon", session_id]) == 0
+    assert _in(tmp_path, ["plan", "abandon", session_id]) == 0
     capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "plan", "status", "--json"]) == 0
+    assert _in(tmp_path, ["plan", "status", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["sessions"] == []
 
-    assert _in(tmp_path, ["advanced", "plan", "abandon", "no-such-session"]) == 1
+    assert _in(tmp_path, ["plan", "abandon", "no-such-session"]) == 1
 
 
 def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
@@ -516,12 +516,12 @@ def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
     gb.commit_all("touch foo")
     capsys.readouterr()
 
-    assert _in(tmp_path, ["advanced", "checkpoint", "--json"]) == 0
+    assert _in(tmp_path, ["checkpoint", "--json"]) == 0
     preview = json.loads(capsys.readouterr().out)
     assert len(preview["matches"]) == 1
     group = preview["matches"][0]
 
-    argv = ["advanced", "checkpoint", "--json"]
+    argv = ["checkpoint", "--json"]
     for hid in group["hollow_ids"]:
         argv += ["--confirm-hollow", hid]
     for oid in group["op_ids"]:
@@ -530,7 +530,7 @@ def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
     confirmed = json.loads(capsys.readouterr().out)
     assert confirmed["session_id"] == "s1"
 
-    assert _in(tmp_path, ["advanced", "plan", "status", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["sessions"][0]["steps"][0]["status"] == "matched"
 
@@ -538,7 +538,7 @@ def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
 def test_drift_json_reports_nothing_with_no_active_session(tmp_path, capsys):
     _seed(tmp_path, 2)
     capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "drift", "--json"]) == 0
+    assert _in(tmp_path, ["drift", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["op_ids"] == []
 
 
@@ -611,7 +611,7 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
     gb.commit_all("add foo and bar")
-    assert _in(tmp_path, ["advanced", "map"]) == 0
+    assert _in(tmp_path, ["map"]) == 0
     capsys.readouterr()
     tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
 
@@ -635,9 +635,9 @@ def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
     would otherwise splice everything through verbatim."""
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "map"]) == 0
+    assert _in(tmp_path, ["map"]) == 0
     capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "map", "--rebuild"]) == 0
+    assert _in(tmp_path, ["map", "--rebuild"]) == 0
     out = capsys.readouterr().out
     assert "feature(s)" in out
 
@@ -689,12 +689,16 @@ def test_unknown_verb_falls_back_to_help(capsys):
 
 
 def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
-    """R2/KTD2: the top-level `_VERBS` is exactly the ~7-verb spine + the two groupings + the
-    unchanged collaboration/setup verbs -- nothing else lives at the top level."""
+    """R2/KTD2 (re-triaged): the top-level `_VERBS` is exactly the daily spine + the daily
+    navigation/inspection/loop/rewrite verbs + the two groupings + the unchanged collaboration/setup
+    verbs. Only rare/maintenance verbs live under `advanced`."""
     from sgt.cli import _VERBS
 
     assert _VERBS == {
         "save", "status", "log", "undo", "revert", "restore", "edit",
+        "switch", "diff", "map", "blame",
+        "plan", "checkpoint", "drift",
+        "commit", "fulfill",
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",
     }
@@ -705,8 +709,8 @@ def test_removed_top_level_verb_points_to_its_new_home(capsys):
     rename, no alias layer); a genuinely unknown token still falls to `_help()`."""
     assert main(["merge-op"]) == 2
     assert "advanced merge-op" in capsys.readouterr().err
-    assert main(["drift"]) == 2
-    assert "advanced drift" in capsys.readouterr().err
+    assert main(["reindex"]) == 2
+    assert "advanced reindex" in capsys.readouterr().err
     assert main(["state"]) == 2
     assert "advanced state" in capsys.readouterr().err
     assert main(["merge"]) == 2  # re-homed two levels deep under `feature regroup`
@@ -724,3 +728,35 @@ def test_grouping_verbs_resolve(tmp_path, capsys):
     capsys.readouterr()
     assert _in(tmp_path, ["advanced", "fsck", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsys):
+    """CLI plumbing for the interactive revert frontier (U3/R4): `--keep <id>` retains exactly the
+    named dependent, drafting a continuation hollow for its symbol, while `--keep ""` keeps none (a
+    plain revert, no hollow). Exercises the argparse `--keep` parsing that the core-level
+    `revert_keep_dependents` behavior (tests/core/test_rewrite.py) never sees."""
+    from sgt.core.store import Store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    (tmp_path / "b.py").write_text(
+        "from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
+    )
+    gb.commit_all("add user, depending on helper")
+    assert _in(tmp_path, ["init", "."]) == 0
+    capsys.readouterr()
+
+    ops = Store(tmp_path).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+
+    # `--keep <user-op>`: retain the direct dependent -> exactly one continuation hollow.
+    assert _in(tmp_path, ["revert", helper_op.id, "--keep", user_op.id, "--json"]) == 0
+    kept = json.loads(capsys.readouterr().out)
+    assert kept["ok"] and len(kept["hollow_ids"]) == 1
+
+    # `--keep ""`: keep none -> a plain revert, no continuation hollow drafted.
+    assert _in(tmp_path, ["revert", helper_op.id, "--keep", "", "--json"]) == 0
+    none = json.loads(capsys.readouterr().out)
+    assert none["ok"] and none["hollow_ids"] == []

@@ -7,18 +7,18 @@
 <style>
   :root {
     --ink: #1b1b18;
-    --paper: #fbfaf7;
-    --rule: #dedad0;
-    --accent: #8a3b2f;
-    --accent-soft: #f4e9e2;
+    --paper: #ffffff;
+    --rule: #d7d7d7;
+    --accent: #50a0c8;
+    --accent-soft: #f7f7f7;
     --git: #6b6b63;
     --darcs: #7a5c96;
     --pijul: #2f6f5e;
     --jj: #2f5f8a;
     --lazy: #b5892e;
-    --sgt: #8a3b2f;
-    --mono: "SFMono-Regular", "Menlo", "Consolas", monospace;
-    --serif: "Iowan Old Style", "Palatino Linotype", "Georgia", serif;
+    --sgt: #4f86b0;
+    --mono: monospace;
+    --serif: Arial, Helvetica, sans-serif;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -27,8 +27,9 @@
     background: var(--paper);
     color: var(--ink);
     font-family: var(--serif);
-    font-size: 18px;
-    line-height: 1.6;
+    font-size: 17px;
+    line-height: 1.65;
+    font-weight: 400;
   }
   .page { max-width: 720px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
   h1, h2, h3 { font-family: var(--serif); font-weight: 600; line-height: 1.25; }
@@ -72,9 +73,9 @@
 
   table.cmp { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 1.4rem 0; }
   table.cmp th, table.cmp td { border: 1px solid var(--rule); padding: 0.5rem 0.6rem; text-align: left; vertical-align: top; }
-  table.cmp th { background: #efece3; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.03em; text-transform: uppercase; }
+  table.cmp th { background: #ededed; font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.03em; text-transform: uppercase; }
   table.cmp td.sys { font-weight: 700; white-space: nowrap; }
-  table.cmp tr:nth-child(even) td { background: #f7f5ee; }
+  table.cmp tr:nth-child(even) td { background: #f9f9f9; }
   .sw-git { color: var(--git); } .sw-darcs { color: var(--darcs); }
   .sw-pijul { color: var(--pijul); } .sw-jj { color: var(--jj); }
   .sw-lazy { color: var(--lazy); } .sw-sgt { color: var(--sgt); font-weight: 700; }
@@ -92,13 +93,13 @@
   .opedge.dead { stroke: #b3ae9f; stroke-width: 1; stroke-dasharray: 3,2; fill: none; }
   .id { font-family: var(--mono); font-size: 11px; font-weight: 700; fill: var(--ink); }
   .fld { font-family: var(--mono); font-size: 9.5px; fill: #55524a; }
-  .diagram-bg { fill: #f4f2ec; }
+  .diagram-bg { fill: #ebebeb; }
 
   .callout {
     margin: 1.3rem 0;
     padding: 0.8rem 1.1rem;
     border: 1px solid var(--rule);
-    border-left: 3px solid #b23b2e;
+    border-left: 3px solid #2e88b2;
     background: #f6f5f0;
     font-size: 0.92rem;
     border-radius: 0 6px 6px 0;
@@ -108,7 +109,7 @@
     font-size: 0.68rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #b23b2e;
+    color: #47b4de;
     display: block;
     margin-bottom: 0.35rem;
   }

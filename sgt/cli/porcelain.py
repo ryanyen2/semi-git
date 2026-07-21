@@ -13,8 +13,8 @@ Two things live here, both small and both *data*:
 2. **The daily-loop verbs (D3): `switch`, `save`, `undo`.** Exactly three, each composed from
    existing lens machinery (no new kernel call): `switch` materializes a named ideal (an existing
    branch's committed tree) via `get` + git checkout + `get`; `save` is the put-path sugar
-   (`get` + witness commit + `record_ideal`); `undo` inverts the last recorded ideal edit by
-   popping the ideal-edit journal (`lens.undo_ideal`). Everything git does that sgt does not wrap
+   (`get` + witness commit + `record_ideal`); `undo` inverts the last mutating operation by popping
+   the unified operation log (`oplog.undo`), whatever its kind. Everything git does that sgt does not wrap
    stays one keystroke away behind `sgt git …`; a verb is only wrapped where the sgt-native version
    is *semantically different*, never merely renamed (design doc §1 non-goal).
 """
@@ -30,8 +30,8 @@ from ._common import _emit_json, _fail_json
 # `revert` to `sgt revert`; `stash` dissolves into `sgt save` (a dirty tree is just ops not yet
 # landed). `rebase` has no sgt analogue -- history is a mined DAG -- so it routes to `sgt sync`.
 REFUSALS: dict[str, str] = {
-    "checkout": "sgt advanced switch <branch>  (or `sgt restore <path>` to restore files)",
-    "switch": "sgt advanced switch <branch>",
+    "checkout": "sgt switch <branch>  (or `sgt restore <path>` to restore files)",
+    "switch": "sgt switch <branch>",
     "restore": "sgt restore <ref>",
     "pull": "sgt sync [remote] [branch]",
     "merge": "sgt sync [remote] [branch]",

@@ -196,14 +196,15 @@ def declare_after(repo: Path, a: str, b: str) -> None:
     from sgt.core import oplog
 
     snap = oplog.snapshot(repo, ["declared_orset", "declared"])  # inverse: the OR-Set before the add
-    orset = load_declared_orset(repo)
-    save_declared_orset(repo, orset.union(DeclaredORSet(adds=frozenset({(a, b, uuid.uuid4().hex)}))))
-    # Log for `undo` (U8). Best-effort like the D1 land log: `after` runs on repos that may lack a
-    # HEAD/ref (a bare `.sgt` dir in a unit test), so a failed append must never break the edge add.
+    # Record the inverse for `undo` (U8) *before* mutating, so a failed edge write is still
+    # recoverable. Best-effort like the D1 land log: `after` runs on repos that may lack a HEAD/ref
+    # (a bare `.sgt` dir in a unit test), so a failed append must never break the edge add.
     try:
         oplog.append(repo, {"kind": "after", "snapshot": snap, "edge": [a, b]})
     except Exception:  # noqa: BLE001 -- provenance logging is never load-bearing for the mutation
         pass
+    orset = load_declared_orset(repo)
+    save_declared_orset(repo, orset.union(DeclaredORSet(adds=frozenset({(a, b, uuid.uuid4().hex)}))))
 
 
 def retract_after(repo: Path, a: str, b: str) -> frozenset[str]:
@@ -574,8 +575,8 @@ def record_ideal(
 
 @dataclass(frozen=True)
 class UndoResult:
-    """What `undo_ideal` restored: the prior `ideal`, the fresh `witness_sha` that re-materialized
-    it, and the op-set delta versus the state undone (for the verb's report)."""
+    """What an ideal-edit undo restored: the prior `ideal`, the fresh `witness_sha` that
+    re-materialized it, and the op-set delta versus the state undone (for the verb's report)."""
 
     ideal: Ideal
     witness_sha: str
@@ -587,8 +588,8 @@ def _apply_ideal_edit_inverse(repo: str | Path, event: dict) -> UndoResult:
     """Restore the prior ideal an `ideal_edit` event carries (U8/KTD6): re-materialize it as a
     *fresh* witness commit and re-record it without journaling. History is an append-only op DAG,
     so undo is a forward edit re-establishing prior content, never a ref rewind; the stored
-    `witness` is provenance only (the restore re-`put`s and uses the new sha). This is the exact
-    restore `undo_ideal` has always done, extracted so `oplog.apply_inverse` can dispatch to it."""
+    `witness` is provenance only (the restore re-`put`s and uses the new sha). This is the ideal-edit
+    restore that `oplog.apply_inverse` dispatches to for an `ideal_edit` event."""
     repo = Path(repo)
     all_ops = Store(repo).all_ops()
     current = current_ideal(repo)
@@ -596,30 +597,6 @@ def _apply_ideal_edit_inverse(repo: str | Path, event: dict) -> UndoResult:
     sha = put(repo, prev, message="sgt undo: restore prior ideal")
     record_ideal(repo, prev, sha, journal=False)
     return UndoResult(prev, sha, removed=current.op_ids - prev.op_ids, added=prev.op_ids - current.op_ids)
-
-
-def undo_ideal(repo: str | Path) -> UndoResult | None:
-    """Pop the current ref's tail *ideal-edit* event from the unified log and restore that prior
-    ideal exactly (U8/KTD6 folds the old per-ref `ideal_journal` into that one log). The restore is
-    materialized as a *fresh* witness commit -- history is an append-only op DAG, so undo is a
-    forward edit re-establishing prior content, never a ref rewind. Returns None when the log is
-    empty, or when its tail is a non-ideal-edit event (feature-reorg/land/etc.) -- the generic
-    reverse-chronological walk over *every* kind is `sgt.core.oplog.undo`, which `sgt undo` uses;
-    this stays the ideal-edit-specific entry point. The restore is itself not journaled, so repeated
-    undo walks back one step at a time instead of toggling the last two states."""
-    repo = Path(repo)
-    get(repo)  # absorb current reality first (R9)
-    gb = GitBinding(repo)
-    key = _ref_key(gb)
-    jtable = _load_ideal_journal(repo)
-    stack = jtable.get(key, []) if key is not None else []
-    if not stack or stack[-1].get("kind", "ideal_edit") != "ideal_edit":
-        return None
-    result = _apply_ideal_edit_inverse(repo, stack[-1])
-    stack.pop()
-    jtable[key] = stack
-    _save_ideal_journal(repo, jtable)
-    return result
 
 
 def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes]) -> set[str]:
