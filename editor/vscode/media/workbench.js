@@ -648,6 +648,30 @@ function episodeRailLayout(epView) {
 
     renderGraph();
     renderInspector();
+    renderPresence();
+  }
+
+  // The persistent "where am I" band (Stage C): composition · view · current selection + its live
+  // closure count · scrub position · uncommitted work. Always visible, so the developer never loses
+  // their place regardless of what's selected or scrubbed.
+  function renderPresence() {
+    const el = document.getElementById("presence");
+    if (!el) return;
+    const parts = [`◆ ${state.compositionLabel || "HEAD"}`, state.view === "rail" ? "rail" : "timeline"];
+    const multi = state.multi || [];
+    if (multi.length >= 2) {
+      const view = selectionResult && selectionResult.view;
+      const clo = view && view.ok ? ` → ${view.closure_op_count} op` : "";
+      parts.push(`${multi.length} selected${clo}`);
+    } else if (state.selected) {
+      const n = byId(state.selected);
+      parts.push(`▸ ${(n && n.label) || state.selected}`);
+    }
+    if (playheadCommitIndex != null) parts.push(`@ commit ${playheadCommitIndex}`);
+    const drift = (compose.status && compose.status.drift) || { paths: [] };
+    const dpaths = (drift.paths || []).length;
+    if (dpaths) parts.push(`⚠ ${dpaths} uncommitted`);
+    el.textContent = parts.join("  ·  ");
   }
 
   function prefersReducedMotion() {
@@ -1003,6 +1027,7 @@ function episodeRailLayout(epView) {
       const first = Number(el.getAttribute("data-first"));
       el.classList.toggle("beyond", !atHead && first > playheadCommitIndex);
     }
+    renderPresence(); // keep the "where am I" band's scrub position live while dragging
   }
 
   function setPlayhead(idx) {
@@ -1967,6 +1992,7 @@ function episodeRailLayout(epView) {
       selectionResult = { refs: pendingSelection.refs, view: msg.result };
       pendingSelection = null;
       renderInspector();
+      renderPresence();
       paintSelectionClosure();
     } else if (msg.type === "previewResult" && pendingPreview && pendingPreview.seq === msg.seq) {
       pendingPreview.onResult(msg.result);

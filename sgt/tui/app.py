@@ -421,6 +421,7 @@ class SgtTui(App[None]):
         self._rows: list[dict] = []
         self._shown_rows: list[dict] = []  # the rows currently rendered, aligned to `_ids`
         self._selected: set[str] = set()  # multi-select set (feature + symbol ids)
+        self._last_status: dict | None = None  # cached status_view for live presence re-renders
         self._expanded: set[str] = set()  # feature ids expanded into their member symbols
         self._n_display = 0  # unfiltered display-row count (for the "showing X/Y" indicator)
         self._last_status: dict = {}
@@ -554,6 +555,7 @@ class SgtTui(App[None]):
             self._render_detail()
 
     def _render_status(self, st: dict) -> None:
+        self._last_status = st  # cached so a selection change can re-render the band without a reload
         line = self.query_one("#status-line", Static)
         drift = st["drift"]
         drift_txt = (
@@ -566,6 +568,10 @@ class SgtTui(App[None]):
             ("  ·  ⟳ indexing history", "yellow") if not st["sync_status"]["complete"] else ""
         )
         shown = f"  ·  showing {len(self._ids)}/{self._n_display}" if self._filter else ""
+        # "where am I": the multi-select count, so the selection is legible at a glance (the ✓
+        # markers show which, this shows how many -- what a revert/frontier would act on).
+        n_sel = len(self._selected)
+        sel_txt = Text(f"  ·  ▸ {n_sel} selected", style="bold") if n_sel else ""
         msg = Text.assemble(
             (f"{st['features']} feature(s)", "bold"),
             f"  ·  {st['files']} file(s)  ·  {st['symbols']} symbol(s)  ·  "
@@ -573,6 +579,7 @@ class SgtTui(App[None]):
             oracle_txt,
             indexing_txt,
             shown,
+            sel_txt,
             drift_txt,
         )
         line.update(msg)
@@ -632,6 +639,8 @@ class SgtTui(App[None]):
             return
         self._selected.symmetric_difference_update({nid})
         self._populate()
+        if getattr(self, "_last_status", None) is not None:
+            self._render_status(self._last_status)  # keep the "N selected" band live
 
     def action_expand(self) -> None:
         """Expand/collapse the highlighted feature into its member entity symbols (deeper rows)."""

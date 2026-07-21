@@ -229,8 +229,24 @@ graph* and the *processing/after* states — not new backend compute.
       rail_lines`; TUI `e`/`EpisodeScreen`; VS Code `renderRail` + a titlebar Timeline⇄Rail toggle
       (feature spines + dots, click selects the episode's feature → same revert/preview/multi-select
       path). tsc+esbuild + DOM smoke + 21 JS-slice tests + tui/golden all green.
-- [ ] Step 6 — presence / "where am I" band (both surfaces) + TUI parity.
-- [ ] later steps appended as chosen.
+- [x] **Step 6 — presence / "where am I" (both surfaces).** DONE. VS Code: a persistent
+      `#presence` footer band — composition · view (timeline/rail) · current selection + its
+      live closure op-count · scrub position · uncommitted-work count — always visible, updated
+      on render, selection-closure, and scrub. TUI: the existing `#status-line` gains a "▸ N
+      selected" segment, re-rendered live on space-select (cached `_last_status`). So neither
+      surface loses the developer's place.
+- [x] **Cleanup + docs.** DONE — see the final NOTE.
+
+## Action lifecycle: what shipped vs. deferred (honesty note)
+The user asked for preview → processing → after. What ships:
+- **PREVIEW**: the three-role closure overlay (Step 3) + the multi-select union closure (Step 4)
+  + the terminal/`--emit` diff (Stage A). Legible before committing. ✓
+- **PROCESSING**: VS Code's native modal confirm + the subprocess run (revert commits); the
+  "Revert all" batch reports progress/stops-on-refusal. Functional, not a bespoke graph animation.
+- **AFTER**: `store.invalidate()` → re-render to the new composition + an info toast ("Reverted N
+  feature(s)") + `sgt undo` available. Functional.
+- **DEFERRED polish**: a bespoke on-graph animation (closure "lifts", graph settles) — nice-to-have,
+  not required for legibility; noted for a future pass.
 
 ## Session notes
 
