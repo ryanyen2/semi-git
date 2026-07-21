@@ -21,10 +21,9 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from sgt.config import get_client
+from sgt.config import get_client, get_model
 from sgt.intent._guard import filter_to_shown
 
-MODEL = "gpt-5.4-mini"
 EFFORT = "low"
 
 _MAX_OPS = 200  # keeps the prompt compact on a large ideal (plan U2 "localize tightly")
@@ -138,7 +137,8 @@ def resolve_intent(repo: str | Path, query: str, *, verb: str | None = None) -> 
         )
         client = get_client(repo)
         r = client.responses.parse(
-            model=MODEL, input=prompt, text_format=IntentResolution, reasoning={"effort": EFFORT},
+            model=get_model(repo), input=prompt, text_format=IntentResolution,
+            reasoning={"effort": EFFORT},
         )
         result = r.output_parsed
         if result is None:

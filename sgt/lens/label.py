@@ -22,9 +22,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from sgt import state
-from sgt.config import get_client
+from sgt.config import get_client, get_model
 
-MODEL = "gpt-5.4-mini"
 EFFORT = "low"
 MAX_MEMBERS = 24
 MAX_SUBJECTS = 6
@@ -114,7 +113,8 @@ class Labeler:
 
     def _request(self, prompt: str) -> FeatureLabel:
         r = self.client.responses.parse(
-            model=MODEL, input=prompt, text_format=FeatureLabel, reasoning={"effort": EFFORT},
+            model=get_model(self._repo), input=prompt, text_format=FeatureLabel,
+            reasoning={"effort": EFFORT},
         )
         with self._lock:
             self.calls += 1
@@ -135,7 +135,8 @@ class Labeler:
             + body
         )
         r = self.client.responses.parse(
-            model=MODEL, input=combined, text_format=_FeatureLabelBatch, reasoning={"effort": EFFORT},
+            model=get_model(self._repo), input=combined, text_format=_FeatureLabelBatch,
+            reasoning={"effort": EFFORT},
         )
         with self._lock:
             self.calls += 1
