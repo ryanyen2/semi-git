@@ -5,7 +5,7 @@ editor/vscode/media/workbench.js (see tests/test_episodes.py for the JS side).""
 
 from __future__ import annotations
 
-from sgt.tui.graph import episodes
+from sgt.tui.graph import episode_rail_layout, episodes
 
 
 def _hist(commits, ops):
@@ -70,3 +70,36 @@ def test_unattributed_ops_fall_under_a_none_group():
 def test_empty_history_is_empty():
     out = episodes(_map(), {"commits": [], "ops": []})
     assert out == {"episodes": [], "groups": []}
+
+
+# ── episode_rail_layout (vertical git-log) ──────────────────────────────────────────────────────
+
+
+def _rail(commits, ops):
+    return episode_rail_layout(episodes(_map(("F1", "A"), ("F2", "B"), ("F3", "C")), _hist(commits, ops)))
+
+
+def test_newest_episode_is_row_zero():
+    out = _rail([(0, "s0", "c0"), (1, "s1", "c1"), (2, "s2", "c2")],
+                [("a", "add", "F1", 0), ("b", "add", "F1", 1), ("c", "add", "F1", 2)])
+    rows = {r["index"]: r["row"] for r in out["rows"]}
+    assert rows == {2: 0, 1: 1, 0: 2}  # commit 2 (newest) on top
+
+
+def test_a_feature_s_episodes_share_one_lane():
+    out = _rail([(0, "s0", "c0"), (1, "s1", "c1")],
+                [("a", "add", "F1", 0), ("b", "add", "F1", 1)])
+    lanes = {r["lane"] for r in out["rows"]}
+    assert lanes == {0} and out["lane_count"] == 1  # one feature -> one column, both episodes on it
+
+
+def test_non_overlapping_feature_spans_reuse_a_lane_overlapping_ones_do_not():
+    # F1 at commits 0-1, F2 at 2-3: spans don't overlap in rows -> share lane 0.
+    out = _rail([(i, f"s{i}", f"c{i}") for i in range(4)],
+                [("a", "add", "F1", 0), ("b", "add", "F1", 1), ("c", "add", "F2", 2), ("d", "add", "F2", 3)])
+    assert out["lane_count"] == 1  # interval coloring reuses the single lane
+
+    # F1 at 0 and 3, F2 at 1-2: F2's span sits INSIDE F1's -> they overlap -> two lanes.
+    out2 = _rail([(i, f"s{i}", f"c{i}") for i in range(4)],
+                 [("a", "add", "F1", 0), ("b", "add", "F2", 1), ("c", "add", "F2", 2), ("d", "add", "F1", 3)])
+    assert out2["lane_count"] == 2

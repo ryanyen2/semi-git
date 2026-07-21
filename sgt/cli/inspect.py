@@ -21,6 +21,11 @@ def register(subs, parent) -> None:
     gp.add_argument("--refresh", action="store_true",
                     help="re-mine + rebuild the map first (default: fast read of the last-built map)")
     gp.set_defaults(func=_cmd_graph)
+    ep = subs.add_parser("episodes", parents=[parent])
+    ep.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
+    ep.add_argument("--refresh", action="store_true",
+                    help="re-mine + rebuild the map first (default: fast read of the last-built map)")
+    ep.set_defaults(func=_cmd_episodes)
     lp = subs.add_parser("log", parents=[parent])
     _add_view_flags(lp, paged=True)
     lp.set_defaults(func=_cmd_log)
@@ -74,6 +79,10 @@ def _cmd_map(args) -> int:
 
 def _cmd_graph(args) -> int:
     return _graph(".", frontier=args.at, color=not args.no_color, refresh=args.refresh)
+
+
+def _cmd_episodes(args) -> int:
+    return _episodes(".", color=not args.no_color, refresh=args.refresh)
 
 
 def _cmd_history(args) -> int:
@@ -342,6 +351,30 @@ def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refres
     for line in render_graph_lines(
         mv, history_view(repo, full=True, limit=1_000_000), frontier=frontier, color=color
     ):
+        print(line)
+    return 0
+
+
+def _episodes(repo: str, *, color: bool = True, refresh: bool = False) -> int:
+    """`sgt episodes` (the terminal episode rail / vertical git-log): the newest commit-episode on
+    top, each feature a lane column (its episodes a straight vertical line), lanes reused across
+    non-overlapping spans. Where `sgt graph` answers "what is the codebase made of, over time,"
+    this answers "what did I do, in order" -- the rewind lens. A pure read of the last-built map
+    (like `sgt graph`); `--refresh` re-mines + rebuilds first."""
+    from sgt.api import history_view, map_view
+    from sgt.tui.graph import render_rail_lines
+
+    mv = None if refresh else map_view(repo)
+    if refresh or not (mv and mv.get("nodes")):
+        from sgt.core.lens import get
+        from sgt.lens.map import build_map
+
+        get(repo)  # mine-on-contact (R9)
+        build_map(repo)
+        mv = map_view(repo)
+    elif color:
+        print("\x1b[2m (cached map — run `sgt episodes --refresh` to re-mine current edits)\x1b[0m")
+    for line in render_rail_lines(mv, history_view(repo, full=True, limit=1_000_000), color=color):
         print(line)
     return 0
 

@@ -251,6 +251,56 @@ def episodes(map_view: dict, history_view: dict) -> dict:
     return {"episodes": episodes_out, "groups": groups_out}
 
 
+def episode_rail_layout(ep_view: dict) -> dict:
+    """Lay episodes out as a vertical git-log rail: the newest episode on top (row 0), each FEATURE
+    a lane (column) so its episodes read as a straight vertical line, and lanes reused by features
+    whose row-spans don't overlap (greedy interval-graph coloring) -- so the column count stays
+    small no matter how many features exist. That lane reuse is the compaction the user asked for:
+    shared column space is a common subexpression the layout eliminates rather than opening a fresh
+    column per feature.
+
+    Input is `episodes()`'s output; each rail row carries what a rewind decision needs (subject,
+    op_count, sha, dominant feature). The VS Code counterpart is `episodeRailLayout` in
+    workbench.js, kept behaviour-parallel."""
+    episodes = ep_view.get("episodes", [])
+    ordered = sorted(episodes, key=lambda e: -e["index"])  # newest (largest commit_index) on top
+    row_of = {e["index"]: r for r, e in enumerate(ordered)}
+
+    # Each feature's inclusive row-span over its episodes.
+    span: dict = {}
+    for e in episodes:
+        fid = e["dominant_feature"]
+        r = row_of[e["index"]]
+        s = span.get(fid)
+        if s is None:
+            span[fid] = [r, r]
+        else:
+            s[0], s[1] = min(s[0], r), max(s[1], r)
+
+    # Greedy interval coloring: features top-first; a lane is reusable once its last occupant ends
+    # above (in a smaller row than) this feature's top. Lowest free lane wins (minimal columns).
+    lane_of: dict = {}
+    lane_bot: list = []  # lane -> bottom row of the feature currently occupying it
+    for fid in sorted(span, key=lambda f: (span[f][0], str(f))):
+        top, bot = span[fid]
+        lane = next((L for L in range(len(lane_bot)) if lane_bot[L] < top), None)
+        if lane is None:
+            lane = len(lane_bot)
+            lane_bot.append(bot)
+        else:
+            lane_bot[lane] = bot
+        lane_of[fid] = lane
+
+    rows = [
+        {"index": e["index"], "row": row_of[e["index"]], "feature": e["dominant_feature"],
+         "lane": lane_of.get(e["dominant_feature"], 0), "subject": e["subject"],
+         "op_count": e["op_count"], "sha": e["sha"]}
+        for e in ordered
+    ]
+    return {"rows": rows, "lane_of": lane_of, "lane_count": max(1, len(lane_bot)),
+            "row_count": len(ordered)}
+
+
 # ── Terminal render ────────────────────────────────────────────────────────────────────────────
 
 
@@ -398,4 +448,93 @@ def render_graph_lines(
     # Legend + next-step hints: the view explains its own encoding and what to do from here.
     lines.append(dim(" ● feature   ▾ subsystem   bar = lifetime, brightness = op density   ↔ co-change"))
     lines.append(dim(" next:  sgt graph --at <commit> (fold history)   ·   sgt revert <feature>   ·   sgt map (tree)"))
+    return lines
+
+
+# ── Episode rail render (vertical git-log) ───────────────────────────────────────────────────────
+
+
+def render_rail_lines(
+    map_view: dict,
+    history_view: dict,
+    *,
+    selected: str | None = None,
+    color: bool = True,
+    label_width: int = 44,
+    max_rows: int = 40,
+) -> list[str]:
+    """Render the episode rail as a vertical git-log (Stage C): newest episode on top, each feature
+    a lane column (its episodes a straight vertical line), lanes reused across non-overlapping
+    spans. Each row is one commit-episode -- the "what I did, in order" rewind unit -- with its
+    subject and the dominant feature it advanced. Capped at `max_rows` (newest first); a footer
+    notes how many older episodes were folded (the lazy nod for a long history)."""
+    ep = episodes(map_view, history_view)
+    layout = episode_rail_layout(ep)
+    labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
+    rows = layout["rows"]
+    lane_count = layout["lane_count"]
+
+    # Reconstruct each feature's (top, bot, lane) span, then the per-lane occupants, so a lane a
+    # feature passes through (between two of its episodes) draws a vertical connector, not a gap.
+    span: dict = {}
+    for r in rows:
+        fid, rr, L = r["feature"], r["row"], r["lane"]
+        if fid not in span:
+            span[fid] = [rr, rr, L]
+        else:
+            span[fid][0], span[fid][1] = min(span[fid][0], rr), max(span[fid][1], rr)
+    lane_spans: dict = {}
+    for fid, (top, bot, L) in span.items():
+        lane_spans.setdefault(L, []).append((top, bot, fid))
+
+    def occupant(lane: int, r: int) -> tuple[bool, str | None]:
+        # (found, fid) -- fid may itself be None (the unattributed-episode lane), so a plain
+        # None return can't distinguish "the None feature is here" from "nothing is here".
+        for top, bot, fid in lane_spans.get(lane, []):
+            if top <= r <= bot:
+                return True, fid
+        return False, None
+
+    def paint(hex_str: str, s: str) -> str:
+        return _fg(hex_str, s) if color else s
+
+    def dim(s: str) -> str:
+        return f"{_DIM}{s}{_RESET}" if color else s
+
+    def bold(s: str) -> str:
+        return f"{_BOLD}{s}{_RESET}" if color else s
+
+    lines: list[str] = []
+    n_ep = len(rows)
+    n_feat = len(span)
+    lines.append(bold(f" {n_ep} episode(s)  ·  {n_feat} feature(s)  ·  {lane_count} lane(s)   (newest on top)"))
+    lines.append(dim(" each row = one commit-episode; each column = a feature; ● the episode's feature"))
+    lines.append("")
+
+    shown = rows[:max_rows]
+    for r in shown:
+        this_lane, this_fid = r["lane"], r["feature"]
+        cells = []
+        for L in range(lane_count):
+            found, occ_fid = occupant(L, r["row"])
+            if L == this_lane:
+                cells.append(paint(color_for(this_fid or ""), "●"))
+            elif found:
+                cells.append(paint(color_for(occ_fid or ""), "│"))
+            else:
+                cells.append(" ")
+        rail = " ".join(cells)
+        sha = dim((r["sha"] or "")[:7].ljust(7))
+        subj = (r["subject"] or "").replace("\n", " ")[:label_width].ljust(label_width)
+        flabel = labels.get(this_fid, this_fid or "(unattributed)")
+        is_sel = this_fid == selected
+        tail = dim(f"{flabel} · {r['op_count']} op")
+        subj_s = bold(subj) if is_sel else subj
+        lines.append(f" {rail}  {sha}  {subj_s}  {tail}")
+
+    if n_ep > len(shown):
+        lines.append("")
+        lines.append(dim(f" … {n_ep - len(shown)} older episode(s) folded (newest {len(shown)} shown)"))
+    lines.append("")
+    lines.append(dim(" next:  sgt revert <feature> (rewind an episode's feature)   ·   sgt graph (timeline)"))
     return lines
