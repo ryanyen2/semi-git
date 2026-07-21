@@ -216,6 +216,8 @@ def _help() -> int:
         "  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n"
         "  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n"
         "  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n"
+        "  sgt graph [--at]            feature timeline (Gantt): lanes over commit-time\n"
+        "  sgt episodes                episode rail (vertical git-log): what I did, in order\n"
         "  sgt blame <path>            per-symbol semantic blame from the op DAG\n"
         "\n"
         "  agentic loop:\n"
