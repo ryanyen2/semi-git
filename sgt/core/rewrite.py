@@ -434,7 +434,7 @@ def edit_op(repo: str | Path, target: str, intent: str | None = None) -> Rewrite
         ok=True, verb="edit", target=op_id, hollow_ids=(hollow.id,),
         meta={
             "edit_symbol": sym, "old_version": after_version,
-            "removed_ids": blast, "repoint_deps": blast, "blast_deps": blast,
+            "removed_ids": blast, "repoint_deps": blast,
         },
         message=f"drafted an edit hollow for {sym}; fulfilling it repoints "
                 f"{len(blast)} dependent(s) mechanically",

@@ -61,27 +61,6 @@ _VERBS = {
     "sync", "land", "push", "propose", "session", "init", "mcp",
 }
 
-# Former top-level verb -> its new invocation path (KTD2's hard rename). `main` uses this to point a
-# user who typed a removed-but-known verb at its new home, instead of a bare `_help()`.
-_REMOVED = {
-    # under `advanced`
-    "state": "advanced state", "oracle": "advanced oracle",
-    "fsck": "advanced fsck", "reindex": "advanced reindex",
-    "history": "advanced history", "compose": "advanced compose",
-    "fold": "advanced fold", "preview": "advanced preview",
-    "forks": "advanced forks",
-    "after": "advanced after", "tiers": "advanced tiers", "migrate": "advanced migrate",
-    "intent": "advanced intent", "review-queue": "advanced review-queue",
-    "identity": "advanced identity",
-    "merge-op": "advanced merge-op", "split-op": "advanced split-op",
-    "transplant": "advanced transplant",
-    "unstage": "advanced unstage", "repair": "advanced repair",
-    # under `feature`
-    "rename": "feature rename", "select": "feature select", "why": "feature why",
-    "merge": "feature regroup merge", "split": "feature regroup split",
-    "move": "feature regroup move",
-}
-
 # Where each re-homed verb's registration lands (default: top-level, i.e. spine/collaboration/setup).
 # The verb NAME and its args/handler are untouched -- only the parent subparser changes -- so the
 # family modules register unchanged and each verb keeps its exact behavior at its new path.
@@ -97,6 +76,12 @@ _ROUTING = {
     "merge-op": "advanced", "split-op": "advanced", "transplant": "advanced",
     "unstage": "advanced", "repair": "advanced",
 }
+
+# Former top-level verb -> its new invocation path (KTD2's hard rename), derived from `_ROUTING` so
+# the two can never drift: `main` uses it to point a user who typed a removed-but-known verb at its
+# new home instead of a bare `_help()`. `regroup`-tier verbs nest one level deeper under `feature`.
+_TIER_PATH = {"advanced": "advanced", "feature": "feature", "regroup": "feature regroup"}
+_REMOVED = {verb: f"{_TIER_PATH[tier]} {verb}" for verb, tier in _ROUTING.items()}
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
              porcelain, tiers, select, session, review, intent, edit)
