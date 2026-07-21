@@ -216,6 +216,17 @@ body {
   }
 }
 
+/* Inspector minimized: the timeline takes the whole pane. Higher specificity than the narrow
+   @container rule above, so it wins regardless of pane width (a collapsed inspector stays collapsed
+   even when stacked-narrow would otherwise apply). */
+#app.inspector-collapsed #main {
+  grid-template-columns: 1fr;
+  grid-template-rows: none;
+}
+#app.inspector-collapsed #inspector {
+  display: none;
+}
+
 /* Off-screen affected pills: anchored to #main (not #rail), so they stay pinned over the rail
    pane regardless of #rail's own scroll position -- a hover-preview affordance, cleared with the
    rest of the ghost-blast paint. */
@@ -494,6 +505,12 @@ svg.railsvg {
 
 .frontier-handle {
   fill: var(--accent);
+  cursor: ew-resize;
+}
+
+/* The invisible grab-band over the frontier line: grab it (or the handle) and drag to scrub. */
+.frontier-band {
+  fill: transparent;
   cursor: ew-resize;
 }
 
