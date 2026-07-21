@@ -259,7 +259,7 @@ class EpisodeScreen(ModalScreen[None]):
     Where GraphScreen answers "what is the codebase made of, over time," this answers "what did I
     do, in order" -- the rewind lens. Read-only, like GraphScreen."""
 
-    BINDINGS = [Binding("escape,q,e", "close", "Close")]
+    BINDINGS = [Binding("escape,q,l", "close", "Close")]
 
     def __init__(self, map_view: dict, history_view: dict, selected: str | None = None) -> None:
         super().__init__()
@@ -406,7 +406,7 @@ class SgtTui(App[None]):
         Binding("space", "toggle_select", "Select"),
         Binding("e", "expand", "Expand"),
         Binding("g", "graph", "Graph"),
-        Binding("e", "episodes", "Episodes"),
+        Binding("l", "episodes", "Episodes"),  # l = the vertical git-log rail (e is taken by expand)
         Binding("f", "frontier", "Frontier"),
         Binding("r", "preview_revert", "Preview revert"),
         Binding("X", "apply_revert", "Revert!"),  # mutating ops are uppercase, apart from previews
