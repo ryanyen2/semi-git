@@ -18,11 +18,12 @@ import difflib
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, Label, Static
 
 from sgt.tui.color import color_for
+from sgt.tui.graph import render_graph_lines
 
 _KIND_GLYPH = {"feature": "●", "subsystem": "▸", "symbol": "◦"}
 _NARROW = 100  # below this terminal width, fold the detail pane into a modal
@@ -193,6 +194,65 @@ class DetailScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class GraphScreen(ModalScreen[None]):
+    """The dependency graph (`sgt graph`): features by temporal generation, each an identity-colored
+    row with a magnitude bar (op count) and its strongest co-change links -- the "how does this all
+    fit together, and when did each part come to be" overview, complementing the selectable tree.
+    A frontier can be scrubbed with ←/→ to fold the graph back through history (features accrete)."""
+
+    BINDINGS = [
+        Binding("escape,q,g", "close", "Close"),
+        Binding("left", "frontier_back", "Older"),
+        Binding("right", "frontier_fwd", "Newer"),
+        Binding("home", "frontier_head", "HEAD"),
+    ]
+
+    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None) -> None:
+        super().__init__()
+        self._map_view = map_view
+        self._history_view = history_view
+        self._selected = selected
+        self._max_commit = max((c.get("index", 0) for c in history_view.get("commits", [])), default=0)
+        self._frontier: int | None = None  # None = HEAD (full history)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="graph-modal"):
+            with VerticalScroll(id="graph-scroll"):
+                yield Static(self._body(), id="graph-body")
+            yield Label(
+                "[b]←/→[/b] scrub frontier   ·   [b]home[/b] HEAD   ·   [b]esc[/b] close", id="hint"
+            )
+
+    def _body(self) -> Text:
+        lines = render_graph_lines(
+            self._map_view, self._history_view, selected=self._selected, frontier=self._frontier
+        )
+        return Text.from_ansi("\n".join(lines))
+
+    def _refresh(self) -> None:
+        self.query_one("#graph-body", Static).update(self._body())
+
+    def action_frontier_back(self) -> None:
+        cur = self._max_commit if self._frontier is None else self._frontier
+        self._frontier = max(0, cur - max(1, self._max_commit // 20))
+        self._refresh()
+
+    def action_frontier_fwd(self) -> None:
+        if self._frontier is None:
+            return
+        self._frontier = min(self._max_commit, self._frontier + max(1, self._max_commit // 20))
+        if self._frontier >= self._max_commit:
+            self._frontier = None  # back to HEAD
+        self._refresh()
+
+    def action_frontier_head(self) -> None:
+        self._frontier = None
+        self._refresh()
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class FrontierScreen(ModalScreen[None]):
     """The revert frontier as a checkable list (plan U9/U3, R8/R4). Each ``blast``/``carry``
     dependent is a row ``space`` toggles into the kept-set (keeping it retains that op, so the
@@ -300,7 +360,10 @@ class SgtTui(App[None]):
     #status-line { height: 1; background: $boost; color: $text; padding: 0 1; }
     ConfirmScreen, RenameScreen { align: center middle; }
     #dialog { width: 60; height: auto; padding: 1 2; border: thick $accent; background: $surface; }
-    DetailScreen, FrontierScreen { align: center middle; }
+    DetailScreen, FrontierScreen, GraphScreen { align: center middle; }
+    #graph-modal { width: 90%; height: 90%; padding: 1 2; border: thick $accent; background: $surface; }
+    #graph-scroll { height: 1fr; }
+    #graph-body { width: auto; }
     #detail-modal { width: 80%; height: 80%; padding: 1 2; border: thick $accent; background: $surface; }
     #frontier-modal { width: 80%; height: 80%; padding: 1 2; border: thick $accent; background: $surface; }
     #frontier-header { height: auto; }
@@ -314,6 +377,7 @@ class SgtTui(App[None]):
         Binding("slash", "focus_filter", "Filter"),
         Binding("space", "toggle_select", "Select"),
         Binding("e", "expand", "Expand"),
+        Binding("g", "graph", "Graph"),
         Binding("f", "frontier", "Frontier"),
         Binding("r", "preview_revert", "Preview revert"),
         Binding("X", "apply_revert", "Revert!"),  # mutating ops are uppercase, apart from previews
@@ -331,6 +395,7 @@ class SgtTui(App[None]):
         self._expanded: set[str] = set()  # feature ids expanded into their member symbols
         self._n_display = 0  # unfiltered display-row count (for the "showing X/Y" indicator)
         self._last_status: dict = {}
+        self._map_view: dict | None = None  # the last mined map_view, reused by the graph overview
         self._filter = ""
         self._narrow = False
 
@@ -373,10 +438,21 @@ class SgtTui(App[None]):
 
         get(self.repo)
         build_map(self.repo)
-        self._rows = _flatten(map_view(self.repo))
+        self._map_view = map_view(self.repo)
+        self._rows = _flatten(self._map_view)
         self._last_status = status_view(self.repo)
         self._populate()
         self._render_status(self._last_status)
+
+    def action_graph(self) -> None:
+        """Open the dependency-graph overview (reuses the mined `map_view`; reads `history_view` for
+        the op/commit axis). Read-only -- the tree remains the selectable interaction surface."""
+        from sgt.api import history_view
+
+        if not getattr(self, "_map_view", None):
+            return
+        hist = history_view(self.repo, full=True, limit=1_000_000)
+        self.push_screen(GraphScreen(self._map_view, hist, self._selected_id()))
 
     def _display_rows(self) -> list[dict]:
         """The base display list: every feature/subsystem row, plus -- for each expanded feature --

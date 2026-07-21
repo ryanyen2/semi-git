@@ -465,7 +465,7 @@
         "c.py::qux"
       ],
       "exit": 0,
-      "out": "\u2713 [revert] c.py::qux\n    removed 1 op(s): bf137aca1399\n    affected: c.py::qux\n"
+      "out": "\u2713 [revert] c.py::qux\n    removed 1 op(s): bf137aca1399\n    dependents: 1 prerequisite(s) locked (foundation)\n    affected: c.py::qux\n    \u2500\u2500 resulting change (1 file(s)) \u2500\u2500\n    c.py\n      @@ -1,2 +1,2 @@\n       def qux():\n      -    return 'changed independently'\n      +    return 'unrelated'\n"
     }
   },
   "revert_unknown": {
@@ -535,7 +535,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"applied\": false,\n  \"groups\": [\n    [\n      \"b.py::__residue__::baz\",\n      \"b.py::baz\",\n      \"c.py::qux\"\n    ],\n    [\n      \"README.md\",\n      \"a.py::__residue__::\\u0000HEAD\\u0000\",\n      \"b.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::qux\",\n      \"config.yaml\",\n      \"logo.bin\"\n    ]\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"applied\": false,\n  \"groups\": [\n    [\n      \"README.md\",\n      \"a.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::qux\",\n      \"config.yaml\",\n      \"logo.bin\"\n    ],\n    [\n      \"b.py::__residue__::\\u0000HEAD\\u0000\",\n      \"b.py::__residue__::baz\",\n      \"b.py::baz\",\n      \"c.py::qux\"\n    ]\n  ]\n}\n"
     },
     "text": {
       "argv": [
@@ -545,7 +545,7 @@
         "f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b"
       ],
       "exit": 0,
-      "out": "  group 0: b.py::__residue__::baz, b.py::baz, c.py::qux\n  group 1: README.md, a.py::__residue__::\u0000HEAD\u0000, b.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::qux, config.yaml, logo.bin\n  (preview only \u2014 pass --apply to split)\n"
+      "out": "  group 0: README.md, a.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::qux, config.yaml, logo.bin\n  group 1: b.py::__residue__::\u0000HEAD\u0000, b.py::__residue__::baz, b.py::baz, c.py::qux\n  (preview only \u2014 pass --apply to split)\n"
     }
   },
   "state": {

@@ -14,6 +14,13 @@ def register(subs, parent) -> None:
     mp.add_argument("--rebuild", action="store_true",
                      help="force a full from-scratch recluster instead of splicing unchanged subtrees")
     mp.set_defaults(func=_cmd_map)
+    gp = subs.add_parser("graph", parents=[parent])
+    gp.add_argument("--at", type=int, default=None, metavar="COMMIT",
+                    help="fold frontier: only ops up to this commit-index count (features accrete)")
+    gp.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
+    gp.add_argument("--refresh", action="store_true",
+                    help="re-mine + rebuild the map first (default: fast read of the last-built map)")
+    gp.set_defaults(func=_cmd_graph)
     lp = subs.add_parser("log", parents=[parent])
     _add_view_flags(lp, paged=True)
     lp.set_defaults(func=_cmd_log)
@@ -63,6 +70,10 @@ def _cmd_status(args) -> int:
 
 def _cmd_map(args) -> int:
     return _map(".", args.as_json, args.rebuild)
+
+
+def _cmd_graph(args) -> int:
+    return _graph(".", frontier=args.at, color=not args.no_color, refresh=args.refresh)
 
 
 def _cmd_history(args) -> int:
@@ -301,6 +312,37 @@ def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
     if as_json:
         return _emit_json(view)
     _print_map_tree(view)
+    return 0
+
+
+def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refresh: bool = False) -> int:
+    """`sgt graph` (the terminal feature timeline / Gantt): one identity-colored lane per feature,
+    grouped into subsystem swimlanes and ordered by first appearance; each lane's time strip spans
+    its [first,last] commit lifetime with per-column brightness = op density, under one shared,
+    labeled commit axis -- the terminal counterpart of the VS Code workbench graph.
+
+    Unlike a mutating verb, this is a pure read: by default it renders the *last-built* map (a fast
+    read of the cached tree, ~sub-second), NOT a re-mine + re-cluster (which costs ~30s on a large
+    repo and would make a glanceable command like `log`/`status` unusable). `--refresh` forces the
+    full mine-on-contact + rebuild when you want the map to reflect brand-new edits."""
+    from sgt.api import history_view, map_view
+    from sgt.tui.graph import render_graph_lines
+
+    mv = None if refresh else map_view(repo)
+    if refresh or not (mv and mv.get("nodes")):
+        # No cached map yet (first run) or an explicit refresh: pay for the full rebuild once.
+        from sgt.core.lens import get
+        from sgt.lens.map import build_map
+
+        get(repo)  # mine-on-contact (R9)
+        build_map(repo)
+        mv = map_view(repo)
+    elif color:
+        print("\x1b[2m (cached map — run `sgt graph --refresh` to re-mine current edits)\x1b[0m")
+    for line in render_graph_lines(
+        mv, history_view(repo, full=True, limit=1_000_000), frontier=frontier, color=color
+    ):
+        print(line)
     return 0
 
 

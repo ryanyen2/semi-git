@@ -50,7 +50,7 @@ _VERBS = {
     # spine
     "save", "status", "log", "undo", "revert", "restore", "edit",
     # navigation + inspection (daily)
-    "switch", "diff", "map", "blame",
+    "switch", "diff", "map", "graph", "blame",
     # agentic loop (daily)
     "plan", "checkpoint", "drift",
     # rewrite pipeline (daily)

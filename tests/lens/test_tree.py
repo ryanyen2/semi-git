@@ -428,7 +428,7 @@ class _StubLabeler:
     def label_super(self, child_labels, files):
         return self._fl(" / ".join(sorted(set(child_labels))))
 
-    def leaf_request(self, members, subjects=None):
+    def leaf_request(self, members, subjects=None, kinds=None):
         return ("leaf", members, members)
 
     def super_request(self, child_labels, files):
@@ -505,6 +505,89 @@ def test_dedup_disambiguates_cross_subsystem_label_collision():
         nd["label"] for nd in result["nodes"].values() if not nd["children"] and nd["label"].startswith("Store")
     )
     assert store_leaves == ["Store · cli", "Store · core"]
+
+
+def test_regroup_flat_root_groups_by_package_leaves_singletons_flat_and_is_idempotent():
+    def leaf(dir_, m):
+        return {"members": [m], "size": 1, "dir": dir_, "depth": 1, "children": [],
+                "split_reason": "stop_split"}
+
+    # 13 children (> max_arity): 4 in a/x, 4 in b/y, 4 in c/z, and one lone d/w.
+    kids = ([leaf("a/x", f"a{i}") for i in range(4)]
+            + [leaf("b/y", f"b{i}") for i in range(4)]
+            + [leaf("c/z", f"c{i}") for i in range(4)]
+            + [leaf("d/w", "d0")])
+    root = {"members": [k["members"][0] for k in kids], "size": 13, "dir": "top", "depth": 0,
+            "children": kids, "split_reason": None}
+
+    tree._regroup_flat_root(root, max_arity=3)
+
+    kinds = [(nd["dir"], bool(nd["children"])) for nd in root["children"]]
+    assert sorted(kinds) == [("a/x", True), ("b/y", True), ("c/z", True), ("d/w", False)]
+    assert all(nd["split_reason"] == "regrouped" for nd in root["children"] if nd["children"])
+    subsystem = next(nd for nd in root["children"] if nd["dir"] == "a/x")
+    assert subsystem["depth"] == 1 and all(c["depth"] == 2 for c in subsystem["children"])  # re-stamped
+    leaves = [m for nd in root["children"] for c in ([nd] if not nd["children"] else nd["children"])
+              for m in c["members"]]
+    assert sorted(leaves) == sorted(f"{p}{i}" for p in "abc" for i in range(4)) + ["d0"]  # none lost
+
+    before = [nd["dir"] for nd in root["children"]]
+    tree._regroup_flat_root(root, max_arity=3)  # idempotent: distinct package dirs -> no re-nesting
+    assert [nd["dir"] for nd in root["children"]] == before
+
+
+def test_dedup_never_merges_internal_siblings_that_share_a_label():
+    # Two subsystem (internal) siblings whose single children the stub labels identically -> both
+    # inherit the same label. They must NOT merge: flattening an internal node to a leaf would
+    # orphan its subtree and leak an internal id into op_leaf (the KeyError-N60 regression). Only
+    # leaf siblings collapse; a colliding-label subsystem is left for the folder pass on its leaves.
+    result = {
+        "roots": ["N0"],
+        "op_leaf": {"opA": "N3", "opB": "N4"},
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b"], "size": 2,
+                   "dir": "top", "children": ["N1", "N2"], "split_reason": None},
+            "N1": {"id": "N1", "parent": "N0", "depth": 1, "members": ["a"], "size": 1,
+                   "dir": "core", "children": ["N3"], "split_reason": None},
+            "N2": {"id": "N2", "parent": "N0", "depth": 1, "members": ["b"], "size": 1,
+                   "dir": "cli", "children": ["N4"], "split_reason": None},
+            "N3": _leaf("N3", "N1", ["a"], "core"),
+            "N4": _leaf("N4", "N2", ["b"], "cli"),
+        },
+    }
+    stub = _StubLabeler({frozenset(["a"]): "Auth", frozenset(["b"]): "Auth"})
+
+    tree.label_tree(result, labeler=stub)
+
+    assert set(result["nodes"]) >= {"N0", "N1", "N2", "N3", "N4"}  # nothing orphaned
+    assert result["nodes"]["N1"]["children"] == ["N3"]
+    assert result["nodes"]["N2"]["children"] == ["N4"]
+    leaves = {nid for nid, nd in result["nodes"].items() if not nd["children"]}
+    assert set(result["op_leaf"].values()) <= leaves  # no internal-id leak into op_leaf
+
+
+def test_stale_signals_version_forces_recluster_but_matching_version_splices(tmp_path, monkeypatch):
+    from sgt.lens import cluster
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+    prev = tree.build(repo, ops, ideal)
+    assert prev["signals_version"] == cluster.SIGNALS_VERSION
+
+    spliced = {"hit": False}
+    orig = tree._build_root
+
+    def _spy(*a, **k):
+        spliced["hit"] = True
+        return orig(*a, **k)
+
+    monkeypatch.setattr(tree, "_build_root", _spy)
+
+    tree.build(repo, ops, ideal, previous={**prev, "signals_version": "stale-old"})
+    assert spliced["hit"] is False  # a signal-recipe change forces a full resplit, never the splice
+
+    tree.build(repo, ops, ideal, previous=prev)
+    assert spliced["hit"] is True  # same version -> ordinary incremental splice
 
 
 def test_label_tree_offline_fallback_is_deterministic(tmp_path, monkeypatch):

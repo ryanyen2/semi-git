@@ -1,100 +1,138 @@
-// The Composition Workbench webview's client script, grounded in
-// experiments/patch_clustering/out/rail3.html: a rail pane (hierarchy left, shared commit-index
-// timeline right, drawn as one scrollable SVG with a divider between the two regions -- true
-// side-by-side scroll-synced panes land with windowing in a later phase) and an inspector pane on
-// the right (detail, action bar, and a code(I) panel driven by one `foldAt` round-trip per
-// selection). A titlebar composition selector (QuickPick over HEAD + sessions) and an oracle chip
-// round out the 3-pane skeleton. Color is resolved host-side (workbench.ts calls the same
-// colorForNode() color.ts already uses) and arrives pre-resolved on every node -- this file never
-// reimplements the OKLCH generator. Hover = transient dim/light preview; click = sticky select +
-// inspector + action bar; hovering an action live-previews its real impact via `previewVerb`
-// postMessage round-trips to the extension host, which spawns `sgt preview <verb> ... --json`.
+// The Composition Workbench webview's client script. Left pane is the DEPENDENCY GRAPH (see
+// `computeGraphLayout`): features as identity-colored discs (area = op count), co-change edges,
+// laid out by temporal rank (x = the generation of a feature's median op) and barycenter
+// crossing-min order (y), with collapsed subsystems as meta-nodes and a bottom time-axis frontier
+// scrubber. A commit-index is not a snapshot node -- it's a set of ops across features -- so we
+// draw the features, not a commit spine. The right pane is the inspector (detail, action bar, a
+// code(I) panel driven by one `foldAt` per selection, the op-set decomposition of a scrubbed
+// point, and the working-changes quick-save card). A titlebar composition selector (QuickPick over
+// HEAD + sessions) and an oracle chip round out the skeleton. Color is resolved host-side
+// (workbench.ts calls color.ts's colorForNode) and arrives pre-resolved on every node -- this file
+// never reimplements the OKLCH generator.
 //
-// Phase-3 scope: the armed-action pattern below only generalizes merge/move (as it always has);
-// generalizing it over every verb is a later phase.
-//
-// Phase 4 adds the draggable playhead: a handle over the shared commit-index axis, dragged or
-// clicked to any commit index, folding that `{commitIndex}` frontier live (debounced 250ms,
-// snapped to the axis's op columns since there is one column per commit index already). It is a
-// read-only exploration mode layered on top of the existing selection/action-bar state, not a
-// replacement for the composition selector -- previews and applies still run against the real
-// composition (state.compositionRef), never against the scrubbed frontier.
+// Interaction: hover a node = dim the field, light it + its co-change neighbors + their edges;
+// click a feature = sticky select + inspector + action bar; click a meta-node = expand the
+// subsystem; hovering an action live-previews its blast radius via `previewVerb` postMessage
+// round-trips to the host (`sgt preview <verb> ... --json`). The armed-action pattern generalizes
+// merge/move. The frontier scrubber (bottom axis) is a read-only fold point: it dims nodes past
+// the point (the graph accretes) and drives the code(I)/op-set panels, but previews/applies still
+// run against the real composition (state.compositionRef), never the scrubbed frontier.
 
-// ─── Layout engine ────────────────────────────────────────────────────────────────────────────
-// Pure: takes `map_view` + `history_view` (plus render opts), returns row/lifebar/edge placement.
-// No DOM, no color, no anime -- sliced out and exercised under node (tests/test_map_layout.py).
-function computeLayout(map, history, opts) {
-  const collapsed = new Set((opts && opts.collapsed) || []);
-  const topK = (opts && opts.topK) || 6;
+// ---- graph-layout (test slice boundary) ----
+// The feature timeline -- a Gantt. A commit-index is NOT a snapshot node: it's a set of ops spread
+// across features. So we don't draw a commit spine or a node cloud; we draw one LANE per feature.
+//   x  = real commit-time, a shared labeled axis. A feature's bar spans [firstCommit, lastCommit]
+//        (born → last touched); its ops are binned along it as a density heatstrip by the renderer,
+//        so a 2000-op commit is one dark column, never a wall of glyphs.
+//   y  = features grouped into SUBSYSTEM SWIMLANES, ordered by first appearance (foundations up
+//        top). Vertical position means "which feature / which subsystem" -- something a reader can
+//        actually use -- so there is no barycenter/crossing-min pass at all.
+//   frontier = a "now" line on the time axis; ops past it don't count yet, so scrubbing accretes.
+// Co-change stays OFF the default view (it made the old node-link diagram a hairball): edges are
+// still computed (top-K per feature) but only lit on hover. Pure (no DOM/color): sliced out and
+// exercised under node (tests/test_graph_layout.py).
+function computeGraphLayout(map, history, opts) {
+  opts = opts || {};
+  const collapsed = new Set(opts.collapsed || []);
+  const frontier = opts.frontier == null ? Infinity : opts.frontier;
+  const topK = opts.topK || 4;
+
   const byId = {};
   for (const n of map.nodes || []) byId[n.id] = n;
 
-  // DFS rows, depth-indented, skipping a collapsed node's children -- the tree's visible slice.
-  const rows = [];
-  const depthOf = {};
-  function visit(id, depth) {
-    rows.push(id);
-    depthOf[id] = depth;
-    if (collapsed.has(id)) return;
-    const node = byId[id];
-    for (const c of (node && node.children) || []) visit(c, depth + 1);
-  }
-  for (const r of (map.roots || []).slice().sort()) visit(r, 0);
-
-  const rowOf = {};
-  rows.forEach((id, i) => (rowOf[id] = i));
-
-  // Every op, grouped by the feature it belongs to and sorted along the commit-index axis --
-  // the per-leaf glyph sequence and lifebar span.
+  // Ops per feature, filtered to the frontier -- the magnitude + temporal signal for each leaf.
   const opsByFeature = {};
   for (const op of (history && history.ops) || []) {
-    if (op.feature_id == null) continue;
+    if (op.feature_id == null || op.commit_index > frontier) continue;
     (opsByFeature[op.feature_id] || (opsByFeature[op.feature_id] = [])).push(op);
   }
-  for (const fid in opsByFeature) {
-    opsByFeature[fid].sort((a, b) => a.commit_index - b.commit_index);
-  }
-  const lifebars = {};
-  for (const fid in opsByFeature) {
-    const ops = opsByFeature[fid];
-    lifebars[fid] = { start: ops[0].commit_index, end: ops[ops.length - 1].commit_index };
-  }
+  for (const fid in opsByFeature) opsByFeature[fid].sort((a, b) => a.commit_index - b.commit_index);
 
-  // A collapsed ancestor absorbs its descendants' edges rather than hiding them -- walk up the
-  // parent chain to the nearest row that's actually visible right now.
-  function resolveVisible(id) {
-    let cur = id;
-    while (cur != null && !(cur in rowOf)) {
-      const node = byId[cur];
-      cur = node ? node.parent : null;
+  // Visible lanes: DFS the tree; a collapsed subsystem folds to ONE meta-lane (its subtree
+  // aggregated), an expanded subsystem contributes its feature descendants as lanes under a header,
+  // a feature is always a lane. `subsystem` = the grouping key (a meta-lane groups under itself).
+  const visible = [];
+  function nearestSubsystem(id) {
+    let cur = byId[id] ? byId[id].parent : null;
+    while (cur != null) {
+      const p = byId[cur];
+      if (p && p.kind === "subsystem") return cur;
+      cur = p ? p.parent : null;
     }
+    return null;
+  }
+  function leavesUnder(id) {
+    const out = [];
+    const stack = [id];
+    while (stack.length) {
+      const node = byId[stack.pop()];
+      if (!node) continue;
+      if (node.children && node.children.length) for (const c of node.children) stack.push(c);
+      else out.push(node.id);
+    }
+    return out;
+  }
+  function visit(id) {
+    const node = byId[id];
+    if (!node) return;
+    const isSub = node.kind === "subsystem";
+    if (isSub && !collapsed.has(id)) {
+      for (const c of node.children || []) visit(c);
+      return;
+    }
+    const isMeta = isSub; // a visible subsystem here is necessarily collapsed
+    const leaves = isMeta ? leavesUnder(id) : [id];
+    visible.push({ id, isMeta, leaves, subsystem: isMeta ? id : nearestSubsystem(id) });
+  }
+  for (const r of (map.roots || []).slice().sort()) visit(r);
+
+  // Aggregate ops -> op count + first/last commit + the sorted commit list (renderers bin it into a
+  // density strip at their own column resolution). Lanes with no ops at this frontier don't exist
+  // yet -- dropped, so scrubbing left empties the timeline.
+  const lanes = [];
+  for (const v of visible) {
+    const commits = [];
+    for (const leaf of v.leaves) for (const op of opsByFeature[leaf] || []) commits.push(op.commit_index);
+    if (!commits.length) continue;
+    commits.sort((a, b) => a - b);
+    lanes.push({
+      ...v, opCount: commits.length, firstCommit: commits[0], lastCommit: commits[commits.length - 1], commits,
+    });
+  }
+  const laneById = {};
+  for (const l of lanes) laneById[l.id] = l;
+
+  // Visible co-change edges (hover overlay only): reroute each endpoint up to its nearest visible
+  // lane, drop self-loops, merge parallels (sum weight), keep top-K per lane by weight.
+  const idToVisible = {};
+  for (const l of lanes) for (const leaf of l.leaves) idToVisible[leaf] = l.id;
+  const laneIds = new Set(lanes.map((l) => l.id));
+  function resolveVisible(id) {
+    if (idToVisible[id]) return idToVisible[id];
+    let cur = id;
+    while (cur != null && !laneIds.has(cur)) cur = byId[cur] ? byId[cur].parent : null;
     return cur;
   }
-
-  const rerouted = (map.edges || [])
-    .map((e) => ({ a: resolveVisible(e.a), b: resolveVisible(e.b), weight: e.weight }))
-    .filter((e) => e.a != null && e.b != null && e.a !== e.b);
-
   const merged = {};
-  for (const e of rerouted) {
-    const key = e.a < e.b ? `${e.a} ${e.b}` : `${e.b} ${e.a}`;
-    merged[key] = (merged[key] || 0) + e.weight;
+  for (const e of map.edges || []) {
+    const a = resolveVisible(e.a);
+    const b = resolveVisible(e.b);
+    if (a == null || b == null || a === b) continue;
+    const key = a < b ? `${a} ${b}` : `${b} ${a}`;
+    merged[key] = (merged[key] || 0) + (e.weight || 0);
   }
-  let allEdges = Object.keys(merged).map((key) => {
-    const [a, b] = key.split(" ");
-    return { a, b, weight: merged[key] };
+  let allEdges = Object.keys(merged).map((k) => {
+    const [a, b] = k.split(" ");
+    return { a, b, weight: merged[k] };
   });
   allEdges.sort((x, y) => y.weight - x.weight || (x.a + x.b < y.a + y.b ? -1 : 1));
-
-  // Top-K per node, greedily over the weight-sorted list -- never a silent drop: anything past K
-  // is counted in `overflow` so the renderer can show a "+N more" affordance.
   const perNode = {};
-  const kept = [];
+  const edges = [];
   const overflow = {};
   for (const e of allEdges) {
     const ca = perNode[e.a] || 0, cb = perNode[e.b] || 0;
     if (ca < topK && cb < topK) {
-      kept.push(e);
+      edges.push(e);
       perNode[e.a] = ca + 1;
       perNode[e.b] = cb + 1;
     } else {
@@ -103,37 +141,63 @@ function computeLayout(map, history, opts) {
     }
   }
 
-  return {
-    rows, rowOf, depthOf, lifebars, opsByFeature, edges: kept, overflow,
-    commitCount: ((history && history.commits) || []).length,
-  };
+  // Group lanes into swimlanes and order by first appearance. A group is either an expanded
+  // subsystem (a header row + its feature lanes) or a "solo" row (a meta-lane, or a feature with no
+  // subsystem). Groups sort by their earliest firstCommit; lanes within a group likewise. Rows are
+  // assigned top-to-bottom, counting each subsystem header as its own row.
+  const headerGroups = {};
+  const groups = [];
+  for (const l of lanes) {
+    if (l.isMeta || l.subsystem == null) {
+      groups.push({ key: l.id, isHeader: false, laneIds: [l.id], firstCommit: l.firstCommit });
+      continue;
+    }
+    let g = headerGroups[l.subsystem];
+    if (!g) {
+      const sub = byId[l.subsystem];
+      g = headerGroups[l.subsystem] = {
+        key: l.subsystem, isHeader: true, label: (sub && sub.label) || l.subsystem,
+        collapsedId: l.subsystem, laneIds: [], firstCommit: Infinity,
+      };
+      groups.push(g);
+    }
+    g.laneIds.push(l.id);
+    g.firstCommit = Math.min(g.firstCommit, l.firstCommit);
+  }
+  groups.sort((a, b) => a.firstCommit - b.firstCommit || (a.key < b.key ? -1 : 1));
+
+  let row = 0;
+  const headers = [];
+  for (const g of groups) {
+    const laneObjs = g.laneIds.map((id) => laneById[id])
+      .sort((a, b) => a.firstCommit - b.firstCommit || (a.id < b.id ? -1 : 1));
+    if (g.isHeader) {
+      headers.push({
+        key: g.key, label: g.label, collapsedId: g.collapsedId, row,
+        firstCommit: g.firstCommit, lastCommit: Math.max(...laneObjs.map((l) => l.lastCommit)),
+        opCount: laneObjs.reduce((s, l) => s + l.opCount, 0), laneCount: laneObjs.length,
+      });
+      row++; // the header occupies its own row
+    }
+    for (const l of laneObjs) {
+      l.row = row++;
+      l.groupKey = g.key;
+    }
+  }
+  const rowCount = Math.max(1, row);
+
+  return { lanes, headers, edges, overflow, laneById, opsByFeature, rowCount,
+    commitCount: ((history && history.commits) || []).length };
 }
-// ---- end-layout (test slice boundary) ----
+// ---- end-graph-layout (test slice boundary) ----
 
 // ─── Rendering + interaction ──────────────────────────────────────────────────────────────────
 // Everything below touches the DOM/vscode API and is not exercised by the node harness.
 
 (function () {
   const vscode = acquireVsCodeApi();
+  // Op-kind glyphs, reused by the op-set decomposition's per-kind tally.
   const GLYPH = { add: "◆", extend: "+", rework: "~", prune: "−", move: "⋔", merge: "⋈", touched: "·" };
-  const ROWH = 22;
-  const INDENT = 14;
-  const DOT_X = 10;
-  const LABEL_X = 30;
-  const AXIS_X = 340;
-  const AXIS_W = 260;
-  // The future band: a reserved strip past the real commit-index axis where a pending plan step
-  // renders as a hypothetical next op on its predicted feature's own row -- real estate that is
-  // always empty of real ops, so a prediction never competes with (or hides among) real history.
-  const FUTURE_W = 44;
-  function futureX(slot) {
-    return AXIS_X + AXIS_W + 14 + slot * 10;
-  }
-  // A leaf row's real ops render as discrete GLYPH marks only while they're legible at this
-  // width; past this many ops (or once any pixel column holds more than one), the marks would
-  // overlap into a smear regardless of glyph choice -- e.g. a 1287-op feature in this repo's own
-  // self-hosted store -- so the row falls back to an opacity-graded density heatstrip instead.
-  const DENSE_OP_THRESHOLD = 36;
 
   const state = vscode.getState() || {
     collapsed: [], selected: null, compositionLabel: "HEAD", compositionRef: "HEAD",
@@ -146,7 +210,7 @@ function computeLayout(map, history, opts) {
   };
   let map = compose.map;
   let history = compose.history;
-  let layout = computeLayout(map, history, { collapsed: state.collapsed });
+  let layout = computeGraphLayout(map, history, { collapsed: state.collapsed });
   let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
   let previewSeq = 0;
   let pendingPreview = null;
@@ -161,48 +225,31 @@ function computeLayout(map, history, opts) {
   let compositionPreviewCache = {}; // ref -> {files, oracle_verdict, forked, error}
   let latestCompositionPreviewSeq = 0; // discards a stale reply that lands after a newer hover
 
-  // Playhead (Phase 4): a commit-index frontier the user is scrubbing, independent of `state`
-  // (it's a transient exploration mode, not worth persisting across a webview reload).
+  // Frontier scrubber: a commit-index the user is scrubbing on the bottom time axis, independent of
+  // `state` (a transient exploration mode, not worth persisting across a webview reload).
   let playheadCommitIndex = null;
-  let playheadLineEl = null;
-  let playheadHandleEl = null;
   let playheadDragging = false;
   let playheadSeq = 0;
   let pendingPlayhead = null;
   let playheadResultCache = {}; // commitIndex -> {op_count, files, oracle_verdict, forked, error}
   let scrubTimer = null;
 
-  // Plan marks (Phase 6): predicted steps render as open marks in the "future zone" of their
-  // predicted feature's own row rather than a separate ghost subtree (see collectPlanMarks below).
-  // `knownPlanSteps`/`pendingPlanSteps` snapshot the *previous* render's step ids/pending-ness so a
-  // fade-in or landing keyframe fires only on a genuine transition -- never replayed by an
-  // unrelated re-render (select, collapse, an unrelated .py-save refresh). The `prev*` pair is a
-  // snapshot taken at the top of render(), before `knownPlanSteps`/`pendingPlanSteps` are rebuilt.
+  // Plan marks: predicted steps render as a dashed accent ring + count badge on their predicted
+  // feature's node (see collectPlanMarks / renderNodeBadges). `knownPlanSteps`/`prevKnownPlanSteps`
+  // snapshot ids across renders so an "entering" pulse fires only on a genuine transition.
   let planMarks = { steps: [], byFeature: {}, floating: [], sessions: [] };
   let knownPlanSteps = new Set();
   let pendingPlanSteps = new Set();
   let prevKnownPlanSteps = new Set();
   let prevPendingPlanSteps = new Set();
   let planStepEnterStagger = {}; // step id -> 0-based order among this render's newly-entering steps
-  let justLandedByPredicted = {}; // predicted feature id -> just-matched steps (same-row landing)
-  let justLandedByMatched = {}; // matched feature id -> just-matched, diverged steps (comet arrival)
 
-  // Drift marks: same snapshot-diff discipline as plan marks (see field comments above) so a
-  // drift ring's one-shot pulse fires only the render a drift op is first seen -- never replayed
-  // by an unrelated re-render (select, collapse, an .sgt/-triggered refresh).
+  // Drift marks: a mined op no active plan predicted -- flags the owning node with a solid ring.
   let driftMarks = { ids: new Set(), unplaced: [] };
   let knownDriftIds = new Set();
   let prevKnownDriftIds = new Set();
 
   let forkMarks = { byFeature: {}, unplaced: [] };
-
-  // FLIP morph: `prevLayoutRowOf` is the row-index map the layout had immediately before this
-  // state push, captured in the message handler before `recompute()` overwrites `layout`. Row
-  // position is a pure function of layout (`row * ROWH + 20`), so no DOM measurement is needed --
-  // see renderRow's per-row `element.animate()` call below.
-  let prevLayoutRowOf = null;
-  let hasRenderedOnce = false;
-  const FLIP_MAX_ROWS = 300; // skip the morph on huge trees rather than risk jank
 
   const rail = document.getElementById("rail");
   const inspector = document.getElementById("inspector");
@@ -351,7 +398,26 @@ function computeLayout(map, history, opts) {
   }
 
   function recompute() {
-    layout = computeLayout(map, history, { collapsed: state.collapsed });
+    // Full history: the frontier scrubber dims nodes past its point (see applyFrontier) rather than
+    // re-laying-out on every drag, so the layout stays stable while scrubbing.
+    layout = computeGraphLayout(map, history, { collapsed: state.collapsed });
+  }
+
+  // First-load clustering: open the rail folded to its subsystem rows -- the root(s) expanded to
+  // their direct children, deeper subsystems collapsed -- instead of every leaf feature at once
+  // (this repo alone is 26 features across 5 subsystems: a wall of rows where nothing reads).
+  // "What changed, at a glance," drill in on demand. Applied exactly once, and only after real
+  // nodes have arrived; any later expand/collapse persists and is never overwritten.
+  function applyClusterDefaultOnce() {
+    if (state.clusteredOnce) return;
+    const roots = new Set(map.roots || []);
+    const subs = (map.nodes || []).filter(
+      (n) => n.kind === "subsystem" && n.children && n.children.length && !roots.has(n.id)
+    );
+    if (!subs.length) return; // nothing to cluster yet; retry on the next state with real nodes
+    state.collapsed = subs.map((n) => n.id);
+    state.clusteredOnce = true;
+    saveState();
   }
 
   function renderTitlebar() {
@@ -410,71 +476,18 @@ function computeLayout(map, history, opts) {
 
   function render() {
     renderTitlebar();
-
-    // Plan-mark transition bookkeeping: snapshot what a *prior* render already knew about before
-    // rebuilding from the current `planMarks` -- see the field comments above for why. A step seen
-    // pending last render and matched now just landed (this render only); a step never seen before
-    // is entering (fresh `sgt plan intake`).
+    // Plan-badge transition bookkeeping: a step newly seen pending gets an entering pulse; a step
+    // that just matched drops its pending badge. (The rail's cross-row comet/FLIP morphs retired
+    // with the rail -- the graph re-lays out on structural change and node identity carries
+    // continuity, so per-row Y morphs no longer apply.)
     prevKnownPlanSteps = knownPlanSteps;
     prevPendingPlanSteps = pendingPlanSteps;
     prevKnownDriftIds = knownDriftIds;
     planStepEnterStagger = {};
-    justLandedByPredicted = {};
-    justLandedByMatched = {};
     let enterN = 0;
     for (const step of planMarks.steps) {
-      if (step.matched) {
-        if (!prevPendingPlanSteps.has(step.id)) continue; // already resolved as of last render
-        if (step.predictedFeature) {
-          (justLandedByPredicted[step.predictedFeature] || (justLandedByPredicted[step.predictedFeature] = [])).push(step);
-        }
-        if (step.matchedFeature && step.matchedFeature !== step.predictedFeature) {
-          (justLandedByMatched[step.matchedFeature] || (justLandedByMatched[step.matchedFeature] = [])).push(step);
-        }
-      } else if (!prevKnownPlanSteps.has(step.id)) {
-        planStepEnterStagger[step.id] = enterN++;
-      }
+      if (!step.matched && !prevKnownPlanSteps.has(step.id)) planStepEnterStagger[step.id] = enterN++;
     }
-
-    const prevScrollTop = rail.scrollTop; // rebuilt below via innerHTML="" -- restore after
-    rail.innerHTML = "";
-    const height = Math.max(1, layout.rows.length) * ROWH + 20;
-    const svg = mk("svg", { width: AXIS_X + AXIS_W + FUTURE_W + 40, height, class: "railsvg" });
-    const edgeLayer = mk("g", { class: "edges" });
-    const rowLayer = mk("g", { class: "rows" });
-    svg.appendChild(mk("line", { x1: AXIS_X - 14, x2: AXIS_X - 14, y1: 0, y2: height, class: "rail-divider" }));
-    if (layout.commitCount > 1) {
-      // The anticipation boundary: real history ends here, everything right of it is hypothetical.
-      svg.appendChild(mk("line", {
-        x1: AXIS_X + AXIS_W + 4, x2: AXIS_X + AXIS_W + 4, y1: 0, y2: height, class: "future-boundary",
-      }));
-    }
-    svg.appendChild(edgeLayer);
-    svg.appendChild(rowLayer);
-
-    for (const e of layout.edges) {
-      if (!(e.a in layout.rowOf) || !(e.b in layout.rowOf)) continue;
-      const ra = layout.rowOf[e.a], rb = layout.rowOf[e.b];
-      const y1 = ra * ROWH + 20, y2 = rb * ROWH + 20;
-      const x = DOT_X + (byId(e.a) ? Math.max(depthOfSafe(e.a), depthOfSafe(e.b)) * INDENT : 0);
-      const mid = (y1 + y2) / 2;
-      const path = mk("path", {
-        d: `M ${x} ${y1} C ${x - 24} ${mid}, ${x - 24} ${mid}, ${x} ${y2}`,
-        class: "edge", "data-a": e.a, "data-b": e.b,
-      });
-      edgeLayer.appendChild(path);
-    }
-    renderLandingComets(edgeLayer);
-
-    const flipEligible = prevLayoutRowOf && !prefersReducedMotion() && layout.rows.length <= FLIP_MAX_ROWS;
-    layout.rows.forEach((id, row) => {
-      const g = renderRow(id, row);
-      rowLayer.appendChild(g);
-      if (flipEligible) flipRow(g, id, row);
-    });
-
-    // Rebuild the "known"/"pending" plan-step sets fresh from the current data -- next render's
-    // transition classes (entering / landing / comet) compare against this snapshot.
     const nextKnown = new Set();
     const nextPending = new Set();
     for (const step of planMarks.steps) {
@@ -485,19 +498,7 @@ function computeLayout(map, history, opts) {
     pendingPlanSteps = nextPending;
     knownDriftIds = new Set(driftMarks.ids);
 
-    const canScrub = layout.commitCount > 1;
-    if (!canScrub) playheadCommitIndex = null;
-    playheadLineEl = mk("line", { x1: 0, x2: 0, y1: 0, y2: height, class: "playhead-line playhead-hidden" });
-    playheadHandleEl = mk("circle", { cx: 0, cy: 6, r: 5, class: "playhead-handle playhead-hidden" });
-    svg.appendChild(playheadLineEl);
-    svg.appendChild(playheadHandleEl);
-    if (canScrub) {
-      positionPlayhead(playheadCommitIndex);
-      svg.addEventListener("pointerdown", onPlayheadPointerDown);
-    }
-
-    rail.appendChild(svg);
-    rail.scrollTop = prevScrollTop;
+    renderGraph();
     renderInspector();
   }
 
@@ -505,57 +506,237 @@ function computeLayout(map, history, opts) {
     return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
 
-  // FLIP without measuring the DOM: `rail.innerHTML=""` above already destroyed the prior row
-  // elements, but row Y is a pure function of layout (`row * ROWH + 20`), so `prevLayoutRowOf`
-  // (captured in the message handler before `recompute()` ran) is all "First"/"Last" needs.
-  // `element.animate()` rather than a CSS transition or inline `style` attribute: the webview's
-  // CSP (`style-src`, no `'unsafe-inline'`) would silently drop an injected style, and WAAPI's
-  // default `fill: "none"` cleanly reverts to the `<g>`'s own `transform` attribute (already set
-  // to the final position by `mk()`) the instant the animation ends -- no transform to strip
-  // before the next render's `innerHTML=""`.
-  function flipRow(g, id, row) {
-    const prevRow = prevLayoutRowOf[id];
-    if (prevRow == null || prevRow === row) return; // new row, or didn't move -- nothing to morph
-    const oldY = prevRow * ROWH + 20;
-    const newY = row * ROWH + 20;
-    g.animate(
-      [{ transform: `translate(0px, ${oldY}px)` }, { transform: `translate(0px, ${newY}px)` }],
-      { duration: 280, easing: "cubic-bezier(.16, 1, .3, 1)" }
-    );
+  // ─── The feature timeline (Gantt) ───────────────────────────────────────────────────────────
+  // One lane per feature: a left gutter (identity swatch + label) and a bar over a shared time
+  // axis, spanning [firstCommit, lastCommit] with ops binned along it as a density heatstrip. Rows
+  // are grouped into subsystem swimlanes. The width tracks the pane (time compresses to fit, no
+  // horizontal scroll); it scrolls vertically only when there are more lanes than fit. A resize
+  // re-runs render() via the ResizeObserver, so the axis reflows continuously.
+  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, gutterPad: 8, cellGap: 0.5 };
+  let graphView = null; // { geom, handleEl, frontierEl, veilEl } -- set each render for the scrubber
+
+  function ganttGeom() {
+    const paneW = Math.max(rail.clientWidth || 0, 320);
+    const labelW = Math.round(Math.max(92, Math.min(200, paneW * 0.36)));
+    const plotX0 = labelW + GANTT.gutterPad;
+    const plotW = Math.max(60, paneW - plotX0 - 16);
+    const w = paneW;
+    const rowsH = layout.rowCount * GANTT.rowH;
+    const axisY = GANTT.padT + rowsH + 12;
+    const h = axisY + GANTT.axisH;
+    const maxCommit = Math.max(1, layout.commitCount - 1);
+    const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
+    return {
+      labelW, plotX0, plotW, w, h, axisY, maxCommit,
+      xOf,
+      rowY: (row) => GANTT.padT + row * GANTT.rowH, // top of the row
+      midY: (row) => GANTT.padT + row * GANTT.rowH + GANTT.rowH / 2,
+      scrubX: (idx) => xOf(idx),
+      xToCommit: (x) => Math.max(0, Math.min(maxCommit,
+        Math.round(((x - plotX0) / Math.max(1, plotW)) * maxCommit))),
+    };
   }
 
-  // A step that matched in a *different* feature than predicted (matching is footprint-overlap,
-  // not feature-id, so this is a real divergence): a short comet-trail traces from the predicted
-  // row's future-band position to the real landing spot, then fades over ~1s and is gone -- a
-  // transient miss-marker, never a permanent one. The same-feature case needs no such pass: its
-  // marker slides in place inside `renderRow` and simply becomes the row's real glyph.
-  function renderLandingComets(edgeLayer) {
-    for (const fid in justLandedByMatched) {
-      if (!(fid in layout.rowOf)) continue;
-      for (const step of justLandedByMatched[fid]) {
-        if (!(step.predictedFeature in layout.rowOf)) continue;
-        const op = findMatchedOp(step);
-        if (!op) continue;
-        const fromRow = layout.rowOf[step.predictedFeature];
-        const toRow = layout.rowOf[fid];
-        const fromX = futureX((planMarks.byFeature[step.predictedFeature] || []).length);
-        const toX = commitIndexToX(op.commit_index);
-        const y1 = fromRow * ROWH + 20, y2 = toRow * ROWH + 20;
-        const mid = (y1 + y2) / 2;
-        const path = mk("path", {
-          d: `M ${fromX} ${y1} C ${fromX + 20} ${mid}, ${toX - 20} ${mid}, ${toX} ${y2}`,
-          class: "plan-comet",
-        });
-        edgeLayer.appendChild(path);
-      }
+  function laneColor(id) {
+    const n = byId(id);
+    return (n && n.color) || "#8a8a8a"; // meta/subsystem lanes have no identity hue -> neutral
+  }
+
+  // Density buckets: bin every lane's ops into the same set of time columns (so a column means the
+  // same commit-range across lanes -- vertical alignment reads as "worked on together"). The global
+  // max bucket normalizes intensity, sqrt-scaled so a 2000-op column still leaves a 1-op one visible.
+  function densityBuckets(geom) {
+    const bucketCount = Math.max(1, Math.min(160, Math.round(geom.plotW / 5)));
+    const bucketOf = (ci) => Math.max(0, Math.min(bucketCount - 1,
+      Math.floor((Math.max(0, Math.min(geom.maxCommit, ci)) / geom.maxCommit) * bucketCount)));
+    const byLane = {};
+    let gmax = 1;
+    for (const l of layout.lanes) {
+      const b = new Array(bucketCount).fill(0);
+      for (const ci of l.commits) b[bucketOf(ci)]++;
+      byLane[l.id] = b;
+      for (const v of b) if (v > gmax) gmax = v;
+    }
+    return { byLane, gmax, bucketCount, bucketW: geom.plotW / bucketCount };
+  }
+
+  function renderGraph() {
+    const prevScroll = rail.scrollTop;
+    rail.innerHTML = "";
+    const geom = ganttGeom();
+    const density = densityBuckets(geom);
+    const svg = mk("svg", { width: geom.w, height: geom.h, class: "railsvg gantt" });
+    const bandLayer = mk("g", { class: "swimlanes" });
+    const laneLayer = mk("g", { class: "glanes" });
+    svg.appendChild(bandLayer);
+    svg.appendChild(laneLayer);
+
+    for (const hd of layout.headers) bandLayer.appendChild(renderSwimlaneHeader(hd, geom));
+    for (const l of layout.lanes) laneLayer.appendChild(renderLane(l, geom, density));
+    renderTimeAxis(svg, geom);
+
+    rail.appendChild(svg);
+    rail.scrollTop = prevScroll;
+  }
+
+  // A subsystem swimlane header: a faint full-width band with a ▾ caret + label + "(N features · M
+  // ops)", and the group's [first,last] span drawn faintly in the plot. Clicking collapses the
+  // subsystem back to a single meta-lane (toggleCollapse), so it's the "fold this cluster" affordance.
+  function renderSwimlaneHeader(hd, geom) {
+    const y = geom.rowY(hd.row);
+    const g = mk("g", { class: "swimlane", "data-id": hd.collapsedId, "data-first": hd.firstCommit });
+    g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "swimlane-band" }));
+    g.appendChild(mk("text", { x: 8, y: y + GANTT.rowH / 2 + 4, class: "swimlane-caret", text: "▾" }));
+    const label = mk("text", { x: 22, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
+    label.textContent = truncate(hd.label, Math.floor((geom.labelW - 30) / 6.5));
+    g.appendChild(label);
+    // The subsystem's own activity envelope in the plot, so the header still shows "when".
+    const bx = geom.xOf(hd.firstCommit), bx2 = geom.xOf(hd.lastCommit);
+    g.appendChild(mk("rect", {
+      x: bx, y: y + GANTT.rowH / 2 - 2, width: Math.max(GANTT.minBarW, bx2 - bx), height: 4,
+      rx: 2, class: "swimlane-span", "data-first": hd.firstCommit,
+    }));
+    const meta = mk("text", { x: geom.plotX0 - 8, y: y + GANTT.rowH / 2 + 4, class: "swimlane-meta" });
+    meta.textContent = `${hd.laneCount} feat · ${hd.opCount}`;
+    g.appendChild(meta);
+    g.addEventListener("click", () => toggleCollapse(hd.collapsedId)); // fold cluster -> meta-lane
+    return g;
+  }
+
+  function renderLane(l, geom, density) {
+    const y = geom.rowY(l.row);
+    const midY = geom.midY(l.row);
+    const barY = midY - GANTT.barH / 2;
+    const color = laneColor(l.id);
+    const g = mk("g", {
+      class: "glane" + (l.id === state.selected ? " selected" : ""),
+      "data-id": l.id, "data-first": l.firstCommit,
+    });
+    // full-row hit target (so hovering/clicking the gutter or empty time works, not just the bar)
+    g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "glane-hit" }));
+
+    // Left gutter: identity swatch (▸ caret for a folded subsystem), then the label.
+    const gx = GANTT.gutterPad;
+    if (l.isMeta) {
+      g.appendChild(mk("text", { x: gx, y: midY + 4, class: "glane-caret", text: "▸" }));
+      g.appendChild(mk("rect", { x: gx + 12, y: midY - 4, width: 8, height: 8, rx: 2, class: "glane-swatch", fill: color }));
+    } else {
+      g.appendChild(mk("rect", { x: gx, y: midY - 4, width: 8, height: 8, rx: 2, class: "glane-swatch", fill: color }));
+    }
+    const labelX = gx + (l.isMeta ? 24 : 12);
+    const label = mk("text", { x: labelX, y: midY + 4, class: "glane-label" });
+    const node = byId(l.id);
+    const raw = (node && node.label) || l.id;
+    label.textContent = truncate(l.isMeta ? `${raw} (${l.leaves.length})` : raw,
+      Math.floor((geom.labelW - labelX) / 6.5));
+    g.appendChild(label);
+
+    // Base track: the feature's lifetime [first,last], so even a sparse feature shows its span.
+    const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
+    g.appendChild(mk("rect", {
+      x: x1, y: barY, width: Math.max(GANTT.minBarW, x2 - x1), height: GANTT.barH, rx: 3,
+      class: "gbar-track", fill: color,
+    }));
+    // Density heatstrip: one cell per non-empty time bucket, opacity by sqrt(count / global max).
+    const buckets = density.byLane[l.id] || [];
+    for (let b = 0; b < buckets.length; b++) {
+      if (!buckets[b]) continue;
+      const cell = mk("rect", {
+        x: geom.plotX0 + b * density.bucketW, y: barY,
+        width: density.bucketW + GANTT.cellGap, height: GANTT.barH, class: "gbar-cell", fill: color,
+      });
+      cell.setAttribute("fill-opacity", (0.28 + 0.72 * Math.sqrt(buckets[b] / density.gmax)).toFixed(3));
+      g.appendChild(cell);
+    }
+    // Op count just past the bar (clamped so it stays on-screen).
+    const cx = Math.min(x2 + 6, geom.w - 30);
+    g.appendChild(mk("text", { x: cx, y: midY + 4, class: "gbar-count", text: String(l.opCount) }));
+
+    renderLaneBadges(g, l, geom, color, barY, midY);
+
+    g.addEventListener("mouseenter", () => onHover(l.id));
+    g.addEventListener("mouseleave", () => onHover(null));
+    g.addEventListener("click", () => {
+      if (l.isMeta) { toggleCollapse(l.id); return; } // expand the subsystem into its features
+      if (armedVerb) { confirmArmed(l.id); return; }
+      selectRow(l.id);
+    });
+    return g;
+  }
+
+  // Plan / drift / fork are decorations ON the lane (never separate marks): a pending-plan lane gets
+  // a dashed accent underline + count; a lane carrying a drift op gets a solid identity outline; a
+  // forked lane gets a ⋔ badge in the gutter. None introduces a second hue competing with identity.
+  function renderLaneBadges(g, l, geom, color, barY, midY) {
+    const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
+    const barW = Math.max(GANTT.minBarW, x2 - x1);
+    const hasDrift = (layout.opsByFeature[l.id] || []).some((op) => driftMarks.ids.has(op.id));
+    if (hasDrift) {
+      g.appendChild(mk("rect", {
+        x: x1 - 1.5, y: barY - 1.5, width: barW + 3, height: GANTT.barH + 3, rx: 4,
+        class: "gbar-drift", stroke: color,
+      }));
+    }
+    const pending = (planMarks.byFeature[l.id] || []).length;
+    if (pending) {
+      g.appendChild(mk("line", {
+        x1, x2: x1 + barW, y1: barY + GANTT.barH + 3, y2: barY + GANTT.barH + 3, class: "gbar-plan",
+      }));
+      g.appendChild(mk("text", { x: x1 + barW + 5, y: barY + GANTT.barH + 6, class: "gbar-plan-count", text: `+${pending}` }));
+    }
+    if (forkMarks.byFeature[l.id]) {
+      const f = mk("text", { x: geom.labelW - 6, y: midY + 4, class: "gbar-fork", text: "⋔" });
+      f.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const forks = forkMarks.byFeature[l.id];
+        if (forks && forks[0]) vscode.postMessage({ type: "resolveFork", symbol: forks[0].symbol });
+      });
+      g.appendChild(f);
     }
   }
 
-  function findMatchedOp(step) {
-    for (const op of layout.opsByFeature[step.matchedFeature] || []) {
-      if (op.id === step.matchedOpId) return op;
+  // The bottom time axis + frontier scrubber. Ticks label a handful of commit-index positions; the
+  // draggable handle (and click anywhere in the plot) scrubs a fold frontier -- a translucent veil
+  // covers everything to its right (the "future") and the code(I)/op-set panels reflect that point,
+  // without a relayout on every drag.
+  function renderTimeAxis(svg, geom) {
+    if (layout.commitCount <= 1) return;
+    const y = geom.axisY;
+    svg.appendChild(mk("line", { x1: geom.plotX0, x2: geom.plotX0 + geom.plotW, y1: y, y2: y, class: "axis-track" }));
+    for (let i = 0; i <= 4; i++) {
+      const ci = Math.round((i / 4) * geom.maxCommit);
+      const tx = geom.xOf(ci);
+      svg.appendChild(mk("text", {
+        x: tx, y: y + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: `c${ci}`,
+      }));
     }
-    return null;
+    svg.appendChild(mk("text", { x: geom.plotX0, y: GANTT.padT - 3, class: "axis-title", text: "time →" }));
+
+    const frontier = playheadCommitIndex == null ? geom.maxCommit : playheadCommitIndex;
+    const fx = geom.scrubX(frontier);
+    const veil = mk("rect", {
+      x: fx, y: GANTT.padT, width: Math.max(0, geom.plotX0 + geom.plotW - fx), height: y - GANTT.padT,
+      class: "future-veil" + (playheadCommitIndex == null ? " at-head" : ""),
+    });
+    const line = mk("line", { x1: fx, x2: fx, y1: GANTT.padT - 2, y2: y, class: "frontier-line" + (playheadCommitIndex == null ? " at-head" : "") });
+    const handle = mk("path", { d: `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`, class: "frontier-handle", "data-cx": fx });
+    svg.appendChild(veil);
+    svg.appendChild(line);
+    svg.appendChild(handle);
+    graphView = { geom, handleEl: handle, frontierEl: line, veilEl: veil };
+    handle.addEventListener("pointerdown", onScrubPointerDown);
+    // click anywhere in the plot (on the svg background, not a lane) jumps the frontier there
+    svg.addEventListener("pointerdown", (ev) => {
+      if (ev.target !== svg) return;
+      const lx = svgLocalX(svg, ev.clientX);
+      if (lx < geom.plotX0 - 4) return; // gutter clicks aren't scrubs
+      setPlayhead(geom.xToCommit(lx));
+    });
+  }
+
+  function truncate(s, n) {
+    s = String(s);
+    return s.length > n ? s.slice(0, Math.max(1, n - 1)) + "…" : s;
   }
 
   // A circular progress arc for a plan session's `matchedCount/stepCount` -- geometric, no
@@ -573,35 +754,42 @@ function computeLayout(map, history, opts) {
     return g;
   }
 
-  // ─── Playhead (Phase 4) ────────────────────────────────────────────────────────────────────
-  // The axis has exactly `layout.commitCount` columns (one per mined commit), evenly spaced over
-  // [AXIS_X, AXIS_X+AXIS_W] -- rounding to the nearest column is the "snap to op columns" the
-  // plan asks for, since there's nothing finer-grained to snap between.
-  function commitIndexToX(idx) {
-    return AXIS_X + (idx / Math.max(1, layout.commitCount - 1)) * AXIS_W;
+  // ─── Frontier scrubber ──────────────────────────────────────────────────────────────────────
+  // A commit-index dragged along the time axis. It's a *fold point*, not a snapshot pointer: a
+  // translucent veil covers the plot to its right (the "future"), lanes not yet born dim, and the
+  // code(I) + op-set panels reflect the fold at that commit -- but the layout itself never moves,
+  // so scrubbing stays smooth (moving the veil + line is O(1), no relayout per pointermove).
+  function svgLocalX(svg, clientX) {
+    return clientX - svg.getBoundingClientRect().left;
   }
 
-  function xToCommitIndex(x) {
-    const frac = (x - AXIS_X) / AXIS_W;
-    const idx = Math.round(frac * Math.max(1, layout.commitCount - 1));
-    return Math.max(0, Math.min(layout.commitCount - 1, idx));
-  }
-
-  function positionPlayhead(idx) {
-    if (!playheadLineEl || !playheadHandleEl) return;
-    const visible = idx != null;
-    const x = commitIndexToX(visible ? idx : 0);
-    playheadLineEl.setAttribute("x1", x);
-    playheadLineEl.setAttribute("x2", x);
-    playheadHandleEl.setAttribute("cx", x);
-    playheadLineEl.classList.toggle("playhead-hidden", !visible);
-    playheadHandleEl.classList.toggle("playhead-hidden", !visible);
+  function applyFrontier() {
+    const svg = rail.querySelector("svg");
+    if (!svg || !graphView) return;
+    const geom = graphView.geom;
+    const atHead = playheadCommitIndex == null;
+    const idx = atHead ? geom.maxCommit : playheadCommitIndex;
+    const fx = geom.scrubX(idx);
+    graphView.frontierEl.setAttribute("x1", fx);
+    graphView.frontierEl.setAttribute("x2", fx);
+    graphView.frontierEl.classList.toggle("at-head", atHead);
+    graphView.veilEl.setAttribute("x", fx);
+    graphView.veilEl.setAttribute("width", Math.max(0, geom.plotX0 + geom.plotW - fx));
+    graphView.veilEl.classList.toggle("at-head", atHead);
+    const hd = graphView.handleEl;
+    const y = geom.axisY;
+    hd.setAttribute("d", `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`);
+    // Dim the gutter (label + swatch) of lanes/swimlanes not yet born; the veil handles the plot.
+    for (const el of svg.querySelectorAll(".glane, .swimlane")) {
+      const first = Number(el.getAttribute("data-first"));
+      el.classList.toggle("beyond", !atHead && first > playheadCommitIndex);
+    }
   }
 
   function setPlayhead(idx) {
     if (playheadCommitIndex === idx) return;
     playheadCommitIndex = idx;
-    positionPlayhead(idx);
+    applyFrontier();
     renderInspector();
     scheduleScrub(idx);
   }
@@ -610,7 +798,7 @@ function computeLayout(map, history, opts) {
     if (playheadCommitIndex == null) return;
     clearTimeout(scrubTimer);
     playheadCommitIndex = null;
-    positionPlayhead(null);
+    applyFrontier();
     renderInspector();
   }
 
@@ -631,35 +819,28 @@ function computeLayout(map, history, opts) {
     renderInspector(); // "Loading…" for this frontier
   }
 
-  function svgLocalX(svg, clientX) {
-    return clientX - svg.getBoundingClientRect().left;
-  }
-
-  function onPlayheadPointerDown(ev) {
-    const svg = ev.currentTarget;
-    const isBackground = ev.target === svg;
-    const isHandle = ev.target === playheadHandleEl;
-    if (!isBackground && !isHandle) return; // let a row's own dot/label/lifebar/glyph click through
-    const x = svgLocalX(svg, ev.clientX);
-    if (x < AXIS_X - 14) return; // left of the rail divider: not the timeline
+  function onScrubPointerDown(ev) {
+    ev.stopPropagation();
+    const svg = rail.querySelector("svg");
+    if (!svg || !graphView) return;
     playheadDragging = true;
     if (svg.setPointerCapture) svg.setPointerCapture(ev.pointerId);
-    setPlayhead(xToCommitIndex(x));
-    window.addEventListener("pointermove", onPlayheadPointerMove);
-    window.addEventListener("pointerup", onPlayheadPointerUp);
+    setPlayhead(graphView.geom.xToCommit(svgLocalX(svg, ev.clientX)));
+    window.addEventListener("pointermove", onScrubPointerMove);
+    window.addEventListener("pointerup", onScrubPointerUp);
   }
 
-  function onPlayheadPointerMove(ev) {
+  function onScrubPointerMove(ev) {
     if (!playheadDragging) return;
     const svg = rail.querySelector("svg");
-    if (!svg) return;
-    setPlayhead(xToCommitIndex(svgLocalX(svg, ev.clientX)));
+    if (!svg || !graphView) return;
+    setPlayhead(graphView.geom.xToCommit(svgLocalX(svg, ev.clientX)));
   }
 
-  function onPlayheadPointerUp() {
+  function onScrubPointerUp() {
     playheadDragging = false;
-    window.removeEventListener("pointermove", onPlayheadPointerMove);
-    window.removeEventListener("pointerup", onPlayheadPointerUp);
+    window.removeEventListener("pointermove", onScrubPointerMove);
+    window.removeEventListener("pointerup", onScrubPointerUp);
   }
 
   // Mirrors `overall_status()` in sgt/core/oracle.py: override wins if present; else "fail" if
@@ -670,180 +851,6 @@ function computeLayout(map, history, opts) {
     const tiers = Object.values(record.tiers || {});
     if (tiers.some((t) => t.status === "fail")) return "fail";
     return tiers.length ? "pass" : "pending";
-  }
-
-  function depthOfSafe(id) {
-    return layout.depthOf[id] || 0;
-  }
-
-  // Discrete glyphs below the density threshold (today's behavior, unchanged); above it, an
-  // opacity-graded heatstrip bucketed by rendered pixel column -- fill stays the feature's own
-  // identity color (never a second hue), opacity carries local density (magnitude = status, per
-  // the rail's color=identity / glyph-or-opacity=status contract). `driftIds`: ops mined but
-  // unpredicted by any active plan session -- flagged with a ring around the SAME glyph (never a
-  // second mark; see collectDriftMarks), solid stroke + the row's own identity color to keep it
-  // out of the --accent "anticipated" channel that pending plan-marks use.
-  function renderOpsForRow(g, ops, color, driftIds) {
-    if (!ops.length) return;
-    const byCol = new Map();
-    for (const op of ops) {
-      const col = Math.round(commitIndexToX(op.commit_index));
-      byCol.set(col, (byCol.get(col) || 0) + 1);
-    }
-    const crowded = [...byCol.values()].some((n) => n > 1);
-    if (ops.length <= DENSE_OP_THRESHOLD && !crowded) {
-      for (const op of ops) {
-        const x = commitIndexToX(op.commit_index);
-        g.appendChild(mk("text", { x, y: 4, class: `glyph glyph-${op.kind}`, text: GLYPH[op.kind] || "·" }));
-        if (driftIds && driftIds.has(op.id)) {
-          const entering = !prevKnownDriftIds.has(op.id);
-          g.appendChild(mk("circle", {
-            cx: x, cy: 0, r: 5, class: `drift-ring${entering ? " entering" : ""}`, stroke: color || "#888",
-          }));
-        }
-      }
-      return;
-    }
-    const maxCount = Math.max(...byCol.values());
-    const driftCols = new Set();
-    if (driftIds && driftIds.size) {
-      for (const op of ops) {
-        if (driftIds.has(op.id)) driftCols.add(Math.round(commitIndexToX(op.commit_index)));
-      }
-    }
-    for (const [col, count] of byCol) {
-      const opacity = (0.18 + 0.7 * (count / maxCount)).toFixed(2);
-      g.appendChild(mk("rect", {
-        x: col - 3, y: -4, width: 6, height: 8, rx: 1, class: "heatcell", fill: color || "#888", opacity,
-      }));
-      // Too dense for a per-op ring -- a small solid tick above the column stands in for it,
-      // rather than silently dropping the drift signal in dense rows.
-      if (driftCols.has(col)) {
-        g.appendChild(mk("rect", { x: col - 1, y: -8, width: 2, height: 3, class: "drift-tick", fill: color || "#888" }));
-      }
-    }
-  }
-
-  function renderRow(id, row) {
-    const node = byId(id) || { id, label: id, kind: "feature", children: [], color: "#888" };
-    const depth = depthOfSafe(id);
-    const y = row * ROWH + 20;
-    const g = mk("g", { class: "row", "data-id": id, transform: `translate(0, ${y})` });
-    if (id === state.selected) g.classList.add("selected");
-
-    if (node.children && node.children.length) {
-      const collapsed = state.collapsed.includes(id);
-      g.appendChild(mk("text", {
-        x: depth * INDENT - 4, y: 4, class: "caret", text: collapsed ? "▸" : "▾",
-      }));
-    }
-    g.appendChild(mk("circle", { cx: depth * INDENT + DOT_X, cy: 0, r: 4, fill: node.color || "#888", class: "dot" }));
-    g.appendChild(mk("text", { x: depth * INDENT + LABEL_X, y: 4, class: "label", text: node.label || id }));
-
-    if (!node.children || !node.children.length) {
-      const bar = layout.lifebars[id];
-      if (bar) {
-        const x1 = commitIndexToX(bar.start);
-        const x2 = commitIndexToX(bar.end);
-        g.appendChild(mk("line", { x1, x2: Math.max(x2, x1 + 2), y1: 0, y2: 0, class: "lifebar", stroke: node.color || "#888" }));
-      }
-      renderOpsForRow(g, layout.opsByFeature[id] || [], node.color, driftMarks.ids);
-      renderPlanMarksForRow(g, id, node.color);
-      renderForkMarksForRow(g, id);
-    }
-
-    g.addEventListener("mouseenter", () => onHover(id));
-    g.addEventListener("mouseleave", () => onHover(null));
-    g.addEventListener("click", (ev) => {
-      if (node.children && node.children.length && ev.target.classList.contains("caret")) {
-        toggleCollapse(id);
-        return;
-      }
-      if (armedVerb) {
-        confirmArmed(id);
-        return;
-      }
-      selectRow(id);
-    });
-    return g;
-  }
-
-  // A feature row's plan marks: pending steps predicted here render as open dashed rings in the
-  // future band (a hypothetical next op); a step that just matched *in this same feature* slides
-  // from its future-band position into the real op's column and solidifies to that feature's own
-  // identity color -- by the next render it's simply one of the row's ordinary glyphs, so no
-  // ongoing state is kept for it. Cross-feature landings (divergence) are handled by the separate
-  // `renderLandingComets` edge-layer pass, since they span two rows.
-  function renderPlanMarksForRow(g, id, color) {
-    const pending = planMarks.byFeature[id] || [];
-    pending.forEach((step, slot) => {
-      const x = futureX(slot);
-      const entering = !prevKnownPlanSteps.has(step.id);
-      const mark = mk("circle", { cx: x, cy: 0, r: 4, class: "plan-mark" });
-      if (entering) {
-        mark.classList.add("entering");
-        // A CSSOM setter, not `setAttribute("style", ...)` -- the webview's CSP (`style-src`, no
-        // `'unsafe-inline'`) silently drops an injected `style=""` attribute; `.style.x =` is
-        // exempt (it isn't parsed as inline HTML, so no CSP check applies).
-        mark.style.animationDelay = `${(planStepEnterStagger[step.id] || 0) * 45}ms`;
-      }
-      if (step.checkpointMatch) {
-        // A visible hint that a confirmable footprint-overlap candidate already exists for this
-        // pending step, before opening its card -- the ring's own center dot, never a new mark.
-        mark.classList.add("has-checkpoint-match");
-      }
-      mark.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        selectPlanStep(step.id);
-      });
-      g.appendChild(mark);
-    });
-
-    for (const step of justLandedByPredicted[id] || []) {
-      const fromX = futureX(pending.length);
-      const sameRow = step.matchedFeature === id;
-      if (sameRow) {
-        // Landed exactly where predicted: the open ring solidifies and slides onto the real op's
-        // column -- by the next render it's indistinguishable from any other real glyph there.
-        const op = findMatchedOp(step);
-        const toX = op ? commitIndexToX(op.commit_index) : fromX;
-        const mark = mk("circle", { cx: fromX, cy: 0, r: 4, class: "plan-mark landing", fill: color || "var(--accent)" });
-        g.appendChild(mark);
-        requestAnimationFrame(() => {
-          mark.style.transition = "cx 340ms cubic-bezier(.16,1,.3,1)";
-          mark.setAttribute("cx", toX);
-        });
-      } else {
-        // Diverged: the real landing is carried by the comet-trail on the matched row instead --
-        // this side just fades out in place rather than leaving a stray permanent dot behind.
-        g.appendChild(mk("circle", { cx: fromX, cy: 0, r: 4, class: "plan-mark departing" }));
-      }
-    }
-  }
-
-  // An open fork just past this feature's lifebar end -- never on the real commit axis (fork
-  // tips are excluded from every ideal, so there's no column for them) and never in the future
-  // band (that's the anticipated/--accent zone; a fork is a present, unresolved conflict). Shape
-  // (a small branch mark, not GLYPH.move's ⋔) plus the --blast channel carry the state; click
-  // opens the same N-column resolution wizard the sgtForks tree already uses.
-  function renderForkMarksForRow(g, id) {
-    const forks = forkMarks.byFeature[id];
-    if (!forks || !forks.length) return;
-    const bar = layout.lifebars[id];
-    const baseX = bar ? commitIndexToX(bar.end) + 14 : AXIS_X + 14;
-    forks.forEach((fork, slot) => {
-      const x = baseX + slot * 12;
-      const mark = mk("path", {
-        d: `M ${x} -6 L ${x} -1 M ${x} -1 L ${x - 4} 4 M ${x} -1 L ${x + 4} 4`,
-        class: "fork-mark",
-      });
-      mark.setAttribute("title", fork.remedy);
-      mark.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        vscode.postMessage({ type: "resolveFork", symbol: fork.symbol });
-      });
-      g.appendChild(mark);
-    });
   }
 
   function toggleCollapse(id) {
@@ -882,16 +889,18 @@ function computeLayout(map, history, opts) {
       // live-preview the real op-count/member delta it would produce, via the same blast paint.
       clearGhosts();
       if (id !== armedVerb.feature) {
-        rail.querySelectorAll(".row").forEach((el) => {
+        rail.querySelectorAll(".glane").forEach((el) => {
           if (el.getAttribute("data-id") === id) el.classList.add("ghost-target");
         });
         previewArmed(id);
       }
       return;
     }
+    // Focus the hovered lane + its co-change neighbors; dim the rest (the "what changes with this").
+    // This is the only place co-change is shown -- kept off the default view to avoid a hairball.
     svg.classList.add("focus");
     const neighbors = neighborsOf(id);
-    svg.querySelectorAll(".row").forEach((el) => {
+    svg.querySelectorAll(".glane").forEach((el) => {
       const rid = el.getAttribute("data-id");
       el.classList.toggle("lit", rid === id);
       el.classList.toggle("ctx", neighbors.has(rid));
@@ -934,7 +943,7 @@ function computeLayout(map, history, opts) {
   }
 
   function clearGhosts() {
-    rail.querySelectorAll(".row.ghost-blast, .row.ghost-target").forEach((el) => {
+    rail.querySelectorAll(".glane.ghost-blast, .glane.ghost-target").forEach((el) => {
       el.classList.remove("ghost-blast", "ghost-target");
     });
     clearOffscreenPills();
@@ -1004,7 +1013,73 @@ function computeLayout(map, history, opts) {
       renderPlayheadPanel(playheadCommitIndex, node && node.kind === "feature" ? node : null);
     } else if (node && node.kind === "feature") {
       renderCodePanel(id);
+    } else if (!node && !step && !session) {
+      // The panel's "home" state: nothing selected, not scrubbing. Surface the uncommitted work
+      // as a record-and-save card so the primary daily action is one click from an idle view.
+      renderWorkingChangesCard();
     }
+  }
+
+  // Working changes = files that differ from the recorded ideal (`status.drift`), i.e. edits not
+  // yet mined into ops. This is the "record what I just did, fast" affordance the titlebar's Save
+  // button had no context for -- here you see WHAT would be recorded before recording it.
+  function renderWorkingChangesCard() {
+    const drift = (compose.status && compose.status.drift) || { any: false, paths: [] };
+    const paths = drift.paths || [];
+    const wrap = document.createElement("div");
+    wrap.className = "changes-card";
+
+    const h = document.createElement("div");
+    h.className = "detail-title";
+    h.textContent = paths.length ? `Working changes · ${paths.length}` : "Working changes";
+    wrap.appendChild(h);
+
+    if (!paths.length) {
+      wrap.appendChild(statusLine("Clean — everything is recorded.", ""));
+      inspector.appendChild(wrap);
+      return;
+    }
+
+    const sub = document.createElement("div");
+    sub.className = "detail-why";
+    sub.textContent = "Edits not yet recorded as ops. Save to checkpoint them into the ideal.";
+    wrap.appendChild(sub);
+
+    const list = document.createElement("div");
+    list.className = "changes-list";
+    const CAP = 12;
+    for (const p of paths.slice(0, CAP)) {
+      const row = document.createElement("div");
+      row.className = "changes-file";
+      row.textContent = p;
+      row.title = p;
+      list.appendChild(row);
+    }
+    if (paths.length > CAP) {
+      const more = document.createElement("div");
+      more.className = "changes-more";
+      more.textContent = `+${paths.length - CAP} more`;
+      list.appendChild(more);
+    }
+    wrap.appendChild(list);
+
+    const bar = document.createElement("div");
+    bar.className = "action-bar";
+    const save = document.createElement("button");
+    save.className = "action primary";
+    save.textContent = "Save ⏎";
+    save.title = "sgt save — record these changes as ops";
+    save.addEventListener("click", () => vscode.postMessage({ type: "dailyLoop", verb: "save" }));
+    bar.appendChild(save);
+    const commit = document.createElement("button");
+    commit.className = "action";
+    commit.textContent = "Commit";
+    commit.title = "sgt commit — land the recorded ideal as a git commit";
+    commit.addEventListener("click", () => vscode.postMessage({ type: "dailyLoop", verb: "commit" }));
+    bar.appendChild(commit);
+    wrap.appendChild(bar);
+
+    inspector.appendChild(wrap);
   }
 
   // A tight plan-step card: the rail encodings (open mark, landing slide, comet) already carry
@@ -1213,6 +1288,73 @@ function computeLayout(map, history, opts) {
   // The playhead's frontier is unfiltered (the host folds the whole thing, once per commit
   // index) -- filtering to the selected feature's `dir` happens here, client-side, so dragging
   // through a run of commit indices never re-requests per feature-selection change.
+  // The "a history point is a SET of ops" encoding. A commit-index isn't a snapshot node -- it's
+  // the set of ops mined at that index, spread across features. Rather than a wall of glyphs, show
+  // the set as a proportional stacked bar (segment width = op count, fill = feature identity) plus
+  // a per-feature breakdown with kind tallies. Area carries magnitude, so a 200-op point reads as
+  // "mostly feature X" at a glance; clicking a feature drills in. Purely client-side over
+  // `history.ops` -- the same op list the rail already draws, no host round-trip.
+  function renderOpSetDecomposition(container, idx) {
+    const ops = (history.ops || []).filter((o) => o.commit_index === idx);
+    if (!ops.length) return;
+    const byFeat = new Map();
+    for (const op of ops) {
+      const fid = op.feature_id || "—"; // unattributed ops still count toward the point's size
+      let g = byFeat.get(fid);
+      if (!g) byFeat.set(fid, (g = { count: 0, kinds: {} }));
+      g.count++;
+      g.kinds[op.kind] = (g.kinds[op.kind] || 0) + 1;
+    }
+    const groups = [...byFeat.entries()]
+      .map(([fid, g]) => ({ fid, count: g.count, kinds: g.kinds, node: byId(fid) }))
+      .sort((a, b) => b.count - a.count);
+    const total = ops.length;
+
+    const wrap = document.createElement("div");
+    wrap.className = "opset";
+    const h = document.createElement("div");
+    h.className = "opset-heading";
+    h.textContent = `${total} op${total === 1 ? "" : "s"} · ${groups.length} feature${groups.length === 1 ? "" : "s"} at this point`;
+    wrap.appendChild(h);
+
+    const bar = document.createElement("div");
+    bar.className = "opset-bar";
+    for (const g of groups) {
+      const seg = document.createElement("div");
+      seg.className = "opset-seg";
+      seg.style.width = `${((g.count / total) * 100).toFixed(2)}%`;
+      seg.style.background = (g.node && g.node.color) || "#888";
+      seg.title = `${(g.node && g.node.label) || g.fid} · ${g.count}`;
+      if (g.node) seg.addEventListener("click", () => selectRow(g.fid));
+      bar.appendChild(seg);
+    }
+    wrap.appendChild(bar);
+
+    for (const g of groups) {
+      const row = document.createElement("div");
+      row.className = "opset-row";
+      if (g.node) row.addEventListener("click", () => selectRow(g.fid));
+      const dot = document.createElement("span");
+      dot.className = "opset-dot";
+      dot.style.background = (g.node && g.node.color) || "#888";
+      row.appendChild(dot);
+      const label = document.createElement("span");
+      label.className = "opset-label";
+      label.textContent = (g.node && g.node.label) || g.fid;
+      row.appendChild(label);
+      const kinds = document.createElement("span");
+      kinds.className = "opset-kinds";
+      kinds.textContent = Object.keys(g.kinds).map((k) => (GLYPH[k] || "·").repeat(g.kinds[k])).join(" ");
+      row.appendChild(kinds);
+      const n = document.createElement("span");
+      n.className = "opset-count";
+      n.textContent = String(g.count);
+      row.appendChild(n);
+      wrap.appendChild(row);
+    }
+    container.appendChild(wrap);
+  }
+
   function renderPlayheadPanel(idx, featureNode) {
     const section = document.createElement("div");
     section.className = "code-panel";
@@ -1229,6 +1371,10 @@ function computeLayout(map, history, opts) {
     back.textContent = `Back to ${state.compositionLabel || "HEAD"}`;
     back.addEventListener("click", clearPlayhead);
     section.appendChild(back);
+
+    // The op-set at this point comes first -- "what IS this history point" before "what does the
+    // tree look like folded here." Not `dir`-filtered: the decomposition is the whole point's set.
+    renderOpSetDecomposition(section, idx);
 
     if (cached && !cached.error && oracleStatus(cached.oracle_verdict) === "fail") {
       heading.classList.add("oracle-fail");
@@ -1321,8 +1467,8 @@ function computeLayout(map, history, opts) {
   }
 
   function paintBlast(featureIds) {
-    rail.querySelectorAll(".row.ghost-blast").forEach((el) => el.classList.remove("ghost-blast"));
-    rail.querySelectorAll(".row").forEach((el) => {
+    rail.querySelectorAll(".glane.ghost-blast").forEach((el) => el.classList.remove("ghost-blast"));
+    rail.querySelectorAll(".glane").forEach((el) => {
       if (featureIds.includes(el.getAttribute("data-id"))) el.classList.add("ghost-blast");
     });
     renderOffscreenPills(featureIds);
@@ -1337,7 +1483,7 @@ function computeLayout(map, history, opts) {
   // a quote in it can't break the query.
   function findRow(id) {
     let found = null;
-    rail.querySelectorAll(".row").forEach((el) => {
+    rail.querySelectorAll(".glane").forEach((el) => {
       if (el.getAttribute("data-id") === id) found = el;
     });
     return found;
@@ -1434,12 +1580,6 @@ function computeLayout(map, history, opts) {
   window.addEventListener("message", (event) => {
     const msg = event.data;
     if (msg.type === "state") {
-      // Snapshot the row positions the CURRENT (about-to-be-stale) layout assigned, keyed by
-      // node id -- a pure function of the tree, so this is all `render()` needs to FLIP-morph
-      // rows that moved (a merge/split/rename/move, or a composition switch that re-folds a
-      // different tree) from where they were to where they are now. `null` on the very first
-      // render (nothing to morph from).
-      prevLayoutRowOf = hasRenderedOnce ? layout.rowOf : null;
       compose = msg.compose || compose;
       history = compose.history || { commits: [], ops: [] };
       map = compose.map || { nodes: [], roots: [], edges: [] };
@@ -1448,10 +1588,10 @@ function computeLayout(map, history, opts) {
       forkMarks = collectForkMarks(compose.forks, map.nodes);
       foldResultCache = {};
       playheadResultCache = {};
-      playheadCommitIndex = null; // a new composition's commit-index axis means different columns
+      playheadCommitIndex = null; // a new composition means a different commit-index axis
+      applyClusterDefaultOnce();
       recompute();
       render();
-      hasRenderedOnce = true;
     } else if (msg.type === "previewResult" && pendingPreview && pendingPreview.seq === msg.seq) {
       pendingPreview.onResult(msg.result);
     } else if (msg.type === "foldResult" && pendingFold && pendingFold.seq === msg.seq) {
@@ -1500,6 +1640,22 @@ function computeLayout(map, history, opts) {
     }
     clearPlayhead();
   });
+
+  // Continuous reflow: the workbench is a WebviewView the user resizes freely left<->right, and
+  // the axis width is derived from the pane width (measureAxis). Re-render on width change so the
+  // ops re-spread and the graph re-flows -- debounced, and gated on a real width delta so the
+  // scrollbar appearing/disappearing mid-render can't feed a render back into itself.
+  let lastRailWidth = 0;
+  let resizeTimer = null;
+  new ResizeObserver(() => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const w = rail.clientWidth;
+      if (Math.abs(w - lastRailWidth) < 4) return;
+      lastRailWidth = w;
+      render();
+    }, 80);
+  }).observe(rail);
 
   vscode.postMessage({ type: "ready" });
   render();

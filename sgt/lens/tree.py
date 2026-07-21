@@ -296,6 +296,48 @@ def _save_fused_snapshot(repo: Path, fingerprint: str, fused: dict[frozenset, fl
     })
 
 
+def _restamp_depth(node: dict, depth: int) -> None:
+    node["depth"] = depth
+    for c in node["children"]:
+        _restamp_depth(c, depth + 1)
+
+
+def _regroup_flat_root(root: dict, max_arity: int = TARGET_ARITY[1]) -> None:
+    """Turn a flat root into a navigable hierarchy. Single-pass Leiden on this graph (weakly-linked
+    file-cliques -- the resolution curve has no 5-9 partition) fans the root out to ~100+ children,
+    most of them lone leaves. When there are more than `max_arity`, group the root's children by
+    their dominant package directory into synthetic subsystem nodes, so `sgt map` / the Gantt show
+    ~a dozen packages rather than one endless list.
+
+    Deterministic and structural-only: it re-parents children and mints synthetic *internal* nodes
+    (build-local `N*` ids, assigned later by `_register`), never touching a leaf's id or members --
+    so Greene identity, pins, and `op_leaf` are all unaffected (leaves are identity, subsystems are
+    just grouping, re-derived every build). A package with a single child stays flat (don't wrap a
+    lone node); if every child already has a distinct dir (e.g. an already-regrouped splice), the
+    grouping is a no-op. Mutates `root` in place, before `_register`."""
+    children = root["children"]
+    if len(children) <= max_arity:
+        return
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for c in children:
+        buckets[c["dir"]].append(c)
+    if len(buckets) <= 1 or len(buckets) == len(children):
+        return  # nothing to gain: all one package, or all already distinct
+    new_children: list[dict] = []
+    for key in sorted(buckets):
+        group = buckets[key]
+        if len(group) == 1:
+            new_children.append(group[0])
+            continue
+        members = sorted({m for c in group for m in c["members"]})
+        new_children.append({
+            "members": members, "size": len(members), "dir": key,
+            "depth": root["depth"] + 1, "children": group, "split_reason": "regrouped",
+        })
+    root["children"] = new_children
+    _restamp_depth(root, root["depth"])
+
+
 def _register(nodes: dict, node: dict, parent: str | None, counter: list[int]) -> str:
     """DFS: give every tree node a stable id, replace child dicts with child ids, index into nodes."""
     nid = f"N{counter[0]}"
@@ -342,9 +384,13 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
 def fused_graph(
     repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
 ) -> tuple[list[str], dict[frozenset, float]]:
-    """The fused (structural ⊕ co-change ⊕ scope) coupling graph over every alive symbol --
-    shared by `build` (the full recursive tree) and `sgt.lens.verbs.plan_split` (a one-off split
-    of a single feature's induced subgraph), so both start from the identical signal.
+    """The fused (structural ⊕ co-change ⊕ scope ⊕ co-commit ⊕ path) coupling graph over every
+    alive symbol -- shared by `build` (the full recursive tree) and `sgt.lens.verbs.plan_split` (a
+    one-off split of a single feature's induced subgraph), so both start from the identical signal.
+    Co-commit (`cluster.commit_edges`) is the dense episode signal that recovers what U2's def-use
+    untangling strips from per-op co-change (single-symbol ops -> empty co-change); path
+    (`cluster.path_edges`) is the weak file-cohesion tissue that keeps the ~72% of symbols with no
+    other coupling out of one god-lane.
 
     `refresh_structural_cache=False` (passed by `build` for `land`/`reconcile`) still reads the
     head-keyed structural-edge cache but never writes it -- see `cluster._structural_edges_at`."""
@@ -354,8 +400,10 @@ def fused_graph(
     )
     subjects = {sha: subject for sha, _parent, subject in gb.history()}
     scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
+    commit = cluster.commit_edges(ops, nodes_set, hubs)
+    path = cluster.path_edges(nodes_set, hubs)
     structural = cluster.hub_normalize(structural)
-    fused = _fuse(structural, cochange, scope)
+    fused = _fuse(structural, cochange, scope, commit, path)
     return sorted(nodes_set), fused
 
 
@@ -414,10 +462,19 @@ def build(
     real_adj = _adjacency(fused)  # per-real-member weights: cannot-link's reassignment choice, and
     # `_dirty_subdivide`'s new-member-attachment choice below.
 
-    if force_rebuild:
+    # A signal-recipe change (cluster.SIGNALS_VERSION) forces one full recluster: dirty-subtree
+    # splicing carries a previous leaf through verbatim on unchanged membership, so it can't tell
+    # that a leaf should now split *internally* under the new signals (cross-edge dirtying only
+    # sees coupling *between* existing leaves). Greene identity below still carries feature ids
+    # across the rebuild wherever members overlap, so this migration doesn't churn ids.
+    stale_signals = previous is not None and previous.get("signals_version") != cluster.SIGNALS_VERSION
+    if force_rebuild or stale_signals:
         root = _resplit_real(all_nodes, fused, pins, 0, max_depth)
     else:
         root = _build_root(repo, all_nodes, fused, real_adj, pins, previous, max_depth)
+    _regroup_flat_root(root)  # a navigable package hierarchy over the flat Leiden root; idempotent
+    # (a no-op once children have distinct package dirs), so a splice that inherits an already-
+    # regrouped structure isn't re-nested.
 
     nodes: dict[str, dict] = {}
     counter = [0]
@@ -430,7 +487,7 @@ def build(
 
     result = {
         "nodes": nodes, "roots": roots, "op_leaf": op_leaf, "max_depth": max_depth,
-        "cannot_link_moves": cannot_link_moves,
+        "cannot_link_moves": cannot_link_moves, "signals_version": cluster.SIGNALS_VERSION,
     }
 
     old_leaves = _leaf_members(previous["nodes"]) if previous else {}
@@ -757,26 +814,38 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
             nd = nodes[nid]
             if len(nd["children"]) < 2:
                 continue
-            by_label: dict[str, list[str]] = defaultdict(list)
+            # Only sibling *leaves* are merged: a shared label there means the split invented a
+            # distinction the labeler couldn't name. Internal (subsystem) nodes are never merged --
+            # flattening one to a leaf would orphan its whole subtree -- so a label collision among
+            # internal siblings is left to the folder-suffix pass below.
+            leaves_by_label: dict[str, list[str]] = defaultdict(list)
             for c in nd["children"]:
-                by_label[nodes[c]["label"]].append(c)
+                if not nodes[c]["children"]:
+                    leaves_by_label[nodes[c]["label"]].append(c)
             new_children: list[str] = []
-            for label, kids in by_label.items():
-                if len(kids) == 1:
-                    new_children.append(kids[0])
+            for c in nd["children"]:
+                if c not in nodes:
+                    continue  # a non-first same-label leaf already merged away (deleted) below
+                if nodes[c]["children"]:
+                    new_children.append(c)  # internal node: keep as-is
                     continue
-                keep = kids[0]
-                members = sorted({m for c in kids for m in nodes[c]["members"]})
-                for c in kids[1:]:
-                    remap[c] = keep
-                    del nodes[c]
-                nodes[keep] = {
-                    "id": keep, "parent": nid, "depth": nodes[keep]["depth"],
+                dupes = leaves_by_label[nodes[c]["label"]]
+                if c != dupes[0]:
+                    continue  # a non-first leaf of a same-label group -> merged into dupes[0] below
+                if len(dupes) == 1:
+                    new_children.append(c)
+                    continue
+                members = sorted({m for k in dupes for m in nodes[k]["members"]})
+                for k in dupes[1:]:
+                    remap[k] = c
+                    del nodes[k]
+                nodes[c] = {
+                    "id": c, "parent": nid, "depth": nodes[c]["depth"],
                     "members": members, "size": len(members), "dir": _dominant_dir(members),
-                    "children": [], "label": label, "why": nodes[keep]["why"],
-                    "split_reason": nodes[keep].get("split_reason"),
+                    "children": [], "label": nodes[c]["label"], "why": nodes[c]["why"],
+                    "split_reason": nodes[c].get("split_reason"),
                 }
-                new_children.append(keep)
+                new_children.append(c)
             nd["children"] = new_children
 
     leaves = [nid for nid, nd in nodes.items() if not nd["children"]]
@@ -804,6 +873,7 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
 def label_tree(
     result: dict, repo: str | Path = ".", labeler=None,
     subjects_by_leaf: dict[str, list[str]] | None = None, pins: Pins | None = None,
+    kinds_by_leaf: dict[str, str] | None = None,
 ) -> object:
     """Label every node bottom-up (leaves from members, a single-child node reuses its child's
     label, an internal node from its children's labels), then DEDUP. Mutates `result` in place:
@@ -830,6 +900,7 @@ def label_tree(
         pins = load_pins(repo)
     nodes = result["nodes"]
     subjects_by_leaf = subjects_by_leaf or {}
+    kinds_by_leaf = kinds_by_leaf or {}
 
     remaining: set[str] = set()
     for rid in result["roots"]:
@@ -841,7 +912,8 @@ def label_tree(
         for nid in ready:
             nd = nodes[nid]
             if not nd["children"]:
-                batch.append((nid, labeler.leaf_request(nd["members"], subjects_by_leaf.get(nid))))
+                batch.append((nid, labeler.leaf_request(
+                    nd["members"], subjects_by_leaf.get(nid), kinds_by_leaf.get(nid))))
             elif len(nd["children"]) == 1:
                 only = nodes[nd["children"][0]]
                 nd["label"], nd["why"] = only["label"], only["why"]
