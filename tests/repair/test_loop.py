@@ -15,8 +15,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sgt.core import order, rewrite
+from sgt.core import mine, order, rewrite
 from sgt.core.lens import get
+from sgt.core.op import make_op
+from sgt.core.rewrite import RewriteDraft
 from sgt.core.store import Store
 from sgt.repair.backends import RepairBackend, RepairProposal
 from sgt.repair.loop import repair
@@ -132,6 +134,49 @@ def test_transitive_dependent_survives_without_costing_a_backend_call(tmp_path):
     assert "m.py::helper" not in get(repo).frontier(ops)
     carried = next(o for o in ops if "m.py::caller" in o.footprint and o.id != caller_op.id)
     assert carried.images["m.py::caller"] == caller_op.images["m.py::caller"]
+
+
+def test_repoint_only_edit_lands_with_zero_model_calls_and_no_integration_provenance(tmp_path):
+    """U5/R6 (behavioral + integration): a purely mechanical repair -- a repoint with *no* hollow --
+    lands without the backend ever being called (`propose` count == hollow count == 0), and the
+    repointed op is witnessed by the landing commit yet carries no LLM/integration attribution,
+    unlike a fulfilled hollow (`test_happy_path_lands_and_attributes`)."""
+    repo = tmp_path / "repo"
+    helper_op, user_op = _fixture(repo)
+    _configure_oracle(repo, [("py_compile", "python -m py_compile m.py")])
+
+    helper_sym = "m.py::helper"
+    v1 = helper_op.footprint[helper_sym][1]
+    assert (helper_sym, v1) in user_op.requires
+
+    # `edit helper` advances it to a new version; `user`'s bytes are unchanged, only its edge is stale.
+    new_bytes = b"def helper():\n    return 2"
+    v2 = mine._positional_version(helper_sym, mine._content_version(new_bytes))
+    helper2 = make_op({helper_sym: (v1, v2)}, {helper_sym: new_bytes}, kind="extend")
+    Store(repo).add(helper2)
+
+    draft = RewriteDraft(
+        ok=True, verb="edit", target=helper_op.id,
+        meta={
+            "removed_ids": [user_op.id],
+            "required_ids": [helper2.id],
+            "repoint": [{"op_id": user_op.id, "symbol": helper_sym,
+                         "old_version": v1, "new_version": v2}],
+        },
+    )
+    backend = FakeBackend([b"UNUSED -- the model must never be called for a mechanical repoint"])
+    result = repair(repo, draft, backend)
+
+    assert result.ok, result.message
+    assert backend.calls == 0  # no hollow remained after mechanical repair -> zero model calls
+    assert result.oracle_rounds == 1
+
+    ops = Store(repo).all_ops()
+    repointed = next(o for o in ops if o.kind == "repoint" and "m.py::user" in o.footprint)
+    assert repointed.images["m.py::user"] == user_op.images["m.py::user"]  # byte-identical
+    assert (helper_sym, v2) in repointed.requires and (helper_sym, v1) not in repointed.requires
+    assert result.sha in repointed.provenance  # witnessed by the landing commit...
+    assert all(a.agent != "integration" for a in repointed.attribution)  # ...but not LLM-attributed
 
 
 def test_tier0_reject_then_recover(tmp_path):

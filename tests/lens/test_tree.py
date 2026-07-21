@@ -366,6 +366,49 @@ def test_unreferenced_legacy_id_still_converges_on_rebuild(tmp_path):
     assert leaf.startswith("f-") and leaf != "F7"  # re-minted content-addressed (converges)
 
 
+def test_authored_feature_label_overrides_the_cluster_leaf_and_survives_a_rebuild(tmp_path):
+    """U7/R3: an authored feature (U6) is the authority over the clustered leaf. `label_tree` shows
+    the authored label where a leaf's symbols are claimed, and a re-cluster does not scatter the
+    authored members or drop the override -- the authored id is `protected`."""
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+
+    first = tree.build(repo, ops, ideal)
+    tree.save(repo, first)
+    fid, node = next((nid, nd) for nid, nd in first["nodes"].items() if not nd["children"])
+    members = node["members"]
+
+    feat = authored.create(members, "Authored Authority")
+    authored.save_authored(repo, {feat.id: feat})
+
+    result = tree.build(repo, ops, ideal)  # a plain re-cluster, authored `af-` id now protected
+    tree.label_tree(result, repo)
+
+    member_leaf = tree.leaf_member_index(result["nodes"])
+    claimed_leaves = {member_leaf[m] for m in members if m in member_leaf}
+    assert len(claimed_leaves) == 1  # authored members were not scattered by the recluster
+    claimed = next(iter(claimed_leaves))
+    assert result["nodes"][claimed]["label"] == "Authored Authority"  # authored label wins
+
+
+def test_build_is_shape_stable_whether_or_not_authored_features_exist(tmp_path):
+    """Adding authored `af-` ids to `build`'s `protected` set is additive: a build with an authored
+    collection present produces the same tree shape as one without (authored features overlay the
+    tree, they do not restructure it)."""
+    from sgt.lens import authored
+    from sgt.lens.pins import Pins
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+
+    baseline = tree.build(repo, ops, ideal, pins=Pins())
+    authored.save_authored(repo, {"af-x": authored.AuthoredFeature(id="af-x", label="X")})
+    with_authored = tree.build(repo, ops, ideal, pins=Pins())
+    assert sorted(with_authored["nodes"]) == sorted(baseline["nodes"])
+
+
 # --- labeling + DEDUP (plan R15/R17) ----------------------------------------------------------
 
 

@@ -226,6 +226,61 @@ def test_law_u_feature_ids_are_replica_independent(tmp_path):
     assert _feature_of(tree_a, probe) == _feature_of(tree_b, probe)  # same feature, one id (LAW-U)
 
 
+def test_law_u_authored_feature_survives_a_two_clone_sync_roundtrip(tmp_path):
+    """R3 / DoD: an *authored* feature -- id + OR-Set membership + LWW label -- survives a real
+    `sync` between two clones through the production `ingest -> resolve.merge -> materialize`
+    pipeline (not just the pure `authored.merge` functions covered in tests/lens/test_authored.py),
+    keeping the SAME carried `af-` id. A rename made before the fork travels intact; a concurrent
+    membership edit on each side converges by OR-Set union after both sync (LAW-U): both clones end
+    on the same id, label, and live-member set regardless of who reconciled whom."""
+    from sgt.lens import authored
+
+    _remote, (a, b) = _replicas(tmp_path, _BASE, 2)
+
+    # A authors a feature, renames it, adds a member, then commits + publishes the collection.
+    feat = authored.add_member(
+        authored.rename(authored.create(["foo", "bar"], "Parser"), "Parser Core"), "baz"
+    )
+    fid = feat.id
+    authored.save_authored(a, {fid: feat})
+    GitBinding(a).commit_all("A: author 'Parser Core'")
+    _push(a)
+
+    # Round-trip 1: B syncs and receives the feature verbatim via the real pipeline -- same af- id,
+    # the pre-fork rename, and every member.
+    sync.sync(b, remote="origin", branch="main")
+    on_b = authored.load_authored(b)
+    assert fid in on_b, "the carried af- id must survive sync (never re-minted)"
+    assert on_b[fid].label == "Parser Core"
+    assert on_b[fid].live_members() == frozenset({"foo", "bar", "baz"})
+
+    # Concurrent membership edits on the SAME feature id: A adds `aaa` and publishes; B adds `bbb`
+    # locally, diverging from origin, so B's next sync is a genuine merge (not a fast-forward).
+    a_feat = authored.add_member(authored.load_authored(a)[fid], "aaa")
+    authored.save_authored(a, {fid: a_feat})
+    GitBinding(a).commit_all("A: add member aaa")
+    _push(a)
+
+    b_feat = authored.add_member(on_b[fid], "bbb")
+    authored.save_authored(b, {fid: b_feat})
+    GitBinding(b).commit_all("B: add member bbb")
+
+    # B reconciles A-as-theirs: resolve.merge unions the OR-Sets through materialize.save_authored.
+    sync.sync(b, remote="origin", branch="main")
+    merged_b = authored.load_authored(b)[fid]
+    assert merged_b.id == fid
+    assert merged_b.label == "Parser Core"
+    assert merged_b.live_members() == frozenset({"foo", "bar", "baz", "aaa", "bbb"})
+
+    # B publishes the merged result; A reconciles it and converges to the identical feature (LAW-U).
+    _push(b)
+    sync.sync(a, remote="origin", branch="main")
+    merged_a = authored.load_authored(a)[fid]
+    assert merged_a.id == merged_b.id
+    assert merged_a.label == merged_b.label
+    assert merged_a.live_members() == merged_b.live_members()
+
+
 # --- LAW-I: idempotence (GREEN) ----------------------------------------------------------------
 
 

@@ -19,7 +19,7 @@ from sgt import state
 from sgt.core import lens
 from sgt.core.fold import code
 from sgt.core.store import Store, _write_atomic, locked_section
-from sgt.lens import reconcile, tree
+from sgt.lens import authored, reconcile, tree
 from sgt.lens.pins import save_pins
 from sgt.store.gitbind import GitBinding, format_op_trailers
 
@@ -116,6 +116,9 @@ def flush_reconciled_metadata(
         save_pins(repo, res.unioned_pins)
         lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
         reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
+        if res.unioned_authored:  # merged authored-feature collection (U6/R3/KTD3) -- written only
+            authored.save_authored(repo, res.unioned_authored)  # when one exists, keeping the merge
+            # commit byte-identical to pre-U6 for the common case (no authored features)
         tree.save(repo, res.tree_result)
         state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
         state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)

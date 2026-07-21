@@ -89,8 +89,11 @@
       { "command": "sgt.refresh", "title": "Refresh", "category": "semi-git", "icon": "$(refresh)" },
       { "command": "sgt.toggleBlame", "title": "Toggle Feature Blame", "category": "semi-git" },
       { "command": "sgt.openWorkbench", "title": "Open Composition Workbench", "category": "semi-git", "icon": "$(type-hierarchy)" },
-      { "command": "sgt.previewRevert", "title": "Preview Revert Feature (plug out)", "category": "semi-git", "icon": "$(diff)" },
-      { "command": "sgt.revert", "title": "Revert Feature (plug out)", "category": "semi-git" },
+      { "command": "sgt.previewRevert", "title": "Preview Revert (plug out)", "category": "semi-git", "icon": "$(diff)" },
+      { "command": "sgt.revert", "title": "Revert (choose which dependents to keep)", "category": "semi-git" },
+      { "command": "sgt.revertSymbol", "title": "Revert Symbol Under Cursor (choose dependents)", "category": "semi-git" },
+      { "command": "sgt.restore", "title": "Restore (plug in)", "category": "semi-git" },
+      { "command": "sgt.edit", "title": "Edit in place", "category": "semi-git" },
       { "command": "sgt.showPlanQuickPick", "title": "Show Plan Steps", "category": "semi-git" },
       { "command": "sgt.showPlanDiff", "title": "Show Plan Step Diff", "category": "semi-git" },
       { "command": "sgt.init", "title": "Initialize (sgt init)", "category": "semi-git" },
@@ -102,7 +105,7 @@
       { "command": "sgt.jumpToLocation", "title": "Jump to Location", "category": "semi-git" },
       { "command": "sgt.switch", "title": "Switch Branch", "category": "semi-git" },
       { "command": "sgt.save", "title": "Save", "category": "semi-git" },
-      { "command": "sgt.undo", "title": "Undo Last Ideal Edit", "category": "semi-git" },
+      { "command": "sgt.undo", "title": "Undo Last Operation", "category": "semi-git" },
       { "command": "sgt.sync", "title": "Sync", "category": "semi-git", "icon": "$(sync)" },
       { "command": "sgt.push", "title": "Push", "category": "semi-git", "icon": "$(repo-push)" },
       { "command": "sgt.land", "title": "Land Branch", "category": "semi-git" }
@@ -116,9 +119,14 @@
         { "command": "sgt.sync", "when": "view == sgtCompositions", "group": "navigation" },
         { "command": "sgt.push", "when": "view == sgtCompositions", "group": "navigation" }
       ],
+      "editor/context": [
+        { "command": "sgt.revertSymbol", "when": "sgt.hasRoot && editorTextFocus", "group": "sgt@1" }
+      ],
       "view/item/context": [
         { "command": "sgt.previewRevert", "when": "view == sgtFeatures && viewItem == sgtFeature" },
         { "command": "sgt.revert", "when": "view == sgtFeatures && viewItem == sgtFeature" },
+        { "command": "sgt.restore", "when": "view == sgtFeatures && viewItem == sgtFeature" },
+        { "command": "sgt.edit", "when": "view == sgtFeatures && viewItem == sgtFeature" },
         { "command": "sgt.resolveFork", "when": "view == sgtForks && viewItem == sgtFork" },
         { "command": "sgt.reviewAck", "when": "view == sgtChanges && viewItem == sgtTrustGroup" },
         { "command": "sgt.reviewAck", "when": "view == sgtChanges && viewItem == sgtTrustOp" },

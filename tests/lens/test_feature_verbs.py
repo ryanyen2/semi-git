@@ -357,3 +357,168 @@ def test_rename_survives_a_build_map_recluster(tmp_path):
     reclustered = lensmap.build_map(repo)  # nothing changed store-side -- Greene keeps the id
     assert fid in reclustered["nodes"]
     assert reclustered["nodes"][fid]["label"] == "Renamed Across Reclusters"
+
+
+# -- U7: authored feature overlays (clustering demoted to a seed) ------------------------------
+
+
+def test_map_view_authored_label_overrides_the_cluster_leaf(tmp_path):
+    """R3 authority inversion: where a user has authored a feature over a leaf's symbols, `sgt map`
+    (map_view) shows that authored feature's label/id, not the clustered one; un-authored leaves
+    keep their cluster labels untouched."""
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    result = lensmap.build_map(repo)
+
+    before = api.map_view(repo)  # no authored features yet -> pure cluster projection
+    leaf_rows = [r for r in before["nodes"] if r["kind"] == "feature"]
+    assert leaf_rows
+    for r in leaf_rows:
+        assert r.get("authored_id") is None
+        assert r["label"] == result["nodes"][r["id"]]["label"]
+
+    target = leaf_rows[0]
+    members = result["nodes"][target["id"]]["members"]
+    feat = authored.create(members, "Authored Wins")
+    authored.save_authored(repo, {feat.id: feat})
+
+    after = api.map_view(repo)
+    trow = next(r for r in after["nodes"] if r["id"] == target["id"])
+    assert trow["label"] == "Authored Wins"  # authored label wins over the cluster proposal
+    assert trow["authored_id"] == feat.id
+    for r in after["nodes"]:  # every un-authored leaf keeps its cluster label
+        if r["kind"] == "feature" and r["id"] != target["id"]:
+            assert r.get("authored_id") is None
+            assert r["label"] == result["nodes"][r["id"]]["label"]
+
+
+def test_split_mints_an_identical_content_id_on_two_replicas_of_one_store(tmp_path):
+    """KTD4 regression: `apply_split` must mint a content-addressed `f-<founding-op>` id, not a
+    replica-local `F<n>`. Two independent clones splitting the identical members over a byte-
+    identical op store must converge to the same id (the old `_fresh_id_gen` mint did not)."""
+    repo_a = corpus.CORPUS["mixed_coverage"].build(tmp_path / "a")
+    repo_b = corpus.CORPUS["mixed_coverage"].build(tmp_path / "b")
+    get(repo_a)
+    get(repo_b)
+    res_a = lensmap.build_map(repo_a)
+    res_b = lensmap.build_map(repo_b)
+    fid_a = next(iter(res_a["nodes"]))
+    fid_b = next(iter(res_b["nodes"]))
+    assert fid_a == fid_b  # identical store -> identical content-addressed clustering ids
+
+    applied_a = verbs.apply_split(repo_a, verbs.plan_split(repo_a, fid_a), confirm=True)
+    applied_b = verbs.apply_split(repo_b, verbs.plan_split(repo_b, fid_b), confirm=True)
+    new_a = next(nid for nid in applied_a["nodes"] if nid not in res_a["nodes"])
+    new_b = next(nid for nid in applied_b["nodes"] if nid not in res_b["nodes"])
+    assert new_a.startswith("f-")  # content-addressed, not a replica-local F<n>
+    assert new_a == new_b
+
+
+def test_split_preview_new_id_matches_what_apply_mints(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    before = lensmap.build_map(repo)
+    fid = next(iter(before["nodes"]))
+
+    preview = verbs.plan_split(repo, fid)
+    assert preview.ok
+    applied = verbs.apply_split(repo, preview, confirm=True)
+    new_id = next(nid for nid in applied["nodes"] if nid not in before["nodes"])
+    assert preview.new_id == new_id
+
+
+def test_rename_also_writes_an_authored_feature(tmp_path):
+    """A reorg verb writes an authored-feature op *in addition to* its pin (R3): renaming a cluster
+    feature is an authoring act, recorded as first-class merged state, while the labels pin that
+    keeps the rename stable across a recluster is still written."""
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    result = lensmap.build_map(repo)
+    fid = next(iter(result["nodes"]))
+
+    verbs.apply_rename(repo, verbs.plan_rename(repo, fid, "Named By User"))
+
+    af = authored.load_authored(repo)
+    feat = af[f"af-{fid}"]
+    assert feat.label == "Named By User"
+    assert feat.live_members() == frozenset(result["nodes"][fid]["members"])
+    assert load_pins(repo).labels[fid] == "Named By User"  # the pin is still written
+
+
+def test_split_also_writes_an_authored_feature_for_the_new_group(tmp_path):
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    result = lensmap.build_map(repo)
+    fid = next(iter(result["nodes"]))
+
+    applied = verbs.apply_split(repo, verbs.plan_split(repo, fid), confirm=True)
+    new_id = next(nid for nid in applied["nodes"] if nid not in result["nodes"])
+
+    af = authored.load_authored(repo)
+    feat = af[f"af-{new_id}"]
+    assert feat.live_members() == frozenset(applied["nodes"][new_id]["members"])
+    # the pin writes are preserved too: the new group's members are assign-pinned to the new id
+    pins = load_pins(repo)
+    for m in applied["nodes"][new_id]["members"]:
+        assert pins.assign[m] == new_id
+
+
+def test_merge_absorbs_the_authored_feature_and_tombstones_the_absorbed(tmp_path):
+    """R3 merge op: the survivor's authored feature gains the absorbed's members (OR-Set add), and a
+    previously-authored absorbed feature is tombstoned (OR-Set delete) to zero live members."""
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    split_result = _split_into_two(repo)
+    survivor, absorbed = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
+    absorbed_members = split_result["nodes"][absorbed]["members"]
+    assert absorbed_members  # the absorbed leaf carries members to absorb
+
+    # Author the absorbed first, so the merge must tombstone its authored record (not just its pin).
+    verbs.apply_rename(repo, verbs.plan_rename(repo, absorbed, "Doomed"))
+    assert authored.load_authored(repo)[f"af-{absorbed}"].live_members()  # live members before merge
+
+    merged = verbs.apply_merge(repo, verbs.plan_merge(repo, survivor, absorbed))
+
+    af = authored.load_authored(repo)
+    assert af[f"af-{survivor}"].live_members() == frozenset(merged["nodes"][survivor]["members"])
+    for m in absorbed_members:
+        assert m in af[f"af-{survivor}"].live_members()  # the absorbed's members came across
+    assert af[f"af-{absorbed}"].live_members() == frozenset()  # ...and its record is tombstoned
+
+
+def test_move_adds_the_moved_member_to_the_targets_authored_feature(tmp_path):
+    """R3 move op: moving an op re-homes its member symbols; the target's authored feature gains them
+    (OR-Set add) and a previously-authored source feature drops them (OR-Set remove)."""
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    split_result = _split_into_two(repo)
+    source, target = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
+    op_refs = [op for op, leaf in split_result["op_leaf"].items() if leaf == source][:1]
+    assert op_refs
+
+    ops_by_id = {op.id: op for op in Store(repo).all_ops()}
+    src_members = set(split_result["nodes"][source]["members"])
+    moved = {sym for sym in ops_by_id[op_refs[0]].footprint if sym in src_members}
+    assert moved  # the moved op carries at least one tracked source member
+
+    # Author the source first, so the move must drop the moved members from its authored record.
+    verbs.apply_rename(repo, verbs.plan_rename(repo, source, "Source"))
+
+    verbs.apply_move(repo, verbs.plan_move(repo, op_refs, target))
+
+    af = authored.load_authored(repo)
+    target_live = af[f"af-{target}"].live_members()
+    source_live = af[f"af-{source}"].live_members()
+    for sym in moved:
+        assert sym in target_live  # the target's authored feature gained the moved member
+        assert sym not in source_live  # ...and the source's authored feature dropped it

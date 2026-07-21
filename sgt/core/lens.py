@@ -193,6 +193,16 @@ def save_declared_orset(repo: Path, orset: DeclaredORSet) -> None:
 
 def declare_after(repo: Path, a: str, b: str) -> None:
     """`sgt after a b`: add the edge `a <= b` with a fresh, globally-unique tag (OR-Set add)."""
+    from sgt.core import oplog
+
+    snap = oplog.snapshot(repo, ["declared_orset", "declared"])  # inverse: the OR-Set before the add
+    # Record the inverse for `undo` (U8) *before* mutating, so a failed edge write is still
+    # recoverable. Best-effort like the D1 land log: `after` runs on repos that may lack a HEAD/ref
+    # (a bare `.sgt` dir in a unit test), so a failed append must never break the edge add.
+    try:
+        oplog.append(repo, {"kind": "after", "snapshot": snap, "edge": [a, b]})
+    except Exception:  # noqa: BLE001 -- provenance logging is never load-bearing for the mutation
+        pass
     orset = load_declared_orset(repo)
     save_declared_orset(repo, orset.union(DeclaredORSet(adds=frozenset({(a, b, uuid.uuid4().hex)}))))
 
@@ -544,9 +554,17 @@ def record_ideal(
     with locked_section(repo):
         itable = _load_ideal_table(repo)
         if journal and key in itable:
+            # The journal is the unified operation log (U8/KTD6): this push is one `ideal_edit`
+            # event carrying the prior ideal (+ witness). Tagged `kind` so `oplog.undo` dispatches
+            # it; a legacy entry with no `kind` is read as `ideal_edit` too, so old journals still
+            # undo. Kept inline (not `oplog.append`) because we already hold `locked_section` and
+            # the flock is non-reentrant -- the same read-modify-write that closes the
+            # double-journal-entry window (R5/R6).
             jtable = _load_ideal_journal(repo)
             prev_witness = _load_witnesses(repo).get(key)
-            jtable.setdefault(key, []).append({"ideal": sorted(itable[key]), "witness": prev_witness})
+            jtable.setdefault(key, []).append(
+                {"kind": "ideal_edit", "ideal": sorted(itable[key]), "witness": prev_witness}
+            )
             _save_ideal_journal(repo, jtable)
         itable[key] = sorted(ideal.op_ids)
         _save_ideal_table(repo, itable)
@@ -557,8 +575,8 @@ def record_ideal(
 
 @dataclass(frozen=True)
 class UndoResult:
-    """What `undo_ideal` restored: the prior `ideal`, the fresh `witness_sha` that re-materialized
-    it, and the op-set delta versus the state undone (for the verb's report)."""
+    """What an ideal-edit undo restored: the prior `ideal`, the fresh `witness_sha` that
+    re-materialized it, and the op-set delta versus the state undone (for the verb's report)."""
 
     ideal: Ideal
     witness_sha: str
@@ -566,27 +584,17 @@ class UndoResult:
     added: frozenset[str]
 
 
-def undo_ideal(repo: str | Path) -> UndoResult | None:
-    """`sgt undo` (U26): pop the ref's ideal-edit journal and restore that prior ideal exactly.
-    The restore is materialized as a *fresh* witness commit -- history is an append-only op DAG, so
-    undo is a forward edit re-establishing prior content, never a ref rewind. Returns None when the
-    stack is empty (nothing to undo). The restore is itself not journaled, so repeated `undo` walks
-    back through the edit history one step at a time instead of toggling the last two states."""
+def _apply_ideal_edit_inverse(repo: str | Path, event: dict) -> UndoResult:
+    """Restore the prior ideal an `ideal_edit` event carries (U8/KTD6): re-materialize it as a
+    *fresh* witness commit and re-record it without journaling. History is an append-only op DAG,
+    so undo is a forward edit re-establishing prior content, never a ref rewind; the stored
+    `witness` is provenance only (the restore re-`put`s and uses the new sha). This is the ideal-edit
+    restore that `oplog.apply_inverse` dispatches to for an `ideal_edit` event."""
     repo = Path(repo)
-    get(repo)  # absorb current reality first (R9)
-    gb = GitBinding(repo)
-    key = _ref_key(gb)
-    jtable = _load_ideal_journal(repo)
-    stack = jtable.get(key, []) if key is not None else []
-    if not stack:
-        return None
     all_ops = Store(repo).all_ops()
     current = current_ideal(repo)
-    prev = Ideal.from_ops(frozenset(stack[-1]["ideal"]), all_ops)
+    prev = Ideal.from_ops(frozenset(event["ideal"]), all_ops)
     sha = put(repo, prev, message="sgt undo: restore prior ideal")
-    stack.pop()
-    jtable[key] = stack
-    _save_ideal_journal(repo, jtable)
     record_ideal(repo, prev, sha, journal=False)
     return UndoResult(prev, sha, removed=current.op_ids - prev.op_ids, added=prev.op_ids - current.op_ids)
 

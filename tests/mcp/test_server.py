@@ -46,8 +46,8 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = {t["name"] for t in resp["result"]["tools"]}
     # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
-    assert names == {"sgt_init", "sgt_log", "sgt_state", "sgt_diff", "sgt_fsck",
-                      "sgt_revert", "sgt_restore", "sgt_oracle_run",
+    assert names == {"sgt_init", "sgt_log", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
+                      "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
                       "sgt_plan_intake", "sgt_checkpoint", "sgt_drift"}
 
 
@@ -91,14 +91,14 @@ def test_log_full_carries_footprint(tmp_path):
 
 def test_state_shows_frontier(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_state")
+    _, payload = _call(repo, "sgt_status")
     assert payload["oracle_configured"] is False
     assert "frontier" not in payload  # compact by default
 
 
 def test_state_full_carries_frontier(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_state", {"full": True})
+    _, payload = _call(repo, "sgt_status", {"full": True})
     assert "a.py::foo" in payload["frontier"]
 
 
@@ -111,7 +111,7 @@ def test_diff_requires_both_refs(tmp_path):
 def test_fsck_reports_clean_store(tmp_path):
     repo = _seed(tmp_path, 1)
     _call(repo, "sgt_log")  # mine, so the store isn't empty
-    _, payload = _call(repo, "sgt_fsck")
+    _, payload = _call(repo, "sgt_advanced_fsck")
     assert payload["ok"] is True and payload["checked"] >= 1
 
 
@@ -162,7 +162,7 @@ def test_init_tool_bootstraps_workspace(tmp_path):
 
 def test_oracle_run_tool_with_no_config(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_oracle_run")
+    _, payload = _call(repo, "sgt_advanced_oracle_run")
     assert payload["configured"] is False
 
 

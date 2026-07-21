@@ -16,7 +16,9 @@ from sgt.core import identity, mine, oracle, order, rewrite
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.lens import get, ideal_for_ref
+from sgt.core.op import make_op
 from sgt.core.order import is_valid_ideal
+from sgt.core.rewrite import RewriteDraft
 from sgt.core.store import Store
 from sgt.store.gitbind import init_store
 from tests.laws import corpus
@@ -291,6 +293,179 @@ def test_revert_keep_dependents_refuses_an_unresolvable_target(tmp_path):
     get(repo)
     draft = rewrite.revert_keep_dependents(repo, "not-a-real-op-id")
     assert not draft.ok and draft.hollow_ids == ()
+
+
+# -- U3: per-dependent frontier (R4; caller-supplied kept-set) ----------------------------------
+
+def _fan_repo(tmp_path):
+    """`helper` (the revert target) with 2 direct dependents (`user1`, `user2`) and 3 transitive
+    ones (`t1`<-user1, `t2`<-t1, `t3`<-user2). Separate commits so def-use folding keeps each on
+    its own op with a real cross-op reference edge."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user1():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("user1")
+    (repo / "c.py").write_text("from a import helper\n\ndef user2():\n    return helper() + 2\n", encoding="utf-8")
+    gb.commit_all("user2")
+    (repo / "d.py").write_text("from b import user1\n\ndef t1():\n    return user1() + 1\n", encoding="utf-8")
+    gb.commit_all("t1")
+    (repo / "e.py").write_text("from d import t1\n\ndef t2():\n    return t1() + 1\n", encoding="utf-8")
+    gb.commit_all("t2")
+    (repo / "f.py").write_text("from c import user2\n\ndef t3():\n    return user2() + 1\n", encoding="utf-8")
+    gb.commit_all("t3")
+    get(repo)
+    return repo
+
+
+def test_revert_frontier_keep_all_drafts_a_hollow_per_blast_and_carries_every_transitive(tmp_path):
+    """Default (keep-all) preserves today's all-or-nothing behavior exactly: a symbol with 2 direct
+    + 3 transitive dependents drafts 2 continuation hollows and carries 3 forward."""
+    repo = _fan_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id)
+    assert draft.ok
+    hollow_syms = {next(iter(Store(repo).get_hollow(h).footprint)) for h in draft.hollow_ids}
+    assert hollow_syms == {"b.py::user1", "c.py::user2"}
+    assert draft.meta["carry_forward"] == ["d.py::t1", "e.py::t2", "f.py::t3"]
+
+
+def test_revert_frontier_keep_none_is_a_plain_full_upset_removal(tmp_path):
+    """An empty kept-set degenerates to `plan_revert`: no continuation hollows, nothing carried,
+    the full up-set removed."""
+    from sgt.core import verbs
+
+    repo = _fan_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id, keep=frozenset())
+    assert draft.ok
+    assert draft.hollow_ids == ()
+    assert draft.meta["carry_forward"] == []
+    assert set(draft.meta["removed_ids"]) == set(verbs.plan_revert(repo, helper_op.id).removed)
+
+
+def test_revert_frontier_keeping_only_a_transitive_dependent_drafts_no_hollow(tmp_path):
+    """Keeping a dependent whose only tie to the target is transitive carries it forward and drafts
+    *no* hollow -- its bytes never named the removed symbol. The dropped direct dependent gets no
+    hollow either (it's removed with the up-set)."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("user")
+    (repo / "c.py").write_text("from b import user\n\ndef caller():\n    return user() + 1\n", encoding="utf-8")
+    gb.commit_all("caller")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    caller_op = next(o for o in ops if "c.py::caller" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id, keep=frozenset({caller_op.id}))
+    assert draft.ok
+    assert draft.hollow_ids == ()  # `user` (blast) dropped -> no hollow; `caller` is a carry -> no hollow
+    assert draft.meta["carry_forward"] == ["c.py::caller"]
+
+
+def test_revert_frontier_with_no_dependents_equals_a_plain_revert(tmp_path):
+    """A symbol nothing builds on has an empty frontier: keep-all is identical to `plan_revert`."""
+    from sgt.core import verbs
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+
+    draft = rewrite.revert_keep_dependents(repo, helper_op.id)
+    assert draft.ok and draft.hollow_ids == () and draft.meta["carry_forward"] == []
+    assert set(draft.meta["removed_ids"]) == set(verbs.plan_revert(repo, helper_op.id).removed)
+
+
+# -- U5: mechanical repoint (one crisp LLM rule; R6) --------------------------------------------
+
+def _helper_user_repo(tmp_path):
+    """The same separate-commit helper/user pair the revert tests use: a cross-op reference edge
+    (`user` requires `helper`'s exact version) is the edge a repoint rewrites."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("add user, depending on helper")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+    assert (helper_op.id, user_op.id) in order.reference_edges(ops)
+    return repo, helper_op, user_op
+
+
+def test_repoint_mints_a_requires_updated_op_byte_identical_in_image(tmp_path):
+    """U5/R6: when the target advances to a new content version, a dependent that named the target's
+    *old* version has a stale `requires` edge but unchanged bytes. `build_candidate`'s repoint step
+    mints a fresh producer with the *same footprint and same image*, rewriting only that one edge
+    old->new -- pure and content-addressed, no hollow, no backend, no LLM."""
+    repo, helper_op, user_op = _helper_user_repo(tmp_path)
+    helper_sym = "a.py::helper"
+    v1 = helper_op.footprint[helper_sym][1]
+    assert (helper_sym, v1) in user_op.requires  # the edge that will go stale
+
+    # A chain-extension of `helper` to a new version -- exactly what `edit` (U4) drafts for the target.
+    new_bytes = b"def helper():\n    return 2"
+    v2 = mine._positional_version(helper_sym, mine._content_version(new_bytes))
+    helper2 = make_op({helper_sym: (v1, v2)}, {helper_sym: new_bytes}, kind="extend")
+    Store(repo).add(helper2)
+
+    draft = RewriteDraft(
+        ok=True, verb="edit", target=helper_op.id,
+        meta={
+            "removed_ids": [user_op.id],
+            "required_ids": [helper2.id],
+            "repoint": [{"op_id": user_op.id, "symbol": helper_sym,
+                         "old_version": v1, "new_version": v2}],
+        },
+    )
+    candidate, fulfilled = rewrite.build_candidate(repo, draft)
+
+    repointed = fulfilled[f"repoint:{user_op.id}"]
+    assert repointed.images["b.py::user"] == user_op.images["b.py::user"]  # byte-identical image
+    assert repointed.footprint == user_op.footprint  # same footprint
+    assert (helper_sym, v2) in repointed.requires and (helper_sym, v1) not in repointed.requires
+    # distinct provenance label from carry_forward (kind "rework") and from LLM-filled hollows.
+    assert repointed.kind == "repoint"
+    assert user_op.id not in candidate.op_ids and repointed.id in candidate.op_ids
+    # `build_candidate` already validated the candidate via `Ideal.from_ops`; the fulfilled ops
+    # aren't in the store yet, so validate against the store plus what it just minted.
+    assert is_valid_ideal(Store(repo).all_ops() + list(fulfilled.values()), candidate.op_ids)
+
+
+def test_repoint_leaves_an_op_with_no_edge_to_the_target_untouched(tmp_path):
+    """U5: repoint only rewrites a dependent that actually named the (target, old_version) pair it's
+    asked to remap. An op with no such `requires` edge is left alone -- no op minted for it."""
+    repo, helper_op, user_op = _helper_user_repo(tmp_path)
+    helper_sym = "a.py::helper"
+    v1 = helper_op.footprint[helper_sym][1]
+
+    # `helper_op` is a fresh add with empty `requires`: it has no edge to the target, so repointing
+    # it is a no-op even though it's named in the repoint list.
+    assert (helper_sym, v1) not in helper_op.requires
+    draft = RewriteDraft(
+        ok=True, verb="edit", target=helper_op.id,
+        meta={"repoint": [{"op_id": helper_op.id, "symbol": helper_sym,
+                           "old_version": v1, "new_version": "brand-new-version"}]},
+    )
+    candidate, fulfilled = rewrite.build_candidate(repo, draft)
+    assert not any(k.startswith("repoint:") for k in fulfilled)  # nothing minted
+    assert helper_op.id in candidate.op_ids and user_op.id in candidate.op_ids
+    assert is_valid_ideal(Store(repo).all_ops(), candidate.op_ids)
 
 
 # -- transplant ---------------------------------------------------------------------------------
@@ -654,3 +829,205 @@ def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(t
     assert code(after, Store(b).all_ops())["main.py"] == (
         b"def foo():\n    return 1041\n\n\ndef bar():\n    return 2\n"
     )
+
+
+# -- U4: `sgt edit <selection>` -- in-place change (KTD5, R5) -----------------------------------
+
+def _configure_oracle(repo, tiers):
+    """Same shell-tier oracle config the repair-loop tests use (`tests/repair/test_loop.py`)."""
+    payload = {"tiers": [{"name": name, "command": command} for name, command in tiers]}
+    (repo / ".sgt").mkdir(exist_ok=True)
+    (repo / ".sgt" / "oracle.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+class _CountingBackend:
+    """A repair backend that scripts one image per call and counts how often it's asked -- the
+    happy path must never touch it (`calls == 0`)."""
+
+    def __init__(self, images):
+        self.images = images
+        self.calls = 0
+
+    def propose(self, request):
+        from sgt.repair.backends import RepairProposal
+
+        idx = min(self.calls, len(self.images) - 1)
+        self.calls += 1
+        return RepairProposal(image=self.images[idx].decode("utf-8"), rationale="fake")
+
+
+def _helper_with_three_callers(repo):
+    """`helper` plus three direct callers, each in its own commit (a separate op with a real
+    reference edge to `helper` -- the same separate-commit trick the revert tests rely on)."""
+    gb, _ = init_store(repo)
+    (repo / "m.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    body = "def helper():\n    return 1\n"
+    for i in (1, 2, 3):
+        body += f"\n\ndef u{i}():\n    return helper() + {i}\n"
+        (repo / "m.py").write_text(body, encoding="utf-8")
+        gb.commit_all(f"add u{i}")
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "m.py::helper" in o.footprint)
+    callers = [next(o for o in ops if f"m.py::u{i}" in o.footprint) for i in (1, 2, 3)]
+    for c in callers:
+        assert (helper_op.id, c.id) in order.reference_edges(ops)
+    return gb, helper_op, callers
+
+
+def test_edit_repoints_three_dependents_with_zero_model_calls_and_one_land(tmp_path):
+    """Happy path (R5/KTD5): a behavior-preserving edit of a symbol with 3 direct dependents
+    repoints all three mechanically (`kind == "repoint"`, byte-identical images, `requires` bumped
+    to the new version), the oracle passes, and it lands with **zero** model calls -- no op carries
+    integration/LLM attribution (the mechanical repoint path never reaches the repair backend)."""
+    repo = tmp_path / "repo"
+    gb, helper_op, callers = _helper_with_three_callers(repo)
+    _configure_oracle(repo, [("py_compile", "python -m py_compile m.py")])
+    helper_sym = "m.py::helper"
+    old_v = helper_op.footprint[helper_sym][1]
+
+    draft = rewrite.edit_op(repo, helper_op.id)
+    assert draft.ok and len(draft.hollow_ids) == 1 and draft.verb == "edit"
+    hollow = Store(repo).get_hollow(draft.hollow_ids[0])
+    # KTD5: the edit hollow chain-extends the tip -- before == the target's *current* after_version.
+    assert hollow.footprint[helper_sym] == (old_v, rewrite._PENDING)
+    assert sorted(draft.meta["repoint_deps"]) == sorted(c.id for c in callers)
+
+    # The user edits the symbol in place -- behavior-preserving (adds a comment, returns 1 still).
+    edited = "def helper():\n    return 1  # tidy up\n"
+    for i in (1, 2, 3):
+        edited += f"\n\ndef u{i}():\n    return helper() + {i}\n"
+    (repo / "m.py").write_text(edited, encoding="utf-8")
+
+    candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    assert is_valid_ideal(Store(repo).all_ops(), candidate.op_ids)
+
+    ops = Store(repo).all_ops()
+    by_id = {o.id: o for o in ops}
+    new_v = next(o.footprint[helper_sym][1] for o in ops if o.kind == "edit")
+    assert new_v != old_v
+    repoints = [o for o in ops if o.kind == "repoint" and o.id in candidate.op_ids]
+    assert len(repoints) == 3  # all three callers repointed, none hollowed
+    for rp in repoints:
+        sym = next(iter(rp.footprint))
+        orig = next(c for c in callers if sym in c.footprint)
+        assert rp.images[sym] == orig.images[sym]  # byte-identical -- the caller's bytes never change
+        assert (helper_sym, new_v) in rp.requires and (helper_sym, old_v) not in rp.requires
+
+    oracle.run(repo, ideal=candidate)  # a behavior-preserving edit passes the configured tier
+    assert oracle.overall_status(oracle.verdict_for(repo, candidate)) == "pass"
+    sha = rewrite.land(repo)  # oracle green -> one land, no override
+    assert sha
+    assert rewrite.staged_candidate(repo) is None
+    # Zero model calls: nothing was attributed to the integration agent (the mechanical repoint
+    # path never invokes the repair backend, so no op carries integration/LLM attribution).
+    landed = [by_id2 for by_id2 in Store(repo).all_ops() if by_id2.id in candidate.op_ids]
+    assert all(a.agent != "integration" for o in landed for a in o.attribution)
+
+
+def test_edit_with_no_dependents_is_a_plain_chain_extension(tmp_path):
+    """Edge (KTD5): editing a symbol nothing references drafts just the edit hollow -- no repoint,
+    no continuation hollow beyond the edit itself."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "m.py").write_text("def lonely():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add lonely")
+    get(repo)
+    ops = Store(repo).all_ops()
+    lonely_op = next(o for o in ops if "m.py::lonely" in o.footprint)
+
+    draft = rewrite.edit_op(repo, lonely_op.id)
+    assert draft.ok and len(draft.hollow_ids) == 1
+    assert draft.meta["repoint_deps"] == [] and draft.meta["removed_ids"] == []
+
+    (repo / "m.py").write_text("def lonely():\n    return 2\n", encoding="utf-8")
+    candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    new_ops = Store(repo).all_ops()
+    assert not any(o.kind == "repoint" for o in new_ops if o.id in candidate.op_ids)
+    edit_op_ = next(o for o in new_ops if o.kind == "edit")
+    assert edit_op_.id in candidate.op_ids
+    assert is_valid_ideal(new_ops, candidate.op_ids)
+
+
+def test_edit_breaking_a_caller_repairs_the_blast_dependent_and_regates_green(tmp_path):
+    """Error path (R5/KTD5 bounded-safety): a behavior-changing edit breaks a caller's test, so the
+    oracle goes red. `edit_repair_op` drafts a continuation hollow for the blast (direct) dependent;
+    `--repair` (a fake backend) fills it and the oracle re-gates green."""
+    from sgt.repair.loop import repair
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "m.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    (repo / "m.py").write_text(
+        "def helper():\n    return 1\n\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
+    )
+    gb.commit_all("add user")
+    # The contract the edit will break, then repair must restore: user() == 2.
+    (repo / "test_m.py").write_text(
+        "import m\n\ndef test_user():\n    assert m.user() == 2\n", encoding="utf-8"
+    )
+    _configure_oracle(repo, [
+        ("py_compile", "python -m py_compile m.py"),
+        ("pytest", "python -m pytest test_m.py -q"),
+    ])
+    get(repo)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "m.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "m.py::user" in o.footprint)
+
+    # edit helper to change its behavior (return 2), leaving user's bytes as helper() + 1 -> 3 != 2.
+    draft = rewrite.edit_op(repo, helper_op.id)
+    (repo / "m.py").write_text(
+        "def helper():\n    return 2\n\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
+    )
+    rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    try:
+        rewrite.land(repo)
+        assert False, "expected the oracle to refuse the behavior-changing edit"
+    except rewrite.RewriteError as e:
+        assert "oracle" in str(e)
+
+    # Red path: draft continuation hollows for all blast dependents, then repair via the LLM loop.
+    repair_draft = rewrite.edit_repair_op(repo, helper_op.id)
+    assert repair_draft.ok and len(repair_draft.hollow_ids) == 1  # `user` is the sole blast dep
+    assert repair_draft.verb == "edit-repair"
+
+    rewrite.unstage(repo)  # abandon the red happy-path stage; the edit op stays in the store
+    backend = _CountingBackend([b"def user():\n    return 2"])  # restores user() == 2
+    result = repair(repo, repair_draft, backend, max_oracle_rounds=1)
+    assert result.ok, result.message
+    assert backend.calls == 1  # only the blast dependent cost a model call
+
+    ops = Store(repo).all_ops()
+    by_id = {o.id: o for o in ops}
+    live = get(repo).frontier(ops)
+    # helper advanced to the edited version, user reworked to satisfy the restored contract.
+    assert b"return 2" in by_id[live["m.py::helper"]].images["m.py::helper"]
+    assert by_id[live["m.py::user"]].images["m.py::user"] == b"def user():\n    return 2"
+
+
+def test_edit_stale_stage_is_refused_like_other_rewrites(tmp_path):
+    """Integration (KTD5): a staged edit candidate is stale-guarded by `_stale_paths` -- a tree
+    edited after `fulfill` refuses to land, exactly like a staged merge-op."""
+    repo = tmp_path / "repo"
+    gb, helper_op, callers = _helper_with_three_callers(repo)
+    _configure_oracle(repo, [("py_compile", "python -m py_compile m.py")])
+
+    draft = rewrite.edit_op(repo, helper_op.id)
+    edited = "def helper():\n    return 1  # tidy\n"
+    for i in (1, 2, 3):
+        edited += f"\n\ndef u{i}():\n    return helper() + {i}\n"
+    (repo / "m.py").write_text(edited, encoding="utf-8")
+    rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+
+    # Drift the staged candidate out from under the stage, then land -> stale refusal.
+    (repo / "m.py").write_text("def helper():\n    return 999\n", encoding="utf-8")
+    try:
+        rewrite.land(repo, override=("pass", "reviewed", "rev"))
+        assert False, "expected a staleness refusal"
+    except rewrite.RewriteError as e:
+        assert "stale" in str(e) and "m.py" in str(e)
+    rewrite.unstage(repo)
+    assert rewrite.staged_candidate(repo) is None

@@ -25,9 +25,13 @@ export class FeatureItem extends vscode.TreeItem {
         : vscode.TreeItemCollapsibleState.None
     );
     this.id = node.id;
-    this.description = `${node.op_count} op(s)`;
+    // An `authored_id` marks a user-authored feature (a named selection you own) vs. a purely
+    // clustering-proposed one (U6/U7) -- surface that distinction so the tree reflects authority.
+    const authored = !!node.authored_id;
+    this.description = `${node.op_count} op(s)${authored ? " · authored" : ""}`;
     this.tooltip = new vscode.MarkdownString(
-      `**${node.label || node.id}**\n\n${node.why || "(no rationale recorded)"}` +
+      `**${node.label || node.id}**${authored ? " _(authored)_" : ""}\n\n` +
+        `${node.why || "(no rationale recorded)"}` +
         (node.split_reason ? `\n\n_split: ${node.split_reason}_` : "")
     );
     this.iconPath = colorIcon(colorForNode(node.id));

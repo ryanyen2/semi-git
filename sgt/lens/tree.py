@@ -438,7 +438,10 @@ def build(
     # would orphan the pin) -- only the atomic `sgt migrate` re-mints those. Unreferenced legacy ids
     # converge freely (LAW-U). `assign` values are additionally force-applied below, but including
     # them here keeps the identity_events honest (no spurious re-mint that a pin immediately undoes).
-    protected = frozenset(pins.assign.values()) | frozenset(pins.labels)
+    # Authored-feature `af-` ids (U6/R3, KTD3) join the protected set so a rebuild never re-mints or
+    # orphans them (completes U6's deferred wiring) -- loaded here because `build` already owns `repo`.
+    from sgt.lens.authored import load_authored
+    protected = frozenset(pins.assign.values()) | frozenset(pins.labels) | frozenset(load_authored(repo))
     id_map, events = match_identities(
         old_leaves, _leaf_members(nodes), founding=_founding_ops(op_leaf), protected=protected,
     )
@@ -681,6 +684,31 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
         _apply_id_map(result, amap)
 
 
+def _authored_leaf_claims(nodes: dict, authored: dict) -> dict:
+    """Each leaf an authored feature claims -> the claiming `AuthoredFeature` (U6/R3, KTD4). An
+    authored feature is a per-symbol user claim that *overrides* the clustered leaf, mirroring the
+    assign-pin override (`_apply_assign_pins`): it resolves to the one leaf holding the plurality of
+    its live members (tie -> smallest leaf id), so a leaf a user has named shows that feature's
+    label/id and the clustering keeps only the leaves no one authored. When two features contend for
+    one leaf, the stronger claim (more members there) wins deterministically. `authored` maps
+    `af-id -> AuthoredFeature`; empty when the repo has none, in which case this is a no-op."""
+    if not authored:
+        return {}
+    member_leaf = leaf_member_index(nodes)
+    claims: dict[str, object] = {}
+    strength: dict[str, int] = {}
+    for fid in sorted(authored):
+        feat = authored[fid]
+        counts = Counter(l for m in feat.live_members() if (l := member_leaf.get(m)) is not None)
+        if not counts:
+            continue
+        leaf = min(counts, key=lambda l: (-counts[l], l))
+        if counts[leaf] > strength.get(leaf, 0):
+            claims[leaf] = feat
+            strength[leaf] = counts[leaf]
+    return claims
+
+
 # --- persistence (.sgt/tree/tree.json, committed -- plan D5) -----------------------------------
 
 
@@ -837,5 +865,12 @@ def label_tree(
         node = nodes.get(nid)
         if node is not None:
             node["label"] = label
+
+    # Authored features (U6/R3) are the authority over the clustered proposal (KTD4): a leaf a user
+    # has claimed under a named feature shows that feature's label, exactly as the pin-label override
+    # above substitutes a rename -- un-authored leaves keep their LLM/fallback label untouched.
+    from sgt.lens.authored import load_authored
+    for leaf, feat in _authored_leaf_claims(nodes, load_authored(repo)).items():
+        nodes[leaf]["label"] = feat.label
 
     return labeler

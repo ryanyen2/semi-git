@@ -37,21 +37,68 @@ import subprocess
 import sys
 
 from . import (
-    feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose, review,
-    rewrite, select, session, sync, tiers,
+    edit, feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose,
+    review, rewrite, select, session, sync, tiers,
 )
 
+# The daily spine + the frequently-reached verbs kept at the top level, two groupings, and the
+# unchanged collaboration/setup verbs (KTD2/R2, re-triaged). This is the ONLY top-level surface;
+# every *rare/maintenance* verb is re-homed under `feature`/`advanced` and is reachable only there
+# -- a hard rename, no alias layer. `advanced` is for maintenance/rare verbs only: the verbs a user
+# runs daily (navigation, inspection, the agentic loop, the rewrite pipeline) stay one word away.
 _VERBS = {
-    "init", "revert", "restore", "log", "state", "diff", "oracle", "fsck", "mcp", "help",
-    "merge-op", "split-op", "transplant", "identity", "fulfill", "commit", "land", "unstage",
-    "repair", "map", "blame", "status", "merge", "split", "rename", "move",
-    "plan", "checkpoint", "drift", "sync", "push", "forks", "history", "preview", "compose", "fold",
-    "after", "migrate", "propose", "switch", "save", "undo", "tiers", "select", "why", "session",
-    "review-queue", "reindex", "intent",
+    # spine
+    "save", "status", "log", "undo", "revert", "restore", "edit",
+    # navigation + inspection (daily)
+    "switch", "diff", "map", "blame",
+    # agentic loop (daily)
+    "plan", "checkpoint", "drift",
+    # rewrite pipeline (daily)
+    "commit", "fulfill",
+    # groupings
+    "feature", "advanced",
+    # collaboration + setup (unchanged behavior + name)
+    "sync", "land", "push", "propose", "session", "init", "mcp",
 }
 
+# Where each re-homed verb's registration lands (default: top-level, i.e. spine/collaboration/setup).
+# The verb NAME and its args/handler are untouched -- only the parent subparser changes -- so the
+# family modules register unchanged and each verb keeps its exact behavior at its new path.
+_ROUTING = {
+    "rename": "feature", "select": "feature", "why": "feature",
+    "merge": "regroup", "split": "regroup", "move": "regroup",
+    "state": "advanced", "oracle": "advanced", "fsck": "advanced",
+    "reindex": "advanced", "history": "advanced",
+    "compose": "advanced", "fold": "advanced", "preview": "advanced",
+    "forks": "advanced", "after": "advanced",
+    "tiers": "advanced", "migrate": "advanced", "intent": "advanced",
+    "review-queue": "advanced", "identity": "advanced",
+    "merge-op": "advanced", "split-op": "advanced", "transplant": "advanced",
+    "unstage": "advanced", "repair": "advanced",
+}
+
+# Former top-level verb -> its new invocation path (KTD2's hard rename), derived from `_ROUTING` so
+# the two can never drift: `main` uses it to point a user who typed a removed-but-known verb at its
+# new home instead of a bare `_help()`. `regroup`-tier verbs nest one level deeper under `feature`.
+_TIER_PATH = {"advanced": "advanced", "feature": "feature", "regroup": "feature regroup"}
+_REMOVED = {verb: f"{_TIER_PATH[tier]} {verb}" for verb, tier in _ROUTING.items()}
+
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review, intent)
+             porcelain, tiers, select, session, review, intent, edit)
+
+
+class _Router:
+    """Routes each family's ``add_parser(name, ...)`` to the destination subparsers action named by
+    ``_ROUTING`` (default: the top-level ``subs``). This is the whole mechanism of KTD2's re-homing:
+    a family module still calls ``subs.add_parser("fsck", ...)`` exactly as before, but the parser
+    it gets back is created under the ``advanced`` grouping instead of the top level, so the verb's
+    args and handler are unchanged -- only its path moves."""
+
+    def __init__(self, dests: dict):
+        self._dests = dests  # tier key -> subparsers action
+
+    def add_parser(self, name: str, **kwargs):
+        return self._dests[_ROUTING.get(name, "top")].add_parser(name, **kwargs)
 
 
 class _CLIExit(Exception):
@@ -69,6 +116,17 @@ class _Parser(argparse.ArgumentParser):
         raise _CLIExit(status)
 
 
+def _grouping_help(parser: argparse.ArgumentParser):
+    """A grouping verb invoked bare (`sgt feature`, `sgt advanced`, `sgt feature regroup`) prints
+    its own subhelp and exits cleanly, rather than erroring on a missing subcommand."""
+
+    def _f(args) -> int:
+        parser.print_help()
+        return 0
+
+    return _f
+
+
 def _build_parser() -> _Parser:
     parent = argparse.ArgumentParser(add_help=False)
     # `--json` switches the read verbs to the canonical machine-readable projection (sgt.api),
@@ -76,8 +134,24 @@ def _build_parser() -> _Parser:
     parent.add_argument("--json", action="store_true", dest="as_json")
     parser = _Parser(prog="sgt")
     subs = parser.add_subparsers(dest="verb")
+
+    # Two grouping verbs host the re-homed subcommands (KTD2), mirroring `tiers.py`'s nested
+    # `add_subparsers`. `feature regroup` is a third nesting level for the old merge/split/move.
+    feature_p = subs.add_parser("feature", parents=[parent])
+    feature_subs = feature_p.add_subparsers(dest="feature_verb")
+    feature_p.set_defaults(func=_grouping_help(feature_p))
+    regroup_p = feature_subs.add_parser("regroup", parents=[parent])
+    regroup_subs = regroup_p.add_subparsers(dest="regroup_verb")
+    regroup_p.set_defaults(func=_grouping_help(regroup_p))
+
+    advanced_p = subs.add_parser("advanced", parents=[parent])
+    advanced_subs = advanced_p.add_subparsers(dest="advanced_verb")
+    advanced_p.set_defaults(func=_grouping_help(advanced_p))
+
+    router = _Router({"top": subs, "feature": feature_subs,
+                      "regroup": regroup_subs, "advanced": advanced_subs})
     for family in _FAMILIES:
-        family.register(subs, parent)
+        family.register(router, parent)
     return parser
 
 
@@ -89,7 +163,16 @@ def main(argv: list[str] | None = None) -> int:
     if argv[0] == "git":
         return _git_passthrough(argv[1:])
 
-    if argv[0] == "help" or argv[0] not in _VERBS:
+    if argv[0] == "help":
+        return _help()
+
+    if argv[0] not in _VERBS:
+        # A removed-but-known old verb points at its new home (KTD2's hard rename); a genuinely
+        # unknown token still falls to `_help()`.
+        remedy = _REMOVED.get(argv[0])
+        if remedy is not None:
+            sys.stderr.write(f"sgt: `{argv[0]}` moved to `sgt {remedy}`\n")
+            return 2
         return _help()
 
     parser = _build_parser()
@@ -119,91 +202,50 @@ def _git_passthrough(args: list[str]) -> int:
 
 def _help() -> int:
     print(
-        "sgt — semantic operation-ideal version control (kernel)\n\n"
-        "  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing\n"
-        "                              history, or (with --horizon) only from that commit on (R10)\n"
-        "  sgt revert [--emit] <ref>   remove an op and everything built on it (I \\ upset X)\n"
-        "  sgt revert <ref> --keep-dependents [--repair]   same, but drafts a continuation hollow\n"
-        "                              per dependent (--repair hands it straight to the LLM repair loop)\n"
-        "  sgt revert --session <name> [--emit]   revert every op a session's attribution covers\n"
-        "  sgt restore [--emit] <ref>  re-add an op and its prerequisites (I ∪ downset X)\n"
-        "  sgt after <a> <b> [--retract]   declare (or retract) the order edge a ≤ b\n"
-        "  sgt fsck [--json]           verify the op store's content-address integrity\n"
-        "  sgt log [--json]            the mined operation DAG\n"
-        "  sgt state [--json]          the current ref's ideal: frontier, coverage, oracle verdict\n"
-        "  sgt diff [--json] <a> <b>   semantic diff between two refs' ideals, grouped by symbol\n"
-        '  sgt oracle run [--tier N]   run configured build/test tiers against the current ideal\n'
-        '  sgt oracle override ...     record a human verdict (--status pass|fail --reason "...")\n'
-        '  sgt merge-op <a> <b>        draft a hollow reconciling a chain fork (AE2\'s refusal)\n'
-        "  sgt split-op <op-id>        draft an intermediate cut of a two-concern op\n"
-        "  sgt transplant <op>... --onto <ref>   draft hollows backported onto another chain (AE3)\n"
-        "  sgt identity split|join <a> <b>       correct the matcher itself, not a chain\n"
-        "  sgt fulfill <draft-id> --from-tree     supply a drafted hollow's image; stages, no commit\n"
-        "  sgt repair <draft-id> [--backend api]   fulfill an already-drafted hollow via the LLM\n"
-        "                              repair loop, then land it through the same oracle gate\n"
-        '  sgt commit [--message ...] [--override pass|fail --reason "..."]   commit what\'s staged\n'
-        "  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green (LAW-G)\n"
-        "  sgt unstage                 abandon the staged candidate; restore the committed ideal\n"
-        "  sgt switch <branch>         materialize a branch's ideal (the sgt-native `git switch`)\n"
+        "sgt — semantic operation-ideal version control\n\n"
+        "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
         '  sgt save [-m "<msg>"]       mine the working tree + commit a witness for it\n'
-        "  sgt undo                    invert the last ideal edit (revert/restore/save/…)\n"
-        "  sgt map [--json]            (re)build + print the hierarchical feature tree\n"
-        "  sgt blame [--json] <file>   per-symbol feature attribution for a file's live entities\n"
-        "  sgt status [--json]        files/symbols/features, coverage, oracle status, drift\n"
-        "  sgt select <feature>...    explain the closure a feature selection induces (files, ops,\n"
-        "                              and the requires-chain that pulled in anything cross-feature)\n"
-        "  sgt why <op> [--for <feature>]   explain one op's feature attribution, or the chain\n"
-        "                              that pulled it into a given feature's closure\n"
-        "  sgt merge <survivor> <absorbed>        union two features under the survivor id\n"
-        "  sgt split <feature> [--apply]          preview (then confirm) a two-way feature split\n"
-        '  sgt rename <feature> "<label>"         override a feature\'s label, durably\n'
-        "  sgt move <op>... --to <feature>        retag ops (+ their symbols) onto another feature\n"
-        "  sgt revert <feature>        revert an entire feature's op-set (grouped ∪ upset X)\n"
-        "  sgt history [--json]        mined commits in order + every op's kind/feature/commit-index\n"
-        "  sgt preview <verb> <args>   side-effect-free preview of merge/split/rename/move/revert\n"
-        "  sgt compose [--json]        one aggregate read: map/history/status/forks/plan/drift/\n"
-        "                              sessions/trust + the oracle verdict + open proposals\n"
-        "  sgt fold --at <spec> [--json]   side-effect-free code(I) + oracle verdict at an arbitrary\n"
-        "                              frontier (a commit-index, `op:<id>,...`, or a ref); no checkout\n"
-        '  sgt plan intake "<text>"    decompose a plan into predicted hollow ops (off-chain)\n'
-        "  sgt plan abandon <session>  drop a session's pending hollows and its record\n"
-        "  sgt plan status [--json]    active sessions and their steps' match status\n"
-        "  sgt checkpoint [--json]     preview step<->op footprint-overlap groups, and drift\n"
-        "  sgt checkpoint --confirm-hollow <id>... --confirm-op <id>...   apply one named group\n"
-        "  sgt drift [--json]          ops mined that no active plan predicted\n"
-        "  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile\n"
-        "                              pins/declared-edges/tree, surface any chain fork\n"
-        "  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n"
-        "  sgt forks [<symbol>] [--json]   list open same-symbol forks + their `sgt merge-op`\n"
-        "                              remedies; given a symbol, show that fork's two tips' files\n"
-        '  sgt propose create [--base REF] [--title "..."]   a base+Δ review object over REF (default main)\n'
-        "  sgt propose status <id>     staleness by re-union: current / clean-reunion / fork\n"
-        "  sgt propose land <id> [--subset <feature>...]   advance the base by CAS, all Δ or named features\n"
-        "  sgt propose render <id> --github   emit a suggested branch + a GitHub PR body (plain markdown)\n"
-        "  sgt propose publish <id> [--remote origin]   push the rendered branch + create/update a GitHub PR\n"
-        "  sgt tiers [--json]          the three-tier file boundary's effective config + coverage\n"
-        "  sgt tiers set <pattern> <entity|opaque|ignored>   add an override (`.sgt/tiers.json`)\n"
-        "  sgt session start <name> [--base <branch>]   a git-worktree scratch tree on its own branch\n"
-        "  sgt session status [<name>] [--watch]   active sessions + early-fork footprint overlaps\n"
-        "  sgt session land <name>     CAS-land the session's ops onto its target branch (U23)\n"
-        "  sgt session gc [--force]    reap sessions whose owning process has died\n"
-        "  sgt review-queue list [--json]   ops with session/agent/drift provenance, not yet reviewed\n"
-        '  sgt review-queue ack <op-id>... [--session <name>] [--note "..."]   mark an op-set reviewed\n'
-        "  sgt intent list [--json]    intent themes: why an edit happened, tiered by dependency\n"
-        "                              strength across features (coupled/co-changed/thematic)\n"
-        "  sgt intent show <theme-id|commit-sha> [--json]   one theme's or commit's atom breakdown\n"
-        "  sgt intent build [--json]  run the LLM theme pass, writing `.sgt/intent/themes.json`\n"
-        "  sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit]   revert the\n"
-        "                              theme's/commit's deterministic op-set (same gates as `revert`)\n"
-        "  sgt git <args...>           pass through to real git (refuses tree-mutating verbs; --force overrides)\n"
-        "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
-        "  <ref> is an op-id, an op-id prefix, a `file::name` symbol (its frontier tip), or a\n"
-        "  feature id/label (`revert` only)\n"
-        "  (read verbs take --json for the machine-readable sgt.api projection)\n"
+        "  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n"
+        "  sgt log [--json]            the mined operation DAG\n"
+        "  sgt undo                    invert the last mutating operation (the unified op log)\n"
+        "  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n"
+        "  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I ∪ downset X)\n"
+        "  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n"
         "\n"
-        "  advanced/maintenance (not part of the daily loop):\n"
-        "  sgt migrate [feature-ids|ops-v3] [--apply]   dry-run-by-default op-store schema\n"
-        "                              migration; a one-time repair step, not a repeat verb\n"
-        "  sgt reindex [--json]        force-rebuild the opindex sidecar (self-heals otherwise)\n"
+        "  navigation + inspection:\n"
+        "  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n"
+        "  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n"
+        "  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n"
+        "  sgt blame <path>            per-symbol semantic blame from the op DAG\n"
+        "\n"
+        "  agentic loop:\n"
+        "  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n"
+        "  sgt checkpoint [--json]     preview + confirm plan-step <-> mined-op matches\n"
+        "  sgt drift [--json]          ops no active plan predicted\n"
+        "\n"
+        "  rewrite pipeline:\n"
+        "  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n"
+        "  sgt commit                  commit a staged rewrite, gated oracle-green\n"
+        "\n"
+        "  groupings:\n"
+        "  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n"
+        "                              rename, select, why\n"
+        "  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n"
+        "                              after, fold, preview, tiers, identity, migrate,\n"
+        "                              history, compose, forks, intent, review-queue,\n"
+        "                              unstage, repair, merge-op, split-op, transplant\n"
+        "\n"
+        "  collaboration + setup:\n"
+        "  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n"
+        "  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n"
+        "  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n"
+        "  sgt propose <cmd>           a base+Δ review object: create/status/land/render/publish\n"
+        "  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n"
+        "  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n"
+        "  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n"
+        "  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n"
+        "\n"
+        "  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n"
+        "  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n"
     )
     return 0

@@ -208,6 +208,15 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
             _log.append(gb, branch, new, res.merged_ideal.op_ids)  # D1: best-effort, never raises
             if not checked_out:
                 gb.restore_worktree_to(snapshot)  # advanced only the shared ref; restore our tree
+                # A shared-out land (mirrors the `journal=checked_out` guard above): record it in the
+                # unified operation log (U8/KTD6) for provenance under the session's own ref, but its
+                # inverse is refused -- it already left this clone, so `undo` never rewinds it. A
+                # checked-out land instead journals an undoable `ideal_edit` via `record_ideal` above.
+                from sgt.core import oplog
+                try:
+                    oplog.append(repo, {"kind": "land", "branch": branch, "ops": sorted(res.merged_ideal.op_ids)})
+                except Exception:  # noqa: BLE001 -- provenance logging is never load-bearing for the land
+                    pass
             ops_added = len(res.merged_ideal.op_ids - ing.theirs_ideal_ids)
             return LandReport(
                 branch=branch, landed=True, land_sha=new, ops_added=ops_added, attempts=attempt,

@@ -9,11 +9,12 @@ import json
 
 from sgt.api import (
     compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, oplog_view,
-    plan_view, state_view, status_view, trust_view,
+    plan_view, resolve_selection, state_view, status_view, trust_view,
 )
 from sgt.core.lens import get
 from sgt.core.op import make_op
 from sgt.core.store import Store
+from sgt.lens import authored
 from sgt.loop import match as match_mod
 from sgt.loop import plan as plan_mod
 from sgt.store.gitbind import init_store
@@ -60,6 +61,45 @@ def test_ideal_diff_view_lists_symmetric_difference_grouped_by_symbol(tmp_path):
     assert sides["only_in_a"] != sides["only_in_b"]  # a genuine fork, two distinct op ids
 
 
+def test_resolve_selection_view_projects_op_set_label_and_counts(tmp_path):
+    """`resolve_selection` is the thin projection over `select.resolve`: it exposes the resolved
+    direct/closure op sets, the closure counts, and the display label for any spec form."""
+    from sgt.store.gitbind import init_store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add a.py")
+    get(tmp_path)
+    base_op = next(op for op in Store(tmp_path).all_ops() if "a.py::base" in op.footprint)
+
+    v = resolve_selection(tmp_path, "a.py::base")
+    assert v["ok"] is True
+    assert v["label"] == "a.py::base"
+    assert v["direct_ops"] == [base_op.id]
+    assert v["closure"] == [base_op.id]
+    assert v["direct_op_count"] == 1
+    assert v["closure_op_count"] == 1
+    assert v["candidates"] == []
+
+
+def test_resolve_selection_view_reports_ambiguous_candidates(tmp_path):
+    """An ambiguous NL phrase projects `ok=False` with the ranked candidates, never raising."""
+    from sgt.store.gitbind import init_store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add a.py")
+    get(tmp_path)
+    fa = authored.create(["a.py::base"], "payment alpha")
+    fb = authored.create(["a.py::base"], "payment gamma")
+    authored.save_authored(tmp_path, {fa.id: fa, fb.id: fb})
+
+    v = resolve_selection(tmp_path, "payment")
+    assert v["ok"] is False
+    assert v["message"]
+    assert {c["label"] for c in v["candidates"]} >= {"payment alpha", "payment gamma"}
+
+
 def test_oplog_view_is_sorted_and_carries_op_fields(tmp_path):
     """The op DAG is emitted in a deterministic (id-sorted) order with each op's kind, footprint,
     provenance, structured attribution (U22/D7), and intent -- no set-iteration leakage."""
@@ -94,8 +134,9 @@ def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monk
                 "state": json.dumps(state_view(repo), indent=2)}
 
     monkeypatch.chdir(repo)
-    for verb in ("log", "state"):
-        assert main([verb, "--json"]) == 0
+    # `log` stays a top-level spine verb; `state` is re-homed under the `advanced` grouping (KTD2).
+    for verb, argv in (("log", ["log"]), ("state", ["advanced", "state"])):
+        assert main([*argv, "--json"]) == 0
         assert capsys.readouterr().out.rstrip("\n") == expected[verb]
 
 
@@ -614,3 +655,98 @@ def test_compose_view_full_threads_into_children(tmp_path):
     # unaffected children are unchanged regardless of `full`
     assert v["map"] == map_view(repo)
     assert v["status"] == status_view(repo)
+
+
+# -- U3: per-dependent revert frontier (R4) -----------------------------------------------------
+
+def _chain_repo(tmp_path):
+    """helper <- user <- caller <- deep, each in its own commit. Reverting `user` exercises all
+    three frontier buckets: `helper` is a foundation (user builds on it), `caller` is a blast
+    (direct reference-edge dependent of user), `deep` is a carry (transitive, via caller)."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    (repo / "b.py").write_text("from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8")
+    gb.commit_all("user")
+    (repo / "c.py").write_text("from b import user\n\ndef caller():\n    return user() + 1\n", encoding="utf-8")
+    gb.commit_all("caller")
+    (repo / "d.py").write_text("from c import caller\n\ndef deep():\n    return caller() + 1\n", encoding="utf-8")
+    gb.commit_all("deep")
+    get(repo)
+    return repo
+
+
+def test_verb_preview_frontier_classifies_blast_carry_and_foundation(tmp_path):
+    from sgt.api import verb_preview_view
+
+    repo = _chain_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    by_sym = lambda s: next(o for o in ops if s in o.footprint)
+    helper_op, user_op = by_sym("a.py::helper"), by_sym("b.py::user")
+    caller_op, deep_op = by_sym("c.py::caller"), by_sym("d.py::deep")
+
+    v = verb_preview_view(repo, "revert", user_op.id)
+    rows = {r["op_id"]: r for r in v["frontier"]}
+    assert rows[caller_op.id] == {"op_id": caller_op.id, "bucket": "blast", "toggleable": True}
+    assert rows[deep_op.id] == {"op_id": deep_op.id, "bucket": "carry", "toggleable": True}
+    assert rows[helper_op.id] == {"op_id": helper_op.id, "bucket": "foundation", "toggleable": False}
+    assert user_op.id not in rows  # the revert target itself is not a frontier row
+
+
+def test_verb_preview_frontier_populates_for_a_symbol_ref_not_only_an_op_id(tmp_path):
+    """The frontier must resolve a `file::symbol` (or op-id prefix) ref to its op the same way the
+    plan does -- otherwise a symbol-targeted revert (the editor/blame entry point) gets an empty
+    frontier and silently degrades to a plain revert. Regression: `_frontier_rows` used the raw
+    unresolved `preview.target`."""
+    from sgt.api import verb_preview_view
+
+    repo = _chain_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    by_sym = lambda s: next(o for o in ops if s in o.footprint)
+    caller_op, deep_op = by_sym("c.py::caller"), by_sym("d.py::deep")
+
+    v = verb_preview_view(repo, "revert", "b.py::user")  # symbol ref, not an op-id
+    rows = {r["op_id"]: r for r in v["frontier"]}
+    assert rows[caller_op.id]["bucket"] == "blast"
+    assert rows[deep_op.id]["bucket"] == "carry"
+    # identical to the op-id-targeted frontier for the same symbol
+    assert rows == {r["op_id"]: r for r in verb_preview_view(repo, "revert", by_sym("b.py::user").id)["frontier"]}
+
+
+def test_verb_preview_frontier_matches_what_revert_keep_dependents_applies(tmp_path):
+    """The contract the TUI checklist (U9) and CLI `--keep` rely on: the projection's blast/carry
+    buckets and toggleability line up with the hollows drafted and symbols carried by apply."""
+    from sgt.api import verb_preview_view
+    from sgt.core import rewrite
+
+    repo = _chain_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    by_id = {o.id: o for o in ops}
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+
+    rows = verb_preview_view(repo, "revert", user_op.id)["frontier"]
+    blast = {r["op_id"] for r in rows if r["bucket"] == "blast"}
+    carry = {r["op_id"] for r in rows if r["bucket"] == "carry"}
+    foundation = {r["op_id"] for r in rows if r["bucket"] == "foundation"}
+
+    draft = rewrite.revert_keep_dependents(repo, user_op.id)  # keep all
+    hollow_syms = {next(iter(Store(repo).get_hollow(h).footprint)) for h in draft.hollow_ids}
+    blast_syms = {sym for oid in blast for sym in by_id[oid].footprint}
+    carry_syms = {sym for oid in carry for sym in by_id[oid].footprint}
+
+    assert blast_syms == hollow_syms  # every blast op's symbol got a continuation hollow
+    assert carry_syms == set(draft.meta["carry_forward"])  # every carry op's symbol is carried
+    assert foundation.isdisjoint(draft.meta["removed_ids"])  # foundation is never removed
+    assert all(not r["toggleable"] for r in rows if r["bucket"] == "foundation")
+    assert all(r["toggleable"] for r in rows if r["bucket"] in ("blast", "carry"))
+
+
+def test_verb_preview_frontier_is_empty_for_non_revert_verbs(tmp_path):
+    from sgt.api import verb_preview_view
+
+    repo = _chain_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    # `restore` of an already-live op is a no-op preview; its frontier block is empty.
+    assert verb_preview_view(repo, "restore", helper_op.id)["frontier"] == []

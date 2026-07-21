@@ -86,7 +86,7 @@ def test_log_json_full_is_machine_readable(tmp_path, capsys):
 
 def test_state_shows_frontier_and_coverage(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["state", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "state", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["covered_paths"] == ["a.py"]
     assert payload["oracle_configured"] is False
@@ -95,7 +95,7 @@ def test_state_shows_frontier_and_coverage(tmp_path, capsys):
 
 def test_state_json_full_shows_frontier(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["state", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["advanced", "state", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert "a.py::foo" in payload["frontier"]
 
@@ -105,7 +105,7 @@ def test_reindex_json_reports_op_count(tmp_path, capsys):
     _in(tmp_path, ["log"])  # mine, so the store isn't empty
     capsys.readouterr()
 
-    assert _in(tmp_path, ["reindex", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "reindex", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert payload["op_count"] >= 1
@@ -116,7 +116,7 @@ def test_reindex_text_reports_op_count(tmp_path, capsys):
     _in(tmp_path, ["log"])
     capsys.readouterr()
 
-    assert _in(tmp_path, ["reindex"]) == 0
+    assert _in(tmp_path, ["advanced", "reindex"]) == 0
     out = capsys.readouterr().out
     assert "reindex" in out and "op(s) indexed" in out
 
@@ -150,10 +150,10 @@ def test_history_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
     get(tmp_path)  # mine before computing the expected payload directly
     capsys.readouterr()
 
-    assert _in(tmp_path, ["history", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "history", "--json"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path)), indent=2)
 
-    assert _in(tmp_path, ["history", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["advanced", "history", "--json", "--full"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path), full=True), indent=2)
 
 
@@ -424,23 +424,23 @@ def test_fsck_reports_clean_store(tmp_path, capsys):
     _seed(tmp_path, 1)
     _in(tmp_path, ["log"])  # mine, so the store isn't empty
     capsys.readouterr()  # drain the priming `log` output
-    assert _in(tmp_path, ["fsck", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "fsck", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True and payload["checked"] >= 1
 
 
 def test_oracle_run_with_no_config_warns(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["oracle", "run"]) == 0
+    assert _in(tmp_path, ["advanced", "oracle", "run"]) == 0
     assert "no oracle configured" in capsys.readouterr().out
 
 
 def test_oracle_override_then_state_shows_verdict(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["oracle", "override", "--status", "pass", "--reason", "manual check"]) == 0
+    assert _in(tmp_path, ["advanced", "oracle", "override", "--status", "pass", "--reason", "manual check"]) == 0
     capsys.readouterr()
 
-    assert _in(tmp_path, ["state", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "state", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     # No `.sgt/oracle.json` -> not "configured", so state doesn't surface the override either
     # (a repo can still call `oracle override` without any tier config; `state` only surfaces
@@ -545,7 +545,7 @@ def test_drift_json_reports_nothing_with_no_active_session(tmp_path, capsys):
 def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys):
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["history", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["advanced", "history", "--json", "--full"]) == 0
     view = json.loads(capsys.readouterr().out)
     assert [c["index"] for c in view["commits"]] == [0, 1]
     assert view["ops"]
@@ -559,7 +559,7 @@ def test_compose_json_matches_the_api_view_byte_for_byte(tmp_path, capsys):
 
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["compose", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "compose", "--json"]) == 0
     out = capsys.readouterr().out
     assert out.rstrip("\n") == json.dumps(compose_view(str(tmp_path)), indent=2)
 
@@ -567,7 +567,7 @@ def test_compose_json_matches_the_api_view_byte_for_byte(tmp_path, capsys):
 def test_compose_text_summarizes_status_and_oracle(tmp_path, capsys):
     _seed(tmp_path, n=1)
     capsys.readouterr()
-    assert _in(tmp_path, ["compose"]) == 0
+    assert _in(tmp_path, ["advanced", "compose"]) == 0
     out = capsys.readouterr().out
     assert "file(s)" in out and "symbol(s)" in out and "feature(s)" in out
     assert "oracle: unconfigured" in out
@@ -577,11 +577,11 @@ def test_fold_at_commit_index_returns_that_frontiers_files(tmp_path, capsys):
     _seed(tmp_path, n=2)  # a.py::foo v1 (index 0), then v2 (index 1)
     capsys.readouterr()
 
-    assert _in(tmp_path, ["fold", "--at", "0", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "fold", "--at", "0", "--json"]) == 0
     early = json.loads(capsys.readouterr().out)
     assert early["files"]["a.py"] == "def foo():\n    return 1\n"
 
-    assert _in(tmp_path, ["fold", "--at", "1", "--json"]) == 0
+    assert _in(tmp_path, ["advanced", "fold", "--at", "1", "--json"]) == 0
     later = json.loads(capsys.readouterr().out)
     assert later["files"]["a.py"] == "def foo():\n    return 2\n"
     assert later["op_count"] > early["op_count"]
@@ -590,7 +590,7 @@ def test_fold_at_commit_index_returns_that_frontiers_files(tmp_path, capsys):
 def test_fold_at_ref_folds_head(tmp_path, capsys):
     _seed(tmp_path, n=1)
     capsys.readouterr()
-    assert _in(tmp_path, ["fold", "--at", "HEAD"]) == 0
+    assert _in(tmp_path, ["advanced", "fold", "--at", "HEAD"]) == 0
     out = capsys.readouterr().out
     assert "a.py" in out and "oracle verdict: pending" in out
 
@@ -598,11 +598,11 @@ def test_fold_at_ref_folds_head(tmp_path, capsys):
 def test_fold_at_bad_op_id_set_reports_forked_not_a_crash(tmp_path, capsys):
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["history", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["advanced", "history", "--json", "--full"]) == 0
     hist = json.loads(capsys.readouterr().out)
     non_root = next(o["id"] for o in hist["ops"] if o["commit_index"] > 0)
 
-    assert _in(tmp_path, ["fold", "--at", f"op:{non_root}"]) == 1
+    assert _in(tmp_path, ["advanced", "fold", "--at", f"op:{non_root}"]) == 1
     assert "fold --at" in capsys.readouterr().out
 
 
@@ -622,7 +622,7 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
 
     # `sgt split <feature>` with no `--apply` *is* the preview -- there is no separate
     # `sgt preview split` path (removed: it duplicated this exact read, see `_preview_verb`).
-    assert _in(tmp_path, ["split", feature_id, "--json"]) == 0
+    assert _in(tmp_path, ["feature", "regroup", "split", feature_id, "--json"]) == 0
     view = json.loads(capsys.readouterr().out)
     assert view["ok"] is True
     assert view["applied"] is False
@@ -645,9 +645,9 @@ def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
 def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):
     _seed(tmp_path, n=1)
     capsys.readouterr()
-    assert _in(tmp_path, ["preview", "not-a-verb"]) == 2
+    assert _in(tmp_path, ["advanced", "preview", "not-a-verb"]) == 2
     assert "usage: sgt preview" in capsys.readouterr().out
-    assert _in(tmp_path, ["preview", "merge", "only-one-arg"]) == 2
+    assert _in(tmp_path, ["advanced", "preview", "merge", "only-one-arg"]) == 2
     assert "usage: sgt preview" in capsys.readouterr().out
 
 
@@ -655,7 +655,7 @@ def test_preview_split_is_no_longer_a_verb(tmp_path, capsys):
     """Removed: bare `sgt split <feature>` already previews without `--apply` (see above)."""
     _seed(tmp_path, n=1)
     capsys.readouterr()
-    assert _in(tmp_path, ["preview", "split", "whatever"]) == 2
+    assert _in(tmp_path, ["advanced", "preview", "split", "whatever"]) == 2
     assert "usage: sgt preview" in capsys.readouterr().out
 
 
@@ -667,17 +667,96 @@ def test_help_mentions_kernel_verbs(capsys):
 
 
 def test_help_mentions_agentic_loop_verbs(capsys):
+    # The agentic-loop verbs are re-homed under the `advanced` grouping (KTD2); help advertises
+    # them there rather than at the top level.
     main(["help"])
     out = capsys.readouterr().out
-    assert "plan intake" in out and "checkpoint" in out and "drift" in out
+    assert "advanced" in out
+    assert "plan" in out and "checkpoint" in out and "drift" in out
 
 
 def test_help_mentions_history_and_preview_verbs(capsys):
+    # `history`/`preview` moved under the `advanced` grouping; help lists them there.
     main(["help"])
     out = capsys.readouterr().out
-    assert "sgt history" in out and "sgt preview" in out
+    assert "advanced" in out
+    assert "history" in out and "preview" in out
 
 
 def test_unknown_verb_falls_back_to_help(capsys):
     assert main(["nonsense"]) == 0
     assert "sgt —" in capsys.readouterr().out
+
+
+def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
+    """R2/KTD2 (re-triaged): the top-level `_VERBS` is exactly the daily spine + the daily
+    navigation/inspection/loop/rewrite verbs + the two groupings + the unchanged collaboration/setup
+    verbs. Only rare/maintenance verbs live under `advanced`."""
+    from sgt.cli import _VERBS
+
+    assert _VERBS == {
+        "save", "status", "log", "undo", "revert", "restore", "edit",
+        "switch", "diff", "map", "blame",
+        "plan", "checkpoint", "drift",
+        "commit", "fulfill",
+        "feature", "advanced",
+        "sync", "land", "push", "propose", "session", "init", "mcp",
+    }
+
+
+def test_removed_top_level_verb_points_to_its_new_home(capsys):
+    """A removed-but-known old verb errors with a clear pointer to its new home (KTD2's hard
+    rename, no alias layer); a genuinely unknown token still falls to `_help()`."""
+    assert main(["merge-op"]) == 2
+    assert "advanced merge-op" in capsys.readouterr().err
+    assert main(["reindex"]) == 2
+    assert "advanced reindex" in capsys.readouterr().err
+    assert main(["state"]) == 2
+    assert "advanced state" in capsys.readouterr().err
+    assert main(["merge"]) == 2  # re-homed two levels deep under `feature regroup`
+    assert "feature regroup merge" in capsys.readouterr().err
+
+
+def test_grouping_verbs_resolve(tmp_path, capsys):
+    """Happy path: a bare grouping prints its own subhelp and exits cleanly, and a re-homed verb
+    resolves at its new path."""
+    assert main(["feature"]) == 0
+    assert main(["feature", "regroup"]) == 0
+    assert main(["advanced"]) == 0
+    _seed(tmp_path, 1)
+    _in(tmp_path, ["log"])  # mine so the store isn't empty
+    capsys.readouterr()
+    assert _in(tmp_path, ["advanced", "fsck", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsys):
+    """CLI plumbing for the interactive revert frontier (U3/R4): `--keep <id>` retains exactly the
+    named dependent, drafting a continuation hollow for its symbol, while `--keep ""` keeps none (a
+    plain revert, no hollow). Exercises the argparse `--keep` parsing that the core-level
+    `revert_keep_dependents` behavior (tests/core/test_rewrite.py) never sees."""
+    from sgt.core.store import Store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add helper")
+    (tmp_path / "b.py").write_text(
+        "from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
+    )
+    gb.commit_all("add user, depending on helper")
+    assert _in(tmp_path, ["init", "."]) == 0
+    capsys.readouterr()
+
+    ops = Store(tmp_path).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+
+    # `--keep <user-op>`: retain the direct dependent -> exactly one continuation hollow.
+    assert _in(tmp_path, ["revert", helper_op.id, "--keep", user_op.id, "--json"]) == 0
+    kept = json.loads(capsys.readouterr().out)
+    assert kept["ok"] and len(kept["hollow_ids"]) == 1
+
+    # `--keep ""`: keep none -> a plain revert, no continuation hollow drafted.
+    assert _in(tmp_path, ["revert", helper_op.id, "--keep", "", "--json"]) == 0
+    none = json.loads(capsys.readouterr().out)
+    assert none["ok"] and none["hollow_ids"] == []

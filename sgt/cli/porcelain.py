@@ -13,8 +13,8 @@ Two things live here, both small and both *data*:
 2. **The daily-loop verbs (D3): `switch`, `save`, `undo`.** Exactly three, each composed from
    existing lens machinery (no new kernel call): `switch` materializes a named ideal (an existing
    branch's committed tree) via `get` + git checkout + `get`; `save` is the put-path sugar
-   (`get` + witness commit + `record_ideal`); `undo` inverts the last recorded ideal edit by
-   popping the ideal-edit journal (`lens.undo_ideal`). Everything git does that sgt does not wrap
+   (`get` + witness commit + `record_ideal`); `undo` inverts the last mutating operation by popping
+   the unified operation log (`oplog.undo`), whatever its kind. Everything git does that sgt does not wrap
    stays one keystroke away behind `sgt git …`; a verb is only wrapped where the sgt-native version
    is *semantically different*, never merely renamed (design doc §1 non-goal).
 """
@@ -38,7 +38,7 @@ REFUSALS: dict[str, str] = {
     "reset": "sgt undo  (or `sgt revert <ref>` to drop an op)",
     "rebase": "sgt sync  (history is a mined op DAG; sgt has no rebase)",
     "revert": "sgt revert <ref>",
-    "cherry-pick": "sgt restore <ref>  (or `sgt transplant <op>... --onto <ref>`)",
+    "cherry-pick": "sgt restore <ref>  (or `sgt advanced transplant <op>... --onto <ref>`)",
     "stash": "sgt save  (a dirty tree is just ops not yet landed)",
     "am": "git apply, then `sgt save` to record the change as ops",
 }
@@ -137,35 +137,50 @@ def _save(repo: str, message: str | None, as_json: bool) -> int:
 
 
 def _undo(repo: str, as_json: bool) -> int:
-    """`sgt undo` (D3): invert the last recorded ideal edit. Pops the ref's ideal-edit journal and
-    restores that prior ideal exactly (set arithmetic makes it exact), materialized as a fresh
-    witness commit (history is append-only -- undo is a forward edit, never a rewind)."""
-    from sgt.core.lens import DirtyWorkingTreeError, undo_ideal
+    """`sgt undo` (D3, R7): invert the last mutating operation. Walks the *unified* operation log
+    (U8/KTD6) reverse-chronologically -- popping the tail event and applying its inverse, whatever
+    its kind: an ideal edit re-materializes its prior ideal, a feature reorg restores its snapshot,
+    a shared-out `land`/`propose` is refused. History is append-only, so an undo is a forward edit,
+    never a ref rewind."""
+    from sgt.core import oplog
+    from sgt.core.lens import DirtyWorkingTreeError
     from sgt.store.gitbind import GitError
 
     try:
-        result = undo_ideal(repo)
+        outcome = oplog.undo(repo)
     except (DirtyWorkingTreeError, GitError, ValueError) as e:
         return _fail_json(str(e), as_json)
 
-    if result is None:
+    if outcome.status == "empty":
+        # Byte-identical to the pre-U8 message (a golden CLI snapshot pins it).
         msg = "nothing to undo -- no recorded ideal edits"
         if as_json:
             return _emit_json({"ok": True, "undone": False, "message": msg})
         print(f"✓ {msg}")
         return 0
 
+    if outcome.status == "refused":
+        return _fail_json(outcome.message, as_json)
+
+    if outcome.status == "ideal_edit":
+        result = outcome.ideal
+        if as_json:
+            return _emit_json({
+                "ok": True, "undone": True, "commit": result.witness_sha,
+                "restored_ops": len(result.ideal.op_ids),
+                "removed": sorted(result.removed), "added": sorted(result.added),
+            })
+        print(f"✓ undo {result.witness_sha[:12]}: restored {len(result.ideal.op_ids)} op(s)")
+        if result.removed:
+            print(f"    dropped {len(result.removed)} op(s): "
+                  + ", ".join(o[:12] for o in sorted(result.removed)))
+        if result.added:
+            print(f"    re-added {len(result.added)} op(s): "
+                  + ", ".join(o[:12] for o in sorted(result.added)))
+        return 0
+
+    # A metadata-snapshot kind (feature reorg / declared edge).
     if as_json:
-        return _emit_json({
-            "ok": True, "undone": True, "commit": result.witness_sha,
-            "restored_ops": len(result.ideal.op_ids),
-            "removed": sorted(result.removed), "added": sorted(result.added),
-        })
-    print(f"✓ undo {result.witness_sha[:12]}: restored {len(result.ideal.op_ids)} op(s)")
-    if result.removed:
-        print(f"    dropped {len(result.removed)} op(s): "
-              + ", ".join(o[:12] for o in sorted(result.removed)))
-    if result.added:
-        print(f"    re-added {len(result.added)} op(s): "
-              + ", ".join(o[:12] for o in sorted(result.added)))
+        return _emit_json({"ok": True, "undone": True, "kind": outcome.kind, "message": outcome.message})
+    print(f"✓ undo: {outcome.message}")
     return 0

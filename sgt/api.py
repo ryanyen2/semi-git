@@ -11,6 +11,9 @@ Shapes (stable; additive changes only):
 
 * ``oplog_view``        — the mined operation DAG: every op's id, kind, footprint, provenance,
   structured attribution (D7: session/agent/plan per witnessing sha), intent.
+* ``oplog_actions_view`` — the U8 unified *action* log (distinct from ``oplog_view``'s content
+  DAG): the current ref's undoable operation events (ideal-edit / feature-reorg / after /
+  land·propose), newest first, each with its kind and whether ``undo`` can invert it.
 * ``state_view``        — the current ref's ideal: frontier, coverage, entity-granularity fraction,
   and the async oracle's verdict (U9).
 * ``ideal_diff_view``   — the semantic diff between two refs' ideals, grouped by symbol.
@@ -127,6 +130,31 @@ def oplog_view(repo, *, full: bool = False, limit: int = 100, offset: int = 0) -
     }
 
 
+def oplog_actions_view(repo, *, ref: str | None = None) -> dict:
+    """The U8 unified *action* log for `ref` (the current ref by default) -- the append-only
+    operation-event history `sgt undo` walks, newest first. Distinct from ``oplog_view``, which
+    projects the mined *content* op-DAG; this is the user-action log that subsumes the old
+    ``ideal_journal``. Each event carries its ``kind`` (``ideal_edit``/``feature_reorg``/``after``/
+    ``land``/``propose``) and ``undoable`` -- False for a shared-out ``land``/``propose`` whose
+    inverse ``undo`` refuses to apply. A pure read (no mining, no undo)."""
+    from pathlib import Path
+
+    from sgt.core import oplog
+
+    key = ref if ref is not None else oplog._ref_key(Path(repo))
+    events = oplog.load(repo).get(key, []) if key is not None else []
+    _REFUSED = ("land", "propose")
+    return {
+        "ref": key,
+        "count": len(events),
+        # Newest first: `undo` pops the tail, so index 0 is the next event a bare `undo` reverses.
+        "events": [
+            {"kind": e.get("kind", "ideal_edit"), "undoable": e.get("kind", "ideal_edit") not in _REFUSED}
+            for e in reversed(events)
+        ],
+    }
+
+
 def _attribution_entries(op) -> list[dict]:
     """An op's structured provenance (D7) as a stable, sorted-by-sha list of `{sha, session?,
     agent?, plan?}` dicts, omitting None fields -- additive to `provenance` (the bare sha list),
@@ -232,6 +260,8 @@ def selection_view(repo, feature_refs) -> dict:
     module docstring for why -- the U25 BET-C gate that ruled out silent branch materialization)."""
     from sgt.lens.select import select
 
+    if isinstance(feature_refs, str):  # a discriminated single spec → the universal resolver (U1)
+        return resolve_selection(repo, feature_refs)
     result = select(repo, feature_refs)
     if not result.ok:
         return {"ok": False, "message": result.message}
@@ -244,6 +274,24 @@ def selection_view(repo, feature_refs) -> dict:
         ],
         "hub": result.hub,
         "message": result.message,
+    }
+
+
+def resolve_selection(repo, spec: str) -> dict:
+    """The universal selection resolver's projection (plan U1/KTD1): resolve any `sgt select <spec>`
+    form -- exact `file::symbol`, glob, authored-feature ref, clustered-feature ref, explicit id set,
+    or an NL phrase -- into the resolved direct/closure op sets, the closure counts, a display label,
+    and (on an ambiguous NL phrase) the ranked candidates. Report-only, like `select` (see
+    `sgt.lens.select`'s docstring -- the U25 BET-C gate that ruled out silent materialization)."""
+    from sgt.lens.select import resolve
+
+    result = resolve(repo, spec)
+    return {
+        "ok": result.ok, "message": result.message, "label": result.label,
+        "direct_ops": sorted(result.direct_ops), "closure": sorted(result.closure),
+        "direct_op_count": result.direct_op_count, "closure_op_count": result.closure_op_count,
+        "files": list(result.files),
+        "candidates": list(result.candidates),
     }
 
 
@@ -346,6 +394,50 @@ def _affected_rows(repo, removed_ids, added_ids) -> list[dict]:
     )
 
 
+def _frontier_rows(repo, preview) -> list[dict]:
+    """The per-dependent revert frontier (plan U3, R4): each op in the revert target's up-set
+    classified on ONE axis, plus the target's read-only prerequisites. Three buckets, one
+    vocabulary shared with `_affected_rows` and `rewrite.revert_keep_dependents`:
+
+    * ``blast``      -- a *direct* reference-edge dependent (its content names the reverted
+      symbol). Keeping it drafts a continuation hollow. ``toggleable``.
+    * ``carry``      -- a *transitive* dependent (in the up-set only via a chain through a direct
+      one). Keeping it repoints/carries mechanically (U5, free). ``toggleable``.
+    * ``foundation`` -- an upstream prerequisite the reverted core is built on (its downset). A
+      revert cannot drop it, so it is read-only (``toggleable: false``), never in the kept-set.
+
+    Each row is ``{op_id, bucket, toggleable}``. This is the exact data the TUI checklist (U9) and
+    the CLI ``--keep`` consume; blast/carry are derived the same way `revert_keep_dependents`
+    splits its up-set, so the projection matches what apply does. ``[]`` for any non-revert verb
+    or a refused preview (``edit`` -- plan U4 -- will reuse this same block)."""
+    if preview.verb != "revert" or not preview.ok:
+        return []
+    from sgt.core import lens, order, verbs
+    from sgt.core.ideal import Ideal
+    from sgt.core.store import Store
+
+    ops = Store(repo).all_ops()
+    # `preview.target` is the raw user ref -- a bare op-id, a `file::symbol`, or a unique op-id
+    # prefix. Resolve it to the single op-id the up-set was computed from (the SAME resolution
+    # `plan_revert` used), so a symbol/prefix revert gets a frontier too, not only a typed op-id.
+    # A ref that isn't a single live op (e.g. a whole-feature revert's set) has no single-op
+    # frontier -> bail.
+    target, _ = verbs.resolve_target(Ideal.from_ops(preview.before_ids, ops), ops, preview.target)
+    if target is None:
+        return []
+    declared = lens._load_declared(repo)
+    removed = preview.removed
+    direct = {b for a, b in order.reference_edges(ops) if a == target and b in removed}
+
+    rows = [
+        {"op_id": oid, "bucket": "blast" if oid in direct else "carry", "toggleable": True}
+        for oid in sorted(removed) if oid != target
+    ]
+    foundation = order.downset_in(target, preview.before_ids, ops, declared) - {target}
+    rows += [{"op_id": oid, "bucket": "foundation", "toggleable": False} for oid in sorted(foundation)]
+    return rows
+
+
 def _project_verb_preview(repo, preview) -> dict:
     """Given an already-computed `sgt.core.verbs.VerbPreview`, the per-file before/after bytes
     plus the rest of `verb_preview_view`'s shape. Factored out so a caller that resolves its own
@@ -378,6 +470,7 @@ def _project_verb_preview(repo, preview) -> dict:
         "files": files,
         "message": preview.message,
         "affected": _affected_rows(repo, preview.removed, preview.added),
+        "frontier": _frontier_rows(repo, preview),
     }
 
 
@@ -488,22 +581,35 @@ def map_view(repo) -> dict:
             merged.update(node_sessions(c))
         return sorted(merged)
 
-    emitted = [
-        {
+    # Authored features (U6/R3, KTD4) override the clustered proposal: where a user has authored a
+    # feature over a leaf's symbols, that leaf shows the authored label + `af-` id, not the cluster's.
+    # Guarded on presence so a repo with no authored features projects byte-identically to before.
+    from sgt.lens.authored import load_authored
+    from sgt.lens.tree import _authored_leaf_claims
+    authored_claims = _authored_leaf_claims(nodes, load_authored(repo))
+
+    def _emit(nid: str, nd: dict) -> dict:
+        row = {
             "id": nid,
             "label": nd.get("label", nid),
             "kind": "feature" if not nd["children"] else "subsystem",
             "parent": nd["parent"],
             "children": sorted(nd["children"]),
             "size": nd["size"],
+            "members": list(nd.get("members", [])),
             "op_count": op_count(nid),
             "dir": nd.get("dir", ""),
             "why": nd.get("why", ""),
             "split_reason": nd.get("split_reason"),
             "sessions": node_sessions(nid),
         }
-        for nid, nd in sorted(nodes.items())
-    ]
+        claim = authored_claims.get(nid)
+        if claim is not None:
+            row["label"] = claim.label
+            row["authored_id"] = claim.id
+        return row
+
+    emitted = [_emit(nid, nd) for nid, nd in sorted(nodes.items())]
     ideal = current_ideal(repo)
     _, fused = fused_graph(repo, ops, ideal)
 
@@ -611,9 +717,7 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
         preview = lens_verbs.plan_split(repo, args[0])
         affected: list[str] = []
         if preview.ok:
-            tree_result = tree_mod.load(repo)
-            new_id = next(tree_mod._fresh_id_gen(set(tree_result["nodes"])))
-            affected = [preview.feature_id, new_id]
+            affected = [preview.feature_id, preview.new_id]  # the content-addressed id apply mints (KTD4)
         return {
             "ok": preview.ok, "verb": "split", "message": preview.message,
             "feature_id": preview.feature_id,

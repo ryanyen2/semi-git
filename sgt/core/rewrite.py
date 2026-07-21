@@ -299,19 +299,27 @@ def transplant(repo: str | Path, op_ids: list[str], onto_ref: str, intent: str |
     return _register(repo, draft)
 
 
-def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
-    """Removes `target`'s full up-set (chain + reference + declared). *Direct* reference-edge
-    dependents get a real continuation hollow -- their content actually names the removed symbol,
-    so an agent/human/backend must rewrite it (plan U5's repair loop). Everything else in the
-    up-set (U7, transitive-dependent hollows) is affected only because it structurally required a
-    direct dependent's *pre-removal* version, never the removed symbol itself: its own bytes don't
-    need to change at all. Those are carried forward mechanically -- same footprint, same image,
-    `requires` cleared (`build_candidate`'s `carry_forward` step, mirroring `split-op`'s automatic
-    tail) -- with no hollow, no agent, no LLM call. This is deliberately *not* "fix each downstream
-    dependent one hop at a time": walking the chain and re-drafting/re-repairing hop by hop would
-    spend a backend call on every intermediate symbol even though only the direct dependents' text
-    actually changes; the transitive tail is pure bookkeeping, resolved once, for free, regardless
-    of how deep the chain runs."""
+def revert_keep_dependents(
+    repo: str | Path, target: str, intent: str | None = None,
+    keep: frozenset[str] | set[str] | None = None,
+) -> RewriteDraft:
+    """Removes `target`'s full up-set (chain + reference + declared), keeping a caller-chosen
+    *frontier* of dependents (plan U3, R4). The up-set splits on one axis into two toggleable
+    buckets and one read-only one: **blast** = a *direct* reference-edge dependent whose content
+    names the removed symbol, so keeping it drafts a real continuation hollow an agent/human must
+    rewrite (plan U5's repair loop); **carry** = a *transitive* dependent, in the up-set only
+    because it structurally required a direct dependent's *pre-removal* version -- its own bytes
+    never named the removed symbol, so keeping it carries it forward mechanically (same footprint,
+    same image, `requires` cleared -- `build_candidate`'s `carry_forward` step, mirroring
+    `split-op`'s automatic tail -- no hollow, no agent, no LLM). This is deliberately *not* "fix
+    each downstream dependent one hop at a time": the transitive tail is pure bookkeeping, resolved
+    once, for free, regardless of how deep the chain runs.
+
+    `keep` is the set of toggleable (blast/carry) dependent op-ids to preserve, as chosen from the
+    `--preview` frontier (`sgt.api._frontier_rows`). `keep=None` keeps them **all** -- the original
+    all-or-nothing behavior, preserved exactly. A dependent *not* in `keep` is removed with the
+    up-set (a dropped blast drafts no hollow; a dropped carry is not carried). An empty `keep`
+    degenerates to a plain full-up-set removal (equivalently `verbs.plan_revert`)."""
     repo = Path(repo)
     store = Store(repo)
     ops = store.all_ops()
@@ -328,13 +336,28 @@ def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = N
         b for a, b in order.reference_edges(ops) if a == op_id and b in full_removed
     )
     removed_symbol = next(iter(by_id[op_id].footprint))
+    direct_syms = {sym for dep_id in direct_dependents for sym in by_id[dep_id].footprint}
+
+    # The transitive tail: symbols still alive at the pre-removal frontier whose tip op fell into
+    # `full_removed` only via a *chain* through a direct dependent, never via their own reference
+    # edge to `target`. `sym -> tip op-id`, so the kept-set (op-ids) can select them.
+    target_syms = set(by_id[op_id].footprint)
+    frontier = ideal.frontier(ops)
+    carry_tips = {
+        sym: tip_id for sym, tip_id in frontier.items()
+        if tip_id in full_removed and sym not in target_syms and sym not in direct_syms
+        and by_id[tip_id].images.get(sym) is not None
+    }
+
+    # The frontier's toggleable dependents are the blast (direct) + carry (transitive-tip) op-ids;
+    # `keep=None` keeps them all (today's behavior), an explicit set keeps only the named ids.
+    kept = set(direct_dependents) | set(carry_tips.values()) if keep is None else set(keep)
 
     hollows = []
-    direct_syms: set[str] = set()
-    for dep_id in direct_dependents:
+    kept_blast = [dep_id for dep_id in direct_dependents if dep_id in kept]
+    for dep_id in kept_blast:
         dep = by_id[dep_id]
         for sym, (before, _after) in dep.footprint.items():
-            direct_syms.add(sym)
             h = make_op(
                 {sym: (before, _PENDING)}, {}, kind="rework", off_chain=True,
                 intent=intent or f"rewrite {sym} to not depend on removed {removed_symbol}",
@@ -342,24 +365,125 @@ def revert_keep_dependents(repo: str | Path, target: str, intent: str | None = N
             store.add_hollow(h)
             hollows.append(h)
 
-    # Every other symbol still alive at the pre-removal frontier whose tip op fell into
-    # `full_removed` (i.e. it's in the up-set only via a *chain* through a direct dependent, never
-    # via its own reference edge to `target`) is carried forward unchanged -- see `build_candidate`.
-    target_syms = set(by_id[op_id].footprint)
-    frontier = ideal.frontier(ops)
-    carry_forward = sorted(
-        sym for sym, tip_id in frontier.items()
-        if tip_id in full_removed and sym not in target_syms and sym not in direct_syms
-        and by_id[tip_id].images.get(sym) is not None
-    )
+    carry_forward = sorted(sym for sym, tip_id in carry_tips.items() if tip_id in kept)
 
     draft = RewriteDraft(
         ok=True, verb="revert-keep-dependents", target=op_id,
         hollow_ids=tuple(h.id for h in hollows),
         meta={"removed_ids": sorted(full_removed), "carry_forward": carry_forward},
         message=f"removes {len(full_removed)} op(s); drafted {len(hollows)} continuation "
-                f"hollow(s) for {len(direct_dependents)} direct dependent(s); carries "
+                f"hollow(s) for {len(kept_blast)} kept direct dependent(s); carries "
                 f"{len(carry_forward)} transitively affected symbol(s) forward unchanged",
+    )
+    return _register(repo, draft)
+
+
+def _blast_dependents(op_id, sym, version, ideal, ops, by_id, declared) -> list[str]:
+    """The target op's *blast* dependents: direct reference-edge dependents whose `requires` names
+    `(sym, version)` -- the version the target op itself presents. A transitive dependent never
+    names the target's own version, so it is untouched (no repoint, no removal). Shared by `edit_op`
+    (the happy-path repoint) and `edit_repair_op` (the red-oracle rework), which classify the same
+    set off the same reference edges."""
+    upset = order.upset_in(op_id, ideal.op_ids, ops, declared)
+    return sorted(
+        b for a, b in order.reference_edges(ops)
+        if a == op_id and b in upset and (sym, version) in by_id[b].requires
+    )
+
+
+def edit_op(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
+    """`sgt edit <target>` (plan U4, R5/KTD5): change a symbol in place. Drafts one chain-extension
+    hollow whose `before` is the target's *current* after_version -- the tip-after shape `merge_op`
+    uses (`sgt/core/rewrite.py`, `before = a.footprint[sym][1]`), NOT `split_op`'s original-before
+    intermediate cut -- and `after = _PENDING`. The user edits the file and `fulfill(..., from_tree=
+    True)` reads the new bytes.
+
+    Because versions are content hashes, the edit stales every dependent's `requires` edge that
+    named the target's *old* version. Those are exactly the target's direct reference-edge (blast)
+    dependents; they are recorded in `meta` and repointed mechanically (`_mint_repoints`, no LLM) in
+    `build_candidate` once the new version is known. `removed_ids` subtracts the pre-edit dependents
+    so their repointed replacements take their place. A red oracle can't be pinned to one dependent
+    (KTD5 bounded-safety), so `edit_repair_op` then drafts continuation hollows for *all* of them."""
+    repo = Path(repo)
+    store = Store(repo)
+    ops = store.all_ops()
+    by_id = {op.id: op for op in ops}
+    ideal = lens.current_ideal(repo)
+    declared = lens._load_declared(repo)
+
+    op_id, err = resolve_target(ideal, ops, target)
+    if err:
+        return _refuse("edit", target, err)
+    original = by_id[op_id]
+    if len(original.footprint) != 1:
+        return _refuse("edit", op_id, "edit targets a single-symbol op; regroup the feature first")
+    (sym, (_before, after_version)), = original.footprint.items()
+    if original.images.get(sym) is None:
+        return _refuse("edit", op_id, f"{sym} has no after-image to edit (a removal can't be edited)")
+
+    hollow = make_op(
+        {sym: (after_version, _PENDING)}, {}, kind="edit", off_chain=True,
+        intent=intent or f"edit: change {sym} in place (chain-extends {op_id[:12]})",
+    )
+    store.add_hollow(hollow)
+
+    # Blast = direct reference-edge dependents naming the target's current version; a transitive
+    # dependent never names the target's own version, so it's untouched (no repoint, no removal).
+    blast = _blast_dependents(op_id, sym, after_version, ideal, ops, by_id, declared)
+    draft = RewriteDraft(
+        ok=True, verb="edit", target=op_id, hollow_ids=(hollow.id,),
+        meta={
+            "edit_symbol": sym, "old_version": after_version,
+            "removed_ids": blast, "repoint_deps": blast,
+        },
+        message=f"drafted an edit hollow for {sym}; fulfilling it repoints "
+                f"{len(blast)} dependent(s) mechanically",
+    )
+    return _register(repo, draft)
+
+
+def edit_repair_op(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
+    """The red-oracle companion to `edit_op` (plan U4/KTD5, bounded-safety caveat). Once a staged
+    edit's whole-suite oracle verdict is red, it can't be attributed to a specific dependent, so
+    this drafts a continuation hollow for *every* blast (direct reference-edge) dependent of the
+    target -- not "only the broken ones" -- reusing `revert_keep_dependents`'s per-dependent hollow
+    shape, for `--repair` (the LLM loop) to fill and re-gate. The edit op itself is already in the
+    store (the happy-path `fulfill` added it); it is carried as a `required_id`, while the stale
+    pre-edit dependents are `removed`, replaced by the reworked hollows."""
+    repo = Path(repo)
+    store = Store(repo)
+    ops = store.all_ops()
+    by_id = {op.id: op for op in ops}
+    ideal = lens.current_ideal(repo)
+    declared = lens._load_declared(repo)
+
+    op_id, err = resolve_target(ideal, ops, target)
+    if err:
+        return _refuse("edit-repair", target, err)
+    original = by_id[op_id]
+    (sym, (_before, old_version)), = original.footprint.items()
+
+    # The edit op is the `kind="edit"` chain-extension the happy-path `fulfill` already added to the
+    # store (its `before` is the target's own version); absent it there is nothing to repair.
+    edits = [o for o in ops if o.kind == "edit" and o.footprint.get(sym, (None, None))[0] == old_version]
+    if not edits:
+        return _refuse("edit-repair", op_id, f"no staged edit of {sym} to repair -- run `sgt edit` + fulfill first")
+    edit = edits[-1]
+
+    blast = _blast_dependents(op_id, sym, old_version, ideal, ops, by_id, declared)
+    hollows = []
+    for dep_id in blast:
+        for dsym, (before, _after) in by_id[dep_id].footprint.items():
+            h = make_op(
+                {dsym: (before, _PENDING)}, {}, kind="rework", off_chain=True,
+                intent=intent or f"rework {dsym} for the edited {sym}",
+            )
+            store.add_hollow(h)
+            hollows.append(h)
+    draft = RewriteDraft(
+        ok=True, verb="edit-repair", target=op_id, hollow_ids=tuple(h.id for h in hollows),
+        meta={"required_ids": [edit.id], "removed_ids": blast},
+        message=f"drafted {len(hollows)} continuation hollow(s) for {sym}'s blast dependents",
     )
     return _register(repo, draft)
 
@@ -396,6 +520,33 @@ def identity_join(repo: str | Path, a: str, b: str) -> dict:
 
 
 # -- stage / fulfill / land (the only writers of real bytes and commits) --------------------------
+
+def _mint_repoints(store: Store, entries: list[dict]) -> dict[str, Op]:
+    """The mechanical, LLM-free `requires`-repoint mint (R6 / U5), shared by the two paths that
+    stale a dependent's edge to an advanced target: U5's revert-and-replace (`draft.meta["repoint"]`
+    carries the entries, since the new version is known at draft time) and U4's `edit` (build_candidate
+    computes the entries once the edit hollow is fulfilled). Each entry names a dependent op-id plus
+    the `(symbol, old_version) -> (symbol, new_version)` edge to remap; the dependent's footprint and
+    image are copied verbatim -- only that one edge changes, so the produced version is unchanged.
+    Pure and content-addressed like the split-op tail / carry-forward mints: no hollow, no backend,
+    no LLM. A dependent whose `requires` never named the old version has no edge to the target and is
+    skipped (no op minted), keyed `repoint:<dep-id>`."""
+    by_id = {op.id: op for op in store.all_ops()}
+    minted: dict[str, Op] = {}
+    for entry in entries:
+        dep = by_id[entry["op_id"]]
+        old_edge = (entry["symbol"], entry["old_version"])
+        if old_edge not in dep.requires:
+            continue
+        new_requires = frozenset(dep.requires - {old_edge}) | {(entry["symbol"], entry["new_version"])}
+        minted[f"repoint:{dep.id}"] = make_op(
+            dict(dep.footprint), dict(dep.images), requires=new_requires, kind="repoint",
+            intent=f"repoint {entry['symbol']} onto {entry['new_version'][:12]} "
+                   f"(requires-only, mechanical, no LLM)",
+            resolves=dep.resolves,
+        )
+    return minted
+
 
 def build_candidate(
     repo: str | Path, draft: RewriteDraft, images: dict[str, bytes] | None = None, *,
@@ -468,6 +619,32 @@ def build_candidate(
             )
             fulfilled[f"carry:{sym}"] = carry
             candidate_ids.add(carry.id)
+
+    if draft.meta.get("repoint"):
+        # R6 / U5: the mechanical, LLM-free companion to carry_forward. When a revert-and-replace
+        # advances the target to a new content version, its dependents' `requires` edges go stale;
+        # the entries name the exact `(symbol, old_version) -> (symbol, new_version)` remap up front
+        # (the new version is already known at draft time on this path).
+        for key, op in _mint_repoints(store, draft.meta["repoint"]).items():
+            fulfilled[key] = op
+            candidate_ids.add(op.id)
+
+    if draft.verb == "edit" and draft.meta.get("repoint_deps"):
+        # U4 / KTD5: the same mechanical repoint, but the target's *new* version is unknown until
+        # the edit hollow is fulfilled -- so `edit_op` records only the dependent op-ids and the old
+        # version, and the remap entries are finalized here from the just-fulfilled edit op. Every
+        # recorded dependent named the old version (blast, direct reference edge), so none is skipped.
+        (hollow_id,) = draft.hollow_ids
+        sym = draft.meta["edit_symbol"]
+        new_version = fulfilled[hollow_id].footprint[sym][1]
+        entries = [
+            {"op_id": dep_id, "symbol": sym,
+             "old_version": draft.meta["old_version"], "new_version": new_version}
+            for dep_id in draft.meta["repoint_deps"]
+        ]
+        for key, op in _mint_repoints(store, entries).items():
+            fulfilled[key] = op
+            candidate_ids.add(op.id)
 
     ops = store.all_ops() + list(fulfilled.values())
     try:
