@@ -23,7 +23,7 @@ from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, Label, Static
 
 from sgt.tui.color import color_for
-from sgt.tui.graph import render_graph_lines
+from sgt.tui.graph import render_graph_lines, render_rail_lines
 
 _KIND_GLYPH = {"feature": "●", "subsystem": "▸", "symbol": "◦"}
 _NARROW = 100  # below this terminal width, fold the detail pane into a modal
@@ -253,6 +253,34 @@ class GraphScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class EpisodeScreen(ModalScreen[None]):
+    """The episode rail (`sgt episodes`): a vertical git-log of what happened, in order -- newest
+    commit-episode on top, each feature a lane column, lanes reused across non-overlapping spans.
+    Where GraphScreen answers "what is the codebase made of, over time," this answers "what did I
+    do, in order" -- the rewind lens. Read-only, like GraphScreen."""
+
+    BINDINGS = [Binding("escape,q,e", "close", "Close")]
+
+    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None) -> None:
+        super().__init__()
+        self._map_view = map_view
+        self._history_view = history_view
+        self._selected = selected
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="graph-modal"):
+            with VerticalScroll(id="graph-scroll"):
+                yield Static(self._body(), id="graph-body")
+            yield Label("[b]esc[/b] close   ·   newest episode on top", id="hint")
+
+    def _body(self) -> Text:
+        lines = render_rail_lines(self._map_view, self._history_view, selected=self._selected)
+        return Text.from_ansi("\n".join(lines))
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class FrontierScreen(ModalScreen[None]):
     """The revert frontier as a checkable list (plan U9/U3, R8/R4). Each ``blast``/``carry``
     dependent is a row ``space`` toggles into the kept-set (keeping it retains that op, so the
@@ -378,6 +406,7 @@ class SgtTui(App[None]):
         Binding("space", "toggle_select", "Select"),
         Binding("e", "expand", "Expand"),
         Binding("g", "graph", "Graph"),
+        Binding("e", "episodes", "Episodes"),
         Binding("f", "frontier", "Frontier"),
         Binding("r", "preview_revert", "Preview revert"),
         Binding("X", "apply_revert", "Revert!"),  # mutating ops are uppercase, apart from previews
@@ -453,6 +482,16 @@ class SgtTui(App[None]):
             return
         hist = history_view(self.repo, full=True, limit=1_000_000)
         self.push_screen(GraphScreen(self._map_view, hist, self._selected_id()))
+
+    def action_episodes(self) -> None:
+        """Open the episode rail (the vertical git-log / "what I did, in order" lens). Reuses the
+        mined `map_view` + `history_view`, read-only like the graph overview."""
+        from sgt.api import history_view
+
+        if not getattr(self, "_map_view", None):
+            return
+        hist = history_view(self.repo, full=True, limit=1_000_000)
+        self.push_screen(EpisodeScreen(self._map_view, hist, self._selected_id()))
 
     def _display_rows(self) -> list[dict]:
         """The base display list: every feature/subsystem row, plus -- for each expanded feature --
