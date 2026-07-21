@@ -31,6 +31,7 @@ retry.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import time
@@ -86,6 +87,36 @@ def _load_backfill_state(repo: Path) -> dict[str, dict]:
 
 def _save_backfill_state(repo: Path, table: dict[str, dict]) -> None:
     state.save_json(repo, "backfill", table)
+
+
+def _load_sync_cache(repo: Path) -> dict[str, dict]:
+    """The per-ref no-op gate: `{ref_key: {"fp": <fingerprint>, "ids": [sorted op_ids]}}`. `fp`
+    covers everything a re-mine depends on -- HEAD, the dirty working-tree source content, and the
+    persisted ideal entry -- so when it's unchanged since the last `_sync`, that sync would return
+    the same ideal and can be skipped entirely (the mine's O(files) dirty pass is the bulk of a
+    warm `get()`). Local, never travels; an absent file loads as `{}`."""
+    return state.load_json(repo, "sync_cache", default={})
+
+
+def _save_sync_cache(repo: Path, table: dict[str, dict]) -> None:
+    state.save_json_if_changed(repo, "sync_cache", table)
+
+
+def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry) -> str | None:
+    """The fingerprint the no-op gate compares. None (git couldn't compute the dirty digest) means
+    'don't gate -- mine'. `ideal_entry` is the persisted ideal id-list for this ref, so an explicit
+    ideal edit (revert/pin, U8) -- which moves neither HEAD nor the tree -- still changes the
+    fingerprint and forces a fresh sync."""
+    digest = gb.dirty_source_digest()
+    if digest is None:
+        return None
+    h = hashlib.sha256()
+    h.update(head.encode())
+    h.update(b"\x00")
+    h.update(digest.encode())
+    h.update(b"\x00")
+    h.update(json.dumps(ideal_entry, sort_keys=True).encode())
+    return h.hexdigest()
 
 
 def _load_ideal_journal(repo: Path) -> dict[str, list[dict]]:
@@ -304,6 +335,22 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     new_witness = prev_head
     new_backfill_state = dict(backfill_state)
 
+    # No-op gate (KTD-perf): mine-on-contact (R9) exists so a read reflects reality, but re-mining a
+    # tree that hasn't changed since the last `_sync` reproduces the same ops -- and the dirty pass
+    # is O(files), the bulk of a warm `get()`. So when we're forward-current (`prev_head == head`),
+    # not mid-backfill, and the fingerprint (HEAD + dirty source content + persisted ideal) matches
+    # the last sync, return the cached ideal without touching git history, the entity graph, or the
+    # store. Any real change -- a new commit, an edited/added source file, or an explicit ideal edit
+    # (revert/pin) -- moves the fingerprint and falls through to a full sync, so R9's guarantee holds
+    # exactly where it matters.
+    backfill_in_progress = has_backfill_record and not backfill_state.get("reached_genesis", False)
+    if treat_as_root is None and prev_head is not None and prev_head == head and not backfill_in_progress:
+        ideal_entry = _load_ideal_table(repo).get(key)
+        fp = _sync_fingerprint(gb, head, ideal_entry)
+        cached = _load_sync_cache(repo).get(key)
+        if fp is not None and cached is not None and cached.get("fp") == fp:
+            return Ideal.from_ops(frozenset(cached.get("ids", [])), opindex.index_ops(repo))
+
     # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
     # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
     # `.sgt/` path actually differs from HEAD (R16); on a tree whose only churn is `.sgt/` state
@@ -435,7 +482,22 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
 
     # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
     # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
-    return Ideal.from_ops(order.reduce_to_ideal(committed_ids | pending_ids, all_ops), all_ops)
+    result = Ideal.from_ops(order.reduce_to_ideal(committed_ids | pending_ids, all_ops), all_ops)
+
+    # (6) Refresh the no-op gate's cache so the next `get()` on an unchanged tree short-circuits.
+    # Only when we're in the stable state the gate checks for (forward-current, backfill complete):
+    # caching mid-backfill would let the gate skip the remaining backward chunks. Recompute the
+    # fingerprint against the *new* ideal entry (this sync may have changed it).
+    reached_genesis = new_backfill_state.get("reached_genesis", False) or not (
+        has_backfill_record or new_backfill_state.get("genesis_frontier") is not None
+    )
+    if treat_as_root is None and new_witness == head and reached_genesis:
+        fp = _sync_fingerprint(gb, head, sorted(committed_ids))
+        if fp is not None:
+            table = _load_sync_cache(repo)
+            table[key] = {"fp": fp, "ids": sorted(result.op_ids)}
+            _save_sync_cache(repo, table)
+    return result
 
 
 def get(repo: str | Path) -> Ideal:

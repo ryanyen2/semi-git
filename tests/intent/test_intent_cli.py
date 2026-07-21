@@ -38,10 +38,10 @@ def test_intent_list_json_matches_intent_view(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr(theme, "get_client", _no_client)
     _seed(tmp_path)
-    assert _in(tmp_path, ["advanced", "intent", "build"]) == 0
+    assert _in(tmp_path, ["intent", "build"]) == 0
     capsys.readouterr()
 
-    assert _in(tmp_path, ["advanced", "intent", "list", "--json"]) == 0
+    assert _in(tmp_path, ["intent", "list", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     from sgt.api import intent_view
@@ -53,7 +53,7 @@ def test_intent_show_commit_resolves_atom_and_lists_ops(tmp_path, capsys):
     gb = _seed(tmp_path)
     sha = gb.rev_parse("HEAD")
 
-    assert _in(tmp_path, ["advanced", "intent", "show", sha, "--json"]) == 0
+    assert _in(tmp_path, ["intent", "show", sha, "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["kind"] == "atom"
@@ -64,7 +64,7 @@ def test_intent_show_commit_resolves_atom_and_lists_ops(tmp_path, capsys):
 def test_intent_show_unknown_target_fails(tmp_path, capsys):
     _seed(tmp_path)
 
-    assert _in(tmp_path, ["advanced", "intent", "show", "no-such-target", "--json"]) == 1
+    assert _in(tmp_path, ["intent", "show", "no-such-target", "--json"]) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
 
@@ -76,19 +76,19 @@ def test_intent_build_writes_themes_json_second_build_is_a_no_op_cache_hit(tmp_p
     monkeypatch.setattr(theme, "get_client", _no_client)
     _seed(tmp_path)
 
-    assert _in(tmp_path, ["advanced", "intent", "build"]) == 0
+    assert _in(tmp_path, ["intent", "build"]) == 0
     themes_path = tmp_path / ".sgt" / "intent" / "themes.json"
     assert themes_path.is_file()
     before_mtime = themes_path.stat().st_mtime_ns
 
-    assert _in(tmp_path, ["advanced", "intent", "build"]) == 0
+    assert _in(tmp_path, ["intent", "build"]) == 0
     after_mtime = themes_path.stat().st_mtime_ns
     assert before_mtime == after_mtime  # no-op cache hit -- save_json_if_changed skips the write
 
 
 def test_intent_usage_on_missing_or_unknown_sub(tmp_path, capsys):
     _seed(tmp_path)
-    assert _in(tmp_path, ["advanced", "intent"]) == 2
+    assert _in(tmp_path, ["intent"]) == 2
     assert "usage: sgt intent" in capsys.readouterr().out
 
 
@@ -109,7 +109,7 @@ def test_intent_revert_commit_equals_hand_issued_revert_over_the_same_op_set(tmp
 
     expected = verbs.plan_revert_op_set(tmp_path, sha, commit_op_ids)
 
-    assert _in(tmp_path, ["advanced", "intent", "revert", sha, "--emit", "--json"]) == 0
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert sorted(payload["removed"]) == sorted(expected.removed)
@@ -121,13 +121,13 @@ def test_intent_revert_emit_shows_diff_without_flipping_the_ideal(tmp_path, caps
     gb = _seed(tmp_path)
     sha = gb.rev_parse("HEAD")
 
-    assert _in(tmp_path, ["advanced", "intent", "revert", sha, "--emit", "--json"]) == 0
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
     capsys.readouterr()
 
     from sgt.core.lens import current_ideal
 
     before = current_ideal(tmp_path).op_ids
-    assert _in(tmp_path, ["advanced", "intent", "revert", sha, "--emit", "--json"]) == 0
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
     capsys.readouterr()
     after = current_ideal(tmp_path).op_ids
     assert before == after  # --emit never applies
@@ -135,7 +135,7 @@ def test_intent_revert_emit_shows_diff_without_flipping_the_ideal(tmp_path, caps
 
 def test_intent_revert_unknown_target_fails(tmp_path, capsys):
     _seed(tmp_path)
-    assert _in(tmp_path, ["advanced", "intent", "revert", "no-such-target", "--json"]) == 1
+    assert _in(tmp_path, ["intent", "revert", "no-such-target", "--json"]) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
 
@@ -162,7 +162,7 @@ def test_intent_revert_subset_deselecting_a_required_atom_is_refused_by_name(tmp
     from sgt.core.lens import get
 
     get(tmp_path)
-    assert _in(tmp_path, ["advanced", "intent", "build"]) == 0
+    assert _in(tmp_path, ["intent", "build"]) == 0
     capsys.readouterr()
 
     from sgt.api import intent_view
@@ -173,7 +173,7 @@ def test_intent_revert_subset_deselecting_a_required_atom_is_refused_by_name(tmp
     # reverting base would cascade into removing caller too, so this must be refused by name
     # rather than silently sweeping caller away as an unselected side effect.
     assert _in(
-        tmp_path, ["advanced", "intent", "revert", theme_entry["theme_id"], "--subset", sha_a[:12], "--json"],
+        tmp_path, ["intent", "revert", theme_entry["theme_id"], "--subset", sha_a[:12], "--json"],
     ) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
@@ -189,7 +189,7 @@ def test_intent_revert_subset_reverts_only_chosen_atoms(tmp_path, capsys, monkey
     from sgt.core.lens import get
 
     get(tmp_path)
-    assert _in(tmp_path, ["advanced", "intent", "build"]) == 0
+    assert _in(tmp_path, ["intent", "build"]) == 0
     capsys.readouterr()
 
     from sgt.api import intent_view
@@ -201,7 +201,7 @@ def test_intent_revert_subset_reverts_only_chosen_atoms(tmp_path, capsys, monkey
     # so it must not cascade into removing anything from the earlier commit it depends on.
     assert _in(
         tmp_path,
-        ["advanced", "intent", "revert", theme_entry["theme_id"], "--subset", sha_b[:12], "--emit", "--json"],
+        ["intent", "revert", theme_entry["theme_id"], "--subset", sha_b[:12], "--emit", "--json"],
     ) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["removed"]  # something was actually removed
@@ -242,7 +242,7 @@ def test_intent_revert_thematic_tier_prints_badge_in_non_json_output(tmp_path, c
     fake = _FakeClient(theme.ThemeGroups(groups=[coalesced]))
     monkeypatch.setattr(theme, "get_client", lambda repo: fake)
 
-    assert _in(tmp_path, ["advanced", "intent", "build"]) == 0
+    assert _in(tmp_path, ["intent", "build"]) == 0
     capsys.readouterr()
 
     from sgt.api import intent_view
@@ -250,7 +250,7 @@ def test_intent_revert_thematic_tier_prints_badge_in_non_json_output(tmp_path, c
     (theme_entry,) = intent_view(tmp_path)["themes"]
     assert theme_entry["tier"] == "thematic"  # sanity: intent_view agrees before we assert the CLI does
 
-    assert _in(tmp_path, ["advanced", "intent", "revert", theme_entry["theme_id"], "--emit"]) == 0
+    assert _in(tmp_path, ["intent", "revert", theme_entry["theme_id"], "--emit"]) == 0
     out = capsys.readouterr().out
     assert "tier: thematic" in out
 
@@ -259,7 +259,7 @@ def test_intent_revert_json_preview_includes_tier_field(tmp_path, capsys):
     gb = _seed(tmp_path)
     sha = gb.rev_parse("HEAD")
 
-    assert _in(tmp_path, ["advanced", "intent", "revert", sha, "--emit", "--json"]) == 0
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["tier"] in ("coupled", "co-changed", "thematic")
 
@@ -270,7 +270,7 @@ def test_intent_revert_single_atom_degrades_without_a_tree(tmp_path, capsys):
     gb = _seed(tmp_path, subject="add foo")  # no conventional-commit scope -> scope-less atom
     sha = gb.rev_parse("HEAD")
 
-    assert _in(tmp_path, ["advanced", "intent", "revert", sha, "--emit", "--json"]) == 0
+    assert _in(tmp_path, ["intent", "revert", sha, "--emit", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert payload["tier"] == "co-changed"  # single commit, no feature span available
@@ -285,7 +285,7 @@ def _build_one_theme(tmp_path, monkeypatch):
 
     monkeypatch.setattr(theme, "get_client", _no_client)
     _seed(tmp_path)
-    assert _in(tmp_path, ["advanced", "intent", "build"]) == 0
+    assert _in(tmp_path, ["intent", "build"]) == 0
     from sgt.api import intent_view
 
     (theme_entry,) = intent_view(tmp_path)["themes"]
@@ -308,7 +308,7 @@ def test_intent_list_renders_stale_marker_for_a_theme_with_a_missing_member(tmp_
     capsys.readouterr()
     vanished_sha = _mark_theme_stale(tmp_path, theme_entry["theme_id"])
 
-    assert _in(tmp_path, ["advanced", "intent", "list"]) == 0
+    assert _in(tmp_path, ["intent", "list"]) == 0
     out = capsys.readouterr().out
     assert "stale" in out
     assert vanished_sha[:8] in out
@@ -319,7 +319,7 @@ def test_intent_show_renders_stale_marker_for_a_theme_with_a_missing_member(tmp_
     capsys.readouterr()
     vanished_sha = _mark_theme_stale(tmp_path, theme_entry["theme_id"])
 
-    assert _in(tmp_path, ["advanced", "intent", "show", theme_entry["theme_id"]]) == 0
+    assert _in(tmp_path, ["intent", "show", theme_entry["theme_id"]]) == 0
     out = capsys.readouterr().out
     assert "stale" in out
     assert vanished_sha[:8] in out
@@ -330,7 +330,7 @@ def test_intent_revert_refuses_a_theme_with_one_missing_member(tmp_path, capsys,
     capsys.readouterr()
     vanished_sha = _mark_theme_stale(tmp_path, theme_entry["theme_id"])
 
-    assert _in(tmp_path, ["advanced", "intent", "revert", theme_entry["theme_id"], "--json"]) == 1
+    assert _in(tmp_path, ["intent", "revert", theme_entry["theme_id"], "--json"]) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert "sgt intent build" in payload["error"]
@@ -349,7 +349,7 @@ def test_intent_revert_refuses_a_theme_with_every_member_missing(tmp_path, capsy
     entry["atom_shas"] = ["f" * 40, "e" * 40]
     state.save_json(tmp_path, "intent_themes", themes)
 
-    assert _in(tmp_path, ["advanced", "intent", "revert", theme_entry["theme_id"], "--json"]) == 1
+    assert _in(tmp_path, ["intent", "revert", theme_entry["theme_id"], "--json"]) == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert "sgt intent build" in payload["error"]

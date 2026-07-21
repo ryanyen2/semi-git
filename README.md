@@ -62,7 +62,10 @@ sgt undo                            # undo your last change (moves forward, neve
 # inspect
 sgt status                          # files, symbols, features, coverage, oracle status, drift
 sgt map                             # the feature tree
+sgt graph                           # feature timeline (Gantt): lanes over commit-time
+sgt episodes                        # episode rail (vertical git-log): what I did, in order
 sgt blame <file>                    # which feature owns each symbol in a file
+sgt intent list/show/build/revert   # intent-clustering overlay: themes that span features
 sgt log / sgt state / sgt diff <a> <b>   # the op set, the current state, a symbol-level diff
 sgt history                         # mined commits, and each op's kind, feature, and commit index
 

@@ -33,7 +33,7 @@ def _split_into_two(repo):
 
 
 def test_split_preview_mutates_nothing_until_confirmed(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # has a natural 2-way split
     get(repo)
     before = lensmap.build_map(repo)
     fid = next(iter(before["nodes"]))
@@ -59,7 +59,7 @@ def test_split_preview_mutates_nothing_until_confirmed(tmp_path):
 
 
 def test_merge_unions_op_sets_and_keeps_the_survivor_id(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # has a natural 2-way split
     get(repo)
     split_result = _split_into_two(repo)
     survivor, absorbed = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
@@ -91,7 +91,7 @@ def test_merge_refuses_a_feature_into_itself_or_an_unknown_id(tmp_path):
 
 
 def test_move_retags_op_leaf_and_writes_the_assign_pin(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # has a natural 2-way split
     get(repo)
     split_result = _split_into_two(repo)
     source, target = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
@@ -127,7 +127,7 @@ def test_move_refuses_an_unresolvable_op_ref(tmp_path):
 
 
 def test_feature_verbs_never_change_materialized_bytes(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # has a natural 2-way split
     ideal = get(repo)
     ops = Store(repo).all_ops()
     before = code(ideal, ops)
@@ -245,7 +245,7 @@ def test_labels_pin_round_trips_and_overrides_the_fallback_label(tmp_path):
 
 
 def test_feature_verb_preview_view_merge_reports_both_features_as_affected(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # has a natural 2-way split
     get(repo)
     split_result = _split_into_two(repo)
     survivor, absorbed = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
@@ -270,7 +270,7 @@ def test_feature_verb_preview_view_rename_reports_the_one_feature_affected(tmp_p
 
 
 def test_feature_verb_preview_view_split_previews_the_fresh_id_split_would_mint(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # has a natural 2-way split
     get(repo)
     before = lensmap.build_map(repo)
     fid = next(iter(before["nodes"]))
@@ -286,7 +286,7 @@ def test_feature_verb_preview_view_split_previews_the_fresh_id_split_would_mint(
 
 
 def test_feature_verb_preview_view_move_reports_source_and_target_affected(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # has a natural 2-way split
     get(repo)
     split_result = _split_into_two(repo)
     source, target = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
@@ -398,8 +398,8 @@ def test_split_mints_an_identical_content_id_on_two_replicas_of_one_store(tmp_pa
     """KTD4 regression: `apply_split` must mint a content-addressed `f-<founding-op>` id, not a
     replica-local `F<n>`. Two independent clones splitting the identical members over a byte-
     identical op store must converge to the same id (the old `_fresh_id_gen` mint did not)."""
-    repo_a = corpus.CORPUS["mixed_coverage"].build(tmp_path / "a")
-    repo_b = corpus.CORPUS["mixed_coverage"].build(tmp_path / "b")
+    repo_a = corpus.CORPUS["linear_history"].build(tmp_path / "a")  # has a natural 2-way split
+    repo_b = corpus.CORPUS["linear_history"].build(tmp_path / "b")
     get(repo_a)
     get(repo_b)
     res_a = lensmap.build_map(repo_a)
@@ -417,7 +417,10 @@ def test_split_mints_an_identical_content_id_on_two_replicas_of_one_store(tmp_pa
 
 
 def test_split_preview_new_id_matches_what_apply_mints(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    # linear_history has a feature with a natural 2-way cut; mixed_coverage's 8 tightly-coupled
+    # symbols cohere into one unsplittable leaf under the co-commit/path signals (correct, but no
+    # split to exercise). These verbs test split/merge/move *mechanics*, not clustering shape.
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
     before = lensmap.build_map(repo)
     fid = next(iter(before["nodes"]))
@@ -452,7 +455,7 @@ def test_rename_also_writes_an_authored_feature(tmp_path):
 def test_split_also_writes_an_authored_feature_for_the_new_group(tmp_path):
     from sgt.lens import authored
 
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a splittable feature (see above)
     get(repo)
     result = lensmap.build_map(repo)
     fid = next(iter(result["nodes"]))
@@ -474,7 +477,7 @@ def test_merge_absorbs_the_authored_feature_and_tombstones_the_absorbed(tmp_path
     previously-authored absorbed feature is tombstoned (OR-Set delete) to zero live members."""
     from sgt.lens import authored
 
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a splittable feature (see above)
     get(repo)
     split_result = _split_into_two(repo)
     survivor, absorbed = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
@@ -499,7 +502,7 @@ def test_move_adds_the_moved_member_to_the_targets_authored_feature(tmp_path):
     (OR-Set add) and a previously-authored source feature drops them (OR-Set remove)."""
     from sgt.lens import authored
 
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a splittable feature (see above)
     get(repo)
     split_result = _split_into_two(repo)
     source, target = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])

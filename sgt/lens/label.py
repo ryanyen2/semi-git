@@ -22,9 +22,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from sgt import state
-from sgt.config import get_client
+from sgt.config import get_client, get_model
 
-MODEL = "gpt-5.4-mini"
 EFFORT = "low"
 MAX_MEMBERS = 24
 MAX_SUBJECTS = 6
@@ -51,19 +50,24 @@ def _key(members: list[str]) -> str:
     return hashlib.sha1("\x00".join(sorted(members)).encode()).hexdigest()[:12]
 
 
-def _leaf_prompt(members: list[str], subjects: list[str] | None = None) -> str:
+def _leaf_prompt(
+    members: list[str], subjects: list[str] | None = None, kinds: str | None = None,
+) -> str:
     names = [m.split("::", 1)[1] if "::" in m else m for m in sorted(members)[:MAX_MEMBERS]]
     files = sorted({m.split("::", 1)[0] for m in members})[:8]
     subj = (subjects or [])[:MAX_SUBJECTS]
     return (
         "Name the feature this group of code entities implements, in a semantic version-control "
-        "tool.\n"
+        "tool. Use the commit intents below as key evidence for WHAT this code is for, weighed "
+        "together with the entity and file names (the entities are the ground truth for what the "
+        "code IS; the intents say what it was FOR).\n"
         "label: 2-4 words, Title Case, concrete. No filler words ('System', 'Feature', "
         "'Management', 'Semantic').\n"
         "rationale: ONE factual sentence naming what it does. Do not start with 'These'.\n\n"
         f"Files: {', '.join(files)}\n"
         f"Entities: {', '.join(names)}\n"
         + (f"Commit intents: {' | '.join(subj)}\n" if subj else "")
+        + (f"Change activity: {kinds}\n" if kinds else "")
     )
 
 
@@ -109,7 +113,8 @@ class Labeler:
 
     def _request(self, prompt: str) -> FeatureLabel:
         r = self.client.responses.parse(
-            model=MODEL, input=prompt, text_format=FeatureLabel, reasoning={"effort": EFFORT},
+            model=get_model(self._repo), input=prompt, text_format=FeatureLabel,
+            reasoning={"effort": EFFORT},
         )
         with self._lock:
             self.calls += 1
@@ -130,7 +135,8 @@ class Labeler:
             + body
         )
         r = self.client.responses.parse(
-            model=MODEL, input=combined, text_format=_FeatureLabelBatch, reasoning={"effort": EFFORT},
+            model=get_model(self._repo), input=combined, text_format=_FeatureLabelBatch,
+            reasoning={"effort": EFFORT},
         )
         with self._lock:
             self.calls += 1
@@ -153,8 +159,10 @@ class Labeler:
         self.cache[key] = {**out.model_dump(), "source": source}
         return out
 
-    def label(self, members: list[str], subjects: list[str] | None = None) -> FeatureLabel:
-        return self._resolve(_key(members), _leaf_prompt(members, subjects), members)
+    def label(
+        self, members: list[str], subjects: list[str] | None = None, kinds: str | None = None,
+    ) -> FeatureLabel:
+        return self._resolve(_key(members), _leaf_prompt(members, subjects, kinds), members)
 
     def label_super(self, child_labels: list[str], files: list[str]) -> FeatureLabel:
         """Name a subsystem from the feature labels of its children (one level up the tree)."""
@@ -162,11 +170,13 @@ class Labeler:
         return self._resolve(key, _super_prompt(child_labels, files), [*child_labels, *files])
 
     def leaf_request(
-        self, members: list[str], subjects: list[str] | None = None,
+        self, members: list[str], subjects: list[str] | None = None, kinds: str | None = None,
     ) -> tuple[str, str, list[str]]:
         """``(key, prompt, fallback_members)`` for `label_many` -- the exact key/prompt `label()`
-        would use for a solo call, so a batched result caches identically to an unbatched one."""
-        return _key(members), _leaf_prompt(members, subjects), members
+        would use for a solo call, so a batched result caches identically to an unbatched one.
+        The cache key is the member-set hash only; `subjects`/`kinds` enrich the prompt but a
+        recluster (new member-set) is what busts the cache to pick up an enriched label."""
+        return _key(members), _leaf_prompt(members, subjects, kinds), members
 
     def super_request(self, child_labels: list[str], files: list[str]) -> tuple[str, str, list[str]]:
         """``(key, prompt, fallback_members)`` for `label_many` -- mirrors `label_super()`."""

@@ -8,6 +8,7 @@ which survives ``git commit --amend`` and rebase the way Gerrit's Change-Id does
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import tempfile
@@ -543,6 +544,30 @@ class GitBinding:
         (run the pass) rather than silently skipping."""
         proc = self._git("status", "--porcelain", "--", ".", ":(exclude).sgt", check=False)
         return proc.returncode != 0 or bool(proc.stdout.strip())
+
+    def dirty_source_digest(self) -> str | None:
+        """A content hash of every uncommitted non-`.sgt` source change: the `git diff HEAD` patch
+        (all tracked worktree changes, staged or not) plus each untracked source file's bytes. This
+        is the signal `_sync` gates on -- an unchanged digest means re-running the O(files) dirty
+        mining pass would produce byte-identical ops, so the whole mine is a provable no-op. Returns
+        None on a git error (unborn HEAD, etc.), so the caller falls back to mining rather than
+        trusting a fingerprint it couldn't compute."""
+        diff = self._git("diff", "HEAD", "--", ".", ":(exclude).sgt", check=False)
+        others = self._git(
+            "ls-files", "-o", "--exclude-standard", "-z", "--", ".", ":(exclude).sgt", check=False
+        )
+        if diff.returncode != 0 or others.returncode != 0:
+            return None
+        h = hashlib.sha256()
+        h.update(diff.stdout.encode("utf-8", "surrogatepass"))
+        for path in sorted(p for p in others.stdout.split("\x00") if p):
+            h.update(b"\x00")
+            h.update(path.encode("utf-8", "surrogatepass"))
+            try:
+                h.update((self.repo / path).read_bytes())
+            except OSError:
+                pass  # vanished between listing and read -- the name in the digest already marks it
+        return h.hexdigest()
 
     def upstream(self) -> str | None:
         """`<remote>/<branch>` HEAD's branch tracks, or None (detached HEAD, or no upstream
