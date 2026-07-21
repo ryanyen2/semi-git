@@ -152,7 +152,7 @@ def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch)
     expected = json.dumps(ideal_diff_view(repo, "main", "release"), indent=2)
 
     monkeypatch.chdir(repo)
-    assert main(["advanced", "diff", "--json", "main", "release"]) == 0
+    assert main(["diff", "--json", "main", "release"]) == 0
     assert capsys.readouterr().out.rstrip("\n") == expected
 
 
@@ -692,6 +692,26 @@ def test_verb_preview_frontier_classifies_blast_carry_and_foundation(tmp_path):
     assert rows[deep_op.id] == {"op_id": deep_op.id, "bucket": "carry", "toggleable": True}
     assert rows[helper_op.id] == {"op_id": helper_op.id, "bucket": "foundation", "toggleable": False}
     assert user_op.id not in rows  # the revert target itself is not a frontier row
+
+
+def test_verb_preview_frontier_populates_for_a_symbol_ref_not_only_an_op_id(tmp_path):
+    """The frontier must resolve a `file::symbol` (or op-id prefix) ref to its op the same way the
+    plan does -- otherwise a symbol-targeted revert (the editor/blame entry point) gets an empty
+    frontier and silently degrades to a plain revert. Regression: `_frontier_rows` used the raw
+    unresolved `preview.target`."""
+    from sgt.api import verb_preview_view
+
+    repo = _chain_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    by_sym = lambda s: next(o for o in ops if s in o.footprint)
+    caller_op, deep_op = by_sym("c.py::caller"), by_sym("d.py::deep")
+
+    v = verb_preview_view(repo, "revert", "b.py::user")  # symbol ref, not an op-id
+    rows = {r["op_id"]: r for r in v["frontier"]}
+    assert rows[caller_op.id]["bucket"] == "blast"
+    assert rows[deep_op.id]["bucket"] == "carry"
+    # identical to the op-id-targeted frontier for the same symbol
+    assert rows == {r["op_id"]: r for r in verb_preview_view(repo, "revert", by_sym("b.py::user").id)["frontier"]}
 
 
 def test_verb_preview_frontier_matches_what_revert_keep_dependents_applies(tmp_path):

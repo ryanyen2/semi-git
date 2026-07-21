@@ -412,12 +412,18 @@ def _frontier_rows(repo, preview) -> list[dict]:
     or a refused preview (``edit`` -- plan U4 -- will reuse this same block)."""
     if preview.verb != "revert" or not preview.ok:
         return []
-    from sgt.core import lens, order
+    from sgt.core import lens, order, verbs
+    from sgt.core.ideal import Ideal
     from sgt.core.store import Store
 
     ops = Store(repo).all_ops()
-    target = preview.target
-    if target not in {op.id for op in ops}:
+    # `preview.target` is the raw user ref -- a bare op-id, a `file::symbol`, or a unique op-id
+    # prefix. Resolve it to the single op-id the up-set was computed from (the SAME resolution
+    # `plan_revert` used), so a symbol/prefix revert gets a frontier too, not only a typed op-id.
+    # A ref that isn't a single live op (e.g. a whole-feature revert's set) has no single-op
+    # frontier -> bail.
+    target, _ = verbs.resolve_target(Ideal.from_ops(preview.before_ids, ops), ops, preview.target)
+    if target is None:
         return []
     declared = lens._load_declared(repo)
     removed = preview.removed
