@@ -53,6 +53,11 @@ function foldAtSpec(frontier: FoldFrontier): string {
 
 const pExecFile = promisify(execFile);
 
+// The CLI collapsed to a ~7-verb daily spine (`save`/`status`/`log`/`undo`/`revert`/`restore`/
+// `edit`) plus two groupings: read/maintenance verbs moved under `advanced` (`advanced map`,
+// `advanced compose`, `advanced blame`, ...) and feature-reorg moved under `feature`
+// (`feature regroup {merge,split,move}`, `feature rename`). The JSON projections are unchanged
+// (additive-only), so the view types below still match; only the invocation path moved.
 export class Sgt {
   private out: vscode.OutputChannel;
   constructor(private repoRoot: string, out: vscode.OutputChannel) {
@@ -89,7 +94,9 @@ export class Sgt {
       });
       return stdout;
     } catch (err: any) {
-      const detail = (err.stderr || "").trim() || err.message;
+      const detail = err.killed
+        ? `timed out after ${timeout}ms (mining/rebuild likely still in progress -- try again once it finishes)`
+        : (err.stderr || "").trim() || err.message;
       this.out.appendLine(`sgt ${args.join(" ")} failed: ${detail}`);
       throw new Error(detail);
     }
@@ -103,11 +110,11 @@ export class Sgt {
   // The feature tree (rebuilds it first — clustering, Greene identity, pins, labeling — then
   // reads the kernel-backed projection, same as `sgt map --json` on the command line).
   map(): Promise<MapView> {
-    return this.json<MapView>(["map", "--json"]);
+    return this.json<MapView>(["advanced", "map", "--json"]);
   }
 
   blame(file: string): Promise<BlameView> {
-    return this.json<BlameView>(["blame", "--json", file]);
+    return this.json<BlameView>(["advanced", "blame", "--json", file]);
   }
 
   status(): Promise<StatusView> {
@@ -124,20 +131,20 @@ export class Sgt {
   // default (step/match counts, no spans); the webview's `PlanView` type still expects the full
   // per-step detail and per-match file spans.
   planStatus(): Promise<PlanView> {
-    return this.json<PlanView>(["plan", "status", "--json", "--full"]);
+    return this.json<PlanView>(["advanced", "plan", "status", "--json", "--full"]);
   }
 
   // Ops mined that no active plan predicted (plan U14). `--full`: compact `drift_view` drops the
   // per-op footprint/spans this extension's `DriftView` type expects.
   drift(): Promise<DriftView> {
-    return this.json<DriftView>(["drift", "--json", "--full"]);
+    return this.json<DriftView>(["advanced", "drift", "--json", "--full"]);
   }
 
   // The feature-map webview's shared commit-index axis: mined commits in order + every op's
   // kind/feature/commit-index. `--full`: compact `history_view` drops the per-op `ops` list this
   // extension's `HistoryView` type expects.
   history(): Promise<HistoryView> {
-    return this.json<HistoryView>(["history", "--json", "--full"]);
+    return this.json<HistoryView>(["advanced", "history", "--json", "--full"]);
   }
 
   // A side-effect-free preview of a feature verb or feature-grouped revert (the feature-map
@@ -148,69 +155,76 @@ export class Sgt {
     if (verb === "move") {
       const target = args[args.length - 1];
       const opIds = args.slice(0, -1);
-      return this.json<FeatureVerbPreview>(["preview", "move", ...opIds, "--to", target, "--json"]);
+      return this.json<FeatureVerbPreview>([
+        "advanced", "preview", "move", ...opIds, "--to", target, "--json",
+      ]);
     }
-    return this.json<FeatureVerbPreview>(["preview", verb, ...args, "--json"]);
+    return this.json<FeatureVerbPreview>(["advanced", "preview", verb, ...args, "--json"]);
   }
 
   merge(survivorId: string, absorbedId: string): Promise<MergeResult> {
-    return this.json<MergeResult>(["merge", "--json", survivorId, absorbedId]);
+    return this.json<MergeResult>(["feature", "regroup", "merge", "--json", survivorId, absorbedId]);
   }
 
   splitPreview(featureId: string): Promise<SplitPreviewResult> {
-    return this.json<SplitPreviewResult>(["split", "--json", featureId]);
+    return this.json<SplitPreviewResult>(["feature", "regroup", "split", "--json", featureId]);
   }
 
   splitApply(featureId: string): Promise<SplitApplyResult> {
-    return this.json<SplitApplyResult>(["split", "--json", featureId, "--apply"]);
+    return this.json<SplitApplyResult>([
+      "feature", "regroup", "split", "--json", featureId, "--apply",
+    ]);
   }
 
   rename(featureId: string, newLabel: string): Promise<RenameResult> {
-    return this.json<RenameResult>(["rename", "--json", featureId, newLabel]);
+    return this.json<RenameResult>(["feature", "rename", "--json", featureId, newLabel]);
   }
 
   move(opIds: string[], targetFeatureId: string): Promise<MoveResult> {
-    return this.json<MoveResult>(["move", "--json", ...opIds, "--to", targetFeatureId]);
+    return this.json<MoveResult>([
+      "feature", "regroup", "move", "--json", ...opIds, "--to", targetFeatureId,
+    ]);
   }
 
   // One aggregate refresh -- map+history+status+forks+plan+drift+sessions+trust+oracle_verdict+
   // proposals in a single shell-out (the workbench's primary poll, plan API addition #1).
   // `--full` threads into compose's history/plan/drift/trust children (a safe superset of the
   // new compact defaults) so this extension's `ComposeView` type keeps matching every child's
-  // actual shape.
+  // actual shape. Aggregates ~9 sub-reads behind one shell-out, so a cold mine/rebuild can run
+  // well past a plain read's 30s budget -- same class of slow op as `sync`/`land` below.
   compose(): Promise<ComposeView> {
-    return this.json<ComposeView>(["compose", "--json", "--full"]);
+    return this.json<ComposeView>(["advanced", "compose", "--json", "--full"], 120_000);
   }
 
   // A side-effect-free fold of an arbitrary frontier -- the draggable-playhead primitive (API
   // addition #2). Never materializes the working tree.
   foldAt(frontier: FoldFrontier): Promise<FoldView> {
-    return this.json<FoldView>(["fold", "--at", foldAtSpec(frontier), "--json"]);
+    return this.json<FoldView>(["advanced", "fold", "--at", foldAtSpec(frontier), "--json"]);
   }
 
   forksView(): Promise<ForksView> {
-    return this.json<ForksView>(["forks", "--json"]);
+    return this.json<ForksView>(["advanced", "forks", "--json"]);
   }
 
   forkDetail(symbol: string): Promise<ForkDetailView> {
-    return this.json<ForkDetailView>(["forks", symbol, "--json"]);
+    return this.json<ForkDetailView>(["advanced", "forks", symbol, "--json"]);
   }
 
   // The fork-resolution wizard (plan Phase 6): draft a reconciling hollow, then, once the
   // working tree is hand-edited to match, stage it and commit. `sgt merge-op` is AE2's
   // refusal turned into a draft; `fulfill`/`commit` are U11's stage/commit split.
   mergeOp(tipA: string, tipB: string, intent?: string): Promise<RewriteDraft> {
-    const args = ["merge-op", tipA, tipB, "--json"];
+    const args = ["advanced", "merge-op", tipA, tipB, "--json"];
     if (intent) args.push("--intent", intent);
     return this.json<RewriteDraft>(args);
   }
 
   fulfillDraft(draftId: string): Promise<FulfillResult> {
-    return this.json<FulfillResult>(["fulfill", draftId, "--from-tree", "--json"]);
+    return this.json<FulfillResult>(["advanced", "fulfill", draftId, "--from-tree", "--json"]);
   }
 
   landCandidate(message?: string): Promise<LandCandidateResult> {
-    const args = ["commit", "--json"];
+    const args = ["advanced", "commit", "--json"];
     if (message) args.push("--message", message);
     return this.json<LandCandidateResult>(args);
   }
@@ -230,7 +244,10 @@ export class Sgt {
   // Dequeues an op-set from `trust_view` (plan U31, S7). `--json` before the variadic `op_ids`
   // so argparse doesn't try to swallow it into that list.
   reviewAck(opIds: string[], note?: string): Promise<ReviewAckResult> {
-    const args = ["review-queue", "ack", "--json", ...(note ? ["--note", note] : []), ...opIds];
+    const args = [
+      "advanced", "review-queue", "ack", "--json",
+      ...(note ? ["--note", note] : []), ...opIds,
+    ];
     return this.json<ReviewAckResult>(args);
   }
 
@@ -251,7 +268,7 @@ export class Sgt {
   // The daily-loop verbs (D3), each composed from existing lens machinery -- no new kernel call.
   // `switch` is a reserved word, hence `switchBranch`.
   switchBranch(branch: string): Promise<SwitchResult> {
-    return this.json<SwitchResult>(["switch", branch, "--json"]);
+    return this.json<SwitchResult>(["advanced", "switch", branch, "--json"]);
   }
 
   save(message?: string): Promise<SaveResult> {
