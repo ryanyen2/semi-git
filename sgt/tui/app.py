@@ -402,11 +402,6 @@ class SgtTui(App[None]):
                     "depth": n["depth"] + 1,
                     "size": 0,
                     "op_count": 0,
-                    "dir": "",
-                    "why": "",
-                    "split_reason": None,
-                    "members": [],
-                    "sessions": [],
                     "parent_feature": n["id"],
                 })
         return out
@@ -537,8 +532,8 @@ class SgtTui(App[None]):
         highlighted row). Each selection is resolved through the U1 resolver for the combined
         closure + refused summary, and each symbol target's per-dependent ``frontier`` is pulled
         from the same ``verb_preview_view`` projection the CLI reads."""
-        ids = sorted(self._selected) if self._selected else (
-            [self._selected_id()] if self._selected_id() else [])
+        cur = self._selected_id()
+        ids = sorted(self._selected) if self._selected else ([cur] if cur else [])
         if not ids:
             self.notify("select (space) or highlight a row first", severity="warning", title="Frontier")
             return

@@ -237,6 +237,12 @@ def select(repo: str | Path, feature_refs) -> SelectionResult:
     )
 
 
+def _authored_result(repo: str | Path, feat) -> SelectionResult:
+    """The closure for an authored feature: its live members' frontier tips, under its own label."""
+    return _closure_result(repo, _symbols_to_tips(repo, feat.live_members()), (), feat.label,
+                           empty_message=f"feature {feat.label!r} has no live op in the ideal")
+
+
 def resolve(repo: str | Path, spec: str) -> SelectionResult:
     """The one universal selection resolver (plan U1/R1/KTD1): turn any `sgt select <spec>` form
     into the same op/symbol closure `select` reports plus a resolved display label -- the argument
@@ -266,13 +272,11 @@ def resolve(repo: str | Path, spec: str) -> SelectionResult:
     authored = load_authored(repo)
     if spec in authored:  # an `af-` id
         feat = authored[spec]
-        return _closure_result(repo, _symbols_to_tips(repo, feat.live_members()), (), feat.label,
-                               empty_message=f"feature {feat.label!r} has no live op in the ideal")
+        return _authored_result(repo, feat)
     by_label = [f for f in authored.values() if f.label == spec]
     if len(by_label) == 1:
         feat = by_label[0]
-        return _closure_result(repo, _symbols_to_tips(repo, feat.live_members()), (), feat.label,
-                               empty_message=f"feature {feat.label!r} has no live op in the ideal")
+        return _authored_result(repo, feat)
     if len(by_label) > 1:
         return _ambiguous([(1.0, f.id, f.label) for f in by_label], spec)
 
@@ -362,10 +366,8 @@ def _resolve_nl(repo: Path, spec: str, authored: dict) -> SelectionResult:
         return SelectionResult(ok=False, message=f"no feature matches {spec!r}", label=spec)
     if len(above) > 1 and above[0][0] == above[1][0]:
         return _ambiguous(above, spec)
-    _score, fid, label = above[0]
-    feat = authored[fid]
-    return _closure_result(repo, _symbols_to_tips(repo, feat.live_members()), (), label,
-                           empty_message=f"feature {label!r} has no live op in the ideal")
+    feat = authored[above[0][1]]
+    return _authored_result(repo, feat)
 
 
 def _ambiguous(scored, spec: str) -> SelectionResult:

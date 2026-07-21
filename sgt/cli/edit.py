@@ -21,7 +21,6 @@ from .rewrite import _print_draft, _print_repair_result
 def register(subs, parent) -> None:
     e = subs.add_parser("edit", parents=[parent])
     e.add_argument("--repair", action="store_true")
-    e.add_argument("--backend", default="api", choices=["api"])
     e.add_argument("--intent")
     e.add_argument("selection", nargs="*")
     e.set_defaults(func=_cmd_edit)
