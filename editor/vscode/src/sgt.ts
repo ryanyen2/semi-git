@@ -53,11 +53,13 @@ function foldAtSpec(frontier: FoldFrontier): string {
 
 const pExecFile = promisify(execFile);
 
-// The CLI collapsed to a ~7-verb daily spine (`save`/`status`/`log`/`undo`/`revert`/`restore`/
-// `edit`) plus two groupings: read/maintenance verbs moved under `advanced` (`advanced map`,
-// `advanced compose`, `advanced blame`, ...) and feature-reorg moved under `feature`
-// (`feature regroup {merge,split,move}`, `feature rename`). The JSON projections are unchanged
-// (additive-only), so the view types below still match; only the invocation path moved.
+// The CLI daily surface is the ~7-verb spine (`save`/`status`/`log`/`undo`/`revert`/`restore`/
+// `edit`) plus the daily navigation/inspection/loop/rewrite verbs kept at the top level
+// (`switch`, `diff`, `map`, `blame`, `plan`, `checkpoint`, `drift`, `commit`, `fulfill`). Only
+// rare/maintenance verbs live under `advanced` (`advanced compose`, `advanced identity`, ...);
+// feature-reorg is under `feature` (`feature regroup {merge,split,move}`, `feature rename`). The
+// JSON projections are unchanged (additive-only), so the view types below still match; only the
+// invocation path moved.
 export class Sgt {
   private out: vscode.OutputChannel;
   constructor(private repoRoot: string, out: vscode.OutputChannel) {
@@ -110,20 +112,30 @@ export class Sgt {
   // The feature tree (rebuilds it first — clustering, Greene identity, pins, labeling — then
   // reads the kernel-backed projection, same as `sgt map --json` on the command line).
   map(): Promise<MapView> {
-    return this.json<MapView>(["advanced", "map", "--json"]);
+    return this.json<MapView>(["map", "--json"]);
   }
 
   blame(file: string): Promise<BlameView> {
-    return this.json<BlameView>(["advanced", "blame", "--json", file]);
+    return this.json<BlameView>(["blame", "--json", file]);
   }
 
   status(): Promise<StatusView> {
     return this.json<StatusView>(["status", "--json"]);
   }
 
-  // Structured dry-run of a feature revert: `sgt revert <feature> --emit --json`.
+  // Structured dry-run of a feature revert: `sgt revert <feature> --emit --json`. Carries the
+  // U3 `frontier`/`affected` blocks the quick-pick checklist consumes.
   emit(feature: string): Promise<EmitView> {
     return this.json<EmitView>(["revert", feature, "--emit", "--json"]);
+  }
+
+  // Apply a chosen revert frontier (U3/R4). `keepOpIds` are the toggleable dependents to keep:
+  // each kept `blast` dependent drafts a continuation hollow (needs `fulfill`+`commit` after),
+  // each kept `carry` dependent repoints mechanically for free. An empty keep set is a plain
+  // full-upset revert that commits immediately. Returns the human report.
+  revertKeep(sel: string, keepOpIds: string[]): Promise<string> {
+    if (keepOpIds.length === 0) return this.mutate(["revert", sel]);
+    return this.mutate(["revert", sel, "--keep", keepOpIds.join(",")]);
   }
 
   // Active plan sessions + the pure checkpoint preview (plan U14). A read, not a rebuild —
@@ -131,13 +143,13 @@ export class Sgt {
   // default (step/match counts, no spans); the webview's `PlanView` type still expects the full
   // per-step detail and per-match file spans.
   planStatus(): Promise<PlanView> {
-    return this.json<PlanView>(["advanced", "plan", "status", "--json", "--full"]);
+    return this.json<PlanView>(["plan", "status", "--json", "--full"]);
   }
 
   // Ops mined that no active plan predicted (plan U14). `--full`: compact `drift_view` drops the
   // per-op footprint/spans this extension's `DriftView` type expects.
   drift(): Promise<DriftView> {
-    return this.json<DriftView>(["advanced", "drift", "--json", "--full"]);
+    return this.json<DriftView>(["drift", "--json", "--full"]);
   }
 
   // The feature-map webview's shared commit-index axis: mined commits in order + every op's
@@ -160,6 +172,15 @@ export class Sgt {
       ]);
     }
     return this.json<FeatureVerbPreview>(["advanced", "preview", verb, ...args, "--json"]);
+  }
+
+  // `sgt edit <selection> [--intent ...] --json` (U4/KTD5): chain-extend the target with a hollow
+  // and mechanically repoint dependents. Drafts only -- the user changes the working tree, then
+  // fulfills. `--repair` (LLM fill) is deliberately not exposed here; drafting is the safe default.
+  edit(selection: string, intent?: string): Promise<RewriteDraft> {
+    const args = ["edit", selection, "--json"];
+    if (intent) args.push("--intent", intent);
+    return this.json<RewriteDraft>(args);
   }
 
   merge(survivorId: string, absorbedId: string): Promise<MergeResult> {
@@ -220,11 +241,11 @@ export class Sgt {
   }
 
   fulfillDraft(draftId: string): Promise<FulfillResult> {
-    return this.json<FulfillResult>(["advanced", "fulfill", draftId, "--from-tree", "--json"]);
+    return this.json<FulfillResult>(["fulfill", draftId, "--from-tree", "--json"]);
   }
 
   landCandidate(message?: string): Promise<LandCandidateResult> {
-    const args = ["advanced", "commit", "--json"];
+    const args = ["commit", "--json"];
     if (message) args.push("--message", message);
     return this.json<LandCandidateResult>(args);
   }
@@ -268,7 +289,7 @@ export class Sgt {
   // The daily-loop verbs (D3), each composed from existing lens machinery -- no new kernel call.
   // `switch` is a reserved word, hence `switchBranch`.
   switchBranch(branch: string): Promise<SwitchResult> {
-    return this.json<SwitchResult>(["advanced", "switch", branch, "--json"]);
+    return this.json<SwitchResult>(["switch", branch, "--json"]);
   }
 
   save(message?: string): Promise<SaveResult> {

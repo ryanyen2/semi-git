@@ -73,7 +73,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
   });
 
   reg("sgt.undo", async () => {
-    const ok = await vscode.window.showWarningMessage("Undo the last recorded ideal edit?", { modal: true }, "Undo");
+    const ok = await vscode.window.showWarningMessage("Undo the last operation?", { modal: true }, "Undo");
     if (ok !== "Undo") {
       return;
     }
