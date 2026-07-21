@@ -78,6 +78,21 @@ export class Sgt {
   // stderr. Running them one at a time through this queue means each gets its own fresh budget.
   private queue: Promise<unknown> = Promise.resolve();
 
+  // Loop guard for the `.sgt/**/*.json` watcher. A *read* like `sgt map` is not side-effect-free:
+  // it rebuilds and rewrites tree.json/ideal.json/label_cache.json/... under `.sgt/`. Those writes
+  // trip the watcher, which invalidates the cache, which re-issues the read -- a self-sustaining
+  // rebuild loop (the "sidebar spins forever" bug). We track whether one of OUR subprocesses is
+  // running (or just finished), so the watcher can ignore the writes we caused. Genuinely external
+  // mutations (another terminal, an agent) land while we're idle and still invalidate; our own
+  // mutations invalidate explicitly in the command handlers, not via the watcher.
+  private inFlight = 0;
+  private lastActiveAt = 0;
+
+  /** True while our own `sgt` subprocess is running, or within `cooldownMs` of one finishing. */
+  recentlyActive(cooldownMs = 1500): boolean {
+    return this.inFlight > 0 || Date.now() - this.lastActiveAt < cooldownMs;
+  }
+
   // `sync`/`land`/`push` shell out to real git network I/O and CAS retry loops, well past the
   // default 30s budget for a local read.
   private async run(args: string[], timeout = 30_000): Promise<string> {
@@ -87,6 +102,7 @@ export class Sgt {
   }
 
   private async exec(args: string[], timeout: number): Promise<string> {
+    this.inFlight++;
     try {
       const { stdout } = await pExecFile(this.bin(), args, {
         cwd: this.repoRoot,
@@ -101,6 +117,11 @@ export class Sgt {
         : (err.stderr || "").trim() || err.message;
       this.out.appendLine(`sgt ${args.join(" ")} failed: ${detail}`);
       throw new Error(detail);
+    } finally {
+      // Stamp on completion so the watcher keeps ignoring the trailing .sgt writes (and the fs
+      // event latency behind them) for a cooldown after the process exits.
+      this.inFlight--;
+      this.lastActiveAt = Date.now();
     }
   }
 

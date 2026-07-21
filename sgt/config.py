@@ -39,7 +39,10 @@ def get_client(repo_path: str | Path = "."):
         raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
     from openai import OpenAI
 
-    return OpenAI()
+    # A bounded timeout so a slow/stalled endpoint raises (→ the labeler's deterministic offline
+    # fallback) instead of hanging `sgt map` indefinitely -- the SDK default is 600s, which reads
+    # to a user as "spinning forever". 60s is well above normal label latency.
+    return OpenAI(timeout=60.0)
 
 
 @dataclass(frozen=True)

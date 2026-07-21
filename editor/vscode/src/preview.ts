@@ -5,6 +5,7 @@
 
 import * as vscode from "vscode";
 import { Store } from "./store";
+import { EmitView } from "./types";
 
 const SCHEME = "sgt-preview";
 
@@ -27,7 +28,7 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
   }
 
   async preview(feature: string): Promise<void> {
-    let res;
+    let res: EmitView;
     try {
       res = await this.store.sgt.emit(feature);
     } catch (e: any) {
@@ -40,10 +41,18 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
       );
       return;
     }
+    await this.openDiff(res);
+  }
+
+  /** Open a read-only before→after diff per changed file for an already-fetched emit view -- the
+   * "where this lands" preview. Shared by `sgt.previewRevert` and the revert confirm flow (so a
+   * revert always shows its resulting diff before it commits) without re-running `emit`. Returns
+   * the count of files shown. */
+  async openDiff(res: EmitView): Promise<number> {
     const paths = Object.keys(res.files);
     if (paths.length === 0) {
-      vscode.window.showInformationMessage(`Revert ${feature}: no file changes.`);
-      return;
+      vscode.window.showInformationMessage(`Revert ${res.target}: no file changes.`);
+      return 0;
     }
     const token = String(this.seq++);
     const label = `Revert: ${res.target}`;
@@ -60,8 +69,7 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
         { preview: true } as vscode.TextDocumentShowOptions
       );
     }
-    const removed = res.removed.length ? ` (removes ${res.removed.join(", ")})` : "";
-    vscode.window.showInformationMessage(`Preview only — nothing written. ${label}${removed}`);
+    return paths.length;
   }
 
   dispose(): void {

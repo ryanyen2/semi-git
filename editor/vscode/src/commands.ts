@@ -52,7 +52,7 @@ async function applyMutation(store: Store, args: string[], confirmMsg: string): 
 // toggleable dependents to KEEP (rescue) vs. drop with the target. `foundation` prerequisites
 // can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
 // drafts continuation hollows (see `Sgt.revertKeep`); keeping none is a plain full revert.
-async function revertWithFrontier(store: Store, sel: string): Promise<void> {
+async function revertWithFrontier(store: Store, sel: string, preview: PreviewProvider): Promise<void> {
   let view: EmitView;
   try {
     view = await store.sgt.emit(sel);
@@ -65,6 +65,9 @@ async function revertWithFrontier(store: Store, sel: string): Promise<void> {
     return;
   }
 
+  // Show the resulting diff first -- "where this lands" -- so the confirm isn't a blind op-count.
+  const changedFiles = await preview.openDiff(view);
+
   const frontier = view.frontier ?? [];
   const toggleable = frontier.filter((r) => r.toggleable);
   const lockedCount = frontier.length - toggleable.length;
@@ -72,10 +75,11 @@ async function revertWithFrontier(store: Store, sel: string): Promise<void> {
   // No dependents to choose among -> the plain confirm path (behavior unchanged from before U3).
   if (toggleable.length === 0) {
     const note = lockedCount ? ` (built on ${lockedCount} kept prerequisite(s))` : "";
+    const diffNote = changedFiles ? ` Changes ${changedFiles} file(s) — see the open diff.` : "";
     await applyMutation(
       store,
       ["revert", sel],
-      `Revert ${sel}? Removes ${view.removed.length} op(s)${note}. Rewrites the working tree and commits.`
+      `Revert ${sel}? Removes ${view.removed.length} op(s)${note}.${diffNote} Rewrites the working tree and commits.`
     );
     return;
   }
@@ -142,7 +146,7 @@ export function registerCommands(
   reg("sgt.revert", async (id?: string) => {
     const feature = await pickFeature(store, id);
     if (feature) {
-      await revertWithFrontier(store, feature);
+      await revertWithFrontier(store, feature, preview);
     }
   });
   reg("sgt.restore", async (id?: string) => {
@@ -212,7 +216,7 @@ export function registerCommands(
       vscode.window.showWarningMessage("No mined symbol under the cursor.");
       return;
     }
-    await revertWithFrontier(store, span.symbol);
+    await revertWithFrontier(store, span.symbol, preview);
   });
 
   reg("sgt.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));

@@ -1,0 +1,334 @@
+"""The feature-timeline (Gantt) layout + terminal renderer, shared by `sgt graph` (static print)
+and the Textual TUI.
+
+This is the terminal counterpart of the VS Code workbench's `computeGraphLayout` (a faithful port,
+kept behaviour-parallel on purpose). A commit-index is not a snapshot node -- it's a *set of ops*
+spread across features -- so we don't draw a commit spine or a node cloud. We lay out the FEATURES
+as a Gantt:
+
+    row   = one lane per feature, grouped into subsystem swimlanes and ordered by first appearance
+            (foundations up top). Vertical position means "which feature / which subsystem".
+    x     = real commit-time, a shared axis. A lane's bar spans [first_commit, last_commit] and its
+            ops are binned along it as a density heatstrip, so a 2000-op commit is one dark column,
+            never a wall of glyphs.
+    frontier = a fold point: only ops with commit_index <= frontier count, so scrubbing accretes.
+
+The terminal render is the honest projection of that model: a fixed-width time strip per lane,
+brightness = local op density, under a labeled axis -- everything a user needs to answer "what is
+here, when did it live, how big, and what can I edit."
+"""
+
+from __future__ import annotations
+
+from .color import color_for
+
+# ── Layout (pure) ────────────────────────────────────────────────────────────────────────────────
+
+
+def graph_layout(
+    map_view: dict,
+    history_view: dict,
+    *,
+    collapsed=(),
+    frontier: int | None = None,
+    top_k: int = 4,
+) -> dict:
+    collapsed = set(collapsed)
+    fr = float("inf") if frontier is None else frontier
+    by_id = {n["id"]: n for n in map_view.get("nodes", [])}
+
+    ops_by_feature: dict[str, list] = {}
+    for op in history_view.get("ops", []):
+        fid = op.get("feature_id")
+        if fid is None or op["commit_index"] > fr:
+            continue
+        ops_by_feature.setdefault(fid, []).append(op)
+    for fid in ops_by_feature:
+        ops_by_feature[fid].sort(key=lambda o: o["commit_index"])
+
+    def nearest_subsystem(node_id: str):
+        cur = by_id[node_id].get("parent") if node_id in by_id else None
+        while cur is not None:
+            p = by_id.get(cur)
+            if p and p.get("kind") == "subsystem":
+                return cur
+            cur = p.get("parent") if p else None
+        return None
+
+    def leaves_under(node_id: str) -> list[str]:
+        out, stack = [], [node_id]
+        while stack:
+            node = by_id.get(stack.pop())
+            if not node:
+                continue
+            children = node.get("children") or []
+            if children:
+                stack.extend(children)
+            else:
+                out.append(node["id"])
+        return out
+
+    # Visible lanes: a collapsed subsystem folds to one meta-lane (subtree aggregated); an expanded
+    # subsystem contributes its feature descendants as lanes under a header; a feature is a lane.
+    visible = []
+
+    def visit(node_id: str):
+        node = by_id.get(node_id)
+        if not node:
+            return
+        is_sub = node.get("kind") == "subsystem"
+        if is_sub and node_id not in collapsed:
+            for c in node.get("children") or []:
+                visit(c)
+            return
+        is_meta = is_sub
+        leaves = leaves_under(node_id) if is_meta else [node_id]
+        visible.append({
+            "id": node_id, "is_meta": is_meta, "leaves": leaves,
+            "subsystem": node_id if is_meta else nearest_subsystem(node_id),
+        })
+
+    for r in sorted(map_view.get("roots") or []):
+        visit(r)
+
+    # Aggregate ops -> op count + first/last commit + the sorted commit list. Drop lanes with no ops.
+    lanes = []
+    for v in visible:
+        commits = [op["commit_index"] for leaf in v["leaves"] for op in ops_by_feature.get(leaf, [])]
+        if not commits:
+            continue
+        commits.sort()
+        lanes.append({
+            **v, "op_count": len(commits), "first_commit": commits[0],
+            "last_commit": commits[-1], "commits": commits,
+        })
+    lane_by_id = {l["id"]: l for l in lanes}
+
+    # Visible co-change edges (hover overlay only): reroute to visible lanes, drop self-loops, merge,
+    # top-K per lane.
+    id_to_visible = {leaf: l["id"] for l in lanes for leaf in l["leaves"]}
+    lane_ids = {l["id"] for l in lanes}
+
+    def resolve_visible(node_id: str):
+        if node_id in id_to_visible:
+            return id_to_visible[node_id]
+        cur = node_id
+        while cur is not None and cur not in lane_ids:
+            cur = by_id.get(cur, {}).get("parent")
+        return cur
+
+    merged: dict[tuple, float] = {}
+    for e in map_view.get("edges", []):
+        a, b = resolve_visible(e["a"]), resolve_visible(e["b"])
+        if a is None or b is None or a == b:
+            continue
+        key = (a, b) if a < b else (b, a)
+        merged[key] = merged.get(key, 0.0) + (e.get("weight") or 0.0)
+    all_edges = [{"a": k[0], "b": k[1], "weight": w} for k, w in merged.items()]
+    all_edges.sort(key=lambda e: (-e["weight"], e["a"] + e["b"]))
+    per_node: dict[str, int] = {}
+    edges, overflow = [], {}
+    for e in all_edges:
+        ca, cb = per_node.get(e["a"], 0), per_node.get(e["b"], 0)
+        if ca < top_k and cb < top_k:
+            edges.append(e)
+            per_node[e["a"]] = ca + 1
+            per_node[e["b"]] = cb + 1
+        else:
+            overflow[e["a"]] = overflow.get(e["a"], 0) + 1
+            overflow[e["b"]] = overflow.get(e["b"], 0) + 1
+
+    # Group into swimlanes and order by first appearance. A group is an expanded subsystem (header +
+    # feature lanes) or a solo row (a meta-lane, or a feature with no subsystem).
+    header_groups: dict[str, dict] = {}
+    groups = []
+    for l in lanes:
+        if l["is_meta"] or l["subsystem"] is None:
+            groups.append({"key": l["id"], "is_header": False, "lane_ids": [l["id"]],
+                           "first_commit": l["first_commit"]})
+            continue
+        g = header_groups.get(l["subsystem"])
+        if g is None:
+            sub = by_id.get(l["subsystem"])
+            g = header_groups[l["subsystem"]] = {
+                "key": l["subsystem"], "is_header": True,
+                "label": (sub or {}).get("label", l["subsystem"]),
+                "collapsed_id": l["subsystem"], "lane_ids": [], "first_commit": float("inf"),
+            }
+            groups.append(g)
+        g["lane_ids"].append(l["id"])
+        g["first_commit"] = min(g["first_commit"], l["first_commit"])
+    groups.sort(key=lambda g: (g["first_commit"], g["key"]))
+
+    row = 0
+    headers = []
+    for g in groups:
+        lane_objs = sorted((lane_by_id[i] for i in g["lane_ids"]),
+                           key=lambda l: (l["first_commit"], l["id"]))
+        if g["is_header"]:
+            headers.append({
+                "key": g["key"], "label": g["label"], "collapsed_id": g["collapsed_id"], "row": row,
+                "first_commit": g["first_commit"], "last_commit": max(l["last_commit"] for l in lane_objs),
+                "op_count": sum(l["op_count"] for l in lane_objs), "lane_count": len(lane_objs),
+            })
+            row += 1
+        for l in lane_objs:
+            l["row"] = row
+            l["group_key"] = g["key"]
+            row += 1
+
+    return {
+        "lanes": lanes, "headers": headers, "edges": edges, "overflow": overflow,
+        "node_by_id": lane_by_id, "ops_by_feature": ops_by_feature,
+        "row_count": max(1, row), "commit_count": len(history_view.get("commits") or []),
+    }
+
+
+# ── Terminal render ────────────────────────────────────────────────────────────────────────────
+
+
+def _rgb(hex_str: str) -> tuple[int, int, int]:
+    h = hex_str.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _fg(hex_str: str, s: str) -> str:
+    r, g, b = _rgb(hex_str)
+    return f"\x1b[38;2;{r};{g};{b}m{s}\x1b[0m"
+
+
+def _shade(hex_str: str, intensity: float, s: str) -> str:
+    """`s` painted in the feature hue, brightness scaled by `intensity` in (0,1] -- so a dense time
+    column reads as a bright block and a sparse one as a dim block (density without extra glyphs)."""
+    r, g, b = _rgb(hex_str)
+    k = 0.4 + 0.6 * max(0.0, min(1.0, intensity))
+    return f"\x1b[38;2;{int(r * k)};{int(g * k)};{int(b * k)}m{s}\x1b[0m"
+
+
+_DIM = "\x1b[2m"
+_BOLD = "\x1b[1m"
+_RESET = "\x1b[0m"
+
+
+def render_graph_lines(
+    map_view: dict,
+    history_view: dict,
+    *,
+    selected: str | None = None,
+    frontier: int | None = None,
+    collapsed=(),
+    color: bool = True,
+    bar_width: int = 42,
+    label_width: int = 24,
+) -> list[str]:
+    """Render the timeline as terminal lines (ANSI truecolor when `color`). Each feature is a lane:
+    identity glyph, label, and a fixed-width time strip whose lit span is [first,last] with per-
+    column brightness = op density -- the terminal projection of the same Gantt the VS Code graph
+    draws, under one shared, labeled commit axis."""
+    layout = graph_layout(map_view, history_view, collapsed=collapsed, frontier=frontier)
+    labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
+
+    def paint(hex_str: str, s: str) -> str:
+        return _fg(hex_str, s) if color else s
+
+    def dim(s: str) -> str:
+        return f"{_DIM}{s}{_RESET}" if color else s
+
+    def bold(s: str) -> str:
+        return f"{_BOLD}{s}{_RESET}" if color else s
+
+    commit_count = layout["commit_count"]
+    max_commit = max(1, commit_count - 1)
+
+    def col_of(ci: int) -> int:
+        return max(0, min(bar_width - 1, int(ci / max_commit * bar_width)))
+
+    # Global max per-column op count, for brightness normalization across lanes.
+    lane_cols: dict[str, list] = {}
+    gmax = 1
+    for l in layout["lanes"]:
+        cols = [0] * bar_width
+        for ci in l["commits"]:
+            cols[col_of(ci)] += 1
+        lane_cols[l["id"]] = cols
+        gmax = max(gmax, *cols) if cols else gmax
+
+    def strip(cols: list[int], first: int, last: int) -> str:
+        """A bar_width time strip: shaded block where ops land (brightness=density), a dim track
+        across the feature's [first,last] lifetime, blank outside it."""
+        lo, hi = col_of(first), col_of(last)
+        out = []
+        for c in range(bar_width):
+            n = cols[c]
+            if n > 0:
+                out.append((n, "█"))  # █
+            elif lo <= c <= hi:
+                out.append((0, "─"))  # ─ lifetime track
+            else:
+                out.append((-1, " "))
+        return out  # list of (count, char); colored by caller with the lane hue
+
+    # Nearest co-change neighbours (strongest first), for the per-lane "connects to" annotation.
+    nbrs: dict[str, list] = {}
+    for e in sorted(layout["edges"], key=lambda e: -e["weight"]):
+        nbrs.setdefault(e["a"], []).append(e["b"])
+        nbrs.setdefault(e["b"], []).append(e["a"])
+
+    lines: list[str] = []
+    total_ops = sum(l["op_count"] for l in layout["lanes"])
+    n_sub = len(layout["headers"])
+    sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
+    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {commit_count} commit(s)  ·  {total_ops} op(s){sub_note}"))
+    if frontier is not None:
+        lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
+    lines.append("")
+
+    # Shared time axis: c0 at the strip's left edge, cMax at its right. The gutter width matches the
+    # lane prefix (" " + marker + glyph + " " + label + " ") so the axis aligns over the bars.
+    gutter = " " * (label_width + 5)
+    ends = f"c0c{max_commit}"
+    axis = "c0" + "─" * max(1, bar_width - len(ends)) + f"c{max_commit}"
+    lines.append(dim(f"{gutter}{axis}  time →"))
+
+    lanes_by_row = {l["row"]: l for l in layout["lanes"]}
+    headers_by_row = {h["row"]: h for h in layout["headers"]}
+    for row in range(layout["row_count"]):
+        if row in headers_by_row:
+            hd = headers_by_row[row]
+            label = ("▾ " + hd["label"])[:label_width + 2].ljust(label_width + 2)
+            meta = f"{hd['lane_count']} feat · {hd['op_count']} op"
+            lines.append(dim(f" {label} {meta}"))
+        elif row in lanes_by_row:
+            l = lanes_by_row[row]
+            fid = l["id"]
+            hexc = color_for(fid)
+            is_sel = fid == selected
+            glyph = "◈" if l["is_meta"] else "●"  # ◈ / ●
+            marker = "▸" if is_sel else " "
+            raw = labels.get(fid, fid)
+            if l["is_meta"]:
+                raw = f"{raw} ({len(l['leaves'])})"
+            label = raw[:label_width].ljust(label_width)
+            cells = strip(lane_cols[fid], l["first_commit"], l["last_commit"])
+            bar = ""
+            for n, ch in cells:
+                if n > 0:
+                    bar += _shade(hexc, (n / gmax) ** 0.5, ch) if color else ch
+                elif n == 0:
+                    bar += dim(ch)
+                else:
+                    bar += ch
+            count = str(l["op_count"]).rjust(5)
+            link_ids = nbrs.get(fid, [])[:2]
+            links = ", ".join(labels.get(x, x) for x in link_ids)
+            extra = len(nbrs.get(fid, [])) - len(link_ids)
+            row_s = f" {marker}{paint(hexc, glyph)} {bold(label) if is_sel else label} {bar} {dim(count)}"
+            if links:
+                row_s += "  " + dim("↔ " + links + (f" +{extra}" if extra > 0 else ""))
+            lines.append(row_s)
+    lines.append("")
+
+    # Legend + next-step hints: the view explains its own encoding and what to do from here.
+    lines.append(dim(" ● feature   ▾ subsystem   bar = lifetime, brightness = op density   ↔ co-change"))
+    lines.append(dim(" next:  sgt graph --at <commit> (fold history)   ·   sgt revert <feature>   ·   sgt map (tree)"))
+    return lines

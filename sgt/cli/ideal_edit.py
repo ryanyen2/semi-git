@@ -298,10 +298,65 @@ def _print_verb_view(view: dict) -> int:
     print(f"{icon} [{view['verb']}] {view['target']}" + (f" — {view['message']}" if view["message"] else ""))
     if not view["ok"]:
         return 1
+    def _op_ids(ids: list, limit: int = 8) -> str:
+        head = ", ".join(o[:12] for o in ids[:limit])
+        return head + (f" +{len(ids) - limit} more" if len(ids) > limit else "")
+
     if view["removed"]:
-        print(f"    removed {len(view['removed'])} op(s): " + ", ".join(o[:12] for o in view["removed"]))
+        print(f"    removed {len(view['removed'])} op(s): " + _op_ids(view["removed"]))
     if view["added"]:
-        print(f"    added {len(view['added'])} op(s): " + ", ".join(o[:12] for o in view["added"]))
-    if view["affected_symbols"]:
+        print(f"    added {len(view['added'])} op(s): " + _op_ids(view["added"]))
+    # The dependent frontier: what reverting *lands on*. blast = a direct dependent that must be
+    # re-drafted (a hollow to fulfill); carry = a transitive dependent that repoints mechanically;
+    # foundation = an upstream prerequisite a revert cannot drop. This is the "where does it lead".
+    frontier = view.get("frontier") or []
+    if frontier:
+        buckets: dict[str, int] = {}
+        for row in frontier:
+            buckets[row.get("bucket", "?")] = buckets.get(row.get("bucket", "?"), 0) + 1
+        parts = []
+        if buckets.get("blast"):
+            parts.append(f"{buckets['blast']} to re-draft (blast)")
+        if buckets.get("carry"):
+            parts.append(f"{buckets['carry']} auto-repoint (carry)")
+        if buckets.get("foundation"):
+            parts.append(f"{buckets['foundation']} prerequisite(s) locked (foundation)")
+        if parts:
+            print("    dependents: " + ", ".join(parts))
+    affected = view.get("affected") or []
+    if affected:
+        rows = ", ".join(
+            f"{a['feature_id'][:12]} ({a['direction']} {a['op_count']})" for a in affected[:6]
+        )
+        more = f" +{len(affected) - 6}" if len(affected) > 6 else ""
+        print(f"    features touched: {rows}{more}")
+    elif view["affected_symbols"]:
         print(f"    affected: {', '.join(view['affected_symbols'])}")
+    _print_verb_diff(view.get("files") or {})
     return 0
+
+
+def _print_verb_diff(files: dict, max_lines: int = 60) -> None:
+    """Show the actual resulting change (the state you land in), computed by the backend as a
+    before/after fold per changed path. A capped unified diff -- the honest answer to 'what does
+    reverting this do to my code', not just an op-count."""
+    if not files:
+        return
+    import difflib
+
+    print(f"    ── resulting change ({len(files)} file(s)) ──")
+    shown = 0
+    for path in sorted(files):
+        pair = files[path]
+        before = (pair.get("before") or "").splitlines()
+        after = (pair.get("after") or "").splitlines()
+        diff = list(difflib.unified_diff(before, after, lineterm="", n=2))[2:]  # drop the ---/+++ header
+        if not diff:
+            continue
+        print(f"    {path}")
+        for line in diff:
+            if shown >= max_lines:
+                print("    … (diff truncated; use --json for the full before/after)")
+                return
+            print(f"      {line}")
+            shown += 1
