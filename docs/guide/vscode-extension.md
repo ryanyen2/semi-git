@@ -1,17 +1,16 @@
 # VS Code extension
 
-The extension shows which feature owns each line of code, draws the feature tree as a rail
-alongside a commit timeline, and lets you merge, split, rename, move, or revert a feature from the
-editor. It also drives sgt's git bridge -- switch, save, undo, sync, push, land -- so day-to-day
-git work never has to leave VS Code. It never edits your code directly. It calls `sgt`'s read
-views and its feature, kernel, and git-bridge verbs.
+The extension shows which feature owns each line of code, draws the feature tree next to a
+timeline of commits, and lets you merge, split, rename, move, or revert a feature from the editor.
+It also runs your day-to-day git commands for you: switch, save, undo, sync, push, and land. So
+you never have to leave VS Code for those. It never edits your code directly. It only calls
+`sgt`'s read commands and its commands for features, kernel state, and git.
 
-An activity-bar container (`semi-git`) holds four tree views -- Features, Forks, Changes, and
-Compositions -- and a **Composition Workbench** webview panel gives the same data a full-window,
-rail3-style layout with an inspector and a `code(I)` panel driven by `sgt fold --at`. A workspace
-with no `.sgt` store yet still activates the extension; the Features view shows an
-**Initialize semi-git** welcome action (`sgt.init`) and a matching walkthrough
-(**Get started with semi-git**) instead of an error.
+An activity bar container called `semi-git` holds four tree views: Features, Forks, Changes, and
+Compositions. A Composition Workbench panel shows the same data in a full window, with a tree and
+timeline, an inspector, and a panel that shows your files as they looked at any point you pick. If
+a workspace has no `sgt` store yet, the extension still activates. The Features view shows an
+**Initialize semi-git** button instead of an error, along with a short walkthrough.
 
 ## Install from source
 
@@ -21,99 +20,100 @@ npm install
 npm run compile        # type-check and bundle to dist/extension.js
 ```
 
-Press `F5` in VS Code to launch an Extension Development Host, or package it with `npx vsce
-package` and install the `.vsix`. The extension activates in any workspace that has
-`.sgt/local/ideal.json`, which `sgt init` writes. It calls the `sgt` on your `PATH`, which you can
-override with the `sgt.path` setting.
+Press `F5` in VS Code to launch a development instance of the extension, or package it with `npx
+vsce package` and install the `.vsix` file. The extension activates in any workspace that has run
+`sgt init`. It calls the `sgt` command on your system path, which you can change with the
+`sgt.path` setting.
 
 ## What you get
 
 | Surface | What it shows |
 | --- | --- |
-| Feature blame | A colored tint per line, by the feature that owns it (`blame_view`) |
-| Composition Workbench | A rail view of the feature tree (hierarchy + commit timeline) and an inspector with a `code(I)` panel, with a hover preview on every action that changes state |
-| `sgtFeatures` / `sgtForks` / `sgtChanges` / `sgtCompositions` (activity bar) | The feature tree; open forks (badge = count); drift, unmanaged paths, and the trust queue; active plan sessions and proposals |
-| Plan CodeLens and status bar | Lines that match or drift from the active `sgt plan` session (U14) |
-| Revert preview | A read-only diff of what reverting a feature would change, before you commit |
-| Git bridge | Palette commands + an always-visible status-bar oracle chip for `switch`/`save`/`undo`/`sync`/`push`/`land` |
-| Fork resolution | An N-column view of a fork's tip images, plus the `merge-op` → hand-edit → `fulfill` → `land` wizard |
-| Hovers, diagnostics, inlay hints | A symbol hover with label/rationale/coupling; a Hint on drifted spans (with a "Save to clear" quick-fix) and a Warning on forked ones; an opt-in `‹feature ·N ops›` inlay hint |
-| Trust queue and proposal review | Acknowledge mined ops from `sgtChanges`; partial-accept land and publish a proposal as a GitHub PR from `sgtCompositions` |
+| Feature blame | A colored tint on each line, based on the feature that owns it |
+| Composition Workbench | The feature tree and a timeline of commits, with an inspector that shows a feature's code at any point you pick, and a preview before any action that changes state |
+| Features, Forks, Changes, and Compositions (activity bar) | The feature tree, open forks with a count badge, drift and unreviewed edits, and active sessions and proposals |
+| Plan status | Lines that match or drift from an active plan you started with `sgt plan` |
+| Revert preview | A read-only preview of what reverting a feature would change, before you commit to it |
+| Git bridge | Commands and a status bar item for switch, save, undo, sync, push, and land |
+| Fork resolution | A side-by-side view of a fork's two versions, walking you through merge, edit, and land |
+| Hovers, diagnostics, and inlay hints | A hover on each symbol showing its feature, why it was grouped that way, and what else it is coupled to. A hint on drifted code, a warning on forked code, and an optional inline note showing a symbol's feature and how many edits it has |
+| Trust queue and proposal review | Mark edits as reviewed from the Changes view, land part of a proposal, or publish one as a GitHub PR from the Compositions view |
 
 ## A plain walkthrough
 
-If you've never used this before, here's what a real session looks like, step by step. No prior
-knowledge of semi-git's internals required.
+If you have never used this before, here is what a real session looks like, step by step. You do
+not need any prior knowledge of how semi-git works internally.
 
 ### 1. Open a project for the first time
 
-Open a folder in VS Code. If it hasn't been set up with semi-git yet, you'll see a `semi-git` icon
-in the activity bar (the icon strip on the far left) with a single button: **Initialize
-semi-git**. Click it. That runs `sgt init` for you and starts a short walkthrough that checks the
-`sgt` command is on your machine and opens the workbench for the first time.
+Open a folder in VS Code. If it has not been set up with semi-git yet, you will see a `semi-git`
+icon in the activity bar, the icon strip on the far left, with a single button: **Initialize
+semi-git**. Click it. That runs `sgt init` for you and starts a short walkthrough that checks that
+the `sgt` command is installed and opens the workbench for the first time.
 
 ### 2. Write code like you normally would
 
-You, or your AI coding agent, write and save code exactly as before -- semi-git never touches your
+You, or your AI coding agent, write and save code exactly as before. Semi-git never touches your
 files. As you open a file, every line gets a thin colored stripe in the left margin and a faint
-tint in the background. Each color is a different **feature** -- a piece of functionality
-semi-git has automatically grouped that line into (for example, "user login" or "PDF export").
-Hover over any line to see that feature's name.
+tint in the background. Each color is a different feature, a piece of functionality semi-git has
+automatically grouped that line into, for example "user login" or "PDF export". Hover over any
+line to see that feature's name.
 
-### 3. Check what's new
+### 3. Check what is new
 
-Click the `semi-git` icon in the activity bar. You'll see four lists:
+Click the `semi-git` icon in the activity bar. You will see four lists:
 
-- **Features** -- everything semi-git knows about, as a tree (bigger areas contain smaller ones).
-- **Forks** -- places where two different versions of the same code disagree and need a decision
-  from you. Empty most of the time.
-- **Changes** -- edits that haven't been checked in yet, files semi-git doesn't understand yet, and
-  a queue of edits waiting for someone to glance at them.
-- **Compositions** -- your branches, any in-progress planning sessions, and proposals waiting to be
+- **Features**, everything semi-git knows about, shown as a tree where bigger areas contain
+  smaller ones.
+- **Forks**, places where two different versions of the same code disagree and need a decision
+  from you. This is empty most of the time.
+- **Changes**, edits that have not been checked in yet, files semi-git does not understand yet,
+  and a queue of edits waiting for someone to look them over.
+- **Compositions**, your branches, any in-progress planning sessions, and proposals waiting to be
   merged in.
 
-If **Forks** has a number badge on it, something needs your attention before you can land your
-work (see step 7).
+If **Forks** shows a number badge, something needs your attention before you can land your work.
+See step 7.
 
 ### 4. Open the full picture
 
 Run **semi-git: Open Composition Workbench** from the command palette (`Cmd/Ctrl+Shift+P`), or
-click the status-bar icon at the bottom of the window. This opens a full tab with three parts side
-by side: the feature tree on the left, a timeline of every change across the top, and a detail
-panel on the right. Click any feature to see its details and its actual code on the right.
+click the status bar icon at the bottom of the window. This opens a tab with three parts side by
+side: the feature tree on the left, a timeline of every change across the top, and a detail panel
+on the right. Click any feature to see its details and its actual code on the right.
 
 ### 5. Look back in time
 
-Above the timeline there's a small handle -- the playhead. Click anywhere on the timeline, or drag
-the handle, and the code panel on the right instantly updates to show what the code looked like at
-that exact point, plus a green check or red X for whether the checks would have passed then.
-Nothing changes on disk while you do this -- it's only a preview. Press `Esc`, or click "Back to
+Above the timeline there is a small handle, the playhead. Click anywhere on the timeline, or drag
+the handle, and the code panel on the right instantly shows what the code looked like at that
+exact point, along with a green check or red mark for whether your checks would have passed then.
+Nothing changes on disk while you do this. It is only a preview. Press `Esc`, or click "Back to
 current", to return to normal.
 
 ### 6. Reorganize a feature
 
 Click a feature in the tree, then use the buttons above the code panel: **Rename**, **Merge
 into**, **Split**, **Move**, **Revert**. Hovering any of these paints the affected code in orange
-(code that would change) or blue (code this depends on) before you commit to anything. For quick,
-safe actions -- rename, merge, split, move -- clicking just does it, and a small "Undo"
-notification appears afterward. For actions that can touch a lot of code, like revert, clicking
-first "arms" the action: the effect is previewed, and you confirm with `Enter` or back out with
-`Esc`.
+for code that would change, and blue for code this depends on, before you commit to anything. For
+quick, safe actions such as rename, merge, split, and move, clicking just does it, and a small
+"Undo" notification appears afterward. For an action that can touch a lot of code, such as revert,
+clicking first previews the effect, and you confirm with `Enter` or back out with `Esc`.
 
 ### 7. Resolve a conflict
 
-If **Forks** shows a badge, click it, pick the conflict, and semi-git opens a side-by-side view:
-one column per version of the code that disagrees. Follow the buttons in order:
+If **Forks** shows a badge, click it, pick the conflict, and semi-git opens a side-by-side view
+with one column per version of the code that disagrees. Follow the buttons in order:
 
-1. **Draft merge** -- semi-git prepares a starting point that reconciles both versions.
-2. **Open affected files** -- jump straight to the files you need to edit by hand.
+1. **Draft merge**, semi-git prepares a starting point that reconciles both versions.
+2. **Open affected files**, jump straight to the files you need to edit by hand.
 3. Edit the code until it looks the way you want.
-4. **Fulfill from working tree**, then **Land** -- semi-git records your edit as the resolution and
+4. **Fulfill from working tree**, then **Land**. Semi-git records your edit as the resolution and
    finishes the merge.
 
 ### 8. Use it instead of the git commands you already know
 
-Six commands, on the palette or the status bar, cover what you'd normally type into a terminal:
+Six commands, on the palette or the status bar, cover what you would normally type into a
+terminal:
 
 | Instead of typing... | Run this command |
 | --- | --- |
@@ -124,23 +124,23 @@ Six commands, on the palette or the status bar, cover what you'd normally type i
 | `git push` | **Push** |
 | merging a branch in on the server | **Land Branch** |
 
-**Save** always runs immediately -- it can't lose work. **Push** and **Land Branch** ask you to
+**Save** always runs right away. It cannot lose work. **Push** and **Land Branch** ask you to
 confirm first, since both affect other people. **Land Branch** refuses to run at all while any
-conflict (fork) is open, and tells you which one.
+fork is open, and tells you which one.
 
 ### 9. Review what an agent, or a teammate, did
 
-Open **Changes** in the sidebar. Anything semi-git picked up automatically that wasn't part of an
-active plan shows up as **drift** -- right-click a line flagged this way in the editor and use the
-quick-fix to save and clear it. The **trust queue** below it lists edits grouped by who or what
-made them; right-click a group and choose **Acknowledge** once you've looked it over.
+Open **Changes** in the sidebar. Anything semi-git picked up automatically that was not part of an
+active plan shows up as drift. Right-click a line flagged this way in the editor and use the
+quick fix to save it and clear the flag. The trust queue below it lists edits grouped by who or
+what made them. Right-click a group and choose **Acknowledge** once you have looked it over.
 
-Under **Compositions**, a proposal (a bundle of finished work waiting to be merged in) has two
-right-click actions: **Land Proposal** (merge it in -- if it covers more than one feature, you get
-a checklist to land only some of them) and **Publish Proposal** (push it and open a GitHub pull
-request).
+Under **Compositions**, a proposal, a bundle of finished work waiting to be merged in, has two
+right-click actions: **Land Proposal**, which merges it in and, if it covers more than one
+feature, gives you a checklist to land only some of them, and **Publish Proposal**, which pushes
+it and opens a GitHub pull request.
 
-That's the whole loop: write code, glance at the sidebar, open the workbench for the bigger
+That is the whole loop: write code, glance at the sidebar, open the workbench for the bigger
 picture, resolve conflicts through the wizard, and drive git through the six bridge commands
 instead of the terminal.
 
@@ -148,143 +148,135 @@ instead of the terminal.
 
 Each line is tinted in its owning feature's color, on the background, the left border, and the
 overview ruler. Hovering shows the feature's label and id. Toggle it with **semi-git: Toggle
-Feature Blame** (`sgt.blame.enabled`). Colors come from the feature id through a deterministic
-hash in `src/color.ts`, so the same feature always gets the same color in the gutter and in the
-feature map, and the colors adjust to the theme for contrast.
+Feature Blame** (`sgt.blame.enabled`). Each feature's color comes from its id, so the same feature
+always gets the same color in the gutter and in the feature map, and colors adjust to your VS Code
+theme so they stay readable.
 
 ### Composition Workbench
 
-**semi-git: Open Composition Workbench** (`sgt.openWorkbench`) opens a webview panel with a rail
-pane (tree + timeline) and an inspector pane, grounded in
-`experiments/patch_clustering/out/rail3.html`. It reads one `sgt compose --json` (`compose_view`)
-per refresh instead of separate map/history/status/... calls.
+**semi-git: Open Composition Workbench** (`sgt.openWorkbench`) opens a panel with two parts: a
+tree and timeline on one side, and an inspector on the other. It reads one combined snapshot from
+`sgt` per refresh instead of making several separate calls.
 
-- The rail's left region is the feature tree from `map_view`. Subsystems and features are listed
-  in DFS order and indented by depth, each one collapsible, with a colored dot, a label, and a
-  size bar.
-- The rail's right region, past a divider, is a shared commit-index axis from `history_view`.
-  Every mined commit appears in order. Each feature has a lifebar from its first op to its last,
-  and a glyph for each op at its commit index. The glyphs use the kernel's op-kind names: `◆` add,
-  `+` extend, `~` rework, `−` prune, `⋔` move, `⋈` merge, and `·` touched.
-- The connectors between features are cross-feature dependencies from `map_view`'s `edges`, which
-  come from the coupling graph rolled up to feature pairs. Each node shows up to a threshold of
-  them, and the overflow count is reported rather than dropped.
-- The titlebar's composition button opens a picker over HEAD and active plan sessions (by branch);
-  picking one re-folds the inspector's code panel at that ref. The oracle chip mirrors
-  `status_view.oracle`.
+- The left side is the feature tree. Features and the subsystems that contain them are listed in
+  order, each collapsible, with a colored dot, a label, and a bar showing its size.
+- The right side, past a divider, is a shared timeline built from every mined commit, in order.
+  Each feature gets a bar spanning its first op to its last, and a mark for each op at the commit
+  it happened in. The marks use short symbols for the kind of op: add, extend, rework, prune, move,
+  merge, or touched.
+- Lines connecting features show real dependencies between them, rolled up from the symbol-level
+  dependency graph. Each feature shows up to a limit of these connections, and if there are more,
+  it tells you the extra count instead of just dropping them.
+- A button in the title bar lets you pick a different branch or active session to view. Picking
+  one reloads the inspector's code panel at that point. The status chip next to it mirrors your
+  current build and test status.
 
-Hovering a row or an edge dims everything else and highlights the hovered node and its dependency
-neighbors. Color always means identity. Status is shown by a glyph or a stroke, never by a second
-color. Clicking a feature opens the inspector with its label, rationale, size, an action bar
-(Rename, Merge into, Split, Move ops, Revert), and a `code(I)` panel: the feature's files folded
-at the selected composition, via one side-effect-free `sgt fold --at <ref> --json` call (never
-materializes the working tree).
+Hovering a row or a connecting line dims everything else and highlights what you are looking at
+and what it depends on. Color always means which feature something belongs to. Status is shown
+with a symbol or an outline, never with a different color. Clicking a feature opens the inspector
+with its label, the reason it was grouped that way, its size, action buttons (Rename, Merge into,
+Split, Move ops, Revert), and a code panel showing that feature's files as they look at the point
+you have selected. That panel is read-only and never checks out those files for real.
 
-Hovering Split or Revert runs the real `plan_split` or `plan_revert_feature` preview live and
-paints the features it would affect. For Revert this can cover more than the one feature you
-named, because it is the real closure of the kernel edit rather than a guess. Merge into and Move
-ops arm a mode where you pick a target. Hovering a candidate feature previews the merge or move
-against it, and clicking confirms and applies it. Every preview is read-only, through `sgt preview <verb> ...
---json`. Only a click on Split or Revert, or a confirmed Merge or Move target, writes anything,
-through `sgt merge`, `split --apply`, `rename`, `move`, or `revert`.
+Hovering Split or Revert runs a live preview of that exact action and highlights every feature it
+would affect. For Revert, this can cover more than the one feature you named, because it shows the
+real, complete effect of the change rather than a guess. Merge into and Move ops let you pick a
+target feature. Hovering a candidate previews the merge or move against it, and clicking confirms
+and applies it. Every preview is read-only. Only a click on Split or Revert, or a confirmed Merge
+or Move target, actually changes anything.
 
-A draggable playhead over the timeline scrubs an arbitrary commit-index frontier, not just
-HEAD/sessions. Click anywhere on the timeline (or drag the handle above it) and the inspector's
-code panel switches to `code(I)` at that frontier -- via `sgt fold --at <commit-index> --json`,
-debounced and snapped to the axis's op columns -- with the frontier's own oracle verdict and an
-"I·N" op-count flag, plus a "Back to `<composition>`" button and `Esc` to return to the normal
-view. It never changes what the action bar previews or applies against; that always stays the
-selected composition. If a feature is selected, the code panel filters to that feature's files by
-the same `dir`-prefix match the composition code panel uses, without a re-fold per selection
-change while dragging.
+A draggable handle over the timeline lets you scrub to any point in your commit history, not just
+your current branch or session. Click anywhere on the timeline, or drag the handle above it, and
+the inspector's code panel switches to show your files as they looked at that point, along with
+whether your checks would have passed then and how many ops were included. A "Back to current"
+button and the `Esc` key return you to the normal view. This never changes what the action buttons
+preview or apply against. Those always stay pointed at your current branch or session. If a
+feature is selected, the code panel filters to that feature's files only, and dragging the handle
+does not reload the files on every small move, only when you stop.
 
 ### Git bridge
 
-Six palette commands (**semi-git: Switch Branch**, **Save**, **Undo Last Ideal Edit**, **Sync**,
-**Push**, **Land Branch**) drive sgt's D3 daily-loop verbs and its network verbs, so `git
-checkout`/`stash`/`reset`/`pull`/`push` never have to run directly against a `.sgt`-tracked repo:
+Six commands in the command palette, **semi-git: Switch Branch**, **Save**, **Undo Last Ideal
+Edit**, **Sync**, **Push**, and **Land Branch**, cover your daily git work and your work with
+remotes, so you never have to run `git checkout`, `stash`, `reset`, `pull`, or `push` directly
+against a repo `sgt` is tracking.
 
-- **Switch** mines the current ref first (nothing is lost), then checks out the branch you pick or
-  type, and re-mines it -- `sgt switch <branch>`.
-- **Save** mines the working tree and, if there are uncommitted ops, materializes a witness commit
-  for the resulting ideal -- `sgt save [-m <message>]`. It never destroys anything, so it runs
-  immediately, no confirmation.
-- **Undo** pops the last recorded ideal edit and restores the prior ideal exactly, as a fresh
-  forward commit (history is append-only) -- `sgt undo`.
-- **Sync** fetches a remote/branch and unions the op store, surfacing any same-symbol fork instead
-  of doing a textual merge -- `sgt sync [remote] [branch]`.
-- **Push** and **Land Branch** are confirmed first, since both write to shared/remote state --
-  `sgt push [remote] [branch]` and `sgt land <branch>` (the U23 CAS shared-branch advance). Land
-  refuses up front, with a link to `sgtForks`, while any fork is open.
+- **Switch** records your current state first, so nothing is lost, then checks out the branch you
+  pick or type, and reads its history back in.
+- **Save** records your working tree and, if there are new edits, commits them. It never destroys
+  anything, so it runs immediately with no confirmation needed.
+- **Undo** removes the last recorded change and restores what came before it, as a new forward
+  commit, since history in `sgt` is never rewritten, only added to.
+- **Sync** fetches a remote branch and merges its op set into yours, flagging any fork on a symbol
+  you both touched instead of doing a text-based merge with conflict markers.
+- **Push** and **Land Branch** ask you to confirm first, since both write to shared or remote
+  state. **Land Branch** refuses up front, with a link to the Forks view, while any fork is open.
 
-The status bar's oracle chip (`oracle: ✓`/`✗`/`…`/`○`, plus `◊N` when forks are open) mirrors
-`status_view.oracle` and is always visible, even when the oracle isn't configured yet. Clicking it
-opens the Composition Workbench.
+The status bar's status chip is always visible, even before you have set up any build or test
+checks, and shows whether they currently pass, fail, are running, or are not set up, plus how many
+forks are open if any. Clicking it opens the Composition Workbench.
 
 ### Fork resolution
 
-A fork is the one true conflict in sgt -- two chain tips claiming the same symbol -- and it blocks
-`land` until it's resolved. `sgtForks` lists every open fork (its badge is the open count); an
-editor diagnostic (below) marks the conflicting symbol in place. **semi-git: Resolve Fork**, or the
-tree item's context menu, opens a webview with one column per tip, each showing that tip's full
-image of every file the fork touches (from `fork_detail_view`, no extra fold call). The wizard
-walks the real kernel verbs, one confirm at a time, and never guesses at a merge on your behalf:
+A fork is the one real kind of conflict in `sgt`: two versions of the same symbol, each claiming
+to be the next step after the same starting point. It blocks landing until you resolve it. The
+Forks view lists every open fork with a count badge, and a marker in the editor points at the
+symbol in conflict. **semi-git: Resolve Fork**, or the right-click menu on a fork, opens a view
+with one column per version, each showing every file that version touches. The wizard walks you
+through the real steps one confirmation at a time, and never guesses at a merge on your behalf:
 
-1. **Draft merge** runs `sgt merge-op <tip-a> <tip-b>`, which drafts a hollow op reconciling the
-   two tips (you can give it an intent string first).
-2. **Open affected files** jumps you to the working tree so you can hand-edit it to the reconciled
-   result you want.
-3. **Fulfill from working tree** runs `sgt fulfill <draft-id> --from-tree`, which stages your edit
-   as the drafted hollow's image.
-4. **Land** runs `sgt commit`, committing the staged candidate (gated on the oracle, same as
-   every other commit).
+1. **Draft merge** starts a placeholder that reconciles the two versions. You can give it a short
+   description of the intent first.
+2. **Open affected files** takes you to the working tree so you can hand-edit it to the result you
+   actually want.
+3. **Fulfill from working tree** saves your edit as the content for that placeholder.
+4. **Land** commits the result, checked against your build and test checks like any other commit.
 
-`sgt pin` is not offered as an alternative here -- it exists only as a core-kernel verb, with no
-CLI entry point to call.
+There is a lower-level command, `sgt pin`, that this wizard does not use and does not offer,
+because it has no command-line entry point of its own.
 
 ### Hovers, diagnostics, and inlay hints
 
-Hovering a symbol shows its feature label and id, the tree's own rationale for why it's grouped
-that way (`map_view`'s `why`), its op count and size, and up to five features it's coupled with
-(`map_view`'s cross-feature `edges`) -- plus links to preview a revert or open the workbench. This
-sits alongside the simpler whole-line blame hover; VS Code stacks both.
+Hovering a symbol shows its feature's label and id, the reason it was grouped that way, its number
+of edits and size, and up to five other features it is coupled with, along with links to preview a
+revert or open the workbench. This sits alongside the simpler whole-line blame hover. VS Code
+shows both.
 
-Two `DiagnosticSeverity` classes light up as you edit, each toggled by its own setting:
+Two kinds of markers appear as you edit, each with its own setting to turn it off:
 
-- **Drift** (`sgt.diagnostics.drift`) -- a Hint on every span `sgt drift` reports as mined but
-  unpredicted by any active plan session, with a "Save to clear" quick-fix that runs `sgt save`.
-- **Forks** (`sgt.diagnostics.forks`) -- a Warning on the symbol a fork is open on, placed via a
-  blame lookup for that file (fork records don't carry their own line spans).
+- **Drift** (`sgt.diagnostics.drift`) is a hint on any code that has been edited but not yet saved
+  through `sgt`, with a quick fix that saves it and clears the marker.
+- **Forks** (`sgt.diagnostics.forks`) is a warning on the symbol a fork is open on.
 
-An opt-in inlay hint (`sgt.inlayHints.enabled`, default off) appends `‹feature-label ·N ops›` to
-each symbol's definition line, for when you want the feature/op-count context without opening the
-workbench or hovering.
+An inlay hint, off by default (`sgt.inlayHints.enabled`), adds a short note after each symbol's
+definition showing its feature and how many edits it has, for when you want that context without
+hovering or opening the workbench.
 
 ### Trust queue and proposal review
 
-`sgtChanges`' trust queue lists mined ops grouped by provenance (agent session, git author, ...).
-**semi-git: Acknowledge** on a group or a single op runs `sgt review-queue ack`, dequeuing it (with
-an optional note) so it stops showing up as pending review.
+The Changes view's trust queue lists edits grouped by where they came from, such as an agent
+session or a git author. **semi-git: Acknowledge**, on a group or a single edit, marks it as
+reviewed, with an optional note, so it stops showing up as pending.
 
-`sgtCompositions`' proposal rows carry two actions. **Land Proposal** runs `sgt propose land`; if
-the proposal spans more than one feature, you get a checklist to land a subset instead of the
-whole thing (unpicking a feature another chosen feature `requires` is refused up front, naming the
-missing dependency, before anything runs). **Publish Proposal** runs `sgt propose publish`,
-pushing the proposal's rendered branch and creating or updating its GitHub PR via `gh`.
+In the Compositions view, a proposal has two right-click actions. **Land Proposal** merges it in.
+If the proposal spans more than one feature, you get a checklist to land a subset instead of the
+whole thing, and if you try to leave out a feature that another feature you kept depends on, it
+tells you that up front instead of letting you proceed. **Publish Proposal** pushes the proposal's
+branch and creates or updates its GitHub pull request.
 
 ### Plan CodeLens and status bar
 
-When a plan session is active, from `sgt plan intake`, matched and drifted lines get a one-line
-CodeLens (`✦ matches plan step N` or `◇ drift`) that opens a diff of the step's intent against the
-real edit. A status bar item shows step progress (`○` pending, `●` matched). Toggle it with
-`sgt.plan.enabled`. Both are hidden when no session is active.
+When you have an active plan, started with `sgt plan intake`, lines that match or drift from it
+get a short note above them, either "matches plan step N" or "drift", that opens a comparison of
+what the plan expected against what was actually written. A status bar item shows how many steps
+are done. Toggle this with `sgt.plan.enabled`. Both are hidden when no plan is active.
 
 ### Revert preview
 
-From the feature map's action bar, or **semi-git: Preview Revert Feature**, open a read-only diff
-of the current files against the predicted files after a revert. It runs `sgt revert <feature>
---emit` and writes nothing. If the revert is refused, for example because of a fork, it shows the
-reason instead of a diff. **semi-git: Revert Feature** applies it for real after a confirmation,
+From the feature map's action buttons, or **semi-git: Preview Revert Feature**, open a read-only
+preview comparing your current files against what they would look like after a revert. This
+writes nothing. If the revert would be refused, for example because of an open fork, it shows the
+reason instead of a preview. **semi-git: Revert Feature** applies it for real after you confirm,
 then rebuilds the files and commits.
 
 ## Settings
@@ -293,15 +285,15 @@ then rebuilds the files and commits.
 | --- | --- | --- |
 | `sgt.path` | `sgt` | Path to the `sgt` executable. |
 | `sgt.blame.enabled` | `true` | Tint each line by the feature that owns it. |
-| `sgt.plan.enabled` | `true` | Show a CodeLens on lines that match or drift from the active plan session. |
-| `sgt.inlayHints.enabled` | `false` | Show a `‹feature-label ·N ops›` inlay hint at each symbol's definition line. |
-| `sgt.diagnostics.drift` | `true` | Show a Hint diagnostic (with a "Save to clear" quick-fix) on drifted spans. |
-| `sgt.diagnostics.forks` | `true` | Show a Warning diagnostic on symbols with an open fork. |
+| `sgt.plan.enabled` | `true` | Show a note on lines that match or drift from the active plan. |
+| `sgt.inlayHints.enabled` | `false` | Show a short feature and edit-count note at each symbol's definition line. |
+| `sgt.diagnostics.drift` | `true` | Show a hint, with a quick fix, on code that has drifted from what was last saved. |
+| `sgt.diagnostics.forks` | `true` | Show a warning on symbols with an open fork. |
 
 ## How it talks to sgt
 
-Every read runs `sgt <verb> --json` in the workspace root, using the JSON views in `sgt/api.py`.
-Results are cached in `src/store.ts` and refreshed when a file under `.sgt/` changes or you save a
-Python file. Writes call the same verbs the CLI calls. The workbench's hover preview and the
-CLI's `sgt preview <verb> ...` read the same `feature_verb_preview_view` projection, so the
-extension, the CLI, and MCP all read one schema.
+Every read runs `sgt <command> --json` in your workspace root. Results are cached and refreshed
+whenever a file under `.sgt/` changes, or you save a Python file. Writes call the same commands
+the terminal version of `sgt` calls. The workbench's preview on hover and the command line's own
+preview option read the same data, so the extension, the command line, and any MCP client all see
+the same information.
