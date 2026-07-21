@@ -58,6 +58,18 @@ body {
   flex: 0 0 auto;
 }
 
+/* The persistent "where am I" band: composition · view · selection closure · scrub · uncommitted. */
+#presence {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .composition-btn {
   background: var(--vscode-button-secondaryBackground, transparent);
   color: var(--vscode-button-secondaryForeground, var(--fg));

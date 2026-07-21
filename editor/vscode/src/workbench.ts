@@ -88,6 +88,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
     <div id="inspector"></div>
   </div>
+  <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
 </div>
 <script nonce="${nonce}" src="${jsUri}"></script>
 </body>
