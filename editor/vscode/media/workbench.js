@@ -269,6 +269,50 @@ function classifyAffected(result, targetId) {
 }
 // ---- end-closure (test slice boundary) ----
 
+// Lay episodes out as a vertical git-log rail (Stage C): newest episode on top (row 0), each
+// feature a lane column (its episodes a straight vertical line), lanes reused by features whose
+// row-spans don't overlap (greedy interval-graph coloring) -- the compaction that keeps the column
+// count small no matter how many features exist. Pure; the Python counterpart is
+// `episode_rail_layout` in sgt/tui/graph.py, kept behaviour-parallel. Sliced for the node harness.
+function episodeRailLayout(epView) {
+  const episodes = (epView && epView.episodes) || [];
+  const ordered = episodes.slice().sort((a, b) => b.index - a.index); // newest (largest index) top
+  const rowOf = new Map();
+  ordered.forEach((e, r) => rowOf.set(e.index, r));
+
+  const span = new Map(); // fid -> [top, bot] (fid may be null -> Map, not an object, allows it)
+  for (const e of episodes) {
+    const fid = e.dominantFeature;
+    const r = rowOf.get(e.index);
+    const s = span.get(fid);
+    if (!s) span.set(fid, [r, r]);
+    else { s[0] = Math.min(s[0], r); s[1] = Math.max(s[1], r); }
+  }
+
+  // Greedy interval coloring: features top-first; a lane is reusable once its last occupant ends
+  // above (smaller row than) this feature's top. Lowest free lane wins (minimal columns).
+  const feats = [...span.keys()].sort((a, b) =>
+    span.get(a)[0] - span.get(b)[0] || String(a).localeCompare(String(b)));
+  const laneOf = new Map();
+  const laneBot = [];
+  for (const fid of feats) {
+    const [top, bot] = span.get(fid);
+    let lane = -1;
+    for (let L = 0; L < laneBot.length; L++) { if (laneBot[L] < top) { lane = L; break; } }
+    if (lane < 0) { lane = laneBot.length; laneBot.push(bot); }
+    else laneBot[lane] = bot;
+    laneOf.set(fid, lane);
+  }
+
+  const rows = ordered.map((e) => ({
+    index: e.index, row: rowOf.get(e.index), feature: e.dominantFeature,
+    lane: laneOf.has(e.dominantFeature) ? laneOf.get(e.dominantFeature) : 0,
+    subject: e.subject, opCount: e.opCount, sha: e.sha,
+  }));
+  return { rows, laneCount: Math.max(1, laneBot.length), rowCount: ordered.length };
+}
+// ---- end-rail (test slice boundary) ----
+
 // ─── Rendering + interaction ──────────────────────────────────────────────────────────────────
 // Everything below touches the DOM/vscode API and is not exercised by the node harness.
 
@@ -283,6 +327,7 @@ function classifyAffected(result, targetId) {
   if (state.selectedStep === undefined) state.selectedStep = null;
   if (state.selectedPlanSession === undefined) state.selectedPlanSession = null;
   if (!Array.isArray(state.multi)) state.multi = state.selected ? [state.selected] : [];
+  if (state.view !== "rail") state.view = "gantt"; // "gantt" (feature timeline) | "rail" (episodes)
   let compose = {
     map: { nodes: [], roots: [], edges: [] }, history: { commits: [], ops: [] },
     status: { oracle: { configured: false, status: "pending" } }, sessions: { sessions: [] }, proposals: [],
@@ -345,6 +390,7 @@ function classifyAffected(result, targetId) {
   const offscreenAbove = document.getElementById("offscreenAbove");
   const offscreenBelow = document.getElementById("offscreenBelow");
   let planChipsEl = null; // created lazily on first renderTitlebar(), inserted after oracleChip
+  let viewToggleEl = null; // Gantt <-> Rail view switch, created lazily on first renderTitlebar()
 
   const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line"]);
 
@@ -514,6 +560,21 @@ function classifyAffected(result, targetId) {
     oracleChip.dataset.state = st;
     oracleChip.textContent = `oracle: ${st}`;
 
+    if (!viewToggleEl) {
+      viewToggleEl = document.createElement("button");
+      viewToggleEl.className = "view-toggle";
+      viewToggleEl.addEventListener("click", () => {
+        state.view = state.view === "rail" ? "gantt" : "rail";
+        saveState();
+        render();
+      });
+      compositionBtn.insertAdjacentElement("beforebegin", viewToggleEl);
+    }
+    viewToggleEl.textContent = state.view === "rail" ? "◫ Rail" : "▤ Timeline";
+    viewToggleEl.title = state.view === "rail"
+      ? "Showing the episode rail (what I did, in order) — click for the feature timeline"
+      : "Showing the feature timeline (Gantt) — click for the episode rail";
+
     if (!planChipsEl) {
       planChipsEl = document.createElement("div");
       planChipsEl.className = "plan-chips";
@@ -648,6 +709,7 @@ function classifyAffected(result, targetId) {
   }
 
   function renderGraph() {
+    if (state.view === "rail") { renderRail(); return; }
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
     const geom = ganttGeom();
@@ -662,6 +724,75 @@ function classifyAffected(result, targetId) {
     for (const l of layout.lanes) laneLayer.appendChild(renderLane(l, geom, density));
     renderTimeAxis(svg, geom);
 
+    rail.appendChild(svg);
+    rail.scrollTop = prevScroll;
+  }
+
+  // ─── The episode rail (vertical git-log) ────────────────────────────────────────────────────
+  // "What I did, in order": newest commit-episode on top, each feature a lane column (its episodes
+  // a straight vertical spine), lanes reused across non-overlapping spans (episodeRailLayout's
+  // interval coloring). Clicking a row selects that episode's feature -- the same select path the
+  // Gantt uses, so revert/preview/multi-select all work identically from here.
+  const RAIL = { rowH: 22, laneW: 16, padT: 10, dotR: 4, padL: 12, shaW: 58 };
+
+  function renderRail() {
+    const prevScroll = rail.scrollTop;
+    rail.innerHTML = "";
+    graphView = null; // no frontier scrubber in rail mode; drop the stale Gantt handle
+    const rlayout = episodeRailLayout(rollupEpisodes(map, history));
+    const rows = rlayout.rows;
+    const paneW = Math.max(rail.clientWidth || 0, 320);
+    const gutterW = RAIL.padL + rlayout.laneCount * RAIL.laneW;
+    const h = RAIL.padT * 2 + rows.length * RAIL.rowH;
+    const svg = mk("svg", { width: paneW, height: Math.max(h, 40), class: "railsvg rail" });
+    const yOf = (row) => RAIL.padT + row * RAIL.rowH + RAIL.rowH / 2;
+    const xOf = (lane) => RAIL.padL + lane * RAIL.laneW + RAIL.laneW / 2;
+
+    if (!rows.length) {
+      const t = mk("text", { x: RAIL.padL, y: 24, class: "rail-subject", text: "No episodes yet." });
+      svg.appendChild(t);
+      rail.appendChild(svg);
+      return;
+    }
+
+    // Feature spines: one vertical line per feature across its row-span (drawn behind the dots), so
+    // a feature touched across many commits reads as one continuous column.
+    const span = new Map(); // fid -> {top, bot, lane}
+    for (const r of rows) {
+      const s = span.get(r.feature);
+      if (!s) span.set(r.feature, { top: r.row, bot: r.row, lane: r.lane });
+      else { s.top = Math.min(s.top, r.row); s.bot = Math.max(s.bot, r.row); }
+    }
+    const spineLayer = mk("g", { class: "rail-spines" });
+    for (const [fid, s] of span) {
+      if (s.bot === s.top) continue;
+      spineLayer.appendChild(mk("line", {
+        x1: xOf(s.lane), x2: xOf(s.lane), y1: yOf(s.top), y2: yOf(s.bot),
+        class: "rail-spine", stroke: laneColor(fid || ""),
+      }));
+    }
+    svg.appendChild(spineLayer);
+
+    const textX = gutterW + 8;
+    const subjChars = Math.max(8, Math.floor((paneW - textX - RAIL.shaW - 12) / 6.2));
+    for (const r of rows) {
+      const inSel = r.feature === state.selected || (state.multi || []).includes(r.feature);
+      const g = mk("g", { class: "rail-row" + (inSel ? " selected" : ""), "data-id": r.feature || "" });
+      g.appendChild(mk("rect", {
+        x: 0, y: RAIL.padT + r.row * RAIL.rowH, width: paneW, height: RAIL.rowH, class: "rail-hit",
+      }));
+      g.appendChild(mk("circle", {
+        cx: xOf(r.lane), cy: yOf(r.row), r: RAIL.dotR, class: "rail-dot", fill: laneColor(r.feature || ""),
+      }));
+      g.appendChild(mk("text", { x: textX, y: yOf(r.row) + 4, class: "rail-sha", text: (r.sha || "").slice(0, 7) }));
+      const subj = mk("text", { x: textX + RAIL.shaW, y: yOf(r.row) + 4, class: "rail-subject" });
+      subj.textContent = truncate((r.subject || "").replace(/\n/g, " "), subjChars);
+      g.appendChild(subj);
+      if (r.feature) {
+        g.addEventListener("click", (ev) => selectRow(r.feature, ev.metaKey || ev.ctrlKey || ev.shiftKey));
+      }
+      svg.appendChild(g);
+    }
     rail.appendChild(svg);
     rail.scrollTop = prevScroll;
   }
