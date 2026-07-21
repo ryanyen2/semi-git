@@ -205,7 +205,17 @@ graph* and the *processing/after* states — not new backend compute.
       apply, settle to the new composition + "what changed" summary) — apply currently just
       invalidates→full re-render. Scoping those with the rail work so the animation is designed
       once for both views.
-- [ ] Step 4 — VS Code: lane multi-select → closure → preview lifecycle.
+- [x] **Step 4 — VS Code lane multi-select → union closure.** DONE. ⌘/ctrl/shift-click
+      accretes a set of lanes (plain click = single-select toggle, clears the set) — the VS
+      Code parallel of the TUI's space-select. `state.multi` holds the set; a ≥2 selection
+      takes over the inspector with a **union-closure card** ("N features → M ops in closure",
+      the OTHER features it pulls in, hub warning, deselectable chips) fed by `sgt select`
+      (`selection_view`, report-only) via a new `selectClosure`→`selectionResult` round-trip.
+      `paintSelectionClosure` ambers the pulled-in features so "where this selection lands" is
+      visible. **Revert all** mirrors the TUI (which also applies per-feature): the host reverts
+      each ref in turn (re-resolving via mine-on-contact), STOPPING on the first refusal — one
+      confirm up front. Stale selections pruned on each fresh state. New store method
+      `Sgt.select` + `SelectionView` type. tsc+esbuild clean, DOM smoke green.
 - [ ] Step 5 — episode rail: revive `decision.js` `computeLayout` fed by Step 2's episodes;
       render in VS Code (+ TUI screen). Apply CSE/lazy/stage-chaining compaction.
 - [ ] Step 6 — presence / "where am I" band (both surfaces) + TUI parity.

@@ -636,6 +636,17 @@ svg.railsvg {
   font-size: 11px;
 }
 
+/* A selected-feature chip in the multi-select card: outlined in the accent, click to deselect. */
+.chip.selected-chip {
+  border-color: var(--accent);
+  color: var(--fg);
+  cursor: pointer;
+}
+.chip.selected-chip::after {
+  content: " ×";
+  color: var(--dim);
+}
+
 /* Motion is a comprehension aid, never a requirement -- the graph's transitions are purely
    decorative (hover dim/light), so reduced-motion users get the same end state with no animation. */
 @media (prefers-reduced-motion: reduce) {

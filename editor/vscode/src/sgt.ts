@@ -29,6 +29,7 @@ import {
   ReviewAckResult,
   RewriteDraft,
   SaveResult,
+  SelectionView,
   SessionsView,
   SplitApplyResult,
   SplitPreviewResult,
@@ -157,6 +158,13 @@ export class Sgt {
   revertKeep(sel: string, keepOpIds: string[]): Promise<string> {
     if (keepOpIds.length === 0) return this.mutate(["revert", sel]);
     return this.mutate(["revert", sel, "--keep", keepOpIds.join(",")]);
+  }
+
+  // The union closure a multi-select induces (`sgt select <feature>... --json` → selection_view):
+  // the feature ids, direct + closure op counts, and the ops pulled in from other features. Feeds
+  // the workbench's multi-select "selection" card + closure paint (Stage C). A report-only read.
+  select(refs: string[]): Promise<SelectionView> {
+    return this.json<SelectionView>(["select", ...refs, "--json"]);
   }
 
   // Active plan sessions + the pure checkpoint preview (plan U14). A read, not a rebuild —

@@ -282,6 +282,7 @@ function classifyAffected(result, targetId) {
   };
   if (state.selectedStep === undefined) state.selectedStep = null;
   if (state.selectedPlanSession === undefined) state.selectedPlanSession = null;
+  if (!Array.isArray(state.multi)) state.multi = state.selected ? [state.selected] : [];
   let compose = {
     map: { nodes: [], roots: [], edges: [] }, history: { commits: [], ops: [] },
     status: { oracle: { configured: false, status: "pending" } }, sessions: { sessions: [] }, proposals: [],
@@ -295,6 +296,14 @@ function classifyAffected(result, targetId) {
   let foldSeq = 0;
   let pendingFold = null;
   let foldResultCache = {}; // featureId -> {files, oracle_verdict, forked, error}, reset per composition
+
+  // Multi-select union closure (Stage C): ⌘/ctrl/shift-click accretes a set of feature lanes; the
+  // host resolves the union via `sgt select` and we show the closure count + paint it. Transient
+  // (a selection is exploratory, not worth persisting): the set lives on state.multi, the resolved
+  // closure here.
+  let selectionSeq = 0;
+  let pendingSelection = null;
+  let selectionResult = null; // { refs, view } for the current state.multi, or null
 
   // Composition-picker hover-preview: while the titlebar's composition QuickPick is open, arrowing
   // over a session/branch item folds it live and takes over the code(I) slot -- "what would
@@ -686,8 +695,9 @@ function classifyAffected(result, targetId) {
     const midY = geom.midY(l.row);
     const barY = midY - GANTT.barH / 2;
     const color = laneColor(l.id);
+    const inSelection = l.id === state.selected || (state.multi || []).includes(l.id);
     const g = mk("g", {
-      class: "glane" + (l.id === state.selected ? " selected" : ""),
+      class: "glane" + (inSelection ? " selected" : ""),
       "data-id": l.id, "data-first": l.firstCommit,
     });
     // full-row hit target (so hovering/clicking the gutter or empty time works, not just the bar)
@@ -734,10 +744,10 @@ function classifyAffected(result, targetId) {
 
     g.addEventListener("mouseenter", () => onHover(l.id));
     g.addEventListener("mouseleave", () => onHover(null));
-    g.addEventListener("click", () => {
+    g.addEventListener("click", (ev) => {
       if (l.isMeta) { toggleCollapse(l.id); return; } // expand the subsystem into its features
       if (armedVerb) { confirmArmed(l.id); return; }
-      selectRow(l.id);
+      selectRow(l.id, ev.metaKey || ev.ctrlKey || ev.shiftKey);
     });
     return g;
   }
@@ -994,14 +1004,40 @@ function classifyAffected(result, targetId) {
     }
   }
 
-  function selectRow(id) {
-    state.selected = state.selected === id ? null : id;
+  // Plain click = single-select toggle (clears any multi set). ⌘/ctrl/shift-click = accrete/toggle
+  // into the multi set (the VS Code parallel of the TUI's space-select). state.selected stays the
+  // "primary" (last-touched) row that drives the per-feature inspector; state.multi is the set the
+  // union-closure card + paint read.
+  function selectRow(id, additive) {
+    const multi = state.multi || [];
+    if (additive) {
+      const i = multi.indexOf(id);
+      if (i >= 0) multi.splice(i, 1);
+      else multi.push(id);
+      state.multi = multi;
+      state.selected = multi.length ? multi[multi.length - 1] : null;
+    } else {
+      const wasSole = multi.length === 1 && multi[0] === id && state.selected === id;
+      state.multi = wasSole ? [] : [id];
+      state.selected = wasSole ? null : id;
+    }
     state.selectedStep = null;
     state.selectedPlanSession = null;
+    if ((state.multi || []).length < 2) selectionResult = null; // no union closure to show
     saveState();
     render();
-    const node = state.selected && byId(state.selected);
-    if (node && node.kind === "feature") requestFold(state.selected);
+    if ((state.multi || []).length >= 2) {
+      requestSelectionClosure(state.multi);
+    } else {
+      const node = state.selected && byId(state.selected);
+      if (node && node.kind === "feature") requestFold(state.selected);
+    }
+  }
+
+  function requestSelectionClosure(refs) {
+    const seq = ++selectionSeq;
+    pendingSelection = { seq, refs: refs.slice() };
+    vscode.postMessage({ type: "selectClosure", refs, seq });
   }
 
   function selectPlanStep(stepId) {
@@ -1054,6 +1090,13 @@ function classifyAffected(result, targetId) {
 
   function renderInspector() {
     inspector.innerHTML = "";
+    // A multi-select (>=2 lanes) takes over the inspector with the union-closure card -- there is
+    // no single "primary" feature to show a code panel for; the question is "what does this SET
+    // revert, together."
+    if ((state.multi || []).length >= 2) {
+      inspector.appendChild(renderSelectionCard());
+      return;
+    }
     const id = state.selected;
     const node = id && byId(id);
     const step = state.selectedStep && planMarks.steps.find((s) => s.id === state.selectedStep);
@@ -1101,6 +1144,103 @@ function classifyAffected(result, targetId) {
   // Working changes = files that differ from the recorded ideal (`status.drift`), i.e. edits not
   // yet mined into ops. This is the "record what I just did, fast" affordance the titlebar's Save
   // button had no context for -- here you see WHAT would be recorded before recording it.
+  // The multi-select union-closure card (Stage C): "N features -> M ops in closure", the OTHER
+  // features that selection pulls in (the blast beyond the direct pick), the selected lanes as
+  // deselectable chips, and a Revert-all action. The VS Code parallel of the TUI's frontier
+  // checklist header; the closure itself is `sgt select`'s report (selectionResult).
+  function renderSelectionCard() {
+    const wrap = document.createElement("div");
+    const h = document.createElement("div");
+    h.className = "detail-title";
+    h.textContent = `Selection · ${state.multi.length} features`;
+    wrap.appendChild(h);
+
+    const view = selectionResult && selectionResult.view;
+    if (!view) {
+      wrap.appendChild(statusLine("Resolving closure…", ""));
+    } else if (!view.ok) {
+      wrap.appendChild(statusLine(view.message || "Cannot resolve selection.", "fail"));
+    } else {
+      const meta = document.createElement("div");
+      meta.className = "detail-meta";
+      meta.textContent =
+        `${view.direct_op_count} direct op(s) · ${view.closure_op_count} in closure · ${(view.files || []).length} file(s)`;
+      wrap.appendChild(meta);
+
+      const direct = new Set(view.feature_ids || []);
+      const pulled = (view.pulled || []).filter((p) => p.feature_id && !direct.has(p.feature_id) && p.op_count > 0);
+      if (pulled.length) {
+        const why = document.createElement("div");
+        why.className = "detail-why";
+        why.textContent = "Pulls in ops from (amber on the graph):";
+        wrap.appendChild(why);
+        const chips = document.createElement("div");
+        chips.className = "footprint-chips";
+        for (const p of pulled) {
+          const node = byId(p.feature_id);
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.textContent = `${(node && node.label) || p.feature_id} · ${p.op_count}`;
+          chips.appendChild(chip);
+        }
+        wrap.appendChild(chips);
+      }
+      if (view.hub) {
+        wrap.appendChild(statusLine(`⚠ hub ${view.hub.symbol} pulls ${view.hub.pulled_op_count} op(s)`, ""));
+      }
+    }
+
+    // Selected lanes as deselectable chips.
+    const picked = document.createElement("div");
+    picked.className = "footprint-chips";
+    for (const fid of state.multi) {
+      const node = byId(fid);
+      const chip = document.createElement("span");
+      chip.className = "chip selected-chip";
+      chip.textContent = (node && node.label) || fid;
+      chip.title = "click to deselect";
+      chip.addEventListener("click", () => selectRow(fid, true));
+      picked.appendChild(chip);
+    }
+    wrap.appendChild(picked);
+
+    const bar = document.createElement("div");
+    bar.className = "action-bar";
+    const clear = document.createElement("button");
+    clear.className = "action";
+    clear.textContent = "Clear";
+    clear.addEventListener("click", clearSelection);
+    bar.appendChild(clear);
+    const revert = document.createElement("button");
+    revert.className = "action primary";
+    revert.textContent = "Revert all";
+    revert.title = "Revert each selected feature in turn (stops if one refuses)";
+    revert.addEventListener("mouseenter", () => paintSelectionClosure());
+    revert.addEventListener("mouseleave", () => clearGhosts());
+    revert.addEventListener("click", () => vscode.postMessage({ type: "revertSelection", refs: state.multi.slice() }));
+    bar.appendChild(revert);
+    wrap.appendChild(bar);
+    return wrap;
+  }
+
+  function clearSelection() {
+    state.multi = [];
+    state.selected = null;
+    selectionResult = null;
+    saveState();
+    render();
+  }
+
+  // Amber the features the current selection pulls in beyond the direct pick (the union's blast),
+  // so "where this selection lands" is visible on the graph. Direct picks already read as
+  // .selected; this adds the closure-only features.
+  function paintSelectionClosure() {
+    const view = selectionResult && selectionResult.view;
+    if (!view || !view.ok) return;
+    const direct = new Set(view.feature_ids || []);
+    paintBlast((view.pulled || []).map((p) => p.feature_id).filter((f) => f && !direct.has(f)));
+  }
+
   function renderWorkingChangesCard() {
     const drift = (compose.status && compose.status.drift) || { any: false, paths: [] };
     const paths = drift.paths || [];
@@ -1683,8 +1823,20 @@ function classifyAffected(result, targetId) {
       playheadResultCache = {};
       playheadCommitIndex = null; // a new composition means a different commit-index axis
       applyClusterDefaultOnce();
+      // Prune a multi-select to lanes that still exist (a revert-all may have removed some), so a
+      // stale id can't linger in the selection card after the composition changes under it.
       recompute();
+      if ((state.multi || []).length) {
+        state.multi = state.multi.filter((fid) => byId(fid));
+        if (state.selected && !byId(state.selected)) state.selected = null;
+        if (state.multi.length < 2) selectionResult = null;
+      }
       render();
+    } else if (msg.type === "selectionResult" && pendingSelection && pendingSelection.seq === msg.seq) {
+      selectionResult = { refs: pendingSelection.refs, view: msg.result };
+      pendingSelection = null;
+      renderInspector();
+      paintSelectionClosure();
     } else if (msg.type === "previewResult" && pendingPreview && pendingPreview.seq === msg.seq) {
       pendingPreview.onResult(msg.result);
     } else if (msg.type === "foldResult" && pendingFold && pendingFold.seq === msg.seq) {

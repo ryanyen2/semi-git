@@ -77,6 +77,17 @@ export interface FeatureVerbPreview {
   [key: string]: unknown;
 }
 
+export interface SelectionView {
+  ok: boolean;
+  message: string;
+  feature_ids: string[];
+  files: string[];
+  direct_op_count: number;
+  closure_op_count: number;
+  pulled: { feature_id: string | null; op_count: number; chain: unknown[] }[];
+  hub: { symbol: string; pulled_op_count: number } | null;
+}
+
 export interface BlameSpan {
   symbol: string;
   start_line: number; // 1-based inclusive
