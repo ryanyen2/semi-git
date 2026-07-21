@@ -50,7 +50,7 @@ _VERBS = {
     # spine
     "save", "status", "log", "undo", "revert", "restore", "edit",
     # navigation + inspection (daily)
-    "switch", "diff", "map", "graph", "episodes", "blame",
+    "switch", "diff", "map", "graph", "episodes", "blame", "intent",
     # agentic loop (daily)
     "plan", "checkpoint", "drift",
     # rewrite pipeline (daily)
@@ -71,7 +71,7 @@ _ROUTING = {
     "reindex": "advanced", "history": "advanced",
     "compose": "advanced", "fold": "advanced", "preview": "advanced",
     "forks": "advanced", "after": "advanced",
-    "tiers": "advanced", "migrate": "advanced", "intent": "advanced",
+    "tiers": "advanced", "migrate": "advanced",
     "review-queue": "advanced", "identity": "advanced",
     "merge-op": "advanced", "split-op": "advanced", "transplant": "advanced",
     "unstage": "advanced", "repair": "advanced",
@@ -219,6 +219,7 @@ def _help() -> int:
         "  sgt graph [--at]            feature timeline (Gantt): lanes over commit-time\n"
         "  sgt episodes                episode rail (vertical git-log): what I did, in order\n"
         "  sgt blame <path>            per-symbol semantic blame from the op DAG\n"
+        "  sgt intent <cmd>            intent-clustering overlay: list/show/build/revert themes\n"
         "\n"
         "  agentic loop:\n"
         "  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n"
@@ -234,7 +235,7 @@ def _help() -> int:
         "                              rename, select, why\n"
         "  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n"
         "                              after, fold, preview, tiers, identity, migrate,\n"
-        "                              history, compose, forks, intent, review-queue,\n"
+        "                              history, compose, forks, review-queue,\n"
         "                              unstage, repair, merge-op, split-op, transplant\n"
         "\n"
         "  collaboration + setup:\n"

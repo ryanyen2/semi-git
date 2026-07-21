@@ -696,7 +696,7 @@ def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
 
     assert _VERBS == {
         "save", "status", "log", "undo", "revert", "restore", "edit",
-        "switch", "diff", "map", "graph", "blame",
+        "switch", "diff", "map", "graph", "episodes", "blame", "intent",
         "plan", "checkpoint", "drift",
         "commit", "fulfill",
         "feature", "advanced",
