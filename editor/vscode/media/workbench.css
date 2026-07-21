@@ -73,6 +73,54 @@ body {
   border-color: var(--accent);
 }
 
+/* Gantt <-> Rail view toggle: same weight as the composition button, sits just left of it. */
+.view-toggle {
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--fg));
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.view-toggle:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+  border-color: var(--accent);
+}
+
+/* The episode rail (vertical git-log). Rows are thin; the feature spine + dot carry identity. */
+.rail-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+.rail-row:hover .rail-hit {
+  fill: var(--vscode-list-hoverBackground);
+}
+.rail-row.selected .rail-hit {
+  fill: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground));
+}
+.rail-spine {
+  stroke-width: 2px;
+  opacity: 0.55;
+}
+.rail-dot {
+  stroke: var(--bg);
+  stroke-width: 1px;
+}
+.rail-row.selected .rail-dot {
+  stroke: var(--fg);
+  stroke-width: 1.5px;
+}
+.rail-sha {
+  fill: var(--dim);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+.rail-subject {
+  fill: var(--fg);
+  font-size: 12px;
+}
+
 .oracle-chip {
   font-size: 12px;
   padding: 2px 8px;

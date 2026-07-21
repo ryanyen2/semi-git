@@ -216,8 +216,19 @@ graph* and the *processing/after* states — not new backend compute.
       each ref in turn (re-resolving via mine-on-contact), STOPPING on the first refusal — one
       confirm up front. Stale selections pruned on each fresh state. New store method
       `Sgt.select` + `SelectionView` type. tsc+esbuild clean, DOM smoke green.
-- [ ] Step 5 — episode rail: revive `decision.js` `computeLayout` fed by Step 2's episodes;
-      render in VS Code (+ TUI screen). Apply CSE/lazy/stage-chaining compaction.
+- [x] **Step 5 — the episode rail (vertical git-log), both surfaces.** DONE. The compaction is
+      greedy interval-graph lane coloring: a feature's episodes are one column; lanes are reused
+      across non-overlapping row-spans — that shared-lane reuse IS the CSE the user asked for (on
+      this repo 28 features → 4 lanes). NOTE on `decision.js`: its fan-bus + transitive-reduction
+      target a *dependency DAG* we don't have at episode granularity (episodes are a per-feature
+      time sequence, a spine not a fan), so the honest realization is the focused interval-coloring
+      packer, not the full decision engine. The fan-bus CSE applies once real feature-dependency
+      edges exist (tied to the deferred operation-DAG promotion). Mirrored JS↔Py like the rollup:
+      `episode_rail_layout` (Py) ↔ `episodeRailLayout` (JS), parity-tested (`tests/test_rail.py`
+      + `tests/tui/test_episodes.py`). Surfaces: `sgt episodes` CLI (fast cached read) + `render_
+      rail_lines`; TUI `e`/`EpisodeScreen`; VS Code `renderRail` + a titlebar Timeline⇄Rail toggle
+      (feature spines + dots, click selects the episode's feature → same revert/preview/multi-select
+      path). tsc+esbuild + DOM smoke + 21 JS-slice tests + tui/golden all green.
 - [ ] Step 6 — presence / "where am I" band (both surfaces) + TUI parity.
 - [ ] later steps appended as chosen.
 
