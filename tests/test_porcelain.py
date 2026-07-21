@@ -2,7 +2,7 @@
 
 The D2 refusal table itself (`sgt git <tree-mutating-sub>`) is covered end-to-end in
 tests/test_cli_git_passthrough.py. This file covers the other half: the ideal-edit journal that
-makes `undo` possible (`lens.record_ideal`/`lens.undo_ideal`), and `switch`/`save`/`undo`
+makes `undo` possible (`lens.record_ideal` -> `oplog.undo`), and `switch`/`save`/`undo`
 exercised through `cli.main` on real repos -- ending with the plan's named scenario, the full
 daily loop running git-free.
 """
@@ -15,7 +15,8 @@ import os
 
 import sgt.cli as cli
 from sgt.core import verbs
-from sgt.core.lens import current_ideal, get, undo_ideal
+from sgt.core import oplog
+from sgt.core.lens import current_ideal, get
 from sgt.core.store import Store
 from sgt.store.gitbind import init_store
 from tests.laws import corpus
@@ -46,19 +47,20 @@ def _two_branches(repo_path):
 
 
 # ---------------------------------------------------------------------------
-# The ideal-edit journal (lens.record_ideal / lens.undo_ideal)
+# The ideal-edit undo (lens.record_ideal -> unified oplog.undo)
 # ---------------------------------------------------------------------------
 
 
-def test_undo_ideal_is_none_when_nothing_has_been_recorded(tmp_path):
+def test_undo_reports_empty_when_nothing_has_been_recorded(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    assert undo_ideal(repo) is None
+    assert oplog.undo(repo).status == "empty"
 
 
-def test_undo_ideal_restores_the_ideal_from_before_the_last_apply(tmp_path):
-    """`verbs.revert`'s apply path calls `lens.put` + `lens.record_ideal`, which journals the
-    outgoing ideal; `undo_ideal` pops that entry and restores it exactly (set arithmetic)."""
+def test_undo_restores_the_ideal_from_before_the_last_apply(tmp_path):
+    """`verbs.revert`'s apply path calls `lens.put` + `lens.record_ideal`, which appends the
+    outgoing ideal as an `ideal_edit` event; `oplog.undo` pops that event and restores it exactly
+    (set arithmetic), reporting the delta via its `UndoResult`."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original_ids = get(repo).op_ids
     ops = Store(repo).all_ops()
@@ -68,8 +70,9 @@ def test_undo_ideal_restores_the_ideal_from_before_the_last_apply(tmp_path):
     reverted_ids = get(repo).op_ids
     assert baz.id not in reverted_ids
 
-    result = undo_ideal(repo)
-    assert result is not None
+    outcome = oplog.undo(repo)
+    assert outcome.status == "ideal_edit"
+    result = outcome.ideal
     assert result.ideal.op_ids == original_ids
     assert get(repo).op_ids == original_ids
     assert result.removed == set()  # nothing left over from the revert
@@ -77,7 +80,7 @@ def test_undo_ideal_restores_the_ideal_from_before_the_last_apply(tmp_path):
 
 
 def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
-    """Two applied edits push two journal entries; undo pops them one at a time, oldest last."""
+    """Two applied edits push two events; undo pops them one at a time, oldest last."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original_ids = get(repo).op_ids
     ops = Store(repo).all_ops()
@@ -91,15 +94,15 @@ def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
     after_second = get(repo).op_ids
     assert after_second != after_first
 
-    first_undo = undo_ideal(repo)
+    first_undo = oplog.undo(repo)
     assert get(repo).op_ids == after_first  # back to just the baz revert
 
-    second_undo = undo_ideal(repo)
+    second_undo = oplog.undo(repo)
     assert get(repo).op_ids == original_ids  # both edits inverted
 
-    assert undo_ideal(repo) is None  # journal exhausted
-    assert first_undo.ideal.op_ids == after_first
-    assert second_undo.ideal.op_ids == original_ids
+    assert oplog.undo(repo).status == "empty"  # log exhausted
+    assert first_undo.ideal.ideal.op_ids == after_first
+    assert second_undo.ideal.ideal.op_ids == original_ids
 
 
 # ---------------------------------------------------------------------------

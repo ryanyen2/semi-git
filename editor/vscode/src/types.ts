@@ -12,6 +12,9 @@ export interface MapNode {
   dir: string;
   why: string;
   split_reason: string | null;
+  // Present (an `af-` id) only when this leaf is claimed by a user-authored feature; absent for
+  // a purely clustered leaf (sgt.api.map_view, U6). Lets the tree mark authored vs. proposed.
+  authored_id?: string;
 }
 
 export interface IdentityEvent {
@@ -102,6 +105,25 @@ export interface StatusView {
   sync_status: SyncStatus;
 }
 
+// One dependent on the revert/edit frontier (sgt.api._frontier_rows, U3/R4). `bucket`:
+// `blast` = a direct dependent that needs rework if kept (drafts a continuation hollow);
+// `carry` = a transitive dependent that repoints mechanically for free; `foundation` = an
+// upstream prerequisite the reverted core is built on, which cannot be dropped (`toggleable`
+// false). Only populated for `verb === "revert"` on an ok preview.
+export interface FrontierRow {
+  op_id: string;
+  bucket: "blast" | "carry" | "foundation";
+  toggleable: boolean;
+}
+
+// A feature touched by the edit, rolled up (sgt.api._affected_rows). `direction`: `blast` =
+// downstream dependent, `foundation` = upstream prerequisite.
+export interface AffectedRow {
+  feature_id: string;
+  direction: "blast" | "foundation";
+  op_count: number;
+}
+
 // `sgt revert <ref> --emit --json` — a sandboxed dry-run preview, shared by single-op and
 // feature-grouped revert (both resolve to the same `sgt.api._project_verb_preview` shape).
 export interface EmitView {
@@ -114,6 +136,9 @@ export interface EmitView {
   forked: boolean;
   files: Record<string, { before: string; after: string }>;
   message: string;
+  // U3 additions -- the selectable dependent frontier and the rolled-up affected features.
+  frontier?: FrontierRow[];
+  affected?: AffectedRow[];
 }
 
 // `sgt merge <survivor> <absorbed> --json`.

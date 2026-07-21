@@ -8,7 +8,7 @@ import { ForkResolutionPanel } from "./forkResolution";
 import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
-import { ProposalChecklistEntry } from "./types";
+import { BlameView, EmitView, ProposalChecklistEntry } from "./types";
 
 async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
   if (provided) {
@@ -48,6 +48,73 @@ async function applyMutation(store: Store, args: string[], confirmMsg: string): 
   }
 }
 
+// The interactive revert frontier (U3/R4): preview the selection, then let the user pick which
+// toggleable dependents to KEEP (rescue) vs. drop with the target. `foundation` prerequisites
+// can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
+// drafts continuation hollows (see `Sgt.revertKeep`); keeping none is a plain full revert.
+async function revertWithFrontier(store: Store, sel: string): Promise<void> {
+  let view: EmitView;
+  try {
+    view = await store.sgt.emit(sel);
+  } catch (e: any) {
+    vscode.window.showErrorMessage(e.message);
+    return;
+  }
+  if (!view.ok) {
+    vscode.window.showWarningMessage(view.message || `Cannot revert ${sel}.`);
+    return;
+  }
+
+  const frontier = view.frontier ?? [];
+  const toggleable = frontier.filter((r) => r.toggleable);
+  const lockedCount = frontier.length - toggleable.length;
+
+  // No dependents to choose among -> the plain confirm path (behavior unchanged from before U3).
+  if (toggleable.length === 0) {
+    const note = lockedCount ? ` (built on ${lockedCount} kept prerequisite(s))` : "";
+    await applyMutation(
+      store,
+      ["revert", sel],
+      `Revert ${sel}? Removes ${view.removed.length} op(s)${note}. Rewrites the working tree and commits.`
+    );
+    return;
+  }
+
+  const keepEffect = (bucket: string) =>
+    bucket === "blast" ? "keep drafts a continuation hollow" : "keep repoints for free";
+  const picks = await vscode.window.showQuickPick(
+    toggleable.map((r) => ({
+      label: r.op_id.slice(0, 12),
+      description: `${r.bucket} · ${keepEffect(r.bucket)}`,
+      op_id: r.op_id,
+    })),
+    {
+      canPickMany: true,
+      placeHolder:
+        `Revert ${sel}: check dependents to KEEP; unchecked are removed with it` +
+        (lockedCount ? ` · ${lockedCount} prerequisite(s) locked` : ""),
+    }
+  );
+  if (!picks) {
+    return; // cancelled
+  }
+  const keep = picks.map((p) => p.op_id);
+  const summary = keep.length
+    ? `keep ${keep.length}/${toggleable.length} dependent(s) — drafts continuation hollows to fulfill`
+    : `remove ${sel} and all ${toggleable.length} dependent(s)`;
+  const ok = await vscode.window.showWarningMessage(`Revert ${sel} — ${summary}?`, { modal: true }, "Apply");
+  if (ok !== "Apply") {
+    return;
+  }
+  try {
+    const report = await store.sgt.revertKeep(sel, keep);
+    store.invalidate();
+    vscode.window.showInformationMessage(report.trim().split("\n")[0] || "Done.");
+  } catch (e: any) {
+    vscode.window.showErrorMessage(e.message);
+  }
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   store: Store,
@@ -75,11 +142,7 @@ export function registerCommands(
   reg("sgt.revert", async (id?: string) => {
     const feature = await pickFeature(store, id);
     if (feature) {
-      await applyMutation(
-        store,
-        ["revert", feature],
-        `Revert feature ${feature}? This rewrites the working tree and commits.`
-      );
+      await revertWithFrontier(store, feature);
     }
   });
   reg("sgt.restore", async (id?: string) => {
@@ -91,6 +154,65 @@ export function registerCommands(
         `Restore feature ${feature}? This rewrites the working tree and commits.`
       );
     }
+  });
+
+  // `sgt edit <sel>` (U4/KTD5): draft an in-place change. This drafts a continuation hollow and
+  // mechanically repoints dependents; the user then edits the working tree and Saves to fulfill.
+  // (No preview/frontier yet -- `sgt edit` has no `--emit`; that's a flagged CLI follow-up.)
+  reg("sgt.edit", async (id?: string) => {
+    const sel = await pickFeature(store, id);
+    if (!sel) {
+      return;
+    }
+    const intent = await vscode.window.showInputBox({
+      prompt: `Edit ${sel} in place — describe the intent (optional)`,
+      placeHolder: "e.g. accept an optional timeout argument",
+    });
+    if (intent === undefined) {
+      return; // cancelled
+    }
+    try {
+      const draft = await store.sgt.edit(sel, intent || undefined);
+      store.invalidate();
+      if (!draft.ok) {
+        vscode.window.showWarningMessage(draft.message || `Cannot edit ${sel}.`);
+        return;
+      }
+      const hollows = draft.hollow_ids?.length ?? 0;
+      vscode.window.showInformationMessage(
+        `Drafted edit of ${draft.target ?? sel} (${hollows} hollow${hollows === 1 ? "" : "s"}). ` +
+          `Change the code in your working tree, then Save to fulfill.`
+      );
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+    }
+  });
+
+  // `sgt.revertSymbol`: revert the symbol under the cursor. This is the op/symbol-level entry
+  // point that actually surfaces the interactive frontier -- a feature-level revert removes a
+  // whole op-set and has no single-op dependent frontier (sgt.api._frontier_rows resolves the
+  // target to one op). The symbol ref (`file::name`) comes from the blame span over the cursor.
+  reg("sgt.revertSymbol", async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showWarningMessage("Open a file and put the cursor on a symbol to revert.");
+      return;
+    }
+    const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
+    let blame: BlameView;
+    try {
+      blame = await store.blame(rel);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    const line = editor.selection.active.line + 1; // blame spans are 1-based inclusive
+    const span = blame.spans.find((s) => s.start_line <= line && line <= s.end_line);
+    if (!span) {
+      vscode.window.showWarningMessage("No mined symbol under the cursor.");
+      return;
+    }
+    await revertWithFrontier(store, span.symbol);
   });
 
   reg("sgt.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));

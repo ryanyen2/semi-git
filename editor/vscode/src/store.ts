@@ -28,7 +28,9 @@ export class Store {
   private planCache: PlanView | undefined;
   private driftCache: DriftView | undefined;
   private composeCache: ComposeView | undefined;
+  private composeInFlight: Promise<ComposeView> | undefined;
   private forksCache: ForksView | undefined;
+  private forksInFlight: Promise<ForksView> | undefined;
   private sessionsCache: SessionsView | undefined;
   private proposalCache = new Map<string, ProposalView>();
   private _onDidChange = new vscode.EventEmitter<void>();
@@ -91,18 +93,41 @@ export class Store {
   }
 
   // The workbench's primary poll -- one aggregate refresh instead of ~9 separate shell-outs.
+  // Activation fires this from 3 tree/webview consumers at once; share the in-flight promise so
+  // they collapse into a single `sgt advanced compose` invocation instead of each missing the
+  // (still-unset) cache and firing its own.
   async composeView(force = false): Promise<ComposeView> {
-    if (!this.composeCache || force) {
-      this.composeCache = await this.sgt.compose();
+    if (this.composeCache && !force) return this.composeCache;
+    if (!this.composeInFlight || force) {
+      this.composeInFlight = this.sgt
+        .compose()
+        .then((v) => {
+          this.composeCache = v;
+          return v;
+        })
+        .finally(() => {
+          this.composeInFlight = undefined;
+        });
     }
-    return this.composeCache;
+    return this.composeInFlight;
   }
 
+  // Same in-flight race as `composeView` -- the badge and the tree view both call this at
+  // activation.
   async forksView(force = false): Promise<ForksView> {
-    if (!this.forksCache || force) {
-      this.forksCache = await this.sgt.forksView();
+    if (this.forksCache && !force) return this.forksCache;
+    if (!this.forksInFlight || force) {
+      this.forksInFlight = this.sgt
+        .forksView()
+        .then((v) => {
+          this.forksCache = v;
+          return v;
+        })
+        .finally(() => {
+          this.forksInFlight = undefined;
+        });
     }
-    return this.forksCache;
+    return this.forksInFlight;
   }
 
   async sessionsView(force = false): Promise<SessionsView> {
@@ -137,7 +162,9 @@ export class Store {
     this.planCache = undefined;
     this.driftCache = undefined;
     this.composeCache = undefined;
+    this.composeInFlight = undefined;
     this.forksCache = undefined;
+    this.forksInFlight = undefined;
     this.sessionsCache = undefined;
     this.proposalCache.clear();
     this._onDidChange.fire();

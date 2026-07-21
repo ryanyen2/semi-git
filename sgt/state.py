@@ -91,6 +91,12 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # that clone syncs; a same-old collision (divergent unsynced curation) resolves by the alias-
     # merge rule. Travels with the repo and is read from historical blobs, like every committed slot.
     "aliases": _Artifact(("aliases.json",), committed=True),
+    # committed collection of authored features (`sgt.lens.authored`, U6/R3/KTD3): af-id ->
+    # {label, label_witness, member OR-Set (adds+tombstones)}. A user-authored named selection that
+    # is first-class merged state, not a `tree.build` output -- merged field-by-field on sync (OR-Set
+    # membership + witness-topo LWW label + carried af- id), so it travels and is read from
+    # historical blobs like every committed slot.
+    "authored_features": _Artifact(("authored", "features.json"), committed=True, sort_keys=False),
     # committed OR-Set of declared order edges (`sgt after`/`sgt after --retract`, U21/D6): adds
     # carry a unique tag, retraction tombstones observed tags, live = adds minus tombstoned. A new
     # path (the legacy flat G-Set stays at `declared` in v0 shape for old readers, D3 old-reader
@@ -118,10 +124,13 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # pre-horizon history has progressed for a given ref. Never travels -- like `witness` and
     # `ideal_table`, it's derived from *this* clone's own mining progress.
     "backfill": _Artifact(("local", "backfill.json"), committed=False),
-    # local, gitignored per-ref stack of prior committed ideals: `record_ideal` pushes the outgoing
-    # ideal (+ its witness) before each overwrite, so `sgt undo` (U26) can restore the ideal a
-    # revert/restore/rewrite/save last replaced. Never travels; there is no edit history to invert
-    # until this log exists, which is exactly why U26 must add it.
+    # local, gitignored per-ref UNIFIED operation-event log (`sgt.core.oplog`, U8/KTD6): the single
+    # store `sgt undo` walks. It began (U26) as the ideal-edit journal -- `record_ideal` still
+    # pushes the outgoing ideal (+ witness) as one `ideal_edit` event before each overwrite -- and
+    # U8 *subsumed* it into this one log so every mutating verb's inverse is here (feature-reorg
+    # snapshots, `after`, land/propose provenance), one pop per undo. Kept at the same slot/path so
+    # historical local journals still load; an entry with no `kind` is read as `ideal_edit`. Never
+    # travels.
     "ideal_journal": _Artifact(("local", "ideal_journal.json"), committed=False),
     "drafts": _Artifact(("local", "drafts.json"), committed=False),
     "staged": _Artifact(("local", "staged.json"), committed=False),

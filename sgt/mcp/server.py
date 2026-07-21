@@ -8,16 +8,20 @@ keeping the dispatch (``handle_request``) a pure function that is unit-tested wi
 
 Tool surface — kernel parity with the CLI's registered verbs:
 
-* **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_state`` (the current
-  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between two refs'
-  ideals), ``sgt_fsck`` (op-store integrity).
+The tool names mirror their CLI paths after the spine re-triage (KTD2): the daily verbs (read/write
+kernel verbs, the semantic diff, and the agentic loop) keep their bare ``sgt_`` names, while only
+the genuinely rare/maintenance tools carry the ``sgt_advanced_`` prefix of their re-homed CLI verbs.
+
+* **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_status`` (the current
+  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between
+  two refs' ideals), ``sgt_advanced_fsck`` (op-store integrity).
 * **write**: ``sgt_init`` (bind git + the kernel store, mine existing history), ``sgt_revert`` /
   ``sgt_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run preview),
-  ``sgt_oracle_run`` (execute configured build/test tiers against the current ideal).
-* **agentic loop** (plan U14): ``sgt_plan_intake`` (decompose a plan into predicted hollow ops),
-  ``sgt_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given ``confirm`` --
-  the explicit, one-group-at-a-time write that resolves it), ``sgt_drift`` (ops no active plan
-  predicted).
+  ``sgt_advanced_oracle_run`` (execute configured build/test tiers against the current ideal).
+* **agentic loop** (plan U14): ``sgt_plan_intake`` (decompose a plan into predicted hollow
+  ops), ``sgt_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given
+  ``confirm`` -- the explicit, one-group-at-a-time write that resolves it), ``sgt_drift``
+  (ops no active plan predicted).
 
 Every write tool mines the working tree on contact first (R9), so it reflects whatever the agent
 just edited. The feature-lens verbs (merge/split/rename/move) have no MCP surface yet -- CLI-only
@@ -221,7 +225,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         ),
         tool_log,
     ),
-    "sgt_state": (
+    "sgt_status": (
         "The current ref's ideal: covered paths, entity-granularity coverage fraction, and the "
         "async oracle's verdict (if `.sgt/oracle.json` is configured). Compact by default "
         "(frontier_count/entity_path_count instead of the full per-symbol frontier map and "
@@ -235,7 +239,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"ref_a": {"type": "string"}, "ref_b": {"type": "string"}}, ["ref_a", "ref_b"]),
         tool_diff,
     ),
-    "sgt_fsck": (
+    "sgt_advanced_fsck": (
         "Verify the op store's content-address integrity.",
         _schema({}, []),
         tool_fsck,
@@ -253,7 +257,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
         tool_restore,
     ),
-    "sgt_oracle_run": (
+    "sgt_advanced_oracle_run": (
         "Run configured build/test tiers (declared in `.sgt/oracle.json`) against the current "
         "ideal, in declared order, stopping at the first failure. Omit 'tier' to run the full "
         "pipeline; pass it to re-run just that one.",

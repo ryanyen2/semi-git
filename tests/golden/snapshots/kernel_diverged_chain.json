@@ -48,6 +48,11 @@
         "id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
         "kind": "feature",
         "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "members": [
+          "slugify.py::__residue__::\u0000HEAD\u0000",
+          "slugify.py::__residue__::slugify",
+          "slugify.py::slugify"
+        ],
         "op_count": 5,
         "parent": null,
         "sessions": [],
