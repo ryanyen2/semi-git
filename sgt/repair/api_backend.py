@@ -12,10 +12,9 @@ import hashlib
 from pathlib import Path
 
 from sgt import state
-from sgt.config import get_client
+from sgt.config import get_client, get_model
 from sgt.repair.backends import RepairBackend, RepairProposal, RepairRequest
 
-MODEL = "gpt-5.4-mini"
 EFFORT = "low"
 
 
@@ -77,7 +76,7 @@ class ApiBackend(RepairBackend):
         if cached is not None:
             return RepairProposal(**cached)
         r = self.client.responses.parse(
-            model=MODEL, input=_prompt(request), text_format=RepairProposal,
+            model=get_model(self._repo), input=_prompt(request), text_format=RepairProposal,
             reasoning={"effort": EFFORT},
         )
         self.calls += 1

@@ -1,8 +1,11 @@
 """Configuration: load `.env` and build the OpenAI client; load the oracle's tier config.
 
-semi-git's graph-reasoning agents (the planner and the distillation labeler) run on the
-OpenAI API — they reason about the graph, never author code. The key lives in `.env` at the
-repo root; we parse it without adding a dotenv dependency.
+semi-git's graph-reasoning agents (the planner and the distillation labeler) speak the OpenAI
+API — they reason about the graph, never author code. The endpoint is env-driven: a bare
+`OpenAI()` honors `OPENAI_BASE_URL`/`OPENAI_API_KEY`, so pointing those at any OpenAI-compatible
+proxy (e.g. a litellm gateway serving Claude models) routes every agent there with no code
+change — pick the model with `SGT_MODEL`. The key/base live in `.env` at the repo root; we parse
+it without adding a dotenv dependency.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from pathlib import Path
 
 from sgt import state
 
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5.4-mini"
 
 
 def load_env(repo_path: str | Path = ".") -> None:
@@ -28,8 +31,13 @@ def load_env(repo_path: str | Path = ".") -> None:
         os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
 
 
-def get_model() -> str:
-    return os.environ.get("OPENAI_MODEL", DEFAULT_MODEL)
+def get_model(repo_path: str | Path = ".") -> str:
+    """The model every graph-reasoning agent uses (labeler, planner, intent resolver/theme, repair
+    proposer -- they all share one tier). Env-driven so a repo can switch provider/model without a
+    code change: `SGT_MODEL` (sgt-specific) wins, else `OPENAI_MODEL`, else `DEFAULT_MODEL`. Loads
+    `.env` first so a value set only there is honored regardless of call order."""
+    load_env(repo_path)
+    return os.environ.get("SGT_MODEL") or os.environ.get("OPENAI_MODEL") or DEFAULT_MODEL
 
 
 def get_client(repo_path: str | Path = "."):
