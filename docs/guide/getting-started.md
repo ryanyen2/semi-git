@@ -14,10 +14,13 @@ uv venv --python 3.12
 uv pip install -e ".[entities,lens]"
 ```
 
-The core loop needs no API key. One command, `sgt plan intake`, is optional and uses an OpenAI key
-to turn a written intent into a set of predicted ops. Set `OPENAI_API_KEY` (and, if you want,
-`OPENAI_MODEL`) in a `.env` file if you plan to use it. Everything else on this page works without
-a key.
+The core loop needs no API key. A few graph-reasoning steps are optional and call an LLM: the
+feature labeler (`sgt map`), `sgt plan intake`, the intent-clustering pass (`sgt intent build`),
+and the natural-language forms of `revert`/`restore`. Set `OPENAI_API_KEY` in a `.env` file at the
+repo root if you plan to use them; everything else on this page works without a key. The endpoint
+is env-driven, so you are not tied to OpenAI: point `OPENAI_BASE_URL` at any OpenAI-compatible
+gateway (for example a litellm proxy serving Claude models) and pick the model with `SGT_MODEL`
+(or `OPENAI_MODEL`). The default is `gpt-5.4-mini`.
 
 ## Your first commit through sgt
 

@@ -75,6 +75,14 @@ export class BlameController implements vscode.Disposable {
     if (!editor) {
       return;
     }
+    // Only real workspace files have a semantic blame. Focusing the "semi-git" Output panel,
+    // a diff view, a git:// gutter, or any other virtual document makes it the active editor;
+    // running `sgt blame` on that URI fails and appends to the output channel, which re-reveals
+    // it and re-fires this handler -- a self-sustaining loop. Gate to file scheme (matches the
+    // `{ scheme: "file" }` selector every other read surface registers with).
+    if (editor.document.uri.scheme !== "file") {
+      return;
+    }
     const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
     let blame: BlameView;
     try {

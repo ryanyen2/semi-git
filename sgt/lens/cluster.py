@@ -39,7 +39,20 @@ HUB_OP_FRAC = 0.15  # a symbol touched by >= this fraction of all mined ops is a
 # doesn't glue unrelated features into one blob.
 MAX_FOOTPRINT = 20  # an op touching more than this many alive symbols contributes no co-change
 # edges -- likely a mechanical mass-edit (a repo-wide rename), not a feature-shaped group.
+MAX_COMMIT = 80  # a single commit touching more than this many alive symbols is a mass import /
+# repo-wide refactor, not one coherent episode -- it contributes no co-commit edges (same
+# rationale as MAX_FOOTPRINT and scope_edges' max_scope: a blob-shaped change isn't a feature).
+MAX_FILE = 80  # a file with more than this many alive symbols is a grab-bag, not a coherent unit
+# -- it contributes no path-cohesion edges (same size discipline as MAX_COMMIT/MAX_FOOTPRINT).
+PATH_SCALE = 0.5  # path (file-cohesion) is a WEAK connective signal: it keeps an otherwise-
+# isolated symbol out of the god-lane, but must not out-weigh a real co-commit episode (scale 1.0)
+# and turn the clustering into a plain mirror of the folder tree. Tuned in stageB_plan.md.
 SEED = 42  # Leiden's own seed -- deterministic partitions for the same graph+resolution.
+SIGNALS_VERSION = "2"  # bump on any change to the fused-signal recipe (which edge maps feed
+# `_fuse`, or their scales/caps). Stored in the built tree; `tree.build` forces one full recluster
+# when the persisted tree's version differs, so a signal change reaches users without a manual
+# `--rebuild` (dirty-subtree splicing can't detect that an existing leaf should now split).
+# v1 = structural ⊕ co-change ⊕ scope. v2 = + co-commit (episode) + path (file-cohesion) edges.
 
 
 def alive_nodes(ideal: Ideal, ops: list[Op]) -> set[str]:
@@ -105,6 +118,64 @@ def scope_edges(
     for members_set in scope_syms.values():
         members = sorted(members_set)
         if not (2 <= len(members) <= max_scope):
+            continue
+        w = scale / (len(members) - 1)
+        for a, b in combinations(members, 2):
+            edges[frozenset((a, b))] += w
+    return dict(edges)
+
+
+def commit_edges(
+    ops: list[Op], nodes: set[str], hubs: set[str], scale: float = 1.0, max_commit: int = MAX_COMMIT,
+) -> dict[frozenset, float]:
+    """Co-commit (episode) signal: symbols advanced in the *same commit*, even when U2's def-use
+    untangling split that commit into several single-symbol ops. This recovers the "I changed
+    these together" grouping that per-op co-change loses to untangling -- on this repo 4850/4879
+    ops touch exactly one symbol, so the op-footprint co-change signal is near-empty, while commits
+    still bind ~18 symbols each (a real episode). Groups alive non-hub symbols by provenance SHA;
+    weight is down-scaled by commit size so a focused commit glues tightly and a broad one glues
+    weakly, and a mega-commit over `max_commit` (a mass import/refactor, not a feature) contributes
+    nothing -- the same size discipline `scope_edges`/co-change already use to avoid blobs."""
+    commit_syms: dict[str, set[str]] = defaultdict(set)
+    for op in ops:
+        alive = [sym for sym in op.footprint if sym in nodes and sym not in hubs]
+        if not alive:
+            continue
+        for sha in op.provenance:
+            commit_syms[sha].update(alive)
+
+    edges: dict[frozenset, float] = defaultdict(float)
+    for members_set in commit_syms.values():
+        members = sorted(members_set)
+        if not (2 <= len(members) <= max_commit):
+            continue
+        w = scale / (len(members) - 1)
+        for a, b in combinations(members, 2):
+            edges[frozenset((a, b))] += w
+    return dict(edges)
+
+
+def path_edges(
+    nodes: set[str], hubs: set[str], scale: float = PATH_SCALE, max_file: int = MAX_FILE,
+) -> dict[frozenset, float]:
+    """File-cohesion signal: symbols that live in the *same file*. On this miner 87% of alive
+    symbols are `residue` (structurally isolated) and 72% get no co-change/co-commit/structural
+    edge at all -- yet a file is a coherent unit a developer edits as a whole (a residue segment
+    and the entities around it were written for one reason). Binds each file's alive non-hub
+    symbols, down-scaled by file size (so a big file glues weakly), skipping a grab-bag file over
+    `max_file`. Weight is deliberately weak (`PATH_SCALE` < the co-commit scale): path is the
+    connective tissue that keeps an otherwise-isolated symbol out of the god-lane, not a signal
+    strong enough to collapse the clustering back into a plain mirror of the folder tree."""
+    file_syms: dict[str, set[str]] = defaultdict(set)
+    for sym in nodes:
+        if sym in hubs:
+            continue
+        file_syms[sym.split("::", 1)[0]].add(sym)
+
+    edges: dict[frozenset, float] = defaultdict(float)
+    for members_set in file_syms.values():
+        members = sorted(members_set)
+        if not (2 <= len(members) <= max_file):
             continue
         w = scale / (len(members) - 1)
         for a, b in combinations(members, 2):

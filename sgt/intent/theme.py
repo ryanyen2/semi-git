@@ -21,11 +21,10 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from sgt import state
-from sgt.config import get_client
+from sgt.config import get_client, get_model
 from sgt.intent._guard import filter_to_shown
 from sgt.intent.group import Bundle, IntentAtom, _atom_sort_key
 
-MODEL = "gpt-5.4-mini"
 EFFORT = "low"
 MAX_ATOMS = 40  # keeps the scope-less coalescing prompt bounded on a large store
 
@@ -105,7 +104,8 @@ class IntentThemer:
 
     def _request(self, prompt: str, schema):
         r = self.client.responses.parse(
-            model=MODEL, input=prompt, text_format=schema, reasoning={"effort": EFFORT},
+            model=get_model(self._repo), input=prompt, text_format=schema,
+            reasoning={"effort": EFFORT},
         )
         self.calls += 1
         self.tokens_in += r.usage.input_tokens

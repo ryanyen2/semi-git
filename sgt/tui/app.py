@@ -18,11 +18,12 @@ import difflib
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, Label, Static
 
 from sgt.tui.color import color_for
+from sgt.tui.graph import render_graph_lines, render_rail_lines
 
 _KIND_GLYPH = {"feature": "●", "subsystem": "▸", "symbol": "◦"}
 _NARROW = 100  # below this terminal width, fold the detail pane into a modal
@@ -193,6 +194,93 @@ class DetailScreen(ModalScreen[None]):
         self.dismiss(None)
 
 
+class GraphScreen(ModalScreen[None]):
+    """The dependency graph (`sgt graph`): features by temporal generation, each an identity-colored
+    row with a magnitude bar (op count) and its strongest co-change links -- the "how does this all
+    fit together, and when did each part come to be" overview, complementing the selectable tree.
+    A frontier can be scrubbed with ←/→ to fold the graph back through history (features accrete)."""
+
+    BINDINGS = [
+        Binding("escape,q,g", "close", "Close"),
+        Binding("left", "frontier_back", "Older"),
+        Binding("right", "frontier_fwd", "Newer"),
+        Binding("home", "frontier_head", "HEAD"),
+    ]
+
+    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None) -> None:
+        super().__init__()
+        self._map_view = map_view
+        self._history_view = history_view
+        self._selected = selected
+        self._max_commit = max((c.get("index", 0) for c in history_view.get("commits", [])), default=0)
+        self._frontier: int | None = None  # None = HEAD (full history)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="graph-modal"):
+            with VerticalScroll(id="graph-scroll"):
+                yield Static(self._body(), id="graph-body")
+            yield Label(
+                "[b]←/→[/b] scrub frontier   ·   [b]home[/b] HEAD   ·   [b]esc[/b] close", id="hint"
+            )
+
+    def _body(self) -> Text:
+        lines = render_graph_lines(
+            self._map_view, self._history_view, selected=self._selected, frontier=self._frontier
+        )
+        return Text.from_ansi("\n".join(lines))
+
+    def _refresh(self) -> None:
+        self.query_one("#graph-body", Static).update(self._body())
+
+    def action_frontier_back(self) -> None:
+        cur = self._max_commit if self._frontier is None else self._frontier
+        self._frontier = max(0, cur - max(1, self._max_commit // 20))
+        self._refresh()
+
+    def action_frontier_fwd(self) -> None:
+        if self._frontier is None:
+            return
+        self._frontier = min(self._max_commit, self._frontier + max(1, self._max_commit // 20))
+        if self._frontier >= self._max_commit:
+            self._frontier = None  # back to HEAD
+        self._refresh()
+
+    def action_frontier_head(self) -> None:
+        self._frontier = None
+        self._refresh()
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
+class EpisodeScreen(ModalScreen[None]):
+    """The episode rail (`sgt episodes`): a vertical git-log of what happened, in order -- newest
+    commit-episode on top, each feature a lane column, lanes reused across non-overlapping spans.
+    Where GraphScreen answers "what is the codebase made of, over time," this answers "what did I
+    do, in order" -- the rewind lens. Read-only, like GraphScreen."""
+
+    BINDINGS = [Binding("escape,q,l", "close", "Close")]
+
+    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None) -> None:
+        super().__init__()
+        self._map_view = map_view
+        self._history_view = history_view
+        self._selected = selected
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="graph-modal"):
+            with VerticalScroll(id="graph-scroll"):
+                yield Static(self._body(), id="graph-body")
+            yield Label("[b]esc[/b] close   ·   newest episode on top", id="hint")
+
+    def _body(self) -> Text:
+        lines = render_rail_lines(self._map_view, self._history_view, selected=self._selected)
+        return Text.from_ansi("\n".join(lines))
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 class FrontierScreen(ModalScreen[None]):
     """The revert frontier as a checkable list (plan U9/U3, R8/R4). Each ``blast``/``carry``
     dependent is a row ``space`` toggles into the kept-set (keeping it retains that op, so the
@@ -300,7 +388,10 @@ class SgtTui(App[None]):
     #status-line { height: 1; background: $boost; color: $text; padding: 0 1; }
     ConfirmScreen, RenameScreen { align: center middle; }
     #dialog { width: 60; height: auto; padding: 1 2; border: thick $accent; background: $surface; }
-    DetailScreen, FrontierScreen { align: center middle; }
+    DetailScreen, FrontierScreen, GraphScreen { align: center middle; }
+    #graph-modal { width: 90%; height: 90%; padding: 1 2; border: thick $accent; background: $surface; }
+    #graph-scroll { height: 1fr; }
+    #graph-body { width: auto; }
     #detail-modal { width: 80%; height: 80%; padding: 1 2; border: thick $accent; background: $surface; }
     #frontier-modal { width: 80%; height: 80%; padding: 1 2; border: thick $accent; background: $surface; }
     #frontier-header { height: auto; }
@@ -314,6 +405,8 @@ class SgtTui(App[None]):
         Binding("slash", "focus_filter", "Filter"),
         Binding("space", "toggle_select", "Select"),
         Binding("e", "expand", "Expand"),
+        Binding("g", "graph", "Graph"),
+        Binding("l", "episodes", "Episodes"),  # l = the vertical git-log rail (e is taken by expand)
         Binding("f", "frontier", "Frontier"),
         Binding("r", "preview_revert", "Preview revert"),
         Binding("X", "apply_revert", "Revert!"),  # mutating ops are uppercase, apart from previews
@@ -328,9 +421,11 @@ class SgtTui(App[None]):
         self._rows: list[dict] = []
         self._shown_rows: list[dict] = []  # the rows currently rendered, aligned to `_ids`
         self._selected: set[str] = set()  # multi-select set (feature + symbol ids)
+        self._last_status: dict | None = None  # cached status_view for live presence re-renders
         self._expanded: set[str] = set()  # feature ids expanded into their member symbols
         self._n_display = 0  # unfiltered display-row count (for the "showing X/Y" indicator)
         self._last_status: dict = {}
+        self._map_view: dict | None = None  # the last mined map_view, reused by the graph overview
         self._filter = ""
         self._narrow = False
 
@@ -373,10 +468,31 @@ class SgtTui(App[None]):
 
         get(self.repo)
         build_map(self.repo)
-        self._rows = _flatten(map_view(self.repo))
+        self._map_view = map_view(self.repo)
+        self._rows = _flatten(self._map_view)
         self._last_status = status_view(self.repo)
         self._populate()
         self._render_status(self._last_status)
+
+    def action_graph(self) -> None:
+        """Open the dependency-graph overview (reuses the mined `map_view`; reads `history_view` for
+        the op/commit axis). Read-only -- the tree remains the selectable interaction surface."""
+        from sgt.api import history_view
+
+        if not getattr(self, "_map_view", None):
+            return
+        hist = history_view(self.repo, full=True, limit=1_000_000)
+        self.push_screen(GraphScreen(self._map_view, hist, self._selected_id()))
+
+    def action_episodes(self) -> None:
+        """Open the episode rail (the vertical git-log / "what I did, in order" lens). Reuses the
+        mined `map_view` + `history_view`, read-only like the graph overview."""
+        from sgt.api import history_view
+
+        if not getattr(self, "_map_view", None):
+            return
+        hist = history_view(self.repo, full=True, limit=1_000_000)
+        self.push_screen(EpisodeScreen(self._map_view, hist, self._selected_id()))
 
     def _display_rows(self) -> list[dict]:
         """The base display list: every feature/subsystem row, plus -- for each expanded feature --
@@ -439,6 +555,7 @@ class SgtTui(App[None]):
             self._render_detail()
 
     def _render_status(self, st: dict) -> None:
+        self._last_status = st  # cached so a selection change can re-render the band without a reload
         line = self.query_one("#status-line", Static)
         drift = st["drift"]
         drift_txt = (
@@ -451,6 +568,10 @@ class SgtTui(App[None]):
             ("  ·  ⟳ indexing history", "yellow") if not st["sync_status"]["complete"] else ""
         )
         shown = f"  ·  showing {len(self._ids)}/{self._n_display}" if self._filter else ""
+        # "where am I": the multi-select count, so the selection is legible at a glance (the ✓
+        # markers show which, this shows how many -- what a revert/frontier would act on).
+        n_sel = len(self._selected)
+        sel_txt = Text(f"  ·  ▸ {n_sel} selected", style="bold") if n_sel else ""
         msg = Text.assemble(
             (f"{st['features']} feature(s)", "bold"),
             f"  ·  {st['files']} file(s)  ·  {st['symbols']} symbol(s)  ·  "
@@ -458,6 +579,7 @@ class SgtTui(App[None]):
             oracle_txt,
             indexing_txt,
             shown,
+            sel_txt,
             drift_txt,
         )
         line.update(msg)
@@ -517,6 +639,8 @@ class SgtTui(App[None]):
             return
         self._selected.symmetric_difference_update({nid})
         self._populate()
+        if getattr(self, "_last_status", None) is not None:
+            self._render_status(self._last_status)  # keep the "N selected" band live
 
     def action_expand(self) -> None:
         """Expand/collapse the highlighted feature into its member entity symbols (deeper rows)."""

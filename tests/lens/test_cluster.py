@@ -81,6 +81,40 @@ def test_scope_edges_group_symbols_by_conventional_commit_scope():
     assert edges == {frozenset({"a.py::foo", "b.py::bar"}): 10.0}
 
 
+def test_commit_edges_bind_symbols_sharing_a_provenance_sha():
+    """Co-commit recovers what U2's untangling strips: two single-symbol ops from the SAME commit
+    changed together, so they get an edge; an op from another commit is disjoint."""
+    op1 = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"}, provenance=("sha1",))
+    op2 = make_op({"b.py::bar": (None, "v2")}, {"b.py::bar": b"2"}, provenance=("sha1",))
+    op3 = make_op({"c.py::baz": (None, "v3")}, {"c.py::baz": b"3"}, provenance=("sha2",))
+    nodes = {"a.py::foo", "b.py::bar", "c.py::baz"}
+
+    edges = cluster.commit_edges([op1, op2, op3], nodes, hubs=set())
+
+    assert edges == {frozenset({"a.py::foo", "b.py::bar"}): 1.0}  # scale/(size-1) = 1/1
+
+
+def test_commit_edges_exclude_hubs_and_mega_commits():
+    a = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"}, provenance=("s",))
+    hub = make_op({"hub.py::h": (None, "v2")}, {"hub.py::h": b"2"}, provenance=("s",))
+    assert cluster.commit_edges([a, hub], {"a.py::foo", "hub.py::h"}, hubs={"hub.py::h"}) == {}
+
+    ops = [make_op({f"f{i}.py::x": (None, "v")}, {f"f{i}.py::x": b"1"}, provenance=("s",)) for i in range(5)]
+    nodes = {f"f{i}.py::x" for i in range(5)}
+    assert cluster.commit_edges(ops, nodes, hubs=set(), max_commit=4) == {}  # 5-symbol commit > cap
+
+
+def test_path_edges_bind_symbols_in_the_same_file_and_respect_hubs_and_cap():
+    # an entity and its file's residue live in one file -> a cohesion edge; a different file is disjoint.
+    nodes = {"a.py::foo", "a.py::__residue__::foo", "b.py::bar"}
+    edges = cluster.path_edges(nodes, hubs=set(), scale=1.0)
+    assert edges == {frozenset({"a.py::foo", "a.py::__residue__::foo"}): 1.0}
+
+    three = {"a.py::x", "a.py::y", "a.py::z"}
+    assert cluster.path_edges(three, hubs={"a.py::z"}, scale=1.0) == {frozenset({"a.py::x", "a.py::y"}): 1.0}
+    assert cluster.path_edges(three, hubs=set(), max_file=2) == {}  # 3-symbol file > cap
+
+
 def test_commit_scope_parses_conventional_prefix_and_falls_back_to_type():
     assert cluster.commit_scope("feat(store): add locking") == "store"
     assert cluster.commit_scope("fix: null check") == "fix"

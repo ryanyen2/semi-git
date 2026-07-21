@@ -26,14 +26,13 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from sgt import state
-from sgt.config import get_client
+from sgt.config import get_client, get_model
 from sgt.core.op import make_op
 from sgt.core.store import Store
 
 _PENDING = "…pending…"  # hollow after_version placeholder -- never a real content hash (mirrors rewrite.py)
 _PLAN_SENTINEL_PREFIX = "__plan__::"
 
-MODEL = "gpt-5.4-mini"
 EFFORT = "low"
 
 
@@ -114,7 +113,8 @@ def _llm_decompose(repo: Path, plan_text: str) -> PlanDecomposition | None:
         )
         client = get_client(repo)
         r = client.responses.parse(
-            model=MODEL, input=prompt, text_format=PlanDecomposition, reasoning={"effort": EFFORT},
+            model=get_model(repo), input=prompt, text_format=PlanDecomposition,
+            reasoning={"effort": EFFORT},
         )
         return r.output_parsed
     except Exception:

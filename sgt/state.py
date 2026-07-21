@@ -124,6 +124,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # pre-horizon history has progressed for a given ref. Never travels -- like `witness` and
     # `ideal_table`, it's derived from *this* clone's own mining progress.
     "backfill": _Artifact(("local", "backfill.json"), committed=False),
+    # local, gitignored per-ref no-op gate: {ref_key: {fp, ids}} recording the last `_sync`'s
+    # fingerprint (HEAD + dirty source content + persisted ideal) and the ideal it produced, so an
+    # unchanged tree short-circuits the O(files) dirty mining pass. Derived from this clone's own
+    # working state -- never travels, like `witness`/`backfill`.
+    "sync_cache": _Artifact(("local", "sync_cache.json"), committed=False),
     # local, gitignored per-ref UNIFIED operation-event log (`sgt.core.oplog`, U8/KTD6): the single
     # store `sgt undo` walks. It began (U26) as the ideal-edit journal -- `record_ideal` still
     # pushes the outgoing ideal (+ witness) as one `ideal_edit` event before each overwrite -- and

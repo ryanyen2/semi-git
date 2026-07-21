@@ -88,6 +88,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
     <div id="inspector"></div>
   </div>
+  <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
 </div>
 <script nonce="${nonce}" src="${jsUri}"></script>
 </body>
@@ -101,6 +102,22 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     } catch (e: any) {
       void this.view?.webview.postMessage({ type: "error", message: e.message });
       return;
+    }
+    // `compose_view`'s `map` is a *pure read* of the last-built `tree.json`; `history` is projected
+    // straight from git ops. Right after `sgt init` (which writes the ideal.json marker but never
+    // builds the tree) that leaves `map.nodes` empty while `history.ops` is full -- the timeline
+    // renders no lanes even though the ops exist. The feature tree heals itself because it calls
+    // `sgt map` (a rebuild), but that rebuild's `.sgt/` write is swallowed by the watcher's own
+    // loop-guard, so the compose cache is never refreshed and the timeline stays blank until a
+    // window reload. Build the tree once here (`store.map(true)` == `sgt map`, which saves
+    // tree.json) and re-read compose so the lanes appear without a reload.
+    if (!compose.map.nodes.length && compose.history.ops.length) {
+      try {
+        await this.store.map(true);
+        compose = await this.store.composeView(true);
+      } catch {
+        // Fall through with the empty map; the rail just shows no lanes rather than erroring.
+      }
     }
     const nodes = compose.map.nodes.map((n) => ({
       ...n,
@@ -120,6 +137,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case "previewSplit":
         await this.previewSplit(msg.featureId, msg.seq);
+        return;
+      case "selectClosure":
+        await this.selectClosure(msg.refs, msg.seq);
+        return;
+      case "revertSelection":
+        await this.revertSelection(msg.refs);
         return;
       case "applyVerb":
         await this.apply(msg.verb, msg.args);
@@ -187,6 +210,51 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       result = { ok: false, message: e.message };
     }
     void this.view?.webview.postMessage({ type: "previewResult", seq, result });
+  }
+
+  // The union closure a multi-select induces (Stage C): `sgt select` reports the feature ids +
+  // closure op count + pulled features, so the workbench can show "N features → M ops in closure"
+  // and paint the union. Report-only (never materializes), same seq-drop pattern as preview().
+  private async selectClosure(refs: string[], seq: number): Promise<void> {
+    let result;
+    try {
+      result = await this.store.sgt.select(refs);
+    } catch (e: any) {
+      result = { ok: false, message: e.message };
+    }
+    void this.view?.webview.postMessage({ type: "selectionResult", seq, result });
+  }
+
+  // Revert a multi-select in turn (Stage C). Mirrors the TUI, whose multi-select applies per
+  // feature rather than as one atomic set-revert: each `sgt revert <feature>` re-resolves against
+  // current state (mine-on-contact), so reverting them sequentially is correct, and we STOP on the
+  // first refusal (e.g. a fork) rather than pressing on into an inconsistent partial. One confirm
+  // up front covers the batch.
+  private async revertSelection(refs: string[]): Promise<void> {
+    if (!refs?.length) {
+      return;
+    }
+    const ok = await vscode.window.showWarningMessage(
+      `Revert ${refs.length} selected feature(s)? Each is reverted and committed in turn; stops if one refuses.`,
+      { modal: true },
+      "Revert all"
+    );
+    if (ok !== "Revert all") {
+      return;
+    }
+    let done = 0;
+    for (const ref of refs) {
+      try {
+        await this.store.sgt.mutate(["revert", ref]);
+        done++;
+      } catch (e: any) {
+        this.store.invalidate();
+        vscode.window.showWarningMessage(`Reverted ${done}/${refs.length}; stopped at ${ref}: ${e.message}`);
+        return;
+      }
+    }
+    this.store.invalidate();
+    vscode.window.showInformationMessage(`Reverted ${done} feature(s).`);
   }
 
   private async renamePrompt(feature: string): Promise<void> {

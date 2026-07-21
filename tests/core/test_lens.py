@@ -392,6 +392,30 @@ def test_tracked_edit_triggers_the_dirty_pass(tmp_path, monkeypatch):
     assert calls["n"] >= 1
 
 
+def test_unchanged_dirty_tree_skips_the_repeat_dirty_pass(tmp_path, monkeypatch):
+    """The no-op gate (perf): a `get()` on a dirty tree that is byte-identical to the last `get()`
+    returns the same ideal WITHOUT re-running the O(files) dirty snapshot pass -- the bulk of a warm
+    `get()`. R9 holds because *any* real change moves the fingerprint: this test also proves that
+    editing the dirty content re-runs the pass, and the persisted-ideal test above proves an ideal
+    edit (revert/pin) does too."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")  # dirty edit
+    first = get(repo)  # runs the dirty pass once, caches the fingerprint
+
+    calls = _count_snapshot_calls(monkeypatch)
+    second = get(repo)  # identical dirty content -> the gate fires
+    assert calls["n"] == 0  # the O(files) dirty snapshot pass was skipped
+    assert second.op_ids == first.op_ids
+
+    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")  # now it really changed
+    get(repo)
+    assert calls["n"] >= 1  # a genuine change re-runs the pass (R9 preserved)
+
+
 def test_put_refuses_to_clobber_an_unabsorbed_dirty_edit(tmp_path):
     """R9 (U7.5): `put()` of an ideal that targets *different* bytes than an uncommitted edit on
     disk raises rather than silently reverting the edit; it refuses before touching the tree."""

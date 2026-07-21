@@ -127,7 +127,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let pending: NodeJS.Timeout | undefined;
   const refresh = () => {
     clearTimeout(pending);
-    pending = setTimeout(() => store.invalidate(), 250); // debounce write storms
+    pending = setTimeout(() => {
+      // A `sgt map`/`compose` READ rebuilds and rewrites tree.json/ideal.json/label_cache.json/...
+      // under `.sgt/`, which trips this very watcher. Invalidating on our own writes re-issues the
+      // read -> infinite rebuild loop (the sidebar spinning forever). Skip while our subprocess is
+      // active; external mutations arrive while we're idle, and our own mutations invalidate
+      // explicitly, so neither is missed.
+      if (store.sgt.recentlyActive()) return;
+      store.invalidate();
+    }, 250); // debounce write storms
   };
   sgtWatcher.onDidChange(refresh);
   sgtWatcher.onDidCreate(refresh);
