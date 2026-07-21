@@ -8,19 +8,19 @@ keeping the dispatch (``handle_request``) a pure function that is unit-tested wi
 
 Tool surface — kernel parity with the CLI's registered verbs:
 
-The tool names mirror their new CLI paths after the ~7-verb spine collapse (KTD2): the read/write
-kernel verbs keep their bare names, while the maintenance and agentic-loop tools carry the
-``sgt_advanced_`` prefix of their re-homed CLI verbs.
+The tool names mirror their CLI paths after the spine re-triage (KTD2): the daily verbs (read/write
+kernel verbs, the semantic diff, and the agentic loop) keep their bare ``sgt_`` names, while only
+the genuinely rare/maintenance tools carry the ``sgt_advanced_`` prefix of their re-homed CLI verbs.
 
 * **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_status`` (the current
-  ref's ideal: frontier, coverage, oracle verdict), ``sgt_advanced_diff`` (semantic diff between
+  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between
   two refs' ideals), ``sgt_advanced_fsck`` (op-store integrity).
 * **write**: ``sgt_init`` (bind git + the kernel store, mine existing history), ``sgt_revert`` /
   ``sgt_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run preview),
   ``sgt_advanced_oracle_run`` (execute configured build/test tiers against the current ideal).
-* **agentic loop** (plan U14): ``sgt_advanced_plan_intake`` (decompose a plan into predicted hollow
-  ops), ``sgt_advanced_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given
-  ``confirm`` -- the explicit, one-group-at-a-time write that resolves it), ``sgt_advanced_drift``
+* **agentic loop** (plan U14): ``sgt_plan_intake`` (decompose a plan into predicted hollow
+  ops), ``sgt_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given
+  ``confirm`` -- the explicit, one-group-at-a-time write that resolves it), ``sgt_drift``
   (ops no active plan predicted).
 
 Every write tool mines the working tree on contact first (R9), so it reflects whatever the agent
@@ -233,7 +233,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"full": {"type": "boolean", "description": "restore the full frontier map and entity_paths list"}}, []),
         tool_state,
     ),
-    "sgt_advanced_diff": (
+    "sgt_diff": (
         "Semantic diff between two refs' ideals: the symmetric difference of their op sets, "
         "grouped by symbol.",
         _schema({"ref_a": {"type": "string"}, "ref_b": {"type": "string"}}, ["ref_a", "ref_b"]),
@@ -264,7 +264,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"tier": {"type": "string", "description": "run just this one tier (optional)"}}, []),
         tool_oracle_run,
     ),
-    "sgt_advanced_plan_intake": (
+    "sgt_plan_intake": (
         "Decompose a plan (an agent's or human's stated intent before doing the work) into "
         "predicted hollow ops -- one per step, off-chain, never touching the ideal algebra. "
         "Grounds `predicted_feature` in the repo's own feature tree (`sgt map`) when one exists.",
@@ -274,7 +274,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         ),
         tool_plan_intake,
     ),
-    "sgt_advanced_checkpoint": (
+    "sgt_checkpoint": (
         "Preview candidate step<->op groups (footprint-overlap between pending plan steps and "
         "ops mined since each session's own baseline) plus drift op-ids. Pass `confirm` -- a "
         "list of `{hollow_ids, op_ids}` groups -- to apply exactly those groups; omit it for a "
@@ -292,7 +292,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         ),
         tool_checkpoint,
     ),
-    "sgt_advanced_drift": (
+    "sgt_drift": (
         "Every op not predicted by any active plan session. Compact by default: {count, op_ids, "
         "kinds}, no spans. Pass full=true for each entry's footprint and current file/line spans.",
         _schema({"full": {"type": "boolean", "description": "restore per-op footprint and file/line spans"}}, []),

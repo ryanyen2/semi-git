@@ -41,12 +41,20 @@ from . import (
     review, rewrite, select, session, sync, tiers,
 )
 
-# The ~7-verb daily spine + two groupings + the unchanged collaboration/setup verbs (KTD2/R2).
-# This is the ONLY top-level surface; every other former top-level verb is re-homed under
-# `feature`/`advanced` (or absorbed) and is reachable only there -- a hard rename, no alias layer.
+# The daily spine + the frequently-reached verbs kept at the top level, two groupings, and the
+# unchanged collaboration/setup verbs (KTD2/R2, re-triaged). This is the ONLY top-level surface;
+# every *rare/maintenance* verb is re-homed under `feature`/`advanced` and is reachable only there
+# -- a hard rename, no alias layer. `advanced` is for maintenance/rare verbs only: the verbs a user
+# runs daily (navigation, inspection, the agentic loop, the rewrite pipeline) stay one word away.
 _VERBS = {
     # spine
     "save", "status", "log", "undo", "revert", "restore", "edit",
+    # navigation + inspection (daily)
+    "switch", "diff", "map", "blame",
+    # agentic loop (daily)
+    "plan", "checkpoint", "drift",
+    # rewrite pipeline (daily)
+    "commit", "fulfill",
     # groupings
     "feature", "advanced",
     # collaboration + setup (unchanged behavior + name)
@@ -57,17 +65,17 @@ _VERBS = {
 # user who typed a removed-but-known verb at its new home, instead of a bare `_help()`.
 _REMOVED = {
     # under `advanced`
-    "state": "advanced state", "diff": "advanced diff", "oracle": "advanced oracle",
-    "fsck": "advanced fsck", "reindex": "advanced reindex", "map": "advanced map",
-    "blame": "advanced blame", "history": "advanced history", "compose": "advanced compose",
-    "fold": "advanced fold", "preview": "advanced preview", "drift": "advanced drift",
-    "forks": "advanced forks", "plan": "advanced plan", "checkpoint": "advanced checkpoint",
+    "state": "advanced state", "oracle": "advanced oracle",
+    "fsck": "advanced fsck", "reindex": "advanced reindex",
+    "history": "advanced history", "compose": "advanced compose",
+    "fold": "advanced fold", "preview": "advanced preview",
+    "forks": "advanced forks",
     "after": "advanced after", "tiers": "advanced tiers", "migrate": "advanced migrate",
     "intent": "advanced intent", "review-queue": "advanced review-queue",
-    "switch": "advanced switch", "identity": "advanced identity",
+    "identity": "advanced identity",
     "merge-op": "advanced merge-op", "split-op": "advanced split-op",
-    "transplant": "advanced transplant", "fulfill": "advanced fulfill",
-    "commit": "advanced commit", "unstage": "advanced unstage", "repair": "advanced repair",
+    "transplant": "advanced transplant",
+    "unstage": "advanced unstage", "repair": "advanced repair",
     # under `feature`
     "rename": "feature rename", "select": "feature select", "why": "feature why",
     "merge": "feature regroup merge", "split": "feature regroup split",
@@ -80,14 +88,14 @@ _REMOVED = {
 _ROUTING = {
     "rename": "feature", "select": "feature", "why": "feature",
     "merge": "regroup", "split": "regroup", "move": "regroup",
-    "state": "advanced", "diff": "advanced", "oracle": "advanced", "fsck": "advanced",
-    "reindex": "advanced", "map": "advanced", "blame": "advanced", "history": "advanced",
-    "compose": "advanced", "fold": "advanced", "preview": "advanced", "drift": "advanced",
-    "forks": "advanced", "plan": "advanced", "checkpoint": "advanced", "after": "advanced",
+    "state": "advanced", "oracle": "advanced", "fsck": "advanced",
+    "reindex": "advanced", "history": "advanced",
+    "compose": "advanced", "fold": "advanced", "preview": "advanced",
+    "forks": "advanced", "after": "advanced",
     "tiers": "advanced", "migrate": "advanced", "intent": "advanced",
-    "review-queue": "advanced", "switch": "advanced", "identity": "advanced",
+    "review-queue": "advanced", "identity": "advanced",
     "merge-op": "advanced", "split-op": "advanced", "transplant": "advanced",
-    "fulfill": "advanced", "commit": "advanced", "unstage": "advanced", "repair": "advanced",
+    "unstage": "advanced", "repair": "advanced",
 }
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
@@ -219,14 +227,28 @@ def _help() -> int:
         "  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I ∪ downset X)\n"
         "  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n"
         "\n"
+        "  navigation + inspection:\n"
+        "  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n"
+        "  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n"
+        "  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n"
+        "  sgt blame <path>            per-symbol semantic blame from the op DAG\n"
+        "\n"
+        "  agentic loop:\n"
+        "  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n"
+        "  sgt checkpoint [--json]     preview + confirm plan-step <-> mined-op matches\n"
+        "  sgt drift [--json]          ops no active plan predicted\n"
+        "\n"
+        "  rewrite pipeline:\n"
+        "  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n"
+        "  sgt commit                  commit a staged rewrite, gated oracle-green\n"
+        "\n"
         "  groupings:\n"
         "  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n"
         "                              rename, select, why\n"
-        "  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, diff, oracle,\n"
-        "                              after, fold, preview, tiers, identity, migrate, map, blame,\n"
-        "                              history, compose, drift, forks, plan, checkpoint, intent,\n"
-        "                              review-queue, switch, commit, unstage, fulfill, repair,\n"
-        "                              merge-op, split-op, transplant\n"
+        "  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n"
+        "                              after, fold, preview, tiers, identity, migrate,\n"
+        "                              history, compose, forks, intent, review-queue,\n"
+        "                              unstage, repair, merge-op, split-op, transplant\n"
         "\n"
         "  collaboration + setup:\n"
         "  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n"

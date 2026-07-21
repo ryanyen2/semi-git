@@ -49,6 +49,32 @@ def test_undo_on_an_empty_log_reports_nothing_to_undo(tmp_path):
     assert "nothing to undo" in outcome.message
 
 
+def test_drop_event_removes_the_target_and_never_clobbers_a_concurrent_append(tmp_path):
+    """`undo` cannot hold the lock across `apply_inverse` (it re-enters the non-reentrant flock),
+    so it drops the inverted event in a separate lock-held read-modify-write via `_drop_event`.
+    This proves the guarantee that closes the lost-append race: an event appended *after* `undo`
+    read its tail (modelled here by `B` following `A` on the stack) survives the drop of `A`, and a
+    plain tail drop removes only the tail."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    key = oplog._ref_key(Path(repo))
+    a = {"kind": "after", "snapshot": {}, "edge": ["a", "b"]}
+    b = {"kind": "after", "snapshot": {}, "edge": ["c", "d"]}
+    oplog.append(repo, a, ref_key=key)
+    oplog.append(repo, b, ref_key=key)  # a concurrent append landing during undo's apply window
+
+    # undo read `a` as the tail, applied its inverse, then goes to drop it: `b` (appended
+    # concurrently) must be preserved, and `a` removed from below the tail.
+    assert oplog._drop_event(repo, key, a) is True
+    assert oplog.load(repo)[key] == [b], "the concurrently-appended event must survive"
+
+    # plain tail case: dropping `b` leaves an empty stack, no clobber.
+    assert oplog._drop_event(repo, key, b) is True
+    assert oplog.load(repo).get(key, []) == []
+    # dropping an event already gone is a no-op, not an error.
+    assert oplog._drop_event(repo, key, a) is False
+
+
 # ---------------------------------------------------------------------------
 # ideal-edit kind (subsumes the old ideal_journal)
 # ---------------------------------------------------------------------------

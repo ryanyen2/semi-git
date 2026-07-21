@@ -17,7 +17,7 @@ undo, so an ideal-edit event and a journal entry can never be popped by two mech
 **Inverse-descriptor = a snapshot of the affected artifact(s) captured at append time**, restored
 on undo -- the simplest robust inverse:
   * `ideal_edit`    -- the prior ideal (+ its witness); restored by re-materializing it
-                       (`lens._apply_ideal_edit_inverse`), exactly today's `undo_ideal`.
+                       (`lens._apply_ideal_edit_inverse`), the ideal-edit restore.
   * `feature_reorg` -- a snapshot of `tree`/`pins`/`authored_features` before the reorg
                        (merge/split/rename/move are byte-neutral for `code(I)`, so restoring the
                        three metadata artifacts is the whole inverse).
@@ -97,6 +97,28 @@ def pop(repo: str | Path, *, ref_key: str | None = None) -> dict | None:
         return event
 
 
+def _drop_event(repo: str | Path, key: str | None, event: dict) -> bool:
+    """Remove the newest occurrence of `event` from `key`'s stack under the lock, and persist.
+    Returns True if an entry was removed. The reload happens *inside* the lock so that a concurrent
+    `append`/`record_ideal` which landed after `undo` read the tail is preserved rather than
+    clobbered (R5/R6): `undo` cannot hold the lock across `apply_inverse` (its ideal_edit path
+    re-enters `record_ideal`, and the flock is non-reentrant), so it drops the event it just
+    inverted in this separate, lock-held read-modify-write. Normally `event` is the tail; if a
+    concurrent append pushed a newer event during the apply window, `event` sits below the tail and
+    is removed from there, leaving the concurrent event intact."""
+    repo = Path(repo)
+    with locked_section(repo):
+        table = load(repo)
+        stack = table.get(key, []) if key is not None else []
+        for i in range(len(stack) - 1, -1, -1):
+            if stack[i] == event:
+                del stack[i]
+                table[key] = stack
+                save(repo, table)
+                return True
+        return False
+
+
 # -- snapshot inverse-descriptor ------------------------------------------------------------------
 
 
@@ -137,18 +159,16 @@ def undo(repo: str | Path) -> UndoOutcome:
     """Pop the current ref's tail event and apply its inverse (KTD6). Reverse-chronological: each
     call reverses exactly one event. A shared-out `land`/`propose` is *refused* (and left in place,
     so the provenance record survives -- there is no way past it without a rebase). Absorbs current
-    reality first (R9), exactly as `undo_ideal` always has."""
+    reality first (R9)."""
     from sgt.core import lens
 
     repo = Path(repo)
     lens.get(repo)  # mine-on-contact: absorb any dirty tree / foreign commit first (R9)
     key = _ref_key(repo)
-    table = load(repo)
-    stack = table.get(key, []) if key is not None else []
-    if not stack:
+    event = tail(repo, ref_key=key)
+    if event is None:
         return UndoOutcome("empty", "nothing to undo -- no recorded ideal edits")
 
-    event = stack[-1]
     kind = event.get("kind", "ideal_edit")
     if kind in ("land", "propose"):
         return UndoOutcome(
@@ -159,9 +179,11 @@ def undo(repo: str | Path) -> UndoOutcome:
         )
 
     outcome = apply_inverse(repo, event)
-    stack.pop()  # applied cleanly -- now drop the event (record_ideal(journal=False) never touches it)
-    table[key] = stack
-    save(repo, table)
+    # Applied cleanly -- now drop exactly the event we inverted, in a separate lock-held
+    # read-modify-write (`apply_inverse`'s ideal_edit path re-enters `record_ideal`, whose flock is
+    # non-reentrant, so we cannot hold the lock across the apply). `_drop_event` reloads inside the
+    # lock, so a concurrent append during the apply window is preserved, not clobbered (R5/R6).
+    _drop_event(repo, key, event)
     return outcome
 
 

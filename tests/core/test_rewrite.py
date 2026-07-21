@@ -880,7 +880,7 @@ def test_edit_repoints_three_dependents_with_zero_model_calls_and_one_land(tmp_p
     """Happy path (R5/KTD5): a behavior-preserving edit of a symbol with 3 direct dependents
     repoints all three mechanically (`kind == "repoint"`, byte-identical images, `requires` bumped
     to the new version), the oracle passes, and it lands with **zero** model calls -- no op carries
-    integration/LLM attribution, and a counting backend is never asked."""
+    integration/LLM attribution (the mechanical repoint path never reaches the repair backend)."""
     repo = tmp_path / "repo"
     gb, helper_op, callers = _helper_with_three_callers(repo)
     _configure_oracle(repo, [("py_compile", "python -m py_compile m.py")])
@@ -900,7 +900,6 @@ def test_edit_repoints_three_dependents_with_zero_model_calls_and_one_land(tmp_p
         edited += f"\n\ndef u{i}():\n    return helper() + {i}\n"
     (repo / "m.py").write_text(edited, encoding="utf-8")
 
-    backend = _CountingBackend([b"UNUSED"])
     candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
     assert is_valid_ideal(Store(repo).all_ops(), candidate.op_ids)
 
@@ -921,10 +920,10 @@ def test_edit_repoints_three_dependents_with_zero_model_calls_and_one_land(tmp_p
     sha = rewrite.land(repo)  # oracle green -> one land, no override
     assert sha
     assert rewrite.staged_candidate(repo) is None
-    # Zero model calls: nothing was attributed to the integration agent, backend never asked.
+    # Zero model calls: nothing was attributed to the integration agent (the mechanical repoint
+    # path never invokes the repair backend, so no op carries integration/LLM attribution).
     landed = [by_id2 for by_id2 in Store(repo).all_ops() if by_id2.id in candidate.op_ids]
     assert all(a.agent != "integration" for o in landed for a in o.attribution)
-    assert backend.calls == 0
 
 
 def test_edit_with_no_dependents_is_a_plain_chain_extension(tmp_path):

@@ -378,6 +378,19 @@ def revert_keep_dependents(
     return _register(repo, draft)
 
 
+def _blast_dependents(op_id, sym, version, ideal, ops, by_id, declared) -> list[str]:
+    """The target op's *blast* dependents: direct reference-edge dependents whose `requires` names
+    `(sym, version)` -- the version the target op itself presents. A transitive dependent never
+    names the target's own version, so it is untouched (no repoint, no removal). Shared by `edit_op`
+    (the happy-path repoint) and `edit_repair_op` (the red-oracle rework), which classify the same
+    set off the same reference edges."""
+    upset = order.upset_in(op_id, ideal.op_ids, ops, declared)
+    return sorted(
+        b for a, b in order.reference_edges(ops)
+        if a == op_id and b in upset and (sym, version) in by_id[b].requires
+    )
+
+
 def edit_op(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
     """`sgt edit <target>` (plan U4, R5/KTD5): change a symbol in place. Drafts one chain-extension
     hollow whose `before` is the target's *current* after_version -- the tip-after shape `merge_op`
@@ -416,11 +429,7 @@ def edit_op(repo: str | Path, target: str, intent: str | None = None) -> Rewrite
 
     # Blast = direct reference-edge dependents naming the target's current version; a transitive
     # dependent never names the target's own version, so it's untouched (no repoint, no removal).
-    upset = order.upset_in(op_id, ideal.op_ids, ops, declared)
-    blast = sorted(
-        b for a, b in order.reference_edges(ops)
-        if a == op_id and b in upset and (sym, after_version) in by_id[b].requires
-    )
+    blast = _blast_dependents(op_id, sym, after_version, ideal, ops, by_id, declared)
     draft = RewriteDraft(
         ok=True, verb="edit", target=op_id, hollow_ids=(hollow.id,),
         meta={
@@ -461,11 +470,7 @@ def edit_repair_op(repo: str | Path, target: str, intent: str | None = None) -> 
         return _refuse("edit-repair", op_id, f"no staged edit of {sym} to repair -- run `sgt edit` + fulfill first")
     edit = edits[-1]
 
-    upset = order.upset_in(op_id, ideal.op_ids, ops, declared)
-    blast = sorted(
-        b for a, b in order.reference_edges(ops)
-        if a == op_id and b in upset and (sym, old_version) in by_id[b].requires
-    )
+    blast = _blast_dependents(op_id, sym, old_version, ideal, ops, by_id, declared)
     hollows = []
     for dep_id in blast:
         for dsym, (before, _after) in by_id[dep_id].footprint.items():

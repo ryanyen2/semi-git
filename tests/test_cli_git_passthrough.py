@@ -40,13 +40,13 @@ def test_forwards_args_verbatim_and_propagates_exit_code(monkeypatch):
 
 def test_refuses_tree_mutating_subcommand_naming_the_sgt_verb(monkeypatch, capsys):
     """A tree-mutating subcommand is refused (git never runs), exits non-zero, and names the sgt
-    remedy on stderr (D2). `checkout` routes to `sgt advanced switch`; `pull` to `sgt sync`."""
+    remedy on stderr (D2). `checkout` routes to `sgt switch`; `pull` to `sgt sync`."""
     calls = _record_run(monkeypatch)
     rc = cli.main(["git", "checkout", "main"])
     assert rc == 1
     assert calls == []  # git was NOT run
     err = capsys.readouterr().err
-    assert "sgt advanced switch" in err and "--force" in err
+    assert "sgt switch" in err and "--force" in err
 
     rc = cli.main(["git", "pull", "origin", "main"])
     assert rc == 1
