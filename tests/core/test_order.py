@@ -261,3 +261,31 @@ def test_revert_of_mid_chain_op_removes_its_upset_exactly(n):
         remaining = full - upset(target, ops)
         assert is_valid_ideal(ops, remaining)
         assert remaining == {op.id for op in ops[:cut]}
+
+
+def test_reduce_to_ideal_is_memoized_correct_and_bounded():
+    """U8: `reduce_to_ideal` is memoized by `(ideal_ids, declared)` (its result is a pure function
+    of those over content-addressed ops). The memo returns the identical result, agrees with a
+    fresh computation, and is size-bounded so a long-running process over an append-only store never
+    accumulates one entry per save."""
+    from sgt.core import order
+
+    root = make_op({"a.py::x": (None, "v0")}, {"a.py::x": b"r"})
+    tip_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"}, provenance=("branch-a",))
+    tip_b = make_op({"a.py::x": ("v0", "v2")}, {"a.py::x": b"b"}, provenance=("branch-b",))
+    ops = [root, tip_a, tip_b]
+    ids = {root.id, tip_a.id, tip_b.id}  # a fork: both tips + their up-sets drop out
+
+    order._REDUCE_CACHE.clear()
+    r1 = order.reduce_to_ideal(ids, ops)
+    assert r1 == frozenset({root.id})              # fork tips dropped, root kept
+    assert (frozenset(ids), frozenset()) in order._REDUCE_CACHE
+    r2 = order.reduce_to_ideal(ids, ops)
+    assert r2 is r1                                 # the cached object, not a recomputation
+
+    # bound: pushing more distinct keys than the cap never grows the cache past it.
+    order._REDUCE_CACHE.clear()
+    for i in range(order._REDUCE_CACHE_MAX + 20):
+        op = make_op({f"z{i}.py::f": (None, "v0")}, {f"z{i}.py::f": b"x"})
+        order.reduce_to_ideal({op.id}, [op])
+    assert len(order._REDUCE_CACHE) == order._REDUCE_CACHE_MAX

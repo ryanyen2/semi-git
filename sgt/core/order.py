@@ -21,10 +21,22 @@ downward-closed and still contain both.
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 from sgt.core.op import Op
 
 Edge = tuple[str, str]  # (A, B) meaning A <= B: A must be in the ideal whenever B is
 Declared = frozenset[Edge]
+
+# Bounded LRU memo for `reduce_to_ideal` (U8). Its result is a pure function of `(ideal_ids,
+# declared)` alone: grounding and fork-freedom only ever read ops *in* `ideal_ids` (a path from a
+# forked tip to an ideal op through a missing op leaves that op ungrounded, so it is gone before
+# fork-freeing runs), and every op is content-addressed, so an id set fixes the answer. The `ops`
+# universe is only the by-id lookup source, never a hidden input -- so it is NOT part of the key.
+# Bounded (not `functools.lru_cache`, whose args must be hashable and which never evicts by size)
+# so a long-running MCP/TUI session over an append-only store doesn't accumulate an entry per save.
+_REDUCE_CACHE: "OrderedDict[tuple, frozenset[str]]" = OrderedDict()
+_REDUCE_CACHE_MAX = 64
 
 
 def chain_edges(ops: list[Op]) -> frozenset[Edge]:
@@ -221,8 +233,21 @@ def reduce_to_ideal(ideal_ids, ops: list[Op], declared: Declared = frozenset()) 
     only the composition is constructible. This is the reduction every provenance-derived ideal
     goes through -- `lens._sync` on the mine-on-contact write path, and the pure-read
     `_committed_ids_by_provenance`/`ideal_for_ref` -- so all three agree on what a ref's history
-    means (divergence, historical or concurrent, is state, never a crash; U20/C4)."""
-    return fork_free(_grounded(ideal_ids, ops, declared), ops, declared)
+    means (divergence, historical or concurrent, is state, never a crash; U20/C4).
+
+    Memoized (U8): the ~28s-per-call cost on a large store is the dominant `sgt status` bottleneck,
+    and `status_view` invokes this reduction two-to-three times per call on the same op set. The
+    memo is keyed by `(ideal_ids, declared)` only (see `_REDUCE_CACHE`)."""
+    key = (frozenset(ideal_ids), declared)
+    cached = _REDUCE_CACHE.get(key)
+    if cached is not None:
+        _REDUCE_CACHE.move_to_end(key)
+        return cached
+    result = fork_free(_grounded(ideal_ids, ops, declared), ops, declared)
+    _REDUCE_CACHE[key] = result
+    if len(_REDUCE_CACHE) > _REDUCE_CACHE_MAX:
+        _REDUCE_CACHE.popitem(last=False)
+    return result
 
 
 def find_declared_cycles(ops: list[Op], declared: Declared) -> list[tuple[str, str]]:
