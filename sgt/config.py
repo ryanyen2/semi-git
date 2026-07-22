@@ -40,17 +40,46 @@ def get_model(repo_path: str | Path = ".") -> str:
     return os.environ.get("SGT_MODEL") or os.environ.get("OPENAI_MODEL") or DEFAULT_MODEL
 
 
-def get_client(repo_path: str | Path = "."):
-    """Build an OpenAI client, loading the key from `.env` if not already in env."""
+def resolve_api_key(repo_path: str | Path = ".", shell_openai_key: str | None = None) -> str | None:
+    """The bearer token for the OpenAI-compatible endpoint, resolved so the *live* credential wins
+    over a stale checked-in one:
+
+      1. an `OPENAI_API_KEY` the user **explicitly exported in the shell** always wins -- never
+         override a deliberate setup;
+      2. else, for a **Claude model** (the repo's `SGT_MODEL=claude-*` via-proxy pattern), the live
+         Claude token `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY` (what Claude Code already holds) --
+         so a rotated/stale `OPENAI_API_KEY` line in `.env` no longer silently 401s every agent;
+      3. else `.env`'s `OPENAI_API_KEY`; else any Anthropic token.
+
+    Same bearer for both providers: the litellm gateway accepts whichever token is valid *on it*.
+    Pass `shell_openai_key` = `os.environ.get("OPENAI_API_KEY")` captured *before* `load_env`, so
+    the ".env vs shell" distinction survives `load_env`'s `setdefault`."""
+    if shell_openai_key:
+        return shell_openai_key
     load_env(repo_path)
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
+    anthropic = os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY")
+    if get_model(repo_path).lower().startswith("claude") and anthropic:
+        return anthropic
+    return os.environ.get("OPENAI_API_KEY") or anthropic
+
+
+def get_client(repo_path: str | Path = "."):
+    """Build an OpenAI client. The key is resolved by `resolve_api_key` (live Claude token beats a
+    stale `.env` `OPENAI_API_KEY` for a Claude model); the base URL still comes from
+    `OPENAI_BASE_URL`."""
+    shell_openai_key = os.environ.get("OPENAI_API_KEY")  # capture BEFORE load_env writes the .env one
+    load_env(repo_path)
+    key = resolve_api_key(repo_path, shell_openai_key)
+    if not key:
+        raise RuntimeError(
+            "No LLM credential found: set OPENAI_API_KEY (or ANTHROPIC_AUTH_TOKEN for a Claude "
+            "model) in the environment or .env")
     from openai import OpenAI
 
     # A bounded timeout so a slow/stalled endpoint raises (→ the labeler's deterministic offline
     # fallback) instead of hanging `sgt map` indefinitely -- the SDK default is 600s, which reads
     # to a user as "spinning forever". 60s is well above normal label latency.
-    return OpenAI(timeout=60.0)
+    return OpenAI(api_key=key, timeout=60.0)
 
 
 @dataclass(frozen=True)

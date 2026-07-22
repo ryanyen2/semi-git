@@ -97,24 +97,39 @@ def _clean_symbol_name(member: str) -> str | None:
     return name or None
 
 
+_DOC_EXT = (".md", ".rst", ".txt", ".toml", ".yaml", ".yml", ".cfg", ".ini", ".json",
+            ".lock", ".html", ".css")
+
+
 def _fallback_label(members: list[str]) -> FeatureLabel:
-    """Deterministic, offline, free, and *readable*: the leading real symbol names, or -- when a
-    cluster is nothing but fold artifacts (residue/anchor) -- the dominant directory tagged
-    ``(structural)`` so the lane reads as glue-between-symbols, never a raw ``__residue__::`` id.
+    """Deterministic, offline, free, and *readable* -- and it names the cluster's *kind*, not just
+    its first files, so a docs cluster doesn't masquerade as a code feature:
+      - real code symbols present  -> the leading symbol names ("get_client get_model load_env")
+      - only whole-file doc/config -> "docs & config · <dir>" (a 91-file docs group shouldn't read
+        as the single feature "README.md")
+      - nothing but fold artifacts -> "<dir> (structural)", never a raw ``__residue__::`` id
     Never cached as a permanent answer -- callers tag it `"source": "fallback"` so a later call
     with a working client overwrites it with a real label."""
     from sgt.lens.cluster import _dominant_dir
 
-    names: list[str] = []
+    code_names: list[str] = []
+    file_names: list[str] = []
     for m in sorted(members):
-        n = _clean_symbol_name(m)
-        if n and n not in names:
-            names.append(n)
-        if len(names) >= 3:
-            break
+        if "::" in m:
+            n = _clean_symbol_name(m)  # None for residue/anchor fold artifacts
+            if n and n not in code_names:
+                code_names.append(n)
+        else:  # a bare whole-file member (a doc, config, or binary asset)
+            base = m.rsplit("/", 1)[-1]
+            if base and base not in file_names:
+                file_names.append(base)
     dom_dir = _dominant_dir(members)
-    if names:
-        label = " ".join(names)[:60]
+    if code_names:
+        label = " ".join(code_names[:3])
+    elif file_names:
+        docish = all(f.lower().endswith(_DOC_EXT) for f in file_names)
+        label = (f"docs & config · {dom_dir}" if dom_dir else "docs & config") if docish \
+            else " ".join(file_names[:3])
     else:
         label = f"{dom_dir} (structural)" if dom_dir else "(structural)"
     return FeatureLabel(label=label[:60],
@@ -130,6 +145,24 @@ class Labeler:
         self.tokens_out = 0
         self.calls = 0
         self._lock = threading.Lock()  # guards cache writes + token counters across concurrent batches
+        self._auth_warned = False
+
+    def _note_failure(self, exc: Exception) -> None:
+        """First time an LLM call fails on *auth*, note it once on stderr -- worded so it fits both
+        cases without crying wolf: a permanently-rejected key (the whole graph goes terse -- the
+        trap that made it look broken) AND a transient proxy hiccup under concurrent batches (a few
+        features fall back, the rest are fine). It reports the affected calls, not "labeling
+        disabled", and points at the fix only *if* the graph is broadly terse."""
+        name, msg = type(exc).__name__.lower(), str(exc).lower()
+        is_auth = ("auth" in name or "permission" in name or "401" in msg
+                   or ("invalid" in msg and "token" in msg))
+        if is_auth and not self._auth_warned:
+            self._auth_warned = True
+            import sys
+            print(f"⚠ an LLM labeling call was rejected ({type(exc).__name__}); those features use "
+                  "terse fallback names. If the whole graph is terse, the key is stale — fix "
+                  "OPENAI_API_KEY (or ANTHROPIC_AUTH_TOKEN for a Claude model), then "
+                  "`sgt map --refresh`.", file=sys.stderr)
 
     @property
     def client(self):
@@ -180,7 +213,8 @@ class Labeler:
             return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
         try:
             out, source = self._request(prompt), "llm"
-        except Exception:
+        except Exception as e:
+            self._note_failure(e)
             out, source = _fallback_label(members), "fallback"
         self.cache[key] = {**out.model_dump(), "source": source}
         return out
@@ -233,7 +267,8 @@ class Labeler:
             prompts = [entries[i][1] for i in batch_idx]
             try:
                 batch_out = self._request_batch(prompts)
-            except Exception:
+            except Exception as e:
+                self._note_failure(e)
                 batch_out = [None] * len(prompts)
             for local_i, global_i in enumerate(batch_idx):
                 key, _prompt, members = entries[global_i]

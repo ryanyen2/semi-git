@@ -337,15 +337,21 @@ def render_graph_lines(
     color: bool = True,
     bar_width: int = 42,
     label_width: int = 24,
-    checkpoints: dict[str, int] | None = None,
+    checkpoints: dict[str, list] | None = None,
 ) -> list[str]:
     """Render the timeline as terminal lines (ANSI truecolor when `color`). Each feature is a lane:
     its short `f-XXXX` handle (the copy-paste token for `sgt revert <handle>[@n]`), identity glyph,
-    label, an optional `✦N` checkpoint count (N rewind points, from `checkpoints={fid: count}`), and
-    a fixed-width time strip whose lit span is [first,last] with per-column brightness = op density
-    -- the terminal projection of the same Gantt the VS Code graph draws, under one shared, labeled
-    commit axis."""
+    label, and a fixed-width time strip whose lit span is [first,last] with per-column brightness =
+    op density -- the terminal projection of the same Gantt the VS Code graph draws, under one
+    shared, labeled commit axis.
+
+    `checkpoints={fid: [(seg_index, first_commit_index), ...]}` overlays each feature's rewind
+    points *on its own lane*: the digit `n` is drawn at the commit-time column where checkpoint
+    `<fid>@n` begins, so the density blocks (WHEN the feature was active) and the checkpoints (the
+    chapters you can rewind) finally read on the same axis -- `✦N` in the margin is just their
+    count. Absent (e.g. the TUI) -> no markers, no count."""
     checkpoints = checkpoints or {}
+    fr = float("inf") if frontier is None else frontier
     layout = graph_layout(map_view, history_view, collapsed=collapsed, frontier=frontier)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
 
@@ -434,17 +440,26 @@ def render_graph_lines(
             label = raw[:label_width].ljust(label_width)
             handle = dim(fid[:handle_width].ljust(handle_width))  # the copy-paste token for revert
             cells = strip(lane_cols[fid], l["first_commit"], l["last_commit"])
+            # Checkpoint markers: the digit `n` at the column where `<fid>@n` begins. First-in wins
+            # a column so a marker is never silently swallowed by a later, denser one.
+            ck = [m for m in checkpoints.get(fid, []) if m[1] <= fr]
+            marks: dict[int, int] = {}
+            for seg_index, first_ci in sorted(ck, key=lambda m: m[0]):
+                marks.setdefault(col_of(first_ci), seg_index)
             bar = ""
-            for n, ch in cells:
-                if n > 0:
+            for c, (n, ch) in enumerate(cells):
+                if c in marks:  # a rewind point takes the column over the density cell
+                    d = str(marks[c])
+                    bar += (bold(paint(hexc, d)) if color else d)
+                elif n > 0:
                     bar += _shade(hexc, (n / gmax) ** 0.5, ch) if color else ch
                 elif n == 0:
                     bar += dim(ch)
                 else:
                     bar += ch
             count = str(l["op_count"]).rjust(5)
-            n_ckpt = checkpoints.get(fid, 0)
-            ckpt = dim(f" ✦{n_ckpt}") if n_ckpt else ""  # N rewind points on this lane
+            n_ckpt = len(ck)
+            ckpt = dim(f" ✦{n_ckpt}") if n_ckpt else ""  # rewind points on this lane (see the digits)
             link_ids = nbrs.get(fid, [])[:2]
             links = ", ".join(labels.get(x, x) for x in link_ids)
             extra = len(nbrs.get(fid, [])) - len(link_ids)
@@ -456,8 +471,8 @@ def render_graph_lines(
     lines.append("")
 
     # Legend + next-step hints: the view explains its own encoding and what to do from here.
-    lines.append(dim(" f-XXXX = the handle you type   ✦N = N rewind points   ● feature   ▾ subsystem"
-                     "   bar = lifetime · op density   ↔ co-change   (structural) = glue"))
+    lines.append(dim(" f-XXXX = the handle you type   bar = op density over time   digits 0·1·2 = where"
+                     " checkpoint @n begins   ✦N = N rewind points   ↔ co-change   (structural) = glue"))
     lines.append(dim(" daily:  sgt graph  (fast, cached)   ·   sgt graph --refresh  (after edits: re-name"
                      " features + checkpoints)"))
     lines.append(dim(" operate:  sgt revert <f-XXXX>  (whole feature)   ·   sgt revert <f-XXXX>@<n>"

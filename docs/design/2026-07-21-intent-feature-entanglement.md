@@ -465,7 +465,54 @@ lower-level verbs. Operating is copy-paste-free: read a `f-XXXX` handle straight
 
 **C4 (residue de-noise) still deferred, on purpose.** 94/173 leaves are pure-residue and now read
 `(structural)`; hiding them entirely would change what `revert` can reach and belongs behind an
-explicit `--real`/default filter — a separate, reversible decision, not this diff. Also still
-open from earlier stages: in-graph per-checkpoint lane ticks (only the *count* is shown, not the
-seams), and cross-feature arcs. Tests added: 3 in `test_label.py` (residue/doc legibility +
-`_clean_symbol_name`), 1 in `test_graph.py` (handle + `✦`).
+explicit `--real`/default filter — a separate, reversible decision, not this diff. Tests added: 3
+in `test_label.py` (residue/doc legibility + `_clean_symbol_name`), 1 in `test_graph.py`.
+
+### Stage 6b — checkpoint markers on the lane (2026-07-21, immediate follow-up)
+The user read the shipped graph and hit the exact gap C3 left open: `✦N` is a *count with nothing
+to point at*. The density blocks (WHEN a feature was active) look like they might be the
+checkpoints, but they aren't — checkpoints are op-groupings, and the count alone couldn't be
+mapped onto the strip. A count you can't locate is worse than no count: it reads as noise and
+makes the whole graph feel arbitrary ("is it features? commit-chunks? op-groups?").
+
+Fix: draw each rewind point **on its own lane**. `_checkpoint_spans` (was `_checkpoint_counts`)
+joins the persisted `intent_segments.json` to the commit axis → `{fid: [(seg_index,
+first_commit_index)]}`; the renderer overlays the digit `n` at the commit-time column where
+`<fid>@n` begins (first-in wins a column so a marker is never swallowed; frontier-filtered).
+`seg_index` is the list position, i.e. the exact `@n` you type — `overlay_persisted` preserves
+order, so a marker and its `sgt revert <fid>@<n>` agree (verified: graph `f-08b6c6a0@1` ↔
+`intent show` "Configuration Types and Constraints" @ commit 124). Now the density strip and the
+checkpoints read on one shared time axis, `✦N` = N visible digits, and every digit is a
+copy-paste `@n`. Still deterministic-friendly (the persisted read needs no LLM). Legend updated;
+`test_graph.py` asserts markers land in commit-time order.
+
+Still open: cross-feature arcs; hiding pure-residue lanes behind `--real`.
+
+### Stage 6c — the real reason the graph was terse: a dead credential (2026-07-21)
+The user pushed back on Stage 6's fallback-label polish with the right question: *why is it hitting
+the fallback at all — we have a key.* Diagnosis (calling the labeler with the `.env` config
+exactly as sgt loads it): the `.env` `OPENAI_API_KEY` is a **stale litellm proxy token** — the
+gateway returns `401 Invalid proxy server token … Unable to find token in cache`. So **all 173
+features had silently degraded to deterministic fallback names**, and no amount of fallback
+prettification is the fix — the fix is to authenticate.
+
+Root cause = two generalizable bugs, not a labeling nicety:
+1. **Wrong credential for the repo's own pattern.** The repo runs *Claude via the litellm proxy*
+   (`SGT_MODEL=claude-*`, `OPENAI_BASE_URL=…`), whose live token is `ANTHROPIC_AUTH_TOKEN` (what
+   Claude Code already holds and what the proxy actually accepts — verified). But `get_client`
+   only read `OPENAI_API_KEY`. New `config.resolve_api_key` precedence: a *shell-exported*
+   `OPENAI_API_KEY` always wins (never break a deliberate setup) → else, for a **Claude model**,
+   the live `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY` (beats a stale `.env` `OPENAI_API_KEY`) →
+   else `.env`'s `OPENAI_API_KEY` → else any Anthropic token. Same bearer for both — the gateway
+   accepts whichever token is valid on it. Verified: labeling now returns real names ("Config
+   Loading") from the `.env` config + ambient token with **no override**.
+2. **Silent degradation hid it.** The labeler caught every exception into fallback, so a permanently
+   dead key looked identical to "offline." `Labeler._note_failure` now prints a one-time loud
+   stderr warning on an *auth* error (transient stays quiet) pointing at the key + `sgt map
+   --refresh`. So the trap ("why is my whole graph terse?") announces itself.
+
+Tests: `tests/test_config.py` (4, precedence matrix — shell wins / Claude→anthropic over stale env
+/ falls back to openai / non-Claude keeps openai). The fallback path stays as the *offline floor*
+only (residue/null-byte stripping is still essential for transient outages), but it is no longer
+the common case. Follow-up still owed to the user: the op-**chunk** lane view (width ∝ op count),
+their stated model — deferred until the now-real-labeled graph is in front of them.

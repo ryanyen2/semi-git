@@ -148,13 +148,15 @@ def test_fallback_label_never_leaks_residue_ids_or_null_bytes():
     assert "structural" in lbl and "sgt/intent" in lbl
 
 
-def test_fallback_label_names_symbols_and_docs_readably():
-    # a bare-file (doc) cluster -> basenames, never a joined path list
-    assert label_mod._fallback_label(["README.md", "docs/guide/getting-started.md"]).label \
-        == "README.md getting-started.md"
-    # real symbols win over any residue members mixed in
+def test_fallback_label_names_kind_not_first_file():
+    # a whole-file doc/config cluster reads as its KIND, not the first filename (the "why is
+    # README.md a feature" fix) -- a 91-file docs group shouldn't masquerade as one code feature
+    lbl = label_mod._fallback_label(
+        ["docs/guide/getting-started.md", "docs/guide/workflows.md", "docs/guide/x.md"]).label
+    assert lbl.startswith("docs & config") and "getting-started" not in lbl
+    # real symbols win over any residue members mixed in, and over doc files
     assert label_mod._fallback_label(
-        ["a.py::__anchor__::z", "a.py::foo", "a.py::bar"]).label == "bar foo"
+        ["a.py::__anchor__::z", "a.py::foo", "a.py::bar", "README.md"]).label == "bar foo"
 
 
 def test_clean_symbol_name_distinguishes_names_from_artifacts():
