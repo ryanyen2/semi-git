@@ -722,10 +722,21 @@ digits); the dirty-tree end-to-end win lands with U10.
 
 ### U10. Mining: content-addressed extraction cache + incremental entity-graph patching
 
-**Goal:** `_mine_one` stops rebuilding the whole-repo entity graph from scratch per commit, and the
-resulting incremental graph is kept live and queryable so U5's local-move can read it directly.
+**Goal:** `_mine_one` stops re-parsing the whole repo per commit — a content-addressed extraction
+cache reuses unchanged files' entities across commits.
 **Requirements:** R8
 **Dependencies:** none
+**Scope shipped vs deferred (adjust-as-you-go):** U10 ships the **content-addressed extraction
+cache** (the safe, high-value half). Measured: `extract_file` on an unchanged file drops ~290×
+(0.87s→0.003s over the tree), and `build_entity_graph` drops **3×** (1.65s→0.55s per commit) — the
+remaining 0.55s is pure edge resolution, which does *not* re-parse (it reuses the cached
+extraction). The **incremental entity-graph edge PATCHING** (patch only changed files' edges +
+re-resolve non-local references via a reverse name index) — the risky half, new code under def-use
+untangling with non-local invalidation — is **deferred** as a follow-up: it is what would take the
+remaining 0.55s toward zero, but the extraction cache already makes a per-save `build_entity_graph`
+fast enough (0.55s) for U5's boundary-edge query, so U5's dependency on U10 is satisfied by the
+cache without the risky patching. Named boundary: full-history init stays O(commits × edges) at
+~0.55s/commit rather than sub-second.
 **Files:** `sgt/entities/extract.py` (`extract_file`/`extract_codebase`, `:329-394`),
 `sgt/entities/graph.py` (`build_entity_graph`, `:213-269`), `sgt/core/mine.py` (`_mine_one`,
 `:320-626`, specifically `:337-338`), `tests/core/test_mine.py`, `tests/entities/test_extract.py`,
