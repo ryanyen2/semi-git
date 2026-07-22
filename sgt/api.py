@@ -26,6 +26,9 @@ Shapes (stable; additive changes only):
   events (birth/death/merge/split/continuation).
 * ``history_view``      — the feature-map webview's commit-index axis: every mined commit in order,
   and every op's derived kind/feature/commit-index, for Gantt-style lifebars.
+* ``grid_view``         — the canonical lane×commit cell join (U1): every (feature, commit) cell
+  that carries ops, the commit axis, active-plan ghost cells, and per-commit mining-fidelity marks
+  — the one join every grid surface (CLI `sgt log`, TUI, VS Code webview) renders, computed once.
 * ``feature_verb_preview_view`` — a side-effect-free preview of a feature verb (merge/split/move/
   rename/revert), with a uniform ``affected_features`` ripple list for hover-preview UIs.
 * ``blame_view``        — per-file symbol spans (`sym -> max-op-in-I -> feature`) for the editor
@@ -682,6 +685,123 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
         "kinds": kinds,
         "features": features,
         "latest_commits": latest_first[offset:offset + limit],
+    }
+
+
+def _grid_labels(repo) -> dict:
+    """Feature-id -> label, the cheap way: the last-built tree's own labels plus the authored-
+    feature overrides (U6/KTD4), *without* `map_view`'s `fused_graph` recompute (the expensive
+    step `grid_view` must not pay to stay a fast daily surface). Mirrors `map_view`'s label
+    resolution exactly, so the grid names a lane the same thing `sgt map` does."""
+    from sgt.lens.authored import load_authored
+    from sgt.lens.tree import _authored_leaf_claims
+    from sgt.lens.tree import load as load_tree
+
+    tree = load_tree(repo)
+    nodes = tree["nodes"] if tree else {}
+    labels = {nid: nd.get("label", nid) for nid, nd in nodes.items()}
+    for nid, claim in _authored_leaf_claims(nodes, load_authored(repo)).items():
+        labels[nid] = claim.label
+    return labels
+
+
+def _grid_partial_shas(repo) -> set[str]:
+    """The witnessing commits whose mined ops `order.reduce_to_ideal` dropped from the current
+    ref's ideal, from the fidelity side table (U2 writes it). Empty until that producer runs, so
+    every cell reads "full" until a real reduction has been recorded -- forward-compatible, not a
+    stub: the field is real, only the producer arrives in U2."""
+    from sgt import state
+    from sgt.core.lens import current_ref_key
+
+    key = current_ref_key(repo)
+    if key is None:
+        return set()
+    return set(state.load_json(repo, "fidelity", default={}).get(key, ()))
+
+
+def _grid_ghosts(repo, known: set) -> list[dict]:
+    """Active plan sessions' still-pending predictions -- one ghost per (step -> predicted_feature)
+    -- for the dim tip cells a UI draws for intent that has no code yet (the "planned feature"
+    ghost, Stage C). Off-chain plan hollows never enter the ideal, so this is the *only* place a
+    prediction reaches the grid. `known_feature` flags whether the predicted lane still exists, so
+    a renderer can place a ghost at its lane's tip or in an unplaced-predictions gutter."""
+    from sgt.loop.plan import active_sessions
+
+    ghosts = []
+    for sid, rec in sorted(active_sessions(repo).items()):
+        for i, step in enumerate(rec.get("steps", [])):
+            if step.get("status") != "pending":
+                continue
+            fid = step.get("predicted_feature")
+            if fid is None:
+                continue
+            ghosts.append({
+                "feature_id": fid, "session_id": sid, "step_index": i,
+                "title": step.get("title", ""), "known_feature": fid in known,
+            })
+    return ghosts
+
+
+def grid_view(repo) -> dict:
+    """The canonical lane×commit cell join (plan U1): the single source of truth for the grid
+    every surface -- the CLI `sgt log`, the TUI, the VS Code webview -- renders, so the (op ->
+    cell) join is computed *once* here and never re-derived per surface (R5). A complete
+    projection, not paged: a grid surface needs every cell to draw, so there is no compact/full
+    split -- it is `map_view`-shaped, not `oplog_view`-shaped. Pure/offline over an already-mined
+    store, like every view here.
+
+    Composes `history_view`'s commit axis + per-op (feature, commit-index) with the feature tree's
+    labels, active plan sessions' pending predictions (ghost cells), and the mining-fidelity side
+    table (commits whose ops `reduce_to_ideal` dropped -- R6). Shape:
+
+    * ``commits``  -- the time axis, `{sha, subject, index}`, oldest-first.
+    * ``cells``    -- one per (feature, commit) carrying ops: `{feature_id, commit_index, op_ids,
+      op_count, kinds, fidelity}` (`fidelity` = "partial" if that commit had ops dropped, else
+      "full"), sorted by `(feature_id, commit_index)`. An op with no feature (`op_leaf` miss, e.g.
+      new work before a map rebuild) has no lane and is omitted -- the same drop `graph_layout`/
+      `episodes` already apply.
+    * ``features`` -- the lane roster with labels: `{feature_id: {label, op_count}}`.
+    * ``ghosts``   -- pending plan predictions, `{feature_id, session_id, step_index, title,
+      known_feature}`.
+    * ``partial_commits`` -- the sorted commit indices carrying any dropped-op cell.
+    """
+    hv = history_view(repo, full=True)
+    labels = _grid_labels(repo)
+
+    partial_shas = _grid_partial_shas(repo)
+    partial_indices = {c["index"] for c in hv["commits"] if c["sha"] in partial_shas}
+
+    cells: dict[tuple, dict] = {}
+    features: dict[str, int] = {}
+    for op in hv["ops"]:
+        fid = op["feature_id"]
+        if fid is None:
+            continue
+        features[fid] = features.get(fid, 0) + 1
+        cell = cells.setdefault((fid, op["commit_index"]), {"op_ids": [], "kinds": {}})
+        cell["op_ids"].append(op["id"])
+        cell["kinds"][op["kind"]] = cell["kinds"].get(op["kind"], 0) + 1
+
+    cells_out = [
+        {
+            "feature_id": fid, "commit_index": ci, "op_ids": sorted(c["op_ids"]),
+            "op_count": len(c["op_ids"]), "kinds": c["kinds"],
+            "fidelity": "partial" if ci in partial_indices else "full",
+        }
+        for (fid, ci), c in sorted(cells.items())
+    ]
+    return {
+        "commits": hv["commits"],
+        "cells": cells_out,
+        "features": {
+            fid: {"label": labels.get(fid, fid), "op_count": n}
+            for fid, n in sorted(features.items())
+        },
+        "ghosts": _grid_ghosts(repo, set(features)),
+        "partial_commits": sorted(partial_indices),
+        "commit_count": len(hv["commits"]),
+        "op_count": sum(len(c["op_ids"]) for c in cells.values()),
+        "feature_count": len(features),
     }
 
 
