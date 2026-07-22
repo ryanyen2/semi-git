@@ -539,6 +539,16 @@ for the shifted `op_leaf` (blame/map/grid) and the new `coupling` preview field.
 **Goal:** At `save`, every new op is assigned a lane deterministically per KTD1's fixed order.
 **Requirements:** R1
 **Dependencies:** U4, U10
+**Split shipped in U5 vs U6 (adjust-as-you-go):** U5 ships the pure, tested *algorithmic core* —
+`sgt/lens/ledger.py`'s `local_move_assign` (leidenalg's local-moving phase over a bounded boundary,
+owned neighbours frozen, `cluster.SEED`-pinned for determinism) + `assign_new_symbols` (the cascade
+wrapper: real entities enter the local move, residue/anchor follow their anchor via
+`assign_ops_to_leaves`). Wiring it into `sgt save` and persisting the result durably was moved to
+**U6**: writing assignments into the ephemeral tree `op_leaf` would just be lost on the next
+recluster, so the wiring only becomes meaningful alongside U6's authored-feature CRDT persistence.
+The boundary-edge source is `cluster`'s fused signals (cache-accelerated by U10's extraction cache
+per `build_entity_graph`); a persisted per-lane `gamma` (KTD3 sources 1/2) is deferred — the
+`GAMMA_LO`/`GAMMA_HI` geometric midpoint (source 3) is the shipped default.
 **Files:** new `sgt/lens/ledger.py`, `sgt/cli/porcelain.py` (`save`/`_save`, `:108-136` — wire the
 cascade in after `put`/`record_ideal`), `tests/lens/test_ledger.py`.
 **Approach:** (1) An op on a symbol already owned by a lane continues in that lane — a dict lookup
