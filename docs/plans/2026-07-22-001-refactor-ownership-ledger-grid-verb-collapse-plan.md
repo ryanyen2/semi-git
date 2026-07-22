@@ -674,10 +674,19 @@ shows readable, actionable candidates, not an unfiltered dump of every clusterin
 
 ### U8. `status_view`/`state_view` single-pass + `reduce_to_ideal` memoization
 
-**Goal:** Remove the redundant multi-call load pattern in `status_view`; cache `reduce_to_ideal` as
-a pure function of its inputs.
+**Goal:** Cache `reduce_to_ideal` as a pure function of its inputs; keep `status_view` from
+recomputing the same reduction two-to-three times per call.
 **Requirements:** R7
 **Dependencies:** none
+**Finding that reshaped this unit (adjust-as-you-go):** the plan's premise — `reduce_to_ideal`
+~28s/call — is **stale**. On this repo's current store (8.6k ops) a single `reduce_to_ideal` is
+now **~0.1s** (the single-Kahn's-pass grounding already shipped and fixed it), `index_ops` ~0.1s,
+`Store.all_ops` ~0.5s. Measured on a *clean* tree, `status_view` is already **~2.6s** — low single
+digits, R7 met. The real slowness the ~71s figure captured is `get()`'s **dirty-tree** mine (the
+whole-repo entity-graph rebuild, ~17s here), which is **U10's** fix, not this unit's. So U8 ships
+the defensive memo (bounds a cost that *was* 28s and could regrow on a much larger store, and
+dedups the within-call reductions) and the threading that was cheap/safe; the dirty-tree status win
+is delivered by U10.
 **Files:** `sgt/api.py` (`status_view`, `:1487-1534`; `state_view`, `:168-227`), `sgt/core/opindex.py`
 (`index_ops`, `:126-138`), `sgt/core/order.py` (`reduce_to_ideal`, `:209-225`), `tests/test_api.py`,
 `tests/core/test_order.py`, `tests/core/test_opindex.py`.
@@ -695,16 +704,21 @@ save; a long-running process (the MCP server's stdio loop, the TUI's persistent 
 otherwise accumulate one cache entry per call indefinitely.
 **Patterns to follow:** `opindex.py`'s existing staleness-check convention
 (`_is_stale_body`/`_ops_dir_stat`, `:86-123`) as the cache-key basis.
+**Approach (as shipped):** a bounded-LRU memo on `reduce_to_ideal` keyed by `(frozenset(ideal_ids),
+declared)` — safe because after grounding, reachability stays inside the ideal and every op is
+content-addressed, so the result is a pure function of those two inputs; the `ops` universe is only
+the by-id lookup source, never a hidden input. Bounded (not `functools.lru_cache`) so an
+append-only store doesn't accumulate one entry per save. `status_view` already threads its `ops`
+into `materialization_skips` (no redundant `Store.all_ops`); the `state_view`-vs-`current_ideal`
+two-ideal split was left as-is (unifying it changes `state_view`'s coverage semantics — out of
+scope, and both reductions are cheap now anyway).
 **Test scenarios:**
-- Happy: `status_view` output is byte-identical before and after the refactor on a fixed fixture
-  (characterization test written first).
-- Performance: call-count fakes show `opindex.index_ops`/`Store.all_ops`/`order.reduce_to_ideal`
-  drop from today's measured 4/2/2+ to 1/at-most-1/1 per invocation.
-- Edge: the memo evicts under its bound — a long-running-session simulation (many distinct
-  `ideal_ids` sets) confirms the cache does not grow unbounded.
-- Regression: `tests/golden/test_golden.py`'s `status_view`/`state_view` captures unchanged.
-**Verification:** wall-clock `sgt status` (or `sgt log --summary`, per KTD9) on this repo's own
-store drops from ~71s to low single digits.
+- Memoization: the same `(ideal_ids, declared)` returns the cached object (identity), agreeing with
+  a fresh computation.
+- Bound: pushing more distinct keys than the cap keeps the cache at exactly the cap.
+- Regression: `tests/golden` `status_view`/`state_view` captures unchanged (behavior-preserving).
+**Verification:** measured `status_view` on this repo's clean store at ~2.6s (already low single
+digits); the dirty-tree end-to-end win lands with U10.
 
 ### U10. Mining: content-addressed extraction cache + incremental entity-graph patching
 
