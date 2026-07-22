@@ -337,11 +337,15 @@ def render_graph_lines(
     color: bool = True,
     bar_width: int = 42,
     label_width: int = 24,
+    checkpoints: dict[str, int] | None = None,
 ) -> list[str]:
     """Render the timeline as terminal lines (ANSI truecolor when `color`). Each feature is a lane:
-    identity glyph, label, and a fixed-width time strip whose lit span is [first,last] with per-
-    column brightness = op density -- the terminal projection of the same Gantt the VS Code graph
-    draws, under one shared, labeled commit axis."""
+    its short `f-XXXX` handle (the copy-paste token for `sgt revert <handle>[@n]`), identity glyph,
+    label, an optional `✦N` checkpoint count (N rewind points, from `checkpoints={fid: count}`), and
+    a fixed-width time strip whose lit span is [first,last] with per-column brightness = op density
+    -- the terminal projection of the same Gantt the VS Code graph draws, under one shared, labeled
+    commit axis."""
+    checkpoints = checkpoints or {}
     layout = graph_layout(map_view, history_view, collapsed=collapsed, frontier=frontier)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
 
@@ -401,8 +405,10 @@ def render_graph_lines(
     lines.append("")
 
     # Shared time axis: c0 at the strip's left edge, cMax at its right. The gutter width matches the
-    # lane prefix (" " + marker + glyph + " " + label + " ") so the axis aligns over the bars.
-    gutter = " " * (label_width + 5)
+    # lane prefix (" " + marker + glyph + " " + handle + " " + label + " ") so the axis aligns over
+    # the bars.
+    handle_width = 10
+    gutter = " " * (label_width + handle_width + 6)
     ends = f"c0c{max_commit}"
     axis = "c0" + "─" * max(1, bar_width - len(ends)) + f"c{max_commit}"
     lines.append(dim(f"{gutter}{axis}  time →"))
@@ -426,6 +432,7 @@ def render_graph_lines(
             if l["is_meta"]:
                 raw = f"{raw} ({len(l['leaves'])})"
             label = raw[:label_width].ljust(label_width)
+            handle = dim(fid[:handle_width].ljust(handle_width))  # the copy-paste token for revert
             cells = strip(lane_cols[fid], l["first_commit"], l["last_commit"])
             bar = ""
             for n, ch in cells:
@@ -436,18 +443,25 @@ def render_graph_lines(
                 else:
                     bar += ch
             count = str(l["op_count"]).rjust(5)
+            n_ckpt = checkpoints.get(fid, 0)
+            ckpt = dim(f" ✦{n_ckpt}") if n_ckpt else ""  # N rewind points on this lane
             link_ids = nbrs.get(fid, [])[:2]
             links = ", ".join(labels.get(x, x) for x in link_ids)
             extra = len(nbrs.get(fid, [])) - len(link_ids)
-            row_s = f" {marker}{paint(hexc, glyph)} {bold(label) if is_sel else label} {bar} {dim(count)}"
+            row_s = (f" {marker}{paint(hexc, glyph)} {handle} "
+                     f"{bold(label) if is_sel else label} {bar} {dim(count)}{ckpt}")
             if links:
                 row_s += "  " + dim("↔ " + links + (f" +{extra}" if extra > 0 else ""))
             lines.append(row_s)
     lines.append("")
 
     # Legend + next-step hints: the view explains its own encoding and what to do from here.
-    lines.append(dim(" ● feature   ▾ subsystem   bar = lifetime, brightness = op density   ↔ co-change"))
-    lines.append(dim(" next:  sgt graph --at <commit> (fold history)   ·   sgt revert <feature>   ·   sgt map (tree)"))
+    lines.append(dim(" f-XXXX = the handle you type   ✦N = N rewind points   ● feature   ▾ subsystem"
+                     "   bar = lifetime · op density   ↔ co-change   (structural) = glue"))
+    lines.append(dim(" daily:  sgt graph  (fast, cached)   ·   sgt graph --refresh  (after edits: re-name"
+                     " features + checkpoints)"))
+    lines.append(dim(" operate:  sgt revert <f-XXXX>  (whole feature)   ·   sgt revert <f-XXXX>@<n>"
+                     "  (one checkpoint)   ·   sgt intent show <f-XXXX>  (its chapters)"))
     return lines
 
 
@@ -536,5 +550,5 @@ def render_rail_lines(
         lines.append("")
         lines.append(dim(f" … {n_ep - len(shown)} older episode(s) folded (newest {len(shown)} shown)"))
     lines.append("")
-    lines.append(dim(" next:  sgt revert <feature> (rewind an episode's feature)   ·   sgt graph (timeline)"))
+    lines.append(dim(" operate:  sgt revert <f-XXXX>@<n>  (rewind one checkpoint)   ·   sgt graph  (the timeline)"))
     return lines

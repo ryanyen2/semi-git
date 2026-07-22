@@ -324,32 +324,63 @@ def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
     return 0
 
 
-def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refresh: bool = False) -> int:
-    """`sgt graph` (the terminal feature timeline / Gantt): one identity-colored lane per feature,
-    grouped into subsystem swimlanes and ordered by first appearance; each lane's time strip spans
-    its [first,last] commit lifetime with per-column brightness = op density, under one shared,
-    labeled commit axis -- the terminal counterpart of the VS Code workbench graph.
-
-    Unlike a mutating verb, this is a pure read: by default it renders the *last-built* map (a fast
-    read of the cached tree, ~sub-second), NOT a re-mine + re-cluster (which costs ~30s on a large
-    repo and would make a glanceable command like `log`/`status` unusable). `--refresh` forces the
-    full mine-on-contact + rebuild when you want the map to reflect brand-new edits."""
-    from sgt.api import history_view, map_view
-    from sgt.tui.graph import render_graph_lines
+def _map_for_view(repo: str, refresh: bool, verb: str, color: bool) -> dict:
+    """The shared read/refresh path behind `sgt graph` and `sgt episodes`. The daily command is a
+    pure read of the *last-built* map (~sub-second) -- NOT a re-mine + re-cluster (which costs ~30s
+    and would make a glanceable command unusable). `--refresh` is the *one* command that reflects
+    brand-new edits: it re-mines and rebuilds BOTH layers the graph shows -- the feature tree
+    (`build_map`) AND the intent checkpoints (`build_segments`/`build_themes`) -- so a user never
+    has to run `intent build` then `map --rebuild` then `graph` as three separate steps. Both label
+    passes have a deterministic offline fallback, so a refresh works with no LLM key (just terser
+    names). Returns the `map_view` dict."""
+    from sgt.api import map_view
 
     mv = None if refresh else map_view(repo)
-    if refresh or not (mv and mv.get("nodes")):
-        # No cached map yet (first run) or an explicit refresh: pay for the full rebuild once.
-        from sgt.core.lens import get
-        from sgt.lens.map import build_map
+    if not (refresh or not (mv and mv.get("nodes"))):
+        if color:
+            print(f"\x1b[2m (cached — run `sgt {verb} --refresh` to reflect new edits)\x1b[0m")
+        return mv
 
-        get(repo)  # mine-on-contact (R9)
-        build_map(repo)
-        mv = map_view(repo)
-    elif color:
-        print("\x1b[2m (cached map — run `sgt graph --refresh` to re-mine current edits)\x1b[0m")
+    from sgt.core.lens import get
+    from sgt.intent.theme import build_themes
+    from sgt.intent.theme_segment import build_segments
+    from sgt.lens.map import build_map
+
+    if color:
+        print("\x1b[2m refreshing: mining edits + naming features and checkpoints…\x1b[0m")
+    get(repo)  # mine-on-contact (R9)
+    build_map(repo)          # feature tree + labels (the "what exists" layer)
+    build_segments(repo)     # per-feature checkpoints (the "what I did, in chapters" layer)
+    build_themes(repo)       # cross-feature rollup (kept for the "one PR spanned N features" view)
+    return map_view(repo)
+
+
+def _checkpoint_counts(repo: str) -> dict[str, int]:
+    """`{feature_id: checkpoint_count}` from a cheap file read of the persisted segments -- no
+    `intent_view`, no LLM, no recompute -- so the fast `sgt graph` can annotate lanes with their
+    rewind-point count without paying the intent projection's cost."""
+    from sgt import state
+
+    segs = state.load_json(repo, "intent_segments", default={}) or {}
+    return {fid: len(v) for fid, v in segs.items() if v}
+
+
+def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refresh: bool = False) -> int:
+    """`sgt graph` (the terminal feature timeline / Gantt): one identity-colored lane per feature,
+    grouped into subsystem swimlanes and ordered by first appearance; each lane leads with its
+    short `f-XXXX` handle (the copy-paste target for `sgt revert <handle>[@n]`) and its checkpoint
+    count, then a time strip spanning its [first,last] commit lifetime with per-column brightness =
+    op density -- the terminal counterpart of the VS Code workbench graph.
+
+    A pure read of the last-built map by default; `--refresh` re-mines and rebuilds both layers
+    (features + checkpoints) in one step. See `_map_for_view`."""
+    from sgt.api import history_view
+    from sgt.tui.graph import render_graph_lines
+
+    mv = _map_for_view(repo, refresh, "graph", color)
     for line in render_graph_lines(
-        mv, history_view(repo, full=True, limit=1_000_000), frontier=frontier, color=color
+        mv, history_view(repo, full=True, limit=1_000_000), frontier=frontier, color=color,
+        checkpoints=_checkpoint_counts(repo),
     ):
         print(line)
     return 0
@@ -360,20 +391,11 @@ def _episodes(repo: str, *, color: bool = True, refresh: bool = False) -> int:
     top, each feature a lane column (its episodes a straight vertical line), lanes reused across
     non-overlapping spans. Where `sgt graph` answers "what is the codebase made of, over time,"
     this answers "what did I do, in order" -- the rewind lens. A pure read of the last-built map
-    (like `sgt graph`); `--refresh` re-mines + rebuilds first."""
-    from sgt.api import history_view, map_view
+    (like `sgt graph`); `--refresh` re-mines + rebuilds both layers first (see `_map_for_view`)."""
+    from sgt.api import history_view
     from sgt.tui.graph import render_rail_lines
 
-    mv = None if refresh else map_view(repo)
-    if refresh or not (mv and mv.get("nodes")):
-        from sgt.core.lens import get
-        from sgt.lens.map import build_map
-
-        get(repo)  # mine-on-contact (R9)
-        build_map(repo)
-        mv = map_view(repo)
-    elif color:
-        print("\x1b[2m (cached map — run `sgt episodes --refresh` to re-mine current edits)\x1b[0m")
+    mv = _map_for_view(repo, refresh, "episodes", color)
     for line in render_rail_lines(mv, history_view(repo, full=True, limit=1_000_000), color=color):
         print(line)
     return 0

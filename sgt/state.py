@@ -116,6 +116,17 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # over the merged op partition, never merged field-by-field) -- content-hash-keyed, so an
     # unchanged partition re-derives byte-identically and never re-pays or re-names (U5).
     "intent_themes": _Artifact(("intent", "themes.json"), committed=True, sort_keys=False),
+    # committed feature-scoped intent segments (`sgt.intent.theme_segment`, the checkpoint model):
+    # feature-id -> chronological list of {commit_shas, label, rationale, source}. Persists only the
+    # LLM's boundary+label decision; op membership is re-derived deterministically from commit_shas
+    # on read (KTD6). Rebuilt on demand by `sgt intent build`, same read-vs-build split as themes.
+    "intent_segments": _Artifact(("intent", "segments.json"), committed=True, sort_keys=False),
+    # committed user relabels of a checkpoint (`sgt intent relabel`): feature-id -> {first-commit-sha
+    # -> label}. A separate layer from segments.json (LLM/deterministic boundaries+labels) so a user
+    # edit survives `sgt intent build`. Keyed by the segment's first commit sha -- a stable-ish
+    # identity: if a rebuild moves boundaries so that sha no longer starts a segment, the pin simply
+    # doesn't match and is ignored, exactly like a stale feature-label pin.
+    "intent_segment_pins": _Artifact(("intent", "segment_pins.json"), committed=True, sort_keys=False),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),

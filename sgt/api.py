@@ -359,6 +359,17 @@ def verb_preview_view(
     `other` for `after` (target and other are the two ops of the `a <= b` edge)."""
     from sgt.core import verbs
 
+    # A `<feature>@<n>` checkpoint preview (the intent-segment rewind unit): resolve to its
+    # deterministic op-set and preview the same op-set revert `sgt revert <feature>@<n>` applies,
+    # so a UI hover paints the real blast radius rather than an empty (unresolvable) preview.
+    if verb == "revert" and "@" in target:
+        from sgt.intent.segment import resolve_checkpoint
+
+        resolved = resolve_checkpoint(repo, target)
+        if resolved is not None:
+            op_ids, _label = resolved
+            return _project_verb_preview(repo, verbs.plan_revert_op_set(repo, target, op_ids))
+
     plans = {
         "revert": lambda: verbs.plan_revert(repo, target),
         "restore": lambda: verbs.plan_restore(repo, target),
@@ -1245,7 +1256,57 @@ def intent_view(repo) -> dict:
             "tier": tier,
         })
 
-    return {"themes": themes_out, "atoms": atoms_out}
+    segments_out = _segments_out(repo, op_leaf, tree_result)
+    return {"themes": themes_out, "atoms": atoms_out, "segments": segments_out}
+
+
+def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
+    """The feature-scoped intent segments (the "checkpoints" a user rewinds to): every feature's
+    ops cut into contiguous, labeled chapters (`sgt.intent.segment`), each addressable as
+    `<feature_id>@<seg_index>`. Deterministic rungs 0/1 on read; if `sgt intent build` has
+    persisted LLM labels/boundaries (`.sgt/intent/segments.json`), those override per feature
+    -- same read-vs-build split as themes and the feature tree. Each segment carries a `tier`
+    (`group.tier`, KTD3) and a `novelty` weight, so a client can dim trivial chapters. Flat,
+    sorted by `(feature_id, seg_index)`, for a stable projection."""
+    from sgt import state
+    from sgt.intent import group
+    from sgt.intent import segment as seg_mod
+
+    nodes = tree_result["nodes"] if tree_result else {}
+    persisted = state.load_json(repo, "intent_segments", default={})
+    label_pins = state.load_json(repo, "intent_segment_pins", default={})
+    runs_by_feature = seg_mod.feature_runs(repo, op_leaf)
+
+    out: list[dict] = []
+    for feature_id in sorted(runs_by_feature):
+        segs = seg_mod.overlay_persisted(runs_by_feature[feature_id], persisted.get(feature_id))
+        segs = seg_mod.apply_label_pins(segs, label_pins.get(feature_id))
+        feature_label = nodes.get(feature_id, {}).get("label", feature_id)
+        for s in segs:
+            commit_shas = frozenset(s.commit_shas)
+            # A segment's ops all belong to ONE feature by construction (feature-scoped cut), so
+            # `feature_span` is always a single feature -- `group.tier` would degenerate to its
+            # single-feature branch anyway. Compute that branch directly (no `components_in` walk):
+            # a one-commit chapter is `co-changed` (one moment), a multi-commit one `thematic`
+            # (spread over time). This keeps `intent_view` a cheap, poll-safe read.
+            tier = group.CO_CHANGED if len(commit_shas) <= 1 else group.THEMATIC
+            out.append({
+                "feature_id": feature_id,
+                "feature_label": feature_label,
+                "seg_index": s.seg_index,
+                "checkpoint": f"{feature_id}@{s.seg_index}",
+                "intent": s.label,
+                "rationale": s.rationale,
+                "op_ids": sorted(s.op_ids),
+                "op_count": s.op_count,
+                "commit_shas": list(s.commit_shas),
+                "first_index": s.first_index,
+                "last_index": s.last_index,
+                "novelty": round(s.novelty, 3),
+                "tier": tier,
+                "source": s.source,
+            })
+    return out
 
 
 def compose_view(repo, *, full: bool = False) -> dict:

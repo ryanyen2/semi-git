@@ -353,3 +353,38 @@ def test_intent_revert_refuses_a_theme_with_every_member_missing(tmp_path, capsy
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert "sgt intent build" in payload["error"]
+
+
+def test_intent_relabel_overrides_checkpoint_and_marks_user_source(tmp_path, monkeypatch):
+    """`sgt intent relabel <feature@n> "<intent>"` writes a committed pin that overrides the
+    checkpoint's label (source=user) and, being a separate layer from segments.json, survives a
+    later `sgt intent build`."""
+    def _no_client(*args, **kwargs):
+        raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
+
+    monkeypatch.setattr(theme, "get_client", _no_client)
+    from sgt.intent import theme_segment
+    monkeypatch.setattr(theme_segment, "get_client", _no_client)
+
+    _seed(tmp_path, "feat(x): add foo")
+    assert _in(tmp_path, ["map"]) == 0  # build the feature tree so a checkpoint exists
+
+    from sgt.api import intent_view
+    seg = intent_view(tmp_path)["segments"][0]
+    ckpt = f"{seg['feature_id']}@{seg['seg_index']}"
+
+    assert _in(tmp_path, ["intent", "relabel", ckpt, "My", "Custom", "Intent"]) == 0
+    after = next(s for s in intent_view(tmp_path)["segments"] if s["checkpoint"] == seg["checkpoint"])
+    assert after["intent"] == "My Custom Intent"
+    assert after["source"] == "user"
+
+    # survives a build (which only rewrites the boundary/label layer, not the pins layer)
+    assert _in(tmp_path, ["intent", "build"]) == 0
+    after_build = next(s for s in intent_view(tmp_path)["segments"] if s["checkpoint"] == seg["checkpoint"])
+    assert after_build["intent"] == "My Custom Intent"
+    assert after_build["source"] == "user"
+
+
+def test_intent_relabel_rejects_a_non_checkpoint_target(tmp_path):
+    _seed(tmp_path)
+    assert _in(tmp_path, ["intent", "relabel", "not-a-checkpoint", "label"]) == 1

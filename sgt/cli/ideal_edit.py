@@ -139,6 +139,18 @@ def _kernel_edit_verb(
     target = " ".join(ref_tokens)
     get(repo)  # mine-on-contact before planning/applying the edit (R9)
 
+    # A `<feature>@<n>` checkpoint (the intent-segment rewind unit): resolve it to its deterministic
+    # op-set and run the exact same op-set revert `sgt intent revert` uses (KTD6). Tried first for
+    # `revert` because `@` is unambiguous; restore has no op-set counterpart, so it falls through.
+    if cmd == "revert" and "@" in target:
+        from sgt.intent.segment import resolve_checkpoint
+
+        resolved = resolve_checkpoint(repo, target)
+        if resolved is not None:
+            op_ids, label = resolved
+            preview = verbs.plan_revert_op_set(repo, target, op_ids)
+            return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label})
+
     plan_single = verbs.plan_revert if cmd == "revert" else verbs.plan_restore
     preview = plan_single(repo, target)
     if not preview.ok:

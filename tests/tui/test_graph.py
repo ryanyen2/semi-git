@@ -102,6 +102,22 @@ def test_render_lines_carry_header_axis_and_labels():
     assert "A" in text and "B" in text  # labels rendered
 
 
+def test_render_lane_leads_with_handle_and_shows_checkpoint_count():
+    """Each lane must surface the short `f-XXXX` handle (the copy-paste token for `sgt revert`) and,
+    when a checkpoint count is supplied, a `✦N` annotation -- the "what can I operate on" the user
+    couldn't find in the old label-only render."""
+    m = {"roots": ["f-00abcdef01"], "nodes": [_node("f-00abcdef01", None, [])], "edges": []}
+    lines = render_graph_lines(m, _hist(("f-00abcdef01", 0), ("f-00abcdef01", 5)), color=False,
+                               checkpoints={"f-00abcdef01": 3})
+    lane = next(ln for ln in lines if "f-00abcdef" in ln)
+    assert "f-00abcdef" in lane   # the 10-char handle prefix
+    assert "✦3" in lane           # three rewind points on this lane
+    # no checkpoints dict -> no ✦ on the lane (the legend footer may still explain ✦), handle stays
+    plain = render_graph_lines(m, _hist(("f-00abcdef01", 0)), color=False)
+    plain_lane = next(ln for ln in plain if "f-00abcdef" in ln)
+    assert "✦" not in plain_lane
+
+
 def test_render_swimlane_header_present_for_expanded_subsystem():
     m = {"roots": ["N0"],
          "nodes": [_node("N0", None, ["F1", "F2"], kind="subsystem"),

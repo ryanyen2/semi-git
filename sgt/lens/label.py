@@ -83,16 +83,42 @@ def _super_prompt(child_labels: list[str], files: list[str]) -> str:
     )
 
 
+def _clean_symbol_name(member: str) -> str | None:
+    """A human-facing name for a cluster member, or ``None`` when the member is an internal
+    fold-ordering artifact no user would recognise. A member is a symbol id: ``file::qualname``,
+    ``file::__residue__::x`` / ``file::__anchor__::x`` (verbatim byte-spans between named entities --
+    real bytes, but not a name), or a bare ``file`` (a whole-file member, e.g. a doc)."""
+    if "::" not in member:                          # bare file (doc/config) -> its basename
+        return member.rsplit("/", 1)[-1] or None
+    _, _, rest = member.partition("::")
+    if "__residue__" in rest or "__anchor__" in rest:   # internal fold artifact: no user-facing name
+        return None
+    name = rest.split("::")[-1].replace("\x00", "").strip("_")
+    return name or None
+
+
 def _fallback_label(members: list[str]) -> FeatureLabel:
-    """Deterministic, offline, free: the dominant directory plus the leading member names. Never
-    cached as a permanent answer -- callers tag it `"source": "fallback"` so a later call with a
-    working client overwrites it with a real label."""
+    """Deterministic, offline, free, and *readable*: the leading real symbol names, or -- when a
+    cluster is nothing but fold artifacts (residue/anchor) -- the dominant directory tagged
+    ``(structural)`` so the lane reads as glue-between-symbols, never a raw ``__residue__::`` id.
+    Never cached as a permanent answer -- callers tag it `"source": "fallback"` so a later call
+    with a working client overwrites it with a real label."""
     from sgt.lens.cluster import _dominant_dir
 
-    names = [m.split("::", 1)[1] if "::" in m else m for m in sorted(members)[:3]]
+    names: list[str] = []
+    for m in sorted(members):
+        n = _clean_symbol_name(m)
+        if n and n not in names:
+            names.append(n)
+        if len(names) >= 3:
+            break
     dom_dir = _dominant_dir(members)
-    label = " ".join(n.strip("_") for n in names)[:60] or dom_dir
-    return FeatureLabel(label=label, rationale=f"Auto-derived from {dom_dir} (no LLM label available).")
+    if names:
+        label = " ".join(names)[:60]
+    else:
+        label = f"{dom_dir} (structural)" if dom_dir else "(structural)"
+    return FeatureLabel(label=label[:60],
+                        rationale=f"Auto-derived from {dom_dir or 'the repo'} (no LLM label available).")
 
 
 class Labeler:
