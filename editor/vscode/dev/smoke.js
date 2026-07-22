@@ -41,7 +41,14 @@ class El {
   get textContent() { return this._text; }
   set innerHTML(v) { this.children = []; this._text = ""; }
   get innerHTML() { return ""; }
+  get firstChild() { return this.children[0] || null; }
   appendChild(c) { c.parent = this; this.children.push(c); return c; }
+  insertBefore(c, ref) {
+    c.parent = this;
+    const i = ref ? this.children.indexOf(ref) : -1;
+    if (i === -1) this.children.push(c); else this.children.splice(i, 0, c);
+    return c;
+  }
   insertAdjacentElement(_pos, el) { if (this.parent) this.parent.children.push(el); return el; }
   addEventListener(t, fn) { (this._listeners[t] || (this._listeners[t] = [])).push(fn); }
   removeEventListener() {}
@@ -124,17 +131,19 @@ try {
   const axisTick = rail.querySelectorAll(".axis-tick");
   const handle = rail.querySelectorAll(".frontier-handle");
   const veil = rail.querySelectorAll(".future-veil");
-  const cells = rail.querySelectorAll(".gbar-cell");
+  const cars = rail.querySelectorAll(".gcar-wrap");
+  const cells = rail.querySelectorAll(".gcar-cell");
   console.log("state render:");
   check("svg emitted", !!svg);
   check("lanes emitted", lanes.length > 0, `${lanes.length} lanes`);
   check("swimlane header(s) emitted", swimlanes.length > 0, `${swimlanes.length} swimlanes`);
-  check("density cells emitted", cells.length > 0, `${cells.length} cells`);
+  check("chunk-cars emitted", cars.length > 0, `${cars.length} cars`);
+  check("within-car density cells emitted", cells.length > 0, `${cells.length} cells`);
   check("time axis ticks", axisTick.length > 0, `${axisTick.length} ticks`);
   check("frontier handle + veil", handle.length === 1 && veil.length === 1);
-  check("lane has swatch+track+count",
+  check("lane has swatch+cars+count",
     lanes[0] && lanes[0].querySelectorAll(".glane-swatch").length === 1
-      && lanes[0].querySelectorAll(".gbar-track").length === 1
+      && lanes[0].querySelectorAll(".gcar-wrap").length > 0
       && lanes[0].querySelectorAll(".gbar-count").length === 1);
 
   // Selecting a feature: simulate a click on the first feature lane -> inspector populates.
@@ -143,6 +152,33 @@ try {
     posted = [];
     featureLane._listeners.click.forEach((fn) => fn({}));
     check("select posts requestFold", posted.some((m) => m.type === "requestFold"), JSON.stringify(posted.map((m) => m.type)));
+  }
+
+  // Clicking a chunk-car selects its CHECKPOINT (distinct target from the whole-feature row click).
+  // Re-query the live tree: the feature-select above re-rendered, detaching the earlier handles.
+  const noopEv = { stopPropagation() {}, preventDefault() {} };
+  const freshFeatureLane = byId.rail.querySelectorAll(".glane")
+    .find((n) => (n.getAttribute("data-id") || "").startsWith("f-"));
+  const car = freshFeatureLane &&
+    freshFeatureLane.querySelectorAll(".gcar-wrap").find((c) => c._listeners && c._listeners.click);
+  check("chunk-car is its own click target", !!car);
+  if (car) {
+    car._listeners.click.forEach((fn) => fn(noopEv));
+    const selectedCar = byId.rail.querySelectorAll(".gcar-wrap.gcar-selected");
+    const selectedRow = byId.inspector.querySelectorAll(".checkpoint.selected");
+    check("car click focuses a checkpoint (gantt + inspector in sync)",
+      selectedCar.length >= 1 && selectedRow.length >= 1,
+      `${selectedCar.length} car(s), ${selectedRow.length} row(s)`);
+  }
+
+  // Clicking a feature LABEL spotlights it (a viewing toggle, not a feature-select): the svg goes
+  // into focus mode, without throwing.
+  const labelBtn = byId.rail.querySelectorAll(".glane-label-btn").find((n) => n._listeners && n._listeners.click);
+  check("feature label is its own click target", !!labelBtn);
+  if (labelBtn) {
+    labelBtn._listeners.click.forEach((fn) => fn(noopEv));
+    check("label click spotlights (svg enters focus mode)",
+      byId.rail.querySelector("svg").classList.contains("focus"));
   }
   console.log(failures === 0 ? "\nSMOKE OK" : `\nSMOKE FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);

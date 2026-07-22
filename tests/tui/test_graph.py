@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from sgt.tui.graph import graph_layout, render_graph_lines
+from sgt.tui.graph import graph_layout, render_graph_lines, segment_layout
 
 
 def _node(id_, parent, children, kind="feature"):
@@ -23,6 +23,15 @@ def _hist(*specs):
     return {"commits": [{"index": i} for i in range(200)],
             "ops": [{"id": f"o{i}", "kind": "add", "feature_id": f, "commit_index": c}
                     for i, (f, c) in enumerate(specs)]}
+
+
+def _seg(feature_id, seg_index, op_ids, first_index, last_index,
+         label=None, tier="co-changed", source="fallback"):
+    return {"feature_id": feature_id, "seg_index": seg_index,
+            "checkpoint": f"{feature_id}@{seg_index}", "intent": label or f"seg {seg_index}",
+            "rationale": "", "op_ids": list(op_ids), "op_count": len(op_ids),
+            "commit_shas": [], "first_index": first_index, "last_index": last_index,
+            "novelty": 0.0, "tier": tier, "source": source}
 
 
 def test_only_features_with_ops_are_placed():
@@ -93,34 +102,148 @@ def test_deterministic():
     assert key(m) == key(m)
 
 
-def test_render_lines_carry_header_axis_and_labels():
+# ── segment_layout (the chunk-car atom) ─────────────────────────────────────────────────────────
+
+
+def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _hist(("A", 0), ("A", 1), ("A", 2))
+    segs = [_seg("A", 1, ["o2"], 2, 2, label="second"), _seg("A", 0, ["o0", "o1"], 0, 1, label="first")]
+    out = segment_layout(m, hist, segs)
+    cars = out["node_by_id"]["A"]["cars"]
+    assert [c["seg_index"] for c in cars] == [0, 1]
+    assert [c["label"] for c in cars] == ["first", "second"]
+    assert cars[0]["checkpoint"] == "A@0" and cars[0]["op_count"] == 2
+    assert cars[0]["tier"] == "co-changed" and cars[0]["source"] == "fallback"
+
+
+def test_sub_bins_group_a_cars_ops_by_commit_index():
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _hist(("A", 5), ("A", 5), ("A", 6))
+    segs = [_seg("A", 0, ["o0", "o1", "o2"], 5, 6)]
+    out = segment_layout(m, hist, segs)
+    car = out["node_by_id"]["A"]["cars"][0]
+    assert car["sub_bins"] == [(5, 2), (6, 1)]
+
+
+def test_lane_with_no_ops_has_no_cars_even_if_segments_exist():
+    # a phantom/stale segment for a feature whose ops never landed in history -> lane doesn't exist
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    out = segment_layout(m, {"commits": [], "ops": []}, [_seg("A", 0, ["o0"], 0, 0)])
+    assert out["lanes"] == []
+
+
+def test_collapsed_subsystem_aggregates_cars_from_all_its_features():
+    m = {"roots": ["N0"],
+         "nodes": [_node("N0", None, ["F1", "F2"], kind="subsystem"),
+                   _node("F1", "N0", []), _node("F2", "N0", [])], "edges": []}
+    hist = _hist(("F1", 0), ("F2", 1))
+    segs = [_seg("F1", 0, ["o0"], 0, 0, label="f1 chapter"),
+            _seg("F2", 0, ["o1"], 1, 1, label="f2 chapter")]
+    out = segment_layout(m, hist, segs, collapsed=["N0"])
+    assert len(out["lanes"]) == 1
+    cars = out["lanes"][0]["cars"]
+    assert {c["feature_id"] for c in cars} == {"F1", "F2"}
+    assert [c["label"] for c in cars] == ["f1 chapter", "f2 chapter"]  # ordered by first_index
+
+
+def test_car_past_frontier_is_flagged_future_not_dropped():
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _hist(("A", 0), ("A", 50))
+    segs = [_seg("A", 0, ["o0"], 0, 0), _seg("A", 1, ["o1"], 50, 50)]
+    out = segment_layout(m, hist, segs, frontier=10)
+    cars = out["node_by_id"]["A"]["cars"]
+    assert len(cars) == 2  # the lane exists (op0 <= frontier) so both its cars stay in place
+    assert cars[0]["is_future"] is False
+    assert cars[1]["is_future"] is True
+
+
+def test_segment_layout_deterministic():
+    m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
+    hist = _hist(("A", 0), ("A", 1), ("B", 2))
+    segs = [_seg("A", 0, ["o0"], 0, 0), _seg("A", 1, ["o1"], 1, 1), _seg("B", 0, ["o2"], 2, 2)]
+    key = lambda: [(l["id"], [c["checkpoint"] for c in l["cars"]])
+                   for l in segment_layout(m, hist, segs)["lanes"]]
+    assert key() == key()
+
+
+def test_render_lines_carry_header_and_labels():
     m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
     lines = render_graph_lines(m, _hist(("A", 0), ("B", 40)), color=False)
     text = "\n".join(lines)
     assert "2 feature(s)" in text
-    assert "time →" in text  # the shared time axis is labeled
     assert "A" in text and "B" in text  # labels rendered
 
 
-def test_render_lane_leads_with_handle_and_marks_checkpoints_on_the_lane():
+def test_render_lane_leads_with_handle_and_draws_checkpoint_cars():
     """Each lane surfaces the short `f-XXXX` handle (the copy-paste token for `sgt revert`), a `✦N`
-    count, AND -- the fix for "the count maps to nothing" -- the digit `n` drawn on the strip at the
-    commit-time where `<fid>@n` begins, so the density blocks and the rewind points read on one
-    axis."""
-    fid = "f-aaaaaaaaaa"  # digit-free id + label (label = id.upper()) so only markers are digits
+    checkpoint count, and its checkpoints as bracketed cars in `seg_index` order -- the atom is the
+    segment, not a raw commit-time column."""
+    fid = "f-aaaaaaaaaa"  # digit-free id + label (label = id.upper()) so only cars carry digits
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _hist((fid, 0), (fid, 100), (fid, 199))
-    # two checkpoints: @0 begins at commit 0 (left edge), @1 at commit 199 (right edge)
-    lines = render_graph_lines(m, hist, color=False, checkpoints={fid: [(0, 0), (1, 199)]})
+    segs = [_seg(fid, 0, ["o0"], 0, 0), _seg(fid, 1, ["o1", "o2"], 100, 199)]
+    lines = render_graph_lines(m, hist, segs, color=False)
     lane = next(ln for ln in lines if fid[:10] in ln)
-    assert fid[:10] in lane and "✦2" in lane        # handle + count
-    strip = lane.split("✦")[0]                       # the handle+label+bar, before the ✦ margin
-    assert "0" in strip and "1" in strip             # both @n markers drawn on the lane
-    assert strip.index("0") < strip.index("1")       # @0 (commit 0) sits left of @1 (commit 199)
-    # no checkpoints dict -> no markers, no count on the lane (legend may still explain them)
+    assert fid[:10] in lane and "✦2" in lane          # handle + checkpoint count
+    strip = lane.split("✦")[0]
+    assert "0" in strip and "1" in strip              # both cars' @n digits drawn
+    assert strip.index("0") < strip.index("1")        # @0 sits left of @1 (seg_index order)
+    # no segments -> no cars, no ✦ count, plain dim lifetime track instead
     plain = render_graph_lines(m, _hist((fid, 0)), color=False)
     plain_lane = next(ln for ln in plain if fid[:10] in ln)
-    assert "✦" not in plain_lane and "0" not in plain_lane.split(fid[:10])[1]
+    assert "✦" not in plain_lane
+
+
+def test_render_car_widths_reflect_op_count_and_tier_brackets():
+    fid = "f-bbbbbbbbbb"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    hist = _hist(*[(fid, i) for i in range(6)])
+    segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed"),
+            _seg(fid, 1, ["o1", "o2", "o3", "o4", "o5"], 1, 5, tier="thematic")]
+    lines = render_graph_lines(m, hist, segs, color=False)
+    lane = next(ln for ln in lines if fid[:10] in ln)
+    assert "[" in lane and "]" in lane   # co-changed car
+    assert "(" in lane and ")" in lane   # thematic car
+
+
+def test_render_links_hidden_by_default_and_shown_with_show_links():
+    m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])],
+         "edges": [{"a": "A", "b": "B", "weight": 5.0}]}
+    hist = _hist(("A", 0), ("B", 1))
+    plain = render_graph_lines(m, hist, color=False)
+    assert not any("↔" in ln for ln in plain)
+    linked = render_graph_lines(m, hist, color=False, show_links=True)
+    assert any("↔" in ln for ln in linked)
+
+
+def test_render_focus_mode_shows_one_lane_full_detail():
+    m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
+    hist = _hist(("A", 0), ("A", 1), ("B", 5))
+    segs = [_seg("A", 0, ["o0"], 0, 0, label="scaffold"), _seg("A", 1, ["o1"], 1, 1, label="refine")]
+    lines = render_graph_lines(m, hist, segs, focus="A", color=False)
+    text = "\n".join(lines)
+    assert "scaffold" in text and "refine" in text
+    assert "B" not in text  # only A's lane detail is drawn, not B's
+
+
+def test_render_focus_mode_on_unknown_feature_reports_no_lane():
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    lines = render_graph_lines(m, _hist(("A", 0)), focus="nope", color=False)
+    assert any("nope" in ln for ln in lines)
+
+
+def test_render_focus_mode_resolves_a_unique_id_prefix_or_label():
+    """The graph prints a 10-char id prefix as each lane's handle -- `--focus` must accept that
+    same prefix back, and a case-insensitive label, not just the full id."""
+    fid = "f-0575f655extralongid"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    hist = _hist((fid, 0))
+    segs = [_seg(fid, 0, ["o0"], 0, 0, label="chapter one")]
+    by_prefix = render_graph_lines(m, hist, segs, focus="f-0575f655", color=False)
+    assert any("chapter one" in ln for ln in by_prefix)
+    by_label = render_graph_lines(m, hist, segs, focus=fid.upper(), color=False)  # label = id.upper()
+    assert any("chapter one" in ln for ln in by_label)
 
 
 def test_render_swimlane_header_present_for_expanded_subsystem():

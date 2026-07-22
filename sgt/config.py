@@ -11,12 +11,28 @@ it without adding a dotenv dependency.
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 from sgt import state
 
 DEFAULT_MODEL = "gpt-5.4-mini"
+
+# The OpenAI SDK's `responses.parse` re-serializes the endpoint's raw response (pydantic
+# `model_dump`) to hand structured output back. When SGT_MODEL is a Claude model served through a
+# litellm proxy, that response carries a `ResponseReasoningItem` shaped the way the proxy emits it
+# (id ending `...assistant`, phase=None) rather than OpenAI's native shape, so pydantic's union
+# serializer for the `output` field prints a benign `UserWarning` on every call -- pure noise that
+# floods the terminal when `sgt map`/`sgt graph --refresh` fires a batch of labeling calls. The
+# parsed result is correct regardless; suppress just this one message so the graph render stays
+# readable. Scoped by message+category+module so nothing else is hidden.
+warnings.filterwarnings(
+    "ignore",
+    message="Pydantic serializer warnings",
+    category=UserWarning,
+    module="pydantic.main",
+)
 
 
 def load_env(repo_path: str | Path = ".") -> None:

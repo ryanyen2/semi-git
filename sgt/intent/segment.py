@@ -45,9 +45,12 @@ W_GAP = 1.0          # a large commit-index gap (feature went dormant, then resu
 W_NOVELTY = 1.0      # a fully-novel run (all new/removed symbols) is a boundary on its own.
 GAP_THRESHOLD = 12   # commits between two runs of *the same feature* that mark a context switch.
 CUT_THRESHOLD = 1.0  # cut between adjacent runs iff the combined score reaches this.
-MAX_SEGMENTS = 8     # soft cap: past this, offline segmentation merges its weakest adjacent seams
+MAX_SEGMENTS = 6     # soft cap: past this, offline segmentation merges its weakest adjacent seams
 # back together so a long-lived feature stays readable without an LLM. The LLM rung consolidates
-# more intelligently; this is only the no-key floor.
+# more intelligently; this is only the no-key floor. Tuned down from 8 -- on the self-hosted repo
+# the deterministic rung was already median-1 car/feature, but the handful of features that did hit
+# the old cap (8) read as a wall of cars in the timeline; 6 keeps every lane focus-mode-scannable
+# without touching the boundary weights that drive the (already healthy) common case.
 
 
 @dataclass(frozen=True)
@@ -169,16 +172,52 @@ def _cut_points(runs: list[Run]) -> list[int]:
     """Indices `k` (1..len-1) where run `k` starts a new segment, cheapest-seam-first capped at
     `MAX_SEGMENTS`. First collects every seam scoring >= `CUT_THRESHOLD`; if that leaves too many
     segments, drops the lowest-scoring seams until within the cap (a long-lived feature stays
-    readable offline). Deterministic: ties broken by commit-index."""
+    readable offline). Deterministic: ties spread evenly (`_cap_cuts`) rather than broken by
+    commit-index, so a pathological feature where every seam ties (e.g. every commit its own
+    scope) merges into a few evenly-sized cars, not a wall of untouched singles plus one lopsided
+    blob at whichever end commit-index ordering favored."""
     seams = [(i, _boundary_score(runs[i - 1], runs[i])) for i in range(1, len(runs))]
     cuts = [i for i, s in seams if s >= CUT_THRESHOLD]
     if len(cuts) + 1 > MAX_SEGMENTS:
-        kept = sorted(
-            (i for i, _ in seams if i in cuts),
-            key=lambda i: (-dict(seams)[i], runs[i].commit_index),
-        )[:MAX_SEGMENTS - 1]
-        cuts = sorted(kept)
+        cuts = _cap_cuts(cuts, dict(seams), MAX_SEGMENTS - 1)
     return cuts
+
+
+def _cap_cuts(cuts: list[int], score_of: dict[int, float], n_keep: int) -> list[int]:
+    """Keep the `n_keep` strongest of `cuts` (score descending); within a tied score group, spread
+    the kept subset evenly across the group (`_evenly_spaced`) rather than favoring one end. An
+    index-ordered tie-break always drops the same-side cuts first, so a feature with many
+    identically-scored seams (every run a fresh scope, say) collapses to a string of single-run
+    segments plus one oversized trailing/leading merge -- exactly the "many slivers" shape the cap
+    exists to avoid. Spreading ties keeps the resulting segments close to evenly sized instead."""
+    if n_keep <= 0:
+        return []
+    ranked = sorted(cuts, key=lambda i: -score_of[i])
+    groups: list[list[int]] = []
+    for i in ranked:
+        if groups and score_of[groups[-1][0]] == score_of[i]:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+    kept: list[int] = []
+    for group in groups:
+        room = n_keep - len(kept)
+        if room <= 0:
+            break
+        group_sorted = sorted(group)  # natural seam order within the tie
+        kept.extend(group_sorted if len(group_sorted) <= room else _evenly_spaced(group_sorted, room))
+    return sorted(kept)
+
+
+def _evenly_spaced(items: list[int], k: int) -> list[int]:
+    """`k` of `items` (already sorted), spread evenly across the list rather than the first `k` --
+    so capping a tie merges runs throughout the span instead of piling every merge at one end."""
+    if k >= len(items):
+        return list(items)
+    if k <= 0:
+        return []
+    step = len(items) / k
+    return [items[min(int(i * step), len(items) - 1)] for i in range(k)]
 
 
 def _segment_label(runs: list[Run]) -> tuple[str, str]:
@@ -197,24 +236,31 @@ def _segment_label(runs: list[Run]) -> tuple[str, str]:
     return label, rationale
 
 
+def _partition_runs(runs: list[Run]) -> list[list[Run]]:
+    """Group chronological runs into contiguous chunks at `_cut_points`' boundaries -- the capped
+    partition both `segment_runs` and `overlay_persisted`'s un-persisted tail share, so `MAX_SEGMENTS`
+    bounds a feature's segment count the same way regardless of which path produced the runs."""
+    if not runs:
+        return []
+    cuts = set(_cut_points(runs))
+    groups: list[list[Run]] = []
+    current: list[Run] = []
+    for i, run in enumerate(runs):
+        if i in cuts and current:
+            groups.append(current)
+            current = []
+        current.append(run)
+    if current:
+        groups.append(current)
+    return groups
+
+
 def segment_runs(runs: list[Run]) -> list[Segment]:
     """Rung 1: cut one feature's chronological runs into contiguous `Segment`s. Every run lands in
     exactly one segment (a total partition of the feature's ops -- KTD2), boundaries chosen by
     `_cut_points`, each segment labeled from its own commits. `source="fallback"`; the LLM rung
     renames/re-cuts on top of this."""
-    if not runs:
-        return []
-    cuts = set(_cut_points(runs))
-    segments: list[Segment] = []
-    current: list[Run] = []
-    for i, run in enumerate(runs):
-        if i in cuts and current:
-            segments.append(_finish_segment(current, len(segments)))
-            current = []
-        current.append(run)
-    if current:
-        segments.append(_finish_segment(current, len(segments)))
-    return segments
+    return [_finish_segment(m, i) for i, m in enumerate(_partition_runs(runs))]
 
 
 def _finish_segment(runs: list[Run], seg_index: int) -> Segment:
@@ -311,17 +357,20 @@ def overlay_persisted(runs: list[Run], record: list[dict] | None) -> list[Segmen
     `record` is `.sgt/intent/segments.json`'s per-feature entry (written by `sgt intent build`):
     a chronological list of `{commit_shas, label, rationale, source}`. Each entry re-groups the
     feature's runs by *commit sha* -- so op membership is still a deterministic function of which
-    whole runs the segment covers, never anything the LLM emitted (the KTD6 safety invariant). A
-    run whose sha the record doesn't mention (a commit landed since the last build) is appended as
-    its own trailing fallback segment rather than dropped, so the projection always covers every
-    run. `record=None` (never built, or the feature is new) falls straight through to the
-    deterministic rung-1 cut."""
+    whole runs the segment covers, never anything the LLM emitted (the KTD6 safety invariant). Runs
+    the record doesn't mention (commits that landed since the last build) are never dropped -- they
+    still cover the whole partition -- but they are cut the same capped way `segment_runs` cuts a
+    never-built feature (`_partition_runs`), not one raw segment per commit; otherwise a feature
+    with a stale record could grow an unbounded trailing wall of single-op chapters as commits
+    accrue, exactly the "many slivers" granularity problem `MAX_SEGMENTS` exists to prevent.
+    `record=None` (never built, or the feature is new) falls straight through to the deterministic
+    rung-1 cut."""
     if not record:
         return segment_runs(runs)
 
     run_by_sha = {r.commit_sha: r for r in runs}
     claimed: set[str] = set()
-    groups: list[tuple[list[Run], dict]] = []
+    groups: list[tuple[list[Run], dict | None]] = []
     for entry in record:
         member = [run_by_sha[sha] for sha in entry.get("commit_shas", [])
                   if sha in run_by_sha and sha not in claimed]
@@ -329,12 +378,13 @@ def overlay_persisted(runs: list[Run], record: list[dict] | None) -> list[Segmen
             claimed.update(r.commit_sha for r in member)
             groups.append((sorted(member, key=lambda r: (r.commit_index, r.commit_sha)), entry))
 
-    # Any run not named by the record (a newer commit) becomes its own trailing segment so the
-    # partition stays total; deterministic-labeled, marked fallback.
+    # Runs the record doesn't name (newer commits) still need to land somewhere -- cut them with
+    # the same capped partition a from-scratch feature would get, so the total segment count for
+    # this feature can't grow without bound just because it has a partial/stale persisted record.
     leftover = sorted((r for r in runs if r.commit_sha not in claimed),
                       key=lambda r: (r.commit_index, r.commit_sha))
-    for run in leftover:
-        groups.append(([run], None))
+    for member in _partition_runs(leftover):
+        groups.append((member, None))
 
     groups.sort(key=lambda g: (g[0][0].commit_index, g[0][0].commit_sha))
     out: list[Segment] = []

@@ -642,6 +642,34 @@ def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
     assert "feature(s)" in out
 
 
+def test_print_map_tree_drops_phantom_empty_member_leaves(capsys):
+    """A feature leaf with no members is a clustering-split artifact (empty child), not a real
+    feature -- it and any subsystem left with nothing else to show must not print. A leaf with
+    real members but 0 ops (pre-existing code sgt never mined an op for) is still a real feature
+    and must still print -- `sgt map` shows what exists, not just what has history."""
+    from sgt.cli.inspect import _print_map_tree
+
+    view = {
+        "roots": ["N0"],
+        "nodes": [
+            {"id": "N0", "kind": "subsystem", "label": "root", "op_count": 3,
+             "children": ["F1", "N1"], "members": []},
+            {"id": "F1", "kind": "feature", "label": "Real Feature", "op_count": 3,
+             "children": [], "members": ["a.py::foo"]},
+            {"id": "N1", "kind": "subsystem", "label": "phantom subsystem", "op_count": 0,
+             "children": ["F2"], "members": []},
+            {"id": "F2", "kind": "feature", "label": " ·  2", "op_count": 0,
+             "children": [], "members": []},
+        ],
+        "feature_count": 2,
+    }
+    _print_map_tree(view)
+    out = capsys.readouterr().out
+    assert "Real Feature" in out
+    assert "phantom subsystem" not in out and "F2" not in out
+    assert "1 feature(s)" in out  # not the inflated view["feature_count"] of 2
+
+
 def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):
     _seed(tmp_path, n=1)
     capsys.readouterr()

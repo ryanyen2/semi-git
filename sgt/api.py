@@ -1309,6 +1309,18 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     return out
 
 
+def segments_view(repo) -> list[dict]:
+    """Just the feature-scoped intent segments (`_segments_out`), without the atoms/themes
+    machinery `intent_view` also builds (`Store(repo).all_ops()`, `group.atoms`, the declared-ops
+    load) -- the cheap read the graph/timeline layouts use so drawing the chunk-car atom doesn't
+    pay for the cross-feature theme projection it deliberately no longer draws."""
+    from sgt.lens.tree import load as load_tree
+
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    return _segments_out(repo, op_leaf, tree_result)
+
+
 def compose_view(repo, *, full: bool = False) -> dict:
     """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
     `sessions`/`trust`/`intent`, the current ideal's oracle verdict, and a lightweight open-

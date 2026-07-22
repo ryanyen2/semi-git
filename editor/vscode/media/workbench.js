@@ -208,6 +208,66 @@ function computeGraphLayout(map, history, opts) {
 }
 // ---- end-graph-layout (test slice boundary) ----
 
+// ---- segment-layout (test slice boundary) ----
+// The chunk-car timeline layout: the visual atom is the intent *segment* (a `<feature>@<n>`
+// checkpoint), not the raw op. Reuses `computeGraphLayout` verbatim for the gutter -- tree walk,
+// visibility, collapse-to-meta, ordering by first appearance, lanes-with-no-ops dropped -- then
+// threads each visible lane's leaf feature(s) segments onto it as an ordered train of `cars` (a
+// collapsed subsystem's meta-lane naturally gets the union of its features' cars, sorted together
+// -- the "aggregate car strip" the redesign calls for).
+//
+// `segments` is the flat list the compose feed's `intent.segments` already carries (one entry per
+// checkpoint: `feature_id`, `seg_index`, `checkpoint`, `intent` (label), `op_ids`, `op_count`,
+// `first_index`, `last_index`, `tier`, `source`) -- passed in, never re-derived here, so this stays
+// pure like `computeGraphLayout`. The Python counterpart is `segment_layout` in sgt/tui/graph.py,
+// kept behaviour-parallel.
+//
+// A car whose `first_index` is past `frontier` is kept and flagged `isFuture` rather than dropped:
+// the renderer dims it, but a lane's car *count* and positions stay stable while scrubbing -- only
+// cell density (via `computeGraphLayout`'s own op filtering) accretes.
+function computeSegmentLayout(map, history, segments, opts) {
+  opts = opts || {};
+  const frontier = opts.frontier == null ? Infinity : opts.frontier;
+  const commitIndexOf = {};
+  for (const op of (history && history.ops) || []) commitIndexOf[op.id] = op.commit_index;
+
+  const byFeature = {};
+  for (const seg of segments || []) {
+    (byFeature[seg.feature_id] || (byFeature[seg.feature_id] = [])).push(seg);
+  }
+
+  const base = computeGraphLayout(map, history, opts);
+
+  const lanes = base.lanes.map((l) => {
+    const cars = [];
+    for (const leaf of l.leaves) {
+      for (const seg of byFeature[leaf] || []) {
+        const bins = new Map();
+        for (const oid of seg.op_ids || []) {
+          const ci = commitIndexOf[oid];
+          if (ci != null) bins.set(ci, (bins.get(ci) || 0) + 1);
+        }
+        cars.push({
+          featureId: leaf, segIndex: seg.seg_index, checkpoint: seg.checkpoint, label: seg.intent,
+          opCount: seg.op_count, tier: seg.tier, source: seg.source,
+          firstIndex: seg.first_index, lastIndex: seg.last_index,
+          subBins: [...bins.entries()].sort((a, b) => a[0] - b[0]),
+          isFuture: seg.first_index > frontier,
+        });
+      }
+    }
+    cars.sort((a, b) => a.firstIndex - b.firstIndex
+      || (a.featureId < b.featureId ? -1 : a.featureId > b.featureId ? 1 : 0)
+      || a.segIndex - b.segIndex);
+    return { ...l, cars };
+  });
+  const laneById = {};
+  for (const l of lanes) laneById[l.id] = l;
+
+  return { ...base, lanes, laneById };
+}
+// ---- end-segment-layout (test slice boundary) ----
+
 // The episodic projection (Stage C): roll the flat op stream into EPISODES -- one per commit that
 // carried ops -- and group episodes by their dominant feature into collapsible episode-groups (the
 // "co-commit cluster" a developer rewinds as a unit). Sessions are empty on mined history (only
@@ -351,7 +411,7 @@ function episodeRailLayout(epView) {
   };
   let map = compose.map;
   let history = compose.history;
-  let layout = computeGraphLayout(map, history, { collapsed: state.collapsed });
+  let layout = computeSegmentLayout(map, history, segmentsOf(compose), { collapsed: state.collapsed });
   let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
   let previewSeq = 0;
   let pendingPreview = null;
@@ -413,7 +473,7 @@ function episodeRailLayout(epView) {
   let viewToggleEl = null; // Gantt <-> Rail view switch, created lazily on first renderTitlebar()
   let inspectorToggleEl = null; // minimize/restore the detail pane, created lazily in renderTitlebar
 
-  const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line"]);
+  const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line", "title"]);
 
   function mk(tag, attrs, children) {
     const ns = SVG_TAGS.has(tag) ? "http://www.w3.org/2000/svg" : "http://www.w3.org/1999/xhtml";
@@ -524,6 +584,10 @@ function episodeRailLayout(epView) {
   // Group `compose.intent.segments` by feature, chronological. Each segment is a "checkpoint" -- a
   // contiguous chapter of a feature's history sharing one intent, addressable/revertable as
   // `<feature>@<seg_index>`. The inspector lists these so a feature is a short story, not 100 ops.
+  function segmentsOf(c) {
+    return (c && c.intent && c.intent.segments) || [];
+  }
+
   function collectCheckpoints(intent) {
     const byFeature = {};
     for (const seg of (intent && intent.segments) || []) {
@@ -567,9 +631,9 @@ function episodeRailLayout(epView) {
   }
 
   function recompute() {
-    // Full history: the frontier scrubber dims nodes past its point (see applyFrontier) rather than
-    // re-laying-out on every drag, so the layout stays stable while scrubbing.
-    layout = computeGraphLayout(map, history, { collapsed: state.collapsed });
+    // Full history: the frontier scrubber dims nodes/cars past its point (see applyFrontier)
+    // rather than re-laying-out on every drag, so the layout stays stable while scrubbing.
+    layout = computeSegmentLayout(map, history, segmentsOf(compose), { collapsed: state.collapsed });
   }
 
   // First-load clustering: open the rail folded to its subsystem rows -- the root(s) expanded to
@@ -731,12 +795,15 @@ function episodeRailLayout(epView) {
   }
 
   // ─── The feature timeline (Gantt) ───────────────────────────────────────────────────────────
-  // One lane per feature: a left gutter (identity swatch + label) and a bar over a shared time
-  // axis, spanning [firstCommit, lastCommit] with ops binned along it as a density heatstrip. Rows
-  // are grouped into subsystem swimlanes. The width tracks the pane (time compresses to fit, no
-  // horizontal scroll); it scrolls vertically only when there are more lanes than fit. A resize
-  // re-runs render() via the ResizeObserver, so the axis reflows continuously.
-  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, gutterPad: 8, cellGap: 0.5, indent: 14 };
+  // One lane per feature: a left gutter (identity swatch + label) and a train of chunk-CARS, one
+  // per intent segment (`<feature>@<n>` checkpoint) -- the visual atom is the checkpoint, not a
+  // raw op or a shared time column (see computeSegmentLayout). Cars pack left->right in seg_index
+  // order, sized by op_count, shaded inside by their own per-commit density. Rows are grouped into
+  // subsystem swimlanes. The width tracks the pane; it scrolls vertically only when there are more
+  // lanes than fit. A resize re-runs render() via the ResizeObserver, so it reflows continuously.
+  // The bottom axis + frontier scrubber still read real commit-time (recovered cross-feature
+  // alignment lives in the episode rail); a car past the scrubbed frontier just dims in place.
+  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 46, gutterPad: 8, cellGap: 0.5, indent: 14 };
   let graphView = null; // { geom, handleEl, frontierEl, veilEl } -- set each render for the scrubber
 
   function ganttGeom() {
@@ -769,22 +836,91 @@ function episodeRailLayout(epView) {
     return (n && n.color) || "#8a8a8a"; // meta/subsystem lanes have no identity hue -> neutral
   }
 
-  // Density buckets: bin every lane's ops into the same set of time columns (so a column means the
-  // same commit-range across lanes -- vertical alignment reads as "worked on together"). The global
-  // max bucket normalizes intensity, sqrt-scaled so a 2000-op column still leaves a 1-op one visible.
-  function densityBuckets(geom) {
-    const bucketCount = Math.max(1, Math.min(160, Math.round(geom.plotW / 5)));
-    const bucketOf = (ci) => Math.max(0, Math.min(bucketCount - 1,
-      Math.floor((Math.max(0, Math.min(geom.maxCommit, ci)) / geom.maxCommit) * bucketCount)));
-    const byLane = {};
-    let gmax = 1;
-    for (const l of layout.lanes) {
-      const b = new Array(bucketCount).fill(0);
-      for (const ci of l.commits) b[bucketOf(ci)]++;
-      byLane[l.id] = b;
-      for (const v of b) if (v > gmax) gmax = v;
+  // Draw one lane's checkpoints as chunk-cars positioned on the SHARED commit-time axis: each car
+  // spans [xOf(firstIndex), xOf(lastIndex)], so a lane's cars show *when* that feature was worked
+  // on and when it went quiet -- reading left-to-right against the same bottom axis every other
+  // lane uses. A single left->right pass enforces a minimum width and a small gap so short chapters
+  // stay legible/clickable and never overlap; a burst of chapters in a narrow time band degrades
+  // gracefully by nudging right rather than stacking. Each car is wrapped in its own <g data-first>
+  // so the frontier scrubber (applyFrontier) dims it in place without a relayout. Returns the x just
+  // past the last car (or the plain lifetime track when the feature has no mined segments yet), so
+  // the caller can place the op-count label and badges against it.
+  function renderCars(g, l, geom, color, barY, midY) {
+    const cars = l.cars || [];
+    if (!cars.length) {
+      const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
+      g.appendChild(mk("rect", {
+        x: x1, y: barY, width: Math.max(GANTT.minBarW, x2 - x1), height: GANTT.barH, rx: 3,
+        class: "gbar-track", fill: color,
+      }));
+      return x2;
     }
-    return { byLane, gmax, bucketCount, bucketW: geom.plotW / bucketCount };
+    const plotR = geom.plotX0 + geom.plotW;
+    // The "big event": the fattest chapter in this lane. It gets a stronger fill and first claim on
+    // an inline label, so the lane's most consequential edit reads at a glance.
+    const laneMaxOps = Math.max(1, ...cars.map((c) => c.opCount));
+    let cursor = geom.plotX0;
+    let lastRight = geom.plotX0;
+    for (let i = 0; i < cars.length; i++) {
+      const car = cars[i];
+      const isBig = cars.length > 1 && car.opCount === laneMaxOps;
+      let x = Math.max(geom.xOf(car.firstIndex), cursor); // anchored in time, never behind the last car
+      let w = Math.max(GANTT.minCarW, geom.xOf(car.lastIndex) - x);
+      if (x + w > plotR) { x = Math.max(cursor, plotR - w); } // keep it on-screen
+      if (x + w > plotR) { w = Math.max(GANTT.minCarW, plotR - x); }
+      const selected = car.checkpoint === state.selectedCheckpoint;
+      const wrap = mk("g", {
+        class: "gcar-wrap" + (isBig ? " gcar-big" : "") + (selected ? " gcar-selected" : ""),
+        "data-first": car.firstIndex,
+      });
+      // Native tooltip: an SVG element ignores a `title` attribute, so the hover text has to be a
+      // `<title>` child of the rect (not attrs.title) to actually show on hover.
+      const tip = `${car.label}\n${car.opCount} op(s) · ${car.tier}` +
+        (car.source === "fallback" ? "" : ` · ${car.source}`) +
+        `\nRewind: sgt revert ${car.checkpoint}`;
+      wrap.appendChild(mk("rect", {
+        x, y: barY, width: w, height: GANTT.barH, rx: 3,
+        class: "gcar" + (car.tier === "thematic" ? " gcar-thematic" : "") + (isBig ? " gcar-big-rect" : ""),
+        fill: color, "data-checkpoint": car.checkpoint,
+      }, [mk("title", { text: tip })]));
+      // Within-car density texture: the chapter's own per-commit runs, opacity by sqrt(count /
+      // that chapter's own max) -- a single-commit car (the common case) has nothing to spread
+      // across, so it's left as one flat fill rather than one bright sliver + dead space.
+      const bins = car.subBins && car.subBins.length ? car.subBins : [];
+      if (bins.length > 1 && w >= 6) {
+        const cellW = w / bins.length;
+        const localMax = Math.max(1, ...bins.map((b) => b[1]));
+        for (let j = 0; j < bins.length; j++) {
+          const cell = mk("rect", {
+            x: x + j * cellW, y: barY, width: Math.max(0.5, cellW - GANTT.cellGap), height: GANTT.barH,
+            class: "gcar-cell", fill: color,
+          });
+          cell.setAttribute("fill-opacity", (0.3 + 0.55 * Math.sqrt(bins[j][1] / localMax)).toFixed(3));
+          wrap.appendChild(cell);
+        }
+      }
+      // Inline label: the chapter's intent, not the bare @n index (which reads as a meaningless
+      // "0"). Only when the car is wide enough to hold a few glyphs; otherwise the hover tooltip
+      // carries it. The big-event car gets a labelled tag just above the strip even when narrow.
+      if (w >= GANTT.labelMinW && car.label) {
+        wrap.appendChild(mk("text", {
+          x: x + w / 2, y: midY + 3, class: "gcar-label", text: truncate(car.label, Math.floor(w / 6)),
+        }));
+      } else if (isBig && car.label) {
+        wrap.appendChild(mk("text", {
+          x: x + w / 2, y: barY - 3, class: "gcar-tag", text: truncate(car.label, 22),
+        }));
+      }
+      // A car is its own click target: selecting it picks the CHECKPOINT (`f-XXXX@n`, the revert
+      // unit), distinct from a row/label click that picks the whole feature. stopPropagation keeps
+      // it from bubbling up to the lane's feature-select handler.
+      wrap.addEventListener("click", (ev) => selectCar(car, l.id, ev));
+      wrap.addEventListener("mouseenter", () => { if (!armedVerb) previewAndBlast("revert", [car.checkpoint]); });
+      g.appendChild(wrap);
+      cursor = x + w + GANTT.carGap;
+      lastRight = x + w;
+    }
+    return lastRight;
   }
 
   function renderGraph() {
@@ -792,7 +928,6 @@ function episodeRailLayout(epView) {
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
     const geom = ganttGeom();
-    const density = densityBuckets(geom);
     const svg = mk("svg", { width: geom.w, height: geom.h, class: "railsvg gantt" });
     const bandLayer = mk("g", { class: "swimlanes" });
     const laneLayer = mk("g", { class: "glanes" });
@@ -800,11 +935,12 @@ function episodeRailLayout(epView) {
     svg.appendChild(laneLayer);
 
     for (const hd of layout.headers) bandLayer.appendChild(renderSwimlaneHeader(hd, geom));
-    for (const l of layout.lanes) laneLayer.appendChild(renderLane(l, geom, density));
+    for (const l of layout.lanes) laneLayer.appendChild(renderLane(l, geom));
     renderTimeAxis(svg, geom);
 
     rail.appendChild(svg);
     rail.scrollTop = prevScroll;
+    applySpotlight(); // re-pin a label-click spotlight across the re-render
   }
 
   // ─── The episode rail (vertical git-log) ────────────────────────────────────────────────────
@@ -901,7 +1037,7 @@ function episodeRailLayout(epView) {
     return g;
   }
 
-  function renderLane(l, geom, density) {
+  function renderLane(l, geom) {
     const y = geom.rowY(l.row);
     const midY = geom.midY(l.row);
     const barY = midY - GANTT.barH / 2;
@@ -929,30 +1065,25 @@ function episodeRailLayout(epView) {
     const raw = (node && node.label) || l.id;
     label.textContent = truncate(l.isMeta ? `${raw} (${l.leaves.length})` : raw,
       Math.floor((geom.labelW - labelX) / 6.5));
+    // A feature label is its own click target: it spotlights the feature (dim the field, light this
+    // lane + co-change neighbors) rather than selecting it -- a distinct, reversible viewing gesture.
+    // Meta (collapsed-subsystem) labels keep the row's fold-toggle behavior.
+    if (!l.isMeta) {
+      label.classList.add("glane-label-btn");
+      label.style.pointerEvents = "auto";
+      if (state.spotlight === l.id) label.classList.add("spotlit");
+      label.addEventListener("click", (ev) => { ev.stopPropagation(); toggleSpotlight(l.id); });
+    }
     g.appendChild(label);
 
-    // Base track: the feature's lifetime [first,last], so even a sparse feature shows its span.
-    const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
-    g.appendChild(mk("rect", {
-      x: x1, y: barY, width: Math.max(GANTT.minBarW, x2 - x1), height: GANTT.barH, rx: 3,
-      class: "gbar-track", fill: color,
-    }));
-    // Density heatstrip: one cell per non-empty time bucket, opacity by sqrt(count / global max).
-    const buckets = density.byLane[l.id] || [];
-    for (let b = 0; b < buckets.length; b++) {
-      if (!buckets[b]) continue;
-      const cell = mk("rect", {
-        x: geom.plotX0 + b * density.bucketW, y: barY,
-        width: density.bucketW + GANTT.cellGap, height: GANTT.barH, class: "gbar-cell", fill: color,
-      });
-      cell.setAttribute("fill-opacity", (0.28 + 0.72 * Math.sqrt(buckets[b] / density.gmax)).toFixed(3));
-      g.appendChild(cell);
-    }
-    // Op count just past the bar (clamped so it stays on-screen).
-    const cx = Math.min(x2 + 6, geom.w - 30);
+    // Chunk-car train: the lane's checkpoints, packed left->right in seg_index order (see
+    // renderCars) -- the visual atom is the intent segment, not a raw op or a shared time column.
+    const lastX = renderCars(g, l, geom, color, barY, midY);
+    // Op count just past the cars (clamped so it stays on-screen).
+    const cx = Math.min(lastX + 6, geom.w - 30);
     g.appendChild(mk("text", { x: cx, y: midY + 4, class: "gbar-count", text: String(l.opCount) }));
 
-    renderLaneBadges(g, l, geom, color, barY, midY);
+    renderLaneBadges(g, l, geom, color, barY, midY, geom.plotX0, lastX);
 
     g.addEventListener("mouseenter", () => onHover(l.id));
     g.addEventListener("mouseleave", () => onHover(null));
@@ -967,8 +1098,7 @@ function episodeRailLayout(epView) {
   // Plan / drift / fork are decorations ON the lane (never separate marks): a pending-plan lane gets
   // a dashed accent underline + count; a lane carrying a drift op gets a solid identity outline; a
   // forked lane gets a ⋔ badge in the gutter. None introduces a second hue competing with identity.
-  function renderLaneBadges(g, l, geom, color, barY, midY) {
-    const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
+  function renderLaneBadges(g, l, geom, color, barY, midY, x1, x2) {
     const barW = Math.max(GANTT.minBarW, x2 - x1);
     const hasDrift = (layout.opsByFeature[l.id] || []).some((op) => driftMarks.ids.has(op.id));
     if (hasDrift) {
@@ -1024,13 +1154,45 @@ function episodeRailLayout(epView) {
     // deliberate "grab the playhead and drag" gesture -- via this band or the bottom handle -- never
     // a plain click: a lane click still selects its feature, and clicking empty plot does nothing.
     const band = mk("rect", { x: fx - 6, y: GANTT.padT - 2, width: 12, height: y - (GANTT.padT - 2), class: "frontier-band" });
+    // A floating readout above the playhead, shown only while scrubbing: the commit index it's on
+    // plus the checkpoint(s) that begin/end there when snapped to a boundary -- so a scrub reads as
+    // "landing on this event", not "somewhere on a bare axis".
+    const readout = mk("text", { x: fx, y: GANTT.padT - 5, class: "scrub-readout", text: "" });
+    readout.style.display = "none";
     svg.appendChild(veil);
     svg.appendChild(line);
     svg.appendChild(band);
     svg.appendChild(handle);
-    graphView = { geom, handleEl: handle, frontierEl: line, veilEl: veil, scrubBandEl: band };
+    svg.appendChild(readout);
+    // Snap targets: every checkpoint boundary (a car's first/last commit) -- the commit indices where
+    // "something happened", so the playhead clicks onto real events instead of arbitrary columns.
+    const snap = new Set();
+    for (const l of layout.lanes) for (const c of (l.cars || [])) { snap.add(c.firstIndex); snap.add(c.lastIndex); }
+    graphView = { geom, handleEl: handle, frontierEl: line, veilEl: veil, scrubBandEl: band,
+      readoutEl: readout, snap: [...snap].sort((a, b) => a - b) };
     handle.addEventListener("pointerdown", onScrubPointerDown);
     band.addEventListener("pointerdown", onScrubPointerDown);
+  }
+
+  // Snap a raw commit index to the nearest checkpoint boundary when it's within a few px, so the
+  // playhead lands on events; otherwise leave it free for fine positioning between them.
+  function snapCommit(idx, geom) {
+    const pts = graphView && graphView.snap;
+    if (!pts || !pts.length) return idx;
+    const x = geom.xOf(idx);
+    let best = idx, bestPx = Infinity;
+    for (const p of pts) { const d = Math.abs(geom.xOf(p) - x); if (d < bestPx) { bestPx = d; best = p; } }
+    return bestPx <= 8 ? best : idx;
+  }
+
+  // The checkpoint labels whose chapter begins or ends exactly at this commit -- what the scrub
+  // readout names when the playhead snaps onto a boundary.
+  function eventsAt(idx) {
+    const out = [];
+    for (const l of layout.lanes) for (const c of (l.cars || [])) {
+      if (c.firstIndex === idx || c.lastIndex === idx) out.push(c.label);
+    }
+    return out;
   }
 
   function truncate(s, n) {
@@ -1079,8 +1241,21 @@ function episodeRailLayout(epView) {
     const y = geom.axisY;
     hd.setAttribute("d", `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`);
     if (graphView.scrubBandEl) graphView.scrubBandEl.setAttribute("x", fx - 6); // keep the grab-band on the line
-    // Dim the gutter (label + swatch) of lanes/swimlanes not yet born; the veil handles the plot.
-    for (const el of svg.querySelectorAll(".glane, .swimlane")) {
+    if (graphView.readoutEl) {
+      const ro = graphView.readoutEl;
+      if (playheadDragging && !atHead) {
+        const events = eventsAt(idx);
+        ro.textContent = `c${idx}` + (events.length ? " · " + truncate(events[0], 26) : "");
+        ro.setAttribute("x", Math.max(geom.plotX0 + 20, Math.min(geom.plotX0 + geom.plotW - 20, fx)));
+        ro.setAttribute("text-anchor", fx > geom.plotX0 + geom.plotW - 80 ? "end" : "middle");
+        ro.style.display = "";
+      } else {
+        ro.style.display = "none";
+      }
+    }
+    // Dim the gutter (label + swatch) of lanes/swimlanes not yet born, and any car whose checkpoint
+    // starts past the frontier -- the veil handles the rest of the plot.
+    for (const el of svg.querySelectorAll(".glane, .swimlane, .gcar-wrap")) {
       const first = Number(el.getAttribute("data-first"));
       el.classList.toggle("beyond", !atHead && first > playheadCommitIndex);
     }
@@ -1122,11 +1297,13 @@ function episodeRailLayout(epView) {
 
   function onScrubPointerDown(ev) {
     ev.stopPropagation();
+    ev.preventDefault(); // a scrub is a drag, not a text-selection gesture -- suppress the latter
     const svg = rail.querySelector("svg");
     if (!svg || !graphView) return;
     playheadDragging = true;
     if (svg.setPointerCapture) svg.setPointerCapture(ev.pointerId);
-    setPlayhead(graphView.geom.xToCommit(svgLocalX(svg, ev.clientX)));
+    const geom = graphView.geom;
+    setPlayhead(snapCommit(geom.xToCommit(svgLocalX(svg, ev.clientX)), geom));
     window.addEventListener("pointermove", onScrubPointerMove);
     window.addEventListener("pointerup", onScrubPointerUp);
   }
@@ -1135,11 +1312,13 @@ function episodeRailLayout(epView) {
     if (!playheadDragging) return;
     const svg = rail.querySelector("svg");
     if (!svg || !graphView) return;
-    setPlayhead(graphView.geom.xToCommit(svgLocalX(svg, ev.clientX)));
+    const geom = graphView.geom;
+    setPlayhead(snapCommit(geom.xToCommit(svgLocalX(svg, ev.clientX)), geom));
   }
 
   function onScrubPointerUp() {
     playheadDragging = false;
+    applyFrontier(); // hide the scrub readout now that the drag is over
     window.removeEventListener("pointermove", onScrubPointerMove);
     window.removeEventListener("pointerup", onScrubPointerUp);
   }
@@ -1180,9 +1359,10 @@ function episodeRailLayout(epView) {
     const svg = rail.querySelector("svg");
     if (!svg) return;
     if (!id) {
+      if (!armedVerb) clearGhosts();
+      if (state.spotlight) { applySpotlight(); return; } // a pinned spotlight survives mouse-out
       svg.classList.remove("focus");
       svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
-      if (!armedVerb) clearGhosts();
       return;
     }
     if (armedVerb) {
@@ -1236,6 +1416,7 @@ function episodeRailLayout(epView) {
     }
     state.selectedStep = null;
     state.selectedPlanSession = null;
+    state.selectedCheckpoint = null; // a feature-level select clears any checkpoint focus
     if ((state.multi || []).length < 2) selectionResult = null; // no union closure to show
     saveState();
     render();
@@ -1245,6 +1426,67 @@ function episodeRailLayout(epView) {
       const node = state.selected && byId(state.selected);
       if (node && node.kind === "feature") requestFold(state.selected);
     }
+  }
+
+  // Clicking a chunk-car selects its CHECKPOINT (`f-XXXX@n`), the revert unit -- distinct from a
+  // row/swatch click (whole feature) or a label click (spotlight). The feature is selected so the
+  // inspector shows its checkpoint list + code fold; the matching checkpoint row is highlighted and
+  // scrolled into view. Clicking the same car again clears the checkpoint focus. An armed
+  // merge/move still targets the feature (a car is just a point on it), matching lane-click.
+  function selectCar(car, laneId, ev) {
+    if (ev) ev.stopPropagation();
+    if (armedVerb) { confirmArmed(laneId); return; }
+    if (state.selected !== laneId) {
+      state.multi = [laneId];
+      state.selected = laneId;
+      state.selectedStep = null;
+      state.selectedPlanSession = null;
+      selectionResult = null;
+    }
+    state.selectedCheckpoint = state.selectedCheckpoint === car.checkpoint ? null : car.checkpoint;
+    saveState();
+    render();
+    const node = byId(laneId);
+    if (node && node.kind === "feature") requestFold(laneId);
+    const row = inspector.querySelector(".checkpoint.selected");
+    if (row) row.scrollIntoView({ block: "nearest" });
+  }
+
+  // Toggle a checkpoint's highlight from the inspector's checkpoint list (the feature is already
+  // selected there). Keeps the gantt car and the inspector row in agreement -- click either, both
+  // light up.
+  function highlightCheckpoint(ref) {
+    state.selectedCheckpoint = state.selectedCheckpoint === ref ? null : ref;
+    saveState();
+    renderInspector();
+    renderGraph();
+  }
+
+  // Clicking a feature LABEL spotlights it: dim the field, re-light this lane + its co-change
+  // neighbors (the "what moves with this feature" question) -- a viewing aid, pinned until toggled
+  // off, distinct from selecting the feature for an action. Reuses the same .focus/.lit/.ctx paint
+  // the transient hover-focus uses.
+  function toggleSpotlight(id) {
+    state.spotlight = state.spotlight === id ? null : id;
+    saveState();
+    applySpotlight();
+  }
+
+  function applySpotlight() {
+    const svg = rail.querySelector("svg");
+    if (!svg) return;
+    if (!state.spotlight) {
+      svg.classList.remove("focus");
+      svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
+      return;
+    }
+    svg.classList.add("focus");
+    const neighbors = neighborsOf(state.spotlight);
+    svg.querySelectorAll(".glane").forEach((el) => {
+      const rid = el.getAttribute("data-id");
+      el.classList.toggle("lit", rid === state.spotlight);
+      el.classList.toggle("ctx", neighbors.has(rid));
+    });
   }
 
   function requestSelectionClosure(refs) {
@@ -1874,8 +2116,11 @@ function episodeRailLayout(epView) {
 
     for (const seg of segs) {
       const row = document.createElement("div");
-      row.className = "checkpoint" + (seg.novelty <= 0.2 ? " trivial" : "");
+      row.className = "checkpoint" + (seg.novelty <= 0.2 ? " trivial" : "") +
+        (seg.checkpoint === state.selectedCheckpoint ? " selected" : "");
+      row.dataset.checkpoint = seg.checkpoint;
       row.title = `${seg.rationale} · ${seg.op_count} op(s) · ${seg.tier}\nRewind: sgt revert ${seg.checkpoint}`;
+      row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
 
       const dot = document.createElement("span");
       dot.className = "checkpoint-dot";
