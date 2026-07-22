@@ -102,20 +102,25 @@ def test_render_lines_carry_header_axis_and_labels():
     assert "A" in text and "B" in text  # labels rendered
 
 
-def test_render_lane_leads_with_handle_and_shows_checkpoint_count():
-    """Each lane must surface the short `f-XXXX` handle (the copy-paste token for `sgt revert`) and,
-    when a checkpoint count is supplied, a `✦N` annotation -- the "what can I operate on" the user
-    couldn't find in the old label-only render."""
-    m = {"roots": ["f-00abcdef01"], "nodes": [_node("f-00abcdef01", None, [])], "edges": []}
-    lines = render_graph_lines(m, _hist(("f-00abcdef01", 0), ("f-00abcdef01", 5)), color=False,
-                               checkpoints={"f-00abcdef01": 3})
-    lane = next(ln for ln in lines if "f-00abcdef" in ln)
-    assert "f-00abcdef" in lane   # the 10-char handle prefix
-    assert "✦3" in lane           # three rewind points on this lane
-    # no checkpoints dict -> no ✦ on the lane (the legend footer may still explain ✦), handle stays
-    plain = render_graph_lines(m, _hist(("f-00abcdef01", 0)), color=False)
-    plain_lane = next(ln for ln in plain if "f-00abcdef" in ln)
-    assert "✦" not in plain_lane
+def test_render_lane_leads_with_handle_and_marks_checkpoints_on_the_lane():
+    """Each lane surfaces the short `f-XXXX` handle (the copy-paste token for `sgt revert`), a `✦N`
+    count, AND -- the fix for "the count maps to nothing" -- the digit `n` drawn on the strip at the
+    commit-time where `<fid>@n` begins, so the density blocks and the rewind points read on one
+    axis."""
+    fid = "f-aaaaaaaaaa"  # digit-free id + label (label = id.upper()) so only markers are digits
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    hist = _hist((fid, 0), (fid, 100), (fid, 199))
+    # two checkpoints: @0 begins at commit 0 (left edge), @1 at commit 199 (right edge)
+    lines = render_graph_lines(m, hist, color=False, checkpoints={fid: [(0, 0), (1, 199)]})
+    lane = next(ln for ln in lines if fid[:10] in ln)
+    assert fid[:10] in lane and "✦2" in lane        # handle + count
+    strip = lane.split("✦")[0]                       # the handle+label+bar, before the ✦ margin
+    assert "0" in strip and "1" in strip             # both @n markers drawn on the lane
+    assert strip.index("0") < strip.index("1")       # @0 (commit 0) sits left of @1 (commit 199)
+    # no checkpoints dict -> no markers, no count on the lane (legend may still explain them)
+    plain = render_graph_lines(m, _hist((fid, 0)), color=False)
+    plain_lane = next(ln for ln in plain if fid[:10] in ln)
+    assert "✦" not in plain_lane and "0" not in plain_lane.split(fid[:10])[1]
 
 
 def test_render_swimlane_header_present_for_expanded_subsystem():

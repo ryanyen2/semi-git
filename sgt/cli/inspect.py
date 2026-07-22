@@ -355,14 +355,27 @@ def _map_for_view(repo: str, refresh: bool, verb: str, color: bool) -> dict:
     return map_view(repo)
 
 
-def _checkpoint_counts(repo: str) -> dict[str, int]:
-    """`{feature_id: checkpoint_count}` from a cheap file read of the persisted segments -- no
-    `intent_view`, no LLM, no recompute -- so the fast `sgt graph` can annotate lanes with their
-    rewind-point count without paying the intent projection's cost."""
+def _checkpoint_spans(repo: str, history: dict) -> dict[str, list]:
+    """`{feature_id: [(seg_index, first_commit_index), ...]}` from a cheap file read of the
+    persisted segments joined to the commit axis -- no `intent_view`, no LLM, no recompute. This is
+    what lets the graph draw each rewind point *on its lane* at the commit-time it begins, so a
+    `✦N` count corresponds to N visible `@n` markers. `seg_index` is the list position (0-based),
+    the exact `<feature>@<n>` you type; `overlay_persisted` preserves that order, so the marker and
+    the revert handle agree."""
     from sgt import state
 
     segs = state.load_json(repo, "intent_segments", default={}) or {}
-    return {fid: len(v) for fid, v in segs.items() if v}
+    idx = {c.get("sha"): c["index"] for c in history.get("commits", []) if c.get("sha")}
+    out: dict[str, list] = {}
+    for fid, recs in segs.items():
+        marks = []
+        for seg_index, rec in enumerate(recs):
+            cis = [idx[s] for s in (rec.get("commit_shas") or []) if s in idx]
+            if cis:
+                marks.append((seg_index, min(cis)))
+        if marks:
+            out[fid] = marks
+    return out
 
 
 def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refresh: bool = False) -> int:
@@ -378,9 +391,9 @@ def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refres
     from sgt.tui.graph import render_graph_lines
 
     mv = _map_for_view(repo, refresh, "graph", color)
+    hv = history_view(repo, full=True, limit=1_000_000)
     for line in render_graph_lines(
-        mv, history_view(repo, full=True, limit=1_000_000), frontier=frontier, color=color,
-        checkpoints=_checkpoint_counts(repo),
+        mv, hv, frontier=frontier, color=color, checkpoints=_checkpoint_spans(repo, hv),
     ):
         print(line)
     return 0
