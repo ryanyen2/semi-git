@@ -2,7 +2,7 @@
   "blame_view": {
     "features": {
       "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d": {
-        "label": "config.yaml notes.md residue__::\u0000HEAD\u0000"
+        "label": "compute helper"
       }
     },
     "file": "pkg.py",
@@ -10,7 +10,7 @@
       {
         "end_line": 2,
         "feature_id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
-        "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
+        "label": "compute helper",
         "sessions": [],
         "start_line": 1,
         "symbol": "pkg.py::compute"
@@ -32,7 +32,7 @@
         "dir": "pkg.py",
         "id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
         "kind": "feature",
-        "label": "config.yaml notes.md residue__::\u0000HEAD\u0000",
+        "label": "compute helper",
         "members": [
           "config.yaml",
           "notes.md",
