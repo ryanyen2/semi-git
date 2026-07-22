@@ -213,14 +213,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"README.md baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 12,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"continuation\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
+      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 12,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"continuation\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
     },
     "text": {
       "argv": [
         "map"
       ],
       "exit": 0,
-      "out": "README.md baz qux (f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b) \u00b7 12 op(s)\n1 feature(s)\n"
+      "out": "baz qux (f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b) \u00b7 12 op(s)\n1 feature(s)\n"
     }
   },
   "merge": {
@@ -396,7 +396,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"old_label\": \"README.md baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"old_label\": \"baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
     },
     "text": {
       "argv": [
@@ -406,7 +406,7 @@
         "Renamed Feature"
       ],
       "exit": 0,
-      "out": "\u2713 renamed f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b: 'README.md baz qux' \u2192 'Renamed Feature'\n"
+      "out": "\u2713 renamed f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b: 'baz qux' \u2192 'Renamed Feature'\n"
     }
   },
   "restore": {
