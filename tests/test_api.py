@@ -267,6 +267,30 @@ def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_pa
     assert all(c["fidelity"] == "full" for c in v["cells"])
 
 
+def test_grid_view_marks_partial_commits_over_a_fork(tmp_path):
+    """U2/R6 end to end: once `_record_fidelity` records a fork's dropped commits, `grid_view`
+    reports them in `partial_commits` and marks every cell at those commit-indices "partial" --
+    the commit couldn't be fully reconstructed, so its whole column is flagged."""
+    from sgt.api import grid_view
+    from sgt.core import sync
+    from sgt.lens.map import build_map
+    from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
+
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
+    _push(a)
+    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
+    sync.sync(b, remote="origin", branch="main")
+    get(b)          # record fidelity for the post-fork ideal
+    build_map(b)    # so surviving ops land in cells
+
+    v = grid_view(b)
+    assert v["partial_commits"]  # the fork's commits are flagged
+    partial = set(v["partial_commits"])
+    for cell in v["cells"]:
+        assert cell["fidelity"] == ("partial" if cell["commit_index"] in partial else "full")
+
+
 def test_grid_view_surfaces_a_pending_plan_prediction_as_a_ghost(tmp_path):
     """A pending plan step predicting a feature is a ghost cell -- the only place a prediction
     reaches the grid (off-chain hollows never enter the ideal). `known_feature` flags whether the

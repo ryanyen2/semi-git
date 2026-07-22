@@ -412,23 +412,36 @@ unchanged store.
 instead of silently omitting the loss.
 **Requirements:** R6
 **Dependencies:** U1
-**Files:** `sgt/core/lens.py` (`_committed_ids_by_provenance`, `ideal_for_ref` — the
-`reduce_to_ideal` call sites), `sgt/core/order.py` (`reduce_to_ideal`, `:209-225` — surface the
-dropped id set alongside the reduced ideal), `sgt/state.py` (new local artifact, e.g. `"fidelity"`,
-gitignored), `sgt/api.py` (`grid_view` reads it), `tests/core/test_order.py`,
-`tests/core/test_lens.py`.
-**Approach:** `reduce_to_ideal` already computes exactly which ids `_grounded`/`fork_free` excluded
-(`order.py:209-225`); persist the excluded ids' provenance SHAs in a small local side table at the
-two call sites in `lens.py`, keyed by ref. `grid_view` reads it and marks the corresponding
-`commit_index` cells `fidelity: "partial"`.
-**Patterns to follow:** the local-artifact convention in `sgt/state.py` (`_Artifact(...,
-committed=False)`, e.g. `sync_cache`/`witness` at `:131-142`).
+**Files:** `sgt/core/lens.py` (`_ensure_fidelity`/`_fidelity_fp` writer + two `_sync` call sites),
+`sgt/api.py` (`_grid_partial_shas` reads the new schema), `tests/core/test_lens.py`,
+`tests/test_api.py`. (The `fidelity` state slot shipped in U1.)
+**Approach:** The fidelity writer computes the dropped set as `included \ reduce_to_ideal(included)`
+over the ref's *raw* provenance union — deliberately **not** `included \ committed_ids`, so it
+isolates a genuine reconstruction loss (a fork tip, an ungrounded op) from an intentional user edit
+(a revert removes an op from the persisted ideal but not from `included`, so it is never a mark).
+Recorded in `_sync` (the write path — never the pure-read `current_ideal`, which must stay
+side-effect-free), keyed per ref as `{ideal_fp, shas}` and **cached against the committed ideal's
+fingerprint**: a cheap no-op when the ideal is unchanged, recomputed exactly when it moves — on
+*any* path (the no-op fast path and the main path both call `_ensure_fidelity`), so a `sync` that
+surfaces a fork through its own persist path (not `_sync`'s `ideal_changed`) still refreshes the
+marks on the next `get()`. `grid_view` reads the `shas` and marks every cell at the corresponding
+`commit_index` `partial`.
+**Adjustment (adjust-as-you-go):** no `order.py` change — the dropped set is a set-difference at
+the call site (`included \ reduce_to_ideal(included)`), cleaner than a new `reduce_to_ideal`
+signature. The fingerprint cache replaced a naive "compute-once-if-absent" that went stale when
+`sync`'s internal `get()` wrote an empty entry before creating the fork.
+**Patterns to follow:** the local-artifact convention in `sgt/state.py`; the two-clone-sync fork
+construction in `tests/core/test_sync.py` (`_two_clones`/`_edit_and_commit`) as the genuine
+drop fixture — a same-symbol fork only ever arises through a store union.
 **Test scenarios:**
-- Happy: a fixture forcing a fork (add → delete → re-add across a version boundary the migration
-  doesn't cover) produces a fidelity entry; `grid_view` marks the corresponding commit.
-- Edge: a clean store with no reductions produces an empty table and no marks.
-**Verification:** `sgt log` on this repo's own store shows partial marks matching the known
-~13.5% op-exclusion figure's commits.
+- Happy: a two-clone same-symbol fork (both tips dropped by `reduce_to_ideal`) produces a fidelity
+  entry naming the fork's commits; `grid_view` marks every cell at those commit-indices `partial`.
+- Correctness: a user revert on clean history creates *no* mark (a revert is not a reconstruction
+  loss).
+- Edge: a clean linear history produces an empty mark set.
+- Determinism: the recorded set is stable across repeated `get()`s.
+**Verification:** `sgt log` on this repo's own store shows partial marks (94 commits, matching the
+known ~13.5% op-exclusion the U22.5/U10 findings quantify).
 
 ### U3. Consolidate CLI/TUI/webview onto `grid_view`
 

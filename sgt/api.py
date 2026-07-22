@@ -716,7 +716,8 @@ def _grid_partial_shas(repo) -> set[str]:
     key = current_ref_key(repo)
     if key is None:
         return set()
-    return set(state.load_json(repo, "fidelity", default={}).get(key, ()))
+    entry = state.load_json(repo, "fidelity", default={}).get(key)
+    return set(entry.get("shas", ())) if isinstance(entry, dict) else set()
 
 
 def _grid_ghosts(repo, known: set) -> list[dict]:
