@@ -45,6 +45,7 @@ and one a line-range differ cannot produce. They are in-memory identity signals,
 from __future__ import annotations
 
 import hashlib
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from tree_sitter import Language, Node, Parser
@@ -326,18 +327,35 @@ def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: by
     return out
 
 
+# Content-addressed extraction cache (U10): `extract_file` is a pure function of (path, language,
+# source bytes), so a file byte-identical to one parsed earlier -- the common case across
+# consecutive commits, which touch a handful of files but re-parse the whole tree -- reuses its
+# entity list instead of re-running tree-sitter. Bounded LRU: mining walks history in order, so a
+# file's old content versions fall out of the working set naturally; the cap keeps a full-history
+# init from growing unbounded. Entities are frozen and the list is treated read-only by every
+# caller (`extract_codebase` extends a fresh list), so the cached list is shared, not copied.
+_EXTRACT_CACHE: "OrderedDict[tuple, list[Entity]]" = OrderedDict()
+_EXTRACT_CACHE_MAX = 4096
+
+
 def extract_file(path: str, source: bytes | str, *, language: str | None = None) -> list[Entity]:
     """Parse one file's source into entities. Unsupported/unparseable -> ``[]`` (never raises).
 
     `source` is bytes-native throughout -- pass raw bytes (e.g. a git blob) whenever they're
     available; a `str` is accepted for ergonomic hand-written callers/fixtures and encoded once
-    via UTF-8 (lossless, since a Python `str` is already correctly decoded)."""
+    via UTF-8 (lossless, since a Python `str` is already correctly decoded). Content-addressed
+    cache (U10): a byte-identical re-parse of the same path/language returns the cached list."""
     lang = language or _language_for(path)
     if lang is None:
         return []
+    src = source if isinstance(source, bytes) else source.encode("utf-8")
+    cache_key = (path, lang, hashlib.sha256(src).digest())
+    cached = _EXTRACT_CACHE.get(cache_key)
+    if cached is not None:
+        _EXTRACT_CACHE.move_to_end(cache_key)
+        return cached
     parser = Parser(_language(lang))
     base_defs = _DEFS[lang]
-    src = source if isinstance(source, bytes) else source.encode("utf-8")
     tree = parser.parse(src)  # tree-sitter never raises; bad syntax -> ERROR nodes
 
     hits: list[_Hit] = []
@@ -383,6 +401,9 @@ def extract_file(path: str, source: bytes | str, *, language: str | None = None)
                     end_byte=h.end_node.end_byte,
                 )
             )
+    _EXTRACT_CACHE[cache_key] = out
+    if len(_EXTRACT_CACHE) > _EXTRACT_CACHE_MAX:
+        _EXTRACT_CACHE.popitem(last=False)
     return out
 
 
