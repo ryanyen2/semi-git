@@ -445,6 +445,14 @@ known ~13.5% op-exclusion the U22.5/U10 findings quantify).
 
 ### U3. Consolidate CLI/TUI/webview onto `grid_view`
 
+**Execution order (adjust-as-you-go):** deferred to run just before U14. U3 is a cross-language
+refactor (Python `tui/graph.py` + the VS Code webview JS) and is a prerequisite *only* for U14's
+verb sweep — nothing in Phase B (ledger), Phase C (perf), or Phase D (scrubbing verbs) depends on
+it. Front-loading the high-value, fully-testable core and doing the one heavy cross-language
+consolidation right before the sweep that needs it is the cleaner sequencing; `grid_view`'s cell
+shape is stable (U1), and Phase B/C change an op's feature assignment and speed, not the grid
+shape, so consuming it later costs nothing.
+
 **Goal:** `sgt/tui/graph.py` and `editor/vscode/media/workbench.js` stop computing the (op → cell)
 join themselves; they consume `grid_view`'s cell table and keep only layout/render.
 **Requirements:** R5
@@ -498,17 +506,33 @@ residue op's anchor is claimed by feature A but its other neighbor (the next liv
 gap) belongs to feature B, record a coupling edge `(A, B, op_id)` that preview computation
 consults, so a revert/restore/checklist that would split the pair surfaces it rather than silently
 building a corrupt slice — the exact fix direction FINDINGS.md's U32 entry named and deferred.
-**Patterns to follow:** `assign_ops_to_leaves` itself; the existing reference-edge preview
-machinery `verb_preview_view` already uses for blast/carry/foundation classification.
+**Patterns to follow:** `assign_ops_to_leaves` itself; `_affected_rows`'s `op_leaf` load in
+`verb_preview_view`.
+**Adjustments made during implementation (adjust-as-you-go):**
+- Part 1 is a `_member_leaf_for`/`_anchor_entity_of` helper in `assign_ops_to_leaves`: a
+  residue/anchor symbol votes for its anchor entity's leaf (`path::__residue__::foo` → `path::foo`),
+  falling back to its own cluster for a HEAD-of-file residue or a dead anchor. This is a *global*
+  `op_leaf` change (one source of truth), so blame, select, grid, and revert all agree that a
+  feature owns its trailing residue — the consistent design, not a revert-only patch. Blast radius:
+  `select`/`why` closures now include a feature's residue+anchor ops (they pull nothing
+  cross-feature, so the pull/hub/chain logic is unchanged); the `test_select.py` count assertions
+  were made residue-robust (assert the cross-feature invariants + derive counts, not hard-coded
+  single-entity counts).
+- Part 2 (coupling) is `_coupling_rows`, a **file-granular** signal surfaced as a `coupling` field
+  on `verb_preview_view`: it flags when a removal drops a residue op in a file a *different*
+  surviving feature still occupies. This is a deliberate simplification over a per-gap follower
+  edge — the precise follower needs per-symbol frontier + anchor images (fragile); the file-level
+  signal is cheap (footprint + `op_leaf`, no images), conservative (over-warns rather than silently
+  cutting), and closes U32's "silent" gap. Named boundary: it flags a shared *file*, not a proven
+  adjacency.
 **Test scenarios:**
-- Happy: two adjacent functions in one file, added in the same commit, later split across two
-  authored features by `move` — the shared residue op resolves to one and the coupling edge is
-  recorded.
-- Edge: a residue op whose anchor was pruned falls back to the plurality vote, not a crash.
-- Regression: the exact U32 scenario (accept-one-feature partial materialization) now surfaces the
-  coupling in preview before the corrupt slice would be built, instead of after.
-**Verification:** the U32 fixture from `tests/core/test_propose_review.py`, re-run, shows the
-coupling warning instead of silent corruption.
+- Happy: a residue op assigns to its anchor entity's lane, not its own cluster (`test_tree.py`); a
+  HEAD-of-file residue falls back to its own cluster.
+- Happy: `_coupling_rows` flags a shared-residue removal (feature A drops a residue in a file B's
+  entity survives in); no flag when no other-feature entity survives, or no residue is dropped.
+- Edge: a residue whose anchor entity has no lane falls through to the plurality vote, not a crash.
+**Verification:** the residue/anchor assignment and coupling unit tests pass; goldens regenerated
+for the shifted `op_leaf` (blame/map/grid) and the new `coupling` preview field.
 
 ### U5. Save-time incremental assignment cascade
 

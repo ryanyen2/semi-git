@@ -53,7 +53,7 @@
           "slugify.py::__residue__::slugify",
           "slugify.py::slugify"
         ],
-        "op_count": 5,
+        "op_count": 6,
         "parent": null,
         "sessions": [],
         "size": 3,

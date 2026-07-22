@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sgt import state
-from sgt.core.op import Op
+from sgt.core.op import Op, _symbol_kind
 from sgt.lens import cluster
 from sgt.lens.cluster import _dominant_dir, _fuse, _leiden
 from sgt.lens.pins import (
@@ -364,15 +364,42 @@ def leaf_member_index(nodes: dict) -> dict[str, str]:
     return {m: nid for nid, nd in nodes.items() if not nd["children"] for m in nd["members"]}
 
 
+def _anchor_entity_of(sym: str) -> str | None:
+    """The top-level entity a residue/anchor pseudo-symbol is anchored to (`path::__residue__::foo`
+    -> `path::foo`), or None if `sym` names no real anchor entity -- a plain entity, a whole-file
+    symbol, or a file-head residue whose anchor is the HEAD sentinel (which names no entity, so its
+    synthesized id simply isn't a live member and the caller falls back)."""
+    if _symbol_kind(sym) not in ("residue", "anchor"):
+        return None
+    path, _, rest = sym.partition("::")
+    _, _, anchor = rest.partition("::")  # rest == "__residue__::{anchor}" / "__anchor__::{anchor}"
+    return f"{path}::{anchor}" if anchor else None
+
+
+def _member_leaf_for(sym: str, member_leaf: dict[str, str]) -> str | None:
+    """The leaf a footprint symbol votes for. A residue/anchor symbol follows its anchor ENTITY's
+    lane -- so a feature owns the whitespace after its own entities, keeping a feature-scoped revert
+    or materialization coherent (U4/R3, the U32 fix) -- rather than the residue symbol's own
+    clustered leaf. Falls back to the symbol's own leaf when the anchor entity has no lane."""
+    anchor_entity = _anchor_entity_of(sym)
+    if anchor_entity is not None and anchor_entity in member_leaf:
+        return member_leaf[anchor_entity]
+    return member_leaf.get(sym)
+
+
 def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
     """Every op -> the leaf its footprint's symbols plurality-vote for (tie-break: smallest leaf
-    id, for determinism, not numeric order). An op whose footprint touches no leaf-assigned
-    symbol (fully dead, or off-chain) gets no entry -- this is the hook U13's blame (`sym ->
-    max-op-in-I -> feature`) and feature verbs (`merge` unions "op-sets") consume."""
+    id, for determinism, not numeric order). A residue/anchor symbol votes for its anchor entity's
+    lane, not its own cluster (`_member_leaf_for`, U4). An op whose footprint touches no
+    leaf-assigned symbol (fully dead, or off-chain) gets no entry -- this is the hook U13's blame
+    (`sym -> max-op-in-I -> feature`) and feature verbs (`merge` unions "op-sets") consume."""
     member_leaf = leaf_member_index(nodes)
     op_leaf: dict[str, str] = {}
     for op in ops:
-        votes = Counter(member_leaf[sym] for sym in op.footprint if sym in member_leaf)
+        votes = Counter(
+            leaf for sym in op.footprint
+            if (leaf := _member_leaf_for(sym, member_leaf)) is not None
+        )
         if not votes:
             continue
         top_count = votes.most_common(1)[0][1]

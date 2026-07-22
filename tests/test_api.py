@@ -267,6 +267,29 @@ def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_pa
     assert all(c["fidelity"] == "full" for c in v["cells"])
 
 
+def test_coupling_flags_a_shared_residue_removal():
+    """U4/R3: `_coupling_rows` names when a removal drops a residue op in a file a *different*
+    surviving feature still occupies -- the shared whitespace the U32 corruption cuts through --
+    so a preview shows which feature it reaches into. No flag when the shared file has no surviving
+    other-feature entity, or when no residue is dropped."""
+    from sgt.api import _coupling_rows
+
+    foo = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"})
+    bar = make_op({"a.py::bar": (None, "v1")}, {"a.py::bar": b"1"})
+    residue = make_op({"a.py::__residue__::foo": (None, "v1")}, {"a.py::__residue__::foo": b" "})
+    ops = [foo, bar, residue]
+    op_leaf = {foo.id: "A", residue.id: "A", bar.id: "B"}  # residue follows foo's lane (U4)
+
+    # revert A drops foo + its residue; B's bar survives in a.py -> coupling flagged.
+    coupling = _coupling_rows(ops, op_leaf, {foo.id, residue.id}, {bar.id})
+    assert coupling == [{"file": "a.py", "removed_feature": "A", "coupled_feature": "B"}]
+
+    # no surviving other-feature entity in the file -> no coupling.
+    assert _coupling_rows(ops, op_leaf, {foo.id, residue.id}, set()) == []
+    # a removal that drops no residue -> no coupling (nothing shared was cut).
+    assert _coupling_rows(ops, op_leaf, {foo.id}, {bar.id}) == []
+
+
 def test_grid_view_marks_partial_commits_over_a_fork(tmp_path):
     """U2/R6 end to end: once `_record_fidelity` records a fork's dropped commits, `grid_view`
     reports them in `partial_commits` and marks every cell at those commit-indices "partial" --

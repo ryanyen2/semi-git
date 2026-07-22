@@ -60,8 +60,10 @@ def test_cross_feature_requires_chain_reports_exactly_that_chain(tmp_path):
 
     result = select.select(tmp_path, ["F-B"])
     assert result.ok, result.message
-    assert result.direct_op_count == 1
-    assert result.closure_op_count == 2
+    # F-B owns `caller` plus its own residue/anchor ops (U4: residue follows its anchor entity's
+    # lane); those pull nothing cross-feature, so the closure adds exactly the one hub op (`base`).
+    assert caller_op.id in result.direct_ops
+    assert result.closure_op_count == result.direct_op_count + 1  # exactly `base` pulled in
     assert len(result.pulled) == 1
     assert result.pulled[0].feature_id == "F-A"
     assert result.pulled[0].op_count == 1
@@ -89,8 +91,7 @@ def test_reference_independent_features_select_independently(tmp_path):
 
     result = select.select(tmp_path, ["F-A"])
     assert result.ok, result.message
-    assert result.direct_op_count == 1
-    assert result.closure_op_count == 1  # nothing pulled in
+    assert result.closure_op_count == result.direct_op_count  # nothing pulled in
     assert result.pulled == ()
     assert result.hub is None
 
@@ -120,8 +121,10 @@ def test_hub_symbol_diagnosed_not_a_giant_silent_closure(tmp_path):
 
     result = select.select(tmp_path, ["F-B"])
     assert result.ok, result.message
-    assert result.direct_op_count == 3
-    assert result.closure_op_count == 4  # 3 direct + exactly the one hub op, not more
+    # three callers (plus each's residue/anchor) direct; exactly the one shared hub op pulled.
+    for c in ("b.py::caller1", "b.py::caller2", "b.py::caller3"):
+        assert _op_for(tmp_path, c).id in result.direct_ops
+    assert result.closure_op_count == result.direct_op_count + 1  # +1 hub op, not more
     assert len(result.pulled) == 1
     assert result.pulled[0].feature_id == "F-A"
     assert result.pulled[0].op_count == 1
@@ -301,13 +304,21 @@ def test_resolve_ambiguous_nl_phrase_returns_ranked_candidates(tmp_path):
 
 
 def test_resolve_output_feeds_the_same_closure_select_reports(tmp_path):
-    """Integration: `resolve` over a symbol and `select` over the feature that owns it produce the
-    identical closure/op set -- one closure machine behind both entry points."""
+    """Integration: `resolve` over a feature ref and `select` over that feature produce the
+    identical closure/op set -- one closure machine behind both entry points. (Resolving a bare
+    *symbol* is a narrower query than selecting the feature that owns it: since U4 a feature also
+    owns the residue/anchor ops around its entities, so symbol-resolve is a subset of feature-select
+    -- verified below -- not an equality.)"""
     base_op, _caller_op = _two_feature_repo(tmp_path)
     _save_tree(tmp_path, {"F-A": ["a.py::base"], "F-B": ["b.py::caller"]})
 
-    r_res = select.resolve(tmp_path, "a.py::base")
+    r_res = select.resolve(tmp_path, "F-A")       # the feature ref -- same input as select
     r_sel = select.select(tmp_path, ["F-A"])
     assert r_res.closure == r_sel.closure
     assert r_res.direct_ops == r_sel.direct_ops
     assert r_res.closure_op_count == r_sel.closure_op_count
+
+    # a bare-symbol resolve is the narrower dependency closure -- a subset of the feature's.
+    r_sym = select.resolve(tmp_path, "a.py::base")
+    assert base_op.id in r_sym.closure
+    assert r_sym.closure <= r_sel.closure
