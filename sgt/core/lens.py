@@ -290,6 +290,41 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     return set(order.reduce_to_ideal(included, all_ops))
 
 
+def _fidelity_fp(committed_ids) -> str:
+    """A stable fingerprint of a ref's committed ideal -- the key the fidelity marks are cached
+    against, so a stale entry is detected whenever the ideal moved (a new commit, a fork surfaced,
+    a fork resolved) regardless of *which* verb moved it."""
+    return hashlib.sha256(",".join(sorted(committed_ids)).encode()).hexdigest()[:16]
+
+
+def _ensure_fidelity(repo: Path, gb: GitBinding, key: str, committed_ids, all_ops: list) -> None:
+    """Keep this ref's mining-fidelity marks current (R6/U2): the commits whose ops
+    `order.reduce_to_ideal` had to drop from the ideal -- a fork tip, or an op whose chain
+    predecessor is off this ref -- so `grid_view` marks them "partial" instead of silently omitting
+    the loss. The dropped set is `included \\ reduce_to_ideal(included)` over the ref's *raw*
+    provenance union, so it isolates a genuine reconstruction loss from an intentional user edit:
+    a revert removes an op from the persisted ideal but not from `included`, so it is never mistaken
+    for a fidelity mark.
+
+    Cached against the committed ideal's fingerprint: a no-op when the ideal is unchanged (a hash +
+    a small JSON read), so the warm path pays nothing. The full-store `reduce_to_ideal` -- the ~28s
+    large-store cost U8/U9 optimize -- runs only when the ideal actually moved (or the entry is
+    absent), never on a glance."""
+    fp = _fidelity_fp(committed_ids)
+    entry = state.load_json(repo, "fidelity", default={}).get(key)
+    if isinstance(entry, dict) and entry.get("ideal_fp") == fp:
+        return  # marks already current for this exact ideal
+    ref_commits = set(gb.commit_shas())
+    included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
+    reduced = set(order.reduce_to_ideal(included, all_ops))
+    by_id = {op.id: op for op in all_ops}
+    dropped_shas = sorted({sha for oid in (included - reduced) for sha in by_id[oid].provenance})
+    with locked_section(repo):
+        table = state.load_json(repo, "fidelity", default={})
+        table[key] = {"ideal_fp": fp, "shas": dropped_shas}
+        state.save_json(repo, "fidelity", table)
+
+
 def current_ideal(repo: str | Path) -> Ideal:
     """The current ref's committed ideal as last persisted -- a *pure read* (no mining, no
     writes), reflecting any prior explicit edit (revert/pin, U8) that a provenance scan alone
@@ -356,7 +391,13 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
         fp = _sync_fingerprint(gb, head, ideal_entry)
         cached = _load_sync_cache(repo).get(key)
         if fp is not None and cached is not None and cached.get("fp") == fp:
-            return Ideal.from_ops(frozenset(cached.get("ids", [])), opindex.index_ops(repo))
+            # Fidelity (U2): the warm no-op path skips the whole sync body, so refresh the marks
+            # here too -- keyed on the cached ideal's fingerprint, so this is a cheap no-op unless
+            # the ideal actually moved since the marks were last computed (e.g. a `sync` that
+            # surfaced a fork updated the ideal but not through this function). No re-mining.
+            cached_ids = frozenset(cached.get("ids", []))
+            _ensure_fidelity(repo, gb, key, cached_ids, opindex.index_ops(repo))
+            return Ideal.from_ops(cached_ids, opindex.index_ops(repo))
 
     # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
     # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
@@ -486,6 +527,11 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
             if backfill_changed:
                 backfill_table[key] = new_backfill_state
                 _save_backfill_state(repo, backfill_table)
+
+    # Fidelity marks (U2/R6): refresh the ref's marks against the current committed ideal. A cheap
+    # fingerprint no-op unless the ideal moved. Outside the section above -- `_ensure_fidelity`
+    # takes its own lock and `locked_section` is non-reentrant (U23).
+    _ensure_fidelity(repo, gb, key, committed_ids, all_ops)
 
     # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
     # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
