@@ -31,7 +31,25 @@ def register(subs, parent) -> None:
                     help="re-mine + rebuild the map first (default: fast read of the last-built map)")
     ep.set_defaults(func=_cmd_episodes)
     lp = subs.add_parser("log", parents=[parent])
-    _add_view_flags(lp, paged=True)
+    lmode = lp.add_mutually_exclusive_group()
+    lmode.add_argument("--ops", action="store_true",
+                       help="the raw mined op DAG (the pre-grid `sgt log`)")
+    lmode.add_argument("--tree", action="store_true",
+                       help="the feature tree, no time axis (what `sgt map` shows)")
+    lmode.add_argument("--rail", action="store_true",
+                       help="the episode rail / vertical git-log (what `sgt episodes` shows)")
+    lmode.add_argument("--summary", action="store_true",
+                       help="file/symbol/feature/coverage/oracle/drift scalars (what `sgt status` shows)")
+    _add_view_flags(lp, paged=True)  # --full/--limit/--offset (used by --ops)
+    lp.add_argument("--at", type=int, default=None, metavar="COMMIT",
+                    help="grid: fold frontier — only ops up to this commit-index count")
+    lp.add_argument("--no-color", action="store_true", help="grid/rail: plain text, no ANSI color")
+    lp.add_argument("--refresh", action="store_true",
+                    help="re-mine + rebuild the map first (default: fast read of the last-built map)")
+    lp.add_argument("--focus", default=None, metavar="FEATURE",
+                    help="grid: one feature, full width, one detail line per checkpoint car")
+    lp.add_argument("--links", action="store_true",
+                    help="grid: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
     hp = subs.add_parser("history", parents=[parent])
     _add_view_flags(hp, paged=True)
@@ -66,7 +84,20 @@ def register(subs, parent) -> None:
 
 
 def _cmd_log(args) -> int:
-    return _log(".", args.as_json, args.full, args.limit, args.offset)
+    """`sgt log` is the daily grid surface (KTD9): bare `sgt log` renders the lane×commit grid
+    (`grid_view`), with mode flags for its sibling projections. The old op-DAG dump lives on under
+    `--ops`. `--json` returns the view matching the mode: grid (default/`--rail`), the feature tree
+    (`--tree`), the status scalars (`--summary`), or the op DAG (`--ops`)."""
+    if args.ops:
+        return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
+    if args.tree:
+        return _log_tree(".", args.as_json, args.refresh)
+    if args.summary:
+        return _status(".", args.as_json)
+    if args.rail:
+        return _log_rail(".", as_json=args.as_json, color=not args.no_color, refresh=args.refresh)
+    return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
+                     refresh=args.refresh, focus=args.focus, links=args.links)
 
 
 def _cmd_state(args) -> int:
@@ -218,12 +249,60 @@ def _reindex(repo: str, as_json: bool = False) -> int:
     return 0
 
 
-def _log(repo: str, as_json: bool = False, full: bool = False,
-          limit: int | None = None, offset: int = 0) -> int:
-    """The kernel op DAG (plan U7). Mine-on-contact first, then project via `sgt.api.oplog_view`.
-    Compact by default (`--full` for today's per-op before/after/provenance/attribution payload);
-    `limit`/`offset` unset forward nothing, so the view's own default window applies (keeping
-    `sgt log --json`'s default byte-identical to `oplog_view(repo)`, R21)."""
+def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, color: bool = True,
+              refresh: bool = False, focus: str | None = None, links: bool = False) -> int:
+    """`sgt log` (the default grid, KTD9): the lane×commit timeline. `--json` returns the canonical
+    `grid_view`; the text render reuses the feature-timeline machinery (`render_graph_lines`) over
+    the last-built map. A pure cached read by default (fast, glanceable); `--refresh` re-mines and
+    rebuilds features + checkpoints first (see `_map_for_view`)."""
+    from sgt.api import grid_view, history_view, segments_view
+    from sgt.tui.graph import render_graph_lines
+
+    mv = _map_for_view(repo, refresh, "log", color and not as_json)
+    if as_json:
+        return _emit_json(grid_view(repo))
+    hv = history_view(repo, full=True, limit=1_000_000)
+    for line in render_graph_lines(
+        mv, hv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
+    ):
+        print(line)
+    return 0
+
+
+def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False) -> int:
+    """`sgt log --rail` (the episode rail / vertical git-log): "what I did, in order." `--json`
+    returns `grid_view` (the rail is a time-major rotation of the same cells); the text render
+    reuses `render_rail_lines`."""
+    from sgt.api import grid_view, history_view
+    from sgt.tui.graph import render_rail_lines
+
+    mv = _map_for_view(repo, refresh, "log", color and not as_json)
+    if as_json:
+        return _emit_json(grid_view(repo))
+    for line in render_rail_lines(mv, history_view(repo, full=True, limit=1_000_000), color=color):
+        print(line)
+    return 0
+
+
+def _log_tree(repo: str, as_json: bool = False, refresh: bool = False) -> int:
+    """`sgt log --tree` (the feature tree, no time axis — what `sgt map` shows): a read of the
+    last-built tree (`--refresh` rebuilds it first). `--json` returns `map_view`."""
+    from sgt.api import map_view
+
+    _map_for_view(repo, refresh, "log", not as_json)
+    view = map_view(repo)
+    if as_json:
+        return _emit_json(view)
+    _print_map_tree(view)
+    return 0
+
+
+def _log_ops(repo: str, as_json: bool = False, full: bool = False,
+             limit: int | None = None, offset: int = 0) -> int:
+    """`sgt log --ops` (the raw mined op DAG, plan U7). Mine-on-contact first, then project via
+    `sgt.api.oplog_view`. Compact by default (`--full` for today's per-op before/after/provenance/
+    attribution payload); `limit`/`offset` unset forward nothing, so the view's own default window
+    applies (keeping `sgt log --ops --json`'s default byte-identical to `oplog_view(repo)`, R21)."""
     from sgt.api import oplog_view
     from sgt.core.lens import get
 
@@ -235,7 +314,7 @@ def _log(repo: str, as_json: bool = False, full: bool = False,
     if as_json:
         return _emit_json(view)
     if not view["ops"]:
-        print("(no ops — nothing mined yet; commit some work then run `sgt log`)")
+        print("(no ops — nothing mined yet; commit some work then run `sgt log --ops`)")
         return 0
     note = "" if full else (" (truncated)" if view["truncated"] else "")
     print(f"{view['count']} op(s){note}:")

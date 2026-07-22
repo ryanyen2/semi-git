@@ -46,7 +46,7 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = {t["name"] for t in resp["result"]["tools"]}
     # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
-    assert names == {"sgt_init", "sgt_log", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
+    assert names == {"sgt_init", "sgt_log", "sgt_grid", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
                       "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
                       "sgt_plan_intake", "sgt_checkpoint", "sgt_drift"}
 
@@ -87,6 +87,23 @@ def test_log_full_carries_footprint(tmp_path):
     repo = _seed(tmp_path, 1)
     _, payload = _call(repo, "sgt_log", {"full": True})
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
+
+
+def test_grid_returns_the_canonical_lane_commit_join(tmp_path):
+    """U1: `sgt_grid` mines-on-contact then returns `grid_view` -- the commit axis, cells, ghosts,
+    and fidelity marks. `sgt_log`'s op-DAG shape is untouched (KTD9), so the two are distinct."""
+    from sgt.lens.map import build_map
+
+    repo = _seed(tmp_path, 2)
+    build_map(repo)  # populate op_leaf so ops land in cells
+    _, grid = _call(repo, "sgt_grid")
+    assert set(grid) == {"commits", "cells", "features", "ghosts", "partial_commits",
+                         "commit_count", "op_count", "feature_count"}
+    assert grid["commit_count"] == 2
+
+    # tool_log still returns the op DAG, not the grid — the schema-stable contract (KTD9).
+    _, log = _call(repo, "sgt_log")
+    assert set(log) == {"count", "kinds", "truncated", "ops"}
 
 
 def test_state_shows_frontier(tmp_path):

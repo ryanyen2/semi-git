@@ -12,9 +12,10 @@ The tool names mirror their CLI paths after the spine re-triage (KTD2): the dail
 kernel verbs, the semantic diff, and the agentic loop) keep their bare ``sgt_`` names, while only
 the genuinely rare/maintenance tools carry the ``sgt_advanced_`` prefix of their re-homed CLI verbs.
 
-* **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_status`` (the current
-  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between
-  two refs' ideals), ``sgt_advanced_fsck`` (op-store integrity).
+* **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_grid`` (the lane×commit
+  timeline join — features × commits, ghost cells, fidelity marks), ``sgt_status`` (the current
+  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between two refs'
+  ideals), ``sgt_advanced_fsck`` (op-store integrity).
 * **write**: ``sgt_init`` (bind git + the kernel store, mine existing history), ``sgt_revert`` /
   ``sgt_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run preview),
   ``sgt_advanced_oracle_run`` (execute configured build/test tiers against the current ideal).
@@ -63,6 +64,14 @@ def tool_log(repo_path: str, args: dict) -> dict:
     if args.get("offset") is not None:
         kwargs["offset"] = int(args["offset"])
     return oplog_view(repo_path, **kwargs)
+
+
+def tool_grid(repo_path: str, args: dict) -> dict:
+    from sgt.api import grid_view
+    from sgt.core.lens import get
+
+    get(repo_path)  # mine-on-contact before projecting the grid
+    return grid_view(repo_path)
 
 
 def tool_state(repo_path: str, args: dict) -> dict:
@@ -224,6 +233,14 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
             [],
         ),
         tool_log,
+    ),
+    "sgt_grid": (
+        "The lane×commit grid: the canonical join every timeline surface renders (plan U1). "
+        "Returns {commits, cells, features, ghosts, partial_commits} -- one cell per (feature, "
+        "commit) that carries ops, the commit axis, active-plan ghost cells, and per-commit "
+        "mining-fidelity marks. A complete projection (not paged): a grid needs every cell.",
+        _schema({}, []),
+        tool_grid,
     ),
     "sgt_status": (
         "The current ref's ideal: covered paths, entity-granularity coverage fraction, and the "

@@ -360,17 +360,29 @@ flowchart LR
 
 ### U1. Canonical `grid_view` projection
 
-**Goal:** One `sgt.api.grid_view(repo, *, full=False, ...)` function computing the lane×commit cell
-join — op → (commit_index, feature_id), ghost/plan segments, partial-mining fidelity marks — that
-every surface renders from.
+**Goal:** One `sgt.api.grid_view(repo)` function computing the lane×commit cell join — op →
+(commit_index, feature_id), ghost/plan segments, partial-mining fidelity marks — that every surface
+renders from.
 **Requirements:** R5, R6
 **Dependencies:** none
-**Files:** `sgt/api.py` (new `grid_view`, placed near `history_view` at `:637` and `map_view` at
-`:530`), `sgt/cli/inspect.py` (repurpose `_log`/`_cmd_log` to call `grid_view` by default, add
-`--tree`/`--rail`/`--summary`/`--ops` flags per KTD9, mirroring the `_map`/`_history`
-wrapper-pair pattern at `:328`/`:461`), `sgt/mcp/server.py` (add a new `tool_grid` handler + `TOOLS`
-entry per KTD9 — `tool_log` keeps its existing `oplog_view` schema unchanged, mirroring the
-existing `TOOLS` dict convention at `:210-301`), `tests/test_api.py`, `tests/mcp/test_server.py`.
+**Files:** `sgt/api.py` (new `grid_view` + `_grid_labels`/`_grid_partial_shas`/`_grid_ghosts`
+helpers, placed after `history_view`), `sgt/cli/inspect.py` (`sgt log` becomes a mode dispatcher:
+default = grid, `--ops`/`--tree`/`--rail`/`--summary` modes per KTD9; the old op-DAG logic moves to
+`_log_ops`, reusing the existing `render_graph_lines`/`_map_for_view` machinery), `sgt/mcp/server.py`
+(new `tool_grid` handler + `TOOLS` entry — `tool_log` unchanged per KTD9), `sgt/state.py` (register
+the local `fidelity` artifact — the slot U1's reader and U2's writer share), `sgt/core/lens.py`
+(new public `current_ref_key(repo)` wrapper), `tests/test_api.py`, `tests/mcp/test_server.py`.
+**Adjustments made during implementation (adjust-as-you-go):** (1) `grid_view` is a *complete*
+projection like `map_view`, not paged — a grid surface needs every cell to draw — so the signature
+is `grid_view(repo)`, no `full`/`limit`/`offset`. (2) Labels resolve via `load_tree` + authored
+claims directly, *not* `map_view`, to skip `map_view`'s expensive `fused_graph` recompute and keep
+the grid a fast surface. (3) The `fidelity` state slot and `current_ref_key` helper ship in U1 (the
+reader) though U2 owns the writer — the slot is shared infra, read with an empty default until U2's
+producer runs (forward-compatible, not a stub). (4) Pre-existing stale golden snapshots (offline
+`_fallback_label` drift, red on `main` before this work) were regenerated in a separate hygiene
+commit; U1's own CLI-golden diff is then isolated to the `sgt log` surface change. (5) Added the
+missing `tests/tui/__init__.py` and `tests/entities/__init__.py` (a pre-existing collection
+collision on the two `test_graph.py` basenames).
 **Approach:** Compose `history_view(repo, full=True)` (commit axis + per-op `commit_index`/
 `feature_id`, `sgt/api.py:637-685`) with `map_view`'s tree/`op_leaf` and the persisted
 `intent_segments` checkpoint markers into one cell table:

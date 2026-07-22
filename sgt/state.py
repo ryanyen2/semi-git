@@ -131,6 +131,11 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
+    # local, gitignored per-ref mining-fidelity marks: {ref_key: [sha, ...]} recording the
+    # witnessing commits whose mined ops `order.reduce_to_ideal` had to drop (a fork tip, an
+    # ungrounded op). `grid_view` reads it to mark those commits "partial" instead of silently
+    # omitting the loss (R6). Derived from *this* clone's own reduction pass -- never travels.
+    "fidelity": _Artifact(("local", "fidelity.json"), committed=False),
     # local, gitignored per-ref genesis-backfill frontier: how far backward a backfill of
     # pre-horizon history has progressed for a given ref. Never travels -- like `witness` and
     # `ideal_table`, it's derived from *this* clone's own mining progress.

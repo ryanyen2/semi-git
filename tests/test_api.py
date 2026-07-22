@@ -125,19 +125,25 @@ def test_kernel_views_are_pure(tmp_path):
 
 
 def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monkeypatch):
-    """R21: `sgt log/state --json` output is byte-identical to the api views -- the single
-    projection, no drift between the CLI surface and the api."""
+    """R21: the CLI `--json` surface is byte-identical to the api views -- one projection, no drift.
+    `sgt log` defaults to the grid (`grid_view`, KTD9); the raw op DAG moved to `sgt log --ops`
+    (`oplog_view`); `state` is re-homed under the `advanced` grouping (KTD2)."""
+    from sgt.api import grid_view
     from sgt.cli import main
+    from sgt.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
-    expected = {"log": json.dumps(oplog_view(repo), indent=2),
-                "state": json.dumps(state_view(repo), indent=2)}
+    build_map(repo)  # a stable built map so `sgt log`'s grid doesn't auto-build mid-test
+    expected = {
+        ("log",): json.dumps(grid_view(repo), indent=2),
+        ("log", "--ops"): json.dumps(oplog_view(repo), indent=2),
+        ("advanced", "state"): json.dumps(state_view(repo), indent=2),
+    }
 
     monkeypatch.chdir(repo)
-    # `log` stays a top-level spine verb; `state` is re-homed under the `advanced` grouping (KTD2).
-    for verb, argv in (("log", ["log"]), ("state", ["advanced", "state"])):
+    for argv, want in expected.items():
         assert main([*argv, "--json"]) == 0
-        assert capsys.readouterr().out.rstrip("\n") == expected[verb]
+        assert capsys.readouterr().out.rstrip("\n") == want
 
 
 def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch):
@@ -188,6 +194,123 @@ def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
     v = history_view(repo, full=True)
     assert v["ops"]
     assert any(op["feature_id"] is not None for op in v["ops"])
+
+
+def test_grid_view_joins_ops_into_feature_commit_cells(tmp_path):
+    """U1/R5: `grid_view` is the canonical (op -> cell) join. Every cell holds exactly the ops that
+    share one (feature_id, commit_index), and that join is faithful to `history_view` -- each
+    cell's ops carry that cell's feature and commit-index, and every attributed op lands in exactly
+    one cell."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+
+    hv = history_view(repo, full=True)
+    v = grid_view(repo)
+
+    # the join reproduces history_view's attributed ops exactly, partitioned by cell.
+    attributed = {op["id"] for op in hv["ops"] if op["feature_id"] is not None}
+    from_cells = [oid for cell in v["cells"] for oid in cell["op_ids"]]
+    assert sorted(from_cells) == sorted(attributed)          # every attributed op, once
+    assert len(from_cells) == len(set(from_cells))           # no op in two cells
+
+    op_by_id = {op["id"]: op for op in hv["ops"]}
+    for cell in v["cells"]:
+        assert cell["op_count"] == len(cell["op_ids"])
+        assert cell["fidelity"] == "full"                    # nothing dropped in this fixture
+        for oid in cell["op_ids"]:
+            assert op_by_id[oid]["feature_id"] == cell["feature_id"]
+            assert op_by_id[oid]["commit_index"] == cell["commit_index"]
+
+    # cells sorted by (feature_id, commit_index); the feature roster covers every celled feature.
+    assert v["cells"] == sorted(v["cells"], key=lambda c: (c["feature_id"], c["commit_index"]))
+    assert set(v["features"]) == {c["feature_id"] for c in v["cells"]}
+    assert v["commits"] == hv["commits"]
+
+
+def test_grid_view_is_deterministic_across_calls(tmp_path):
+    """A grid surface polls; the join must be byte-stable so a re-render never reshuffles."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    assert json.dumps(grid_view(repo), sort_keys=True) == json.dumps(grid_view(repo), sort_keys=True)
+
+
+def test_grid_view_omits_unattributed_ops_before_a_tree_is_built(tmp_path):
+    """An op with no feature (no `sgt map` yet) has no lane, so it produces no cell -- the same
+    drop `graph_layout`/`episodes` already apply. The commit axis is still present."""
+    from sgt.api import grid_view
+
+    repo = _mined(tmp_path, "mixed_coverage")  # mined, but no build_map
+    v = grid_view(repo)
+    assert v["cells"] == []
+    assert v["feature_count"] == 0
+    assert v["op_count"] == 0
+    assert v["commits"]  # the time axis exists regardless of feature assignment
+    assert v["partial_commits"] == []
+
+
+def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_path):
+    """U1's fidelity field reads "full" for every cell until U2's producer records a real drop --
+    forward-compatible, not a stub: `partial_commits` is empty and no cell is "partial"."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    v = grid_view(repo)
+    assert v["partial_commits"] == []
+    assert all(c["fidelity"] == "full" for c in v["cells"])
+
+
+def test_grid_view_surfaces_a_pending_plan_prediction_as_a_ghost(tmp_path):
+    """A pending plan step predicting a feature is a ghost cell -- the only place a prediction
+    reaches the grid (off-chain hollows never enter the ideal). `known_feature` flags whether the
+    predicted lane still exists."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    real_feature = next(iter(grid_view(repo)["features"]))
+
+    table = plan_mod._load_sessions(repo)
+    table["s1"] = {
+        "plan_text": "1. extend it\n2. ghost step\n", "created_ts": 0.0, "last_activity_ts": 0.0,
+        "status": "active", "baseline_op_ids": [],
+        "steps": [
+            {"hollow_id": "h0", "title": "extend it", "predicted_footprint": [],
+             "predicted_feature": real_feature, "rationale": "", "status": "pending", "matched_op_ids": []},
+            {"hollow_id": "h1", "title": "unknown lane", "predicted_footprint": [],
+             "predicted_feature": "f-doesnotexist", "rationale": "", "status": "matched", "matched_op_ids": []},
+        ],
+    }
+    plan_mod._save_sessions(repo, table)
+
+    ghosts = grid_view(repo)["ghosts"]
+    assert len(ghosts) == 1  # only the pending step; the matched one is not a ghost
+    g = ghosts[0]
+    assert g["feature_id"] == real_feature
+    assert g["title"] == "extend it"
+    assert g["known_feature"] is True
+
+
+def test_grid_view_feature_roster_labels_match_the_map(tmp_path):
+    """The label a lane shows on the grid is the same one `sgt map` shows -- `grid_view` resolves
+    labels the same way `map_view` does (tree labels + authored overrides), just without the
+    expensive `fused_graph` recompute."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    map_labels = {n["id"]: n["label"] for n in map_view(repo)["nodes"]}
+    for fid, roster in grid_view(repo)["features"].items():
+        assert roster["label"] == map_labels[fid]
 
 
 def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):

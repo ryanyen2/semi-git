@@ -264,6 +264,13 @@ def _ref_key(gb: GitBinding) -> str | None:
     return gb.symbolic_ref() or gb.head()
 
 
+def current_ref_key(repo: str | Path) -> str | None:
+    """The current ref's key in the per-ref local tables (witness/ideal/fidelity) -- a thin public
+    wrapper over `_ref_key` for callers outside this module (`sgt.api.grid_view`, the fidelity
+    writer) that need to read or write the row belonging to whatever is checked out now."""
+    return _ref_key(GitBinding(Path(repo)))
+
+
 def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     """Every stored op whose provenance intersects this ref's own commit ancestry -- the ref's
     ideal derived fresh from content-addressed history. Used only to *seed* the persisted
