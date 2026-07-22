@@ -159,6 +159,26 @@ def test_assign_ops_to_leaves_plurality_vote_with_smallest_id_tiebreak():
     assert dead_only.id not in op_leaf  # touches no leaf-assigned symbol
 
 
+def test_residue_op_follows_its_anchor_entitys_leaf(tmp_path):
+    """U4/R3: a residue op assigns to its anchor ENTITY's lane, not the residue symbol's own
+    cluster -- so a feature owns the whitespace after its own entities, keeping a feature-scoped
+    revert/materialization coherent (the U32 fix). A file-head residue (HEAD sentinel, no anchor
+    entity) and an anchor whose entity is dead both fall back to the symbol's own cluster."""
+    nodes = {
+        "F1": {"children": [], "members": ["a.py::foo"]},
+        # the residue after foo happens to cluster into F2 (with bar) -- its OP must still go to F1.
+        "F2": {"children": [], "members": ["a.py::bar", "a.py::__residue__::foo",
+                                            "a.py::__residue__::\x00HEAD\x00"]},
+    }
+    residue = make_op({"a.py::__residue__::foo": (None, "v1")}, {"a.py::__residue__::foo": b"1"})
+    head_residue = make_op({"a.py::__residue__::\x00HEAD\x00": (None, "v2")},
+                           {"a.py::__residue__::\x00HEAD\x00": b"2"})
+
+    op_leaf = tree.assign_ops_to_leaves(nodes, [residue, head_residue])
+    assert op_leaf[residue.id] == "F1"        # follows a.py::foo's lane, not its own cluster (F2)
+    assert op_leaf[head_residue.id] == "F2"   # HEAD residue has no anchor entity -> own cluster
+
+
 def test_build_partitions_every_alive_symbol_into_exactly_one_leaf(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal = get(repo)

@@ -1,7 +1,7 @@
 {
   "blame_view": {
     "features": {
-      "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d": {
+      "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736": {
         "label": "compute helper"
       }
     },
@@ -9,7 +9,7 @@
     "spans": [
       {
         "end_line": 2,
-        "feature_id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
+        "feature_id": "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736",
         "label": "compute helper",
         "sessions": [],
         "start_line": 1,
@@ -23,14 +23,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d"
+        "feature_id": "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "pkg.py",
-        "id": "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
+        "id": "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736",
         "kind": "feature",
         "label": "compute helper",
         "members": [
@@ -43,7 +43,7 @@
           "util.py::__residue__::helper",
           "util.py::helper"
         ],
-        "op_count": 8,
+        "op_count": 10,
         "parent": null,
         "sessions": [],
         "size": 8,
@@ -52,7 +52,7 @@
       }
     ],
     "roots": [
-      "f-3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d"
+      "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736"
     ],
     "sync_status": {
       "complete": true,

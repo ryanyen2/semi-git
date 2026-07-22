@@ -408,6 +408,49 @@ def _affected_rows(repo, removed_ids, added_ids) -> list[dict]:
     )
 
 
+def _coupling_rows(ops, op_leaf, removed_ids, after_ids) -> list[dict]:
+    """U4/R3: surface when a removal drops a residue op in a file another feature still has live
+    entities in -- the shared whitespace the U32 corruption cuts through. A residue is the byte
+    separator between a file's entities, so removing one that a *surviving* entity of a different
+    feature sits beside can splice that feature's file (the U32 case); naming it here means a
+    revert/restore/checklist shows which feature it reaches into, rather than only leaving the
+    corruption visible in the raw byte diff. File-granular (conservative: it flags a shared file,
+    not a proven adjacency), so it over-warns rather than silently cutting.
+
+    Pure over the already-loaded `ops` (no images needed -- footprint + `op_leaf` only)."""
+    from sgt.core.op import _symbol_kind
+
+    by_id = {op.id: op for op in ops}
+
+    def path_of(op_id):
+        op = by_id.get(op_id)
+        if op is None:
+            return None
+        return next((sym.partition("::")[0] for sym in op.footprint), None)
+
+    # files losing a residue op, and the feature(s) that residue belonged to.
+    removed_residue_files: dict[str, set] = {}
+    for oid in removed_ids:
+        op = by_id.get(oid)
+        if op is not None and any(_symbol_kind(s) == "residue" for s in op.footprint):
+            removed_residue_files.setdefault(path_of(oid), set()).add(op_leaf.get(oid))
+
+    seen, coupling = set(), []
+    for oid in after_ids:                       # surviving ops
+        p = path_of(oid)
+        if p not in removed_residue_files:
+            continue
+        feat = op_leaf.get(oid)
+        if feat is None:
+            continue
+        for removed_feat in removed_residue_files[p]:
+            key = (p, removed_feat, feat)
+            if feat != removed_feat and key not in seen:
+                seen.add(key)
+                coupling.append({"file": p, "removed_feature": removed_feat, "coupled_feature": feat})
+    return sorted(coupling, key=lambda c: (c["file"], str(c["removed_feature"]), str(c["coupled_feature"])))
+
+
 def _frontier_rows(repo, preview) -> list[dict]:
     """The per-dependent revert frontier (plan U3, R4): each op in the revert target's up-set
     classified on ONE axis, plus the target's read-only prerequisites. Three buckets, one
@@ -461,6 +504,7 @@ def _project_verb_preview(repo, preview) -> dict:
     from sgt.core.fold import code
     from sgt.core.ideal import Ideal
     from sgt.core.store import Store
+    from sgt.lens.tree import load as load_tree
 
     ops = Store(repo).all_ops()
     before = code(Ideal.from_ops(preview.before_ids, ops), ops)
@@ -473,6 +517,8 @@ def _project_verb_preview(repo, preview) -> dict:
         for path in sorted(set(before) | set(after))
         if before.get(path) != after.get(path)
     }
+    tree = load_tree(repo)
+    op_leaf = tree["op_leaf"] if tree else {}
     return {
         "ok": preview.ok,
         "verb": preview.verb,
@@ -484,6 +530,7 @@ def _project_verb_preview(repo, preview) -> dict:
         "files": files,
         "message": preview.message,
         "affected": _affected_rows(repo, preview.removed, preview.added),
+        "coupling": _coupling_rows(ops, op_leaf, preview.removed, preview.after_ids),
         "frontier": _frontier_rows(repo, preview),
     }
 
