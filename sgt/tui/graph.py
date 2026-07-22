@@ -1,21 +1,24 @@
-"""The feature-timeline (Gantt) layout + terminal renderer, shared by `sgt graph` (static print)
-and the Textual TUI.
+"""The feature-timeline layout + terminal renderer, shared by `sgt graph` (static print) and the
+Textual TUI.
 
-This is the terminal counterpart of the VS Code workbench's `computeGraphLayout` (a faithful port,
-kept behaviour-parallel on purpose). A commit-index is not a snapshot node -- it's a *set of ops*
-spread across features -- so we don't draw a commit spine or a node cloud. We lay out the FEATURES
-as a Gantt:
+This is the terminal counterpart of the VS Code workbench's `computeGraphLayout`/
+`computeSegmentLayout` (faithful ports, kept behaviour-parallel on purpose). We lay out the
+FEATURES as a tree of lanes:
 
     row   = one lane per feature, grouped into subsystem swimlanes and ordered by first appearance
             (foundations up top). Vertical position means "which feature / which subsystem".
-    x     = real commit-time, a shared axis. A lane's bar spans [first_commit, last_commit] and its
-            ops are binned along it as a density heatstrip, so a 2000-op commit is one dark column,
-            never a wall of glyphs.
-    frontier = a fold point: only ops with commit_index <= frontier count, so scrubbing accretes.
+    lane  = an ordered train of intent-*segment* "cars" (`f-XXXX@n`, `sgt.intent.segment`) -- the
+            visual atom, and exactly the `revert`/`edit`/`rewind` unit. Cars sit in per-feature
+            sequence order (x = `seg_index`), not a shared commit-time axis -- a short-lived
+            feature isn't one lit pixel and a long one isn't a confetti of glyphs. Cross-feature
+            wall-clock alignment is `sgt episodes`'s job.
+    frontier = a fold point: only ops with commit_index <= frontier count; cars past it stay in
+            place, dimmed, rather than disappearing (scrubbing accretes, it doesn't reshuffle).
 
-The terminal render is the honest projection of that model: a fixed-width time strip per lane,
-brightness = local op density, under a labeled axis -- everything a user needs to answer "what is
-here, when did it live, how big, and what can I edit."
+`graph_layout` builds the plain per-op Gantt (still used as `segment_layout`'s tree/visibility
+base, and directly by anything that predates segments); `segment_layout` threads the checkpoint
+cars onto it. The terminal render draws the latter -- everything a user needs to answer "what
+chapters does this feature have, which one is live, and what can I revert."
 """
 
 from __future__ import annotations
@@ -184,6 +187,67 @@ def graph_layout(
     }
 
 
+def segment_layout(
+    map_view: dict,
+    history_view: dict,
+    segments: list[dict],
+    *,
+    collapsed=(),
+    frontier: int | None = None,
+) -> dict:
+    """The chunk-car timeline layout: the visual atom is the intent *segment* (a `<feature>@<n>`
+    checkpoint), not the raw op. Reuses `graph_layout` verbatim for the gutter -- tree walk,
+    visibility, collapse-to-meta, ordering by first appearance, lanes-with-no-ops dropped -- then
+    threads each visible lane's leaf feature(s) segments onto it as an ordered train of `cars`
+    (a collapsed subsystem's meta-lane naturally gets the union of its features' cars, sorted
+    together -- the "aggregate car strip" the redesign calls for).
+
+    `segments` is the flat list `sgt.api.segments_view`/`_segments_out` already returns (one dict
+    per checkpoint: `feature_id`, `seg_index`, `checkpoint`, `intent` (label), `op_ids`, `op_count`,
+    `first_index`, `last_index`, `tier`, `source`) -- passed in, never re-derived here, so this
+    function stays pure and repo-free like `graph_layout`.
+
+    A car whose `first_index` is past `frontier` is kept and flagged `is_future` rather than
+    dropped: the renderer dims it, but a lane's car *count* and positions stay stable while
+    scrubbing -- only cell density (via `graph_layout`'s own op filtering) accretes."""
+    fr = float("inf") if frontier is None else frontier
+    commit_index_of = {op["id"]: op["commit_index"] for op in history_view.get("ops", [])}
+
+    by_feature: dict[str, list[dict]] = {}
+    for seg in segments:
+        by_feature.setdefault(seg["feature_id"], []).append(seg)
+
+    base = graph_layout(map_view, history_view, collapsed=collapsed, frontier=frontier)
+
+    lanes = []
+    for l in base["lanes"]:
+        cars = []
+        for leaf in l["leaves"]:
+            for seg in by_feature.get(leaf, []):
+                bins: dict[int, int] = {}
+                for oid in seg["op_ids"]:
+                    ci = commit_index_of.get(oid)
+                    if ci is not None:
+                        bins[ci] = bins.get(ci, 0) + 1
+                cars.append({
+                    "feature_id": leaf,
+                    "seg_index": seg["seg_index"],
+                    "checkpoint": seg["checkpoint"],
+                    "label": seg["intent"],
+                    "op_count": seg["op_count"],
+                    "tier": seg["tier"],
+                    "source": seg["source"],
+                    "first_index": seg["first_index"],
+                    "last_index": seg["last_index"],
+                    "sub_bins": sorted(bins.items()),
+                    "is_future": seg["first_index"] > fr,
+                })
+        cars.sort(key=lambda c: (c["first_index"], c["feature_id"], c["seg_index"]))
+        lanes.append({**l, "cars": cars})
+
+    return {**base, "lanes": lanes, "node_by_id": {l["id"]: l for l in lanes}}
+
+
 # ── Episodic projection (pure) ───────────────────────────────────────────────────────────────────
 
 
@@ -326,33 +390,92 @@ _DIM = "\x1b[2m"
 _BOLD = "\x1b[1m"
 _RESET = "\x1b[0m"
 
+_TIER_BRACKETS = {"co-changed": ("[", "]"), "coupled": ("[", "]"), "thematic": ("(", ")")}
+
+
+def _resolve_focus(focus: str, layout: dict, labels: dict) -> str | None:
+    """Resolve `--focus`'s argument against a lane id: a unique id-prefix (the short handle the
+    render prints, e.g. `f-0575f655` for a longer real id), else a unique case-insensitive label
+    match. Mirrors `sgt.intent.segment.resolve_checkpoint`'s handle resolution, so the id you copy
+    off the graph and the id you pass back in agree."""
+    prefix_hits = [nid for nid in layout["node_by_id"] if nid.startswith(focus)]
+    if len(prefix_hits) == 1:
+        return prefix_hits[0]
+    want = focus.strip().lower()
+    label_hits = [nid for nid in layout["node_by_id"] if labels.get(nid, "").strip().lower() == want]
+    return label_hits[0] if len(label_hits) == 1 else None
+
+
+def _bucket_density(sub_bins: list, width: int) -> list[int]:
+    """Fold a car's `[(commit_index, count), ...]` into `width` sequential buckets -- the within-
+    car density texture drawn between its brackets. A single-commit car (the common case) has
+    nothing to spread across time, so it fills solid at that one count -- a flat opacity, not one
+    bright pixel bleeding into a tail of dead space."""
+    if width <= 0:
+        return []
+    n = len(sub_bins)
+    if n == 0:
+        return [0] * width
+    if n == 1:
+        return [sub_bins[0][1]] * width
+    buckets = [0] * width
+    for i, (_ci, cnt) in enumerate(sub_bins):
+        buckets[min(width - 1, i * width // n)] += cnt
+    return buckets
+
+
+def _time_ruler(prefix_w: int, bar_w: int, commit_count: int) -> str:
+    """A commit-index ruler aligned under the car strip: start/mid/end ticks (`c0 … cN`) at the same
+    columns `render_cars` maps commits onto, so a car's horizontal position reads as *when*. Blank
+    when there's no width or only one commit (nothing to place along)."""
+    if bar_w <= 0 or commit_count <= 1:
+        return ""
+    max_ci = commit_count - 1
+    buf = [" "] * bar_w
+    for frac in (0.0, 0.5, 1.0):
+        tick = f"c{int(round(frac * max_ci))}"
+        pos = int(round(frac * (bar_w - 1)))
+        if frac == 1.0:
+            pos = bar_w - len(tick)          # end-anchored
+        elif frac == 0.5:
+            pos -= len(tick) // 2            # centered
+        pos = max(0, min(bar_w - len(tick), pos))
+        for k, ch in enumerate(tick):
+            buf[pos + k] = ch
+    return " " * prefix_w + "".join(buf)
+
 
 def render_graph_lines(
     map_view: dict,
     history_view: dict,
+    segments: list[dict] | None = None,
     *,
     selected: str | None = None,
+    focus: str | None = None,
     frontier: int | None = None,
     collapsed=(),
     color: bool = True,
     bar_width: int = 42,
     label_width: int = 24,
-    checkpoints: dict[str, list] | None = None,
+    show_links: bool = False,
 ) -> list[str]:
-    """Render the timeline as terminal lines (ANSI truecolor when `color`). Each feature is a lane:
-    its short `f-XXXX` handle (the copy-paste token for `sgt revert <handle>[@n]`), identity glyph,
-    label, and a fixed-width time strip whose lit span is [first,last] with per-column brightness =
-    op density -- the terminal projection of the same Gantt the VS Code graph draws, under one
-    shared, labeled commit axis.
+    """Render the feature timeline as terminal lines (ANSI truecolor when `color`). The visual atom
+    is the intent *segment*, not the raw op: each lane draws its checkpoints as bracketed "cars"
+    positioned on the SHARED commit-time axis -- a car sits at the column of its first commit and
+    spans to its last, over a dim lifetime track -- so reading left-to-right shows *when* each
+    feature was worked on and when it went quiet, against the same time span every lane shares. The
+    texture inside a car ∝ its own commit density, the bracket shape ∝ `tier` (`[ ]` co-changed/
+    coupled, `( )` thematic, a weaker claim), and the lane's fattest chapter (its "big event") gets
+    bold brackets. The digit is the checkpoint's `@n` -- the handle you pass to `sgt revert`.
 
-    `checkpoints={fid: [(seg_index, first_commit_index), ...]}` overlays each feature's rewind
-    points *on its own lane*: the digit `n` is drawn at the commit-time column where checkpoint
-    `<fid>@n` begins, so the density blocks (WHEN the feature was active) and the checkpoints (the
-    chapters you can rewind) finally read on the same axis -- `✦N` in the margin is just their
-    count. Absent (e.g. the TUI) -> no markers, no count."""
-    checkpoints = checkpoints or {}
+    `segments` is the flat `sgt.api.segments_view` list; a lane with no matching segments (nothing
+    built yet for it) falls back to a plain dim lifetime track. `focus=<feature_id>` renders just
+    that one lane, full width, one detail line per car (checkpoint, label, op count, tier, source).
+    `show_links` re-enables the co-change `↔` annotation trailing each row -- off by default, since
+    themes/co-change are now an overlay, not the primary read."""
+    segments = segments or []
     fr = float("inf") if frontier is None else frontier
-    layout = graph_layout(map_view, history_view, collapsed=collapsed, frontier=frontier)
+    layout = segment_layout(map_view, history_view, segments, collapsed=collapsed, frontier=frontier)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
 
     def paint(hex_str: str, s: str) -> str:
@@ -364,63 +487,127 @@ def render_graph_lines(
     def bold(s: str) -> str:
         return f"{_BOLD}{s}{_RESET}" if color else s
 
-    commit_count = layout["commit_count"]
-    max_commit = max(1, commit_count - 1)
+    def render_car(car: dict, width: int, hexc: str, is_big: bool = False) -> str:
+        lo, hi = _TIER_BRACKETS.get(car["tier"], ("[", "]"))
+        inner_w = max(0, width - 2)
+        body = ""
+        if inner_w >= 1:
+            digit = str(car["seg_index"] % 10)
+            body += dim(digit) if car["is_future"] else (bold(paint(hexc, digit)) if color else digit)
+        if inner_w >= 2:
+            buckets = _bucket_density(car["sub_bins"], inner_w - 1)
+            local_max = max(buckets) if buckets else 0
+            for n in buckets:
+                ch = "█" if n > 0 else "·"
+                if car["is_future"] or n == 0:
+                    body += dim(ch)
+                else:
+                    body += _shade(hexc, (n / max(1, local_max)) ** 0.5, ch) if color else ch
 
-    def col_of(ci: int) -> int:
-        return max(0, min(bar_width - 1, int(ci / max_commit * bar_width)))
+        def bracket(b: str) -> str:
+            if car["is_future"]:
+                return dim(b)
+            painted = paint(hexc, b)
+            return bold(painted) if (is_big and color) else painted  # big event = bold brackets
 
-    # Global max per-column op count, for brightness normalization across lanes.
-    lane_cols: dict[str, list] = {}
-    gmax = 1
-    for l in layout["lanes"]:
-        cols = [0] * bar_width
-        for ci in l["commits"]:
-            cols[col_of(ci)] += 1
-        lane_cols[l["id"]] = cols
-        gmax = max(gmax, *cols) if cols else gmax
+        return f"{bracket(lo)}{body}{bracket(hi)}"
 
-    def strip(cols: list[int], first: int, last: int) -> str:
-        """A bar_width time strip: shaded block where ops land (brightness=density), a dim track
-        across the feature's [first,last] lifetime, blank outside it."""
-        lo, hi = col_of(first), col_of(last)
-        out = []
-        for c in range(bar_width):
-            n = cols[c]
-            if n > 0:
-                out.append((n, "█"))  # █
-            elif lo <= c <= hi:
-                out.append((0, "─"))  # ─ lifetime track
-            else:
-                out.append((-1, " "))
-        return out  # list of (count, char); colored by caller with the lane hue
+    def render_cars(cars: list[dict], hexc: str, width: int) -> str:
+        """Draw a lane's cars positioned on the SHARED commit-time axis: each car sits at the column
+        of its `first_index`, spanning to its `last_index`, over a dim lifetime track -- so a lane
+        reads *when* the feature was worked on and when it went quiet, against the same time span
+        every other lane uses. A single left-to-right pass floors each car's width and enforces a
+        one-column gap, so short chapters stay legible and a burst in a narrow band nudges right
+        rather than stacking. Mirrors the VS Code `renderCars` (columns here, pixels there)."""
+        if not cars or width <= 0:
+            return dim("─" * max(0, width))
+        max_ci = max(1, layout["commit_count"] - 1)
+        max_ops = max((c["op_count"] for c in cars), default=1)
 
-    # Nearest co-change neighbours (strongest first), for the per-lane "connects to" annotation.
+        def col_of(ci: int) -> int:
+            return int(round(max(0, min(max_ci, ci)) / max_ci * (width - 1)))
+
+        placed: list[tuple[int, int, dict]] = []
+        cursor = 0
+        for c in cars:
+            start = max(col_of(c["first_index"]), cursor)
+            w = max(3, col_of(c["last_index"]) - start + 1)  # floor: bracket-digit-bracket
+            if start + w > width:
+                start = max(cursor, width - w)
+            if start + w > width:
+                w = max(2, width - start)
+            if w < 2 or start >= width:
+                break  # out of room -- the remaining (rightmost, latest) cars don't fit
+            placed.append((start, w, c))
+            cursor = start + w + 1  # a one-column gap between adjacent cars
+
+        out, col = "", 0
+        for start, w, c in placed:
+            if start > col:
+                out += dim("─" * (start - col))
+            is_big = len(cars) > 1 and c["op_count"] == max_ops
+            out += render_car(c, w, hexc, is_big=is_big)
+            col = start + w
+        if col < width:
+            out += dim("─" * (width - col))
+        return out
+
+    # Nearest co-change neighbours (strongest first), for the optional per-lane annotation.
     nbrs: dict[str, list] = {}
     for e in sorted(layout["edges"], key=lambda e: -e["weight"]):
         nbrs.setdefault(e["a"], []).append(e["b"])
         nbrs.setdefault(e["b"], []).append(e["a"])
 
+    def links_note(fid: str) -> str:
+        if not show_links:
+            return ""
+        link_ids = nbrs.get(fid, [])[:2]
+        links = ", ".join(labels.get(x, x) for x in link_ids)
+        extra = len(nbrs.get(fid, [])) - len(link_ids)
+        return ("  " + dim("↔ " + links + (f" +{extra}" if extra > 0 else ""))) if links else ""
+
     lines: list[str] = []
     total_ops = sum(l["op_count"] for l in layout["lanes"])
     n_sub = len(layout["headers"])
     sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
-    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {commit_count} commit(s)  ·  {total_ops} op(s){sub_note}"))
+    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['commit_count']} commit(s)  ·  "
+                       f"{total_ops} op(s){sub_note}"))
     if frontier is not None:
         lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
     lines.append("")
 
-    # Shared time axis: c0 at the strip's left edge, cMax at its right. The gutter width matches the
-    # lane prefix (" " + marker + glyph + " " + handle + " " + label + " ") so the axis aligns over
-    # the bars.
-    handle_width = 10
-    gutter = " " * (label_width + handle_width + 6)
-    ends = f"c0c{max_commit}"
-    axis = "c0" + "─" * max(1, bar_width - len(ends)) + f"c{max_commit}"
-    lines.append(dim(f"{gutter}{axis}  time →"))
+    if focus is not None:
+        fid_match = focus if focus in layout["node_by_id"] else _resolve_focus(focus, layout, labels)
+        lane = layout["node_by_id"].get(fid_match) if fid_match else None
+        if lane is None:
+            lines.append(dim(f" {focus!r} has no lane yet (no ops, an unknown feature id, or an "
+                             "ambiguous prefix/label)"))
+            return lines
+        focus = fid_match
+        handle = focus[:10]  # the copy-paste token -- same prefix the gutter itself prints
+        hexc = color_for(focus)
+        raw = labels.get(focus, focus)
+        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {dim(focus)}  ·  {lane['op_count']} op(s)")
+        lines.append("")
+        if not lane["cars"]:
+            lines.append(dim("   no checkpoints yet -- run `sgt intent build` (or `sgt graph --refresh`)"))
+        for car in lane["cars"]:
+            head = render_car(car, 6, hexc)
+            future = dim(" (not yet reached)") if car["is_future"] else ""
+            lines.append(f"   {head}  {handle}@{car['seg_index']}  {car['label']}  "
+                         f"({car['op_count']} op, {car['tier']}, {car['source']}){future}")
+        lines.append("")
+        lines.append(dim(f" operate:  sgt revert {handle}  (whole feature)   ·   "
+                         f"sgt revert {handle}@<n>  (one car)   ·   sgt intent show {handle}"))
+        return lines
 
     lanes_by_row = {l["row"]: l for l in layout["lanes"]}
     headers_by_row = {h["row"]: h for h in layout["headers"]}
+    # A time ruler aligned under the car strip -- the prefix width matches the row layout below
+    # (leading space + marker + glyph + space + 10-char handle + space + label + space).
+    ruler = _time_ruler(label_width + 16, bar_width, layout["commit_count"])
+    if ruler:
+        lines.append(dim(ruler))
     for row in range(layout["row_count"]):
         if row in headers_by_row:
             hd = headers_by_row[row]
@@ -438,45 +625,27 @@ def render_graph_lines(
             if l["is_meta"]:
                 raw = f"{raw} ({len(l['leaves'])})"
             label = raw[:label_width].ljust(label_width)
-            handle = dim(fid[:handle_width].ljust(handle_width))  # the copy-paste token for revert
-            cells = strip(lane_cols[fid], l["first_commit"], l["last_commit"])
-            # Checkpoint markers: the digit `n` at the column where `<fid>@n` begins. First-in wins
-            # a column so a marker is never silently swallowed by a later, denser one.
-            ck = [m for m in checkpoints.get(fid, []) if m[1] <= fr]
-            marks: dict[int, int] = {}
-            for seg_index, first_ci in sorted(ck, key=lambda m: m[0]):
-                marks.setdefault(col_of(first_ci), seg_index)
-            bar = ""
-            for c, (n, ch) in enumerate(cells):
-                if c in marks:  # a rewind point takes the column over the density cell
-                    d = str(marks[c])
-                    bar += (bold(paint(hexc, d)) if color else d)
-                elif n > 0:
-                    bar += _shade(hexc, (n / gmax) ** 0.5, ch) if color else ch
-                elif n == 0:
-                    bar += dim(ch)
-                else:
-                    bar += ch
+            handle = dim(fid[:10].ljust(10))  # the copy-paste token for revert
+            bar = render_cars(l["cars"], hexc, bar_width)
             count = str(l["op_count"]).rjust(5)
-            n_ckpt = len(ck)
-            ckpt = dim(f" ✦{n_ckpt}") if n_ckpt else ""  # rewind points on this lane (see the digits)
-            link_ids = nbrs.get(fid, [])[:2]
-            links = ", ".join(labels.get(x, x) for x in link_ids)
-            extra = len(nbrs.get(fid, [])) - len(link_ids)
+            n_ckpt = len(l["cars"])
+            ckpt = dim(f" ✦{n_ckpt}") if n_ckpt else ""  # rewind points on this lane
             row_s = (f" {marker}{paint(hexc, glyph)} {handle} "
                      f"{bold(label) if is_sel else label} {bar} {dim(count)}{ckpt}")
-            if links:
-                row_s += "  " + dim("↔ " + links + (f" +{extra}" if extra > 0 else ""))
+            row_s += links_note(fid)
             lines.append(row_s)
+            if is_sel and l["cars"]:
+                chapters = "   ".join(f"{c['seg_index']} {c['label']}" for c in l["cars"])
+                lines.append(dim(f"      {chapters}"))
     lines.append("")
 
     # Legend + next-step hints: the view explains its own encoding and what to do from here.
-    lines.append(dim(" f-XXXX = the handle you type   bar = op density over time   digits 0·1·2 = where"
-                     " checkpoint @n begins   ✦N = N rewind points   ↔ co-change   (structural) = glue"))
+    lines.append(dim(" [0···] = a checkpoint car at its commit-time (digit = its @n, brightness = op"
+                     " density); [ ] co-changed · ( ) thematic · bold = the lane's big event · dim = past frontier"))
     lines.append(dim(" daily:  sgt graph  (fast, cached)   ·   sgt graph --refresh  (after edits: re-name"
-                     " features + checkpoints)"))
+                     " features + checkpoints)   ·   sgt graph --focus <f-XXXX>  (one feature, full detail)"))
     lines.append(dim(" operate:  sgt revert <f-XXXX>  (whole feature)   ·   sgt revert <f-XXXX>@<n>"
-                     "  (one checkpoint)   ·   sgt intent show <f-XXXX>  (its chapters)"))
+                     "  (one checkpoint/car)   ·   sgt intent show <f-XXXX>  (its chapters)"))
     return lines
 
 

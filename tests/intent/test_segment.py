@@ -16,6 +16,25 @@ def _leaf(members: list[str], label: str) -> dict:
             "dir": "", "label": label}
 
 
+def _mine_fully(repo) -> None:
+    """`get()` mines at most one deadline-bounded backfill chunk per call (KTD-3): on a fresh repo
+    with enough history that walking backward to genesis doesn't finish inside that wall-clock
+    budget, a single call can silently leave the earliest commits (and their ops) unmined --
+    entirely a test-machine-speed artifact, not anything about the fixture's content. Loop until
+    the backward walk actually reaches genesis so a fixture's commit count is never gated by how
+    fast this happens to run."""
+    from sgt.core.lens import _load_backfill_state, _ref_key
+    from sgt.store.gitbind import GitBinding
+
+    gb = GitBinding(repo)
+    key = _ref_key(gb) or gb.head()
+    for _ in range(10):
+        get(repo)
+        if _load_backfill_state(repo).get(key, {}).get("reached_genesis"):
+            return
+    raise AssertionError(f"{repo}: backfill did not reach genesis after 10 get() chunks")
+
+
 def _save_tree(repo, leaves: dict[str, list[str]]) -> dict[str, str]:
     nodes = {fid: _leaf(members, fid) for fid, members in leaves.items()}
     ops = Store(repo).all_ops()
@@ -33,7 +52,7 @@ def test_ops_of_a_feature_in_one_commit_form_one_run(tmp_path):
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n")
     gb.commit_all("feat(x): add foo and bar")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo", "a.py::bar"]})
     runs = segment.feature_runs(tmp_path, op_leaf)
@@ -48,7 +67,7 @@ def test_runs_are_ordered_by_commit_index(tmp_path):
     gb.commit_all("feat(x): add foo")
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n\n\ndef baz():\n    return 3\n")
     gb.commit_all("feat(x): add baz")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo", "a.py::baz"]})
     runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
@@ -60,7 +79,7 @@ def test_op_with_unknown_feature_is_skipped_from_runs(tmp_path):
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n")
     gb.commit_all("add foo")
-    get(tmp_path)
+    _mine_fully(tmp_path)
     # empty op_leaf -> no feature known -> no runs, never an error
     assert segment.feature_runs(tmp_path, {}) == {}
 
@@ -72,7 +91,7 @@ def test_creating_a_symbol_is_high_novelty(tmp_path):
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n")
     gb.commit_all("feat(x): add foo")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo"]})
     run = segment.feature_runs(tmp_path, op_leaf)["F-A"][0]
@@ -85,7 +104,7 @@ def test_modifying_in_place_is_low_novelty(tmp_path):
     gb.commit_all("feat(x): add foo")
     (tmp_path / "a.py").write_text("def foo(x, y):\n    return 1\n")  # rename/add-param: a tweak
     gb.commit_all("feat(x): add a param to foo")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo"]})
     runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
@@ -102,7 +121,7 @@ def test_low_novelty_tweak_merges_into_previous_segment(tmp_path):
     gb.commit_all("feat(x): add foo")
     (tmp_path / "a.py").write_text("def foo(x, y):\n    return 1\n")
     gb.commit_all("feat(x): tweak foo signature")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo"]})
     runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
@@ -118,7 +137,7 @@ def test_scope_change_forces_a_boundary(tmp_path):
     gb.commit_all("feat(x): add foo")
     (tmp_path / "a.py").write_text("def foo(x, y):\n    return 1\n")
     gb.commit_all("fix(y): tweak foo under a different scope")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo"]})
     runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
@@ -131,7 +150,7 @@ def test_every_run_lands_in_exactly_one_segment(tmp_path):
     for i in range(4):
         (tmp_path / "a.py").write_text("".join(f"def f{j}():\n    return {j}\n\n\n" for j in range(i + 1)))
         gb.commit_all(f"feat(x): step {i}")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": [f"a.py::f{j}" for j in range(4)]})
     runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
@@ -148,7 +167,7 @@ def test_segmentation_is_deterministic(tmp_path):
     gb.commit_all("feat(x): add foo")
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n")
     gb.commit_all("fix(y): add bar")
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo", "b.py::bar"]})
     first = segment.deterministic_segments(tmp_path, op_leaf)
@@ -169,7 +188,7 @@ def _feature_with_two_segments(tmp_path):
     gb.commit_all("feat(x): add foo")
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n")
     gb.commit_all("fix(y): add bar")  # scope change -> two segments
-    get(tmp_path)
+    _mine_fully(tmp_path)
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo", "b.py::bar"]})
     # write a label so label-matching can be exercised
     nodes = {"F-A": _leaf(["a.py::foo", "b.py::bar"], "My Feature")}
@@ -245,7 +264,7 @@ def test_soft_cap_bounds_segment_count(tmp_path):
         body = "".join(f"def f{j}():\n    return {j}\n\n\n" for j in range(i + 1))
         (tmp_path / "a.py").write_text(body)
         gb.commit_all(f"feat(s{i}): add {sym}")  # every commit a fresh scope -> a seam each
-    get(tmp_path)
+    _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": members})
     runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
@@ -253,3 +272,114 @@ def test_soft_cap_bounds_segment_count(tmp_path):
     assert len(segs) <= segment.MAX_SEGMENTS
     # still a total partition after capping
     assert frozenset().union(*(s.op_ids for s in segs)) == frozenset().union(*(r.op_ids for r in runs))
+
+
+def test_stale_record_leftover_is_capped_not_appended_one_by_one(tmp_path):
+    """A partial/stale persisted record must not let a feature's segment count grow unbounded as
+    commits land after the last `sgt intent build` -- the runs it doesn't name are cut with the
+    same MAX_SEGMENTS-capped partition a from-scratch feature gets (`_partition_runs`), not one
+    raw trailing segment per unclaimed commit."""
+    gb, _ = init_store(tmp_path)
+    members = []
+    for i in range(segment.MAX_SEGMENTS + 4):
+        sym = f"f{i}"
+        members.append(f"a.py::{sym}")
+        body = "".join(f"def f{j}():\n    return {j}\n\n\n" for j in range(i + 1))
+        (tmp_path / "a.py").write_text(body)
+        gb.commit_all(f"feat(s{i}): add {sym}")  # every commit a fresh scope -> a seam each
+    _mine_fully(tmp_path)
+
+    op_leaf = _save_tree(tmp_path, {"F-A": members})
+    runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
+    # a record that names none of these commits (as if built long ago, then the feature moved on)
+    stale_record = [{"commit_shas": ["deadbeef" * 5], "label": "old chapter",
+                     "rationale": "", "source": "llm"}]
+    segs = segment.overlay_persisted(runs, stale_record)
+    assert len(segs) <= segment.MAX_SEGMENTS
+    assert frozenset().union(*(s.op_ids for s in segs)) == frozenset().union(*(r.op_ids for r in runs))
+
+
+def test_persisted_entries_are_never_recut_only_the_unclaimed_tail_is(tmp_path):
+    """The cap applies to runs the record doesn't cover -- a real persisted (LLM-authored) chapter
+    is never merged away by MAX_SEGMENTS, even if the feature as a whole has more chapters than
+    the cap; only the leftover partition is bounded."""
+    segs = _feature_with_two_segments(tmp_path)
+    record = [{"commit_shas": [segs[0].commit_shas[0]], "label": "kept as-is",
+              "rationale": "", "source": "llm"}]
+    op_leaf = tree.load(tmp_path)["op_leaf"]
+    runs = segment.feature_runs(tmp_path, op_leaf)["F-A"]
+    out = segment.overlay_persisted(runs, record)
+    llm_segs = [s for s in out if s.source == "llm"]
+    assert len(llm_segs) == 1 and llm_segs[0].label == "kept as-is"
+
+
+# -- granularity gate ------------------------------------------------------------------------------
+# The redesign plan (2026-07-21, "segment-chunks as the atom") makes the segment the visual atom of
+# `sgt graph` -- if the cut weights ever drift towards over-fragmenting, every lane in that view
+# degrades back into the "confetti" the redesign exists to fix. This harness measures the two
+# numbers that redesign is gated on (median cars/feature, single-op-car fraction) against a fixed
+# mix of realistic feature shapes -- a one-shot feature, a tweaked-in-place feature, a genuinely
+# multi-chapter feature, and a pathologically long-lived one -- so a future weight change (Phase 4
+# of that plan, or any later retune) has a concrete regression signal instead of "feels chunkier".
+
+
+def _granularity_fixture(tmp_path):
+    gb, _ = init_store(tmp_path)
+    leaves: dict[str, list[str]] = {}
+
+    (tmp_path / "simple.py").write_text("def simple():\n    return 1\n")
+    gb.commit_all("feat(simple): add simple")
+    leaves["F-SIMPLE"] = ["simple.py::simple"]
+
+    (tmp_path / "tweak.py").write_text("def tweak(x):\n    return 1\n")
+    gb.commit_all("feat(tweak): add tweak")
+    (tmp_path / "tweak.py").write_text("def tweak(x, y):\n    return 1\n")
+    gb.commit_all("feat(tweak): widen tweak's signature")
+    (tmp_path / "tweak.py").write_text("def tweak(x, y, z):\n    return 1\n")
+    gb.commit_all("feat(tweak): widen tweak's signature again")
+    leaves["F-TWEAKS"] = ["tweak.py::tweak"]
+
+    chapter_members = []
+    for i, scope in enumerate(["intake", "process", "export"]):
+        sym = f"chapter{i}"
+        chapter_members.append(f"chapters.py::{sym}")
+        body = "".join(f"def chapter{j}():\n    return {j}\n\n\n" for j in range(i + 1))
+        (tmp_path / "chapters.py").write_text(body)
+        gb.commit_all(f"feat({scope}): add {sym}")  # a fresh scope each commit -> a boundary each
+    leaves["F-CHAPTERS"] = chapter_members
+
+    big_members = []
+    for i in range(segment.MAX_SEGMENTS + 4):
+        sym = f"big{i}"
+        big_members.append(f"big.py::{sym}")
+        body = "".join(f"def big{j}():\n    return {j}\n\n\n" for j in range(i + 1))
+        (tmp_path / "big.py").write_text(body)
+        gb.commit_all(f"feat(s{i}): add {sym}")
+    leaves["F-BIG"] = big_members
+
+    _mine_fully(tmp_path)
+    op_leaf = _save_tree(tmp_path, leaves)
+    return segment.deterministic_segments(tmp_path, op_leaf)
+
+
+def test_granularity_metric_median_cars_per_feature(tmp_path):
+    by_feature = _granularity_fixture(tmp_path)
+    counts = sorted(len(segs) for segs in by_feature.values())
+    median = counts[len(counts) // 2] if len(counts) % 2 else \
+        (counts[len(counts) // 2 - 1] + counts[len(counts) // 2]) / 2
+    # F-SIMPLE and F-TWEAKS each merge into one car; only F-CHAPTERS/F-BIG genuinely fragment --
+    # the redesign's whole premise is that most lanes read as one or a very few cars.
+    assert median <= 2, f"granularity regressed: median cars/feature = {median} ({counts})"
+    assert by_feature["F-SIMPLE"] == [] or len(by_feature["F-SIMPLE"]) == 1
+    assert len(by_feature["F-TWEAKS"]) == 1  # in-place tweaks, same scope -> no new chapter
+    assert len(by_feature["F-BIG"]) <= segment.MAX_SEGMENTS
+
+
+def test_granularity_metric_single_op_car_fraction(tmp_path):
+    by_feature = _granularity_fixture(tmp_path)
+    all_segs = [s for segs in by_feature.values() for s in segs]
+    single_op = sum(1 for s in all_segs if s.op_count == 1)
+    fraction = single_op / len(all_segs)
+    # a car with exactly one op is the least informative shape a chunk can take; if a weight
+    # change ever pushes most cars down to single-op slivers, this is the number that catches it.
+    assert fraction <= 0.6, f"granularity regressed: single-op-car fraction = {fraction} ({len(all_segs)} cars)"

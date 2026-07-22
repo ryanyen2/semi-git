@@ -275,6 +275,11 @@ body {
 svg.railsvg {
   display: block;
   font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  /* Scrubbing the frontier is a pointer-drag over the plot; without this the drag also selects the
+     SVG's text labels (a native text-selection gesture), leaving a stray highlight and swallowing
+     pointer events. The timeline has no selectable text of its own, so suppressing it is free. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* ── The feature timeline (Gantt) ─────────────────────────────────────────────────────────────
@@ -351,13 +356,87 @@ svg.railsvg {
   pointer-events: none;
 }
 
-/* The lifetime track [first,last]; the density cells layer on top at higher opacity. */
+/* A feature label is a distinct click target (spotlight toggle) -- so it opts back into pointer
+   events and shows a pointer cursor; the spotlit one carries the accent while pinned. */
+.glane-label-btn {
+  cursor: pointer;
+}
+
+.glane-label-btn:hover {
+  text-decoration: underline;
+}
+
+.glane-label-btn.spotlit {
+  fill: var(--accent);
+  font-weight: 600;
+}
+
+/* The no-segments fallback track spanning a feature's lifetime [first,last]. */
 .gbar-track {
   fill-opacity: 0.14;
 }
 
-.gbar-cell {
+/* Chunk-cars: one per intent-segment checkpoint, packed left->right in seg_index order. A solid
+   border is a co-changed/coupled chapter; a dashed one is the weaker thematic claim. The interior
+   cells (gcar-cell) layer the chapter's own per-commit density on top at higher opacity. */
+.gcar {
+  fill-opacity: 0.55;
+  stroke: var(--bg);
+  stroke-width: 1px;
+  cursor: pointer;
+}
+
+.gcar-thematic {
+  stroke-dasharray: 2 2;
+}
+
+/* The "big event" of a lane -- its fattest chapter -- reads brighter than its siblings so the most
+   consequential edit in a feature's history stands out without a second hue. */
+.gcar-big-rect {
+  fill-opacity: 0.78;
+}
+
+/* A label tag floated just above a narrow big-event car (when the car itself is too thin to hold
+   inline text) -- names the one chapter most worth noticing per lane. */
+.gcar-tag {
+  font-size: 9px;
+  text-anchor: middle;
   pointer-events: none;
+  fill: var(--fg);
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+.gcar-cell {
+  pointer-events: none;
+}
+
+.gcar-label {
+  font-size: 9px;
+  text-anchor: middle;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+/* The car whose checkpoint is currently focused (clicked here or in the inspector list): an accent
+   frame so the selected revert unit is unmistakable and stays in sync with the inspector row. */
+.gcar-wrap.gcar-selected .gcar {
+  stroke: var(--accent);
+  stroke-width: 2px;
+  fill-opacity: 0.92;
+}
+
+/* Past the scrubbed frontier: the whole car (rect + texture + label) dims as one unit. */
+.gcar-wrap.beyond {
+  opacity: 0.32;
 }
 
 .gbar-count {
@@ -512,6 +591,19 @@ svg.railsvg {
 .frontier-band {
   fill: transparent;
   cursor: ew-resize;
+}
+
+/* Floating readout above the playhead while scrubbing: the commit index + the event snapped to. */
+.scrub-readout {
+  fill: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 /* ── Inspector: detail + action bar + code(I) panel ──────────────────────────────────────────── */
@@ -871,11 +963,17 @@ svg.railsvg {
   gap: 6px;
   padding: 2px 4px;
   border-radius: 3px;
-  cursor: default;
+  cursor: pointer;
 }
 
 .checkpoint:hover {
   background: var(--panel-bg);
+}
+
+/* The checkpoint focused by a gantt car-click (or a click here) -- kept in sync both ways. */
+.checkpoint.selected {
+  background: var(--panel-bg);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .checkpoint.trivial {

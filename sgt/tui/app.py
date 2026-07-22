@@ -207,11 +207,13 @@ class GraphScreen(ModalScreen[None]):
         Binding("home", "frontier_head", "HEAD"),
     ]
 
-    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None) -> None:
+    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None,
+                 segments: list[dict] | None = None) -> None:
         super().__init__()
         self._map_view = map_view
         self._history_view = history_view
         self._selected = selected
+        self._segments = segments or []
         self._max_commit = max((c.get("index", 0) for c in history_view.get("commits", [])), default=0)
         self._frontier: int | None = None  # None = HEAD (full history)
 
@@ -225,7 +227,8 @@ class GraphScreen(ModalScreen[None]):
 
     def _body(self) -> Text:
         lines = render_graph_lines(
-            self._map_view, self._history_view, selected=self._selected, frontier=self._frontier
+            self._map_view, self._history_view, self._segments,
+            selected=self._selected, frontier=self._frontier,
         )
         return Text.from_ansi("\n".join(lines))
 
@@ -477,12 +480,12 @@ class SgtTui(App[None]):
     def action_graph(self) -> None:
         """Open the dependency-graph overview (reuses the mined `map_view`; reads `history_view` for
         the op/commit axis). Read-only -- the tree remains the selectable interaction surface."""
-        from sgt.api import history_view
+        from sgt.api import history_view, segments_view
 
         if not getattr(self, "_map_view", None):
             return
         hist = history_view(self.repo, full=True, limit=1_000_000)
-        self.push_screen(GraphScreen(self._map_view, hist, self._selected_id()))
+        self.push_screen(GraphScreen(self._map_view, hist, self._selected_id(), segments_view(self.repo)))
 
     def action_episodes(self) -> None:
         """Open the episode rail (the vertical git-log / "what I did, in order" lens). Reuses the

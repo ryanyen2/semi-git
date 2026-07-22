@@ -24,7 +24,6 @@ from pydantic import BaseModel
 from sgt import state
 from sgt.config import get_client, get_model
 
-EFFORT = "low"
 MAX_MEMBERS = 24
 MAX_SUBJECTS = 6
 MAX_BATCH = 8  # cluster-naming requests per `responses.parse` call in `label_many`
@@ -171,9 +170,11 @@ class Labeler:
         return self._client
 
     def _request(self, prompt: str) -> FeatureLabel:
+        # No `reasoning=` block: naming a cluster is one-shot structured extraction that never
+        # consumes a thinking trace, so requesting reasoning only spends thinking-token latency on
+        # every label -- the dominant cost on the `sgt map` / `sgt graph --refresh` hot path.
         r = self.client.responses.parse(
             model=get_model(self._repo), input=prompt, text_format=FeatureLabel,
-            reasoning={"effort": EFFORT},
         )
         with self._lock:
             self.calls += 1
@@ -195,7 +196,6 @@ class Labeler:
         )
         r = self.client.responses.parse(
             model=get_model(self._repo), input=combined, text_format=_FeatureLabelBatch,
-            reasoning={"effort": EFFORT},
         )
         with self._lock:
             self.calls += 1

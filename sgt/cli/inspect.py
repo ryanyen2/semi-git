@@ -20,6 +20,10 @@ def register(subs, parent) -> None:
     gp.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     gp.add_argument("--refresh", action="store_true",
                     help="re-mine + rebuild the map first (default: fast read of the last-built map)")
+    gp.add_argument("--focus", default=None, metavar="FEATURE",
+                    help="one feature, full width, one detail line per checkpoint car")
+    gp.add_argument("--links", action="store_true",
+                    help="show the co-change ↔ annotation trailing each lane (off by default)")
     gp.set_defaults(func=_cmd_graph)
     ep = subs.add_parser("episodes", parents=[parent])
     ep.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
@@ -78,7 +82,8 @@ def _cmd_map(args) -> int:
 
 
 def _cmd_graph(args) -> int:
-    return _graph(".", frontier=args.at, color=not args.no_color, refresh=args.refresh)
+    return _graph(".", frontier=args.at, color=not args.no_color, refresh=args.refresh,
+                  focus=args.focus, links=args.links)
 
 
 def _cmd_episodes(args) -> int:
@@ -293,18 +298,31 @@ def _diff(repo: str, ref_a: str, ref_b: str, as_json: bool = False) -> int:
 
 
 def _print_map_tree(view: dict) -> None:
-    """Indented `label (id) · N op(s)` tree, DFS from `roots` via each node's `children`."""
+    """Indented `label (id) · N op(s)` tree, DFS from `roots` via each node's `children`. A feature
+    leaf with no live members is a clustering-algorithm artifact (an empty split child), not a real
+    feature -- same "drop what has nothing to show" filter `graph_layout` applies to lanes with no
+    ops (`sgt/tui/graph.py`) -- so it and any subsystem left with no other visible descendant are
+    skipped here. Display-only: the underlying tree/clustering is untouched."""
     by_id = {n["id"]: n for n in view["nodes"]}
+
+    def is_visible(nid: str) -> bool:
+        n = by_id[nid]
+        if not n["children"]:
+            return bool(n["members"])
+        return any(is_visible(c) for c in n["children"])
 
     def visit(nid: str, depth: int) -> None:
         n = by_id[nid]
         print(f"{'  ' * depth}{n['label']} ({n['id']}) · {n['op_count']} op(s)")
         for child in n["children"]:
-            visit(child, depth + 1)
+            if is_visible(child):
+                visit(child, depth + 1)
 
     for root in view["roots"]:
-        visit(root, 0)
-    print(f"{view['feature_count']} feature(s)")
+        if is_visible(root):
+            visit(root, 0)
+    shown = sum(1 for n in view["nodes"] if not n["children"] and n["members"])
+    print(f"{shown} feature(s)")
 
 
 def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
@@ -355,45 +373,24 @@ def _map_for_view(repo: str, refresh: bool, verb: str, color: bool) -> dict:
     return map_view(repo)
 
 
-def _checkpoint_spans(repo: str, history: dict) -> dict[str, list]:
-    """`{feature_id: [(seg_index, first_commit_index), ...]}` from a cheap file read of the
-    persisted segments joined to the commit axis -- no `intent_view`, no LLM, no recompute. This is
-    what lets the graph draw each rewind point *on its lane* at the commit-time it begins, so a
-    `✦N` count corresponds to N visible `@n` markers. `seg_index` is the list position (0-based),
-    the exact `<feature>@<n>` you type; `overlay_persisted` preserves that order, so the marker and
-    the revert handle agree."""
-    from sgt import state
-
-    segs = state.load_json(repo, "intent_segments", default={}) or {}
-    idx = {c.get("sha"): c["index"] for c in history.get("commits", []) if c.get("sha")}
-    out: dict[str, list] = {}
-    for fid, recs in segs.items():
-        marks = []
-        for seg_index, rec in enumerate(recs):
-            cis = [idx[s] for s in (rec.get("commit_shas") or []) if s in idx]
-            if cis:
-                marks.append((seg_index, min(cis)))
-        if marks:
-            out[fid] = marks
-    return out
-
-
-def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refresh: bool = False) -> int:
-    """`sgt graph` (the terminal feature timeline / Gantt): one identity-colored lane per feature,
-    grouped into subsystem swimlanes and ordered by first appearance; each lane leads with its
-    short `f-XXXX` handle (the copy-paste target for `sgt revert <handle>[@n]`) and its checkpoint
-    count, then a time strip spanning its [first,last] commit lifetime with per-column brightness =
-    op density -- the terminal counterpart of the VS Code workbench graph.
+def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refresh: bool = False,
+           focus: str | None = None, links: bool = False) -> int:
+    """`sgt graph` (the terminal feature timeline): one identity-colored lane per feature, grouped
+    into subsystem swimlanes and ordered by first appearance; each lane leads with its short
+    `f-XXXX` handle (the copy-paste target for `sgt revert <handle>[@n]`) and draws its intent
+    checkpoints as an ordered train of bracketed "cars" -- the atom is the chapter you'd actually
+    revert to, not a raw op. `focus` narrows to one feature, full width, one detail line per car;
+    `links` re-enables the co-change `↔` annotation (off by default).
 
     A pure read of the last-built map by default; `--refresh` re-mines and rebuilds both layers
     (features + checkpoints) in one step. See `_map_for_view`."""
-    from sgt.api import history_view
+    from sgt.api import history_view, segments_view
     from sgt.tui.graph import render_graph_lines
 
     mv = _map_for_view(repo, refresh, "graph", color)
     hv = history_view(repo, full=True, limit=1_000_000)
     for line in render_graph_lines(
-        mv, hv, frontier=frontier, color=color, checkpoints=_checkpoint_spans(repo, hv),
+        mv, hv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
     ):
         print(line)
     return 0
