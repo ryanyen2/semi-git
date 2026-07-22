@@ -19,31 +19,35 @@ from __future__ import annotations
 
 from ._common import _emit_json, _fail_json
 
-_USAGE = ("usage: sgt intent list [--json] | sgt intent show <theme-id|commit-sha> [--json] | "
+_USAGE = ("usage: sgt intent list [--json] | "
+          "sgt intent show <feature@n | theme-id | commit-sha> [--json] | "
           "sgt intent build [--json] | "
-          "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit] [--json]")
+          "sgt intent relabel <feature@n> \"<intent>\" [--json] | "
+          "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit] [--json]\n"
+          "  (rewind a single checkpoint with `sgt revert <feature>@<n>`)")
 
 
 def register(subs, parent) -> None:
     p = subs.add_parser("intent", parents=[parent])
     p.add_argument("sub", nargs="?")
     p.add_argument("target", nargs="?")
+    p.add_argument("rest", nargs="*")  # the new label words for `relabel`
     p.add_argument("--subset", nargs="*")
     p.add_argument("--emit", action="store_true")
     p.set_defaults(func=_cmd_intent)
 
 
 def _cmd_intent(args) -> int:
-    return _intent(".", args.sub, args.target, args.subset, args.emit, args.as_json)
+    return _intent(".", args.sub, args.target, args.rest, args.subset, args.emit, args.as_json)
 
 
 def _intent(
-    repo: str, sub: str | None, target: str | None, subset: list[str] | None, emit: bool,
-    as_json: bool,
+    repo: str, sub: str | None, target: str | None, rest: list[str] | None,
+    subset: list[str] | None, emit: bool, as_json: bool,
 ) -> int:
     from sgt.core.lens import get
 
-    if sub not in ("list", "show", "build", "revert"):
+    if sub not in ("list", "show", "build", "revert", "relabel"):
         print(_USAGE)
         return 2
     get(repo)  # mine-on-contact so the overlay reflects current reality (R9)
@@ -54,6 +58,8 @@ def _intent(
     if target is None:
         print(_USAGE)
         return 2
+    if sub == "relabel":
+        return _relabel(repo, target, " ".join(rest or []), as_json)
     if sub == "revert":
         return _revert(repo, target, subset, emit, as_json)
     return _show(repo, target, as_json)
@@ -63,22 +69,54 @@ def _tier_badge(tier: str) -> str:
     return {"coupled": "●", "co-changed": "◐", "thematic": "○"}.get(tier, "?")
 
 
+def _novelty_bar(novelty: float) -> str:
+    """A one-glyph weight for a checkpoint: how much behavior it changed. A dim glyph flags a
+    checkpoint that mostly tweaked existing code -- a low-value rewind target."""
+    return "█" if novelty > 0.6 else ("▓" if novelty > 0.2 else "░")
+
+
 def _list(repo: str, as_json: bool) -> int:
+    """Lead with the feature-scoped checkpoints (the rewind units): each feature, then its
+    chronological checkpoints indented beneath, each addressable as `<feature>@<n>`. Themes (the
+    cross-feature rollup) are a compact footer -- superseded by checkpoints as the primary unit,
+    kept for the cross-cutting "one PR touched five features" view."""
+    from itertools import groupby
+
     from sgt.api import intent_view
 
     view = intent_view(repo)
     if as_json:
         return _emit_json(view)
-    if not view["themes"]:
-        print("(no themes built yet -- run `sgt intent build`)")
-    for t in view["themes"]:
-        span = ", ".join(t["feature_span"]) or "(no feature)"
-        print(f"  {_tier_badge(t['tier'])} {t['label']}  [{t['theme_id']}]  "
-              f"{len(t['op_ids'])} op(s) across {span}  ({t['tier']}, {t['source']})")
-        if t["stale_shas"]:
-            names = ", ".join(sha[:8] for sha in t["stale_shas"])
-            print(f"    ⚠ stale: {len(t['stale_shas'])} member commit(s) no longer resolve ({names})")
-    print(f"{len(view['themes'])} theme(s), {len(view['atoms'])} atom(s)")
+
+    segments = view["segments"]
+    if not segments:
+        print("(no feature tree yet -- run `sgt map` first)")
+    for feature_id, segs in groupby(segments, key=lambda s: s["feature_id"]):
+        segs = list(segs)
+        label = segs[0]["feature_label"]
+        total = sum(s["op_count"] for s in segs)
+        built = any(s["source"] == "llm" for s in segs)
+        hint = "" if built else "  (run `sgt intent build` to name checkpoints)"
+        print(f"● {label}  [{feature_id[:14]}]  {len(segs)} checkpoint(s), {total} op(s){hint}")
+        for s in segs:
+            print(f"    {_novelty_bar(s['novelty'])} [{s['seg_index']}] {s['intent']}  "
+                  f"({s['feature_id'][:10]}@{s['seg_index']})  {s['op_count']} op(s) · {s['tier']}")
+    # Cross-feature themes: a compact secondary section (superseded by checkpoints as the primary
+    # unit, but still the "one PR spanning several features" rollup, and the target of
+    # `sgt intent revert <theme-id>`). Stale members are surfaced here, not silently dropped.
+    if view["themes"]:
+        print("\ncross-feature themes:")
+        for t in view["themes"]:
+            span = ", ".join(f[:10] for f in t["feature_span"]) or "(no feature)"
+            print(f"  {_tier_badge(t['tier'])} {t['label']}  [{t['theme_id']}]  "
+                  f"{len(t['op_ids'])} op(s) across {span}  ({t['tier']}, {t['source']})")
+            if t["stale_shas"]:
+                names = ", ".join(sha[:8] for sha in t["stale_shas"])
+                print(f"    ⚠ stale: {len(t['stale_shas'])} member commit(s) no longer resolve ({names})")
+
+    n_feat = len({s["feature_id"] for s in segments})
+    print(f"\n{n_feat} feature(s), {len(segments)} checkpoint(s)"
+          + (f"; {len(view['themes'])} cross-feature theme(s)" if view["themes"] else ""))
     return 0
 
 
@@ -86,6 +124,29 @@ def _show(repo: str, target: str, as_json: bool) -> int:
     from sgt.api import intent_view
 
     view = intent_view(repo)
+
+    # A `<feature>@<n>` checkpoint takes precedence -- it's the primary addressable unit.
+    if "@" in target:
+        feat_part, _, idx_part = target.rpartition("@")
+        seg = next(
+            (s for s in view["segments"]
+             if str(s["seg_index"]) == idx_part
+             and (s["feature_id"].startswith(feat_part)
+                  or s["feature_label"].strip().lower() == feat_part.strip().lower())),
+            None,
+        )
+        if seg is not None:
+            if as_json:
+                return _emit_json({"kind": "checkpoint", **seg})
+            print(f"{seg['feature_label']} · checkpoint {seg['seg_index']}  "
+                  f"[{seg['feature_id'][:10]}@{seg['seg_index']}]  ({seg['tier']}, {seg['source']})")
+            print(f"  intent: {seg['intent']}")
+            print(f"  {seg['rationale']}")
+            print(f"  {seg['op_count']} op(s), commits {seg['first_index']}-{seg['last_index']}, "
+                  f"novelty {seg['novelty']}")
+            print(f"  rewind: sgt revert {seg['feature_id'][:10]}@{seg['seg_index']}")
+            return 0
+
     theme = next((t for t in view["themes"] if t["theme_id"] == target), None)
     matching_atoms = [a for a in view["atoms"] if a["commit_sha"].startswith(target)]
 
@@ -118,13 +179,60 @@ def _show(repo: str, target: str, as_json: bool) -> int:
     return 0
 
 
-def _build(repo: str, as_json: bool) -> int:
-    from sgt.intent.theme import build_themes
+def _relabel(repo: str, target: str, label: str, as_json: bool) -> int:
+    """`sgt intent relabel <feature@n> "<new intent>"`: override a checkpoint's label in the
+    user's words. Written to the committed `intent_segment_pins` layer keyed by the checkpoint's
+    first commit sha, so the edit survives `sgt intent build` (which only rewrites the boundary/
+    LLM-label layer). This is the "editing an intent = editing a checkpoint" path -- rare, but the
+    one deliberate lever a user has over the overlay."""
+    from sgt import state
+    from sgt.api import intent_view
 
-    themes = build_themes(repo)
+    if not label.strip():
+        return _fail_json("relabel needs a non-empty label: sgt intent relabel <feature@n> \"<intent>\"", as_json)
+    if "@" not in target:
+        return _fail_json(f"{target!r} is not a checkpoint ref (expected <feature>@<n>)", as_json)
+
+    feat_part, _, idx_part = target.rpartition("@")
+    segments = intent_view(repo)["segments"]
+    seg = next(
+        (s for s in segments
+         if str(s["seg_index"]) == idx_part
+         and (s["feature_id"].startswith(feat_part)
+              or s["feature_label"].strip().lower() == feat_part.strip().lower())),
+        None,
+    )
+    if seg is None:
+        return _fail_json(f"no checkpoint {target!r} found (see `sgt intent list`)", as_json)
+    if not seg["commit_shas"]:
+        return _fail_json(f"checkpoint {target!r} has no commit to pin the label to", as_json)
+
+    pins = state.load_json(repo, "intent_segment_pins", default={})
+    first_sha = seg["commit_shas"][0]
+    pins.setdefault(seg["feature_id"], {})[first_sha] = label.strip()[:60]
+    state.save_json_if_changed(repo, "intent_segment_pins", pins)
+
     if as_json:
-        return _emit_json({"themes": themes, "count": len(themes)})
-    print(f"✓ intent build: {len(themes)} theme(s)")
+        return _emit_json({"ok": True, "checkpoint": seg["checkpoint"], "label": label.strip()[:60]})
+    print(f"✓ relabeled {seg['feature_id'][:10]}@{seg['seg_index']} → {label.strip()[:60]!r}")
+    return 0
+
+
+def _build(repo: str, as_json: bool) -> int:
+    """Run the LLM passes that name the overlay: feature-scoped checkpoints (`build_segments`, the
+    primary unit) and the cross-feature themes (`build_themes`). Both are LLM-labeled with a
+    deterministic offline fallback, content-hash cached, and rebuilt on demand -- kept out of the
+    read verbs exactly as `sgt map` (the write) is distinct from `map_view` (the read)."""
+    from sgt.intent.theme import build_themes
+    from sgt.intent.theme_segment import build_segments
+
+    segments = build_segments(repo)
+    themes = build_themes(repo)
+    n_ckpt = sum(len(v) for v in segments.values())
+    if as_json:
+        return _emit_json({"features": len(segments), "checkpoints": n_ckpt, "themes": len(themes)})
+    print(f"✓ intent build: {n_ckpt} checkpoint(s) across {len(segments)} feature(s), "
+          f"{len(themes)} theme(s)")
     return 0
 
 

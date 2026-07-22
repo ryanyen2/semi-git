@@ -135,6 +135,35 @@ def test_fallback_label_is_deterministic_and_derived_from_dominant_dir():
     assert "sgt/core" in first.rationale
 
 
+def test_fallback_label_never_leaks_residue_ids_or_null_bytes():
+    """The offline path is the common case when no key is configured, so it must be *readable*: a
+    cluster of pure fold artifacts (residue/anchor, embedded NULs from byte-native addressing) must
+    never surface as a raw `__residue__::\\x00HEAD\\x00` id -- it reads as `(structural)` glue,
+    tagged by where it lives."""
+    members = ["sgt/intent/__init__.py::__residue__::\x00HEAD\x00",
+               "sgt/intent/resolve.py::__residue__::Candidate",
+               "sgt/intent/x.py::__anchor__::a"]
+    lbl = label_mod._fallback_label(members).label
+    assert "__residue__" not in lbl and "__anchor__" not in lbl and "\x00" not in lbl
+    assert "structural" in lbl and "sgt/intent" in lbl
+
+
+def test_fallback_label_names_symbols_and_docs_readably():
+    # a bare-file (doc) cluster -> basenames, never a joined path list
+    assert label_mod._fallback_label(["README.md", "docs/guide/getting-started.md"]).label \
+        == "README.md getting-started.md"
+    # real symbols win over any residue members mixed in
+    assert label_mod._fallback_label(
+        ["a.py::__anchor__::z", "a.py::foo", "a.py::bar"]).label == "bar foo"
+
+
+def test_clean_symbol_name_distinguishes_names_from_artifacts():
+    assert label_mod._clean_symbol_name("sgt/a.py::foo") == "foo"
+    assert label_mod._clean_symbol_name("README.md") == "README.md"
+    assert label_mod._clean_symbol_name("a.py::__residue__::\x00HEAD\x00") is None
+    assert label_mod._clean_symbol_name("a.py::__anchor__::x") is None
+
+
 def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path, monkeypatch):
     """Regression: `build_map` used to label the tree but never `save()` the labeler, so the
     member-hash cache was rebuilt cold on every run -- a second `sgt map` re-called the (non-

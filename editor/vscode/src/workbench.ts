@@ -144,6 +144,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "revertSelection":
         await this.revertSelection(msg.refs);
         return;
+      case "revertCheckpoint":
+        await this.revertCheckpoint(msg.ref, msg.label);
+        return;
       case "applyVerb":
         await this.apply(msg.verb, msg.args);
         return;
@@ -255,6 +258,31 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
     this.store.invalidate();
     vscode.window.showInformationMessage(`Reverted ${done} feature(s).`);
+  }
+
+  // Rewind a single feature-scoped checkpoint (an intent segment). `ref` is `<feature>@<n>`, which
+  // `sgt revert` resolves to that segment's deterministic op-set -- the same exact ideal-edit path
+  // as any other revert. A checkpoint-specific confirm (not the multi-feature one) so the user
+  // sees exactly which chapter they're undoing.
+  private async revertCheckpoint(ref: string, label: string): Promise<void> {
+    if (!ref) {
+      return;
+    }
+    const ok = await vscode.window.showWarningMessage(
+      `Rewind checkpoint "${label}"? This removes its ops (and anything built on them) and commits.`,
+      { modal: true },
+      "Rewind"
+    );
+    if (ok !== "Rewind") {
+      return;
+    }
+    try {
+      await this.store.sgt.mutate(["revert", ref]);
+      vscode.window.showInformationMessage(`Rewound checkpoint "${label}".`);
+    } catch (e: any) {
+      vscode.window.showWarningMessage(`Could not rewind "${label}": ${e.message}`);
+    }
+    this.store.invalidate();
   }
 
   private async renamePrompt(feature: string): Promise<void> {

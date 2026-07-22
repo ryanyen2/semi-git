@@ -409,6 +409,33 @@ export interface ComposeProposalSummary {
 }
 
 // `sgt compose [--json]` -- one aggregate refresh, collapsing ~9 shell-outs into one.
+// One feature-scoped intent segment -- a "checkpoint": a contiguous chapter of a feature's
+// history sharing one intent, addressable as `<feature_id>@<seg_index>` and revertable as a unit.
+// `intent` is the chapter's label in the developer's language; `novelty` (0..1) weights how much
+// behavior it changed, so trivial chapters can be dimmed. From `sgt.api.intent_view`.
+export interface IntentSegment {
+  feature_id: string;
+  feature_label: string;
+  seg_index: number;
+  checkpoint: string; // `<feature_id>@<seg_index>`
+  intent: string;
+  rationale: string;
+  op_ids: string[];
+  op_count: number;
+  commit_shas: string[];
+  first_index: number;
+  last_index: number;
+  novelty: number;
+  tier: "coupled" | "co-changed" | "thematic";
+  source: "llm" | "fallback";
+}
+
+export interface IntentView {
+  themes: unknown[];
+  atoms: unknown[];
+  segments: IntentSegment[];
+}
+
 export interface ComposeView {
   map: MapView;
   history: HistoryView;
@@ -418,6 +445,7 @@ export interface ComposeView {
   drift: DriftView;
   sessions: SessionsView;
   trust: TrustView;
+  intent: IntentView;
   oracle_verdict: OracleVerdict;
   proposals: ComposeProposalSummary[];
 }

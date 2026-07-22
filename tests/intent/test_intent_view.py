@@ -22,7 +22,7 @@ def test_shape_emits_themes_and_atoms_with_documented_keys_sorted(tmp_path, monk
     theme.build_themes(tmp_path)
 
     v = intent_view(tmp_path)
-    assert set(v) == {"themes", "atoms"}
+    assert set(v) == {"themes", "atoms", "segments"}
     (t,) = v["themes"]
     assert set(t) == {
         "theme_id", "label", "rationale", "source", "atom_shas", "stale_shas", "op_ids",
@@ -40,7 +40,7 @@ def test_additive_existing_compose_view_keys_unchanged_intent_added(tmp_path):
     v = compose_view(tmp_path)
 
     assert "intent" in v
-    assert set(v["intent"]) == {"themes", "atoms"}
+    assert set(v["intent"]) == {"themes", "atoms", "segments"}
     # every pre-existing key is still present and untouched
     for key in ("map", "history", "status", "forks", "plan", "drift", "sessions", "trust",
                 "oracle_verdict", "proposals"):
@@ -61,7 +61,38 @@ def test_empty_repo_has_no_themes_but_still_reports_atoms(tmp_path):
 def test_no_ops_at_all_returns_empty_lists(tmp_path):
     init_store(tmp_path)
     v = intent_view(tmp_path)
-    assert v == {"themes": [], "atoms": []}
+    assert v == {"themes": [], "atoms": [], "segments": []}
+
+
+def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
+    """The feature-scoped intent segments (checkpoints): deterministic on read, one per feature
+    chapter, addressable as `<feature_id>@<seg_index>`, each carrying tier + novelty."""
+    from sgt.core.store import Store
+    from sgt.lens import tree
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feat(x): add foo")
+    get(tmp_path)
+
+    nodes = {"F-A": {"parent": None, "children": [], "members": ["a.py::foo"], "size": 1,
+                     "dir": "", "label": "Foo Feature"}}
+    ops = Store(tmp_path).all_ops()
+    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"],
+                         "op_leaf": tree.assign_ops_to_leaves(nodes, ops),
+                         "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
+
+    segs = intent_view(tmp_path)["segments"]
+    assert len(segs) == 1
+    s = segs[0]
+    assert set(s) == {
+        "feature_id", "feature_label", "seg_index", "checkpoint", "intent", "rationale",
+        "op_ids", "op_count", "commit_shas", "first_index", "last_index", "novelty", "tier",
+        "source",
+    }
+    assert s["checkpoint"] == "F-A@0"
+    assert s["feature_label"] == "Foo Feature"
+    assert s["op_count"] == len(s["op_ids"]) > 0
 
 
 def test_cross_feature_theme_reports_both_features_with_correct_tier(tmp_path, monkeypatch):

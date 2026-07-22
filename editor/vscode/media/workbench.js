@@ -387,6 +387,9 @@ function episodeRailLayout(epView) {
   // feature's node (see collectPlanMarks / renderNodeBadges). `knownPlanSteps`/`prevKnownPlanSteps`
   // snapshot ids across renders so an "entering" pulse fires only on a genuine transition.
   let planMarks = { steps: [], byFeature: {}, floating: [], sessions: [] };
+  // Checkpoints: a feature's intent segments (compose.intent.segments) grouped by feature, in
+  // chronological order -- the "which version do I rewind to" list the inspector shows per feature.
+  let checkpointsByFeature = {};
   let knownPlanSteps = new Set();
   let pendingPlanSteps = new Set();
   let prevKnownPlanSteps = new Set();
@@ -515,6 +518,21 @@ function episodeRailLayout(epView) {
       }
     }
     return { ids, unplaced };
+  }
+
+  // ─── Checkpoint marks ───────────────────────────────────────────────────────────────────────────
+  // Group `compose.intent.segments` by feature, chronological. Each segment is a "checkpoint" -- a
+  // contiguous chapter of a feature's history sharing one intent, addressable/revertable as
+  // `<feature>@<seg_index>`. The inspector lists these so a feature is a short story, not 100 ops.
+  function collectCheckpoints(intent) {
+    const byFeature = {};
+    for (const seg of (intent && intent.segments) || []) {
+      (byFeature[seg.feature_id] = byFeature[seg.feature_id] || []).push(seg);
+    }
+    for (const fid of Object.keys(byFeature)) {
+      byFeature[fid].sort((a, b) => a.seg_index - b.seg_index);
+    }
+    return byFeature;
   }
 
   // ─── Fork marks ───────────────────────────────────────────────────────────────────────────────
@@ -1317,7 +1335,10 @@ function episodeRailLayout(epView) {
       meta.textContent = `${node.id} · ${node.size} member(s) · ${node.op_count} op(s)`;
       inspector.appendChild(meta);
 
-      if (node.kind === "feature") inspector.appendChild(renderActionBar(id));
+      if (node.kind === "feature") {
+        inspector.appendChild(renderActionBar(id));
+        inspector.appendChild(renderCheckpoints(id));
+      }
     }
 
     // Each of these takes over the code(I) slot with a read-only view of a DIFFERENT frontier
@@ -1834,6 +1855,62 @@ function episodeRailLayout(epView) {
     return el;
   }
 
+  // The selected feature's checkpoints: its history as a short list of labeled chapters, newest
+  // last, each one a rewind target. A dimmed dot marks a low-novelty chapter (mostly tweaks) --
+  // a low-value place to rewind to. Clicking a chapter rewinds it (`sgt revert <feature>@<n>`);
+  // hovering it previews the ops it covers on the timeline. This is the answer to "which version
+  // of this feature do I go back to" that a flat 100-op feature never gave.
+  function renderCheckpoints(id) {
+    const segs = checkpointsByFeature[id] || [];
+    const wrap = document.createElement("div");
+    wrap.className = "checkpoints";
+    if (!segs.length) return wrap;
+
+    const head = document.createElement("div");
+    head.className = "checkpoints-head";
+    const built = segs.some((s) => s.source === "llm");
+    head.textContent = `Checkpoints · ${segs.length}` + (built ? "" : "  (run sgt intent build to name)");
+    wrap.appendChild(head);
+
+    for (const seg of segs) {
+      const row = document.createElement("div");
+      row.className = "checkpoint" + (seg.novelty <= 0.2 ? " trivial" : "");
+      row.title = `${seg.rationale} · ${seg.op_count} op(s) · ${seg.tier}\nRewind: sgt revert ${seg.checkpoint}`;
+
+      const dot = document.createElement("span");
+      dot.className = "checkpoint-dot";
+      dot.textContent = seg.novelty > 0.6 ? "●" : seg.novelty > 0.2 ? "◐" : "○";
+      row.appendChild(dot);
+
+      const label = document.createElement("span");
+      label.className = "checkpoint-label";
+      label.textContent = seg.intent;
+      row.appendChild(label);
+
+      const meta = document.createElement("span");
+      meta.className = "checkpoint-meta";
+      meta.textContent = `${seg.op_count} op`;
+      row.appendChild(meta);
+
+      const rewind = document.createElement("button");
+      rewind.className = "checkpoint-rewind";
+      rewind.textContent = "⤺";
+      rewind.title = `Rewind "${seg.intent}"`;
+      rewind.addEventListener("click", (e) => {
+        e.stopPropagation();
+        vscode.postMessage({ type: "revertCheckpoint", ref: seg.checkpoint, label: seg.intent });
+      });
+      row.appendChild(rewind);
+
+      // Hover a checkpoint -> preview the exact ops it covers as a revert blast on the timeline,
+      // reusing the same closure-paint path every other revert-hover uses.
+      row.addEventListener("mouseenter", () => previewAndBlast("revert", [seg.checkpoint]));
+      row.addEventListener("mouseleave", () => clearGhosts());
+      wrap.appendChild(row);
+    }
+    return wrap;
+  }
+
   function renderActionBar(id) {
     const bar = document.createElement("div");
     bar.className = "action-bar";
@@ -2014,6 +2091,7 @@ function episodeRailLayout(epView) {
       planMarks = collectPlanMarks(compose.plan, history);
       driftMarks = collectDriftMarks(compose.drift, history);
       forkMarks = collectForkMarks(compose.forks, map.nodes);
+      checkpointsByFeature = collectCheckpoints(compose.intent);
       foldResultCache = {};
       playheadResultCache = {};
       playheadCommitIndex = null; // a new composition means a different commit-index axis
