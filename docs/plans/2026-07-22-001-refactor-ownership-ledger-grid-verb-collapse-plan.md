@@ -645,6 +645,18 @@ lane; a two-clone dual-claim round-trip surfacing exactly one conflict suggestio
 background suggestion queue for merges/splits; it never auto-applies to authored membership.
 **Requirements:** R4
 **Dependencies:** U5
+**Scope shipped (adjust-as-you-go):** U7 ships the queue *infrastructure* — `sgt/core/suggest.py`
+(the `merge`/`split`/`conflict` record, content-addressed by `(kind, op-set)`, add/load/all/dismiss),
+`suggestion_view`, and `sgt advanced suggestions list|dismiss`. Two deviations from the plan sketch,
+both cleaner: (1) the queue is a **local** table, not a committed G-Set — a suggestion is an
+advisory *proposal* and is *dismissable* (a committed G-Set would need tombstones), and a
+cross-clone `conflict` surfaces on the clone that ran the sync, which is where it is resolved; this
+also avoids touching the sync-union pipeline. (2) The clustering-disagreement *generation* in
+`tree.build` (emit a `merge`/`split` when a cluster result disagrees with authored membership) is
+**deferred** — there are no authored features to disagree with until U6 populates them, so U7 ships
+the queue that U6's conflict detection and a future clustering-critic both write into. Accepting a
+suggestion is the existing `sgt feature regroup merge`/`split`/`move` — this module only records,
+lists, and dismisses.
 **Files:** `sgt/lens/tree.py` (`build`, `:428-511` — skip re-clustering entirely for members already
 claimed by an authored feature per `_authored_leaf_claims`, `:744-766`; a cluster result that
 disagrees with existing authored membership in a merge/split-shaped way emits a suggestion instead
