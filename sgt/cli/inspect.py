@@ -9,27 +9,10 @@ from ._common import _add_view_flags, _emit_json, _fail
 
 
 def register(subs, parent) -> None:
-    subs.add_parser("status", parents=[parent]).set_defaults(func=_cmd_status)
-    mp = subs.add_parser("map", parents=[parent])
-    mp.add_argument("--rebuild", action="store_true",
-                     help="force a full from-scratch recluster instead of splicing unchanged subtrees")
-    mp.set_defaults(func=_cmd_map)
-    gp = subs.add_parser("graph", parents=[parent])
-    gp.add_argument("--at", type=int, default=None, metavar="COMMIT",
-                    help="fold frontier: only ops up to this commit-index count (features accrete)")
-    gp.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
-    gp.add_argument("--refresh", action="store_true",
-                    help="re-mine + rebuild the map first (default: fast read of the last-built map)")
-    gp.add_argument("--focus", default=None, metavar="FEATURE",
-                    help="one feature, full width, one detail line per checkpoint car")
-    gp.add_argument("--links", action="store_true",
-                    help="show the co-change ↔ annotation trailing each lane (off by default)")
-    gp.set_defaults(func=_cmd_graph)
-    ep = subs.add_parser("episodes", parents=[parent])
-    ep.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
-    ep.add_argument("--refresh", action="store_true",
-                    help="re-mine + rebuild the map first (default: fast read of the last-built map)")
-    ep.set_defaults(func=_cmd_episodes)
+    # U14: `status`/`map`/`graph`/`episodes` are no longer top-level verbs -- they are `sgt log`
+    # render modes (--summary/--tree/--rail and the default grid). A user who types the old verb is
+    # redirected by `cli._FOLDED`. Their handler bodies (`_status`/`_map`/`_graph`/`_episodes`) stay
+    # here: `--summary` calls `_status`, `--tree --rebuild` reuses `_map`'s full-recluster path.
     lp = subs.add_parser("log", parents=[parent])
     lmode = lp.add_mutually_exclusive_group()
     lmode.add_argument("--ops", action="store_true",
@@ -46,6 +29,8 @@ def register(subs, parent) -> None:
     lp.add_argument("--no-color", action="store_true", help="grid/rail: plain text, no ANSI color")
     lp.add_argument("--refresh", action="store_true",
                     help="re-mine + rebuild the map first (default: fast read of the last-built map)")
+    lp.add_argument("--rebuild", action="store_true",
+                    help="refresh with a full from-scratch recluster (the former `sgt map --rebuild`)")
     lp.add_argument("--focus", default=None, metavar="FEATURE",
                     help="grid: one feature, full width, one detail line per checkpoint car")
     lp.add_argument("--links", action="store_true",
@@ -91,34 +76,18 @@ def _cmd_log(args) -> int:
     if args.ops:
         return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
     if args.tree:
-        return _log_tree(".", args.as_json, args.refresh)
+        return _log_tree(".", args.as_json, args.refresh, args.rebuild)
     if args.summary:
         return _status(".", args.as_json)
     if args.rail:
-        return _log_rail(".", as_json=args.as_json, color=not args.no_color, refresh=args.refresh)
+        return _log_rail(".", as_json=args.as_json, color=not args.no_color,
+                         refresh=args.refresh, rebuild=args.rebuild)
     return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
-                     refresh=args.refresh, focus=args.focus, links=args.links)
+                     refresh=args.refresh, rebuild=args.rebuild, focus=args.focus, links=args.links)
 
 
 def _cmd_state(args) -> int:
     return _state(".", args.as_json, args.full)
-
-
-def _cmd_status(args) -> int:
-    return _status(".", args.as_json)
-
-
-def _cmd_map(args) -> int:
-    return _map(".", args.as_json, args.rebuild)
-
-
-def _cmd_graph(args) -> int:
-    return _graph(".", frontier=args.at, color=not args.no_color, refresh=args.refresh,
-                  focus=args.focus, links=args.links)
-
-
-def _cmd_episodes(args) -> int:
-    return _episodes(".", color=not args.no_color, refresh=args.refresh)
 
 
 def _cmd_history(args) -> int:
@@ -250,15 +219,17 @@ def _reindex(repo: str, as_json: bool = False) -> int:
 
 
 def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, color: bool = True,
-              refresh: bool = False, focus: str | None = None, links: bool = False) -> int:
+              refresh: bool = False, rebuild: bool = False, focus: str | None = None,
+              links: bool = False) -> int:
     """`sgt log` (the default grid, KTD9): the lane×commit timeline. `--json` returns the canonical
     `grid_view`; the text render reuses the feature-timeline machinery (`render_graph_lines`) over
     the last-built map. A pure cached read by default (fast, glanceable); `--refresh` re-mines and
-    rebuilds features + checkpoints first (see `_map_for_view`)."""
+    rebuilds features + checkpoints first (see `_map_for_view`); `--rebuild` refreshes with a full
+    from-scratch recluster."""
     from sgt.api import grid_view, segments_view
     from sgt.tui.graph import render_graph_lines
 
-    mv = _map_for_view(repo, refresh, "log", color and not as_json)
+    mv = _map_for_view(repo, refresh, "log", color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)  # the canonical cell join; the text render and --json now read one shape
     if as_json:
         return _emit_json(gv)
@@ -269,14 +240,15 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     return 0
 
 
-def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False) -> int:
+def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False,
+              rebuild: bool = False) -> int:
     """`sgt log --rail` (the episode rail / vertical git-log): "what I did, in order." `--json`
     returns `grid_view` (the rail is a time-major rotation of the same cells); the text render
     reuses `render_rail_lines`."""
     from sgt.api import grid_view
     from sgt.tui.graph import render_rail_lines
 
-    mv = _map_for_view(repo, refresh, "log", color and not as_json)
+    mv = _map_for_view(repo, refresh, "log", color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)
     if as_json:
         return _emit_json(gv)
@@ -285,11 +257,14 @@ def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: 
     return 0
 
 
-def _log_tree(repo: str, as_json: bool = False, refresh: bool = False) -> int:
+def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: bool = False) -> int:
     """`sgt log --tree` (the feature tree, no time axis — what `sgt map` shows): a read of the
-    last-built tree (`--refresh` rebuilds it first). `--json` returns `map_view`."""
+    last-built tree (`--refresh` rebuilds it first). `--json` returns `map_view`. `--rebuild` is the
+    former `sgt map --rebuild`: a full from-scratch recluster (delegates to `_map`)."""
     from sgt.api import map_view
 
+    if rebuild:
+        return _map(repo, as_json, rebuild=True)
     _map_for_view(repo, refresh, "log", not as_json)
     view = map_view(repo)
     if as_json:
@@ -422,17 +397,19 @@ def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
     return 0
 
 
-def _map_for_view(repo: str, refresh: bool, verb: str, color: bool) -> dict:
-    """The shared read/refresh path behind `sgt graph` and `sgt episodes`. The daily command is a
+def _map_for_view(repo: str, refresh: bool, verb: str, color: bool, rebuild: bool = False) -> dict:
+    """The shared read/refresh path behind the `sgt log` grid/rail modes. The daily command is a
     pure read of the *last-built* map (~sub-second) -- NOT a re-mine + re-cluster (which costs ~30s
     and would make a glanceable command unusable). `--refresh` is the *one* command that reflects
     brand-new edits: it re-mines and rebuilds BOTH layers the graph shows -- the feature tree
     (`build_map`) AND the intent checkpoints (`build_segments`/`build_themes`) -- so a user never
-    has to run `intent build` then `map --rebuild` then `graph` as three separate steps. Both label
-    passes have a deterministic offline fallback, so a refresh works with no LLM key (just terser
-    names). Returns the `map_view` dict."""
+    has to run `intent build` then `sgt log --tree --rebuild` then `sgt log` as three separate
+    steps. `rebuild=True` (the former `sgt map --rebuild`) forces a full from-scratch recluster and
+    implies a refresh. Both label passes have a deterministic offline fallback, so a refresh works
+    with no LLM key (just terser names). Returns the `map_view` dict."""
     from sgt.api import map_view
 
+    refresh = refresh or rebuild
     mv = None if refresh else map_view(repo)
     if not (refresh or not (mv and mv.get("nodes"))):
         if color:
@@ -447,7 +424,7 @@ def _map_for_view(repo: str, refresh: bool, verb: str, color: bool) -> dict:
     if color:
         print("\x1b[2m refreshing: mining edits + naming features and checkpoints…\x1b[0m")
     get(repo)  # mine-on-contact (R9)
-    build_map(repo)          # feature tree + labels (the "what exists" layer)
+    build_map(repo, rebuild=rebuild)  # feature tree + labels (the "what exists" layer)
     build_segments(repo)     # per-feature checkpoints (the "what I did, in chapters" layer)
     build_themes(repo)       # cross-feature rollup (kept for the "one PR spanned N features" view)
     return map_view(repo)

@@ -51,7 +51,7 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
     assert not (tmp_path / "--horizon").exists()  # not misparsed as the repo path
 
     capsys.readouterr()
-    assert _in(tmp_path, ["log", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     foo_ops = [op for op in payload["ops"] if "a.py::foo" in [f["symbol"] for f in op["footprint"]]]
     # v1 (pre-horizon) is never mined at all; v2 becomes one root "add", v3 one modify on top --
@@ -61,16 +61,18 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
 
 
 def test_init_and_log_roundtrip(tmp_path, capsys):
+    # U1 moved the raw op-DAG dump under `sgt log --ops` (bare `sgt log` is now the lane×commit
+    # grid, which doesn't print raw `file::symbol` names).
     _seed(tmp_path, 1)
     capsys.readouterr()  # drain seed commit output (none, but keep symmetry with other tests)
-    assert _in(tmp_path, ["log"]) == 0
+    assert _in(tmp_path, ["log", "--ops"]) == 0
     out = capsys.readouterr().out
     assert "op(s)" in out and "a.py::foo" in out
 
 
 def test_log_json_is_machine_readable(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["log", "--json"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["count"] >= 1
     assert any("a.py::foo" in op["symbols"] for op in payload["ops"])
@@ -78,7 +80,7 @@ def test_log_json_is_machine_readable(tmp_path, capsys):
 
 def test_log_json_full_is_machine_readable(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["log", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["count"] >= 1
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
@@ -125,15 +127,15 @@ def test_log_json_limit_and_offset_flags(tmp_path, capsys):
     _seed(tmp_path, 3)  # a.py::foo v1/v2/v3, at least 3 distinct ops
     capsys.readouterr()
 
-    assert _in(tmp_path, ["log", "--json"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
     total = json.loads(capsys.readouterr().out)["count"]
     assert total > 1
 
-    assert _in(tmp_path, ["log", "--json", "--limit", "1", "--offset", "0"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--limit", "1", "--offset", "0"]) == 0
     first_page = json.loads(capsys.readouterr().out)
     assert len(first_page["ops"]) == 1
 
-    assert _in(tmp_path, ["log", "--json", "--limit", str(total), "--offset", "1"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--limit", str(total), "--offset", "1"]) == 0
     rest = json.loads(capsys.readouterr().out)
     assert len(rest["ops"]) == total - 1
     assert rest["ops"][0]["id"] != first_page["ops"][0]["id"]
@@ -221,7 +223,7 @@ class FakeClient:
 def test_revert_by_op_id_never_touches_the_intent_resolver(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(resolve_mod, "get_client", _boom)
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["log", "--json"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
     op_id = json.loads(capsys.readouterr().out)["ops"][0]["id"]
 
     assert _in(tmp_path, ["revert", "--emit", op_id]) == 0  # resolves as an op-id; NL rung never runs
@@ -630,7 +632,7 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
     gb.commit_all("add foo and bar")
-    assert _in(tmp_path, ["map"]) == 0
+    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0  # U14: `map` is now a `log` mode
     capsys.readouterr()
     tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
 
@@ -649,14 +651,15 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
 
 
 def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
-    """`sgt map --rebuild` is the escape hatch out of dirty-subtree splicing (Phase 2): it must at
-    least run without error and still produce a valid tree, even though the common no-op-edit case
-    would otherwise splice everything through verbatim."""
+    """`sgt log --tree --rebuild` (the former `sgt map --rebuild`, folded into `log` in U14) is the
+    escape hatch out of dirty-subtree splicing (Phase 2): it must at least run without error and
+    still produce a valid tree, even though the common no-op-edit case would otherwise splice
+    everything through verbatim."""
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["map"]) == 0
+    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0
     capsys.readouterr()
-    assert _in(tmp_path, ["map", "--rebuild"]) == 0
+    assert _in(tmp_path, ["log", "--tree", "--rebuild"]) == 0
     out = capsys.readouterr().out
     assert "feature(s)" in out
 
@@ -714,12 +717,12 @@ def test_help_mentions_kernel_verbs(capsys):
 
 
 def test_help_mentions_agentic_loop_verbs(capsys):
-    # The agentic-loop verbs are re-homed under the `advanced` grouping (KTD2); help advertises
-    # them there rather than at the top level.
+    # The agentic loop is `sgt plan` + `sgt save --resolve-plan`; checkpoint/drift folded into
+    # `save` (U12), so help advertises the loop, not those (now-removed) verbs.
     main(["help"])
     out = capsys.readouterr().out
     assert "advanced" in out
-    assert "plan" in out and "checkpoint" in out and "drift" in out
+    assert "plan" in out and "resolve-plan" in out
 
 
 def test_help_mentions_history_and_preview_verbs(capsys):
@@ -736,16 +739,17 @@ def test_unknown_verb_falls_back_to_help(capsys):
 
 
 def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
-    """R2/KTD2 (re-triaged): the top-level `_VERBS` is exactly the daily spine + the daily
-    navigation/inspection/loop/rewrite verbs + the two groupings + the unchanged collaboration/setup
-    verbs. Only rare/maintenance verbs live under `advanced`."""
+    """R12/KTD8/KTD9 (U14): the grid is the only inspection surface, so the top-level `_VERBS` is
+    the daily spine + `log` + the two groupings + the unchanged collaboration/setup verbs.
+    `status`/`map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/
+    `commit`/`fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't
+    map to a `log` mode; re-promoted in c4f9966/KTD8)."""
     from sgt.cli import _VERBS
 
     assert _VERBS == {
-        "save", "status", "log", "undo", "revert", "restore", "edit", "resolve",
-        "switch", "diff", "map", "graph", "episodes", "blame", "intent",
+        "save", "log", "undo", "revert", "restore", "resolve",
+        "switch", "diff", "intent",
         "plan",  # checkpoint/drift folded into `save` (U12)
-        "commit", "fulfill",
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",
     }
@@ -762,6 +766,15 @@ def test_removed_top_level_verb_points_to_its_new_home(capsys):
     assert "advanced state" in capsys.readouterr().err
     assert main(["merge"]) == 2  # re-homed two levels deep under `feature regroup`
     assert "feature regroup merge" in capsys.readouterr().err
+    # U14: blame/edit/commit/fulfill demoted under `advanced`.
+    for verb in ("blame", "edit", "commit", "fulfill"):
+        assert main([verb]) == 2
+        assert f"advanced {verb}" in capsys.readouterr().err
+    # U14: map/graph/episodes/status folded onto `sgt log` render modes (KTD8/KTD9).
+    for verb, home in (("map", "log --tree"), ("graph", "log"),
+                       ("episodes", "log --rail"), ("status", "log --summary")):
+        assert main([verb]) == 2
+        assert f"folded into `sgt {home}`" in capsys.readouterr().err
 
 
 def test_grouping_verbs_resolve(tmp_path, capsys):

@@ -337,11 +337,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  // The plan-mark inspector card's "Confirm match" action: promotes a `sgt checkpoint`
-  // footprint-overlap candidate to an actual confirmed match, which is what flips the step to
-  // "matched" and lands its rail mark on the next refresh.
+  // The plan-mark inspector card's "Confirm match" action: promotes a footprint-overlap candidate
+  // to an actual confirmed match, which is what flips the step to "matched" and lands its rail mark
+  // on the next refresh. The former `sgt checkpoint --confirm-*` verb folded into `sgt save
+  // --resolve-plan` (U12); the confirm-hollow/confirm-op pairs are unchanged.
   private async confirmCheckpoint(hollowIds: string[], opIds: string[]): Promise<void> {
-    const args = ["checkpoint"];
+    const args = ["save", "--resolve-plan"];
     for (const h of hollowIds) args.push("--confirm-hollow", h);
     for (const o of opIds) args.push("--confirm-op", o);
     try {
