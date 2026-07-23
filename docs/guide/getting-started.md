@@ -15,7 +15,7 @@ uv pip install -e ".[entities,lens]"
 ```
 
 The core loop needs no API key. A few graph-reasoning steps are optional and call an LLM: the
-feature labeler (`sgt map`), `sgt plan intake`, the intent-clustering pass (`sgt intent build`),
+feature labeler (`sgt log --tree`), `sgt plan intake`, the intent-clustering pass (`sgt intent build`),
 and the natural-language forms of `revert`/`restore`. Set `OPENAI_API_KEY` in a `.env` file at the
 repo root if you plan to use them; everything else on this page works without a key. The endpoint
 is env-driven, so you are not tied to OpenAI: point `OPENAI_BASE_URL` at any OpenAI-compatible
@@ -32,13 +32,13 @@ sgt init                    # read your existing git history into the op store u
 # edit files with your editor or agent, the same as always
 
 sgt save -m "add email validation"   # read your edits into ops and commit a record of them
-sgt status                            # files, symbols, features, coverage, and any drift
-sgt map                               # the feature tree
-sgt blame app.py                      # which feature owns each symbol in this file
+sgt log --summary                    # files, symbols, features, coverage, and any drift
+sgt log --tree                       # the feature tree
+sgt advanced blame app.py            # which feature owns each symbol in this file
 ```
 
 `sgt save` is the commit step of your daily loop. It reads what you changed on disk, records the
-new ops, and commits. `sgt status` tells you whether your working tree matches the state `sgt` has
+new ops, and commits. `sgt log --summary` tells you whether your working tree matches the state `sgt` has
 recorded, or has drifted ahead of it.
 
 ## Remove and bring back a symbol
@@ -64,7 +64,7 @@ propose candidates and previews each one before applying anything. See
 | Path | What it holds |
 | --- | --- |
 | `.sgt/ops/` | the op store, committed to git along with your code |
-| `.sgt/tree/` | the feature tree from `sgt map`, also committed |
+| `.sgt/tree/` | the feature tree from `sgt log --tree`, also committed |
 | `.sgt/local/` | working state for this checkout only, not committed (the current state, drafts, staged rewrites, sessions) |
 | `.git/` | ordinary git, where `sgt` commits the files it builds from that state |
 

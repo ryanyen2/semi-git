@@ -1,12 +1,26 @@
 ---
 title: "refactor: save-time ownership ledger, unified grid projection, and daily-verb collapse"
 type: refactor
-status: active
+status: completed
 date: 2026-07-22
 deepened: 2026-07-22
+completed: 2026-07-23
 ---
 
 # refactor: save-time ownership ledger, unified grid projection, and daily-verb collapse
+
+> **Completed 2026-07-23.** All units shipped (U9 was cut during planning). Landed across two
+> sessions: U1/U2/U4/U5/U7/U8/U10/U13 first, then U11 (truncation revert) → U12 (plan-matching
+> folded into `save`, `checkpoint`/`drift` dropped) → U6 (the crux: save-time ownership cascade →
+> durable assign-pins + authored CRDT, with an incremental `op_leaf` visibility patch — new symbols
+> get a stable lane that survives a full recluster) → U3 (TUI + VS Code webview consume `grid_view`)
+> → U14 (verb surface collapsed to the 19-verb spine; `map`/`graph`/`episodes`/`status` are now
+> `sgt log` modes, `blame`/`edit`/`commit`/`fulfill` under `advanced`, `intent` kept per KTD8).
+> Per-unit "SHIPPED (adjust-as-you-go)" notes below record every deviation from the original plan.
+> Deferred to follow-up (not blocking): per-lane `gamma` persistence (KTD3 sources 1/2), the U5
+> local move's U10-incremental-graph edge source (currently the correct-but-slower `cluster.signals`
+> reparse, paid only by saves that add a genuinely-new entity), and pruning the now-unreferenced
+> `sgt/cli/inspect.py::_map_for_view` `verb` parameter.
 
 ## Summary
 

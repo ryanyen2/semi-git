@@ -42,13 +42,13 @@ actually has.
 ## The feature tree
 
 Ops are small, one per symbol edit. The feature tree groups them into features, so you can think
-and work at a larger scale than one function at a time. `sgt map` builds this tree by clustering
+and work at a larger scale than one function at a time. `sgt log --tree` builds this tree by clustering
 symbols that tend to change together and that reference each other across your history. Each
 feature gets an id like `F3` and a label, and the ids stay the same across rebuilds, so a feature
 keeps its identity as your code grows.
 
 This automatic grouping needs history to learn from. On a brand-new repo there is not enough
-signal yet to split features apart, so `sgt map` reports one feature for everything. As real
+signal yet to split features apart, so `sgt log --tree` reports one feature for everything. As real
 commits build up, the seams start to appear. You can correct or seed the grouping by hand at any
 time with `sgt merge`, `sgt split`, `sgt rename`, and `sgt move`. These only change labels and
 grouping. They never touch your code.
