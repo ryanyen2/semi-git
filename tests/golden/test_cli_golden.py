@@ -99,7 +99,7 @@ def capture_cli_surface(root: str) -> dict:
         repo = corpus.CORPUS[case].build(root / f"f{seq[0]}")
         get(repo)
         if mapped:
-            _capture(repo, ["map"])
+            _capture(repo, ["log", "--tree", "--refresh"])  # U14: `sgt map` is now a `log` mode
         if prep:
             _capture(repo, prep)
         return repo
@@ -114,16 +114,17 @@ def capture_cli_surface(root: str) -> dict:
     rf = fresh(mapped=True)
     feat = _feature_ids(rf)[0]
     views["help"] = _capture(rf, ["help"])
-    # log/status/map stay top-level; state/history/fsck are rare, so under `advanced` (U2/KTD2).
-    # `checkpoint`/`drift` folded into `save` (U12) -- no longer verbs; their redirect is covered in
-    # tests/test_cli.py::test_folded_verbs_redirect_to_save, not the surface snapshot.
+    # U14: the grid (`sgt log`) is the only inspection surface -- `status`/`map` collapsed onto
+    # `sgt log --summary`/`--tree`, `blame` demoted under `advanced`; state/history/fsck stay rare
+    # under `advanced` (U2/KTD2). `checkpoint`/`drift` folded into `save` (U12); their redirect is
+    # covered in tests/test_cli.py::test_folded_verbs_redirect_to_save, not the surface snapshot.
     for key, argv in (
-        ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["status"]),
-        ("map", ["map"]), ("history", ["advanced", "history"]),
+        ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["log", "--summary"]),
+        ("map", ["log", "--tree"]), ("history", ["advanced", "history"]),
         ("fsck", ["advanced", "fsck"]),
     ):
         views[key] = _both(rf, argv)
-    views["blame"] = _both(rf, ["blame", "a.py"])
+    views["blame"] = _both(rf, ["advanced", "blame", "a.py"])
     views["plan_status"] = _both(rf, ["plan", "status"])
     views["split_preview"] = _both(fresh(mapped=True), ["feature", "regroup", "split", feat])
     views["preview_revert_feature"] = _both(fresh(mapped=True), ["advanced", "preview", "revert", feat])
@@ -140,8 +141,8 @@ def capture_cli_surface(root: str) -> dict:
     # -- deterministic error / refusal surfaces (fail before mutating; safe to re-run) ----------
     views["revert_unknown"] = _both(fresh(), ["revert", "nope::nothing"])
     views["oracle_run_no_config"] = _both(fresh(), ["advanced", "oracle", "run"])
-    views["fulfill_no_draft"] = _both(fresh(), ["fulfill", "no-such-draft", "--from-tree"])
-    views["commit_nothing_staged"] = _both(fresh(), ["commit"])
+    views["fulfill_no_draft"] = _both(fresh(), ["advanced", "fulfill", "no-such-draft", "--from-tree"])
+    views["commit_nothing_staged"] = _both(fresh(), ["advanced", "commit"])
     views["sync_refuses_dirty_tree"] = _both(fresh(), ["sync"])  # untracked .sgt/ -> clean-tree guard
 
     # -- mutating verbs (text + --json each on its own fresh fixture) ---------------------------

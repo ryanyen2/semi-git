@@ -2,6 +2,7 @@
   "blame": {
     "json": {
       "argv": [
+        "advanced",
         "blame",
         "a.py",
         "--json"
@@ -11,6 +12,7 @@
     },
     "text": {
       "argv": [
+        "advanced",
         "blame",
         "a.py"
       ],
@@ -21,6 +23,7 @@
   "commit_nothing_staged": {
     "json": {
       "argv": [
+        "advanced",
         "commit",
         "--json"
       ],
@@ -29,6 +32,7 @@
     },
     "text": {
       "argv": [
+        "advanced",
         "commit"
       ],
       "exit": 1,
@@ -78,6 +82,7 @@
   "fulfill_no_draft": {
     "json": {
       "argv": [
+        "advanced",
         "fulfill",
         "no-such-draft",
         "--from-tree",
@@ -88,6 +93,7 @@
     },
     "text": {
       "argv": [
+        "advanced",
         "fulfill",
         "no-such-draft",
         "--from-tree"
@@ -101,7 +107,7 @@
       "help"
     ],
     "exit": 0,
-    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness (auto-matches plan steps)\n  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n  sgt log [--json]            the lane\u00d7commit grid (--ops raw op DAG \u00b7 --tree/--rail/--summary)\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op \u2192 fulfill \u2192 land)\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n  sgt graph [--at]            feature timeline (Gantt): lanes over commit-time\n  sgt episodes                episode rail (vertical git-log): what I did, in order\n  sgt blame <path>            per-symbol semantic blame from the op DAG\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  rewrite pipeline:\n  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n  sgt commit                  commit a staged rewrite, gated oracle-green\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n                              after, fold, preview, tiers, identity, migrate,\n                              history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
+    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness (auto-matches plan steps)\n  sgt log [--json]            the lane\u00d7commit grid \u2014 the one inspection surface:\n                              --tree (feature tree) \u00b7 --rail (episode rail) \u00b7 --summary\n                              (status scalars) \u00b7 --ops (raw op DAG) \u00b7 --rebuild (recluster)\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op \u2192 fulfill \u2192 land)\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n                              reindex, state, oracle, after, fold, preview, tiers,\n                              identity, migrate, history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
   },
   "history": {
     "json": {
@@ -175,18 +181,20 @@
   "map": {
     "json": {
       "argv": [
-        "map",
+        "log",
+        "--tree",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 14,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"continuation\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
+      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 14,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"birth\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
     },
     "text": {
       "argv": [
-        "map"
+        "log",
+        "--tree"
       ],
       "exit": 0,
-      "out": "baz qux (f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b) \u00b7 14 op(s)\n1 feature(s)\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\nbaz qux (f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b) \u00b7 14 op(s)\n1 feature(s)\n"
     }
   },
   "merge": {
@@ -536,7 +544,8 @@
   "status": {
     "json": {
       "argv": [
-        "status",
+        "log",
+        "--summary",
         "--json"
       ],
       "exit": 0,
@@ -544,7 +553,8 @@
     },
     "text": {
       "argv": [
-        "status"
+        "log",
+        "--summary"
       ],
       "exit": 0,
       "out": "6 file(s), 14 symbol(s), 1 feature(s), 33% entity coverage\n  oracle: unconfigured\n  \u2713 in sync\n"
@@ -669,6 +679,6 @@
       "not-a-verb"
     ],
     "exit": 0,
-    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness (auto-matches plan steps)\n  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n  sgt log [--json]            the lane\u00d7commit grid (--ops raw op DAG \u00b7 --tree/--rail/--summary)\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op \u2192 fulfill \u2192 land)\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n  sgt graph [--at]            feature timeline (Gantt): lanes over commit-time\n  sgt episodes                episode rail (vertical git-log): what I did, in order\n  sgt blame <path>            per-symbol semantic blame from the op DAG\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  rewrite pipeline:\n  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n  sgt commit                  commit a staged rewrite, gated oracle-green\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n                              after, fold, preview, tiers, identity, migrate,\n                              history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
+    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness (auto-matches plan steps)\n  sgt log [--json]            the lane\u00d7commit grid \u2014 the one inspection surface:\n                              --tree (feature tree) \u00b7 --rail (episode rail) \u00b7 --summary\n                              (status scalars) \u00b7 --ops (raw op DAG) \u00b7 --rebuild (recluster)\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op \u2192 fulfill \u2192 land)\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n                              reindex, state, oracle, after, fold, preview, tiers,\n                              identity, migrate, history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
   }
 }

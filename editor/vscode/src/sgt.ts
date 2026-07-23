@@ -132,17 +132,21 @@ export class Sgt {
   }
 
   // The feature tree (rebuilds it first — clustering, Greene identity, pins, labeling — then
-  // reads the kernel-backed projection, same as `sgt map --json` on the command line).
+  // reads the kernel-backed projection). U14 folded `sgt map` onto `sgt log --tree`; `--refresh`
+  // preserves the rebuild-first contract this method relies on (a cached read would return an
+  // empty tree on first build).
   map(): Promise<MapView> {
-    return this.json<MapView>(["map", "--json"]);
+    return this.json<MapView>(["log", "--tree", "--refresh", "--json"]);
   }
 
+  // U14 demoted `sgt blame` under `advanced` (same handler, re-homed path).
   blame(file: string): Promise<BlameView> {
-    return this.json<BlameView>(["blame", "--json", file]);
+    return this.json<BlameView>(["advanced", "blame", "--json", file]);
   }
 
+  // U14 folded `sgt status` onto `sgt log --summary` (identical status_view projection).
   status(): Promise<StatusView> {
-    return this.json<StatusView>(["status", "--json"]);
+    return this.json<StatusView>(["log", "--summary", "--json"]);
   }
 
   // Structured dry-run of a feature revert: `sgt revert <feature> --emit --json`. Carries the

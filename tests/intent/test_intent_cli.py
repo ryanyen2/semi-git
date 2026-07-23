@@ -367,7 +367,8 @@ def test_intent_relabel_overrides_checkpoint_and_marks_user_source(tmp_path, mon
     monkeypatch.setattr(theme_segment, "get_client", _no_client)
 
     _seed(tmp_path, "feat(x): add foo")
-    assert _in(tmp_path, ["map"]) == 0  # build the feature tree so a checkpoint exists
+    # U14: `sgt map` folded onto `sgt log --tree`; `--refresh` builds the tree so a checkpoint exists.
+    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0
 
     from sgt.api import intent_view
     seg = intent_view(tmp_path)["segments"][0]
