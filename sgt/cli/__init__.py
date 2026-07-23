@@ -38,7 +38,7 @@ import sys
 
 from . import (
     edit, feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose,
-    resolve, review, rewrite, select, session, sync, tiers,
+    resolve, review, rewrite, select, session, suggestions, sync, tiers,
 )
 
 # The daily spine + the frequently-reached verbs kept at the top level, two groupings, and the
@@ -72,7 +72,7 @@ _ROUTING = {
     "compose": "advanced", "fold": "advanced", "preview": "advanced",
     "forks": "advanced", "after": "advanced",
     "tiers": "advanced", "migrate": "advanced",
-    "review-queue": "advanced", "identity": "advanced",
+    "review-queue": "advanced", "identity": "advanced", "suggestions": "advanced",
     "merge-op": "advanced", "split-op": "advanced", "transplant": "advanced",
     "unstage": "advanced", "repair": "advanced",
 }
@@ -84,7 +84,7 @@ _TIER_PATH = {"advanced": "advanced", "feature": "feature", "regroup": "feature 
 _REMOVED = {verb: f"{_TIER_PATH[tier]} {verb}" for verb, tier in _ROUTING.items()}
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review, intent, edit, resolve)
+             porcelain, tiers, select, session, review, intent, edit, resolve, suggestions)
 
 
 class _Router:

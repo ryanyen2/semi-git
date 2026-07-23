@@ -131,6 +131,12 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
+    # local, gitignored clustering/merge suggestion queue (U7): {id: record}, add-only until a
+    # suggestion is accepted (via `sgt feature merge`/`split`/`move`) or dismissed. Local, not a
+    # committed G-Set: suggestions are advisory and *dismissable* (a committed G-Set would need
+    # tombstones), and a cross-clone conflict (U6) surfaces on the clone that ran the sync, which
+    # is where it is resolved. Content-addressed id, so re-emitting the same suggestion is a no-op.
+    "suggestions": _Artifact(("local", "suggestions.json"), committed=False),
     # local, gitignored per-ref mining-fidelity marks: {ref_key: [sha, ...]} recording the
     # witnessing commits whose mined ops `order.reduce_to_ideal` had to drop (a fork tip, an
     # ungrounded op). `grid_view` reads it to mark those commits "partial" instead of silently

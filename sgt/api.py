@@ -43,6 +43,9 @@ Shapes (stable; additive changes only):
   active plan session, with its kind, footprint, and current file/line spans.
 * ``sync_view``         — the U15 `sgt sync` result: ops merged in, forks surfaced (with the
   `merge-op` remedy), pin contradictions, declared-edge cycles, and tree identity events.
+* ``suggestion_view``   — the U7 clustering/merge suggestion queue: every open `merge`/`split`/
+  `conflict` suggestion a clustering-critic or a sync conflict (U6) recorded, for the user to
+  accept (via a feature verb) or dismiss. Clustering proposes; the user disposes (R4).
 * ``forks_view``        — the U20 open same-symbol forks recorded in committed `.sgt/forks.json`,
   each with its two tips and the `sgt merge-op` remedy (divergence-as-state, C4).
 * ``proposal_view``     — the U24 proposal review object: feature delta, Δ op count, oracle claim,
@@ -1245,6 +1248,26 @@ def sessions_view(repo) -> dict:
             for s in sessions
         ],
         "overlaps": list(session_mod.overlaps(repo)),
+    }
+
+
+def suggestion_view(repo) -> dict:
+    """The U7 clustering/merge suggestion queue: every open suggestion (`merge`/`split`/`conflict`)
+    a clustering-critic or a sync conflict (U6) recorded, for `sgt advanced suggestions`. A pure
+    read; accepting a suggestion is the existing `sgt feature merge`/`split`/`move`, and dismissing
+    it is `sgt advanced suggestions dismiss <id>` -- this view only renders what's queued, the same
+    "report, don't invent mutation semantics" boundary `trust_view` follows. Empty
+    (`{"count": 0, "suggestions": []}`) when there are none."""
+    from sgt.core import suggest
+
+    records = suggest.all_records(repo)
+    return {
+        "count": len(records),
+        "suggestions": [
+            {"id": r.id, "kind": r.kind, "features": list(r.features),
+             "op_ids": list(r.op_ids), "rationale": r.rationale}
+            for r in records
+        ],
     }
 
 
