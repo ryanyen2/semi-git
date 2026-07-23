@@ -20,7 +20,7 @@ This is git's daily loop, with `sgt` reading along.
 sgt init                    # once per repo: read your existing history into the op store
 # edit files with your editor or agent, the same as always
 sgt save -m "add input validation"   # read your edits into ops and commit a record of them
-sgt status                  # files, symbols, features, coverage, and any open forks or drift
+sgt log --summary                  # files, symbols, features, coverage, and any open forks or drift
 sgt undo                    # step back: undo your last save, revert, or restore
 ```
 
@@ -76,7 +76,7 @@ sgt revert --session <session-name>  # every op attributed to one agent session'
 How reliable each of these is depends on where the grouping comes from.
 
 - Symbol-level revert always works. It only needs the op set, nothing else.
-- Feature-level revert needs the feature tree to have grouped the ops first. `sgt map` builds
+- Feature-level revert needs the feature tree to have grouped the ops first. `sgt log --tree` builds
   that grouping from how symbols tend to change together across your history, so it needs enough
   commits and enough churn to find real seams. On a brand-new repo it reports one feature for
   everything, because there is no history yet to split on. Use `sgt merge`, `sgt split`, `sgt
@@ -86,7 +86,7 @@ How reliable each of these is depends on where the grouping comes from.
   the very first run, before there is any history to cluster.
 
 So symbol-level revert and session-level revert are the reliable tools today. Feature-level revert
-works well once `sgt map`, or your own corrections, has had real history to learn from. Run `sgt
+works well once `sgt log --tree`, or your own corrections, has had real history to learn from. Run `sgt
 blame <file>` to check whether the current grouping actually covers the file you care about before
 you trust it.
 
@@ -157,15 +157,17 @@ sgt forks
 Bob resolves it:
 
 ```bash
-sgt merge-op <alice_op> <bob_op> --intent "reconcile foo fix"
+sgt resolve main.py::foo          # the guided one-liner: drafts the merge, then --apply lands it
+# — or the same thing by hand, if you want each step:
+sgt advanced merge-op <alice_op> <bob_op> --intent "reconcile foo fix"
 # drafts a placeholder op chained onto Alice's tip, still needing real content
 # edit main.py by hand or with an agent to the real reconciled foo()
-sgt fulfill <draft-id> --from-tree
-sgt commit
+sgt advanced fulfill <draft-id> --from-tree
+sgt advanced commit
 ```
 
-`commit` runs your build and test checks against the reconciled version first and refuses to
-commit it unless those checks pass, or you record a human override with a reason. A fork cannot be
+`advanced commit` runs your build and test checks against the reconciled version first and refuses
+to commit it unless those checks pass, or you record a human override with a reason. A fork cannot be
 closed by a version nobody verified. Once it lands, `main.py::foo` is one continuous chain again,
 and the fork record closes.
 
@@ -235,7 +237,7 @@ A review on 2026-07-12 found four ways that ordinary git history could break the
 depends on. All four are fixed now.
 
 - A file or symbol that was deleted and then re-added no longer disappears from your working tree.
-  The case that used to cause a silent delete now keeps the file and reports it in `sgt status`
+  The case that used to cause a silent delete now keeps the file and reports it in `sgt log --summary`
   and `sgt fsck`. Re-adding a symbol now chains onto its earlier history, which recovered most of
   the ops the old version dropped. One edge case remains: if a symbol is deleted and re-added with
   the exact same content, the two versions still register as a fork.
@@ -259,7 +261,7 @@ These limits remain, either by design or because they are not built yet:
   as a plain revert.
 - Imports are ordinary text, not a symbol with its own command. Nothing warns you that a revert
   left an unused import behind, or offers to remove one.
-- `sgt status` is slow on a large op store. On this project's own store of about 7,840 ops it takes
+- `sgt log --summary` is slow on a large op store. On this project's own store of about 7,840 ops it takes
   around a minute, because rebuilding the full valid state is expensive and `status` currently does
   it more than once per run. This is a speed problem, not a correctness one.
 
