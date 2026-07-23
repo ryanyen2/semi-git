@@ -172,6 +172,20 @@ def test_save_commits_a_witness_for_a_dirty_tree(tmp_path, capsys):
     assert current_ideal(repo).op_ids == after_ids
 
 
+def test_save_with_no_active_plan_omits_the_plan_key(tmp_path, capsys):
+    """The plan-matching fold (U12) is invisible when no plan session is active: a plain dirty save
+    carries no `plan` key, so `save`'s common-case JSON shape is byte-unchanged."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        rc = cli.main(["save", "-m", "add quux", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True and payload["saved"] is True
+    assert "plan" not in payload  # no active plan -> no fold reporting
+
+
 def test_undo_inverts_a_save_and_then_reports_nothing_to_undo(tmp_path, capsys):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     before_ids = get(repo).op_ids

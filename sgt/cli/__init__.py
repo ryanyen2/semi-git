@@ -23,11 +23,12 @@ instant, reversible, content-untouched (R16) -- and `revert <feature>` bridges i
 algebra: it resolves a feature id/label to its op-set and runs the same exact edit a single-op
 `revert` would, grouped by feature.
 
-`plan`/`checkpoint`/`drift` are the agentic loop (plan U14): `plan intake` decomposes a stated
-plan into predicted hollow ops (off-chain, R18 -- never touching the ideal algebra); `checkpoint`
-previews footprint-overlap matches between pending steps and ops mined since, and (given
-`--confirm-hollow`/`--confirm-op`) applies exactly the named group; `drift` lists ops no active
-plan predicted.
+`plan` is the agentic loop's off-chain half (plan U14): `plan intake` decomposes a stated plan into
+predicted hollow ops (R18 -- never touching the ideal algebra). Step<->op matching and plan-drift
+(the former `checkpoint`/`drift` verbs) are folded into `sgt save` (U12/R10): a save auto-confirms
+each unambiguous single-step match and reports the rest; `sgt save --resolve-plan` settles an
+n:m/multi-step match (`--confirm-hollow`/`--confirm-op` names one group). The working-tree sense of
+"drift" keeps its name in `status`/`fsck --tree`.
 """
 
 from __future__ import annotations
@@ -51,8 +52,8 @@ _VERBS = {
     "save", "status", "log", "undo", "revert", "restore", "edit", "resolve",
     # navigation + inspection (daily)
     "switch", "diff", "map", "graph", "episodes", "blame", "intent",
-    # agentic loop (daily)
-    "plan", "checkpoint", "drift",
+    # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
+    "plan",
     # rewrite pipeline (daily)
     "commit", "fulfill",
     # groupings
@@ -82,6 +83,14 @@ _ROUTING = {
 # new home instead of a bare `_help()`. `regroup`-tier verbs nest one level deeper under `feature`.
 _TIER_PATH = {"advanced": "advanced", "feature": "feature", "regroup": "feature regroup"}
 _REMOVED = {verb: f"{_TIER_PATH[tier]} {verb}" for verb, tier in _ROUTING.items()}
+
+# Verbs folded *into another verb* (not re-homed under a tier): typed by muscle memory, they point
+# at their new home rather than silently falling to `_help()`. `checkpoint`/`drift` folded into
+# `save` (U12/R10): a save auto-confirms unambiguous plan-step matches and reports unmatched ops.
+_FOLDED = {
+    "checkpoint": "save  (matches auto-confirm; `sgt save --resolve-plan` settles an ambiguous one)",
+    "drift": "save  (unmatched ops show in `sgt save`; `sgt status` for working-tree drift)",
+}
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
              porcelain, tiers, select, session, review, intent, edit, resolve, suggestions)
@@ -173,6 +182,10 @@ def main(argv: list[str] | None = None) -> int:
         if remedy is not None:
             sys.stderr.write(f"sgt: `{argv[0]}` moved to `sgt {remedy}`\n")
             return 2
+        folded = _FOLDED.get(argv[0])
+        if folded is not None:
+            sys.stderr.write(f"sgt: `{argv[0]}` folded into `sgt {folded}`\n")
+            return 2
         return _help()
 
     parser = _build_parser()
@@ -204,7 +217,7 @@ def _help() -> int:
     print(
         "sgt — semantic operation-ideal version control\n\n"
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
-        '  sgt save [-m "<msg>"]       mine the working tree + commit a witness for it\n'
+        '  sgt save [-m "<msg>"]       mine the working tree + commit a witness (auto-matches plan steps)\n'
         "  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n"
         "  sgt log [--json]            the lane×commit grid (--ops raw op DAG · --tree/--rail/--summary)\n"
         "  sgt undo                    invert the last mutating operation (the unified op log)\n"
@@ -225,8 +238,7 @@ def _help() -> int:
         "\n"
         "  agentic loop:\n"
         "  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n"
-        "  sgt checkpoint [--json]     preview + confirm plan-step <-> mined-op matches\n"
-        "  sgt drift [--json]          ops no active plan predicted\n"
+        "  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n"
         "\n"
         "  rewrite pipeline:\n"
         "  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n"

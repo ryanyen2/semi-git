@@ -157,20 +157,14 @@ def test_history_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
     assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path), full=True), indent=2)
 
 
-def test_drift_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
-    """R21 guardrail for `drift`, mirroring `test_history_json_cli_matches_view_at_default_and_full`."""
-    from sgt.api import drift_view
-    from sgt.core.lens import get
-
+def test_folded_verbs_redirect_to_save(tmp_path, capsys):
+    """`checkpoint`/`drift` folded into `save` (U12/R10): typed by muscle memory, each points at
+    its new home with exit 2 rather than dispatching or falling to bare help."""
     _seed(tmp_path, 2)
-    get(tmp_path)
     capsys.readouterr()
-
-    assert _in(tmp_path, ["drift", "--json"]) == 0
-    assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path)), indent=2)
-
-    assert _in(tmp_path, ["drift", "--json", "--full"]) == 0
-    assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path), full=True), indent=2)
+    for verb in ("checkpoint", "drift"):
+        assert _in(tmp_path, [verb]) == 2
+        assert f"`{verb}` folded into `sgt save" in capsys.readouterr().err
 
 
 def test_revert_emit_previews_without_writing(tmp_path, capsys):
@@ -484,62 +478,87 @@ def test_plan_abandon(tmp_path, capsys, monkeypatch):
     assert _in(tmp_path, ["plan", "abandon", "no-such-session"]) == 1
 
 
-def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
-    """A session predicting `a.py::foo` previews a match against a real follow-up edit to it,
-    then `--confirm-hollow/--confirm-op` applies exactly that group."""
+def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1"):
+    """A one-step active plan session predicting `a.py::foo`, its baseline being the current op set.
+    Returns the session's single hollow id."""
     from pathlib import Path
 
     from sgt.core.op import make_op
     from sgt.core.store import Store
-    from sgt.loop import plan as plan_mod
 
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    gb = _seed(tmp_path, 1)  # a.py::foo == "return 1"
     store = Store(tmp_path)
     baseline = sorted(op.id for op in store.all_ops())
-
-    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    footprint = {"a.py::foo": (None, plan_mod._PENDING),
+                 f"__plan__::{session}::{hollow_id_suffix}": (None, plan_mod._PENDING)}
     hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
     store.add_hollow(hollow)
     table = plan_mod._load_sessions(Path(tmp_path))
-    table["s1"] = {
+    table.setdefault(session, {
         "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
-        "baseline_op_ids": baseline,
-        "steps": [{
-            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
-            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-        }],
-    }
+        "baseline_op_ids": baseline, "steps": [],
+    })
+    table[session]["steps"].append({
+        "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+        "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+    })
     plan_mod._save_sessions(Path(tmp_path), table)
+    return hollow.id
+
+
+def test_save_auto_confirms_a_single_plan_step(tmp_path, capsys, monkeypatch):
+    """A save fulfilling exactly one pending plan step auto-confirms it -- no separate `checkpoint`
+    verb (U12/R10). The save reports the fold and the step flips to `matched`."""
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)  # a.py::foo == "return 1"
+    _seed_pending_step(tmp_path, plan_mod, "step0")
 
     (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    gb.commit_all("touch foo")
     capsys.readouterr()
-
-    assert _in(tmp_path, ["checkpoint", "--json"]) == 0
-    preview = json.loads(capsys.readouterr().out)
-    assert len(preview["matches"]) == 1
-    group = preview["matches"][0]
-
-    argv = ["checkpoint", "--json"]
-    for hid in group["hollow_ids"]:
-        argv += ["--confirm-hollow", hid]
-    for oid in group["op_ids"]:
-        argv += ["--confirm-op", oid]
-    assert _in(tmp_path, argv) == 0
-    confirmed = json.loads(capsys.readouterr().out)
-    assert confirmed["session_id"] == "s1"
+    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["saved"] is True
+    assert len(out["plan"]["auto_confirmed"]) == 1
+    assert out["plan"]["auto_confirmed"][0]["session_id"] == "s1"
+    assert not out["plan"]["ambiguous"]
 
     assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
     status = json.loads(capsys.readouterr().out)
     assert status["sessions"][0]["steps"][0]["status"] == "matched"
 
 
-def test_drift_json_reports_nothing_with_no_active_session(tmp_path, capsys):
-    _seed(tmp_path, 2)
+def test_save_resolve_plan_settles_an_ambiguous_match(tmp_path, capsys, monkeypatch):
+    """Two pending steps both predicting `a.py::foo` tangle into one op cluster on a save -- an n:m
+    match that does NOT auto-confirm. `save --resolve-plan --confirm-hollow/--confirm-op` settles
+    one group by name (the standalone-on-a-clean-tree resolution path)."""
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)
+    h0 = _seed_pending_step(tmp_path, plan_mod, "step0")
+    _seed_pending_step(tmp_path, plan_mod, "step1")  # second step, same predicted symbol -> n:m
+
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
     capsys.readouterr()
-    assert _in(tmp_path, ["drift", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["op_ids"] == []
+    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["saved"] is True
+    assert not out["plan"]["auto_confirmed"]  # two steps -> ambiguous, nothing auto-confirmed
+    ambiguous = out["plan"]["ambiguous"]
+    assert len(ambiguous) == 1 and len(ambiguous[0]["hollow_ids"]) == 2
+    op_id = ambiguous[0]["op_ids"][0]
+
+    # Resolve one step by name, standalone on the now-clean tree (nothing new to save).
+    argv = ["save", "--resolve-plan", "--confirm-hollow", h0, "--confirm-op", op_id, "--json"]
+    assert _in(tmp_path, argv) == 0
+    confirmed = json.loads(capsys.readouterr().out)
+    assert confirmed["ok"] is True and confirmed["session_id"] == "s1"
+
+    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
+    steps = json.loads(capsys.readouterr().out)["sessions"][0]["steps"]
+    by_hollow = {s["hollow_id"]: s["status"] for s in steps}
+    assert by_hollow[h0] == "matched"  # exactly the named step resolved; the other stays pending
 
 
 def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys):
@@ -723,9 +742,9 @@ def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
     from sgt.cli import _VERBS
 
     assert _VERBS == {
-        "save", "status", "log", "undo", "revert", "restore", "edit",
+        "save", "status", "log", "undo", "revert", "restore", "edit", "resolve",
         "switch", "diff", "map", "graph", "episodes", "blame", "intent",
-        "plan", "checkpoint", "drift",
+        "plan",  # checkpoint/drift folded into `save` (U12)
         "commit", "fulfill",
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",
