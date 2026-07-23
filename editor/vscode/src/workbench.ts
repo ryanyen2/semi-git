@@ -310,7 +310,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // common case, since the chip itself is that report.
   private async runOracle(): Promise<void> {
     try {
-      await this.store.sgt.mutate(["oracle", "run"]);
+      await this.store.sgt.mutate(["advanced", "oracle", "run"]);
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     } finally {
@@ -330,7 +330,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     try {
-      await this.store.sgt.mutate(["oracle", "override", "--status", status, "--reason", reason]);
+      await this.store.sgt.mutate(["advanced", "oracle", "override", "--status", status, "--reason", reason]);
       this.store.invalidate();
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
