@@ -598,7 +598,7 @@ def render_graph_lines(
         lines.append(f" {paint(hexc, '●')} {bold(raw)}  {dim(focus)}  ·  {lane['op_count']} op(s)")
         lines.append("")
         if not lane["cars"]:
-            lines.append(dim("   no checkpoints yet -- run `sgt intent build` (or `sgt graph --refresh`)"))
+            lines.append(dim("   no checkpoints yet -- run `sgt intent build` (or `sgt log --refresh`)"))
         for car in lane["cars"]:
             head = render_car(car, 6, hexc)
             future = dim(" (not yet reached)") if car["is_future"] else ""
@@ -650,8 +650,8 @@ def render_graph_lines(
     # Legend + next-step hints: the view explains its own encoding and what to do from here.
     lines.append(dim(" [0···] = a checkpoint car at its commit-time (digit = its @n, brightness = op"
                      " density); [ ] co-changed · ( ) thematic · bold = the lane's big event · dim = past frontier"))
-    lines.append(dim(" daily:  sgt graph  (fast, cached)   ·   sgt graph --refresh  (after edits: re-name"
-                     " features + checkpoints)   ·   sgt graph --focus <f-XXXX>  (one feature, full detail)"))
+    lines.append(dim(" daily:  sgt log  (fast, cached)   ·   sgt log --refresh  (after edits: re-name"
+                     " features + checkpoints)   ·   sgt log --focus <f-XXXX>  (one feature, full detail)"))
     lines.append(dim(" operate:  sgt revert <f-XXXX>  (whole feature)   ·   sgt revert <f-XXXX>@<n>"
                      "  (one checkpoint/car)   ·   sgt intent show <f-XXXX>  (its chapters)"))
     return lines
@@ -742,5 +742,5 @@ def render_rail_lines(
         lines.append("")
         lines.append(dim(f" … {n_ep - len(shown)} older episode(s) folded (newest {len(shown)} shown)"))
     lines.append("")
-    lines.append(dim(" operate:  sgt revert <f-XXXX>@<n>  (rewind one checkpoint)   ·   sgt graph  (the timeline)"))
+    lines.append(dim(" operate:  sgt revert <f-XXXX>@<n>  (rewind one checkpoint)   ·   sgt log  (the timeline)"))
     return lines
