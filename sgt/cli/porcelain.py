@@ -148,6 +148,16 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
             return _fail_json(str(e), as_json)
         record_ideal(repo, ideal, sha)
         saved = True
+        # Fold the save-time ownership cascade in (U6/R1/R2): assign every genuinely-new symbol a
+        # durable lane (assign pin + authored CRDT) and patch the persisted tree's `op_leaf` so the
+        # new op is visible on the grid immediately. Guarded: the ideal is already committed, so a
+        # lane-assignment hiccup must never fail the save. Local import keeps the hot path light.
+        try:
+            from sgt.core.store import Store
+            from sgt.lens import ledger
+            ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
+        except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
+            pass
     elif not resolve_plan:
         msg = "nothing to save -- no uncommitted ops"
         if as_json:
