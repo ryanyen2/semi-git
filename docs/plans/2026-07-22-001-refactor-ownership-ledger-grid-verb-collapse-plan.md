@@ -21,6 +21,15 @@ completed: 2026-07-23
 > local move's U10-incremental-graph edge source (currently the correct-but-slower `cluster.signals`
 > reparse, paid only by saves that add a genuinely-new entity), and pruning the now-unreferenced
 > `sgt/cli/inspect.py::_map_for_view` `verb` parameter.
+>
+> **Follow-up dispositioned 2026-07-23.** The vestigial `_map_for_view` `verb` param was removed
+> (`40b8af6`). `gamma` persistence and the edge source are captured with options + recommendations
+> in `docs/plans/2026-07-23-001-deferred-ledger-local-move-refinements.md` (both kept as-is with a
+> grounded rationale rather than speculatively built). Separately, the three pre-existing
+> `tests/core/test_land.py` no-trace failures were fixed (`8ea0800`): land now rolls back the
+> gitignored `.sgt/local` caches that `restore_worktree_to` never saw. (One randomized concurrency
+> test, `test_concurrent_disjoint_landers_...`, is a load-sensitive CAS-retry flake — pre-existing,
+> unrelated to these changes — still open.)
 
 ## Summary
 
