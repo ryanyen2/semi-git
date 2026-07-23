@@ -223,6 +223,114 @@ def test_plan_revert_feature_refuses_on_an_unresolvable_ref(tmp_path):
     assert preview.after_ids == preview.before_ids
 
 
+# -- U11: revert <lane> --to <commit> (the timeline-scrub truncation edit) ----------------------
+
+
+def _lane_commit_spans(repo, result):
+    """Per leaf feature: the sorted `(op_id, commit_index)` of its ops that carry a commit index
+    (i.e. appear in `history()` -- the axis `--to` scrubs along)."""
+    from sgt.api import history_view
+
+    ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
+    spans: dict[str, list[tuple[str, int]]] = {}
+    for op_id, leaf in result["op_leaf"].items():
+        if op_id in ci:
+            spans.setdefault(leaf, []).append((op_id, ci[op_id]))
+    for leaf in spans:
+        spans[leaf].sort(key=lambda t: t[1])
+    return spans
+
+
+def _pick_spanning_lane(spans):
+    """The first leaf whose ops span >=2 distinct commit indices, and the earliest cut that leaves
+    at least one op strictly after it -- so a truncation there is non-trivial."""
+    for leaf, pairs in spans.items():
+        idxs = sorted({ci for _, ci in pairs})
+        if len(idxs) >= 2:
+            return leaf, idxs[0]
+    return None, None
+
+
+def test_plan_revert_lane_to_commit_truncates_only_post_commit_ops(tmp_path):
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal = get(repo)
+    ops = Store(repo).all_ops()
+    result = lensmap.build_map(repo)
+
+    spans = _lane_commit_spans(repo, result)
+    lane, cut = _pick_spanning_lane(spans)
+    assert lane is not None, "linear_history should yield a lane spanning >=2 commits"
+
+    preview = verbs.plan_revert_lane_to_commit(repo, lane, cut)
+    assert preview.ok and preview.verb == "revert"
+    assert preview.target == f"{lane}@{cut}"
+
+    seed = {op for op, ci in spans[lane] if ci > cut}
+    assert seed  # the cut actually leaves post-commit ops to remove
+    expected: set[str] = set()
+    for op in seed:
+        expected |= order.upset_in(op, ideal.op_ids, ops)
+    assert preview.removed == frozenset(expected)
+
+    kept_lane_ops = {op for op, ci in spans[lane] if ci <= cut}
+    assert kept_lane_ops <= preview.after_ids  # the lane's shape at/before the cut survives
+    assert order.is_valid_ideal(ops, preview.after_ids)
+
+
+def test_plan_revert_lane_to_commit_is_a_no_op_past_the_last_commit(tmp_path):
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal = get(repo)
+    result = lensmap.build_map(repo)
+
+    spans = _lane_commit_spans(repo, result)
+    lane = next(iter(spans))
+    last = max(ci for _, ci in spans[lane])
+
+    preview = verbs.plan_revert_lane_to_commit(repo, lane, last)
+    assert preview.ok  # a no-op is a successful (empty) edit, not a failure
+    assert preview.removed == frozenset()
+    assert preview.after_ids == preview.before_ids == ideal.op_ids
+    assert "no change" in preview.message
+
+
+def test_plan_revert_lane_to_commit_refuses_an_unresolvable_ref(tmp_path):
+    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    get(repo)
+    lensmap.build_map(repo)
+
+    preview = verbs.plan_revert_lane_to_commit(repo, "no-such-lane", 0)
+    assert not preview.ok
+    assert preview.after_ids == preview.before_ids
+
+
+def test_plan_revert_lane_to_commit_keep_guards_a_second_lane(tmp_path):
+    """`--keep <other>` never lets a truncation silently strand another lane. If the truncation's
+    up-set would sweep the kept lane's ops, keeping them would leave those ops without their removed
+    dependency -- so `_validated` refuses rather than dropping. If the kept lane isn't swept at all,
+    naming it is an exact no-op. Both branches are correct; this fixture exercises whichever holds."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    result = lensmap.build_map(repo)
+
+    spans = _lane_commit_spans(repo, result)
+    lane, cut = _pick_spanning_lane(spans)
+    assert lane is not None
+    others = [leaf for leaf in spans if leaf != lane]
+    if not others:
+        pytest.skip("linear_history clustered into a single lane -- no second lane to keep")
+    other = others[0]
+
+    base = verbs.plan_revert_lane_to_commit(repo, lane, cut)
+    swept = set(base.removed) & {op for op, _ in spans[other]}
+
+    kept = verbs.plan_revert_lane_to_commit(repo, lane, cut, keep=(other,))
+    if swept:
+        assert not kept.ok  # keeping a swept lane would strand it -> refuse, never silently drop
+        assert kept.after_ids == kept.before_ids
+    else:
+        assert kept.ok and kept.removed == base.removed  # not swept -> keep is a no-op
+
+
 # -- labels pin ---------------------------------------------------------------------------------
 
 

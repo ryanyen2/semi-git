@@ -524,6 +524,48 @@ def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     return core_verbs._validated("revert", feature_id, ideal.op_ids, after, ops, declared)
 
 
+def plan_revert_lane_to_commit(
+    repo: str | Path, ref: str, commit_index: int, keep: tuple[str, ...] = (),
+) -> core_verbs.VerbPreview:
+    """`revert <lane> --to <commit>` (plan U11/R9): truncate a lane at a commit boundary -- drop the
+    lane's ops *after* `commit_index` (and everything built on them), keeping the lane's shape at or
+    before it. `keep` names other lanes whose ops must survive even where the up-set would otherwise
+    sweep them: their op-sets are subtracted from the removal before validating, so `_validated`
+    refuses (rather than silently dropping) if that would leave an invalid ideal. Reuses
+    `plan_revert_feature`'s exact `upset_in` + `Ideal.from_ops` algebra -- only the *seed* op-set
+    (the lane's post-`commit_index` ops) is new; the coupling a truncation cuts through surfaces in
+    the preview via U4's `_coupling_rows`, unchanged."""
+    from sgt.api import history_view
+
+    repo = Path(repo)
+    ops = Store(repo).all_ops()
+    ideal = kernel_lens.current_ideal(repo)
+    declared = kernel_lens._load_declared(repo)
+
+    resolved = resolve_feature(repo, ref)
+    if resolved is None:
+        return core_verbs._preview("revert", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
+                                    message=f"feature {ref!r} not found; run `sgt map`")
+    op_ids, feature_id, label = resolved
+    target = f"{feature_id}@{commit_index}"
+
+    ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
+    seed = {oid for oid in op_ids if oid in ideal.op_ids and ci.get(oid, -1) > commit_index}
+    if not seed:
+        return core_verbs._preview("revert", target, ideal.op_ids, ideal.op_ids, ops,
+                                    message=f"{label!r} has no ops after commit {commit_index}; no change")
+
+    removal: set[str] = set()
+    for oid in seed:
+        removal |= order.upset_in(oid, ideal.op_ids, ops, declared)
+    for keep_ref in keep:  # a kept lane's ops survive even where the up-set would sweep them
+        kept = resolve_feature(repo, keep_ref)
+        if kept is not None:
+            removal -= set(kept[0])
+    after = ideal.op_ids - frozenset(removal)
+    return core_verbs._validated("revert", target, ideal.op_ids, after, ops, declared)
+
+
 def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     """`revert`'s inverse: resolve `ref` to a feature's op-set X (via `op_leaf`, which still
     names a reverted feature's ops -- it's built from every mined op, not just the ones live in

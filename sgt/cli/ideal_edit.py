@@ -14,7 +14,11 @@ def register(subs, parent) -> None:
     r.add_argument("--emit", action="store_true")
     r.add_argument("--keep-dependents", action="store_true", dest="keep_dependents")
     r.add_argument("--keep", help="comma-separated dependent op-ids to keep (from the --emit "
-                                  "frontier); implies --keep-dependents. Empty = keep none.")
+                                  "frontier); implies --keep-dependents. Empty = keep none. "
+                                  "With --to, names other LANES to preserve instead.")
+    r.add_argument("--to", type=int, metavar="COMMIT", dest="to",
+                   help="scrub <lane> back to its state as of commit <COMMIT> (a grid column "
+                        "index from `sgt log`); drops that lane's ops after it and their up-set.")
     r.add_argument("--repair", action="store_true")
     r.add_argument("--backend", default="api", choices=["api"])
     r.add_argument("--intent")
@@ -73,6 +77,12 @@ def _after(repo: str, a: str, b: str, retract: bool, as_json: bool) -> int:
 def _cmd_revert(args) -> int:
     if args.session:
         return _revert_session(".", args.session, args.emit, args.as_json)
+    if args.to is not None:
+        # `sgt revert <lane> --to <commit>` (plan U11): the timeline-scrub edit. In this mode
+        # `--keep a,b` reinterprets its tokens as other LANE refs to preserve (not op-ids), since
+        # truncation removes a lane's post-<commit> up-set rather than toggling named dependents.
+        keep = tuple(tok for tok in (t.strip() for t in (args.keep or "").split(",")) if tok)
+        return _revert_lane_to_commit(".", args.ref, args.to, keep, args.emit, args.as_json)
     if args.keep_dependents or args.keep is not None:
         # `--keep a,b` (from the --emit frontier) keeps exactly those toggleable dependents; a bare
         # `--keep-dependents` keeps them all (keep=None); `--keep ""` keeps none (a plain revert).
@@ -114,6 +124,25 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
     if extra:
         view = {**view, **extra}
     return _emit_json(view) if as_json else _print_verb_view(view)
+
+
+def _revert_lane_to_commit(
+    repo: str, ref_tokens: list[str], commit_index: int, keep: tuple[str, ...],
+    emit: bool, as_json: bool,
+) -> int:
+    """`sgt revert <lane> --to <commit>` (plan U11): resolve <lane> to a feature, drop exactly its
+    ops after commit <commit> (plus their up-set), and preserve any lane named in `--keep`. Routed
+    through the same `_emit_verb_result` tail as every other ideal edit, so the `--emit` preview
+    carries the U4 coupling rows and apply goes through `sgt.core.verbs.apply`."""
+    from sgt.core.lens import get
+    from sgt.lens import verbs as lens_verbs
+
+    if not ref_tokens:
+        print("usage: sgt revert <lane> --to <commit> [--keep <lane>,...] [--emit] [--json]")
+        return 2
+    get(repo)  # mine-on-contact before planning the edit (R9)
+    preview = lens_verbs.plan_revert_lane_to_commit(repo, " ".join(ref_tokens), commit_index, keep=keep)
+    return _emit_verb_result(repo, preview, emit, as_json)
 
 
 def _kernel_edit_verb(
