@@ -100,11 +100,58 @@ def _recover_pending_land(repo: Path, gb: GitBinding) -> None:
         state.save_json(repo, "land_pending", {})
 
 
+# `.sgt/local/` files a non-landing land legitimately keeps, so the rollback below must NOT rewind
+# them -- exactly `tests/core/test_land.py::_worktree_state`'s exempt set: the oracle verdict is real
+# work worth caching, `land_pending` is the crash journal `land` manages itself, and `lock` is the
+# store mutex. Every other local artifact `lens.get`'s mine-on-contact touches (fidelity/sync_cache
+# marks, the derived ideal/witness/backfill caches, the op-index sidecar) is derived and
+# self-healing, so it must roll back for a land that does not land to leave no trace (R7).
+_LAND_KEEPS_LOCAL = frozenset({"oracle.json", "land_pending.json", "lock"})
+
+
+def _iter_local_caches(repo: Path):
+    """The top-level `.sgt/local/` files that participate in a land's transaction. Top-level only,
+    so the `.sgt/local/hollow/` op-store subtree (monotone, like `.sgt/ops/`) is left untouched; the
+    exempt caches and in-flight temp files are skipped."""
+    local = repo / state.SGT_DIR / "local"
+    if not local.is_dir():
+        return
+    for p in local.iterdir():
+        if p.is_file() and p.name not in _LAND_KEEPS_LOCAL and not p.name.startswith(".tmp-"):
+            yield p
+
+
+def _snapshot_local_caches(repo: Path) -> dict[str, bytes]:
+    """Byte snapshot of the transactional local caches, captured before mine-on-contact touches
+    them so every non-landing exit can restore the true pre-land baseline."""
+    return {p.name: p.read_bytes() for p in _iter_local_caches(repo)}
+
+
+def _restore_local_caches(repo: Path, before: dict[str, bytes]) -> None:
+    """Roll the transactional local caches back to `before` (R7): rewrite any the land changed,
+    delete any it newly created, and re-create any it removed. `restore_worktree_to` only rewinds
+    git-*tracked* state, so these gitignored caches -- which a `restore_worktree_to` never sees --
+    need their own restore for a land that does not land to leave the tree byte-identical."""
+    local = repo / state.SGT_DIR / "local"
+    now = {p.name: p for p in _iter_local_caches(repo)}
+    for name, p in now.items():
+        if name not in before:
+            p.unlink()  # appeared during the land -> remove it
+        elif p.read_bytes() != before[name]:
+            state._atomic_write_text(p, before[name].decode("utf-8"))  # churned -> rewind
+    for name, data in before.items():
+        if name not in now:
+            state._atomic_write_text(local / name, data.decode("utf-8"))  # land removed it -> restore
+
+
 def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandReport:
     repo = Path(repo)
     gb = GitBinding(repo)
 
     _recover_pending_land(repo, gb)  # undo any crashed prior land before touching the tree (R7)
+    # Baseline the gitignored local caches now -- `_recover_pending_land` already rewound any crashed
+    # prior land, so this is the true pre-land state every non-landing exit rolls back to (R7).
+    local_before = _snapshot_local_caches(repo)
     lens.get(repo)  # mine-on-contact: absorb local reality first (R9)
     if not gb.is_clean():
         raise lens.DirtyWorkingTreeError(
@@ -114,6 +161,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     # LAW-G with zero mutation: no oracle -> a green verdict cannot exist, so refuse before staging
     # anything (not even the monotone op adds). Pre-checked here so this path leaves no trace at all.
     if load_oracle_config(repo) is None:
+        _restore_local_caches(repo, local_before)  # refuse with zero trace -- even the get() caches
         return LandReport(branch=branch or "?", landed=False, blocked_reason=_NO_ORACLE)
 
     if branch is None:
@@ -155,6 +203,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
 
     def _blocked(reason: str, attempt: int, res=None, forks=()) -> LandReport:
         gb.restore_worktree_to(snapshot)  # a land that does not land leaves no trace (R7)
+        _restore_local_caches(repo, local_before)  # ...and rewind the gitignored local caches too
         state.save_json(repo, "land_pending", {})  # normal (non-crash) exit -- clear the journal
         extra = {} if res is None else dict(
             pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
