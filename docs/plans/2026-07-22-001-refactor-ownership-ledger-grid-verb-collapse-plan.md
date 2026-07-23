@@ -818,6 +818,17 @@ including the non-local-ambiguity fixtures, reports zero divergence.
 
 ### U11. Truncation-revert verbs
 
+**SHIPPED (adjust-as-you-go):** `plan_revert_lane_to_commit` landed in `sgt/lens/verbs.py` (next to
+`plan_revert_feature`, not `core/verbs.py` — it needs `resolve_feature`/`history_view`, which live in
+the lens layer). CLI `--to <commit>`/`--keep <lane>` wired in `sgt/cli/ideal_edit.py` via a `--to`-
+gated branch in `_cmd_revert`; in `--to` mode `--keep` reinterprets its tokens as lane refs. The
+`--keep` semantics resolved to a *strand-guard*: keeping a lane whose ops sit in the removed up-set
+would leave them without their removed dependency, so `_validated` refuses (never silently drops) —
+the test asserts whichever branch the fixture exercises (refuse-if-swept / no-op-if-not). Also
+hardened `core/verbs.apply` to treat an ok no-op edit (`after == before`) as a no-commit return of
+the current HEAD, rather than a failed empty `git commit` — this is the first plan that can produce
+an ok no-op, and it also covers `pin`-at-tip / already-present `restore`.
+
 **Goal:** `revert <lane> --to <commit>` truncates a lane at a commit boundary; `--keep <lane>`
 composes across lanes; both preview as a painted blast on the grid.
 **Requirements:** R9
@@ -854,6 +865,19 @@ coupling-edge surfacing in preview.
 matching the grid's painted blast.
 
 ### U12. Fold plan-matching into `save`; ghost segments on the grid
+
+**SHIPPED (adjust-as-you-go):** `_save` gained `_fold_plan_matches` (auto-confirms 1-step groups via
+the unchanged `confirm_match`) + `--resolve-plan`/`--confirm-hollow`/`--confirm-op` + the standalone
+resolution path. The `plan` key is omitted from save's output/JSON when no session is active, so the
+common-case surface is byte-unchanged (existing save goldens/tests untouched). `checkpoint`/`drift`
+subparsers + handlers removed from `sgt/cli/loop.py`; a new `_FOLDED` table in `sgt/cli/__init__.py`
+redirects a typed `checkpoint`/`drift` to `sgt save`. **Deviation:** pulled the `checkpoint`/`drift`
+`_VERBS` removal *forward* from U14 into U12 (a removed subparser must not linger as a dangling
+`_VERBS` entry — every commit stays coherent), and regenerated the CLI golden here (its
+checkpoint/drift keys + help text) rather than deferring all golden churn to U14. Also fixed a
+pre-existing U13 gap: the `_VERBS` exact-set test was missing `resolve`. `sgt/loop/match.py`
+untouched, as planned. The "ghost segments on the grid" sub-goal (rendering plan ghosts as grid
+cells) is a **U3/webview** concern, deferred there — U12 shipped the verb-fold half.
 
 **Goal:** `save` auto-runs the existing checkpoint matcher and replaces plan ghosts; `checkpoint`
 and `drift` stop being verbs a user runs.
@@ -926,6 +950,9 @@ matching the outcome of today's three-verb manual sequence.
 **Files:** `sgt/cli/__init__.py` (`_VERBS` `:49-62`, `_ROUTING` `:67-84`), `sgt/mcp/server.py`
 (`TOOLS` `:210-301`, `tool_*` handlers `:46-200`), `tests/cli/**`, `tests/golden/test_cli_golden.py`,
 `tests/golden/snapshots/cli_surface.json`.
+**Note (adjust-as-you-go):** `checkpoint`/`drift` were already removed from `_VERBS` + their golden
+regenerated in U12 (a removed subparser can't linger as a dangling `_VERBS` entry) — U14's sweep no
+longer touches them.
 **Approach:** Per the old→new table in High-Level Technical Design: remove `map`/`graph`/
 `episodes`/`status`/`intent` from `_VERBS` (absorbed into `log`, U1/U3); move `blame` into
 `_ROUTING` under `advanced`; remove `checkpoint`/`drift` (folded into `save`, U12); move `edit` into
