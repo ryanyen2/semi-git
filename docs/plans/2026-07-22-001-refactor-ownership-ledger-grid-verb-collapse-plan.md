@@ -596,6 +596,19 @@ requirement.
 
 ### U6. Wire the cascade into the authored-feature CRDT
 
+**Design constraint found while scoping (adjust-as-you-go) — U6 is the crux, and not yet
+implemented:** two facts make U6 a careful, broad-blast-radius change rather than a thin wiring:
+(1) **visibility** — adding a new symbol to an authored feature does *not* by itself put it in
+`op_leaf`, which `grid_view` reads: `assign_ops_to_leaves` votes over the *tree's* leaf membership,
+not authored features, so a ledger assignment is invisible on the grid until `leaf_member_index`/
+`assign_ops_to_leaves` also incorporate authored (or ledger) membership; (2) **durability** — a
+plain `tree.build` re-clusters a ledger-assigned symbol wherever the fused graph puts it unless
+`build` is taught to *respect* authored membership (the deferred half of U7's `tree.build`
+integration). So U6 is coupled to a `tree`/`op_leaf`/authored reconciliation with a wide blast
+radius (map/blame/grid/select + goldens) and it sits on the `save` hot path — it needs its own
+careful design pass, not a tail-of-session rush. The U5 local-move algorithm and the U7 queue it
+composes are both in place; what remains is this reconciliation. **Status: designed-but-not-built;
+the specific gaps above are the design brief.**
 **Goal:** The cascade's decisions land as durable `AuthoredFeature` writes, not a side table, so a
 rebuild can never move or drop them.
 **Requirements:** R2
