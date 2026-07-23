@@ -1,7 +1,10 @@
-"""Read/inspection verbs (plan U7/U9/U13): `log`/`state`/`diff` over the op DAG, the current
-ideal, and ideal-vs-ideal diffs; `map`/`blame`/`status` over the feature tree; `history` for the
-commit axis; `fsck` for op-store integrity; `preview` for side-effect-free feature-verb previews.
-Every verb mines the working tree on contact before reading (R9)."""
+"""Read/inspection verbs (plan U7/U9/U13, collapsed onto the `log` grid in U14): `sgt log` is the
+one inspection surface -- the lane×commit grid, with modes `--tree` (the feature tree, formerly
+`sgt map`), `--rail` (episode rail, formerly `sgt episodes`), `--summary` (scalars, formerly `sgt
+status`), and `--ops` (the raw op DAG). `diff` compares two ideals; `blame` (now under `advanced`)
+attributes a file's symbols; `history` is the commit axis; `fsck` checks op-store integrity;
+`preview` is a side-effect-free feature-verb preview. Every verb mines the working tree on contact
+before reading (R9)."""
 
 from __future__ import annotations
 
@@ -381,9 +384,10 @@ def _print_map_tree(view: dict) -> None:
 
 
 def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
-    """`sgt map` (plan U13): (re)build the feature tree from the live op store -- clustering,
-    Greene identity, pins, labeling -- then print the kernel-backed projection (`api.map_view`).
-    `--rebuild` forces a full from-scratch recluster, bypassing dirty-subtree splicing."""
+    """`sgt log --tree` (formerly `sgt map`, plan U13/U14): (re)build the feature tree from the live
+    op store -- clustering, Greene identity, pins, labeling -- then print the kernel-backed
+    projection (`api.map_view`). `--rebuild` forces a full from-scratch recluster, bypassing
+    dirty-subtree splicing (the former `sgt map --rebuild`, now `sgt log --tree --rebuild`)."""
     from sgt.api import map_view
     from sgt.core.lens import get
     from sgt.lens.map import build_map
@@ -430,44 +434,6 @@ def _map_for_view(repo: str, refresh: bool, verb: str, color: bool, rebuild: boo
     return map_view(repo)
 
 
-def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refresh: bool = False,
-           focus: str | None = None, links: bool = False) -> int:
-    """`sgt graph` (the terminal feature timeline): one identity-colored lane per feature, grouped
-    into subsystem swimlanes and ordered by first appearance; each lane leads with its short
-    `f-XXXX` handle (the copy-paste target for `sgt revert <handle>[@n]`) and draws its intent
-    checkpoints as an ordered train of bracketed "cars" -- the atom is the chapter you'd actually
-    revert to, not a raw op. `focus` narrows to one feature, full width, one detail line per car;
-    `links` re-enables the co-change `↔` annotation (off by default).
-
-    A pure read of the last-built map by default; `--refresh` re-mines and rebuilds both layers
-    (features + checkpoints) in one step. See `_map_for_view`."""
-    from sgt.api import grid_view, segments_view
-    from sgt.tui.graph import render_graph_lines
-
-    mv = _map_for_view(repo, refresh, "graph", color)
-    for line in render_graph_lines(
-        mv, grid_view(repo), segments_view(repo),
-        frontier=frontier, color=color, focus=focus, show_links=links,
-    ):
-        print(line)
-    return 0
-
-
-def _episodes(repo: str, *, color: bool = True, refresh: bool = False) -> int:
-    """`sgt episodes` (the terminal episode rail / vertical git-log): the newest commit-episode on
-    top, each feature a lane column (its episodes a straight vertical line), lanes reused across
-    non-overlapping spans. Where `sgt graph` answers "what is the codebase made of, over time,"
-    this answers "what did I do, in order" -- the rewind lens. A pure read of the last-built map
-    (like `sgt graph`); `--refresh` re-mines + rebuilds both layers first (see `_map_for_view`)."""
-    from sgt.api import grid_view
-    from sgt.tui.graph import render_rail_lines
-
-    mv = _map_for_view(repo, refresh, "episodes", color)
-    for line in render_rail_lines(mv, grid_view(repo), color=color):
-        print(line)
-    return 0
-
-
 def _blame(repo: str, file: str, as_json: bool = False) -> int:
     """`sgt blame <file>` (plan U13): per-symbol feature attribution (`sym -> max-op-in-I ->
     feature`) for the file's live entities."""
@@ -488,7 +454,8 @@ def _blame(repo: str, file: str, as_json: bool = False) -> int:
 
 
 def _status(repo: str, as_json: bool = False) -> int:
-    """`sgt status` (plan U13): file/symbol/feature counts, coverage, oracle status, drift."""
+    """`sgt log --summary` (formerly `sgt status`, plan U13/U14): file/symbol/feature counts,
+    coverage, oracle status, drift."""
     from sgt.api import status_view
     from sgt.core.lens import get
 
