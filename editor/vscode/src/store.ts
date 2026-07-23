@@ -9,6 +9,7 @@ import {
   ComposeView,
   DriftView,
   ForksView,
+  GridView,
   HistoryView,
   MapNode,
   MapView,
@@ -22,6 +23,7 @@ export class Store {
   readonly sgt: Sgt;
   private mapCache: MapView | undefined;
   private historyCache: HistoryView | undefined;
+  private gridCache: GridView | undefined;
   private statusCache: StatusView | undefined;
   private nodeById = new Map<string, MapNode>();
   private blameCache = new Map<string, BlameView>();
@@ -57,6 +59,16 @@ export class Store {
     return this.historyCache;
   }
 
+  // The canonical lane×commit cell join (`grid_view`, plan U3), cached alongside `map`/`history`
+  // and invalidated with them -- the workbench's timeline/rail layouts render from this rather than
+  // re-deriving the (op -> cell) join client-side.
+  async gridView(force = false): Promise<GridView> {
+    if (!this.gridCache || force) {
+      this.gridCache = await this.sgt.grid();
+    }
+    return this.gridCache;
+  }
+
   node(id: string): MapNode | undefined {
     return this.nodeById.get(id);
   }
@@ -85,9 +97,12 @@ export class Store {
     return this.planCache;
   }
 
+  // Drift is no longer a standalone CLI verb (folded into `save`, plan U12); its per-op span
+  // projection is one child of the `compose_view` aggregate this store already fetches, so source
+  // it from there rather than a dead `sgt drift` shell-out.
   async driftView(force = false): Promise<DriftView> {
     if (!this.driftCache || force) {
-      this.driftCache = await this.sgt.drift();
+      this.driftCache = (await this.composeView(force)).drift;
     }
     return this.driftCache;
   }
@@ -157,6 +172,7 @@ export class Store {
   invalidate(): void {
     this.mapCache = undefined;
     this.historyCache = undefined;
+    this.gridCache = undefined;
     this.statusCache = undefined;
     this.blameCache.clear();
     this.planCache = undefined;

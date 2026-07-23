@@ -255,15 +255,15 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     `grid_view`; the text render reuses the feature-timeline machinery (`render_graph_lines`) over
     the last-built map. A pure cached read by default (fast, glanceable); `--refresh` re-mines and
     rebuilds features + checkpoints first (see `_map_for_view`)."""
-    from sgt.api import grid_view, history_view, segments_view
+    from sgt.api import grid_view, segments_view
     from sgt.tui.graph import render_graph_lines
 
     mv = _map_for_view(repo, refresh, "log", color and not as_json)
+    gv = grid_view(repo)  # the canonical cell join; the text render and --json now read one shape
     if as_json:
-        return _emit_json(grid_view(repo))
-    hv = history_view(repo, full=True, limit=1_000_000)
+        return _emit_json(gv)
     for line in render_graph_lines(
-        mv, hv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
+        mv, gv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
     ):
         print(line)
     return 0
@@ -273,13 +273,14 @@ def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: 
     """`sgt log --rail` (the episode rail / vertical git-log): "what I did, in order." `--json`
     returns `grid_view` (the rail is a time-major rotation of the same cells); the text render
     reuses `render_rail_lines`."""
-    from sgt.api import grid_view, history_view
+    from sgt.api import grid_view
     from sgt.tui.graph import render_rail_lines
 
     mv = _map_for_view(repo, refresh, "log", color and not as_json)
+    gv = grid_view(repo)
     if as_json:
-        return _emit_json(grid_view(repo))
-    for line in render_rail_lines(mv, history_view(repo, full=True, limit=1_000_000), color=color):
+        return _emit_json(gv)
+    for line in render_rail_lines(mv, gv, color=color):
         print(line)
     return 0
 
@@ -463,13 +464,13 @@ def _graph(repo: str, *, frontier: int | None = None, color: bool = True, refres
 
     A pure read of the last-built map by default; `--refresh` re-mines and rebuilds both layers
     (features + checkpoints) in one step. See `_map_for_view`."""
-    from sgt.api import history_view, segments_view
+    from sgt.api import grid_view, segments_view
     from sgt.tui.graph import render_graph_lines
 
     mv = _map_for_view(repo, refresh, "graph", color)
-    hv = history_view(repo, full=True, limit=1_000_000)
     for line in render_graph_lines(
-        mv, hv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
+        mv, grid_view(repo), segments_view(repo),
+        frontier=frontier, color=color, focus=focus, show_links=links,
     ):
         print(line)
     return 0
@@ -481,11 +482,11 @@ def _episodes(repo: str, *, color: bool = True, refresh: bool = False) -> int:
     non-overlapping spans. Where `sgt graph` answers "what is the codebase made of, over time,"
     this answers "what did I do, in order" -- the rewind lens. A pure read of the last-built map
     (like `sgt graph`); `--refresh` re-mines + rebuilds both layers first (see `_map_for_view`)."""
-    from sgt.api import history_view
+    from sgt.api import grid_view
     from sgt.tui.graph import render_rail_lines
 
     mv = _map_for_view(repo, refresh, "episodes", color)
-    for line in render_rail_lines(mv, history_view(repo, full=True, limit=1_000_000), color=color):
+    for line in render_rail_lines(mv, grid_view(repo), color=color):
         print(line)
     return 0
 
