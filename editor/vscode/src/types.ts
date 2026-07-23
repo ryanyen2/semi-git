@@ -436,6 +436,30 @@ export interface IntentView {
   segments: IntentSegment[];
 }
 
+// `sgt log --json` == `sgt.api.grid_view(repo)` (plan U1/U3): the canonical lane×commit cell join
+// -- the one projection every surface (CLI, TUI, this webview) renders from, so the (op -> cell)
+// join is computed once server-side and never re-derived per surface. A cell carries the ops one
+// feature touched in one commit; unattributed ops have no cell.
+export interface GridCell {
+  feature_id: string;
+  commit_index: number;
+  op_ids: string[];
+  op_count: number;
+  kinds: Record<string, number>;
+  fidelity: "full" | "partial";
+}
+
+export interface GridView {
+  commits: { index: number; sha: string; subject: string }[];
+  cells: GridCell[];
+  features: Record<string, { label: string; op_count: number }>;
+  ghosts: unknown[];
+  partial_commits: number[];
+  commit_count: number;
+  op_count: number;
+  feature_count: number;
+}
+
 export interface ComposeView {
   map: MapView;
   history: HistoryView;

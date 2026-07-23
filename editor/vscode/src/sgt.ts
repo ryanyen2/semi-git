@@ -8,13 +8,13 @@ import * as vscode from "vscode";
 import {
   BlameView,
   ComposeView,
-  DriftView,
   EmitView,
   FeatureVerbPreview,
   FoldView,
   ForkDetailView,
   ForksView,
   FulfillResult,
+  GridView,
   HistoryView,
   LandCandidateResult,
   LandReport,
@@ -175,10 +175,11 @@ export class Sgt {
     return this.json<PlanView>(["plan", "status", "--json", "--full"]);
   }
 
-  // Ops mined that no active plan predicted (plan U14). `--full`: compact `drift_view` drops the
-  // per-op footprint/spans this extension's `DriftView` type expects.
-  drift(): Promise<DriftView> {
-    return this.json<DriftView>(["drift", "--json", "--full"]);
+  // The canonical lane×commit cell join (`grid_view`, plan U1/U3): the single projection the TUI
+  // and this webview both render from, so the (op -> cell) join is computed once in `sgt.api` and
+  // never re-derived per surface. `sgt log --json` == `grid_view(repo)`.
+  grid(): Promise<GridView> {
+    return this.json<GridView>(["log", "--json"]);
   }
 
   // The feature-map webview's shared commit-index axis: mined commits in order + every op's

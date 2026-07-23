@@ -119,12 +119,24 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         // Fall through with the empty map; the rail just shows no lanes rather than erroring.
       }
     }
+    // The canonical lane×commit cell join (`grid_view`, plan U3): the timeline/rail layouts render
+    // from this instead of re-deriving the (op -> cell) join client-side. Fetched after any heal
+    // above so it reflects the just-built tree; an empty fallback just yields no lanes.
+    let grid;
+    try {
+      grid = await this.store.gridView();
+    } catch {
+      grid = { commits: [], cells: [] };
+    }
     const nodes = compose.map.nodes.map((n) => ({
       ...n,
       color: n.kind === "feature" ? colorForNode(n.id) : null,
     }));
     this.previewCache.clear();
-    void this.view?.webview.postMessage({ type: "state", compose: { ...compose, map: { ...compose.map, nodes } } });
+    void this.view?.webview.postMessage({
+      type: "state",
+      compose: { ...compose, grid, map: { ...compose.map, nodes } },
+    });
   }
 
   private async onMessage(msg: any): Promise<void> {

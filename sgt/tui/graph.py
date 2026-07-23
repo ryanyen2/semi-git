@@ -30,7 +30,7 @@ from .color import color_for
 
 def graph_layout(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     *,
     collapsed=(),
     frontier: int | None = None,
@@ -40,12 +40,19 @@ def graph_layout(
     fr = float("inf") if frontier is None else frontier
     by_id = {n["id"]: n for n in map_view.get("nodes", [])}
 
+    # The op -> (feature, commit) join is `grid_view`'s already-computed cell table (plan U3, the
+    # canonical `sgt.api.grid_view`): a cell carries the ops one feature touched in one commit, so a
+    # feature's ops are just the cells bearing its id -- no per-op DAG walk here. An op with no
+    # feature has no cell and never appears (the same drop this filter used to do inline). `frontier`
+    # folds by commit index; cells past it are dropped so scrubbing accretes.
     ops_by_feature: dict[str, list] = {}
-    for op in history_view.get("ops", []):
-        fid = op.get("feature_id")
-        if fid is None or op["commit_index"] > fr:
+    for cell in grid_view.get("cells", []):
+        ci = cell["commit_index"]
+        if ci > fr:
             continue
-        ops_by_feature.setdefault(fid, []).append(op)
+        bucket = ops_by_feature.setdefault(cell["feature_id"], [])
+        for oid in cell["op_ids"]:
+            bucket.append({"id": oid, "commit_index": ci})
     for fid in ops_by_feature:
         ops_by_feature[fid].sort(key=lambda o: o["commit_index"])
 
@@ -183,13 +190,13 @@ def graph_layout(
     return {
         "lanes": lanes, "headers": headers, "edges": edges, "overflow": overflow,
         "node_by_id": lane_by_id, "ops_by_feature": ops_by_feature,
-        "row_count": max(1, row), "commit_count": len(history_view.get("commits") or []),
+        "row_count": max(1, row), "commit_count": len(grid_view.get("commits") or []),
     }
 
 
 def segment_layout(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     segments: list[dict],
     *,
     collapsed=(),
@@ -211,13 +218,14 @@ def segment_layout(
     dropped: the renderer dims it, but a lane's car *count* and positions stay stable while
     scrubbing -- only cell density (via `graph_layout`'s own op filtering) accretes."""
     fr = float("inf") if frontier is None else frontier
-    commit_index_of = {op["id"]: op["commit_index"] for op in history_view.get("ops", [])}
+    commit_index_of = {oid: cell["commit_index"]
+                       for cell in grid_view.get("cells", []) for oid in cell["op_ids"]}
 
     by_feature: dict[str, list[dict]] = {}
     for seg in segments:
         by_feature.setdefault(seg["feature_id"], []).append(seg)
 
-    base = graph_layout(map_view, history_view, collapsed=collapsed, frontier=frontier)
+    base = graph_layout(map_view, grid_view, collapsed=collapsed, frontier=frontier)
 
     lanes = []
     for l in base["lanes"]:
@@ -251,7 +259,7 @@ def segment_layout(
 # ── Episodic projection (pure) ───────────────────────────────────────────────────────────────────
 
 
-def episodes(map_view: dict, history_view: dict) -> dict:
+def episodes(map_view: dict, grid_view: dict) -> dict:
     """Roll the flat op stream up into EPISODES -- one per commit that carried ops -- and group
     episodes by their dominant feature into collapsible episode-groups (the "co-commit cluster" a
     developer rewinds as a unit; Stage C).
@@ -260,28 +268,28 @@ def episodes(map_view: dict, history_view: dict) -> dict:
     axis is projected from provenance: an op's ``commit_index`` identifies its earliest provenance
     commit, so ops sharing a ``commit_index`` were advanced in the same commit = one episode --
     exactly the co-commit signal Stage B clusters on. Real sgt sessions supersede this going
-    forward; the shape is identical. Pure over the same ``map_view``/``history_view(full=True)``
-    both surfaces already fetch. The VS Code counterpart is ``rollupEpisodes`` in workbench.js."""
+    forward; the shape is identical. Pure over the canonical ``grid_view`` cell table (plan U3) --
+    a cell already carries the ops one feature touched in one commit, so an episode is the cells
+    sharing one ``commit_index`` re-rolled across features; an op with no feature has no cell, so
+    (unlike the raw op stream) an all-unattributed commit forms no episode. The VS Code counterpart
+    is ``rollupEpisodes`` in workbench.js."""
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
-    subject_of = {c["index"]: c.get("subject", "") for c in history_view.get("commits", [])}
-    sha_of = {c["index"]: c.get("sha") for c in history_view.get("commits", [])}
+    subject_of = {c["index"]: c.get("subject", "") for c in grid_view.get("commits", [])}
+    sha_of = {c["index"]: c.get("sha") for c in grid_view.get("commits", [])}
 
     by_index: dict[int, dict] = {}
-    for op in history_view.get("ops", []):
-        idx = op["commit_index"]
+    for cell in grid_view.get("cells", []):
+        idx = cell["commit_index"]
         ep = by_index.get(idx)
         if ep is None:
             ep = by_index[idx] = {
                 "index": idx, "sha": sha_of.get(idx), "subject": subject_of.get(idx, ""),
                 "op_ids": [], "features": {}, "kinds": {},
             }
-        ep["op_ids"].append(op["id"])
-        fid = op.get("feature_id")
-        if fid is not None:
-            ep["features"][fid] = ep["features"].get(fid, 0) + 1
-        kind = op.get("kind")
-        if kind:
-            ep["kinds"][kind] = ep["kinds"].get(kind, 0) + 1
+        ep["op_ids"].extend(cell["op_ids"])
+        ep["features"][cell["feature_id"]] = ep["features"].get(cell["feature_id"], 0) + cell["op_count"]
+        for kind, n in cell["kinds"].items():
+            ep["kinds"][kind] = ep["kinds"].get(kind, 0) + n
 
     episodes_out = []
     for idx in sorted(by_index):
@@ -447,7 +455,7 @@ def _time_ruler(prefix_w: int, bar_w: int, commit_count: int) -> str:
 
 def render_graph_lines(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     segments: list[dict] | None = None,
     *,
     selected: str | None = None,
@@ -475,7 +483,7 @@ def render_graph_lines(
     themes/co-change are now an overlay, not the primary read."""
     segments = segments or []
     fr = float("inf") if frontier is None else frontier
-    layout = segment_layout(map_view, history_view, segments, collapsed=collapsed, frontier=frontier)
+    layout = segment_layout(map_view, grid_view, segments, collapsed=collapsed, frontier=frontier)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
 
     def paint(hex_str: str, s: str) -> str:
@@ -654,7 +662,7 @@ def render_graph_lines(
 
 def render_rail_lines(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     *,
     selected: str | None = None,
     color: bool = True,
@@ -666,7 +674,7 @@ def render_rail_lines(
     spans. Each row is one commit-episode -- the "what I did, in order" rewind unit -- with its
     subject and the dominant feature it advanced. Capped at `max_rows` (newest first); a footer
     notes how many older episodes were folded (the lazy nod for a long history)."""
-    ep = episodes(map_view, history_view)
+    ep = episodes(map_view, grid_view)
     layout = episode_rail_layout(ep)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
     rows = layout["rows"]

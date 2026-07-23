@@ -31,7 +31,7 @@
 // Co-change stays OFF the default view (it made the old node-link diagram a hairball): edges are
 // still computed (top-K per feature) but only lit on hover. Pure (no DOM/color): sliced out and
 // exercised under node (tests/test_graph_layout.py).
-function computeGraphLayout(map, history, opts) {
+function computeGraphLayout(map, grid, opts) {
   opts = opts || {};
   const collapsed = new Set(opts.collapsed || []);
   const frontier = opts.frontier == null ? Infinity : opts.frontier;
@@ -40,11 +40,15 @@ function computeGraphLayout(map, history, opts) {
   const byId = {};
   for (const n of map.nodes || []) byId[n.id] = n;
 
-  // Ops per feature, filtered to the frontier -- the magnitude + temporal signal for each leaf.
+  // The op -> (feature, commit) join is `grid_view`'s already-computed cell table (plan U3, the
+  // canonical `sgt.api.grid_view`): a cell carries the ops one feature touched in one commit, so a
+  // feature's ops are just the cells bearing its id -- no per-op DAG walk here. An op with no
+  // feature has no cell and never appears. `frontier` folds by commit index so scrubbing accretes.
   const opsByFeature = {};
-  for (const op of (history && history.ops) || []) {
-    if (op.feature_id == null || op.commit_index > frontier) continue;
-    (opsByFeature[op.feature_id] || (opsByFeature[op.feature_id] = [])).push(op);
+  for (const cell of (grid && grid.cells) || []) {
+    if (cell.commit_index > frontier) continue;
+    const bucket = opsByFeature[cell.feature_id] || (opsByFeature[cell.feature_id] = []);
+    for (const oid of cell.op_ids || []) bucket.push({ id: oid, commit_index: cell.commit_index });
   }
   for (const fid in opsByFeature) opsByFeature[fid].sort((a, b) => a.commit_index - b.commit_index);
 
@@ -204,7 +208,7 @@ function computeGraphLayout(map, history, opts) {
   const rowCount = Math.max(1, row);
 
   return { lanes, headers, edges, overflow, laneById, opsByFeature, rowCount,
-    commitCount: ((history && history.commits) || []).length };
+    commitCount: ((grid && grid.commits) || []).length };
 }
 // ---- end-graph-layout (test slice boundary) ----
 
@@ -225,18 +229,20 @@ function computeGraphLayout(map, history, opts) {
 // A car whose `first_index` is past `frontier` is kept and flagged `isFuture` rather than dropped:
 // the renderer dims it, but a lane's car *count* and positions stay stable while scrubbing -- only
 // cell density (via `computeGraphLayout`'s own op filtering) accretes.
-function computeSegmentLayout(map, history, segments, opts) {
+function computeSegmentLayout(map, grid, segments, opts) {
   opts = opts || {};
   const frontier = opts.frontier == null ? Infinity : opts.frontier;
   const commitIndexOf = {};
-  for (const op of (history && history.ops) || []) commitIndexOf[op.id] = op.commit_index;
+  for (const cell of (grid && grid.cells) || []) {
+    for (const oid of cell.op_ids || []) commitIndexOf[oid] = cell.commit_index;
+  }
 
   const byFeature = {};
   for (const seg of segments || []) {
     (byFeature[seg.feature_id] || (byFeature[seg.feature_id] = [])).push(seg);
   }
 
-  const base = computeGraphLayout(map, history, opts);
+  const base = computeGraphLayout(map, grid, opts);
 
   const lanes = base.lanes.map((l) => {
     const cars = [];
@@ -276,25 +282,28 @@ function computeSegmentLayout(map, history, segments, opts) {
 // advanced in the same commit = one episode -- exactly the co-commit signal Stage B clusters on.
 // Real sgt sessions supersede this going forward; the shape is identical. Pure (no DOM); the Python
 // counterpart is `episodes()` in sgt/tui/graph.py, kept behaviour-parallel.
-function rollupEpisodes(map, history) {
+function rollupEpisodes(map, grid) {
   const labels = {};
   for (const n of (map && map.nodes) || []) labels[n.id] = n.label || n.id;
   const subjectOf = {}, shaOf = {};
-  for (const c of (history && history.commits) || []) {
+  for (const c of (grid && grid.commits) || []) {
     subjectOf[c.index] = c.subject || "";
     shaOf[c.index] = c.sha;
   }
+  // Re-roll `grid_view`'s per-(feature, commit) cells back across features into one episode per
+  // commit (plan U3). An op with no feature has no cell, so an all-unattributed commit forms no
+  // episode -- the same omission the grid itself makes.
   const byIndex = new Map();
-  for (const op of (history && history.ops) || []) {
-    const idx = op.commit_index;
+  for (const cell of (grid && grid.cells) || []) {
+    const idx = cell.commit_index;
     let ep = byIndex.get(idx);
     if (!ep) {
       ep = { index: idx, sha: shaOf[idx], subject: subjectOf[idx] || "", opIds: [], features: {}, kinds: {} };
       byIndex.set(idx, ep);
     }
-    ep.opIds.push(op.id);
-    if (op.feature_id != null) ep.features[op.feature_id] = (ep.features[op.feature_id] || 0) + 1;
-    if (op.kind) ep.kinds[op.kind] = (ep.kinds[op.kind] || 0) + 1;
+    for (const oid of cell.op_ids || []) ep.opIds.push(oid);
+    ep.features[cell.feature_id] = (ep.features[cell.feature_id] || 0) + cell.op_count;
+    for (const k of Object.keys(cell.kinds || {})) ep.kinds[k] = (ep.kinds[k] || 0) + cell.kinds[k];
   }
   const episodes = [...byIndex.keys()].sort((a, b) => a - b).map((idx) => {
     const ep = byIndex.get(idx);
@@ -407,11 +416,13 @@ function episodeRailLayout(epView) {
   if (state.view !== "rail") state.view = "gantt"; // "gantt" (feature timeline) | "rail" (episodes)
   let compose = {
     map: { nodes: [], roots: [], edges: [] }, history: { commits: [], ops: [] },
+    grid: { commits: [], cells: [] },
     status: { oracle: { configured: false, status: "pending" } }, sessions: { sessions: [] }, proposals: [],
   };
   let map = compose.map;
-  let history = compose.history;
-  let layout = computeSegmentLayout(map, history, segmentsOf(compose), { collapsed: state.collapsed });
+  let history = compose.history; // still the per-op stream the render half reads (op-set panel, plan/drift joins)
+  let grid = compose.grid;       // grid_view's cell table -- the layout functions' canonical join (plan U3)
+  let layout = computeSegmentLayout(map, grid, segmentsOf(compose), { collapsed: state.collapsed });
   let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
   let previewSeq = 0;
   let pendingPreview = null;
@@ -633,7 +644,7 @@ function episodeRailLayout(epView) {
   function recompute() {
     // Full history: the frontier scrubber dims nodes/cars past its point (see applyFrontier)
     // rather than re-laying-out on every drag, so the layout stays stable while scrubbing.
-    layout = computeSegmentLayout(map, history, segmentsOf(compose), { collapsed: state.collapsed });
+    layout = computeSegmentLayout(map, grid, segmentsOf(compose), { collapsed: state.collapsed });
   }
 
   // First-load clustering: open the rail folded to its subsystem rows -- the root(s) expanded to
@@ -954,7 +965,7 @@ function episodeRailLayout(epView) {
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
     graphView = null; // no frontier scrubber in rail mode; drop the stale Gantt handle
-    const rlayout = episodeRailLayout(rollupEpisodes(map, history));
+    const rlayout = episodeRailLayout(rollupEpisodes(map, grid));
     const rows = rlayout.rows;
     const paneW = Math.max(rail.clientWidth || 0, 320);
     const gutterW = RAIL.padL + rlayout.laneCount * RAIL.laneW;
@@ -2332,6 +2343,7 @@ function episodeRailLayout(epView) {
     if (msg.type === "state") {
       compose = msg.compose || compose;
       history = compose.history || { commits: [], ops: [] };
+      grid = compose.grid || { commits: [], cells: [] };
       map = compose.map || { nodes: [], roots: [], edges: [] };
       planMarks = collectPlanMarks(compose.plan, history);
       driftMarks = collectDriftMarks(compose.drift, history);
