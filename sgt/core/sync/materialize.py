@@ -27,6 +27,32 @@ from .ingest import Ingested
 from .resolve import Resolution
 
 
+def _surface_dual_claims(repo: Path, ing: Ingested, res: Resolution) -> None:
+    """After the authored-feature merge, surface (never silently resolve) any symbol left a live
+    member of more than one authored feature (U6, the "Cross-clone dual-lane membership" risk): two
+    clones each ran the save-time local move on the same new symbol against a locally-different
+    owned-neighbour view, landing it live in two different `af-` ids that `merge_feature`'s
+    union-within-one-id logic never reconciles. Each is recorded as a `conflict` in U7's suggestion
+    queue for the user to resolve with `sgt feature move`. Best-effort: a hiccup here must never fail
+    an otherwise-clean sync -- the merge itself is already persisted."""
+    try:
+        from sgt.core import suggest
+        from sgt.lens import ledger
+
+        frontier = res.merged_ideal.frontier(ing.all_ops)
+        for sym, fids in ledger.dual_claims(res.unioned_authored):
+            op_id = frontier.get(sym)
+            if op_id is None:  # a dead symbol has no in-ideal op to content-address the record by
+                continue
+            suggest.add(
+                repo, "conflict", fids, [op_id],
+                rationale=f"{sym} is a live member of {len(fids)} lanes ({', '.join(fids)}) after "
+                          "sync -- move it to one with `sgt feature move`",
+            )
+    except Exception:  # noqa: BLE001 -- a read-only advisory must never break a clean sync
+        pass
+
+
 def _union_claims(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
     """G-Set union of theirs' committed claims (D8): copy any `.sgt/claims/` file we don't already
     have, byte-for-byte. Claim files are immutable and keyed by `(ideal_key, runner_fp)`, so a
@@ -119,6 +145,8 @@ def flush_reconciled_metadata(
         if res.unioned_authored:  # merged authored-feature collection (U6/R3/KTD3) -- written only
             authored.save_authored(repo, res.unioned_authored)  # when one exists, keeping the merge
             # commit byte-identical to pre-U6 for the common case (no authored features)
+            _surface_dual_claims(repo, ing, res)  # U6 overlap check: a cross-clone dual-claim
+            # `merge_feature` can't reconcile surfaces as a conflict, never a silent resolve
         tree.save(repo, res.tree_result)
         state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
         state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)

@@ -408,6 +408,27 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
     return op_leaf
 
 
+def fused_graph_with_hubs(
+    repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
+) -> tuple[list[str], dict[frozenset, float], set[str]]:
+    """`fused_graph`, additionally returning the hub-suppressed symbol set `cluster.signals`
+    computed. The save-time ledger's local move (`sgt.lens.ledger.assign_at_save`) needs both the
+    fused graph *and* `hubs` from ONE `cluster.signals` call -- a second `signals`/`fused_graph`
+    would reparse the whole codebase twice. `fused_graph` routes through this and drops the hubs, so
+    the two can never diverge."""
+    gb = GitBinding(repo)
+    nodes_set, hubs, cochange, structural = cluster.signals(
+        repo, ops, ideal, refresh_cache=refresh_structural_cache,
+    )
+    subjects = {sha: subject for sha, _parent, subject in gb.history()}
+    scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
+    commit = cluster.commit_edges(ops, nodes_set, hubs)
+    path = cluster.path_edges(nodes_set, hubs)
+    structural = cluster.hub_normalize(structural)
+    fused = _fuse(structural, cochange, scope, commit, path)
+    return sorted(nodes_set), fused, hubs
+
+
 def fused_graph(
     repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
 ) -> tuple[list[str], dict[frozenset, float]]:
@@ -421,17 +442,10 @@ def fused_graph(
 
     `refresh_structural_cache=False` (passed by `build` for `land`/`reconcile`) still reads the
     head-keyed structural-edge cache but never writes it -- see `cluster._structural_edges_at`."""
-    gb = GitBinding(repo)
-    nodes_set, hubs, cochange, structural = cluster.signals(
-        repo, ops, ideal, refresh_cache=refresh_structural_cache,
+    nodes, fused, _hubs = fused_graph_with_hubs(
+        repo, ops, ideal, refresh_structural_cache=refresh_structural_cache,
     )
-    subjects = {sha: subject for sha, _parent, subject in gb.history()}
-    scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
-    commit = cluster.commit_edges(ops, nodes_set, hubs)
-    path = cluster.path_edges(nodes_set, hubs)
-    structural = cluster.hub_normalize(structural)
-    fused = _fuse(structural, cochange, scope, commit, path)
-    return sorted(nodes_set), fused
+    return nodes, fused
 
 
 def feature_edges(nodes: dict, fused: dict[frozenset, float]) -> list[dict]:

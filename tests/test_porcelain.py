@@ -186,6 +186,30 @@ def test_save_with_no_active_plan_omits_the_plan_key(tmp_path, capsys):
     assert "plan" not in payload  # no active plan -> no fold reporting
 
 
+def test_save_assigns_a_new_symbol_a_durable_lane(tmp_path):
+    """U6 integration: `sgt save` runs the ownership cascade -- a new function added after a `map`
+    lands a durable assign pin (so a later recluster keeps it in place), and the save still
+    succeeds. The lane algebra + visibility are pinned in tests/lens/test_ledger.py; this is the
+    thin `cli.main` wiring."""
+    from sgt.lens import map as lensmap
+    from sgt.lens.pins import load_pins
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "core.py").write_text(
+        "def alpha():\n    return 1\n\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
+    gb.commit_all("core")
+    get(tmp_path)
+    lensmap.build_map(tmp_path)  # a persisted tree the cascade can build on
+
+    (tmp_path / "core.py").write_text(
+        "def alpha():\n    return 1\n\n\ndef beta():\n    return alpha()\n\n\n"
+        "def delta():\n    return alpha() + beta()\n", encoding="utf-8")
+    with _in(tmp_path):
+        rc = cli.main(["save", "-m", "add delta"])
+    assert rc == 0
+    assert "core.py::delta" in load_pins(tmp_path).assign  # the cascade pinned it
+
+
 def test_undo_inverts_a_save_and_then_reports_nothing_to_undo(tmp_path, capsys):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     before_ids = get(repo).op_ids

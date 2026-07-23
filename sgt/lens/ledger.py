@@ -139,3 +139,129 @@ def assign_new_symbols(
     if not entities:
         return {}
     return local_move_assign(entities, member_leaf, fused, hubs, gamma=gamma)
+
+
+# -- save-time wiring (U6): assignments land as durable pins + authored CRDT state ---------------
+
+
+def dual_claims(af: dict) -> list[tuple[str, list[str]]]:
+    """Every symbol that is a live member of MORE THAN ONE authored feature -- a cross-clone
+    dual-lane membership (the Risks & Dependencies "Cross-clone dual-lane membership" case): two
+    clones each ran the local move on the same new symbol against a locally-different owned-neighbour
+    view, landing it live in two different `af-` features, which `authored.merge_feature`'s
+    union-*within-one-id* logic never reconciles (the two claims live under different ids). Pure,
+    read-only detection -- never a silent resolve; U6 wires it at the sync merge site to surface each
+    as a `conflict` in U7's suggestion queue. Returns `[(symbol, [feature_id, ...]), ...]`, sorted,
+    only for symbols with >= 2 claiming features."""
+    claimants: dict[str, list[str]] = {}
+    for fid in sorted(af):
+        for m in af[fid].live_members():
+            claimants.setdefault(m, []).append(fid)
+    return [(sym, fids) for sym, fids in sorted(claimants.items()) if len(fids) > 1]
+
+
+def assign_at_save(repo, ideal, ops) -> dict | None:
+    """Wire the save-time cascade (U6, the crux): assign every genuinely-new symbol a durable lane
+    the moment it is saved, so no op is ever invisible on the grid between full reclusters and a
+    rebuild can never silently move it (R1/R2). Two durability mechanisms, both mirroring
+    `sgt.lens.verbs.apply_move`/`apply_split` verbatim (KTD5 -- no new merge logic is authored):
+
+      * an **assign pin** (`pins.assign[symbol] = lane`) gives LOCAL durability -- `tree.build`'s
+        must-link contraction + `_apply_assign_pins` hold the symbol in that lane across every future
+        recluster, and it syncs cross-clone via `reconcile.union_pins`;
+      * an **authored feature** (`authored.add_member` for an existing lane, `authored.create` for a
+        new one) is the CRDT that carries the assignment across sync and lets a two-clone dual-claim
+        surface as a conflict (`dual_claims`, above).
+
+    `save` does not rebuild the tree, and `grid_view`/`map`/`blame` read the *persisted* `op_leaf`,
+    so a new symbol is invisible until a rebuild even with a pin. FIX (the visibility patch): after
+    the cascade, add each assigned symbol to its lane node's `members` and re-run
+    `assign_ops_to_leaves` (cheap -- a pure vote over tree membership, no reclustering), so the new
+    op appears in its lane's cell immediately; the assign pin guarantees a later full rebuild agrees.
+
+    Returns a `{"assigned": {symbol: lane}, "new_lanes": [af-id, ...]}` summary (or `None` when the
+    tree hasn't been built yet), for testability."""
+    from dataclasses import replace
+    from pathlib import Path
+
+    from sgt.core.op import _symbol_kind
+    from sgt.lens import authored, verbs
+    from sgt.lens.pins import load_pins
+    from sgt.store.gitbind import GitBinding
+
+    repo = Path(repo)
+    previous = tree.load(repo)
+    if not previous or not previous.get("nodes"):
+        return None  # the first build owns the initial clustering; nothing to cascade
+
+    nodes = previous["nodes"]
+    member_leaf = tree.leaf_member_index(nodes)
+    frontier = ideal.frontier(ops)  # symbol -> id of its maximal in-ideal op
+    new_symbols = {
+        s for s in frontier
+        if _symbol_kind(s) in ("entity", "nested", "whole_file") and s not in member_leaf
+    }
+    if not new_symbols:
+        return {"assigned": {}, "new_lanes": []}  # the common modify-only save -- no cost paid
+
+    _all, fused, hubs = tree.fused_graph_with_hubs(repo, ops, ideal)
+    assignments = assign_new_symbols(new_symbols, member_leaf, fused, hubs)
+    if not assignments:
+        return {"assigned": {}, "new_lanes": []}
+
+    pins = load_pins(repo)
+    af = authored.load_authored(repo)  # loaded ONCE and saved ONCE -- `_open_authored` reloads per
+    # call, which would drop a prior lane's write when a save assigns to two lanes at once.
+    assign = dict(pins.assign)
+    head = GitBinding(repo).head()
+
+    assigned: dict[str, str] = {}
+    new_lanes: list[str] = []
+    for symbol in sorted(assignments):
+        lane = assignments[symbol]
+        if lane is not None:
+            # Attach to an existing lane -- mirror `verbs.apply_move`: pin the symbol, ensure the
+            # lane's authored feature exists (seeded from the leaf, `verbs._open_authored`'s body,
+            # inlined so `af` isn't reloaded per lane) and add the member, and add it to the lane
+            # node's members so the visibility patch's re-vote maps its op here.
+            assign[symbol] = lane
+            node = nodes[lane]
+            aid = verbs._authored_id_for(lane)
+            if aid not in af:
+                af[aid] = replace(
+                    authored.create(node["members"], node.get("label", lane), witness=head), id=aid,
+                )
+            if symbol not in af[aid].live_members():  # guard: add_member mints a fresh tag each call
+                af[aid] = authored.add_member(af[aid], symbol)
+            if symbol not in node["members"]:
+                node["members"] = sorted(node["members"] + [symbol])
+                node["size"] = len(node["members"])
+            assigned[symbol] = lane
+        else:
+            # New-lane fallback (KTD2): a fresh `af-<uuid>` lane. The lane id IS the authored id, so
+            # pin/tree/authored all agree. The leaf attaches as a new root (`parent=None`), mirroring
+            # `verbs.apply_split`'s childless-root case -- a disconnected new symbol is a top-level
+            # lane, not a child of any existing one. No `gamma` is recorded: `AuthoredFeature` has no
+            # such field (KTD3 sources 1/2 are deferred, the geometric midpoint is the shipped
+            # default), so inventing one is out of scope here.
+            label = symbol.split("::", 1)[0]
+            feat = authored.create([symbol], label, witness=head)
+            af[feat.id] = feat
+            assign[symbol] = feat.id
+            nodes[feat.id] = {
+                "id": feat.id, "parent": None, "depth": 0,
+                "members": [symbol], "size": 1, "dir": cluster._dominant_dir([symbol]),
+                "children": [], "split_reason": None, "label": label, "why": "",
+            }
+            previous.setdefault("roots", []).append(feat.id)
+            assigned[symbol] = feat.id
+            new_lanes.append(feat.id)
+
+    verbs._save_pins(repo, pins, assign=assign)  # stamps the introducing witness correctly (D6)
+    authored.save_authored(repo, af)
+
+    # Visibility patch (NO recluster): the new members now sit in their lane nodes, so re-voting
+    # op_leaf over the patched membership makes each new op appear in its lane's cell immediately.
+    previous["op_leaf"] = tree.assign_ops_to_leaves(previous["nodes"], ops)
+    tree.save(repo, previous)
+    return {"assigned": assigned, "new_lanes": new_lanes}
