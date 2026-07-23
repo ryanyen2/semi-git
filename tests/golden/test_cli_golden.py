@@ -114,16 +114,17 @@ def capture_cli_surface(root: str) -> dict:
     rf = fresh(mapped=True)
     feat = _feature_ids(rf)[0]
     views["help"] = _capture(rf, ["help"])
-    # log/status/map/drift stay top-level; state/history/fsck are rare, so under `advanced` (U2/KTD2).
+    # log/status/map stay top-level; state/history/fsck are rare, so under `advanced` (U2/KTD2).
+    # `checkpoint`/`drift` folded into `save` (U12) -- no longer verbs; their redirect is covered in
+    # tests/test_cli.py::test_folded_verbs_redirect_to_save, not the surface snapshot.
     for key, argv in (
         ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["status"]),
         ("map", ["map"]), ("history", ["advanced", "history"]),
-        ("fsck", ["advanced", "fsck"]), ("drift", ["drift"]),
+        ("fsck", ["advanced", "fsck"]),
     ):
         views[key] = _both(rf, argv)
     views["blame"] = _both(rf, ["blame", "a.py"])
     views["plan_status"] = _both(rf, ["plan", "status"])
-    views["checkpoint"] = _both(rf, ["checkpoint"])
     views["split_preview"] = _both(fresh(mapped=True), ["feature", "regroup", "split", feat])
     views["preview_revert_feature"] = _both(fresh(mapped=True), ["advanced", "preview", "revert", feat])
     views["revert_emit"] = _both(fresh(), ["revert", "--emit", "c.py::qux"])  # --emit writes nothing
