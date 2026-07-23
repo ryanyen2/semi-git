@@ -448,7 +448,16 @@ known ~13.5% op-exclusion the U22.5/U10 findings quantify).
 **Execution order (adjust-as-you-go):** deferred to run just before U14. U3 is a cross-language
 refactor (Python `tui/graph.py` + the VS Code webview JS) and is a prerequisite *only* for U14's
 verb sweep — nothing in Phase B (ledger), Phase C (perf), or Phase D (scrubbing verbs) depends on
-it. Front-loading the high-value, fully-testable core and doing the one heavy cross-language
+it.
+
+**U12 consumer to fix here (adjust-as-you-go):** U12 removed the `drift` CLI verb, but
+`editor/vscode/src/sgt.ts::driftView` still shells `["drift", "--json", "--full"]` — now a latent
+runtime break (the extension isn't in the Python suite, so nothing caught it; the folded-redirect
+returns exit 2). U3 migrates the webview data-fetch onto `grid_view` anyway, so fold the drift
+fetch into that migration: drift ops now live in `save`'s output / `grid_view`'s ghost+partial
+tables (U1) / `trust_view`'s `"drift"` grouping — repoint `driftView`/`collectDriftMarks`
+(`workbench.js:566`) at whichever the consolidated fetch already carries, and delete the dead
+`sgt drift` shell. (`sgt.ts` also calls `plan status` — kept — and no `checkpoint` call exists.) Front-loading the high-value, fully-testable core and doing the one heavy cross-language
 consolidation right before the sweep that needs it is the cleaner sequencing; `grid_view`'s cell
 shape is stable (U1), and Phase B/C change an op's feature assignment and speed, not the grid
 shape, so consuming it later costs nothing.
@@ -595,6 +604,23 @@ shape against Stage B's `sgt map --rebuild` baseline as a sanity check, not an e
 requirement.
 
 ### U6. Wire the cascade into the authored-feature CRDT
+
+**SHIPPED (adjust-as-you-go):** landed as `ledger.assign_at_save` + `ledger.dual_claims`, wired into
+`porcelain._save` (guarded so a cascade hiccup never fails a save — the ideal is already committed)
+and `sync/materialize.flush_reconciled_metadata` (the dual-claim → U7 `conflict` surface). The
+**visibility gap was solved WITHOUT touching `assign_ops_to_leaves`**: Design A writes an *assign
+pin* per assigned symbol (local recluster-durability, already wired through `tree.build`'s must-link
++ `_apply_assign_pins`) alongside the authored-feature write (CRDT/sync), exactly as
+`apply_move`/`apply_split` do — so the "op_leaf/authored reconciliation" the design note feared is
+just the existing pin path. The remaining gap (grid reads the *stale persisted* op_leaf, since
+`save` doesn't rebuild) is closed by a cheap **op_leaf visibility patch**: add each new symbol to its
+lane node's `members`, re-run `assign_ops_to_leaves` (pure vote, no recluster), and `tree.save`. New
+`tree.fused_graph_with_hubs` returns `hubs` from the one `cluster.signals` call the local move needs
+(only saves that add a genuinely-new entity pay the reparse; modify-only saves are a free no-op).
+New-lane fallback mints a fresh `af-<uuid>` leaf node as a top-level root. **Deferred:** per-lane
+`gamma` persistence (KTD3 sources 1/2) — `AuthoredFeature` has no gamma field; the geometric-midpoint
+default (source 3) is shipped, as U5 already noted. The crux test (assignment survives a full
+`force_rebuild` recluster) is green.
 
 **Design constraint found while scoping (adjust-as-you-go) — U6 is the crux, and not yet
 implemented:** two facts make U6 a careful, broad-blast-radius change rather than a thin wiring:
