@@ -275,11 +275,11 @@ export class Sgt {
   }
 
   fulfillDraft(draftId: string): Promise<FulfillResult> {
-    return this.json<FulfillResult>(["fulfill", draftId, "--from-tree", "--json"]);
+    return this.json<FulfillResult>(["advanced", "fulfill", draftId, "--from-tree", "--json"]);
   }
 
   landCandidate(message?: string): Promise<LandCandidateResult> {
-    const args = ["commit", "--json"];
+    const args = ["advanced", "commit", "--json"];
     if (message) args.push("--message", message);
     return this.json<LandCandidateResult>(args);
   }
