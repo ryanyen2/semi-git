@@ -38,7 +38,7 @@ import sys
 
 from . import (
     edit, feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose,
-    review, rewrite, select, session, sync, tiers,
+    resolve, review, rewrite, select, session, sync, tiers,
 )
 
 # The daily spine + the frequently-reached verbs kept at the top level, two groupings, and the
@@ -48,7 +48,7 @@ from . import (
 # runs daily (navigation, inspection, the agentic loop, the rewrite pipeline) stay one word away.
 _VERBS = {
     # spine
-    "save", "status", "log", "undo", "revert", "restore", "edit",
+    "save", "status", "log", "undo", "revert", "restore", "edit", "resolve",
     # navigation + inspection (daily)
     "switch", "diff", "map", "graph", "episodes", "blame", "intent",
     # agentic loop (daily)
@@ -84,7 +84,7 @@ _TIER_PATH = {"advanced": "advanced", "feature": "feature", "regroup": "feature 
 _REMOVED = {verb: f"{_TIER_PATH[tier]} {verb}" for verb, tier in _ROUTING.items()}
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review, intent, edit)
+             porcelain, tiers, select, session, review, intent, edit, resolve)
 
 
 class _Router:
@@ -206,11 +206,12 @@ def _help() -> int:
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
         '  sgt save [-m "<msg>"]       mine the working tree + commit a witness for it\n'
         "  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n"
-        "  sgt log [--json]            the mined operation DAG\n"
+        "  sgt log [--json]            the lane×commit grid (--ops raw op DAG · --tree/--rail/--summary)\n"
         "  sgt undo                    invert the last mutating operation (the unified op log)\n"
         "  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n"
         "  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I ∪ downset X)\n"
         "  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n"
+        "  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op → fulfill → land)\n"
         "\n"
         "  navigation + inspection:\n"
         "  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n"
