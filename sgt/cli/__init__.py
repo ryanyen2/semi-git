@@ -11,15 +11,17 @@ the op store's integrity. Every verb mines the working tree on contact before ac
 
 Where the ideal algebra can't express an edit exactly, U11's rewrite verbs (`merge-op`,
 `split-op`, `transplant`, `revert --keep-dependents`, `identity split`/`identity join`) draft
-hollow ops for an agent/human to fulfill (`sgt fulfill <draft-id> --from-tree`) and stage to the
-working tree without committing; `sgt commit` is the only verb that commits one, gated on a
-passing oracle verdict (R14). `sgt land <branch>` is a distinct verb (U23's shared-branch CAS
-advance) -- deliberately not named `commit` and not overloaded onto a bare `sgt land`, so "land"
+hollow ops for an agent/human to fulfill (`sgt advanced fulfill <draft-id> --from-tree`) and stage
+to the working tree without committing; `sgt advanced commit` is the only verb that commits one,
+gated on a passing oracle verdict (R14). `sgt land <branch>` is a distinct verb (U23's shared-branch
+CAS advance) -- deliberately not named `commit` and not overloaded onto a bare `sgt land`, so "land"
 only ever means the branch advance.
 
-`sgt map` (re)builds the hierarchical feature tree over the op store and prints it; `blame`/
-`status` are its read views. `merge`/`split`/`rename`/`move` are metadata-only feature verbs --
-instant, reversible, content-untouched (R16) -- and `revert <feature>` bridges into the ideal
+`sgt log` is the one inspection surface (U14): the lane×commit grid, with `--tree` (the hierarchical
+feature tree, formerly `sgt map`; `--rebuild` reclusters), `--rail` (episode rail, formerly `sgt
+episodes`), `--summary` (scalars, formerly `sgt status`), and `--ops` (the raw op DAG). `sgt advanced
+blame` attributes a file's symbols. `merge`/`split`/`rename`/`move` are metadata-only feature verbs
+-- instant, reversible, content-untouched (R16) -- and `revert <feature>` bridges into the ideal
 algebra: it resolves a feature id/label to its op-set and runs the same exact edit a single-op
 `revert` would, grouped by feature.
 
@@ -28,7 +30,7 @@ predicted hollow ops (R18 -- never touching the ideal algebra). Step<->op matchi
 (the former `checkpoint`/`drift` verbs) are folded into `sgt save` (U12/R10): a save auto-confirms
 each unambiguous single-step match and reports the rest; `sgt save --resolve-plan` settles an
 n:m/multi-step match (`--confirm-hollow`/`--confirm-op` names one group). The working-tree sense of
-"drift" keeps its name in `status`/`fsck --tree`.
+"drift" keeps its name in `sgt log --summary`/`sgt advanced fsck --tree`.
 """
 
 from __future__ import annotations
