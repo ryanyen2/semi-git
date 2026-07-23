@@ -232,7 +232,7 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     from sgt.api import grid_view, segments_view
     from sgt.tui.graph import render_graph_lines
 
-    mv = _map_for_view(repo, refresh, "log", color and not as_json, rebuild=rebuild)
+    mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)  # the canonical cell join; the text render and --json now read one shape
     if as_json:
         return _emit_json(gv)
@@ -251,7 +251,7 @@ def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: 
     from sgt.api import grid_view
     from sgt.tui.graph import render_rail_lines
 
-    mv = _map_for_view(repo, refresh, "log", color and not as_json, rebuild=rebuild)
+    mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)
     if as_json:
         return _emit_json(gv)
@@ -268,7 +268,7 @@ def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: 
 
     if rebuild:
         return _map(repo, as_json, rebuild=True)
-    _map_for_view(repo, refresh, "log", not as_json)
+    _map_for_view(repo, refresh, not as_json)
     view = map_view(repo)
     if as_json:
         return _emit_json(view)
@@ -401,7 +401,7 @@ def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
     return 0
 
 
-def _map_for_view(repo: str, refresh: bool, verb: str, color: bool, rebuild: bool = False) -> dict:
+def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) -> dict:
     """The shared read/refresh path behind the `sgt log` grid/rail modes. The daily command is a
     pure read of the *last-built* map (~sub-second) -- NOT a re-mine + re-cluster (which costs ~30s
     and would make a glanceable command unusable). `--refresh` is the *one* command that reflects
@@ -417,7 +417,7 @@ def _map_for_view(repo: str, refresh: bool, verb: str, color: bool, rebuild: boo
     mv = None if refresh else map_view(repo)
     if not (refresh or not (mv and mv.get("nodes"))):
         if color:
-            print(f"\x1b[2m (cached — run `sgt {verb} --refresh` to reflect new edits)\x1b[0m")
+            print("\x1b[2m (cached — run `sgt log --refresh` to reflect new edits)\x1b[0m")
         return mv
 
     from sgt.core.lens import get
