@@ -222,6 +222,30 @@ def test_resolve_checkpoint_bad_specs_return_none(tmp_path):
     assert segment.resolve_checkpoint(tmp_path, "F-A@x") is None        # non-numeric index
 
 
+def test_checkpoint_slug_shapes():
+    assert segment.checkpoint_slug("validate email") == "validate-email"
+    assert segment.checkpoint_slug("fix(effects): resolve the leak") == "fix-effects-resolve"
+    assert segment.checkpoint_slug("  Trim  Me  ") == "trim-me"
+    assert segment.checkpoint_slug("UPPER_snake.Case") == "upper-snake-case"
+    assert segment.checkpoint_slug("!!!") == ""  # no alphanumerics -> empty (a "no match" slug)
+    assert len(segment.checkpoint_slug("a" * 40)) <= 24
+
+
+def test_resolve_checkpoint_by_slug(tmp_path):
+    segs = _feature_with_two_segments(tmp_path)
+    slug = segment.checkpoint_slug(segs[1].label)
+    resolved = segment.resolve_checkpoint(tmp_path, f"F-A:{slug}")
+    assert resolved is not None
+    op_ids, label = resolved
+    assert op_ids == segs[1].op_ids          # same deterministic op-set as `@1`
+    assert "My Feature@1" in label           # display still carries the positional index
+
+
+def test_resolve_checkpoint_slug_unknown_returns_none(tmp_path):
+    _feature_with_two_segments(tmp_path)
+    assert segment.resolve_checkpoint(tmp_path, "F-A:no-such-checkpoint") is None
+
+
 def test_apply_label_pins_overrides_and_marks_user_source(tmp_path):
     segs = _feature_with_two_segments(tmp_path)
     key = segment.pin_key(segs[0])

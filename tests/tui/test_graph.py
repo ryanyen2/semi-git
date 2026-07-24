@@ -11,7 +11,13 @@ from __future__ import annotations
 
 import pytest
 
-from sgt.tui.graph import graph_layout, render_graph_lines, segment_layout
+from sgt.tui.graph import (
+    _min_unique_prefixes,
+    graph_layout,
+    render_graph_lines,
+    render_verb_preview_lines,
+    segment_layout,
+)
 
 
 def _node(id_, parent, children, kind="feature"):
@@ -183,24 +189,43 @@ def test_render_lines_carry_header_and_labels():
     assert "A" in text and "B" in text  # labels rendered
 
 
-def test_render_lane_leads_with_handle_and_draws_checkpoint_cars():
-    """Each lane surfaces the short `f-XXXX` handle (the copy-paste token for `sgt revert`), a `✦N`
-    checkpoint count, and its checkpoints as bracketed cars in `seg_index` order -- the atom is the
-    segment, not a raw commit-time column."""
-    fid = "f-aaaaaaaaaa"  # digit-free id + label (label = id.upper()) so only cars carry digits
+def test_render_overview_lists_checkpoint_chips_not_a_count_and_drops_the_f_tag():
+    """The default (`timeline=False`) surface is a compact per-feature overview: a bare-hex handle
+    (no `f-` tag), an op-density sparkline, and the checkpoints spelled out as chips -- NOT the
+    opaque `✦N` count and NOT the positioned car rail (no `@n` digits, no wrapping chapter line)."""
+    fid = "f-aaaaaaaaaa"  # digit-free id; labels below are digit-free so only a rail/count would add digits
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    hist = _grid((fid, 0), (fid, 100), (fid, 199))
+    segs = [_seg(fid, 0, ["o0"], 0, 0, label="scaffold"),
+            _seg(fid, 1, ["o1", "o2"], 100, 199, label="refine")]
+    lines = render_graph_lines(m, hist, segs, color=False)
+    lane = next(ln for ln in lines if "aaaaaaaa" in ln)
+    assert fid[:10] not in lane                              # the `f-` tag is gone from the handle
+    assert "aaaaaaaa" in lane                                # bare-hex copy token
+    assert "scaffold" in lane and "refine" in lane           # checkpoints listed by name, not counted
+    assert "✦" not in lane                                   # no opaque ✦N count in the overview
+    assert any(ch in lane for ch in "▁▂▃▄▅▆▇█·")              # a density sparkline, not digit cars
+    assert not any("@0" in ln or "@1" in ln for ln in lines)  # no wrapping chapter line
+    assert any("op-density" in ln for ln in lines)           # legend explains the sparkline
+    # no segments -> no chips, no count
+    plain = render_graph_lines(m, _grid((fid, 0)), color=False)
+    plain_lane = next(ln for ln in plain if "aaaaaaaa" in ln)
+    assert "✦" not in plain_lane
+
+
+def test_render_timeline_draws_the_car_rail_with_digits_and_chapter_line():
+    """`timeline=True` preserves the shared-commit-time rail: each checkpoint is a bracketed car
+    carrying its `@n` digit in `seg_index` order, with a spelled-out chapter line beneath the lane."""
+    fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
     segs = [_seg(fid, 0, ["o0"], 0, 0), _seg(fid, 1, ["o1", "o2"], 100, 199)]
-    lines = render_graph_lines(m, hist, segs, color=False)
-    lane = next(ln for ln in lines if fid[:10] in ln)
-    assert fid[:10] in lane and "✦2" in lane          # handle + checkpoint count
+    lines = render_graph_lines(m, hist, segs, color=False, timeline=True)
+    lane = next(ln for ln in lines if fid[2:10] in ln and "✦2" in ln)  # handle is bare hex (no `f-`)
     strip = lane.split("✦")[0]
     assert "0" in strip and "1" in strip              # both cars' @n digits drawn
     assert strip.index("0") < strip.index("1")        # @0 sits left of @1 (seg_index order)
-    # no segments -> no cars, no ✦ count, plain dim lifetime track instead
-    plain = render_graph_lines(m, _grid((fid, 0)), color=False)
-    plain_lane = next(ln for ln in plain if fid[:10] in ln)
-    assert "✦" not in plain_lane
+    assert any("@0" in ln for ln in lines)            # the chapter line spells the checkpoints out
 
 
 def test_render_car_widths_reflect_op_count_and_tier_brackets():
@@ -209,8 +234,8 @@ def test_render_car_widths_reflect_op_count_and_tier_brackets():
     hist = _grid(*[(fid, i) for i in range(6)])
     segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed"),
             _seg(fid, 1, ["o1", "o2", "o3", "o4", "o5"], 1, 5, tier="thematic")]
-    lines = render_graph_lines(m, hist, segs, color=False)
-    lane = next(ln for ln in lines if fid[:10] in ln)
+    lines = render_graph_lines(m, hist, segs, color=False, timeline=True)
+    lane = next(ln for ln in lines if fid[2:10] in ln)  # handle is bare hex (no `f-`)
     assert "[" in lane and "]" in lane   # co-changed car
     assert "(" in lane and ")" in lane   # thematic car
 
@@ -250,8 +275,25 @@ def test_render_focus_mode_resolves_a_unique_id_prefix_or_label():
     segs = [_seg(fid, 0, ["o0"], 0, 0, label="chapter one")]
     by_prefix = render_graph_lines(m, hist, segs, focus="f-0575f655", color=False)
     assert any("chapter one" in ln for ln in by_prefix)
+    by_bare = render_graph_lines(m, hist, segs, focus="0575f655", color=False)  # bare hex, the token the gutter prints
+    assert any("chapter one" in ln for ln in by_bare)
     by_label = render_graph_lines(m, hist, segs, focus=fid.upper(), color=False)  # label = id.upper()
     assert any("chapter one" in ln for ln in by_label)
+
+
+def test_render_overview_blank_line_separates_subsystem_groups():
+    """Whitespace carries the hierarchy: in the overview each subsystem group is preceded by a blank
+    line (except when it opens the list) and its features are indented under the header."""
+    m = {"roots": ["N0", "N1"],
+         "nodes": [_node("N0", None, ["F1"], kind="subsystem"), _node("F1", "N0", []),
+                   _node("N1", None, ["F2"], kind="subsystem"), _node("F2", "N1", [])],
+         "edges": []}
+    lines = render_graph_lines(m, _grid(("F1", 0), ("F2", 40)), color=False)
+    headers = [i for i, ln in enumerate(lines) if "▾" in ln]
+    assert len(headers) == 2
+    assert lines[headers[1] - 1] == ""                          # blank line before the 2nd subsystem group
+    feat_rows = [ln for ln in lines if "●" in ln]
+    assert feat_rows and all(ln.startswith("   ") for ln in feat_rows)  # features indented under their header
 
 
 def test_render_swimlane_header_present_for_expanded_subsystem():
@@ -266,6 +308,87 @@ def test_render_frontier_note_present_when_folded():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     lines = render_graph_lines(m, _grid(("A", 0), ("A", 5)), frontier=3, color=False)
     assert any("frontier" in ln for ln in lines)
+
+
+# ── jj-style minimal-unique-prefix handles ──────────────────────────────────────────────────────
+
+
+def test_min_unique_prefixes_grow_until_the_prefix_is_unique():
+    """Each id's bright prefix is the shortest length (>= floor) that no other id shares -- jj's
+    disambiguator. A globally-distinct id stays at the floor; a near-collision grows to the first
+    differing char."""
+    ids = ["f-abcdefaa", "f-abcdefbb", "f-zzz111111"]
+    out = _min_unique_prefixes(ids, floor=5, cap=10)
+    assert out["f-zzz111111"] == 5                 # unique by char 5 -> stays at the floor
+    assert out["f-abcdefaa"] == 9                  # shares "f-abcdef" with its sibling -> grows to 9
+    assert out["f-abcdefbb"] == 9
+    # never exceeds the id length or the cap
+    assert all(out[i] <= min(len(i), 10) for i in ids)
+
+
+def test_overview_sparkline_is_segmented_by_checkpoint():
+    """The default overview density bar draws one region per checkpoint (car), joined by a `│`
+    rewind boundary -- so a feature with N checkpoints shows N-1 separators inside its bar."""
+    fid = "f-aaaaaaaaaa"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    hist = _grid((fid, 0), (fid, 100), (fid, 199))
+    segs = [_seg(fid, 0, ["o0"], 0, 0), _seg(fid, 1, ["o1", "o2"], 100, 199)]
+    lines = render_graph_lines(m, hist, segs, color=False)
+    lane = next(ln for ln in lines if fid[2:10] in ln)  # handle is bare hex (no `f-`)
+    assert "│" in lane                             # a rewind boundary between the two checkpoints
+    # one checkpoint -> no separator inside the bar (only the two-car lane gets a `│`)
+    one = render_graph_lines(m, _grid((fid, 0)), [_seg(fid, 0, ["o0"], 0, 0)], color=False)
+    one_lane = next(ln for ln in one if fid[2:10] in ln)
+    assert "│" not in one_lane
+
+
+# ── feedforward verb-preview graph ───────────────────────────────────────────────────────────────
+
+
+def _preview_fixture():
+    m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
+    hist = _grid(("A", 0), ("A", 1), ("A", 2), ("B", 5))  # o0,o1,o2 -> A ; o3 -> B
+    segs = [_seg("A", 0, ["o0"], 0, 0, label="scaffold"),
+            _seg("A", 1, ["o1", "o2"], 1, 2, label="refine"),
+            _seg("B", 0, ["o3"], 5, 5, label="b thing")]
+    return m, hist, segs
+
+
+def test_render_verb_preview_marks_removed_checkpoints_and_the_blast():
+    """A revert feedforward: the target feature's fully-removed checkpoints are marked (the first
+    with `▸`, the rest `✗`), the OTHER features the blast hits are listed with a badge, and the
+    summary counts ops + affected features."""
+    m, hist, segs = _preview_fixture()
+    preview_view = {
+        "verb": "revert", "target": "A", "removed": ["o0", "o1", "o2"], "added": [],
+        "affected": [{"feature_id": "A", "direction": "blast", "op_count": 3},
+                     {"feature_id": "B", "direction": "foundation", "op_count": 1}],
+        "files": {"src/a.py": "--- a\n+++ b\n"},
+    }
+    lines = render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False)
+    text = "\n".join(lines)
+    assert "rewind" in text                                   # the header verb
+    assert "▸" in text and "✗" in text                        # first gone car ▸, subsequent ✗
+    assert "op removed" in text                               # per-checkpoint removal note
+    assert "also affected" in text and "locked prerequisite" in text   # B badged foundation
+    assert "removes 3 op" in text and "1 other feature" in text        # summary
+
+
+def test_render_verb_preview_restore_shows_restored_and_partial():
+    """A restore feedforward marks the re-added slice: a checkpoint whose ops are all restored
+    reads as fully touched, one only partly restored as `◐`, and the summary says `restores`."""
+    m, hist, segs = _preview_fixture()
+    preview_view = {
+        "verb": "restore", "target": "A", "removed": [], "added": ["o0", "o1"],
+        "affected": [{"feature_id": "B", "direction": "foundation", "op_count": 1}],
+        "files": {},
+    }
+    lines = render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False)
+    text = "\n".join(lines)
+    assert "restore" in text
+    assert "restored" in text                                 # seg0 (o0) fully re-added
+    assert "◐" in text                                        # seg1 (o1 of o1,o2) partly re-added
+    assert "restores 2 op" in text
 
 
 # ── TUI overlay (Textual) ──────────────────────────────────────────────────────────────────────

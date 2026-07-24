@@ -36,6 +36,8 @@ def register(subs, parent) -> None:
                     help="refresh with a full from-scratch recluster (the former `sgt map --rebuild`)")
     lp.add_argument("--focus", default=None, metavar="FEATURE",
                     help="grid: one feature, full width, one detail line per checkpoint car")
+    lp.add_argument("--timeline", action="store_true",
+                    help="grid: the commit-time car rail (default is the compact per-feature overview)")
     lp.add_argument("--links", action="store_true",
                     help="grid: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
@@ -86,7 +88,8 @@ def _cmd_log(args) -> int:
         return _log_rail(".", as_json=args.as_json, color=not args.no_color,
                          refresh=args.refresh, rebuild=args.rebuild)
     return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
-                     refresh=args.refresh, rebuild=args.rebuild, focus=args.focus, links=args.links)
+                     refresh=args.refresh, rebuild=args.rebuild, focus=args.focus, links=args.links,
+                     timeline=args.timeline)
 
 
 def _cmd_state(args) -> int:
@@ -223,7 +226,7 @@ def _reindex(repo: str, as_json: bool = False) -> int:
 
 def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, color: bool = True,
               refresh: bool = False, rebuild: bool = False, focus: str | None = None,
-              links: bool = False) -> int:
+              links: bool = False, timeline: bool = False) -> int:
     """`sgt log` (the default grid, KTD9): the lane×commit timeline. `--json` returns the canonical
     `grid_view`; the text render reuses the feature-timeline machinery (`render_graph_lines`) over
     the last-built map. A pure cached read by default (fast, glanceable); `--refresh` re-mines and
@@ -238,6 +241,7 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
         return _emit_json(gv)
     for line in render_graph_lines(
         mv, gv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
+        timeline=timeline,
     ):
         print(line)
     return 0

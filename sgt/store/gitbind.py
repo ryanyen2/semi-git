@@ -369,6 +369,27 @@ class GitBinding:
             rows.append((sha, first_parent, subject))
         return rows
 
+    def op_ids_by_commit(self, target: str = "HEAD") -> dict[str, set[str]]:
+        """``sha -> {op id, ...}`` from each commit's ``Sgt-Op:`` trailers, over ``target``'s
+        first-parent history. One ``git log`` call rather than a ``commit_message`` per commit --
+        the committed, tree-witnessed record of which ops each commit's tree embodies. Used to
+        place ops whose *store* provenance is empty (work materialized by a witness commit that a
+        later `record_ideal` advanced the witness past, so `_sync` never re-mined it to stamp
+        provenance) at the commit that actually introduced them, so just-saved work is not dropped
+        from the time-aware views."""
+        # %B is the raw body (trailers live there); \x1e separates commits, \x1f splits sha/body.
+        proc = self._git("log", "--format=%H%x1f%B%x1e", target, check=False)
+        if proc.returncode != 0:
+            return {}
+        out: dict[str, set[str]] = {}
+        for record in proc.stdout.split("\x1e"):
+            record = record.strip("\n")
+            if not record or "\x1f" not in record:
+                continue
+            sha, body = record.split("\x1f", 1)
+            out[sha.strip()] = set(parse_op_ids(body))
+        return out
+
     def commits_touching(self, ref: str, path: str) -> list[tuple[str, str | None]]:
         """``(sha, first_parent)`` for every commit reachable from ``ref`` that changed ``path``,
         newest-first. Powers the miner's rebirth/flip lookback (U9): the ancestor commit that last

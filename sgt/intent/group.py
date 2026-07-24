@@ -78,16 +78,19 @@ def atoms(repo: str | Path) -> list[IntentAtom]:
     uses), and build one `IntentAtom` per commit. Fully sorted (chronological, `UNWITNESSED`
     last). Called twice on an unchanged store it returns identical membership and ordering."""
     repo = Path(repo)
-    rows = GitBinding(repo).history()
+    gb = GitBinding(repo)
+    rows = gb.history()
     commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
     subject_of = {sha: subject for sha, _parent, subject in rows}
     ops = opindex.index_ops(repo)  # footprint/provenance only -- atoms never reads .images
 
+    # Shared time-axis rule (`opindex.earliest_commit_sha`, the same one `history_view`/`feature_runs`
+    # read): earliest in-history provenance, else the earliest committed `Sgt-Op:` trailer for a
+    # pending save op. Only an op named by no commit at all lands in the synthetic `UNWITNESSED` atom.
+    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
     buckets: dict[str, list[Op]] = {}
     for op in ops:
-        witnessed = [sha for sha in op.provenance if sha in commit_index]
-        key = min(witnessed, key=lambda s: commit_index[s]) if witnessed else UNWITNESSED
-        buckets.setdefault(key, []).append(op)
+        buckets.setdefault(sha_of.get(op.id, UNWITNESSED), []).append(op)
 
     out: list[IntentAtom] = []
     for sha, group in buckets.items():
