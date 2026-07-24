@@ -179,7 +179,7 @@ def test_revert_emit_previews_without_writing(tmp_path, capsys):
 
 def test_revert_then_restore_roundtrip(tmp_path, capsys):
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
     capsys.readouterr()
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
 
@@ -375,7 +375,7 @@ def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path,
     from sgt.core.lens import current_ideal
 
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
     capsys.readouterr()
     before = current_ideal(tmp_path).op_ids
 
@@ -393,7 +393,7 @@ def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path,
 def test_restore_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
     capsys.readouterr()
 
     assert _in(tmp_path, ["restore", "something vague"]) == 1

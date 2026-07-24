@@ -175,7 +175,7 @@
         "log"
       ],
       "exit": 0,
-      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n\u001b[1m 1 feature(s)  \u00b7  7 commit(s)  \u00b7  14 op(s)\u001b[0m\n\n\u001b[2m                                        c0                 c3                   c6\u001b[0m\n  \u001b[38;2;182;143;231m\u25cf\u001b[0m \u001b[2mf-23f7fcfe\u001b[0m baz qux                  \u001b[1m\u001b[38;2;182;143;231m[\u001b[0m\u001b[0m\u001b[1m\u001b[38;2;182;143;231m0\u001b[0m\u001b[0m\u001b[1m\u001b[38;2;182;143;231m]\u001b[0m\u001b[0m\u001b[2m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[0m\u001b[38;2;182;143;231m(\u001b[0m\u001b[1m\u001b[38;2;182;143;231m1\u001b[0m\u001b[0m\u001b[38;2;127;100;161m\u2588\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;182;143;231m\u2588\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;127;100;161m\u2588\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;182;143;231m)\u001b[0m \u001b[2m   14\u001b[0m\u001b[2m \u27262\u001b[0m\n\n\u001b[2m [0\u00b7\u00b7\u00b7] = a checkpoint car at its commit-time (digit = its @n, brightness = op density); [ ] co-changed \u00b7 ( ) thematic \u00b7 bold = the lane's big event \u00b7 dim = past frontier\u001b[0m\n\u001b[2m daily:  sgt log  (fast, cached)   \u00b7   sgt log --refresh  (after edits: re-name features + checkpoints)   \u00b7   sgt log --focus <f-XXXX>  (one feature, full detail)\u001b[0m\n\u001b[2m operate:  sgt revert <f-XXXX>  (whole feature)   \u00b7   sgt revert <f-XXXX>@<n>  (one checkpoint/car)   \u00b7   sgt intent show <f-XXXX>  (its chapters)\u001b[0m\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n\u001b[1m 1 feature(s)  \u00b7  7 commit(s)  \u00b7  14 op(s)\u001b[0m\n\n    \u001b[38;2;182;143;231m\u25cf\u001b[0m \u001b[1m\u001b[38;2;182;143;231m23f\u001b[0m\u001b[0m\u001b[2m7fcfe\u001b[0m baz qux                        \u001b[38;2;182;143;231m\u2588\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;150;117;190m\u2585\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m \u001b[2m   14\u001b[0m  \u001b[2madd-foo-qux-config\u001b[0m\n\n\u001b[2m \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588 = op-density (taller = busier), \u2502 = a rewind boundary between checkpoints   \u00b7   trailing chips = the checkpoints (rewind by name)   \u00b7   bright handle chars = the minimal prefix to type\u001b[0m\n\u001b[2m daily:  sgt log  (overview)   \u00b7   sgt log --focus <XXXX>  (one feature's named checkpoints)   \u00b7   sgt log --timeline  (commit-time rail)   \u00b7   sgt log --refresh  (re-name)\u001b[0m\n\u001b[2m operate:  sgt revert <XXXX>:<slug>  (one checkpoint, by name)   \u00b7   sgt revert <XXXX>  (whole feature)   \u00b7   sgt intent show <XXXX>  (its chapters)\u001b[0m\n"
     }
   },
   "map": {
@@ -388,6 +388,7 @@
       "argv": [
         "restore",
         "c.py::qux",
+        "--yes",
         "--json"
       ],
       "exit": 0,
@@ -396,10 +397,11 @@
     "text": {
       "argv": [
         "restore",
-        "c.py::qux"
+        "c.py::qux",
+        "--yes"
       ],
       "exit": 0,
-      "out": "\u2713 [restore] c.py::qux\n    added 1 op(s): bf137aca1399\n    affected: c.py::qux\n"
+      "out": " \u25b8 restore  baz qux  23f7fcfe\n      restore  c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 :add-foo-qux-config  add foo, qux, config, binary  \u00b7 partly affected\n\n restores 1 op \u00b7 1 file(s) changed \u00b7 0 other feature(s) affected\n  \u2713 restore applied \u2014 0 op(s) removed, 1 added.\n"
     }
   },
   "revert": {
@@ -407,6 +409,7 @@
       "argv": [
         "revert",
         "c.py::qux",
+        "--yes",
         "--json"
       ],
       "exit": 0,
@@ -415,10 +418,11 @@
     "text": {
       "argv": [
         "revert",
-        "c.py::qux"
+        "c.py::qux",
+        "--yes"
       ],
       "exit": 0,
-      "out": "\u2713 [revert] c.py::qux\n    removed 1 op(s): bf137aca1399\n    affected: c.py::qux\n"
+      "out": " \u25b8 rewind  baz qux  23f7fcfe\n      revert  c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 :add-foo-qux-config  add foo, qux, config, binary  \u00b7 partly affected\n\n removes 1 op \u00b7 1 file(s) changed \u00b7 0 other feature(s) affected\n  \u2713 revert applied \u2014 1 op(s) removed, 0 added.\n"
     }
   },
   "revert_emit": {

@@ -146,8 +146,12 @@ def capture_cli_surface(root: str) -> dict:
     views["sync_refuses_dirty_tree"] = _both(fresh(), ["sync"])  # untracked .sgt/ -> clean-tree guard
 
     # -- mutating verbs (text + --json each on its own fresh fixture) ---------------------------
-    views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux"])
-    views["restore"] = both_isolated(lambda r: ["restore", "c.py::qux"], prep=["revert", "c.py::qux"])
+    # `--yes` skips the feedforward confirm gate so the mutation actually applies (a non-tty capture
+    # would otherwise draw the preview and refuse, exit 2). The gate itself is covered in
+    # tests/cli/test_revert.py; here we freeze the applied surface.
+    views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux", "--yes"], mapped=True)
+    views["restore"] = both_isolated(lambda r: ["restore", "c.py::qux", "--yes"],
+                                     prep=["revert", "c.py::qux", "--yes"], mapped=True)
     # oracle override's --json carries a wall-clock `ts`; only its (deterministic) text is frozen.
     views["oracle_override"] = {
         "text": _capture(fresh(), ["advanced", "oracle", "override", "--status", "pass", "--reason", "manual"])
@@ -196,7 +200,7 @@ def capture_cli_surface(root: str) -> dict:
         seq[0] += 1
         repo = corpus.CORPUS["linear_history"].build(root / f"f{seq[0]}")
         get(repo)
-        _capture(repo, ["revert", "c.py::qux"])  # journal one ideal edit to undo
+        _capture(repo, ["revert", "c.py::qux", "--yes"])  # journal one ideal edit to undo
         return repo
 
     views["undo"] = {

@@ -396,8 +396,18 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
             # the ideal actually moved since the marks were last computed (e.g. a `sync` that
             # surfaced a fork updated the ideal but not through this function). No re-mining.
             cached_ids = frozenset(cached.get("ids", []))
-            _ensure_fidelity(repo, gb, key, cached_ids, opindex.index_ops(repo))
-            return Ideal.from_ops(cached_ids, opindex.index_ops(repo))
+            index_ops = opindex.index_ops(repo)
+            # The fingerprint covers HEAD, the working tree, and the persisted ideal entry -- but
+            # NOT the `.sgt/ops` store, which a `git switch` can swap underneath us: ops committed
+            # on one branch and absent on another are removed by the checkout, while the gitignored
+            # ideal table (and this cache) survive it and keep pointing at the vanished op ids. That
+            # leaves the gate's HEAD/tree/ideal-entry fingerprint unchanged, so a blind short-circuit
+            # would hand back a cached ideal whose ops are no longer materialized -- `Ideal.from_ops`
+            # then rejects it. Only gate when every cached id is still in the index; otherwise fall
+            # through to a full sync, which re-mines the ref and reduces the stale set to what survives.
+            if cached_ids <= {op.id for op in index_ops}:
+                _ensure_fidelity(repo, gb, key, cached_ids, index_ops)
+                return Ideal.from_ops(cached_ids, index_ops)
 
     # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
     # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-

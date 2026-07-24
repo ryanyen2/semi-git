@@ -365,10 +365,10 @@ def verb_preview_view(
     `other` for `after` (target and other are the two ops of the `a <= b` edge)."""
     from sgt.core import verbs
 
-    # A `<feature>@<n>` checkpoint preview (the intent-segment rewind unit): resolve to its
-    # deterministic op-set and preview the same op-set revert `sgt revert <feature>@<n>` applies,
+    # A `<feature>@<n>` or `<feature>:<slug>` checkpoint preview (the intent-segment rewind unit):
+    # resolve to its deterministic op-set and preview the same op-set revert `sgt revert` applies,
     # so a UI hover paints the real blast radius rather than an empty (unresolvable) preview.
-    if verb == "revert" and "@" in target:
+    if verb == "revert" and ("@" in target or ":" in target):
         from sgt.intent.segment import resolve_checkpoint
 
         resolved = resolve_checkpoint(repo, target)
@@ -704,19 +704,29 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
     from sgt.lens.tree import load as load_tree
     from sgt.store.gitbind import GitBinding
 
-    rows = GitBinding(repo).history()
+    gb = GitBinding(repo)
+    rows = gb.history()
     commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
     commits = [{"sha": sha, "subject": subject, "index": i} for i, (sha, _parent, subject) in enumerate(rows)]
 
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
 
+    # The shared time-axis rule (`opindex.earliest_commit_sha`): an op's earliest in-history
+    # provenance, falling back to the earliest committed `Sgt-Op:` trailer for a *pending* op (just-
+    # saved work a `record_ideal` witness-advance left provenance-less). `feature_runs`/`group.atoms`
+    # read the same helper so all three time-aware projections agree on when an op happened.
+    ops = list(opindex.index_ops(repo))
+    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
     ops_out = []
-    for op in sorted(opindex.index_ops(repo), key=lambda op: op.id):
-        idx = min((commit_index[sha] for sha in op.provenance if sha in commit_index), default=None)
-        if idx is None:
-            continue
-        ops_out.append({"id": op.id, "kind": op.kind, "feature_id": op_leaf.get(op.id), "commit_index": idx})
+    for op in sorted(ops, key=lambda op: op.id):
+        sha = sha_of.get(op.id)
+        if sha is None:
+            continue  # embodied by no commit in this history -- omit, as before
+        ops_out.append({
+            "id": op.id, "kind": op.kind, "feature_id": op_leaf.get(op.id),
+            "commit_index": commit_index[sha],
+        })
     ops_out.sort(key=lambda o: (o["commit_index"], o["id"]))
 
     if full:

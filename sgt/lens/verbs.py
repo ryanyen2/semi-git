@@ -492,6 +492,13 @@ def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, st
         feature_id = next(
             (nid for nid, nd in nodes.items() if not nd["children"] and nd.get("label") == ref), None,
         )
+    if feature_id is None and ref:  # a unique id-prefix -- `f-`-prefixed or the bare hex the graph prints
+        hits = [
+            nid for nid, nd in nodes.items()
+            if not nd["children"] and (nid.startswith(ref) or nid.startswith("f-" + ref))
+        ]
+        if len(hits) == 1:
+            feature_id = hits[0]
     if feature_id is None:
         return None
     op_ids = frozenset(op for op, leaf in result["op_leaf"].items() if leaf == feature_id)
