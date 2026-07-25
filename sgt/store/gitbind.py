@@ -491,7 +491,11 @@ class GitBinding:
         """The git blob object id of ``path`` at ``sha`` -- the stable content address a binary
         file's image can point at without embedding the bytes themselves. Served by the repo's
         persistent ``cat-file --batch-check`` process (object info only, no content transfer)
-        instead of an ``ls-tree`` subprocess spawn per call."""
+        instead of an ``ls-tree`` subprocess spawn per call. ``--batch-check`` reports a tree
+        entry whose object is absent from this repo's odb as missing -- submodule gitlinks (the
+        commit lives in the submodule's odb) and promisor-filtered blobs in partial clones --
+        so a miss falls back to parsing ``ls-tree``, which reads the tree entry itself and
+        returns the recorded oid for ANY entry type, exactly as this method always did."""
         info = _batch_for(self.repo).info_many([(sha, path)])[0]
         if info is not None:
             return info[0]

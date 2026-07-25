@@ -234,8 +234,7 @@ export class Store {
   // A small bounded LRU keyed by the `sgt fold --at` spec: the scrubber replays the same handful
   // of frontiers as the playhead moves back and forth, so a cache spares a fresh `sgt advanced
   // fold` per revisited frame. Capped so a long scrub can't grow it without bound (an eviction
-  // per insert past the cap), and cleared in `invalidate()` with the other caches. Signature and
-  // promise semantics are unchanged.
+  // per insert past the cap), and cleared in `invalidate()` with the other caches.
   async foldAt(frontier: FoldFrontier): Promise<FoldView> {
     // A `ref` frontier ("HEAD", a branch) is a *moving* target: its spec string is stable but the
     // content it resolves to changes as the ref advances, so caching it by spec would serve the

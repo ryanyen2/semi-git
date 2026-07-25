@@ -491,3 +491,22 @@ def test_fsck_flags_mixed_miner_versions(tmp_path):
     report = fsck(tmp_path)
     assert not report.ok
     assert set(report.mixed_versions) == {"2", "3"}
+
+
+def test_all_ops_warm_memo_sees_writes_between_calls(tmp_path):
+    """The process-level `all_ops` memo must never hide a write landing after a warm read: a
+    second call in the same process sees an op added between the calls (the dirent recount
+    guards the same-mtime-tick rename case), and a warm re-read with no intervening write is
+    content-identical to the cold read."""
+    store = Store(tmp_path)
+    store.init()
+    first_op = _op(n=0)
+    store.add(first_op)
+    cold = store.all_ops()
+    assert [o.id for o in cold] == [first_op.id]
+    warm = store.all_ops()  # memo hit -- must be content-identical, not just id-identical
+    assert warm == cold
+    second_op = _op(n=1)
+    store.add(second_op)
+    after = store.all_ops()
+    assert {o.id for o in after} == {first_op.id, second_op.id}

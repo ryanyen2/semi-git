@@ -236,3 +236,20 @@ def test_detect_orphans_flags_out_of_band_commit(tmp_path):
     orphans = gb.detect_orphans({known_sha})
     assert orphan_sha in orphans
     assert known_sha not in orphans
+
+
+def test_batch_reads_do_not_alias_across_chdir_with_relative_repo(tmp_path, monkeypatch):
+    """The persistent cat-file batch registry keys on the RESOLVED repo path: `GitBinding(".")`
+    under two different cwds must serve each repo's own blobs -- a relative key would hand one
+    repo's batch process to the other repo's reads after a chdir (tests chdir constantly)."""
+    repo_a, repo_b = tmp_path / "a", tmp_path / "b"
+    for repo, content in ((repo_a, b"alpha\n"), (repo_b, b"beta\n")):
+        gb, _ = init_store(repo)
+        (repo / "f.txt").write_bytes(content)
+        gb.commit_all("add f")
+    monkeypatch.chdir(repo_a)
+    assert GitBinding(".").blob_bytes("HEAD", "f.txt") == b"alpha\n"
+    monkeypatch.chdir(repo_b)
+    assert GitBinding(".").blob_bytes("HEAD", "f.txt") == b"beta\n"
+    monkeypatch.chdir(repo_a)  # back again: repo A's process, not a stale B handle
+    assert GitBinding(".").blob_bytes("HEAD", "f.txt") == b"alpha\n"
