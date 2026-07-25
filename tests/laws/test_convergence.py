@@ -200,30 +200,28 @@ def test_law_u_contradicting_pins_converge_across_schedules(tmp_path):
 
 def test_law_u_feature_ids_are_replica_independent(tmp_path):
     """LAW-U (feature-tree half): the *same* feature (same member set, same ops) must carry the
-    same id on every replica. Today `tree.build` carries ids across a run by matching against that
-    replica's own last tree, so two replicas whose prior curation minted different ids for the
-    feature keep diverging ids even after their op stores are identical. Modelled with two
-    replica-local `previous` trees over one shared op store; asserts the ids agree (they must,
-    under LAW-U) and so fails until U21's birth-minted ids."""
+    same id on every replica. Feature ids are content-addressed at birth (`f-<founding op>`, U21/D6),
+    so two replicas that birth the feature independently over a byte-identical op store mint the
+    identical id with no coordination -- modelled here as two fresh builds (`previous=None`) over
+    one shared op store."""
     repo = corpus.CORPUS["class_with_methods"].build(tmp_path / "repo")
     ideal = get(repo)
     ops = Store(repo).all_ops()
 
-    natural = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
-    members = sorted({m for nd in natural["nodes"].values() if not nd["children"] for m in nd["members"]})
-    assert members  # the fixture produced at least one alive feature to disagree about
-    probe = members[0]
+    # Two replicas each birthing the feature from scratch over the identical op store.
+    tree_a = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
+    tree_b = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
 
-    # Two replicas that curated independently: each already knows this feature under its own id.
-    prev_a = {"nodes": {"F7": {"members": members, "children": [], "parent": None, "depth": 0}}, "roots": ["F7"]}
-    prev_b = {"nodes": {"F42": {"members": members, "children": [], "parent": None, "depth": 0}}, "roots": ["F42"]}
-    tree_a = tree.build(repo, ops, ideal, pins=Pins(), previous=prev_a)
-    tree_b = tree.build(repo, ops, ideal, pins=Pins(), previous=prev_b)
+    members = sorted({m for nd in tree_a["nodes"].values() if not nd["children"] for m in nd["members"]})
+    assert members  # the fixture produced at least one alive feature
+    probe = members[0]
 
     def _feature_of(built: dict, member: str) -> str:
         return next(nid for nid, nd in built["nodes"].items() if not nd["children"] and member in nd["members"])
 
-    assert _feature_of(tree_a, probe) == _feature_of(tree_b, probe)  # same feature, one id (LAW-U)
+    fid = _feature_of(tree_a, probe)
+    assert fid.startswith("f-")  # content-addressed, not a replica-local id
+    assert _feature_of(tree_b, probe) == fid  # same feature, one id on both replicas (LAW-U)
 
 
 def test_law_u_authored_feature_survives_a_two_clone_sync_roundtrip(tmp_path):

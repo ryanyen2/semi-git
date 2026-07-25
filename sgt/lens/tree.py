@@ -532,16 +532,11 @@ def build(
     }
 
     old_leaves = _leaf_members(previous["nodes"]) if previous else {}
-    # A legacy id a pin still references must not be silently re-minted by an ordinary build (that
-    # would orphan the pin) -- only the atomic `sgt migrate` re-mints those. Unreferenced legacy ids
-    # converge freely (LAW-U). `assign` values are additionally force-applied below, but including
-    # them here keeps the identity_events honest (no spurious re-mint that a pin immediately undoes).
-    # Authored-feature `af-` ids (U6/R3, KTD3) join the protected set so a rebuild never re-mints or
-    # orphans them (completes U6's deferred wiring) -- loaded here because `build` already owns `repo`.
-    from sgt.lens.authored import load_authored
-    protected = frozenset(pins.assign.values()) | frozenset(pins.labels) | frozenset(load_authored(repo))
+    # A continuation always carries its old feature id, so a curated feature (a pin-referenced id or
+    # an authored `af-` id, U6/R3/KTD3) keeps its id across a rebuild without any protection list;
+    # `assign` values are force-applied below regardless.
     id_map, events = match_identities(
-        old_leaves, _leaf_members(nodes), founding=_founding_ops(op_leaf), protected=protected,
+        old_leaves, _leaf_members(nodes), founding=_founding_ops(op_leaf),
     )
     _apply_id_map(result, id_map)
     _apply_assign_pins(result, pins)
@@ -614,29 +609,8 @@ def _founding_ops(op_leaf: dict[str, str]) -> dict[str, str]:
     return founding
 
 
-def _fresh_id_gen(old_ids: set[str]):
-    """Monotonic ``F<n>`` ids that never collide with an existing feature id -- start past the
-    largest ``F<n>`` already in `old_ids` so a birth never reuses a dead feature's id. Retained for
-    the manual `sgt split` verb (a local, pinned curation act, not an automatic birth) and for
-    direct `match_identities` callers that pass no `founding` map; automatic birth/split minting is
-    content-addressed (`_content_birth_id`) so it is replica-independent (U21/D6)."""
-    used = [int(x[1:]) for x in old_ids if x.startswith("F") and x[1:].isdigit()]
-    n = max(used) + 1 if used else 0
-    while True:
-        yield f"F{n}"
-        n += 1
-
-
-def _is_legacy_id(fid: str) -> bool:
-    """A pre-U21 sequential ``F<n>`` id (replica-local). Modern ids are ``f-<op-id>`` (birth-minted,
-    content-addressed) -- those are carried by Greene continuation for stability; a legacy id is
-    re-minted to its content-addressed form on contact so two replicas' divergent local numbering
-    converges (LAW-U)."""
-    return fid.startswith("F") and fid[1:].isdigit()
-
-
 def _content_birth_id(members: frozenset[str], founding: str | None, used: set[str]) -> str:
-    """A content-derived, replica-independent feature id for a birth/split/legacy-remint leaf
+    """A content-derived, replica-independent feature id for a birth/split leaf
     (U21/D6): ``f-<min founding op id>`` -- the founding op is the lexicographically-smallest
     (content-addressed) op id assigned to the leaf, so two replicas that cluster the same members
     over the same (LAW-0 byte-identical) op store mint the identical id with no coordination. A leaf
@@ -659,14 +633,14 @@ def _content_birth_id(members: frozenset[str], founding: str | None, used: set[s
 
 def match_identities(
     old: dict[str, frozenset[str]], new: dict[str, frozenset[str]], theta: float = THETA,
-    founding: dict[str, str] | None = None, protected: frozenset[str] = frozenset(),
+    founding: dict[str, str] | None = None,
 ) -> tuple[dict[str, str], list[dict]]:
     """Greene member-overlap matching between the previous run's leaves and this run's. `old`/`new`
     map a leaf id to its member set; `old` uses stable feature ids, `new` uses build-local ids.
     `founding` (optional) maps each *new* build-leaf id to its founding op id (the min op assigned
-    to it) -- when given, births/splits and legacy-id continuations mint content-addressed
-    ``f-<founding>`` ids (replica-independent, U21/D6); when absent, minting falls back to legacy
-    sequential ``F<n>`` (direct callers and the pre-U21 path).
+    to it) -- births/splits mint content-addressed ``f-<founding>`` ids (replica-independent,
+    U21/D6); when a new leaf has no founding op, minting falls back to a member-set hash, still
+    content-addressed.
 
     Returns ``(id_map, events)``: `id_map` maps each *new* build-leaf id to the feature id it should
     adopt; `events` is a sorted list of ``{"event", "feature_id", ...}`` facts naming what happened.
@@ -674,16 +648,8 @@ def match_identities(
     Matching is mutual-best over Jaccard >= `theta` (tie-break: higher overlap, then smaller id):
     a new leaf whose best old is mutual is a **continuation** (>1 old pointing at it => **merge**);
     a new leaf matching an old that prefers a different new is a **split**; an unmatched new is a
-    **birth**; an old that nothing continues/merges is a **death**. A continuation/merge of a
-    *modern* id carries that id (stability -- a curated feature keeps its id as it evolves).
-
-    A continuation of a *legacy* ``F<n>`` id re-mints content-addressed (convergence) **only when no
-    pin references it** (`protected`): re-minting a legacy id that a pin's `assign`/`labels` still
-    names is exactly the un-transacted curation corruption the plan forbids -- an ordinary build has
-    no license to rewrite pins, so it carries a referenced legacy id untouched and leaves the atomic
-    upgrade to the explicit ``sgt migrate feature-ids`` (which re-mints *and* rewrites the pin
-    references together). An *unreferenced* legacy id has nothing to corrupt, so it converges freely.
-    `protected` is the set of pin-referenced feature ids (`assign` values + `labels` keys)."""
+    **birth**; an old that nothing continues/merges is a **death**. A continuation/merge always
+    carries the old id (stability -- a curated feature keeps its id as it evolves)."""
     pairs = [
         (oid, nid, j)
         for oid, om in old.items()
@@ -698,14 +664,11 @@ def match_identities(
     old_best = {oid: _best([(nid, j) for (o, nid, j) in pairs if o == oid]) for oid in old}
     new_best = {nid: _best([(oid, j) for (oid, n, j) in pairs if n == nid]) for nid in new}
 
-    legacy_gen = _fresh_id_gen(set(old))
     used: set[str] = set(old)  # never mint an id that collides with a carried old id
 
     def _mint(nid: str) -> str:
-        if founding is None:
-            fid = next(legacy_gen)
-        else:
-            fid = _content_birth_id(new[nid], founding.get(nid), used)
+        founding_op = founding.get(nid) if founding is not None else None
+        fid = _content_birth_id(new[nid], founding_op, used)
         used.add(fid)
         return fid
 
@@ -716,13 +679,8 @@ def match_identities(
         olds_here = sorted(o for o, bn in old_best.items() if bn == nid)
         nb = new_best.get(nid)
         if nb is not None and nb in olds_here:  # mutual best -> continuation / merge
-            if founding is not None and _is_legacy_id(nb) and nb not in protected:
-                fid = _mint(nid)  # upgrade an *unreferenced* legacy id to its content id (converges);
-                # a pin-referenced legacy id is carried untouched -- only `sgt migrate` re-mints it,
-                # atomically with the pin rewrite, so an ordinary build never orphans a pinned label.
-            else:
-                fid = nb  # carry a modern id, a referenced legacy id, or the pre-`founding` path
-                used.add(fid)
+            fid = nb  # carry the id -- a curated feature keeps its id as it evolves
+            used.add(fid)
             id_map[nid] = fid
             continued_old.update(olds_here)
             if len(olds_here) > 1:
@@ -765,19 +723,32 @@ def _apply_id_map(result: dict, id_map: dict[str, str]) -> None:
 
 
 def _apply_assign_pins(result: dict, pins: Pins) -> None:
-    """Override the feature id of any leaf holding an `assign`-pinned member with its pinned id --
+    """Override the feature id of the leaf holding an `assign`-pinned member with its pinned id --
     the deterministic guarantee behind "a pinned op never leaves its assigned feature" (D3).
-    Must-link contraction already guarantees one leaf per assign target, so this is a plain
-    rename; a genuine conflict is a pin contradiction (`pins.find_contradictions`), not resolved
-    here."""
+
+    Must-link contraction *normally* keeps every member of one assign target in a single leaf, so
+    the override is a plain rename. But a target orphaned in the previous tree is spliced verbatim
+    rather than reclustered, so its members can scatter across several current leaves. Renaming
+    *every* such leaf to the pinned id would alias them onto one node (duplicate children -> `_dedup`
+    crash), so -- exactly as `_authored_leaf_claims` does -- each pinned id resolves to the one leaf
+    holding the plurality of its live members (tie -> smallest leaf id), and each leaf is claimed by
+    at most the strongest pin. A genuine conflict is a pin contradiction (`pins.find_contradictions`),
+    not resolved here."""
     if not pins.assign:
         return
     member_leaf = leaf_member_index(result["nodes"])
-    amap = {
-        leaf: fid
-        for member, fid in pins.assign.items()
-        if (leaf := member_leaf.get(member)) is not None and leaf != fid
-    }
+    by_fid: dict[str, Counter] = defaultdict(Counter)
+    for member, fid in pins.assign.items():
+        if (leaf := member_leaf.get(member)) is not None:
+            by_fid[fid][leaf] += 1
+    amap: dict[str, str] = {}
+    strength: dict[str, int] = {}
+    for fid in sorted(by_fid):
+        counts = by_fid[fid]
+        leaf = min(counts, key=lambda l: (-counts[l], l))
+        if leaf != fid and counts[leaf] > strength.get(leaf, 0):
+            amap[leaf] = fid
+            strength[leaf] = counts[leaf]
     if amap:
         _apply_id_map(result, amap)
 
@@ -980,10 +951,15 @@ def label_tree(
             node["label"] = label
 
     # Authored features (U6/R3) are the authority over the clustered proposal (KTD4): a leaf a user
-    # has claimed under a named feature shows that feature's label, exactly as the pin-label override
-    # above substitutes a rename -- un-authored leaves keep their LLM/fallback label untouched.
+    # has claimed under a *deliberately named* feature shows that feature's label, exactly as the
+    # pin-label override above substitutes a rename -- un-authored leaves keep their LLM/fallback
+    # label untouched. The label override fires only for a non-empty label: the save-time new-lane
+    # cascade (`ledger.assign_at_save`) seeds an authored feature with an *empty* label register on
+    # purpose, so its clustered/LLM label stands here until a real `rename` names it -- an empty
+    # register is "claimed but unnamed", not a rename to blank.
     from sgt.lens.authored import load_authored
     for leaf, feat in _authored_leaf_claims(nodes, load_authored(repo)).items():
-        nodes[leaf]["label"] = feat.label
+        if feat.label:
+            nodes[leaf]["label"] = feat.label
 
     return labeler

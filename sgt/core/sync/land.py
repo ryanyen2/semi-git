@@ -48,7 +48,26 @@ from . import log as _log
 from . import materialize as _materialize
 from . import resolve as _resolve
 
-__all__ = ["LandReport", "land"]
+__all__ = ["LandReport", "land", "LandPlan", "plan_land"]
+
+
+@dataclass(frozen=True)
+class LandPlan:
+    """The dry-run consequence of a `land` (plan U19/D4): what the CAS *would* advance the shared
+    branch by, computed with `ingest -> resolve` alone -- no oracle run, no ref move, and rolled
+    back to leave zero trace (R7), so a feedforward pane can show it before the expensive/one-way
+    part. `oracle_configured` is the LAW-G pre-check (no oracle -> the land will refuse); `clean`
+    is False (with `error` set) when the tree isn't landable yet."""
+
+    branch: str
+    ops_added: int = 0
+    forks: tuple[tuple[str, str, str], ...] = ()
+    pin_contradictions: tuple[Contradiction, ...] = ()
+    declared_cycles: tuple[tuple[str, str], ...] = ()
+    oracle_configured: bool = True
+    advisory: str | None = None
+    clean: bool = True
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -280,3 +299,58 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     return _blocked(
         f"persistent contention -- branch moved on every one of {retries} attempts", retries,
     )
+
+
+def plan_land(repo: str | Path, branch: str | None = None) -> LandPlan:
+    """Dry-run a `land` (D4): run `ingest -> resolve` against the branch tip to compute what the CAS
+    *would* advance the shared branch by, then roll the transactional local caches back so the
+    preview leaves no trace (R7). Deliberately skips the two mutating/expensive steps `land` does --
+    `stage_candidate` + the oracle gate, and the ref CAS -- so a feedforward can show the
+    consequence before the user commits to running the tests and moving the shared tip. The oracle
+    verdict is *not* computed here; `oracle_configured` only reports whether one exists (LAW-G will
+    refuse a land with none). Mirrors `land`'s own `ops_added`/`advisory` computation so the preview
+    predicts the report."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+
+    local_before = _snapshot_local_caches(repo)
+    try:
+        lens.get(repo)  # mine-on-contact: preview against local reality, exactly as `land` does
+        if not gb.is_clean():
+            return LandPlan(branch=branch or "?", clean=False,
+                            error="working tree not clean -- `sgt put` or commit first")
+
+        if branch is None:
+            ref_name = gb.symbolic_ref()
+            if ref_name is None:
+                return LandPlan(branch="?", clean=False,
+                                error="HEAD is detached -- pass a branch name to land onto")
+            branch = ref_name.rsplit("/", 1)[-1]
+        ref = f"refs/heads/{branch}"
+
+        ours = gb.head()
+        if ours is None:
+            return LandPlan(branch=branch, clean=False, error="no commit to land")
+
+        old = gb.rev_parse(ref)
+        theirs_sha = old if old is not None else ours
+
+        ing = _ingest.ingest(repo, gb, theirs_sha, ours, branch=branch)
+        res = _resolve.resolve(repo, ing)
+        ops_added = len(res.merged_ideal.op_ids - ing.theirs_ideal_ids)
+
+        advisory = None
+        log_entries = _log.read(gb, branch)
+        if log_entries and not gb.is_ancestor(log_entries[0].landed_sha, ours):
+            advisory = (
+                f"{branch} has landed work since your last sync ({log_entries[0].landed_sha[:12]} "
+                f"is not an ancestor of HEAD) -- `sgt sync` first to fold it in before landing"
+            )
+
+        return LandPlan(
+            branch=branch, ops_added=ops_added, forks=res.forks,
+            pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
+            oracle_configured=load_oracle_config(repo) is not None, advisory=advisory,
+        )
+    finally:
+        _restore_local_caches(repo, local_before)

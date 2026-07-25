@@ -716,7 +716,7 @@ function episodeRailLayout(epView) {
     if (driftMarks.unplaced.length) {
       const chip = document.createElement("span");
       chip.className = "plan-chip";
-      chip.textContent = `⚠ ${driftMarks.unplaced.length} unplaced drift`;
+      chip.textContent = `◇ ${driftMarks.unplaced.length} unplanned (no rail row)`;
       chip.title = driftMarks.unplaced.map((e) => e.footprint.join(", ")).join("\n");
       planChipsEl.appendChild(chip);
     }

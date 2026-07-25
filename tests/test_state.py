@@ -14,7 +14,6 @@ import json
 import subprocess
 
 from sgt import state
-from sgt.core.lens import _load_declared, _save_declared
 from sgt.lens.pins import Pins, load_pins, save_pins
 from sgt.lens import tree
 from sgt.store.gitbind import GitBinding
@@ -41,7 +40,6 @@ def _commit_all(root, message):
 def test_path_and_rel_agree_on_layout(tmp_path):
     assert state.path(tmp_path, "pins") == tmp_path / ".sgt" / "pins" / "pins.json"
     assert state.rel("pins") == ".sgt/pins/pins.json"
-    assert state.path(tmp_path, "declared") == tmp_path / ".sgt" / "declared.json"
     # two distinct "oracle.json"s at different layers -- committed config vs. local verdict cache.
     assert state.path(tmp_path, "oracle_config") == tmp_path / ".sgt" / "oracle.json"
     assert state.path(tmp_path, "verdicts") == tmp_path / ".sgt" / "local" / "oracle.json"
@@ -59,8 +57,8 @@ def test_missing_artifact_returns_default(tmp_path):
 
 
 def test_writer_emits_versioned_envelope(tmp_path):
-    state.save_json(tmp_path, "declared", [["op_a", "op_b"]])
-    raw = json.loads(state.path(tmp_path, "declared").read_text(encoding="utf-8"))
+    state.save_json(tmp_path, "forks", [["op_a", "op_b"]])
+    raw = json.loads(state.path(tmp_path, "forks").read_text(encoding="utf-8"))
     assert raw == {"schema": 1, "data": [["op_a", "op_b"]]}
 
 
@@ -99,16 +97,15 @@ def test_v0_and_v1_payloads_round_trip_through_the_same_caller(tmp_path):
     assert load_pins(tmp_path).assign == {"m2": "featureB"}
 
 
-def test_declared_edges_v0_list_shape_is_not_mistaken_for_an_envelope(tmp_path):
-    """`declared.json`'s body is a bare list, not a dict -- `_unwrap` must not choke trying to call
-    `.get` on it."""
-    edges = frozenset({("op_a", "op_b"), ("op_c", "op_d")})
-    _save_declared(tmp_path, edges)
-    assert _load_declared(tmp_path) == edges
+def test_bare_list_body_is_not_mistaken_for_an_envelope(tmp_path):
+    """A committed artifact whose body is a bare list (e.g. `forks.json`), not a dict -- `_unwrap`
+    must not choke trying to call `.get` on it."""
+    state.save_json(tmp_path, "forks", [["op_a", "op_b"], ["op_c", "op_d"]])
+    assert state.load_json(tmp_path, "forks") == [["op_a", "op_b"], ["op_c", "op_d"]]
 
-    p = state.path(tmp_path, "declared")
+    p = state.path(tmp_path, "forks")
     p.write_text(json.dumps([["op_x", "op_y"]]) + "\n", encoding="utf-8")  # hand-written v0
-    assert _load_declared(tmp_path) == frozenset({("op_x", "op_y")})
+    assert state.load_json(tmp_path, "forks") == [["op_x", "op_y"]]
 
 
 # -- historical-blob dispatch: the `sync` read path ----------------------------------------------
@@ -158,9 +155,9 @@ def test_load_blob_json_missing_artifact_returns_default(tmp_path):
 
 def test_a_v0_shaped_repo_round_trips_through_load_and_save(tmp_path):
     """Simulates a clone whose `.sgt/` predates this unit: every committed artifact hand-written in
-    the exact pre-U17 shape (no envelope). The verbs that read them (`load_pins`, `_load_declared`,
-    `tree.load`) must parse them exactly as before, and a subsequent save must not corrupt anything
-    -- the round-trip this unit's whole `read-side-first` approach is built to guarantee (D3)."""
+    the exact pre-U17 shape (no envelope). The verbs that read them (`load_pins`, `tree.load`) must
+    parse them exactly as before, and a subsequent save must not corrupt anything -- the round-trip
+    this unit's whole `read-side-first` approach is built to guarantee (D3)."""
     repo = tmp_path / "repo"
     repo.mkdir()
 
@@ -170,17 +167,15 @@ def test_a_v0_shaped_repo_round_trips_through_load_and_save(tmp_path):
         json.dumps({"assign": {"m1": "featureA"}, "must_link": [["m2", "m3"]], "cannot_link": [], "labels": {}}) + "\n",
         encoding="utf-8",
     )
-    (repo / ".sgt" / "declared.json").write_text(json.dumps([["op_a", "op_b"]]) + "\n", encoding="utf-8")
     tree_dir = repo / ".sgt" / "tree"
     tree_dir.mkdir(parents=True)
-    tree_body = {"nodes": {"F1": {"members": ["main.py::foo"], "children": [], "parent": None, "depth": 0}}, "roots": ["F1"]}
+    tree_body = {"nodes": {"f-1": {"members": ["main.py::foo"], "children": [], "parent": None, "depth": 0}}, "roots": ["f-1"]}
     (tree_dir / "tree.json").write_text(json.dumps(tree_body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     pins = load_pins(repo)
     assert pins.assign == {"m1": "featureA"}
     assert pins.must_link == frozenset({("m2", "m3")})
 
-    assert _load_declared(repo) == frozenset({("op_a", "op_b")})
     assert tree.load(repo) == tree_body
 
     # A subsequent save (post-U17) upgrades the file to the versioned envelope, and a re-read

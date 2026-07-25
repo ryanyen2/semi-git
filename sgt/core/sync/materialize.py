@@ -19,7 +19,7 @@ from sgt import state
 from sgt.core import lens
 from sgt.core.fold import code
 from sgt.core.store import Store, _write_atomic, locked_section
-from sgt.lens import authored, reconcile, tree
+from sgt.lens import authored, tree
 from sgt.lens.pins import save_pins
 from sgt.store.gitbind import GitBinding, format_op_trailers
 
@@ -131,8 +131,8 @@ def stage_candidate(
 def flush_reconciled_metadata(
     repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
 ) -> None:
-    """Write the reconciled metadata -- the six artifacts the review found a red `land` leaking
-    (pins, declared OR-Set, aliases, tree, durable fork record, in-tree ideal recovery) plus the
+    """Write the reconciled metadata -- the artifacts the review found a red `land` leaking
+    (pins, declared OR-Set, tree, durable fork record, in-tree ideal recovery) plus the
     claim/proposal/review G-Set unions -- under one locked section so no reader sees a half-union
     (R5/R6). `land` calls this only once the oracle is green and just before it builds the landing
     commit, so a refused land never persists it; sync calls it unconditionally right after
@@ -141,7 +141,6 @@ def flush_reconciled_metadata(
     with locked_section(repo):
         save_pins(repo, res.unioned_pins)
         lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
-        reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
         if res.unioned_authored:  # merged authored-feature collection (U6/R3/KTD3) -- written only
             authored.save_authored(repo, res.unioned_authored)  # when one exists, keeping the merge
             # commit byte-identical to pre-U6 for the common case (no authored features)

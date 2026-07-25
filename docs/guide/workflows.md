@@ -79,16 +79,17 @@ How reliable each of these is depends on where the grouping comes from.
 - Feature-level revert needs the feature tree to have grouped the ops first. `sgt log --tree` builds
   that grouping from how symbols tend to change together across your history, so it needs enough
   commits and enough churn to find real seams. On a brand-new repo it reports one feature for
-  everything, because there is no history yet to split on. Use `sgt merge`, `sgt split`, `sgt
-  rename`, and `sgt move` to correct or seed the grouping by hand.
+  everything, because there is no history yet to split on. Use `sgt feature regroup merge`, `sgt
+  feature regroup split`, `sgt feature rename`, and `sgt feature regroup move` to correct or seed
+  the grouping by hand.
 - Session-level revert does not depend on the grouping at all. `sgt` stamps every op an agent
   session lands with which session it came from, so `sgt revert --session <name>` is exact from
   the very first run, before there is any history to cluster.
 
 So symbol-level revert and session-level revert are the reliable tools today. Feature-level revert
-works well once `sgt log --tree`, or your own corrections, has had real history to learn from. Run `sgt
-blame <file>` to check whether the current grouping actually covers the file you care about before
-you trust it.
+works well once `sgt log --tree`, or your own corrections, has had real history to learn from. Run
+`sgt advanced blame <file>` to check whether the current grouping actually covers the file you care
+about before you trust it.
 
 ### When you do not know the exact name
 
@@ -150,8 +151,8 @@ content it had before the fork, so it never silently picks one side over the oth
 fork down as shared state in `.sgt/forks.json` and tells Bob what to do next:
 
 ```bash
-sgt forks
-# main.py::foo — tips <alice's op> / <bob's op> — run `sgt merge-op` to reconcile
+sgt advanced forks
+# main.py::foo — tips <alice's op> / <bob's op> — run `sgt resolve main.py::foo` to reconcile
 ```
 
 Bob resolves it:
@@ -220,13 +221,14 @@ this version, recorded in `FINDINGS.md`. Features in separate files do not have 
 ## 6. Using this with Claude Code or any MCP client
 
 `sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of running it as a
-shell command. It exposes 11 tools today, not the full command set: `sgt_init`, `sgt_log`,
-`sgt_state`, `sgt_diff`, `sgt_fsck`, `sgt_revert`, `sgt_restore`, `sgt_oracle_run`,
-`sgt_plan_intake`, `sgt_checkpoint`, and `sgt_drift`.
+shell command. It exposes 13 tools today, not the full command set: `sgt_init`, `sgt_log`,
+`sgt_grid`, `sgt_status`, `sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`,
+`sgt_advanced_oracle_run`, `sgt_plan_intake`, `sgt_checkpoint`, `sgt_drift`, and `sgt_plan_done`.
 
-So an agent driving `sgt` over MCP can inspect state and do symbol-level revert and restore, which
-covers section 1 and part of section 2 above. The commands for working with other people, `sync`,
-`land`, `merge-op`, `session`, and `propose`, have no MCP tool yet. If a sync produces a fork, or
+So an agent driving `sgt` over MCP can inspect state, run the plan → checkpoint → drift loop, and
+do symbol-level revert and restore, which covers section 1 and part of section 2 above. The
+commands for working with other people, `sync`, `land`, `merge-op`, `session`, and `propose`, have
+no MCP tool yet. If a sync produces a fork, or
 you want to start a named agent session, a person has to run those commands in the terminal. This
 gap is tracked as its own follow-up piece of work, separate from the kernel-correctness work
 described below.
@@ -238,7 +240,7 @@ depends on. All four are fixed now.
 
 - A file or symbol that was deleted and then re-added no longer disappears from your working tree.
   The case that used to cause a silent delete now keeps the file and reports it in `sgt log --summary`
-  and `sgt fsck`. Re-adding a symbol now chains onto its earlier history, which recovered most of
+  and `sgt advanced fsck`. Re-adding a symbol now chains onto its earlier history, which recovered most of
   the ops the old version dropped. One edge case remains: if a symbol is deleted and re-added with
   the exact same content, the two versions still register as a fork.
 - Symlinks are now left alone. `sgt` never writes or deletes through a symlink, whether the
@@ -262,8 +264,8 @@ These limits remain, either by design or because they are not built yet:
 - Imports are ordinary text, not a symbol with its own command. Nothing warns you that a revert
   left an unused import behind, or offers to remove one.
 - `sgt log --summary` is slow on a large op store. On this project's own store of about 7,840 ops it takes
-  around a minute, because rebuilding the full valid state is expensive and `status` currently does
-  it more than once per run. This is a speed problem, not a correctness one.
+  around a minute, because rebuilding the full valid state is expensive and the summary currently
+  does it more than once per run. This is a speed problem, not a correctness one.
 
-Run `sgt fsck` any time you are unsure about the state of a repo. It checks that the current state
-is valid and that the files it builds match what git actually has.
+Run `sgt advanced fsck` any time you are unsure about the state of a repo. It checks that the
+current state is valid and that the files it builds match what git actually has.

@@ -1,5 +1,6 @@
 {
   "blame_view": {
+    "covered": true,
     "features": {
       "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139": {
         "label": "slugify"

@@ -9,8 +9,8 @@ lossy v2 ideal (`reduce_to_ideal` drops the forked birth, so the re-added file v
 `code(I)`). Migrating that store must re-birth the file. All fixtures are hermetic: real `git`, no
 network, no wall-clock/LLM dependency -- the same discipline as `tests/core/test_store.py`.
 
-Distinct from `tests/lens/test_migrate.py`, which covers the *feature-id* re-mint (`migrate
-feature-ids`); this file covers the *op-store* crossing (`migrate ops-v3`).
+This file covers the *op-store* crossing (`migrate ops-v3`) -- the only remaining `migrate`
+subcommand now that the legacy feature-id re-mint has been removed.
 """
 
 from __future__ import annotations

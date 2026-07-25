@@ -110,6 +110,42 @@ def test_row6_fork_based_contributor_status_reports_fork(tmp_path):
     assert st["remedy"].startswith("sgt merge-op ")
 
 
+def test_plan_land_predicts_a_proposals_advance_and_leaves_no_trace(tmp_path):
+    """The `propose land` feedforward dry run: over a clean, landable proposal it delegates to
+    `sync.plan_land` and reports the op count the base branch would advance by and that the oracle is
+    configured (LAW-G's gate), without moving the base tip -- a pure read behind the pane."""
+    a, _b = _two_clones(tmp_path, _BASE)
+    _configure_oracle(a, [("build", "exit 0")])
+    _branch(a, "feature")
+    _edit_and_commit(a, "main.py", _WITH_BAZ, "add baz")
+    p = propose.create(a, base_ref="main", title="add baz")
+    GitBinding(a).commit_all("A: oracle config + proposal")  # a real land needs a clean tree
+
+    before_tip = GitBinding(a).rev_parse("refs/heads/main")
+    plan = propose.plan_land(a, p.id)
+
+    assert plan.clean and not plan.forks
+    assert plan.ops_added > 0 and plan.oracle_configured is True
+    assert GitBinding(a).rev_parse("refs/heads/main") == before_tip  # nothing advanced
+
+
+def test_plan_land_of_a_stale_forked_proposal_surfaces_the_blocker(tmp_path):
+    """A proposal gone stale as a fork surfaces that fork as the blocker in the dry run (so the pane
+    refuses before the CAS would), without needing an oracle run."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _branch(a, "feature")
+    _edit_and_commit(a, "main.py", _BASE.replace("return 1", "return 42"), "feature: rework foo")
+    p = propose.create(a, base_ref="origin/main")
+    GitBinding(a).commit_all("A: proposal")
+
+    _edit_and_commit(b, "main.py", _BASE.replace("return 1", "return 999"), "main: rework foo")
+    _push(b)
+    assert sync.sync(a, remote="origin", branch="main").forks  # the fork is now shared state
+
+    plan = propose.plan_land(a, p.id)
+    assert plan.forks, "a stale-forked proposal's land dry run must surface the fork blocker"
+
+
 def test_status_clean_reunion_when_base_advances_disjointly(tmp_path):
     """A base that advances on a *different* symbol leaves Δ applying cleanly: `clean-reunion`."""
     a, b = _two_clones(tmp_path, _BASE)

@@ -37,7 +37,6 @@ def test_resolve_advances_the_fork_free_part_and_surfaces_the_fork(tmp_path):
     ing = Ingested(
         ours_pins=Pins(), theirs_pins=Pins(),
         ours_declared_orset=lens.DeclaredORSet(), theirs_declared_orset=lens.DeclaredORSet(),
-        ours_aliases=frozenset(), theirs_aliases=frozenset(),
         ours_tree=None,
         ours_ideal=Ideal.from_ops({ours.id}, all_ops),
         theirs_ideal_ids=frozenset({theirs.id}),
@@ -344,7 +343,6 @@ def _resolve_ingested(tmp_path, all_ops, ours_ids, theirs_ids, base_ids, theirs_
     return Ingested(
         ours_pins=Pins(), theirs_pins=Pins(),
         ours_declared_orset=lens.DeclaredORSet(), theirs_declared_orset=lens.DeclaredORSet(),
-        ours_aliases=frozenset(), theirs_aliases=frozenset(),
         ours_tree=None,
         ours_ideal=Ideal.from_ops(ours_ids, all_ops),
         theirs_ideal_ids=frozenset(theirs_ids),

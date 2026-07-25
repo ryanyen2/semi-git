@@ -228,8 +228,15 @@ def assign_at_save(repo, ideal, ops) -> dict | None:
             node = nodes[lane]
             aid = verbs._authored_id_for(lane)
             if aid not in af:
+                # Seed the register with an EMPTY label, exactly like the new-lane fallback below:
+                # a save-time cascade records *membership*, never a *name*. The leaf's node label is
+                # a clustered/LLM proposal (or, for a provisional lane, a guessed file path) -- and
+                # `tree.label_tree` lets any non-empty authored label permanently override the
+                # rebuild's own label. Seeding it here would freeze the lane's name at this snapshot
+                # (and, for a provisional lane, shadow it with a file path). Only a deliberate
+                # `sgt rename` fills the register; until then the rebuild owns the name.
                 af[aid] = replace(
-                    authored.create(node["members"], node.get("label", lane), witness=head), id=aid,
+                    authored.create(node["members"], "", witness=head), id=aid,
                 )
             if symbol not in af[aid].live_members():  # guard: add_member mints a fresh tag each call
                 af[aid] = authored.add_member(af[aid], symbol)
@@ -244,14 +251,21 @@ def assign_at_save(repo, ideal, ops) -> dict | None:
             # lane, not a child of any existing one. No `gamma` is recorded: `AuthoredFeature` has no
             # such field (KTD3 sources 1/2 are deferred, the geometric midpoint is the shipped
             # default), so inventing one is out of scope here.
-            label = symbol.split("::", 1)[0]
-            feat = authored.create([symbol], label, witness=head)
+            # The file the symbol lives in is the lane's *provisional display* label -- what the grid
+            # shows in the window between this save and the next full recluster. It is NOT written
+            # into the authored feature's label register: that register is the LWW name a deliberate
+            # `sgt rename` sets, and seeding it with a guessed file path would permanently shadow the
+            # clustered/LLM label a rebuild computes for the lane (`tree.label_tree` only lets a
+            # *non-empty* authored label override the clustered proposal). So the register starts
+            # empty -- the rebuild names the lane, and a later `rename` overrides that.
+            provisional = symbol.split("::", 1)[0]
+            feat = authored.create([symbol], "", witness=head)
             af[feat.id] = feat
             assign[symbol] = feat.id
             nodes[feat.id] = {
                 "id": feat.id, "parent": None, "depth": 0,
                 "members": [symbol], "size": 1, "dir": cluster._dominant_dir([symbol]),
-                "children": [], "split_reason": None, "label": label, "why": "",
+                "children": [], "split_reason": None, "label": provisional, "why": "",
             }
             previous.setdefault("roots", []).append(feat.id)
             assigned[symbol] = feat.id

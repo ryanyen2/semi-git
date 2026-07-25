@@ -28,9 +28,13 @@ from . import ingest as _ingest
 from . import materialize as _materialize
 from . import resolve as _resolve
 from .ingest import MinerVersionMismatch  # re-exported: the CLI catches it distinctly (C6)
-from .land import LandReport, land  # SYNC-2: the CAS-gated shared-branch advance (U23)
+from .land import LandPlan, LandReport, land, plan_land  # SYNC-2: the CAS-gated shared-branch advance (U23)
+from .land import _restore_local_caches, _snapshot_local_caches  # reused by plan_sync's no-trace rollback
 
-__all__ = ["SyncReport", "sync", "MinerVersionMismatch", "LandReport", "land"]
+__all__ = [
+    "SyncReport", "SyncPlan", "sync", "plan_sync", "MinerVersionMismatch",
+    "LandReport", "land", "LandPlan", "plan_land",
+]
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,54 @@ class SyncReport:
     # no witnessed provenance). Either warrants a loud warning -- an unwitnessed claim was refused.
     base_recovery: str = "none"
     theirs_recovery: str = "mined"
+
+
+@dataclass(frozen=True)
+class SyncPlan:
+    """The dry-run consequence of a `sync` (plan U19/D4): what folding in the teammate's branch
+    *would* bring -- computed with `fetch -> ingest -> resolve` (no `materialize`, so the working
+    tree and local branch never move), then rolled back to leave no trace (R7). Unlike `land`, a
+    fork does not block a sync -- the fork-free part still merges and the fork surfaces as state --
+    so `forks` here is *what would surface*, not a blocker. `up_to_date` short-circuits when the
+    fetch finds nothing new."""
+
+    remote: str
+    branch: str
+    up_to_date: bool = False
+    ops_added: int = 0
+    forks: tuple[tuple[str, str, str], ...] = ()
+    pin_contradictions: tuple[Contradiction, ...] = ()
+    declared_cycles: tuple[tuple[str, str], ...] = ()
+    base_recovery: str = "none"
+    theirs_recovery: str = "mined"
+
+
+def plan_sync(repo: str | Path, remote: str | None = None, branch: str | None = None) -> SyncPlan:
+    """Dry-run a `sync` (D4): fetch the teammate's branch and run `ingest -> resolve` to compute what
+    the merge *would* bring in -- incoming op count, any same-symbol fork that would surface, pin/
+    declared-edge issues, and the recovery modes -- then roll the transactional local caches back so
+    the preview leaves no trace (R7). Skips `materialize` entirely (the only stage that moves the
+    working tree or the local branch), so a feedforward pane can show the consequence before the
+    merge lands. Mirrors `sync`'s own `ops_added` so the preview predicts the report."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+
+    fetched = _fetch.fetch(repo, gb, remote, branch)
+    if fetched.up_to_date:
+        return SyncPlan(remote=fetched.remote, branch=fetched.branch, up_to_date=True)
+
+    local_before = _snapshot_local_caches(repo)
+    try:
+        ing = _ingest.ingest(repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch)
+        res = _resolve.resolve(repo, ing)
+        return SyncPlan(
+            remote=fetched.remote, branch=fetched.branch, ops_added=ing.ops_added,
+            forks=res.forks, pin_contradictions=res.pin_contradictions,
+            declared_cycles=res.declared_cycles,
+            base_recovery=ing.base_recovery, theirs_recovery=ing.theirs_recovery,
+        )
+    finally:
+        _restore_local_caches(repo, local_before)
 
 
 def sync(repo: str | Path, remote: str | None = None, branch: str | None = None) -> SyncReport:

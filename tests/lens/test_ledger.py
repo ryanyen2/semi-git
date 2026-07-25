@@ -188,6 +188,30 @@ def test_assign_at_save_seeds_a_new_lane_for_a_disconnected_symbol(tmp_path):
     assert load_pins(tmp_path).assign[new_sym] == lane
     assert new_sym in authored.load_authored(tmp_path)[lane].live_members()
     assert persisted["op_leaf"][ideal.frontier(ops)[new_sym]] == lane
+    # The authored label register starts EMPTY -- a guessed file path must not shadow the label a
+    # rebuild computes (`tree.label_tree` only lets a non-empty authored label override). The file
+    # path is only the node's provisional display label for the pre-rebuild grid window.
+    assert authored.load_authored(tmp_path)[lane].label == ""
+    assert persisted["nodes"][lane]["label"] == "island.py"
+
+
+def test_assign_at_save_leaves_the_joined_lanes_authored_label_empty(tmp_path):
+    """The existing-lane branch mirrors the new-lane fallback (above): a save-time cascade records
+    *membership*, never a *name*. Seeding the authored label register from the leaf's clustered/
+    provisional node label (an LLM/fallback name, or a guessed file path for a provisional lane)
+    would permanently shadow every future rebuild's label -- `tree.label_tree` lets any non-empty
+    authored label override the clustered proposal. So a first-time cross-lane assign must leave the
+    register EMPTY; only a deliberate `sgt rename` fills it."""
+    gb, result = _build_and_map(tmp_path)
+    ideal, ops = _add_delta(tmp_path)
+
+    summary = ledger.assign_at_save(tmp_path, ideal, ops)
+    lane = summary["assigned"]["core.py::delta"]
+    assert not summary["new_lanes"]  # delta coupled into an existing clustered lane
+    aid = f"af-{lane}"
+    af = authored.load_authored(tmp_path)
+    assert "core.py::delta" in af[aid].live_members()  # membership IS recorded
+    assert af[aid].label == ""  # ...but the name is not -- the rebuild's label must stand
 
 
 def test_assign_at_save_is_idempotent(tmp_path):

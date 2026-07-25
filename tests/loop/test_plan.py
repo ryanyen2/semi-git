@@ -108,6 +108,59 @@ def test_sweep_stale_sessions_abandons_only_what_aged_out(tmp_path, monkeypatch)
     assert set(plan_mod.active_sessions(tmp_path)) == {"fresh"}
 
 
+# -- terminal status: active_sessions is a *review surface*, not the whole table --------------------
+
+def test_active_sessions_returns_only_active_not_completed(tmp_path, monkeypatch):
+    """`active_sessions` is the review surface -- the plans still being worked. A completed or
+    abandoned plan is history and must drop out of it, so the workbench/status-bar stop rendering
+    a lingering pile of finished plans (the "so many unresolved plans" clutter). The full table is
+    still readable via `_load_sessions` for provenance."""
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    plan_mod.intake(tmp_path, "1. live work\n", session_id="live")
+    plan_mod.intake(tmp_path, "1. finished work\n", session_id="done")
+    table = plan_mod._load_sessions(tmp_path)
+    table["done"]["status"] = "completed"
+    plan_mod._save_sessions(tmp_path, table)
+
+    assert set(plan_mod.active_sessions(tmp_path)) == {"live"}
+    assert set(plan_mod._load_sessions(tmp_path)) == {"live", "done"}  # completed kept as history
+
+
+def test_mark_done_completes_a_session_and_drops_it_from_active(tmp_path, monkeypatch):
+    """An agent that finishes its plan closes it explicitly with `mark_done`: the record survives
+    as `completed` history (unlike `abandon`, which deletes it), its still-pending hollows are
+    cleaned up, and it leaves the active review surface."""
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    session = plan_mod.intake(tmp_path, "1. step one\n2. step two\n", session_id="s1")
+    store = Store(tmp_path)
+
+    assert plan_mod.mark_done(tmp_path, "s1") is True
+
+    assert plan_mod.active_sessions(tmp_path) == {}
+    assert plan_mod._load_sessions(tmp_path)["s1"]["status"] == "completed"
+    for step in session.steps:  # pending hollows cleaned up, like abandon
+        assert store.get_hollow(step["hollow_id"]) is None
+
+
+def test_mark_done_unknown_session_returns_false(tmp_path):
+    assert plan_mod.mark_done(tmp_path, "no-such-session") is False
+
+
+def test_intake_reaps_stale_sessions_before_creating_a_new_one(tmp_path, monkeypatch):
+    """Intake is the natural housekeeping beat: before minting a new plan it reaps any active
+    session that has aged out past `STALE_SECONDS`, so a walked-away half-done plan doesn't linger
+    forever. A fresh session is untouched."""
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    plan_mod.intake(tmp_path, "1. ancient\n", session_id="ancient")
+    table = plan_mod._load_sessions(tmp_path)
+    table["ancient"]["last_activity_ts"] = 0.0  # far in the past
+    plan_mod._save_sessions(tmp_path, table)
+
+    plan_mod.intake(tmp_path, "1. brand new\n", session_id="new")
+
+    assert set(plan_mod.active_sessions(tmp_path)) == {"new"}  # ancient reaped on intake
+
+
 # -- real LLM, grounded in a real repo (plan U14's own verification requirement) --------------------
 
 def test_intake_grounds_predicted_feature_in_a_real_feature_id_via_live_llm(tmp_path):

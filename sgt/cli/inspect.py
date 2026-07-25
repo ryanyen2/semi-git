@@ -13,9 +13,9 @@ from ._common import _add_view_flags, _emit_json, _fail
 
 def register(subs, parent) -> None:
     # U14: `status`/`map`/`graph`/`episodes` are no longer top-level verbs -- they are `sgt log`
-    # render modes (--summary/--tree/--rail and the default grid). A user who types the old verb is
-    # redirected by `cli._FOLDED`. Their handler bodies (`_status`/`_map`/`_graph`/`_episodes`) stay
-    # here: `--summary` calls `_status`, `--tree --rebuild` reuses `_map`'s full-recluster path.
+    # render modes (--summary/--tree/--rail and the default grid). Their handler bodies
+    # (`_status`/`_map`/`_graph`/`_episodes`) stay here: `--summary` calls `_status`, `--tree
+    # --rebuild` reuses `_map`'s full-recluster path.
     lp = subs.add_parser("log", parents=[parent])
     lmode = lp.add_mutually_exclusive_group()
     lmode.add_argument("--ops", action="store_true",

@@ -459,7 +459,9 @@ def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):
 def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredicted_op(tmp_path):
     """A hand-seeded session predicting `a.py::foo` matches the real op that edits it; a second,
     unrelated real op (`a.py::bar`) is unpredicted -- it shows up as drift, with its own current
-    line span, decoupled from the session."""
+    line span, decoupled from the session. The session carries a second, never-built step so it
+    stays active after the first match confirms -- that partial-progress state is exactly when
+    `plan_view` surfaces a matched step's spans (a fully-matched session completes and drops off)."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -471,12 +473,20 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
     footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
     hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
     store.add_hollow(hollow)
+    # A second step predicting an entity that never gets built: it stays pending, keeping the
+    # session active so its already-matched sibling step still surfaces through `plan_view`.
+    fp2 = {"a.py::qux": (None, plan_mod._PENDING), "__plan__::s1::step1": (None, plan_mod._PENDING)}
+    hollow2 = make_op(fp2, {}, kind="planned", off_chain=True, intent="build qux")
+    store.add_hollow(hollow2)
     table = plan_mod._load_sessions(repo)
     table["s1"] = {
-        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
-        "baseline_op_ids": baseline,
+        "plan_text": "1. touch foo\n2. build qux\n", "created_ts": 0.0, "last_activity_ts": 0.0,
+        "status": "active", "baseline_op_ids": baseline,
         "steps": [{
             "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }, {
+            "hollow_id": hollow2.id, "title": "build qux", "predicted_footprint": ["a.py::qux"],
             "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
         }],
     }
@@ -864,6 +874,26 @@ def test_verb_preview_frontier_classifies_blast_carry_and_foundation(tmp_path):
     assert user_op.id not in rows  # the revert target itself is not a frontier row
 
 
+def test_blame_view_on_an_uncovered_working_file_is_not_an_error(tmp_path):
+    """A working-tree file sgt has no op for (a doc like JOURNAL.md, an untracked config) has no
+    semantic blame -- a valid empty answer, not a failure. `blame_view` must not stamp an `error`
+    key for it: that key flips the CLI `--json` exit code to 1, which the editor's per-file blame
+    surfaces as a repeated "Command failed" for every non-code tab the user focuses. It reports
+    `covered: False` with empty spans instead. A genuinely absent path still gets an `error`."""
+    from sgt.api import blame_view
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    (repo / "JOURNAL.md").write_text("# notes\n")  # exists on disk, but no op produces it
+
+    v = blame_view(repo, "JOURNAL.md")
+    assert v["covered"] is False
+    assert v["spans"] == [] and v["features"] == {}
+    assert "error" not in v  # not a failure -> `_emit_json` exits 0
+
+    missing = blame_view(repo, "does-not-exist.py")
+    assert missing.get("error")  # genuinely absent path -> a real error
+
+
 def test_verb_preview_frontier_populates_for_a_symbol_ref_not_only_an_op_id(tmp_path):
     """The frontier must resolve a `file::symbol` (or op-id prefix) ref to its op the same way the
     plan does -- otherwise a symbol-targeted revert (the editor/blame entry point) gets an empty
@@ -920,3 +950,28 @@ def test_verb_preview_frontier_is_empty_for_non_revert_verbs(tmp_path):
     helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
     # `restore` of an already-live op is a no-op preview; its frontier block is empty.
     assert verb_preview_view(repo, "restore", helper_op.id)["frontier"] == []
+
+
+def test_so_what_layer_fallout_is_act_required_only_and_carry_is_a_hidden_count(tmp_path):
+    """The consequence-pane contract: `fallout` carries exactly the toggleable blast dependents
+    (never carry, never foundation), `carry_count` counts the hidden mechanical repoints, and
+    `reversible` is True for an ideal edit -- so the pane can lead with "so what" and footnote the
+    carries without ever listing them."""
+    from sgt.api import verb_preview_view
+
+    repo = _chain_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+
+    view = verb_preview_view(repo, "revert", user_op.id)
+    frontier = view["frontier"]
+    blast = {r["op_id"] for r in frontier if r["bucket"] == "blast"}
+    carry = {r["op_id"] for r in frontier if r["bucket"] == "carry"}
+
+    fallout_ids = {r["op_id"] for r in view["fallout"] if r["kind"] == "blast"}
+    assert fallout_ids == blast  # every act-required blast op is in the fallout
+    assert fallout_ids.isdisjoint(carry)  # carry is never in the fallout
+    assert all(r["kind"] == "blast" for r in view["fallout"])  # no fork row on a clean revert
+    assert view["carry_count"] == len(carry) > 0  # the chain has a transitive dependent
+    assert view["reversible"] is True
+    assert view["so_what"].startswith("b.py::user will break —")

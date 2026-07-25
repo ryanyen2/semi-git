@@ -84,26 +84,6 @@ _ROUTING = {
     "blame": "advanced", "edit": "advanced", "commit": "advanced", "fulfill": "advanced",
 }
 
-# Former top-level verb -> its new invocation path (KTD2's hard rename), derived from `_ROUTING` so
-# the two can never drift: `main` uses it to point a user who typed a removed-but-known verb at its
-# new home instead of a bare `_help()`. `regroup`-tier verbs nest one level deeper under `feature`.
-_TIER_PATH = {"advanced": "advanced", "feature": "feature", "regroup": "feature regroup"}
-_REMOVED = {verb: f"{_TIER_PATH[tier]} {verb}" for verb, tier in _ROUTING.items()}
-
-# Verbs folded *into another verb* (not re-homed under a tier): typed by muscle memory, they point
-# at their new home rather than silently falling to `_help()`. `checkpoint`/`drift` folded into
-# `save` (U12/R10): a save auto-confirms unambiguous plan-step matches and reports unmatched ops.
-# `map`/`graph`/`episodes`/`status` are re-projections of one (feature × commit) dataset, so U14
-# folds them onto `sgt log`'s render modes (the grid is the only inspection surface, KTD8/KTD9).
-_FOLDED = {
-    "checkpoint": "save  (matches auto-confirm; `sgt save --resolve-plan` settles an ambiguous one)",
-    "drift": "save  (unmatched ops show in `sgt save`; `sgt log --summary` for working-tree drift)",
-    "map": "log --tree",
-    "graph": "log",
-    "episodes": "log --rail",
-    "status": "log --summary",
-}
-
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
              porcelain, tiers, select, session, review, intent, edit, resolve, suggestions)
 
@@ -188,16 +168,6 @@ def main(argv: list[str] | None = None) -> int:
         return _help()
 
     if argv[0] not in _VERBS:
-        # A removed-but-known old verb points at its new home (KTD2's hard rename); a genuinely
-        # unknown token still falls to `_help()`.
-        remedy = _REMOVED.get(argv[0])
-        if remedy is not None:
-            sys.stderr.write(f"sgt: `{argv[0]}` moved to `sgt {remedy}`\n")
-            return 2
-        folded = _FOLDED.get(argv[0])
-        if folded is not None:
-            sys.stderr.write(f"sgt: `{argv[0]}` folded into `sgt {folded}`\n")
-            return 2
         return _help()
 
     parser = _build_parser()
