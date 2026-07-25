@@ -45,7 +45,7 @@ export type FoldFrontier =
   | { opIds: string[] }
   | { ref: string };
 
-function foldAtSpec(frontier: FoldFrontier): string {
+export function foldAtSpec(frontier: FoldFrontier): string {
   if ("commitIndex" in frontier) return String(frontier.commitIndex);
   if ("opIds" in frontier) return `op:${frontier.opIds.join(",")}`;
   return frontier.ref;

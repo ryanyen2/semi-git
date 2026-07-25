@@ -2032,15 +2032,17 @@ def status_view(repo) -> dict:
     `sgt`, or a verb applied without re-writing the working tree)."""
     from sgt import state as state_mod
     from sgt.core.fold import code
-    from sgt.core.lens import current_ideal, sync_status
+    from sgt.core.lens import current_ideal, ops_with_frontier_images, sync_status
     from sgt.core.oracle import overall_status
     from sgt.core.op import is_bottom
-    from sgt.core.store import Store
     from sgt.lens.tree import load as load_tree
 
     st = state_view(repo)
-    ops = Store(repo).all_ops()
     ideal = current_ideal(repo)
+    # Frontier-selective read: this view folds only `ideal`, so it needs images for exactly the
+    # frontier producers -- not `Store.all_ops()`'s every-op images decode (the dominant cost of
+    # `sgt log --summary` on a large store).
+    ops = ops_with_frontier_images(repo, ideal)
     by_id = {op.id: op for op in ops}
     symbol_count = sum(
         1 for sym, op_id in ideal.frontier(ops).items() if not is_bottom(by_id[op_id].footprint[sym][1])
@@ -2053,7 +2055,10 @@ def status_view(repo) -> dict:
 
     materialized = code(ideal, ops)
     drift = _drift_paths(repo, materialized)
-    skips = materialization_skips(repo, materialized, ops)
+    # `None`, not `ops`: the skips read folds the *maximal* ideal when candidates exist, whose
+    # frontier reaches ops this list carries imageless -- let it load the full store itself
+    # (rare: only when tracked paths would be deleted).
+    skips = materialization_skips(repo, materialized, None)
     open_forks = state_mod.load_json(repo, "forks", default=[])
 
     return {

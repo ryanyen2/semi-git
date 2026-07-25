@@ -83,11 +83,25 @@ def apply_delta(repo: str | Path, stored_ops: list[Op]) -> None:
     })
 
 
+# `_ops_dir_stat` memo keyed by the ops directory's own mtime: every store write lands via
+# rename into the directory (`_write_atomic`'s `os.replace`, git's object/checkout writes), and
+# any rename/add/delete in a directory bumps its mtime -- so an unchanged dir mtime proves the
+# per-entry scan would return what it returned last time. At ~20k dirents the full scan is
+# ~100ms and several views run it per command.
+_DIR_STAT_MEMO: dict[str, tuple[int, tuple[int, int]]] = {}
+
+
 def _ops_dir_stat(repo: Path) -> tuple[int, int]:
     """`(dirent_count, max_mtime_ns)` over `.sgt/ops/`, stat-only -- no file content reads."""
     ops_dir = Store(repo).ops_dir
-    if not ops_dir.is_dir():
+    try:
+        dir_mtime = ops_dir.stat().st_mtime_ns
+    except OSError:
         return 0, -1
+    key = os.path.realpath(ops_dir)
+    memo = _DIR_STAT_MEMO.get(key)
+    if memo is not None and memo[0] == dir_mtime:
+        return memo[1]
     count = 0
     max_mtime = -1
     for entry in os.scandir(ops_dir):
@@ -96,6 +110,9 @@ def _ops_dir_stat(repo: Path) -> tuple[int, int]:
             mtime = entry.stat().st_mtime_ns
             if mtime > max_mtime:
                 max_mtime = mtime
+    _DIR_STAT_MEMO[key] = (dir_mtime, (count, max_mtime))
+    if len(_DIR_STAT_MEMO) > 8:
+        _DIR_STAT_MEMO.pop(next(iter(_DIR_STAT_MEMO)))
     return count, max_mtime
 
 
@@ -123,19 +140,54 @@ def is_stale(repo: str | Path) -> bool:
     return _is_stale_body(repo, state.load_json(repo, "op_index", default=None))
 
 
+# Process-level memo of the parsed snapshot, keyed by the snapshot file's identity
+# (mtime_ns, size) plus the metadata `_is_stale_body` gates on. One CLI command reads the
+# index through several projection views (map/grid/segments/history all call `index_ops`),
+# and each call re-parsed the same multi-megabyte JSON into the same Op list. Staleness
+# against `.sgt/ops/` is still re-verified stat-only on every call with the *same rule* as
+# `_is_stale_body` (memoized `built_mtime_ns`/`op_count`, never the file's own mtime), so a
+# concurrent writer is caught exactly as before -- the memo skips the parse, never the check.
+_PARSED_MEMO: dict[str, tuple[tuple[int, int], int, int, list[Op]]] = {}
+
+
+def _snapshot_stat(repo: Path) -> tuple[int, int] | None:
+    try:
+        st = state.path(repo, "op_index").stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 def index_ops(repo: str | Path) -> list[Op]:
     """Every stored op, `Op`s reconstructed with `images={}` -- the fast accessor for read-only
     projection views. Self-heals: rebuilds first if the snapshot is stale. Never pass the result
     to `fold.code`. Loads the snapshot at most twice (once to check staleness, once more only if
-    a rebuild just ran) rather than `is_stale` + a separate reload on every call."""
+    a rebuild just ran) rather than `is_stale` + a separate reload on every call; an unchanged
+    snapshot file (same mtime/size) skips even that load and returns the memoized parse."""
     repo = Path(repo)
+    repo_key = os.path.realpath(repo)  # "." renames per chdir; the memo must not follow it
+    memo = _PARSED_MEMO.get(repo_key)
+    snap_stat = _snapshot_stat(repo)
+    if memo is not None and snap_stat is not None and memo[0] == snap_stat:
+        stat_key, built_mtime_ns, op_count, memo_ops = memo
+        count, max_mtime = _ops_dir_stat(repo)
+        if op_count == count and built_mtime_ns > max_mtime:
+            return list(memo_ops)
     body = state.load_json(repo, "op_index", default=None)
     if _is_stale_body(repo, body):
         rebuild(repo)
         body = state.load_json(repo, "op_index", default=None)
+        snap_stat = _snapshot_stat(repo)
     if body is None:
         return []
-    return [_to_op(entry) for entry in body["ops"]]
+    ops = [_to_op(entry) for entry in body["ops"]]
+    if snap_stat is not None:
+        _PARSED_MEMO[repo_key] = (
+            snap_stat, body.get("built_mtime_ns", -1), body.get("op_count", -1), ops,
+        )
+        if len(_PARSED_MEMO) > 8:  # a CLI process touches one repo; long-lived hosts a few
+            _PARSED_MEMO.pop(next(iter(_PARSED_MEMO)))
+    return list(ops)
 
 
 def earliest_commit_sha(gb, rows, ops) -> dict[str, str]:

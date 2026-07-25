@@ -8,11 +8,14 @@ which survives ``git commit --amend`` and rebase the way Gerrit's Change-Id does
 
 from __future__ import annotations
 
+import atexit
 import hashlib
 import os
 import subprocess
 import tempfile
+import threading
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -123,11 +126,197 @@ def _hunk_new_range(header: str) -> tuple[int, int] | None:
     return (start, start + count - 1)
 
 
+class _CatFileBatch:
+    """One long-lived ``git cat-file --batch`` process for a repo. Blob reads used to spawn one
+    git subprocess per call (`blob_bytes`) or per batch (`blob_bytes_many`); mining a chunk of
+    history issues hundreds of such calls, and at ~15-20ms per spawn the process startup itself
+    -- not the object reads -- dominated `mine()` wall-clock. A persistent batch process answers
+    every read over one pipe. Requests are ``<rev>:<path>`` lines, so ref resolution happens at
+    request time (new commits/refs made after the process started resolve fine; git also
+    re-scans its object store on a lookup miss, so freshly-written loose objects are found)."""
+
+    def __init__(self, repo: str) -> None:
+        self.repo = repo
+        self.lock = threading.Lock()
+        self.proc: subprocess.Popen | None = None
+        self.check_proc: subprocess.Popen | None = None  # `--batch-check`: object info, no content
+
+    def _start(self) -> None:
+        self.proc = subprocess.Popen(
+            ["git", "-C", self.repo, "cat-file", "--batch"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+
+    def _start_check(self) -> None:
+        self.check_proc = subprocess.Popen(
+            ["git", "-C", self.repo, "cat-file", "--batch-check"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+
+    def close(self) -> None:
+        with self.lock:
+            self._close_locked()
+
+    def _close_locked(self) -> None:
+        for attr in ("proc", "check_proc"):
+            proc = getattr(self, attr)
+            if proc is None:
+                continue
+            for stream in (proc.stdin, proc.stdout):
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+            setattr(self, attr, None)
+
+    def read_many(self, specs: list[tuple[str, str]]) -> list[bytes | None]:
+        """Blob bytes for each ``(rev, path)`` spec, aligned with input order; None for a spec
+        that is missing or not a blob. Retries once on a dead/broken process (e.g. a repo whose
+        objects moved underneath us), then degrades by raising ``GitError``."""
+        with self.lock:
+            try:
+                return self._read_many_locked(specs)
+            except (OSError, ValueError, GitError):
+                self._close_locked()  # restart once: the process may simply have died
+                try:
+                    return self._read_many_locked(specs)
+                except (OSError, ValueError) as exc:
+                    self._close_locked()
+                    raise GitError(f"git cat-file --batch failed for {self.repo}: {exc}") from exc
+
+    def info_many(self, specs: list[tuple[str, str]]) -> list[tuple[str, str, int] | None]:
+        """``(oid, type, size)`` for each ``(rev, path)`` spec via ``--batch-check`` -- object
+        identity without paying for content. None for a spec that doesn't resolve."""
+        with self.lock:
+            try:
+                return self._info_many_locked(specs)
+            except (OSError, ValueError, GitError):
+                self._close_locked()
+                try:
+                    return self._info_many_locked(specs)
+                except (OSError, ValueError) as exc:
+                    self._close_locked()
+                    raise GitError(f"git cat-file --batch-check failed for {self.repo}: {exc}") from exc
+
+    def _info_many_locked(self, specs: list[tuple[str, str]]) -> list[tuple[str, str, int] | None]:
+        if self.check_proc is None or self.check_proc.poll() is not None:
+            self._start_check()
+        stdin, stdout = self.check_proc.stdin, self.check_proc.stdout
+        payload = "".join(f"{rev}:{path}\n" for rev, path in specs).encode()
+
+        def _feed() -> None:
+            try:
+                stdin.write(payload)
+                stdin.flush()
+            except OSError:
+                pass
+
+        feeder = threading.Thread(target=_feed, daemon=True)
+        feeder.start()
+        results: list[tuple[str, str, int] | None] = []
+        try:
+            for _ in specs:
+                header = stdout.readline()
+                if not header:
+                    raise GitError("cat-file --batch-check stream ended early")
+                header = header.rstrip(b"\n")
+                fields = header.split()
+                if header.endswith(b" missing") or len(fields) != 3:
+                    results.append(None)
+                    continue
+                results.append((fields[0].decode(), fields[1].decode(), int(fields[2])))
+        finally:
+            feeder.join()
+        return results
+
+    def _read_many_locked(self, specs: list[tuple[str, str]]) -> list[bytes | None]:
+        if self.proc is None or self.proc.poll() is not None:
+            self._start()
+        stdin, stdout = self.proc.stdin, self.proc.stdout
+        payload = "".join(f"{rev}:{path}\n" for rev, path in specs).encode()
+
+        # Feed stdin from a helper thread: a large request batch can overfill the OS pipe buffer
+        # while git is itself blocked writing responses we haven't read yet -- the classic
+        # two-pipe deadlock. The reader (this thread) drains stdout concurrently.
+        def _feed() -> None:
+            try:
+                stdin.write(payload)
+                stdin.flush()
+            except OSError:
+                pass  # surfaces as a truncated read below
+
+        feeder = threading.Thread(target=_feed, daemon=True)
+        feeder.start()
+        results: list[bytes | None] = []
+        try:
+            for _ in specs:
+                header = stdout.readline()
+                if not header:
+                    raise GitError("cat-file --batch stream ended early")
+                header = header.rstrip(b"\n")
+                fields = header.split()
+                if header.endswith(b" missing") or len(fields) != 3:
+                    results.append(None)
+                    continue
+                size = int(fields[2])
+                body = stdout.read(size + 1)  # content + trailing newline
+                if len(body) != size + 1:
+                    raise GitError("cat-file --batch stream ended early")
+                # A non-blob object (e.g. a directory path resolving to a tree) is not file
+                # content -- report absent, exactly like a missing path.
+                results.append(body[:size] if fields[1] == b"blob" else None)
+        finally:
+            feeder.join()
+        return results
+
+
+# Shared batch processes, one per repo path, capped so long test runs over many scratch repos
+# don't accumulate live subprocesses. LRU: evicting (or exiting) closes the process.
+_BATCH_PROCS: "OrderedDict[str, _CatFileBatch]" = OrderedDict()
+_BATCH_PROCS_LOCK = threading.Lock()
+_BATCH_PROCS_MAX = 8
+
+
+def _batch_for(repo: Path) -> _CatFileBatch:
+    # Keyed by the *resolved* path: callers routinely construct `GitBinding(".")`, and a bare
+    # "." names a different repo whenever the process's cwd moves (tests chdir constantly) --
+    # a relative key would hand one repo's batch process to another repo's reads.
+    key = os.path.realpath(repo)
+    with _BATCH_PROCS_LOCK:
+        batch = _BATCH_PROCS.get(key)
+        if batch is None:
+            batch = _CatFileBatch(key)
+            _BATCH_PROCS[key] = batch
+            while len(_BATCH_PROCS) > _BATCH_PROCS_MAX:
+                _BATCH_PROCS.popitem(last=False)[1].close()
+        else:
+            _BATCH_PROCS.move_to_end(key)
+        return batch
+
+
+@atexit.register
+def _close_batch_procs() -> None:
+    with _BATCH_PROCS_LOCK:
+        for batch in _BATCH_PROCS.values():
+            batch.close()
+        _BATCH_PROCS.clear()
+
+
 class GitBinding:
     """Thin wrapper over the git CLI for one repository."""
 
     def __init__(self, repo_path: str | Path) -> None:
         self.repo = Path(repo_path)
+
+    def repo_key(self) -> str:
+        """A stable process-wide identity for this repo: the resolved absolute path. The cache
+        key every content-addressed memo over this binding must use -- `self.repo` is often a
+        relative `"."`, which silently renames the repo whenever the process chdirs."""
+        return os.path.realpath(self.repo)
 
     def _git(
         self, *args: str, check: bool = True, env: dict[str, str] | None = None
@@ -249,43 +438,21 @@ class GitBinding:
 
     def blob_bytes(self, sha: str, path: str) -> bytes | None:
         """Raw bytes of ``path`` at ``sha`` (absent -> None). Unlike ``file_at``, never decodes
-        as text -- the safe way to read a path that might be binary."""
-        proc = subprocess.run(
-            ["git", "-C", str(self.repo), "show", f"{sha}:{path}"], capture_output=True
-        )
-        return proc.stdout if proc.returncode == 0 else None
+        as text -- the safe way to read a path that might be binary. Served by the repo's
+        persistent ``cat-file --batch`` process, not a subprocess spawn per call."""
+        return _batch_for(self.repo).read_many([(sha, path)])[0]
 
     def blob_bytes_many(self, specs: list[tuple[str, str]]) -> list[bytes | None]:
-        """Raw bytes for many ``(sha, path)`` pairs in one ``git cat-file --batch`` process,
-        aligned with ``specs`` order -- the batched counterpart to ``blob_bytes``. Mining one
-        commit needs many blobs at once (every tracked file for ``tree_at``, or every changed
-        file for a diff); one subprocess per blob made mining scale as O(commits x files)
-        subprocess spawns (measured: minutes to mine a 169-commit repo). ``cat-file --batch``
-        takes a ``<rev>:<path>`` object spec per line, so no oid lookup is needed first."""
+        """Raw bytes for many ``(sha, path)`` pairs, aligned with ``specs`` order -- the batched
+        counterpart to ``blob_bytes``. Mining one commit needs many blobs at once (every tracked
+        file for ``tree_at``, or every changed file for a diff); one subprocess per blob made
+        mining scale as O(commits x files) subprocess spawns. All reads go through the repo's
+        one persistent ``git cat-file --batch`` process (``<rev>:<path>`` object specs, so no
+        oid lookup is needed first) -- even the per-batch spawn this method used to pay was the
+        dominant mining cost at hundreds of batches per history chunk."""
         if not specs:
             return []
-        stdin_data = "".join(f"{sha}:{path}\n" for sha, path in specs).encode()
-        proc = subprocess.run(
-            ["git", "-C", str(self.repo), "cat-file", "--batch"],
-            input=stdin_data, capture_output=True,
-        )
-        data = proc.stdout
-        results: list[bytes | None] = []
-        pos = 0
-        for _ in specs:
-            nl = data.index(b"\n", pos)
-            header = data[pos:nl]
-            pos = nl + 1
-            # A missing spec's line is the literal input echoed back + " missing" -- a path
-            # containing spaces would otherwise throw off a plain field-count check, since git
-            # doesn't quote it.
-            if header.endswith(b" missing") or len(header.split()) != 3:
-                results.append(None)
-                continue
-            size = int(header.split()[2])
-            results.append(data[pos:pos + size])
-            pos += size + 1  # the blob's trailing newline
-        return results
+        return _batch_for(self.repo).read_many(specs)
 
     def list_tree(self, sha: str, prefix: str) -> list[str]:
         """Every tracked path under ``prefix`` at ``sha`` -- e.g. every op file a remote's commit
@@ -296,14 +463,11 @@ class GitBinding:
 
     def blob_oid(self, sha: str, path: str) -> str | None:
         """The git blob object id of ``path`` at ``sha`` -- the stable content address a binary
-        file's image can point at without embedding the bytes themselves."""
-        proc = self._git("ls-tree", sha, "--", path, check=False)
-        line = proc.stdout.strip()
-        if not line:
-            return None
-        # "<mode> <type> <oid>\t<path>"
-        fields = line.split()
-        return fields[2] if len(fields) >= 3 else None
+        file's image can point at without embedding the bytes themselves. Served by the repo's
+        persistent ``cat-file --batch-check`` process (object info only, no content transfer)
+        instead of an ``ls-tree`` subprocess spawn per call."""
+        info = _batch_for(self.repo).info_many([(sha, path)])[0]
+        return info[0] if info is not None else None
 
     def symlink_paths(self, tree_ish: str, paths: list[str]) -> set[str]:
         """The subset of ``paths`` that are symlinks (git mode ``120000``) in the tree at
@@ -397,7 +561,19 @@ class GitBinding:
         (LAW-0), never the local op store, so it holds across clones and even when the closing
         commit predates a ``since``-restricted incremental mine. First-parent of each row matches
         the parent ``mine`` diffs that commit against."""
-        proc = self._git("log", "--format=%H%x1f%P", ref, "--", path, check=False)
+        return self.commits_touching_paths(ref, [path])
+
+    def commits_touching_paths(self, ref: str, paths: list[str]) -> list[tuple[str, str | None]]:
+        """``commits_touching`` over a *pathspec set*, in one ``git log`` walk: every commit
+        reachable from ``ref`` that changed any of ``paths``, newest-first. The rebirth lookback
+        used to spawn one walk per (commit, fresh path); a commit re-adding several files paid
+        one subprocess each for near-identical history. The union walk is a superset of each
+        single path's own walk (git's history simplification prunes strictly less against a
+        wider pathspec), and the lookback compares actual symbol presence per candidate commit,
+        so extra rows are no-ops -- never false closures."""
+        if not paths:
+            return []
+        proc = self._git("log", "--format=%H%x1f%P", ref, "--", *paths, check=False)
         if proc.returncode != 0:
             return []
         rows: list[tuple[str, str | None]] = []

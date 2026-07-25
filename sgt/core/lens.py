@@ -282,6 +282,26 @@ def _ensure_fidelity(repo: Path, gb: GitBinding, key: str, committed_ids, all_op
         state.save_json(repo, "fidelity", table)
 
 
+def ops_with_frontier_images(repo: str | Path, ideal: Ideal) -> list:
+    """The footprint-only index ops, with the *frontier producers'* full ops (images included)
+    substituted in -- exactly the set `fold.code` reads images from when materializing `ideal`.
+    `Store.all_ops()` decodes every op's images (85%+ of the store's bytes) yet a materializing
+    read only ever opens the images of the ops at the ideal's frontier, so a view that needs
+    `code(ideal, ops)` plus footprint-level queries can use this and skip the full decode. Do
+    NOT hand the result to anything folding a *different* ideal -- its frontier ops would carry
+    `images={}` (empty, not absent) and fold to zero-length content."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    repo = Path(repo)
+    ops = opindex.index_ops(repo)
+    need = sorted(set(ideal.frontier(ops).values()))
+    store = Store(repo)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        full = list(pool.map(store.get, need))
+    by_id = {op.id: op for op in full if op is not None}
+    return [by_id.get(op.id, op) for op in ops]
+
+
 def current_ideal(repo: str | Path) -> Ideal:
     """The current ref's committed ideal as last persisted -- a *pure read* (no mining, no
     writes), reflecting any prior explicit edit (revert/pin, U8) that a provenance scan alone
@@ -448,6 +468,14 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # mined op's: a dirty edit whose content is byte-identical to something already committed
     # comes back from `store.add` as the existing op with its real provenance intact, so it
     # rightly counts as committed, not pending.
+    # Staleness must be judged *before* our own `store.add` writes below: those writes always
+    # make the snapshot look stale (new dirents / bumped mtimes), which used to force the full
+    # `rebuild` -- an every-op-file re-read -- on every mining sync, leaving `apply_delta`
+    # unreachable. Checked here, "stale" means someone *else* wrote ops the snapshot missed
+    # (rebuild is right); "fresh" means the snapshot covers the pre-mine store exactly, so
+    # upserting just the ops this sync touched reproduces a complete snapshot.
+    index_stale_before_add = opindex.is_stale(repo)
+
     new_committed_ids: set[str] = set()
     pending_ids: set[str] = set()
     stored_ops = []
@@ -464,7 +492,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # transient loss entirely. Ops were added above, before this section, so `Store.add`'s own
     # lock never nests inside this one (U23 / locked_section contract).
     with locked_section(repo):
-        if opindex.is_stale(repo):
+        if index_stale_before_add:
             opindex.rebuild(repo, store)
         else:
             opindex.apply_delta(repo, stored_ops)
@@ -748,10 +776,16 @@ def _reproducible_content(repo: Path, all_ops: list | None = None) -> dict[str, 
     """Every path `code()` can produce from the store's *maximal valid ideal* -- all stored ops
     reduced to a grounded, fork-free set. A path present here is recoverable, so deleting its live
     bytes is safe; a path whose current bytes are absent (e.g. a dropped add/delete/re-add fork
-    tip) is not (R4)."""
-    ops = all_ops if all_ops is not None else Store(repo).all_ops()
-    maximal = order.reduce_to_ideal({op.id for op in ops}, ops)
-    return code(Ideal.from_ops(maximal, ops), ops)
+    tip) is not (R4). Without a caller-supplied `all_ops`, reads frontier-selectively: reduce the
+    maximal ideal over the footprint-only index, then load images for just its frontier producers
+    -- the only images `code` opens -- instead of `Store.all_ops()`'s every-op decode."""
+    if all_ops is None:
+        index = opindex.index_ops(repo)
+        maximal = Ideal.from_ops(order.reduce_to_ideal({op.id for op in index}, index), index)
+        ops = ops_with_frontier_images(repo, maximal)
+        return code(maximal, ops)
+    maximal = order.reduce_to_ideal({op.id for op in all_ops}, all_ops)
+    return code(Ideal.from_ops(maximal, all_ops), all_ops)
 
 
 def materialization_skips(
@@ -790,8 +824,9 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
     if head is None:
         return result
 
-    all_ops = Store(repo).all_ops()
-    materialized = code(current_ideal(repo), all_ops)
+    ideal = current_ideal(repo)
+    all_ops = ops_with_frontier_images(repo, ideal)  # fsck --tree folds only the current ideal
+    materialized = code(ideal, all_ops)
     key = _ref_key(gb) or head
     seeded = key in _load_ideal_table(repo)
     staged_active = state.load_json(repo, "staged", default=None) is not None
@@ -824,7 +859,9 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
             result["staged"].append(path)
         elif mat is None and head_bytes is not None:
             if reproducible is None:
-                reproducible = _reproducible_content(repo, all_ops)
+                # `None`, not `all_ops`: the reproducibility read folds the *maximal* ideal,
+                # whose frontier reaches ops our frontier-selective list carries imageless.
+                reproducible = _reproducible_content(repo, None)
             (result["backstop_kept"] if head_bytes != reproducible.get(path)
              else result["drift"]).append(path)
         else:

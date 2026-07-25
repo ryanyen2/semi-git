@@ -14,6 +14,8 @@ retained alongside the reduced one for queries.
 
 from __future__ import annotations
 
+import hashlib
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -85,12 +87,28 @@ def _callee_name(node) -> str | None:
 _CALL_TYPES = {"call", "call_expression", "new_expression"}
 
 
+# Content-addressed reference cache, the `_references` counterpart to `extract.py`'s
+# `_EXTRACT_CACHE` (same rationale, same bound): `build_entity_graph` runs once per mined
+# commit over the *whole* tree, but consecutive commits share almost every file's bytes -- so
+# this parse, the second full tree-sitter pass per commit after extraction's own, was nearly
+# all repeat work. The cached list is treated read-only by the one caller.
+_REFS_CACHE: "OrderedDict[tuple, list[tuple[int, str]]]" = OrderedDict()
+_REFS_CACHE_MAX = 4096
+
+
 def _references(path: str, source: str) -> list[tuple[int, str]]:
-    """``(line, callee_leaf_name)`` for every call/instantiation in the file."""
+    """``(line, callee_leaf_name)`` for every call/instantiation in the file. Content-addressed
+    cache: a pure function of (language, source bytes)."""
     lang = _language_for(path)
     if lang is None:
         return []
-    tree = Parser(_language(lang)).parse(bytes(source, "utf-8"))
+    src = bytes(source, "utf-8")
+    key = (lang, hashlib.sha256(src).digest())
+    cached = _REFS_CACHE.get(key)
+    if cached is not None:
+        _REFS_CACHE.move_to_end(key)
+        return cached
+    tree = Parser(_language(lang)).parse(src)
     refs: list[tuple[int, str]] = []
 
     def walk(node) -> None:
@@ -102,6 +120,9 @@ def _references(path: str, source: str) -> list[tuple[int, str]]:
             walk(child)
 
     walk(tree.root_node)
+    _REFS_CACHE[key] = refs
+    if len(_REFS_CACHE) > _REFS_CACHE_MAX:
+        _REFS_CACHE.popitem(last=False)
     return refs
 
 

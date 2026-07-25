@@ -19,6 +19,8 @@ feature whose history has more than one commit-run, one call + one cache entry p
 from __future__ import annotations
 
 import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -31,6 +33,8 @@ from sgt.intent.segment import Run, feature_runs, segment_runs
 EFFORT = "low"
 MAX_RUNS = 60  # keeps the per-feature prompt bounded on a long-lived feature; a feature with more
 # runs than this is segmented deterministically (the LLM prompt would blow past a useful window).
+MAX_WORKERS = 6  # concurrent per-feature LLM calls in flight -- network-bound, bounded to be a
+# considerate API citizen (mirrors `sgt.lens.label`'s labeler concurrency).
 
 
 class SegmentGroup(BaseModel):
@@ -93,6 +97,7 @@ class SegmentThemer:
         self.tokens_in = 0
         self.tokens_out = 0
         self.calls = 0
+        self._lock = threading.Lock()  # guards token/call counters across concurrent LLM calls
 
     @property
     def client(self):
@@ -105,9 +110,10 @@ class SegmentThemer:
             model=get_model(self._repo), input=prompt, text_format=schema,
             reasoning={"effort": EFFORT},
         )
-        self.calls += 1
-        self.tokens_in += r.usage.input_tokens
-        self.tokens_out += r.usage.output_tokens
+        with self._lock:
+            self.calls += 1
+            self.tokens_in += r.usage.input_tokens
+            self.tokens_out += r.usage.output_tokens
         return r.output_parsed
 
     def segment_feature(self, feature_label: str, runs: list[Run], by_id, prompt_for) -> list[dict]:
@@ -124,6 +130,15 @@ class SegmentThemer:
         if cached is not None and cached.get("source") == "llm":
             return cached["records"]
 
+        records, source = self._segment_compute(feature_label, runs, by_id, prompt_for)
+        self.cache[key] = {"source": source, "records": records}
+        return records
+
+    def _segment_compute(self, feature_label: str, runs: list[Run], by_id, prompt_for) -> tuple[list[dict], str]:
+        """One multi-run feature's LLM cut + validation, returning ``(records, source)`` WITHOUT
+        touching the cache -- split out of `segment_feature` so `segment_features` can run features
+        concurrently and persist their results from the main thread (the cache isn't thread-safe).
+        Assumes the caller already handled the single-run / over-`MAX_RUNS` / cache-hit cases."""
         lines = "\n".join(f"[{i}] {_run_line(r, by_id, prompt_for)}" for i, r in enumerate(runs))
         prompt = (
             f"A feature in a semantic version-control tool -- \"{feature_label}\" -- was built up "
@@ -139,11 +154,41 @@ class SegmentThemer:
         )
         try:
             plan = self._request(prompt, SegmentPlan)
-            records, source = self._validate(plan, runs), "llm"
+            return self._validate(plan, runs), "llm"
         except Exception:
-            records, source = self._fallback(runs), "fallback"
-        self.cache[key] = {"source": source, "records": records}
-        return records
+            return self._fallback(runs), "fallback"
+
+    def segment_features(self, items: list[tuple[str, list[Run]]], by_id, prompt_for) -> list[list[dict]]:
+        """Batch form of `segment_feature` (the `build_segments` hot loop): resolve many features'
+        chapter records at once. Single-run features, over-`MAX_RUNS` features, and cache hits are
+        served inline with zero network; the remaining multi-run cuts run their LLM calls
+        concurrently (`ThreadPoolExecutor`, network-bound), then each result is written to the cache
+        sequentially in this thread (the cache isn't thread-safe). Every feature's records are
+        byte-identical to what the serial `segment_feature` produced, kept in input order."""
+        results: list[list[dict] | None] = [None] * len(items)
+        keys: list[str | None] = [None] * len(items)
+        misses: list[int] = []
+        for i, (_label, runs) in enumerate(items):
+            if len(runs) <= 1 or len(runs) > MAX_RUNS:
+                results[i] = self._fallback(runs)
+                continue
+            key = "\x02seg-" + _feature_key(runs)
+            keys[i] = key
+            cached = self.cache.get(key)
+            if cached is not None and cached.get("source") == "llm":
+                results[i] = cached["records"]
+            else:
+                misses.append(i)
+
+        if misses:
+            with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(misses))) as pool:
+                computed = list(pool.map(
+                    lambda i: self._segment_compute(items[i][0], items[i][1], by_id, prompt_for), misses,
+                ))
+            for i, (records, source) in zip(misses, computed):
+                self.cache[keys[i]] = {"source": source, "records": records}
+                results[i] = records
+        return results  # type: ignore[return-value]
 
     def _validate(self, plan: SegmentPlan, runs: list[Run]) -> list[dict]:
         """Turn the LLM's (possibly messy) grouping into clean contiguous records. Assign each run
@@ -212,10 +257,9 @@ def build_segments(repo: str | Path) -> dict[str, list[dict]]:
         return _prompt_for(repo, sha)
 
     themer = SegmentThemer(repo)
-    out: dict[str, list[dict]] = {}
-    for fid in sorted(runs_by_feature):
-        label = nodes.get(fid, {}).get("label", fid)
-        out[fid] = themer.segment_feature(label, runs_by_feature[fid], by_id, prompt_for)
+    fids = sorted(runs_by_feature)
+    items = [(nodes.get(fid, {}).get("label", fid), runs_by_feature[fid]) for fid in fids]
+    out: dict[str, list[dict]] = dict(zip(fids, themer.segment_features(items, by_id, prompt_for)))
     themer.save()
     state.save_json_if_changed(repo, "intent_segments", out)
     return out

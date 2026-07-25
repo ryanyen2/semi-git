@@ -27,10 +27,14 @@ import fcntl
 import json
 import os
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sgt.core.op import Attribution, Images, Op, compute_id, merge_attribution
+
+# `Store.all_ops` process memo: ops-dir realpath -> (ops-dir mtime_ns, parsed ops).
+_ALL_OPS_MEMO: dict[str, tuple[int, list[Op]]] = {}
 
 _OPS_DIR = "ops"
 _LOCAL_DIR = "local"
@@ -252,16 +256,39 @@ class Store:
     def all_ops(self) -> list[Op]:
         """Every stored op, in a deterministic (sorted-by-id) order. A corrupt file degrades to a
         read-side skip (R1) rather than raising, so every verb still runs on a store with one
-        truncated op file; `fsck` is the single place that reports the corruption."""
+        truncated op file; `fsck` is the single place that reports the corruption.
+
+        Process-level memo, keyed by the ops directory's own mtime captured *before* the read
+        (see the staleness note at the check below). One command's views used to re-read and
+        re-decode every op file (images hex included, 85%+ of the bytes) once per view. Ops are
+        frozen dataclasses, so the memoized list's elements are safely shared; the list itself
+        is copied per call. File reads fan out over a thread pool: `read_bytes` releases the
+        GIL, and at ~10k small files the open/read syscalls -- not the JSON decode -- are the
+        bulk of a cold read."""
         if not self.ops_dir.is_dir():
             return []
+        # The directory's own mtime is the staleness signal: every writer lands entries via
+        # rename into this directory (`_write_atomic`, git), and rename/add/delete bumps a
+        # directory's mtime -- so an unchanged value proves the listing (and every entry) is
+        # what it was when the memo was built.
+        sig = self.ops_dir.stat().st_mtime_ns
+        memo_key = os.path.realpath(self.ops_dir)
+        memo = _ALL_OPS_MEMO.get(memo_key)
+        if memo is not None and memo[0] == sig:
+            return list(memo[1])
+        names = sorted(e.name for e in os.scandir(self.ops_dir) if e.is_file())
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            raws = list(pool.map(lambda n: (self.ops_dir / n).read_bytes(), names))
         ops: list[Op] = []
-        for name in sorted(p.name for p in self.ops_dir.iterdir() if p.is_file()):
+        for raw in raws:
             try:
-                ops.append(_deserialize((self.ops_dir / name).read_bytes()))
+                ops.append(_deserialize(raw))
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 continue  # corrupt: skipped here, surfaced by fsck
-        return ops
+        _ALL_OPS_MEMO[memo_key] = (sig, ops)
+        if len(_ALL_OPS_MEMO) > 4:
+            _ALL_OPS_MEMO.pop(next(iter(_ALL_OPS_MEMO)))
+        return list(ops)
 
     def __contains__(self, op_id: str) -> bool:
         return self._path(op_id).is_file()

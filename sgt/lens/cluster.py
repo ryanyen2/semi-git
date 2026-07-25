@@ -212,7 +212,11 @@ def _fuse(*weight_maps: dict) -> dict:
     return dict(out)
 
 
-def _leiden(nodes: list[str], weights: dict[frozenset, float], gamma: float) -> list[list[str]]:
+def _leiden_graph(nodes: list[str], weights: dict[frozenset, float]) -> ig.Graph:
+    """Build the weighted igraph a CPM partition runs over. Split out from `_leiden` so a caller
+    sweeping the same graph across several resolutions (`tree._split_once`'s gamma binary search,
+    up to `MAX_SEARCH_ITER` probes) builds it once instead of rebuilding a byte-identical `ig.Graph`
+    per probe -- only `resolution_parameter` changes between them, never the nodes or edges."""
     idx = {n: i for i, n in enumerate(nodes)}
     edges, ews = [], []
     for pair, w in weights.items():
@@ -223,11 +227,22 @@ def _leiden(nodes: list[str], weights: dict[frozenset, float], gamma: float) -> 
     g = ig.Graph(n=len(nodes), edges=edges)
     g.vs["name"] = nodes
     g.es["weight"] = ews
+    return g
+
+
+def _leiden_partition(g: ig.Graph, nodes: list[str], gamma: float) -> list[list[str]]:
+    """Partition a prebuilt `_leiden_graph` at resolution `gamma`. `find_partition` reads the graph
+    without mutating it, so re-running it over one shared graph at different gammas is byte-identical
+    to rebuilding the graph each time -- the fixed `seed` makes each call deterministic on its own."""
     part = la.find_partition(
         g, la.CPMVertexPartition, resolution_parameter=gamma,
         weights="weight", seed=SEED, n_iterations=-1,
     )
     return [[nodes[i] for i in comm] for comm in part]
+
+
+def _leiden(nodes: list[str], weights: dict[frozenset, float], gamma: float) -> list[list[str]]:
+    return _leiden_partition(_leiden_graph(nodes, weights), nodes, gamma)
 
 
 def _structural_edges_at(
