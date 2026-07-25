@@ -453,3 +453,70 @@ def test_deadline_hit_before_target_skips_dirty_pass(tmp_path, monkeypatch):
 
     assert last_sha == gb.commit_shas()[-1]  # commit_shas() is newest-first; only the first (oldest) commit was processed
     assert not any(op.provenance == () for op in ops), "dirty pass ran despite hitting the deadline"
+
+
+def test_rebirth_lookback_walks_each_path_alone_across_merges(tmp_path):
+    """The closing-commit lookback must walk each fresh path's OWN history. At a merge that is
+    TREESAME to more than one parent for a single path, git follows the first TREESAME parent --
+    but a union pathspec can make a different parent the only TREESAME one and prune the side
+    branch holding the closing commit, so the union walk is NOT a superset of per-path walks."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.txt").write_text("alpha\n", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("b0\n", encoding="utf-8")
+    gb.commit_all("c0")
+    trunk = gb.symbolic_ref().rsplit("/", 1)[-1]
+
+    gb._git("checkout", "-q", "-b", "side")
+    (tmp_path / "a.txt").unlink()
+    del_sha = gb.commit_all("delete a on side")
+    (tmp_path / "a.txt").write_text("alpha\n", encoding="utf-8")
+    gb.commit_all("restore a on side")  # side's net effect on a.txt is nil
+
+    gb._git("checkout", "-q", trunk)
+    (tmp_path / "b.txt").write_text("b1\n", encoding="utf-8")
+    gb.commit_all("modify b on trunk")
+
+    gb._git("checkout", "-q", "side")
+    gb._git("merge", "--no-ff", trunk, "-m", "merge trunk into side")
+    merge_sha = gb.head()
+
+    single = [sha for sha, _ in gb.commits_touching(merge_sha, "a.txt")]
+    union = [sha for sha, _ in gb.commits_touching_paths(merge_sha, ["a.txt", "b.txt"])]
+    # Per-path: the merge is TREESAME to both parents for a.txt alone; git's first-parent
+    # tie-break descends the side branch and surfaces the deleting commit.
+    assert del_sha in single
+    # Union: b.txt makes the trunk parent the ONLY TREESAME one, so the whole side branch --
+    # deleting commit included -- is pruned. This is why the miner walks per path; if this
+    # assertion ever fails, git's history simplification changed and the union walk may have
+    # become safe to reconsider.
+    assert del_sha not in union
+
+
+def test_readd_after_merge_chains_across_the_merge(tmp_path):
+    """Re-adding two files in one commit right after a merge chains each fresh symbol onto its
+    own deleting commit -- one on each side of the merge -- exercising the per-path lookback on
+    a merge topology with more than one fresh path in the mined commit."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.txt").write_text("alpha\n", encoding="utf-8")
+    (tmp_path / "z.txt").write_text("zeta\n", encoding="utf-8")
+    gb.commit_all("c0")
+    trunk = gb.symbolic_ref().rsplit("/", 1)[-1]
+
+    gb._git("checkout", "-q", "-b", "side")
+    (tmp_path / "a.txt").unlink()
+    del_a = gb.commit_all("delete a on side")
+
+    gb._git("checkout", "-q", trunk)
+    (tmp_path / "z.txt").unlink()
+    del_z = gb.commit_all("delete z on trunk")
+
+    gb._git("merge", "--no-ff", "side", "-m", "merge side into trunk")
+    (tmp_path / "a.txt").write_text("alpha2\n", encoding="utf-8")
+    (tmp_path / "z.txt").write_text("zeta2\n", encoding="utf-8")
+    gb.commit_all("re-add both")
+
+    mined, _last = mine(tmp_path)
+    readd_a = [op for op in mined if op.footprint.get("a.txt", (None, None))[0] == _readd_bottom(del_a)]
+    readd_z = [op for op in mined if op.footprint.get("z.txt", (None, None))[0] == _readd_bottom(del_z)]
+    assert readd_a, "a.txt re-add did not chain onto its side-branch deleting commit"
+    assert readd_z, "z.txt re-add did not chain onto its trunk deleting commit"
