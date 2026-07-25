@@ -11,23 +11,26 @@ the op store's integrity. Every verb mines the working tree on contact before ac
 
 Where the ideal algebra can't express an edit exactly, U11's rewrite verbs (`merge-op`,
 `split-op`, `transplant`, `revert --keep-dependents`, `identity split`/`identity join`) draft
-hollow ops for an agent/human to fulfill (`sgt fulfill <draft-id> --from-tree`) and stage to the
-working tree without committing; `sgt commit` is the only verb that commits one, gated on a
-passing oracle verdict (R14). `sgt land <branch>` is a distinct verb (U23's shared-branch CAS
-advance) -- deliberately not named `commit` and not overloaded onto a bare `sgt land`, so "land"
+hollow ops for an agent/human to fulfill (`sgt advanced fulfill <draft-id> --from-tree`) and stage
+to the working tree without committing; `sgt advanced commit` is the only verb that commits one,
+gated on a passing oracle verdict (R14). `sgt land <branch>` is a distinct verb (U23's shared-branch
+CAS advance) -- deliberately not named `commit` and not overloaded onto a bare `sgt land`, so "land"
 only ever means the branch advance.
 
-`sgt map` (re)builds the hierarchical feature tree over the op store and prints it; `blame`/
-`status` are its read views. `merge`/`split`/`rename`/`move` are metadata-only feature verbs --
-instant, reversible, content-untouched (R16) -- and `revert <feature>` bridges into the ideal
+`sgt log` is the one inspection surface (U14): the lane×commit grid, with `--tree` (the hierarchical
+feature tree, formerly `sgt map`; `--rebuild` reclusters), `--rail` (episode rail, formerly `sgt
+episodes`), `--summary` (scalars, formerly `sgt status`), and `--ops` (the raw op DAG). `sgt advanced
+blame` attributes a file's symbols. `merge`/`split`/`rename`/`move` are metadata-only feature verbs
+-- instant, reversible, content-untouched (R16) -- and `revert <feature>` bridges into the ideal
 algebra: it resolves a feature id/label to its op-set and runs the same exact edit a single-op
 `revert` would, grouped by feature.
 
-`plan`/`checkpoint`/`drift` are the agentic loop (plan U14): `plan intake` decomposes a stated
-plan into predicted hollow ops (off-chain, R18 -- never touching the ideal algebra); `checkpoint`
-previews footprint-overlap matches between pending steps and ops mined since, and (given
-`--confirm-hollow`/`--confirm-op`) applies exactly the named group; `drift` lists ops no active
-plan predicted.
+`plan` is the agentic loop's off-chain half (plan U14): `plan intake` decomposes a stated plan into
+predicted hollow ops (R18 -- never touching the ideal algebra). Step<->op matching and plan-drift
+(the former `checkpoint`/`drift` verbs) are folded into `sgt save` (U12/R10): a save auto-confirms
+each unambiguous single-step match and reports the rest; `sgt save --resolve-plan` settles an
+n:m/multi-step match (`--confirm-hollow`/`--confirm-op` names one group). The working-tree sense of
+"drift" keeps its name in `sgt log --summary`/`sgt advanced fsck --tree`.
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ import sys
 
 from . import (
     edit, feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose,
-    review, rewrite, select, session, sync, tiers,
+    resolve, review, rewrite, select, session, suggestions, sync, tiers,
 )
 
 # The daily spine + the frequently-reached verbs kept at the top level, two groupings, and the
@@ -47,14 +50,14 @@ from . import (
 # -- a hard rename, no alias layer. `advanced` is for maintenance/rare verbs only: the verbs a user
 # runs daily (navigation, inspection, the agentic loop, the rewrite pipeline) stay one word away.
 _VERBS = {
-    # spine
-    "save", "status", "log", "undo", "revert", "restore", "edit",
-    # navigation + inspection (daily)
-    "switch", "diff", "map", "graph", "episodes", "blame", "intent",
-    # agentic loop (daily)
-    "plan", "checkpoint", "drift",
-    # rewrite pipeline (daily)
-    "commit", "fulfill",
+    # spine (U14: the grid is the only inspection surface -- status/map/graph/episodes are `log`
+    # modes, no longer verbs; blame/edit/commit/fulfill demoted under `advanced`)
+    "save", "log", "undo", "revert", "restore", "resolve",
+    # navigation + inspection (daily). `intent` stays top-level: its subcommands (list/show/build)
+    # don't map to a `log` mode and it was deliberately re-promoted (c4f9966/KTD8).
+    "switch", "diff", "intent",
+    # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
+    "plan",
     # groupings
     "feature", "advanced",
     # collaboration + setup (unchanged behavior + name)
@@ -72,19 +75,17 @@ _ROUTING = {
     "compose": "advanced", "fold": "advanced", "preview": "advanced",
     "forks": "advanced", "after": "advanced",
     "tiers": "advanced", "migrate": "advanced",
-    "review-queue": "advanced", "identity": "advanced",
+    "review-queue": "advanced", "identity": "advanced", "suggestions": "advanced",
     "merge-op": "advanced", "split-op": "advanced", "transplant": "advanced",
     "unstage": "advanced", "repair": "advanced",
+    # U14: demoted from the daily spine -- `blame` is a narrow single-symbol lookup, `edit` the
+    # opt-in oracle-gated ceremony (ordinary edits go through plain `save`), and `commit`/`fulfill`
+    # join the rewrite pipeline verbs (merge-op/split-op/transplant) already here.
+    "blame": "advanced", "edit": "advanced", "commit": "advanced", "fulfill": "advanced",
 }
 
-# Former top-level verb -> its new invocation path (KTD2's hard rename), derived from `_ROUTING` so
-# the two can never drift: `main` uses it to point a user who typed a removed-but-known verb at its
-# new home instead of a bare `_help()`. `regroup`-tier verbs nest one level deeper under `feature`.
-_TIER_PATH = {"advanced": "advanced", "feature": "feature", "regroup": "feature regroup"}
-_REMOVED = {verb: f"{_TIER_PATH[tier]} {verb}" for verb, tier in _ROUTING.items()}
-
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review, intent, edit)
+             porcelain, tiers, select, session, review, intent, edit, resolve, suggestions)
 
 
 class _Router:
@@ -167,12 +168,6 @@ def main(argv: list[str] | None = None) -> int:
         return _help()
 
     if argv[0] not in _VERBS:
-        # A removed-but-known old verb points at its new home (KTD2's hard rename); a genuinely
-        # unknown token still falls to `_help()`.
-        remedy = _REMOVED.get(argv[0])
-        if remedy is not None:
-            sys.stderr.write(f"sgt: `{argv[0]}` moved to `sgt {remedy}`\n")
-            return 2
         return _help()
 
     parser = _build_parser()
@@ -204,39 +199,31 @@ def _help() -> int:
     print(
         "sgt — semantic operation-ideal version control\n\n"
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
-        '  sgt save [-m "<msg>"]       mine the working tree + commit a witness for it\n'
-        "  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n"
-        "  sgt log [--json]            the mined operation DAG\n"
+        '  sgt save [-m "<msg>"]       mine the working tree + commit a witness (auto-matches plan steps)\n'
+        "  sgt log [--json]            the lane×commit grid — the one inspection surface:\n"
+        "                              --tree (feature tree) · --rail (episode rail) · --summary\n"
+        "                              (status scalars) · --ops (raw op DAG) · --rebuild (recluster)\n"
         "  sgt undo                    invert the last mutating operation (the unified op log)\n"
         "  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n"
         "  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I ∪ downset X)\n"
-        "  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n"
+        "  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op → fulfill → land)\n"
         "\n"
         "  navigation + inspection:\n"
         "  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n"
         "  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n"
-        "  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n"
-        "  sgt graph [--at]            feature timeline (Gantt): lanes over commit-time\n"
-        "  sgt episodes                episode rail (vertical git-log): what I did, in order\n"
-        "  sgt blame <path>            per-symbol semantic blame from the op DAG\n"
         "  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n"
         "                              rewind one with `sgt revert <feature>@<n>`\n"
         "\n"
         "  agentic loop:\n"
         "  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n"
-        "  sgt checkpoint [--json]     preview + confirm plan-step <-> mined-op matches\n"
-        "  sgt drift [--json]          ops no active plan predicted\n"
-        "\n"
-        "  rewrite pipeline:\n"
-        "  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n"
-        "  sgt commit                  commit a staged rewrite, gated oracle-green\n"
+        "  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n"
         "\n"
         "  groupings:\n"
         "  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n"
         "                              rename, select, why\n"
-        "  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n"
-        "                              after, fold, preview, tiers, identity, migrate,\n"
-        "                              history, compose, forks, review-queue,\n"
+        "  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n"
+        "                              reindex, state, oracle, after, fold, preview, tiers,\n"
+        "                              identity, migrate, history, compose, forks, review-queue,\n"
         "                              unstage, repair, merge-op, split-op, transplant\n"
         "\n"
         "  collaboration + setup:\n"

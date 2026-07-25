@@ -31,11 +31,12 @@ deterministic op-set and runs the identical `verbs.plan_revert_op_set` path ever
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from sgt.core import opindex
-from sgt.core.op import Op, is_bottom, is_content_bearing
+from sgt.core.op import Op, is_behavioral, is_bottom
 from sgt.lens.cluster import commit_scope
 from sgt.store.gitbind import GitBinding
 
@@ -91,15 +92,17 @@ class Segment:
 
 
 def _novelty(ops: list[Op]) -> float:
-    """Behavioral entropy of a run: of every content-bearing symbol touch across its ops, the
-    fraction that *creates* (`before is None`) or *removes* (`is_bottom(after)`) a symbol -- a
-    change to what the feature does -- versus *modifies* one already alive (a tweak). Anchors and
-    residue-ordering internals are not content, so they never sway the score. A run with no
-    content touches (only synthetic bookkeeping) scores 0 -- it opens no chapter."""
+    """Behavioral entropy of a run: of every *behavioral* symbol touch across its ops (`is_behavioral`
+    -- a named entity or whole file), the fraction that *creates* (`before is None`) or *removes*
+    (`is_bottom(after)`) a symbol -- a change to what the feature does -- versus *modifies* one
+    already alive (a tweak). Anchors and residue-ordering internals are not behaviour, so they never
+    sway the score: appending a new entity shifts the residue gap before/after it, and counting that
+    shift would sink a genuinely-novel run below the cut threshold (the bug that merged three
+    distinct saves into one car). A run with no behavioral touches (only bookkeeping) scores 0."""
     structural = total = 0
     for op in ops:
         for sym, (before, after) in op.footprint.items():
-            if not is_content_bearing(sym):
+            if not is_behavioral(sym):
                 continue
             total += 1
             if before is None or is_bottom(after):
@@ -116,11 +119,17 @@ def feature_runs(repo: str | Path, op_leaf: dict[str, str]) -> dict[str, list[Ru
     only from this projection. Pure and deterministic: repeated calls on an unchanged store return
     identical runs in identical order."""
     repo = Path(repo)
-    rows = GitBinding(repo).history()
+    gb = GitBinding(repo)
+    rows = gb.history()
     commit_index = {sha: i for i, (sha, _p, _s) in enumerate(rows)}
     subject_of = {sha: subject for sha, _p, subject in rows}
     ops = opindex.index_ops(repo)
     by_id = {op.id: op for op in ops}
+    # Same time-axis rule as `history_view`/`group.atoms` (`opindex.earliest_commit_sha`): an op's
+    # earliest in-history provenance, or -- for a pending, provenance-less save -- the earliest
+    # committed `Sgt-Op:` trailer. Without the fallback, just-saved work is dropped from every run,
+    # so its per-save cars never appear on the graph.
+    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
 
     # (feature, commit_index) -> op ids
     buckets: dict[tuple[str, int], list[str]] = {}
@@ -129,10 +138,9 @@ def feature_runs(repo: str | Path, op_leaf: dict[str, str]) -> dict[str, list[Ru
         leaf = op_leaf.get(op.id)
         if leaf is None:
             continue
-        witnessed = [sha for sha in op.provenance if sha in commit_index]
-        if not witnessed:
+        earliest = sha_of.get(op.id)
+        if earliest is None:
             continue
-        earliest = min(witnessed, key=lambda s: commit_index[s])
         idx = commit_index[earliest]
         sha_at[idx] = earliest
         buckets.setdefault((leaf, idx), []).append(op.id)
@@ -302,19 +310,47 @@ def apply_label_pins(segments: list[Segment], pins_for_feature: dict[str, str] |
     return out
 
 
+def checkpoint_slug(label: str) -> str:
+    """A stable, typeable handle derived from a checkpoint's label: lowercase, every run of
+    non-alphanumerics collapsed to a single `-`, trimmed, capped at 24 chars (on a `-` boundary
+    where one is near the cap, so we never end on a half word). `"validate email"` ->
+    `validate-email`; `"fix(effects): resolve the leak"` -> `fix-effects-resolve`. Empty (a
+    label with no alphanumerics) is possible -- callers treat an empty slug as "no slug match"."""
+    s = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+    if len(s) <= 24:
+        return s
+    cut = s[:24].rstrip("-")
+    dash = cut.rfind("-")
+    if dash >= 16:  # a boundary close enough to the cap -- end there, not mid-word
+        cut = cut[:dash]
+    return cut
+
+
 def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str] | None:
-    """Resolve a `<feature>@<n>` checkpoint spec to `(op_ids, display_label)`, or `None` if it
-    isn't a checkpoint spec / doesn't resolve. `<feature>` matches a feature id exactly, else a
-    feature *label* (case-insensitive); `<n>` is the 0-based segment index in that feature's
-    chronological segmentation (persisted-overlay-aware). The returned `op_ids` is the segment's
-    deterministic op-set -- exactly what `sgt revert` removes -- so a checkpoint revert runs the
-    identical `plan_revert_op_set` path every other revert uses (the KTD6 safety invariant: the
-    boundary/label may be LLM-chosen, the op membership never is)."""
-    if "@" not in spec:
+    """Resolve a `<feature>@<n>` or `<feature>:<slug>` checkpoint spec to `(op_ids,
+    display_label)`, or `None` if it isn't a checkpoint spec / doesn't resolve. `<feature>` matches
+    a feature id exactly, else a unique id *prefix*, else a feature *label* (case-insensitive).
+    `<n>` is the 0-based segment index in that feature's chronological segmentation; `<slug>` is a
+    `checkpoint_slug` of the segment's label -- the meaningful handle, since `@n` is a positional
+    counter reassigned on every rebuild. A slug matching two segments (identical labels) is
+    ambiguous and does not resolve -- `@n` stays the disambiguator. The returned `op_ids` is the
+    segment's deterministic op-set -- exactly what `sgt revert` removes -- so a checkpoint revert
+    runs the identical `plan_revert_op_set` path every other revert uses (the KTD6 safety
+    invariant: the boundary/label may be LLM-chosen, the op membership never is)."""
+    # Split into the feature part and a selector, either @<index> or :<slug>. Feature ids are
+    # `f-XXXXXXXX` (no `@`/`:`), so a right-partition cleanly isolates the selector; `@` wins when
+    # both appear (an explicit index is unambiguous).
+    if "@" in spec and spec.rpartition("@")[2].isdigit():
+        feat_part, _, sel = spec.rpartition("@")
+        by_index, want = True, sel
+    elif ":" in spec:
+        feat_part, _, sel = spec.rpartition(":")
+        by_index, want = False, checkpoint_slug(sel)
+    else:
         return None
-    feat_part, _, idx_part = spec.rpartition("@")
-    if not idx_part.isdigit() or not feat_part:
+    if not feat_part or not want:
         return None
+
     from sgt import state
     from sgt.lens.tree import load as load_tree
 
@@ -325,14 +361,16 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
     nodes = tree_result["nodes"]
 
     feature_id = feat_part if feat_part in nodes else None
-    if feature_id is None:  # a unique feature-id *prefix* (the short handle `sgt intent list` prints)
-        prefix_hits = [nid for nid in nodes if nid.startswith(feat_part) and not nodes[nid]["children"]]
+    if feature_id is None and feat_part:  # a unique feature-id *prefix* -- `f-`-prefixed or the bare hex the graph prints
+        prefix_hits = [nid for nid in nodes
+                       if (nid.startswith(feat_part) or nid.startswith("f-" + feat_part))
+                       and not nodes[nid]["children"]]
         if len(prefix_hits) == 1:
             feature_id = prefix_hits[0]
     if feature_id is None:  # else a case-insensitive label match against leaf features
-        want = feat_part.strip().lower()
+        want_feat = feat_part.strip().lower()
         matches = [nid for nid, nd in nodes.items()
-                   if not nd["children"] and nd.get("label", "").strip().lower() == want]
+                   if not nd["children"] and nd.get("label", "").strip().lower() == want_feat]
         if len(matches) == 1:
             feature_id = matches[0]
     if feature_id is None:
@@ -343,11 +381,18 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
         return None
     persisted = state.load_json(repo, "intent_segments", default={})
     segs = overlay_persisted(runs, persisted.get(feature_id))
-    idx = int(idx_part)
-    if not (0 <= idx < len(segs)):
-        return None
-    seg = segs[idx]
     label = nodes.get(feature_id, {}).get("label", feature_id)
+
+    if by_index:
+        idx = int(want)
+        if not (0 <= idx < len(segs)):
+            return None
+        return segs[idx].op_ids, f"{label}@{idx}: {segs[idx].label}"
+
+    hits = [(i, s) for i, s in enumerate(segs) if checkpoint_slug(s.label) == want]
+    if len(hits) != 1:  # 0 = unknown slug, >1 = ambiguous -- `@n` disambiguates either way
+        return None
+    idx, seg = hits[0]
     return seg.op_ids, f"{label}@{idx}: {seg.label}"
 
 

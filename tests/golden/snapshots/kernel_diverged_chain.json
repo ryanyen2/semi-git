@@ -1,8 +1,9 @@
 {
   "blame_view": {
+    "covered": true,
     "features": {
       "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139": {
-        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify"
+        "label": "slugify"
       }
     },
     "file": "slugify.py",
@@ -10,7 +11,7 @@
       {
         "end_line": 2,
         "feature_id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
-        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "label": "slugify",
         "sessions": [],
         "start_line": 1,
         "symbol": "slugify.py::slugify"
@@ -47,13 +48,13 @@
         "dir": "slugify.py",
         "id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
         "kind": "feature",
-        "label": "residue__::\u0000HEAD\u0000 residue__::slugify slugify",
+        "label": "slugify",
         "members": [
           "slugify.py::__residue__::\u0000HEAD\u0000",
           "slugify.py::__residue__::slugify",
           "slugify.py::slugify"
         ],
-        "op_count": 5,
+        "op_count": 6,
         "parent": null,
         "sessions": [],
         "size": 3,

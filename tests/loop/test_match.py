@@ -72,14 +72,96 @@ def test_compute_checkpoint_flags_unpredicted_op_as_drift(tmp_path):
 
 def test_low_overlap_below_threshold_is_drift_not_a_match(tmp_path):
     store = Store(tmp_path)
-    _seed_session(tmp_path, "s1", set(), [("big step", ["a.py::a", "a.py::b", "a.py::c"])])
-    # intersection={a.py::a}; union={a,b,c,z} -> jaccard = 1/4 = 0.25, below THRESHOLD (0.3)
-    op = store.add(_op({"a.py::a": "v1", "z.py::z": "v1"}))
+    # Under the overlap coefficient (|a∩b| / min(|a|,|b|)) a match is "drift" only when the shared
+    # entities are a small fraction of the *smaller* footprint -- i.e. the op is mostly unrelated
+    # work that merely brushes the step. Here the step and the op are the same size (4) and share
+    # just one entity: overlap = 1/4 = 0.25 < THRESHOLD (0.3), so the op is drift, not a match.
+    _seed_session(tmp_path, "s1", set(), [("big step", ["a.py::a", "a.py::b", "a.py::c", "a.py::d"])])
+    op = store.add(_op({"a.py::a": "v1", "y.py::x": "v1", "y.py::y": "v1", "y.py::z": "v1"}))
 
     result = match_mod.compute_checkpoint(tmp_path)
 
     assert result.matches == ()
     assert result.drift_op_ids == (op.id,)
+
+
+def test_standalone_anchor_op_is_invisible_to_drift(tmp_path):
+    """A per-entity anchor op is pure ordering metadata -- the companion of whatever save placed
+    the entity, not behavioral work done outside a plan. Like residue, it is invisible to the drift
+    layer even when it matches no step: reporting it as drift would make a fully-planned build
+    (whose bytes live in a coarse whole-file content op the anchor merely positions) read as mostly
+    unplanned. The op names an unrelated entity, so it also brushes no step -> neither match nor
+    drift."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("build foo", ["a.py::foo"])])
+    store.add(_op({"a.py::__anchor__::Widget": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert result.matches == () and result.drift_op_ids == ()
+
+
+def test_anchor_still_contributes_a_matching_edge(tmp_path):
+    """The drift-exclusion above must not cost anchors their *matching* power: when a batch save
+    folds an entity's bytes into a coarse op, the per-entity anchor is the finest 'this entity was
+    touched here' signal, and a step naming that entity must still match it (the F5 property)."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("build RGA", ["crdt.py::RGA"])])
+    op = store.add(_op({"crdt.py::__anchor__::RGA": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert len(result.matches) == 1
+    assert result.matches[0].op_ids == (op.id,)
+    assert result.drift_op_ids == ()
+
+
+# -- granularity: a file-level plan prediction vs symbol-level ops (F16) -----------------------------
+
+def test_file_level_step_prediction_matches_symbol_level_ops_in_that_file(tmp_path):
+    """A step predicted at *file* granularity (the LLM decomposer's common output -- "work in
+    livehub/server.py") must match the symbol-level ops that implement it (`server.py::Server`,
+    `server.py::encode_op`). The step names a file, the ops name entities *in* that file: identity
+    by qualname alone can never join them, because a bare file has no qualname. The file scope is
+    the join key a file-granularity prediction is written at."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("build the server transport", ["livehub/server.py"])])
+    op = store.add(_op({"livehub/server.py::Server": "v1", "livehub/server.py::encode_op": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert len(result.matches) == 1
+    assert result.matches[0].op_ids == (op.id,)
+    assert result.drift_op_ids == ()
+
+
+def test_file_level_prediction_does_not_match_ops_in_other_files(tmp_path):
+    """A file-level prediction is coarse but not blind: it matches ops touching *its* file, not
+    ops touching a different one."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("work in server", ["livehub/server.py"])])
+    op = store.add(_op({"livehub/client.py::RemoteBus": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert result.matches == ()
+    assert result.drift_op_ids == (op.id,)
+
+
+def test_entity_prediction_still_matches_across_a_file_move(tmp_path):
+    """The drift-tolerance the qualname join buys must survive the file-scope addition: a step
+    predicted `rga.py::RGA` matches the op that actually built it in `crdt.py::RGA`. The file
+    differs; identity is still the qualname. File-scope matching applies only to *bare-file*
+    predictions -- an entity-level prediction never gates on the planner's file guess."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("build RGA", ["rga.py::RGA"])])
+    op = store.add(_op({"crdt.py::RGA": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert len(result.matches) == 1
+    assert result.matches[0].op_ids == (op.id,)
+    assert result.drift_op_ids == ()
 
 
 def test_ops_already_in_baseline_are_ignored_entirely(tmp_path):
@@ -123,7 +205,8 @@ def test_confirm_match_marks_step_matched_records_intent_and_deletes_hollow(tmp_
 
     match_mod.confirm_match(tmp_path, "s1", [hollow_id], [op.id])
 
-    sessions = plan_mod.active_sessions(tmp_path)
+    # The full table (not `active_sessions`, which now excludes the just-completed session).
+    sessions = plan_mod._load_sessions(tmp_path)
     assert sessions["s1"]["steps"][0]["status"] == "matched"
     assert sessions["s1"]["steps"][0]["matched_op_ids"] == [op.id]
     assert store.get_hollow(hollow_id) is None  # consumed
@@ -132,6 +215,27 @@ def test_confirm_match_marks_step_matched_records_intent_and_deletes_hollow(tmp_
     assert matches[op.id]["session_id"] == "s1"
     assert matches[op.id]["hollow_ids"] == [hollow_id]
     assert matches[op.id]["intent"] == "do the thing"
+
+
+def test_confirm_match_completing_every_step_marks_the_session_completed(tmp_path):
+    """When a confirm leaves no pending step, the session is done -- it flips to `completed` and
+    leaves the active review surface, so a fully-built plan stops showing up as an "unresolved"
+    plan forever (nothing ever closed a session before this). A session with a step still pending
+    stays active."""
+    store = Store(tmp_path)
+    steps = _seed_session(tmp_path, "s1", set(), [
+        ("step a", ["a.py::foo"]),
+        ("step b", ["b.py::bar"]),
+    ])
+    op_a = store.add(_op({"a.py::foo": "v1"}))
+    op_b = store.add(_op({"b.py::bar": "v1"}))
+
+    match_mod.confirm_match(tmp_path, "s1", [steps[0]["hollow_id"]], [op_a.id])
+    assert "s1" in plan_mod.active_sessions(tmp_path)  # one step still pending -> still active
+
+    match_mod.confirm_match(tmp_path, "s1", [steps[1]["hollow_id"]], [op_b.id])
+    assert "s1" not in plan_mod.active_sessions(tmp_path)  # last step matched -> completed
+    assert plan_mod._load_sessions(tmp_path)["s1"]["status"] == "completed"
 
 
 def test_confirmed_match_never_resurfaces_as_drift(tmp_path):

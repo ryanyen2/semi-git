@@ -43,14 +43,17 @@ def _seed(tmp_path):
 
 
 def test_edit_verb_is_registered_and_dispatches(tmp_path):
-    from sgt.cli import _VERBS
+    # U14: `edit` demoted under `advanced` (opt-in oracle-gated ceremony; ordinary edits go through
+    # plain `save`). No longer a top-level verb; re-homed via `_ROUTING`.
+    from sgt.cli import _ROUTING, _VERBS
 
-    assert "edit" in _VERBS
+    assert "edit" not in _VERBS
+    assert _ROUTING["edit"] == "advanced"
 
 
 def test_edit_resolves_a_symbol_selection_and_drafts_a_hollow(tmp_path, capsys):
     _seed(tmp_path)
-    rc = _in(tmp_path, ["edit", "m.py::helper", "--json"])
+    rc = _in(tmp_path, ["advanced", "edit", "m.py::helper", "--json"])
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] and out["verb"] == "edit" and out["draft_id"]
@@ -59,13 +62,13 @@ def test_edit_resolves_a_symbol_selection_and_drafts_a_hollow(tmp_path, capsys):
 
 def test_edit_refuses_an_unresolvable_selection(tmp_path, capsys):
     _seed(tmp_path)
-    rc = _in(tmp_path, ["edit", "m.py::nope"])
+    rc = _in(tmp_path, ["advanced", "edit", "m.py::nope"])
     assert rc == 1
 
 
 def test_edit_fulfill_from_tree_then_commit_lands_a_behavior_preserving_edit(tmp_path, capsys):
     _seed(tmp_path)
-    rc = _in(tmp_path, ["edit", "m.py::helper", "--json"])
+    rc = _in(tmp_path, ["advanced", "edit", "m.py::helper", "--json"])
     assert rc == 0
     draft_id = json.loads(capsys.readouterr().out)["draft_id"]
 
@@ -74,12 +77,12 @@ def test_edit_fulfill_from_tree_then_commit_lands_a_behavior_preserving_edit(tmp
         "def helper():\n    return 1  # tidy\n\n\ndef user():\n    return helper() + 1\n",
         encoding="utf-8",
     )
-    assert _in(tmp_path, ["fulfill", draft_id, "--from-tree"]) == 0
+    assert _in(tmp_path, ["advanced", "fulfill", draft_id, "--from-tree"]) == 0
     capsys.readouterr()
     # Land via the same commit spine the other rewrite verbs use (genuine oracle-green landing is
     # proven at the core level in tests/core/test_rewrite.py; the CLI `oracle run`->staged-candidate
     # keying is a pre-existing gap shared by all rewrite verbs, out of scope here).
-    assert _in(tmp_path, ["commit", "--override", "pass", "--reason", "behavior-preserving edit"]) == 0
+    assert _in(tmp_path, ["advanced", "commit", "--override", "pass", "--reason", "behavior-preserving edit"]) == 0
 
     ops = Store(tmp_path).all_ops()
     live = get(tmp_path).frontier(ops)

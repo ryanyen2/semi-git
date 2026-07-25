@@ -116,3 +116,35 @@ def test_hashes_are_deterministic_and_populated():
     for e, e2 in zip(ents, again):
         assert e.content_hash and e.structural_hash  # every entity carries both
         assert e.content_hash == e2.content_hash and e.structural_hash == e2.structural_hash
+
+
+def test_extraction_cache_reuses_identical_content_and_is_content_addressed():
+    """U10: `extract_file` caches by (path, language, content) -- a byte-identical re-parse returns
+    the cached list (the same object, since Entities are frozen and callers treat it read-only),
+    while a content change re-parses. The cache is content-addressed, so it never returns a stale
+    entity list for changed bytes, and never crosses paths."""
+    from sgt.entities import extract as extract_mod
+
+    extract_mod._EXTRACT_CACHE.clear()
+    src = "def a():\n    return 1\n"
+    first = extract_file("m.py", src)
+    assert extract_file("m.py", src) is first          # byte-identical -> cached object
+    assert extract_file("m.py", src.encode()) is first  # str and bytes of the same content agree
+
+    changed = extract_file("m.py", "def a():\n    return 2\n")
+    assert changed is not first                         # different content -> re-parsed
+    assert [e.name for e in changed] == ["a"]
+
+    other_path = extract_file("n.py", src)              # same content, different path
+    assert other_path is not first                      # keyed by path too
+    assert other_path[0].id == "n.py::a"
+
+
+def test_extraction_cache_is_bounded():
+    """The LRU cap keeps a full-history init from growing the cache without bound."""
+    from sgt.entities import extract as extract_mod
+
+    extract_mod._EXTRACT_CACHE.clear()
+    for i in range(extract_mod._EXTRACT_CACHE_MAX + 50):
+        extract_file(f"f{i}.py", f"def g():\n    return {i}\n")
+    assert len(extract_mod._EXTRACT_CACHE) == extract_mod._EXTRACT_CACHE_MAX

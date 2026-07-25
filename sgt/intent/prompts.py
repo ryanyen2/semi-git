@@ -6,8 +6,7 @@ frozen, content-addressed, merge-semilattice `Op`.
 
 Write-once per key: the first `record_prompt` for a key wins, and a later call on an existing key
 is a no-op. This is what makes the sync merge trivial (`merge`, U5) -- a G-Set union by key is
-conflict-free only because no key's value ever changes after it is first observed, mirroring
-`sgt.lens.reconcile.union_aliases`'s G-Set idiom.
+conflict-free only because no key's value ever changes after it is first observed.
 """
 
 from __future__ import annotations
@@ -21,13 +20,13 @@ _ARTIFACT = "intent_prompts"
 
 def load_prompts(repo: str | Path) -> dict[str, str]:
     """The whole working-tree prompt sidecar -- `sync`'s `ingest` reads this for "ours" side,
-    mirroring `sgt.lens.reconcile.load_aliases`."""
+    mirroring `sgt.lens.pins.load_pins`."""
     return state.load_json(repo, _ARTIFACT, default={})
 
 
 def prompts_at(gb, sha: str) -> dict[str, str]:
     """A teammate's prompt sidecar as committed at `sha` -- the historical-blob read `sync`
-    unions, mirroring `sgt.lens.reconcile.aliases_at`."""
+    unions, mirroring `sgt.lens.authored.authored_at`."""
     body = state.load_blob_json(gb, sha, _ARTIFACT)
     return {} if body is None else dict(body)
 

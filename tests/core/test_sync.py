@@ -284,3 +284,150 @@ def test_sync_revert_of_a_base_op_removes_the_dependents_that_rode_its_upset(tmp
     live = lens.current_ideal(b)
     assert not any("main.py::baz" in Store(b).get(oid).footprint for oid in live.op_ids)
     assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")
+
+
+# -- plan_sync: the side-effect-free dry run behind the `sgt sync` feedforward pane ------------
+
+def _committed_state(repo: Path) -> dict[str, bytes]:
+    """A byte snapshot of everything a sync would materialize: `main.py` plus every committed `.sgt`
+    file, excluding the append-only op store (`.sgt/ops/`) and the derived local caches
+    (`.sgt/local/`) that `plan_sync` rolls back on its own. A dry run must leave this byte-identical."""
+    state_map: dict[str, bytes] = {}
+    main = repo / "main.py"
+    if main.is_file():
+        state_map["main.py"] = main.read_bytes()
+    for p in sorted((repo / ".sgt").rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(repo).as_posix()
+        if rel.startswith(".sgt/ops/") or rel.startswith(".sgt/local/") or p.name.startswith(".tmp-"):
+            continue
+        state_map[rel] = p.read_bytes()
+    return state_map
+
+
+def test_plan_sync_predicts_the_fold_and_leaves_no_trace(tmp_path):
+    """The dry run (`fetch -> ingest -> resolve`, no `materialize`) reports the op count a sync would
+    fold in, and -- like a blocked land (R7) -- rolls back so the working tree, the committed `.sgt`
+    state, and the local branch tip stay byte-identical. A following real sync folds in exactly the
+    predicted op count."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
+    _push(a)
+
+    gb = GitBinding(b)
+    before_head = gb.head()
+    lens.get(b)  # settle mine-on-contact caches first, so the snapshot below is the steady state
+    before_state = _committed_state(b)
+
+    plan = sync.plan_sync(b, remote="origin", branch="main")
+
+    assert plan.ops_added > 0 and not plan.forks
+    assert gb.head() == before_head  # the local branch did not move
+    assert _committed_state(b) == before_state  # no trace (R7)
+
+    report = sync.sync(b, remote="origin", branch="main")
+    assert report.merged and report.ops_added == plan.ops_added  # the dry run predicted the real fold
+
+
+def test_plan_sync_short_circuits_when_already_up_to_date(tmp_path):
+    """Nothing new on the remote -> the fetch short-circuits and the plan reports `up_to_date`
+    without running ingest/resolve, so the pane can say 'nothing to fold in' before the merge path."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
+    _push(a)
+    sync.sync(b, remote="origin", branch="main")  # b is now current with the remote
+
+    plan = sync.plan_sync(b, remote="origin", branch="main")
+    assert plan.up_to_date and plan.ops_added == 0 and not plan.forks
+
+
+def test_plan_sync_surfaces_a_would_be_fork_without_recording_it(tmp_path):
+    """A same-symbol divergence *surfaces* in the plan (`forks` non-empty) so the pane can warn, but
+    the dry run must not write the committed `.sgt/forks.json` a real sync would -- the fork is
+    predicted, not yet recorded."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
+    _push(a)
+    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
+
+    plan = sync.plan_sync(b, remote="origin", branch="main")
+    assert len(plan.forks) == 1 and plan.forks[0][0] == "main.py::foo"
+    assert not (b / ".sgt" / "forks.json").is_file()  # nothing recorded -- a dry run leaves no fork state
+
+
+# -- `sgt sync` CLI gate: the pane is the confirm step on a tty, immediate-apply otherwise --------
+
+def _diverge_for_sync(tmp_path) -> Path:
+    """A/B two clones with disjoint edits pushed on A, so a `sync` on B has real fork-free work to
+    fold in (the CLI gate has something to confirm)."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
+    _push(a)
+    return b
+
+
+def test_sync_cli_non_tty_merges_immediately(tmp_path):
+    """The machine/CI contract: `sgt sync` on a non-tty (pytest's captured streams) skips the
+    consequence confirm and folds the teammate's work in exactly as before the pane existed."""
+    from sgt.cli.sync import _sync
+
+    b = _diverge_for_sync(tmp_path)
+    before = GitBinding(b).head()
+    assert _sync(str(b), "origin", "main", as_json=False) == 0
+    assert GitBinding(b).head() != before  # merged
+
+
+def test_sync_cli_tty_abort_merges_nothing(tmp_path, monkeypatch, capsys):
+    """On a tty, the pane is the confirm: an abort leaves the local branch frozen (rc 1)."""
+    import sys
+
+    from sgt.cli import _common
+    from sgt.cli.sync import _sync
+    from sgt.tui.consequence import Decision
+
+    b = _diverge_for_sync(tmp_path)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(False))
+
+    before = GitBinding(b).head()
+    assert _sync(str(b), "origin", "main", as_json=False) == 1
+    assert "aborted" in capsys.readouterr().out
+    assert GitBinding(b).head() == before  # frozen
+
+
+def test_sync_cli_tty_confirm_merges(tmp_path, monkeypatch):
+    """A confirm on a tty runs the real sync and advances the local branch."""
+    import sys
+
+    from sgt.cli import _common
+    from sgt.cli.sync import _sync
+    from sgt.tui.consequence import Decision
+
+    b = _diverge_for_sync(tmp_path)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
+
+    before = GitBinding(b).head()
+    assert _sync(str(b), "origin", "main", as_json=False) == 0
+    assert GitBinding(b).head() != before  # merged
+
+
+def test_sync_cli_json_never_confirms(tmp_path, monkeypatch):
+    """`--json` keeps its immediate-apply contract even on a tty: the pane never launches."""
+    import sys
+
+    from sgt.cli import _common
+    from sgt.cli.sync import _sync
+
+    b = _diverge_for_sync(tmp_path)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+
+    def boom(*a, **k):
+        raise AssertionError("--json must not launch the consequence pane")
+
+    monkeypatch.setattr(_common, "maybe_confirm", boom)
+    assert _sync(str(b), "origin", "main", as_json=True) == 0

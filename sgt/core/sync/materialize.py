@@ -19,12 +19,38 @@ from sgt import state
 from sgt.core import lens
 from sgt.core.fold import code
 from sgt.core.store import Store, _write_atomic, locked_section
-from sgt.lens import authored, reconcile, tree
+from sgt.lens import authored, tree
 from sgt.lens.pins import save_pins
 from sgt.store.gitbind import GitBinding, format_op_trailers
 
 from .ingest import Ingested
 from .resolve import Resolution
+
+
+def _surface_dual_claims(repo: Path, ing: Ingested, res: Resolution) -> None:
+    """After the authored-feature merge, surface (never silently resolve) any symbol left a live
+    member of more than one authored feature (U6, the "Cross-clone dual-lane membership" risk): two
+    clones each ran the save-time local move on the same new symbol against a locally-different
+    owned-neighbour view, landing it live in two different `af-` ids that `merge_feature`'s
+    union-within-one-id logic never reconciles. Each is recorded as a `conflict` in U7's suggestion
+    queue for the user to resolve with `sgt feature move`. Best-effort: a hiccup here must never fail
+    an otherwise-clean sync -- the merge itself is already persisted."""
+    try:
+        from sgt.core import suggest
+        from sgt.lens import ledger
+
+        frontier = res.merged_ideal.frontier(ing.all_ops)
+        for sym, fids in ledger.dual_claims(res.unioned_authored):
+            op_id = frontier.get(sym)
+            if op_id is None:  # a dead symbol has no in-ideal op to content-address the record by
+                continue
+            suggest.add(
+                repo, "conflict", fids, [op_id],
+                rationale=f"{sym} is a live member of {len(fids)} lanes ({', '.join(fids)}) after "
+                          "sync -- move it to one with `sgt feature move`",
+            )
+    except Exception:  # noqa: BLE001 -- a read-only advisory must never break a clean sync
+        pass
 
 
 def _union_claims(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
@@ -105,8 +131,8 @@ def stage_candidate(
 def flush_reconciled_metadata(
     repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
 ) -> None:
-    """Write the reconciled metadata -- the six artifacts the review found a red `land` leaking
-    (pins, declared OR-Set, aliases, tree, durable fork record, in-tree ideal recovery) plus the
+    """Write the reconciled metadata -- the artifacts the review found a red `land` leaking
+    (pins, declared OR-Set, tree, durable fork record, in-tree ideal recovery) plus the
     claim/proposal/review G-Set unions -- under one locked section so no reader sees a half-union
     (R5/R6). `land` calls this only once the oracle is green and just before it builds the landing
     commit, so a refused land never persists it; sync calls it unconditionally right after
@@ -115,10 +141,11 @@ def flush_reconciled_metadata(
     with locked_section(repo):
         save_pins(repo, res.unioned_pins)
         lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
-        reconcile.save_aliases(repo, res.aliases)  # unioned feature-id alias G-Set (C1/D6)
         if res.unioned_authored:  # merged authored-feature collection (U6/R3/KTD3) -- written only
             authored.save_authored(repo, res.unioned_authored)  # when one exists, keeping the merge
             # commit byte-identical to pre-U6 for the common case (no authored features)
+            _surface_dual_claims(repo, ing, res)  # U6 overlap check: a cross-clone dual-claim
+            # `merge_feature` can't reconcile surfaces as a conflict, never a silent resolve
         tree.save(repo, res.tree_result)
         state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
         state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)

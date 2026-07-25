@@ -32,9 +32,21 @@ def _run(map_view: dict, history: dict) -> dict:
     return json.loads(res.stdout)
 
 
-def _hist(commits, ops):
+def _grid(commits, ops):
+    """A `grid_view`-shaped cell table (plan U3): the `(oid, kind, feature, commit)` op specs
+    grouped into per-(feature, commit) cells. An op with no feature has no cell, mirroring
+    `grid_view`'s own omission of unattributed ops."""
+    cells: dict[tuple, dict] = {}
+    for oid, k, f, c in ops:
+        if f is None:
+            continue
+        cell = cells.setdefault((f, c), {"op_ids": [], "kinds": {}})
+        cell["op_ids"].append(oid)
+        cell["kinds"][k] = cell["kinds"].get(k, 0) + 1
     return {"commits": [{"index": i, "sha": s, "subject": subj} for i, s, subj in commits],
-            "ops": [{"id": oid, "kind": k, "feature_id": f, "commit_index": c} for oid, k, f, c in ops]}
+            "cells": [{"feature_id": f, "commit_index": c, "op_ids": sorted(v["op_ids"]),
+                       "op_count": len(v["op_ids"]), "kinds": v["kinds"], "fidelity": "full"}
+                      for (f, c), v in sorted(cells.items())]}
 
 
 def _map(*labels):
@@ -43,7 +55,7 @@ def _map(*labels):
 
 def test_ops_sharing_a_commit_index_roll_up_into_one_episode():
     m = _map(("F1", "Auth"))
-    hist = _hist(
+    hist = _grid(
         [(0, "sha0", "add login"), (1, "sha1", "fix login")],
         [("o0", "add", "F1", 0), ("o1", "extend", "F1", 0), ("o2", "rework", "F1", 1)],
     )
@@ -58,7 +70,7 @@ def test_ops_sharing_a_commit_index_roll_up_into_one_episode():
 
 def test_dominant_feature_is_the_commit_s_most_touched_feature():
     m = _map(("F1", "Auth"), ("F2", "Billing"))
-    hist = _hist([(0, "s0", "c0")],
+    hist = _grid([(0, "s0", "c0")],
                  [("a", "add", "F1", 0), ("b", "add", "F1", 0), ("c", "add", "F2", 0)])
     out = _run(m, hist)
     assert out["episodes"][0]["dominantFeature"] == "F1"
@@ -67,7 +79,7 @@ def test_dominant_feature_is_the_commit_s_most_touched_feature():
 
 def test_episodes_group_by_dominant_feature_ordered_by_first_appearance():
     m = _map(("F1", "Auth"), ("F2", "Billing"))
-    hist = _hist(
+    hist = _grid(
         [(0, "s0", "c0"), (1, "s1", "c1"), (2, "s2", "c2")],
         [("a", "add", "F2", 0), ("b", "add", "F1", 1), ("c", "extend", "F2", 2)],
     )
@@ -80,14 +92,13 @@ def test_episodes_group_by_dominant_feature_ordered_by_first_appearance():
     assert f2["kinds"] == {"add": 1, "extend": 1}
 
 
-def test_unattributed_ops_fall_under_a_null_group():
-    m = _map()
-    hist = _hist([(0, "s0", "c0")], [("a", "add", None, 0)])
-    out = _run(m, hist)
-    assert out["episodes"][0]["dominantFeature"] is None
-    assert out["groups"][0]["featureId"] is None and out["groups"][0]["label"] == "(unattributed)"
+def test_unattributed_ops_have_no_cell_so_form_no_episode():
+    """An op with no feature has no cell in `grid_view` (plan U3), so -- unlike the old raw op
+    stream -- an all-unattributed commit produces no episode and no `(unattributed)` group."""
+    out = _run(_map(), _grid([(0, "s0", "c0")], [("a", "add", None, 0)]))
+    assert out == {"episodes": [], "groups": []}
 
 
 def test_empty_history_is_empty():
-    out = _run(_map(), {"commits": [], "ops": []})
+    out = _run(_map(), {"commits": [], "cells": []})
     assert out == {"episodes": [], "groups": []}

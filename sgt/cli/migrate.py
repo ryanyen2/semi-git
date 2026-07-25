@@ -1,24 +1,22 @@
 """`sgt migrate <what> [--apply]`: dry-run-by-default, atomic, idempotent store migrations.
 
-- `feature-ids` (plan U21/D6): re-mint pre-U21 sequential `F<n>` feature ids to their content-
-  addressed `f-<founding op>` form -- tree ids + pin references + alias G-Set moved together.
 - `ops-v3` (plan U10/R15): cross the op store from miner v2 to v3 (U9's rebirth/flip identity) --
   re-key every op and every op-id-bearing artifact under one resumable manifest, recovering the
   ~20% closure the v2 rebirth pseudo-fork dropped.
 
-Both print the change they *would* make so a human reviews the one destructive step before writing;
+Prints the change it *would* make so a human reviews the one destructive step before writing;
 `--apply` performs it, and a second `--apply` is a no-op."""
 
 from __future__ import annotations
 
 from ._common import _emit_json, _fail
 
-_KNOWN = ("feature-ids", "ops-v3")
+_KNOWN = ("ops-v3",)
 
 
 def register(subs, parent) -> None:
     p = subs.add_parser("migrate", parents=[parent])
-    p.add_argument("what", nargs="?", default="feature-ids")
+    p.add_argument("what", nargs="?", default="ops-v3")
     p.add_argument("--apply", action="store_true")
     p.set_defaults(func=_cmd_migrate)
 
@@ -26,8 +24,6 @@ def register(subs, parent) -> None:
 def _cmd_migrate(args) -> int:
     if args.what == "ops-v3":
         return _migrate_ops_v3(".", args.apply, args.as_json)
-    if args.what == "feature-ids":
-        return _migrate(".", args.apply, args.as_json)
     return _fail(f"unknown migration {args.what!r}; supported: {', '.join(_KNOWN)}")
 
 
@@ -62,27 +58,4 @@ def _migrate_ops_v3(repo: str, apply: bool, as_json: bool) -> int:
         print(f"  {report.claims_orphaned} claim(s) orphaned by the re-key (re-publish to re-attach)")
     for oid in report.orphaned:
         print(f"  orphan (no v3 counterpart): {oid}")
-    return 0
-
-
-def _migrate(repo: str, apply: bool, as_json: bool) -> int:
-    from sgt.lens.reconcile import migrate_feature_ids
-
-    report = migrate_feature_ids(repo, dry_run=not apply)
-    remap = dict(sorted(report.remap.items()))
-    view = {
-        "mode": "applied" if report.changed else "dry-run",
-        "remap": remap,
-        "count": len(remap),
-    }
-    if as_json:
-        return _emit_json(view)
-
-    if not remap:
-        print("✓ feature ids already content-addressed -- nothing to migrate")
-        return 0
-    header = "applied" if report.changed else "dry-run (re-run with --apply to write)"
-    print(f"feature-id migration [{header}]: {len(remap)} id(s)")
-    for old, new in remap.items():
-        print(f"  {old}  ->  {new}")
     return 0

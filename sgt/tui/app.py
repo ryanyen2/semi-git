@@ -207,14 +207,14 @@ class GraphScreen(ModalScreen[None]):
         Binding("home", "frontier_head", "HEAD"),
     ]
 
-    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None,
+    def __init__(self, map_view: dict, grid_view: dict, selected: str | None = None,
                  segments: list[dict] | None = None) -> None:
         super().__init__()
         self._map_view = map_view
-        self._history_view = history_view
+        self._grid_view = grid_view
         self._selected = selected
         self._segments = segments or []
-        self._max_commit = max((c.get("index", 0) for c in history_view.get("commits", [])), default=0)
+        self._max_commit = max((c.get("index", 0) for c in grid_view.get("commits", [])), default=0)
         self._frontier: int | None = None  # None = HEAD (full history)
 
     def compose(self) -> ComposeResult:
@@ -227,7 +227,7 @@ class GraphScreen(ModalScreen[None]):
 
     def _body(self) -> Text:
         lines = render_graph_lines(
-            self._map_view, self._history_view, self._segments,
+            self._map_view, self._grid_view, self._segments,
             selected=self._selected, frontier=self._frontier,
         )
         return Text.from_ansi("\n".join(lines))
@@ -264,10 +264,10 @@ class EpisodeScreen(ModalScreen[None]):
 
     BINDINGS = [Binding("escape,q,l", "close", "Close")]
 
-    def __init__(self, map_view: dict, history_view: dict, selected: str | None = None) -> None:
+    def __init__(self, map_view: dict, grid_view: dict, selected: str | None = None) -> None:
         super().__init__()
         self._map_view = map_view
-        self._history_view = history_view
+        self._grid_view = grid_view
         self._selected = selected
 
     def compose(self) -> ComposeResult:
@@ -277,7 +277,7 @@ class EpisodeScreen(ModalScreen[None]):
             yield Label("[b]esc[/b] close   ·   newest episode on top", id="hint")
 
     def _body(self) -> Text:
-        lines = render_rail_lines(self._map_view, self._history_view, selected=self._selected)
+        lines = render_rail_lines(self._map_view, self._grid_view, selected=self._selected)
         return Text.from_ansi("\n".join(lines))
 
     def action_close(self) -> None:
@@ -478,24 +478,25 @@ class SgtTui(App[None]):
         self._render_status(self._last_status)
 
     def action_graph(self) -> None:
-        """Open the dependency-graph overview (reuses the mined `map_view`; reads `history_view` for
-        the op/commit axis). Read-only -- the tree remains the selectable interaction surface."""
-        from sgt.api import history_view, segments_view
+        """Open the dependency-graph overview (reuses the mined `map_view`; reads the canonical
+        `grid_view` cell join for the op/commit axis). Read-only -- the tree remains the selectable
+        interaction surface."""
+        from sgt.api import grid_view, segments_view
 
         if not getattr(self, "_map_view", None):
             return
-        hist = history_view(self.repo, full=True, limit=1_000_000)
-        self.push_screen(GraphScreen(self._map_view, hist, self._selected_id(), segments_view(self.repo)))
+        self.push_screen(
+            GraphScreen(self._map_view, grid_view(self.repo), self._selected_id(), segments_view(self.repo))
+        )
 
     def action_episodes(self) -> None:
         """Open the episode rail (the vertical git-log / "what I did, in order" lens). Reuses the
-        mined `map_view` + `history_view`, read-only like the graph overview."""
-        from sgt.api import history_view
+        mined `map_view` + the canonical `grid_view` cell join, read-only like the graph overview."""
+        from sgt.api import grid_view
 
         if not getattr(self, "_map_view", None):
             return
-        hist = history_view(self.repo, full=True, limit=1_000_000)
-        self.push_screen(EpisodeScreen(self._map_view, hist, self._selected_id()))
+        self.push_screen(EpisodeScreen(self._map_view, grid_view(self.repo), self._selected_id()))
 
     def _display_rows(self) -> list[dict]:
         """The base display list: every feature/subsystem row, plus -- for each expanded feature --

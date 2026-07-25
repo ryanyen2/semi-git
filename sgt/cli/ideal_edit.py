@@ -14,7 +14,11 @@ def register(subs, parent) -> None:
     r.add_argument("--emit", action="store_true")
     r.add_argument("--keep-dependents", action="store_true", dest="keep_dependents")
     r.add_argument("--keep", help="comma-separated dependent op-ids to keep (from the --emit "
-                                  "frontier); implies --keep-dependents. Empty = keep none.")
+                                  "frontier); implies --keep-dependents. Empty = keep none. "
+                                  "With --to, names other LANES to preserve instead.")
+    r.add_argument("--to", type=int, metavar="COMMIT", dest="to",
+                   help="scrub <lane> back to its state as of commit <COMMIT> (a grid column "
+                        "index from `sgt log`); drops that lane's ops after it and their up-set.")
     r.add_argument("--repair", action="store_true")
     r.add_argument("--backend", default="api", choices=["api"])
     r.add_argument("--intent")
@@ -72,7 +76,13 @@ def _after(repo: str, a: str, b: str, retract: bool, as_json: bool) -> int:
 
 def _cmd_revert(args) -> int:
     if args.session:
-        return _revert_session(".", args.session, args.emit, args.as_json)
+        return _revert_session(".", args.session, args.emit, args.as_json, args.yes)
+    if args.to is not None:
+        # `sgt revert <lane> --to <commit>` (plan U11): the timeline-scrub edit. In this mode
+        # `--keep a,b` reinterprets its tokens as other LANE refs to preserve (not op-ids), since
+        # truncation removes a lane's post-<commit> up-set rather than toggling named dependents.
+        keep = tuple(tok for tok in (t.strip() for t in (args.keep or "").split(",")) if tok)
+        return _revert_lane_to_commit(".", args.ref, args.to, keep, args.emit, args.as_json, args.yes)
     if args.keep_dependents or args.keep is not None:
         # `--keep a,b` (from the --emit frontier) keeps exactly those toggleable dependents; a bare
         # `--keep-dependents` keeps them all (keep=None); `--keep ""` keeps none (a plain revert).
@@ -87,12 +97,20 @@ def _cmd_restore(args) -> int:
     return _kernel_edit_verb(".", "restore", args.ref, args.emit, args.as_json, args.yes)
 
 
-def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict | None = None) -> int:
+def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict | None = None,
+                      *, yes: bool = False, focus_fid: str | None = None) -> int:
     """Shared tail for the ideal-edit verbs: `--emit` renders the preview projection; otherwise
     apply the edit (when the preview is ok) and render the plain result view. Identical on both
     the revert/restore and the `--session` paths. `extra` (e.g. the intent overlay's `tier`) is
     merged into `view` unconditionally in both branches, before either the JSON or plain-text
-    emission call -- so it's visible on both output paths, not JSON only."""
+    emission call -- so it's visible on both output paths, not JSON only.
+
+    Feedforward (KTD): a plain-text (non-`--json`) apply first *draws* where the edit lands -- the
+    target feature's checkpoints with the removed/restored slice marked, plus the other features
+    the dependency blast hits (`render_verb_preview_lines`) -- then gates on `[y/N]`. `--yes` skips
+    the prompt; a non-tty stdin without `--yes` prints the preview and refuses to apply (exit 2),
+    mirroring the did-you-mean guard. `--json` is unchanged (applies immediately -- the machine
+    contract VS Code/TUI depend on)."""
     from sgt.core import verbs
 
     if emit:
@@ -102,6 +120,49 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         if extra:
             view = {**view, **extra}
         return _emit_json(view) if as_json else _print_verb_view(view)
+
+    # Plain-text apply: the confirm step. On an interactive tty this *is* the consequence focus
+    # pane (a zoomed region of `sgt log`: what breaks, adjust with space, apply with enter); with
+    # `--yes`, a non-tty, or textual absent it degrades to the feedforward-graph + `[y/N]` prompt.
+    if preview.ok and not as_json:
+        import sys
+
+        from sgt.api import _project_verb_preview, grid_view, map_view, segments_view
+
+        from ._common import maybe_confirm
+
+        pview = _project_verb_preview(repo, preview)
+        mv, gv, sv = map_view(repo), grid_view(repo), segments_view(repo)
+
+        if not yes:
+            decision = maybe_confirm(pview, mv, gv, sv, focus_fid=focus_fid)
+            if decision is not None:  # interactive tty + textual: the pane is the confirm step
+                if not decision.apply:
+                    print("  skipped — nothing changed.")
+                    return 1
+                return _apply_decision(repo, preview, decision.kept, as_json)
+
+        # Degrade path (--yes, non-tty, or no textual): draw the feedforward, gate on [y/N].
+        from sgt.tui.graph import render_verb_preview_lines
+
+        color = sys.stdout.isatty()
+        for line in render_verb_preview_lines(mv, gv, sv, pview, focus_fid=focus_fid, color=color):
+            print(line)
+        if not yes:
+            if not sys.stdin.isatty():
+                print("\n  not applied (no tty). re-run with --yes to apply, or --emit for a no-op preview.")
+                return 2
+            try:
+                reply = input(f"\napply this {preview.verb}? [y/N] ").strip().lower()
+            except EOFError:
+                reply = ""
+            if reply not in ("y", "yes"):
+                print("  skipped — nothing changed.")
+                return 1
+        verbs.apply(repo, preview)
+        print(f"  ✓ {preview.verb} applied — {len(preview.removed)} op(s) removed, "
+              f"{len(preview.added)} added.")
+        return 0
 
     if preview.ok:
         verbs.apply(repo, preview)
@@ -114,6 +175,40 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
     if extra:
         view = {**view, **extra}
     return _emit_json(view) if as_json else _print_verb_view(view)
+
+
+def _apply_decision(repo: str, preview, kept: frozenset[str], as_json: bool) -> int:
+    """Apply a consequence-pane Decision. A kept-set on a `revert` is exactly the existing
+    `--keep <ids>` continuation-hollow path -- each kept dependent stays live as a draft instead
+    of cascading out with the up-set; everything else is the plain exact edit through
+    `verbs.apply`. Empty kept-set = a bare apply (identical to the old `[y/N]` yes path)."""
+    from sgt.core import verbs
+
+    if kept and preview.verb == "revert":
+        return _revert_keep_dependents(repo, [preview.target], None, False, as_json, keep=kept)
+    verbs.apply(repo, preview)
+    print(f"  ✓ {preview.verb} applied — {len(preview.removed)} op(s) removed, "
+          f"{len(preview.added)} added.")
+    return 0
+
+
+def _revert_lane_to_commit(
+    repo: str, ref_tokens: list[str], commit_index: int, keep: tuple[str, ...],
+    emit: bool, as_json: bool, yes: bool = False,
+) -> int:
+    """`sgt revert <lane> --to <commit>` (plan U11): resolve <lane> to a feature, drop exactly its
+    ops after commit <commit> (plus their up-set), and preserve any lane named in `--keep`. Routed
+    through the same `_emit_verb_result` tail as every other ideal edit, so the `--emit` preview
+    carries the U4 coupling rows and apply goes through `sgt.core.verbs.apply`."""
+    from sgt.core.lens import get
+    from sgt.lens import verbs as lens_verbs
+
+    if not ref_tokens:
+        print("usage: sgt revert <lane> --to <commit> [--keep <lane>,...] [--emit] [--json]")
+        return 2
+    get(repo)  # mine-on-contact before planning the edit (R9)
+    preview = lens_verbs.plan_revert_lane_to_commit(repo, " ".join(ref_tokens), commit_index, keep=keep)
+    return _emit_verb_result(repo, preview, emit, as_json, yes=yes)
 
 
 def _kernel_edit_verb(
@@ -139,30 +234,104 @@ def _kernel_edit_verb(
     target = " ".join(ref_tokens)
     get(repo)  # mine-on-contact before planning/applying the edit (R9)
 
-    # A `<feature>@<n>` checkpoint (the intent-segment rewind unit): resolve it to its deterministic
-    # op-set and run the exact same op-set revert `sgt intent revert` uses (KTD6). Tried first for
-    # `revert` because `@` is unambiguous; restore has no op-set counterpart, so it falls through.
-    if cmd == "revert" and "@" in target:
+    # A `<feature>@<n>` or `<feature>:<slug>` checkpoint (the intent-segment rewind unit): resolve
+    # it to its deterministic op-set and run the exact same op-set revert `sgt intent revert` uses
+    # (KTD6). Tried first for `revert` because `@`/`:` name a checkpoint unambiguously; a non-match
+    # returns None and falls through. restore has no op-set counterpart, so it never enters here.
+    if cmd == "revert" and ("@" in target or ":" in target):
         from sgt.intent.segment import resolve_checkpoint
 
         resolved = resolve_checkpoint(repo, target)
         if resolved is not None:
             op_ids, label = resolved
             preview = verbs.plan_revert_op_set(repo, target, op_ids)
-            return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label})
+            # The feedforward focus is the feature the checkpoint's ops belong to (all ops in one
+            # segment share a feature); pick any target op and read its leaf feature.
+            from sgt.lens.tree import load as load_tree
+
+            op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
+            focus_fid = next((op_leaf[o] for o in op_ids if o in op_leaf), None)
+            return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label},
+                                     yes=yes, focus_fid=focus_fid)
+
+    import re
+
+    from sgt.lens import verbs as lens_verbs
 
     plan_single = verbs.plan_revert if cmd == "revert" else verbs.plan_restore
-    preview = plan_single(repo, target)
-    if not preview.ok:
-        from sgt.lens import verbs as lens_verbs
-
-        if lens_verbs.resolve_feature(repo, target) is not None:
-            plan_feature = lens_verbs.plan_revert_feature if cmd == "revert" else lens_verbs.plan_restore_feature
+    plan_feature = lens_verbs.plan_revert_feature if cmd == "revert" else lens_verbs.plan_restore_feature
+    # A bare-hex / `f-` handle (the copy token the graph prints) *is* a founding op id, so `plan_single`
+    # would target that one op. But the handle names the whole feature -- resolve it as a feature first,
+    # the feature scope winning over the op it shadows. Symbols (`a.py::foo`) and `@n`/`:slug` never
+    # match this shape (handled earlier / carry `::@:`), so single-op-by-symbol is unchanged.
+    handle_shaped = re.fullmatch(r"(f-)?[0-9a-f]{3,}", target) is not None
+    focus_fid = None
+    if handle_shaped:
+        resolved_feature = lens_verbs.resolve_feature(repo, target)
+        if resolved_feature is not None:
+            focus_fid = resolved_feature[1]  # (op_set, feature_id, label): feature scope wins over the op it shadows
             preview = plan_feature(repo, target)
         else:
-            return _resolve_via_intent(repo, cmd, target, as_json, yes)
+            # No feature claims this hex handle -- but a *full* op id (the copy token `log --ops`
+            # prints) is all-hex too, so it lands here while genuinely naming an op. Try the single-op
+            # plan before giving up. Only a hex string that is *neither* feature nor op is a
+            # typo'd/stale handle; answer that deterministically (no NL rung a bare hex never deserves).
+            preview = plan_single(repo, target)
+            if not preview.ok:
+                return _no_feature_match(repo, cmd, target, as_json)
+    else:
+        preview = plan_single(repo, target)
+        if not preview.ok:
+            resolved_feature = lens_verbs.resolve_feature(repo, target)
+            if resolved_feature is not None:
+                focus_fid = resolved_feature[1]
+                preview = plan_feature(repo, target)
+            else:
+                return _resolve_via_intent(repo, cmd, target, as_json, yes)
 
-    return _emit_verb_result(repo, preview, emit, as_json)
+    if focus_fid is None and preview.ok:
+        # Single-op target: focus the feedforward on the feature that owns the most touched ops.
+        from collections import Counter
+
+        from sgt.lens.tree import load as load_tree
+
+        op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
+        touched = preview.removed if cmd == "revert" else preview.added
+        tally = Counter(op_leaf[o] for o in touched if o in op_leaf)
+        focus_fid = tally.most_common(1)[0][0] if tally else None
+
+    return _emit_verb_result(repo, preview, emit, as_json, yes=yes, focus_fid=focus_fid)
+
+
+def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
+    """A handle-shaped target (`f-`/bare-hex) that resolved to no *unique* feature -- a typo, a stale
+    id, or a too-short (ambiguous) prefix. Answer deterministically and instantly (no LLM): list the
+    leaf features whose handle the prefix matches, or point at `sgt log` when none do. Always exit 2."""
+    from sgt.lens.tree import load as load_tree
+
+    nodes = (load_tree(repo) or {}).get("nodes", {})
+    bare = target[2:] if target.startswith("f-") else target
+
+    def body(nid: str) -> str:
+        return nid[2:] if nid.startswith("f-") else nid
+
+    hits = sorted(
+        (nid for nid, nd in nodes.items() if not nd["children"] and body(nid).startswith(bare)),
+        key=lambda nid: nodes[nid].get("label", nid),
+    )
+    if as_json:
+        import json
+
+        cands = [{"ref": body(nid)[:8], "label": nodes[nid].get("label", nid)} for nid in hits]
+        print(json.dumps({"ok": False, "verb": cmd, "target": target, "candidates": cands}, indent=2))
+        return 2
+    if not hits:
+        print(f"? [{cmd}] no feature matches handle {target!r} -- run `sgt log` to see the handles.")
+        return 2
+    print(f"? [{cmd}] {target!r} is an ambiguous handle; did you mean:")
+    for nid in hits[:8]:
+        print(f"  sgt {cmd} {body(nid)[:8]}   {nodes[nid].get('label', nid)}")
+    return 2
 
 
 def _plan_for(verb: str, repo: str, ref: str, kind: str = ""):
@@ -262,7 +431,7 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
     return 2
 
 
-def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:
+def _revert_session(repo: str, name: str, emit: bool, as_json: bool, yes: bool = False) -> int:
     """`sgt revert --session <name>` (plan U31, S7): addressing by provenance -- resolves a
     session name to the op-set it landed (`sgt.core.session.ops_by_session`, reading structured
     attribution rather than the session record, so it still works long after the session itself is
@@ -274,7 +443,7 @@ def _revert_session(repo: str, name: str, emit: bool, as_json: bool) -> int:
     get(repo)  # mine-on-contact before resolving the session's ops (R9)
     preview = verbs.plan_revert_session(repo, name)
 
-    return _emit_verb_result(repo, preview, emit, as_json)
+    return _emit_verb_result(repo, preview, emit, as_json, yes=yes)
 
 
 def _revert_keep_dependents(

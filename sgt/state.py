@@ -6,8 +6,8 @@ problem specific to sgt: `sync` reads committed artifacts (pins, declared, tree)
 working tree but from *arbitrary historical git blobs* -- a teammate's ref tip can be any vintage
 (`gb.blob_bytes(theirs_sha, ...)`). So an on-disk format is never retired from the read path; once
 a new schema ships, every reader must keep parsing every schema any sgt version ever committed,
-forever. Designing that in now -- before the five collaboration artifacts (committed `ideal.json`,
-`forks.json`, claims, proposals, aliases; U20-U24) exist -- is cheap; retrofitting it later is not.
+forever. Designing that in now -- before the collaboration artifacts (committed `ideal.json`,
+`forks.json`, claims, proposals; U20-U24) exist -- is cheap; retrofitting it later is not.
 
 Every JSON artifact's payload is wrapped in a uniform envelope, `{"schema": <int>, "data": <body>}`.
 A payload lacking that envelope is implicitly v0 (the pre-U17 shape, byte-for-byte what is committed
@@ -70,13 +70,12 @@ class _Artifact:
 
 
 # The registry: logical name -> layout. New collaboration artifacts (U20-U24: committed
-# `ideal.json`, `forks.json`, `claims/`, `proposals/`, `aliases`) get their slot added here, all
+# `ideal.json`, `forks.json`, `claims/`, `proposals/`) get their slot added here, all
 # `committed=True`, and inherit the envelope + blob dispatch for free.
 _ARTIFACTS: dict[str, _Artifact] = {
     # committed, team-shared -- read from arbitrary-vintage historical blobs by `sync`.
     "oracle_config": _Artifact(("oracle.json",), committed=True),
     "identity_constraints": _Artifact(("identity_constraints.json",), committed=True, sort_keys=False),
-    "declared": _Artifact(("declared.json",), committed=True, sort_keys=False),
     "pins": _Artifact(("pins", "pins.json"), committed=True, sort_keys=False),
     "tree": _Artifact(("tree", "tree.json"), committed=True),
     # committed recovery record of a witness commit's own ideal (op-id list) -- survives a
@@ -86,11 +85,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # committed record of the open same-symbol forks a sync surfaced (C4) -- a fork is durable,
     # shared state that travels with the repo so a teammate's next sync (and `sgt status`) sees it.
     "forks": _Artifact(("forks.json",), committed=True),
-    # committed G-Set of feature-id aliases: old-id -> new-id from the birth-id migration (U21/D6).
-    # Additive-only so a stale reference from an un-migrated clone's history still resolves after
-    # that clone syncs; a same-old collision (divergent unsynced curation) resolves by the alias-
-    # merge rule. Travels with the repo and is read from historical blobs, like every committed slot.
-    "aliases": _Artifact(("aliases.json",), committed=True),
     # committed collection of authored features (`sgt.lens.authored`, U6/R3/KTD3): af-id ->
     # {label, label_witness, member OR-Set (adds+tombstones)}. A user-authored named selection that
     # is first-class merged state, not a `tree.build` output -- merged field-by-field on sync (OR-Set
@@ -98,9 +92,8 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # historical blobs like every committed slot.
     "authored_features": _Artifact(("authored", "features.json"), committed=True, sort_keys=False),
     # committed OR-Set of declared order edges (`sgt after`/`sgt after --retract`, U21/D6): adds
-    # carry a unique tag, retraction tombstones observed tags, live = adds minus tombstoned. A new
-    # path (the legacy flat G-Set stays at `declared` in v0 shape for old readers, D3 old-reader
-    # policy); `sgt.core.lens` resolves this down to the plain live edge set every consumer expects.
+    # carry a unique tag, retraction tombstones observed tags, live = adds minus tombstoned.
+    # `sgt.core.lens` resolves this down to the plain live edge set every consumer expects.
     "declared_orset": _Artifact(("declared_edges.json",), committed=True),
     # committed three-tier file-boundary overrides (`sgt tiers set`, U27/D4): explicit
     # entity/opaque/ignored patterns, the escape hatch over the built-in grammar-presence
@@ -131,6 +124,17 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
+    # local, gitignored clustering/merge suggestion queue (U7): {id: record}, add-only until a
+    # suggestion is accepted (via `sgt feature merge`/`split`/`move`) or dismissed. Local, not a
+    # committed G-Set: suggestions are advisory and *dismissable* (a committed G-Set would need
+    # tombstones), and a cross-clone conflict (U6) surfaces on the clone that ran the sync, which
+    # is where it is resolved. Content-addressed id, so re-emitting the same suggestion is a no-op.
+    "suggestions": _Artifact(("local", "suggestions.json"), committed=False),
+    # local, gitignored per-ref mining-fidelity marks: {ref_key: [sha, ...]} recording the
+    # witnessing commits whose mined ops `order.reduce_to_ideal` had to drop (a fork tip, an
+    # ungrounded op). `grid_view` reads it to mark those commits "partial" instead of silently
+    # omitting the loss (R6). Derived from *this* clone's own reduction pass -- never travels.
+    "fidelity": _Artifact(("local", "fidelity.json"), committed=False),
     # local, gitignored per-ref genesis-backfill frontier: how far backward a backfill of
     # pre-horizon history has progressed for a given ref. Never travels -- like `witness` and
     # `ideal_table`, it's derived from *this* clone's own mining progress.

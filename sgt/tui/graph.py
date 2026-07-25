@@ -30,7 +30,7 @@ from .color import color_for
 
 def graph_layout(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     *,
     collapsed=(),
     frontier: int | None = None,
@@ -40,12 +40,19 @@ def graph_layout(
     fr = float("inf") if frontier is None else frontier
     by_id = {n["id"]: n for n in map_view.get("nodes", [])}
 
+    # The op -> (feature, commit) join is `grid_view`'s already-computed cell table (plan U3, the
+    # canonical `sgt.api.grid_view`): a cell carries the ops one feature touched in one commit, so a
+    # feature's ops are just the cells bearing its id -- no per-op DAG walk here. An op with no
+    # feature has no cell and never appears (the same drop this filter used to do inline). `frontier`
+    # folds by commit index; cells past it are dropped so scrubbing accretes.
     ops_by_feature: dict[str, list] = {}
-    for op in history_view.get("ops", []):
-        fid = op.get("feature_id")
-        if fid is None or op["commit_index"] > fr:
+    for cell in grid_view.get("cells", []):
+        ci = cell["commit_index"]
+        if ci > fr:
             continue
-        ops_by_feature.setdefault(fid, []).append(op)
+        bucket = ops_by_feature.setdefault(cell["feature_id"], [])
+        for oid in cell["op_ids"]:
+            bucket.append({"id": oid, "commit_index": ci})
     for fid in ops_by_feature:
         ops_by_feature[fid].sort(key=lambda o: o["commit_index"])
 
@@ -183,13 +190,13 @@ def graph_layout(
     return {
         "lanes": lanes, "headers": headers, "edges": edges, "overflow": overflow,
         "node_by_id": lane_by_id, "ops_by_feature": ops_by_feature,
-        "row_count": max(1, row), "commit_count": len(history_view.get("commits") or []),
+        "row_count": max(1, row), "commit_count": len(grid_view.get("commits") or []),
     }
 
 
 def segment_layout(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     segments: list[dict],
     *,
     collapsed=(),
@@ -211,13 +218,14 @@ def segment_layout(
     dropped: the renderer dims it, but a lane's car *count* and positions stay stable while
     scrubbing -- only cell density (via `graph_layout`'s own op filtering) accretes."""
     fr = float("inf") if frontier is None else frontier
-    commit_index_of = {op["id"]: op["commit_index"] for op in history_view.get("ops", [])}
+    commit_index_of = {oid: cell["commit_index"]
+                       for cell in grid_view.get("cells", []) for oid in cell["op_ids"]}
 
     by_feature: dict[str, list[dict]] = {}
     for seg in segments:
         by_feature.setdefault(seg["feature_id"], []).append(seg)
 
-    base = graph_layout(map_view, history_view, collapsed=collapsed, frontier=frontier)
+    base = graph_layout(map_view, grid_view, collapsed=collapsed, frontier=frontier)
 
     lanes = []
     for l in base["lanes"]:
@@ -251,7 +259,7 @@ def segment_layout(
 # ── Episodic projection (pure) ───────────────────────────────────────────────────────────────────
 
 
-def episodes(map_view: dict, history_view: dict) -> dict:
+def episodes(map_view: dict, grid_view: dict) -> dict:
     """Roll the flat op stream up into EPISODES -- one per commit that carried ops -- and group
     episodes by their dominant feature into collapsible episode-groups (the "co-commit cluster" a
     developer rewinds as a unit; Stage C).
@@ -260,28 +268,28 @@ def episodes(map_view: dict, history_view: dict) -> dict:
     axis is projected from provenance: an op's ``commit_index`` identifies its earliest provenance
     commit, so ops sharing a ``commit_index`` were advanced in the same commit = one episode --
     exactly the co-commit signal Stage B clusters on. Real sgt sessions supersede this going
-    forward; the shape is identical. Pure over the same ``map_view``/``history_view(full=True)``
-    both surfaces already fetch. The VS Code counterpart is ``rollupEpisodes`` in workbench.js."""
+    forward; the shape is identical. Pure over the canonical ``grid_view`` cell table (plan U3) --
+    a cell already carries the ops one feature touched in one commit, so an episode is the cells
+    sharing one ``commit_index`` re-rolled across features; an op with no feature has no cell, so
+    (unlike the raw op stream) an all-unattributed commit forms no episode. The VS Code counterpart
+    is ``rollupEpisodes`` in workbench.js."""
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
-    subject_of = {c["index"]: c.get("subject", "") for c in history_view.get("commits", [])}
-    sha_of = {c["index"]: c.get("sha") for c in history_view.get("commits", [])}
+    subject_of = {c["index"]: c.get("subject", "") for c in grid_view.get("commits", [])}
+    sha_of = {c["index"]: c.get("sha") for c in grid_view.get("commits", [])}
 
     by_index: dict[int, dict] = {}
-    for op in history_view.get("ops", []):
-        idx = op["commit_index"]
+    for cell in grid_view.get("cells", []):
+        idx = cell["commit_index"]
         ep = by_index.get(idx)
         if ep is None:
             ep = by_index[idx] = {
                 "index": idx, "sha": sha_of.get(idx), "subject": subject_of.get(idx, ""),
                 "op_ids": [], "features": {}, "kinds": {},
             }
-        ep["op_ids"].append(op["id"])
-        fid = op.get("feature_id")
-        if fid is not None:
-            ep["features"][fid] = ep["features"].get(fid, 0) + 1
-        kind = op.get("kind")
-        if kind:
-            ep["kinds"][kind] = ep["kinds"].get(kind, 0) + 1
+        ep["op_ids"].extend(cell["op_ids"])
+        ep["features"][cell["feature_id"]] = ep["features"].get(cell["feature_id"], 0) + cell["op_count"]
+        for kind, n in cell["kinds"].items():
+            ep["kinds"][kind] = ep["kinds"].get(kind, 0) + n
 
     episodes_out = []
     for idx in sorted(by_index):
@@ -398,7 +406,8 @@ def _resolve_focus(focus: str, layout: dict, labels: dict) -> str | None:
     render prints, e.g. `f-0575f655` for a longer real id), else a unique case-insensitive label
     match. Mirrors `sgt.intent.segment.resolve_checkpoint`'s handle resolution, so the id you copy
     off the graph and the id you pass back in agree."""
-    prefix_hits = [nid for nid in layout["node_by_id"] if nid.startswith(focus)]
+    prefix_hits = [nid for nid in layout["node_by_id"]
+                   if focus and (nid.startswith(focus) or nid.startswith("f-" + focus))]
     if len(prefix_hits) == 1:
         return prefix_hits[0]
     want = focus.strip().lower()
@@ -424,6 +433,20 @@ def _bucket_density(sub_bins: list, width: int) -> list[int]:
     return buckets
 
 
+_SPARK = "▁▂▃▄▅▆▇█"
+
+
+def _lane_sub_bins(cars: list[dict]) -> list:
+    """Union a lane's cars into one `[(commit_index, op_count), ...]` density series -- summing the
+    per-car `sub_bins` (`sorted(commit_index -> op_count)`, built in `segment_layout`) by commit so
+    the overview sparkline reflects the whole feature's op-density over its lifetime, not one car."""
+    merged: dict[int, int] = {}
+    for c in cars:
+        for ci, cnt in c.get("sub_bins", []):
+            merged[ci] = merged.get(ci, 0) + cnt
+    return sorted(merged.items())
+
+
 def _time_ruler(prefix_w: int, bar_w: int, commit_count: int) -> str:
     """A commit-index ruler aligned under the car strip: start/mid/end ticks (`c0 … cN`) at the same
     columns `render_cars` maps commits onto, so a car's horizontal position reads as *when*. Blank
@@ -445,9 +468,79 @@ def _time_ruler(prefix_w: int, bar_w: int, commit_count: int) -> str:
     return " " * prefix_w + "".join(buf)
 
 
+def _ellipsize(s: str, width: int) -> str:
+    """Truncate a checkpoint label to `width` columns, cutting on a word boundary where one is near
+    the limit (so `add foo, qux, config, binary` becomes `add foo, qux, config…`, not `…config, bi`)
+    and appending `…`. Short-enough labels pass through untouched."""
+    if len(s) <= width:
+        return s
+    cut = s[:width].rstrip()
+    space = cut.rfind(" ")
+    if space >= width - 8:  # a word boundary close enough to the limit -- cut there, not mid-word
+        cut = cut[:space].rstrip(" ,;:")
+    return cut + "…"
+
+
+def _paint(hex_str: str, s: str, *, color: bool) -> str:
+    return _fg(hex_str, s) if color else s
+
+
+def _dim(s: str, *, color: bool) -> str:
+    return f"{_DIM}{s}{_RESET}" if color else s
+
+
+def _bold(s: str, *, color: bool) -> str:
+    return f"{_BOLD}{s}{_RESET}" if color else s
+
+
+def _render_car(car: dict, width: int, hexc: str, *, color: bool, is_big: bool = False) -> str:
+    """One checkpoint "car": tier brackets around a `@n` digit and a density-shaded body. Module
+    level so both the timeline rail (`render_graph_lines`) and the feedforward preview
+    (`render_verb_preview_lines`) draw the same glyph. A future car (past the frontier) renders dim."""
+    lo, hi = _TIER_BRACKETS.get(car["tier"], ("[", "]"))
+    inner_w = max(0, width - 2)
+    body = ""
+    if inner_w >= 1:
+        digit = str(car["seg_index"] % 10)
+        body += _dim(digit, color=color) if car["is_future"] else (
+            _bold(_paint(hexc, digit, color=color), color=color) if color else digit)
+    if inner_w >= 2:
+        buckets = _bucket_density(car["sub_bins"], inner_w - 1)
+        local_max = max(buckets) if buckets else 0
+        for n in buckets:
+            ch = "█" if n > 0 else "·"
+            if car["is_future"] or n == 0:
+                body += _dim(ch, color=color)
+            else:
+                body += _shade(hexc, (n / max(1, local_max)) ** 0.5, ch) if color else ch
+
+    def bracket(b: str) -> str:
+        if car["is_future"]:
+            return _dim(b, color=color)
+        painted = _paint(hexc, b, color=color)
+        return _bold(painted, color=color) if (is_big and color) else painted  # big event = bold
+
+    return f"{bracket(lo)}{body}{bracket(hi)}"
+
+
+def _min_unique_prefixes(ids, *, floor: int = 5, cap: int = 10) -> dict:
+    """jj-style: for each id, the shortest prefix length (clamped to `[floor, cap]`) that no *other*
+    id in the set shares -- the minimal handle a user must type to point at it unambiguously. Feature
+    ids are `f-<hex>`, so the leading `f-` is common; brightening `fid[:k]` and dimming the rest tells
+    the eye exactly how few characters actually select this feature."""
+    ids = list(ids)
+    out: dict = {}
+    for fid in ids:
+        k = floor
+        while k < cap and any(other != fid and other[:k] == fid[:k] for other in ids):
+            k += 1
+        out[fid] = min(k, len(fid))
+    return out
+
+
 def render_graph_lines(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     segments: list[dict] | None = None,
     *,
     selected: str | None = None,
@@ -458,59 +551,59 @@ def render_graph_lines(
     bar_width: int = 42,
     label_width: int = 24,
     show_links: bool = False,
+    timeline: bool = False,
 ) -> list[str]:
-    """Render the feature timeline as terminal lines (ANSI truecolor when `color`). The visual atom
-    is the intent *segment*, not the raw op: each lane draws its checkpoints as bracketed "cars"
-    positioned on the SHARED commit-time axis -- a car sits at the column of its first commit and
-    spans to its last, over a dim lifetime track -- so reading left-to-right shows *when* each
-    feature was worked on and when it went quiet, against the same time span every lane shares. The
-    texture inside a car ∝ its own commit density, the bracket shape ∝ `tier` (`[ ]` co-changed/
-    coupled, `( )` thematic, a weaker claim), and the lane's fattest chapter (its "big event") gets
-    bold brackets. The digit is the checkpoint's `@n` -- the handle you pass to `sgt revert`.
+    """Render the feature timeline as terminal lines (ANSI truecolor when `color`). Two tiers:
+
+    - **Default (`timeline=False`)**: a clean per-feature *overview*. One row per lane -- full-width
+      title (no cramped 42-col rail stealing room), a compact 8-char density sparkline of the
+      feature's op-activity over its lifetime, its op count, and `✦n` checkpoint count. No wrapping
+      label line, no shared time ruler: reverting is *picking a named thing*, so the named list lives
+      in `--focus <f>` (vertical, one car per line with its slug) rather than a horizontal axis.
+    - **`timeline=True`**: the shared commit-time car rail. Each lane draws its checkpoints as
+      bracketed "cars" on the SHARED commit-time axis -- a car sits at the column of its first commit
+      and spans to its last, over a dim lifetime track -- so left-to-right shows *when* each feature
+      was worked on. Texture ∝ commit density, bracket ∝ `tier` (`[ ]` co-changed/coupled, `( )`
+      thematic), the lane's fattest chapter gets bold brackets, and the digit is the checkpoint `@n`.
 
     `segments` is the flat `sgt.api.segments_view` list; a lane with no matching segments (nothing
     built yet for it) falls back to a plain dim lifetime track. `focus=<feature_id>` renders just
-    that one lane, full width, one detail line per car (checkpoint, label, op count, tier, source).
+    that one lane, full width, one detail line per car (checkpoint, slug, label, op count, tier).
     `show_links` re-enables the co-change `↔` annotation trailing each row -- off by default, since
     themes/co-change are now an overlay, not the primary read."""
+    from sgt.intent.segment import checkpoint_slug
+
     segments = segments or []
     fr = float("inf") if frontier is None else frontier
-    layout = segment_layout(map_view, history_view, segments, collapsed=collapsed, frontier=frontier)
+    layout = segment_layout(map_view, grid_view, segments, collapsed=collapsed, frontier=frontier)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
 
     def paint(hex_str: str, s: str) -> str:
-        return _fg(hex_str, s) if color else s
+        return _paint(hex_str, s, color=color)
 
     def dim(s: str) -> str:
-        return f"{_DIM}{s}{_RESET}" if color else s
+        return _dim(s, color=color)
 
     def bold(s: str) -> str:
-        return f"{_BOLD}{s}{_RESET}" if color else s
+        return _bold(s, color=color)
+
+    # jj-style handles: the minimal-unique-prefix of each feature id, brightened so the eye sees
+    # exactly how few characters actually select it (the rest dimmed). The token stays copy-pasteable.
+    prefix_len = _min_unique_prefixes(list(layout["node_by_id"]))
+
+    def brighten_prefix(fid: str, hexc: str, *, full: bool = False) -> str:
+        # Drop the shared `f-` tag -- the eye doesn't need it and the user asked it gone; the copy
+        # token is the bare hex. Brighten its minimal-unique prefix (offset by the 2 `f-` chars the
+        # prefix length counted). `full` shows the whole body (focus header), else the 8-char handle.
+        has_tag = fid.startswith("f-")
+        body = fid[2:] if has_tag else fid
+        disp = body if full else body[:8]
+        k = max(0, min(prefix_len.get(fid, 5) - (2 if has_tag else 0), len(disp)))
+        head = bold(paint(hexc, disp[:k])) if color else disp[:k]
+        return head + dim(disp[k:])
 
     def render_car(car: dict, width: int, hexc: str, is_big: bool = False) -> str:
-        lo, hi = _TIER_BRACKETS.get(car["tier"], ("[", "]"))
-        inner_w = max(0, width - 2)
-        body = ""
-        if inner_w >= 1:
-            digit = str(car["seg_index"] % 10)
-            body += dim(digit) if car["is_future"] else (bold(paint(hexc, digit)) if color else digit)
-        if inner_w >= 2:
-            buckets = _bucket_density(car["sub_bins"], inner_w - 1)
-            local_max = max(buckets) if buckets else 0
-            for n in buckets:
-                ch = "█" if n > 0 else "·"
-                if car["is_future"] or n == 0:
-                    body += dim(ch)
-                else:
-                    body += _shade(hexc, (n / max(1, local_max)) ** 0.5, ch) if color else ch
-
-        def bracket(b: str) -> str:
-            if car["is_future"]:
-                return dim(b)
-            painted = paint(hexc, b)
-            return bold(painted) if (is_big and color) else painted  # big event = bold brackets
-
-        return f"{bracket(lo)}{body}{bracket(hi)}"
+        return _render_car(car, width, hexc, color=color, is_big=is_big)
 
     def render_cars(cars: list[dict], hexc: str, width: int) -> str:
         """Draw a lane's cars positioned on the SHARED commit-time axis: each car sits at the column
@@ -552,6 +645,36 @@ def render_graph_lines(
             out += dim("─" * (width - col))
         return out
 
+    def sparkline(cars: list[dict], hexc: str, width: int = 18) -> str:
+        """A `▁▂▃▄▅▆▇█` density bar **partitioned by checkpoint**: one region per car, joined by a dim
+        `│` rewind boundary, so the bar shows both *where the work concentrated* and *how many rewind
+        points there are* -- each region is directly a `sgt revert` target. Region widths split `width`
+        proportionally to op-count (min 1 col), so a big checkpoint reads wider; glyph height scales to
+        the lane's busiest commit (a dense checkpoint reads taller), shaded by the feature hue. Future
+        cars (past the frontier) render dim. Empty (dim `·`) when the lane has no ops yet."""
+        if not cars:
+            return dim("·" * width)
+        counts = [cnt for c in cars for _ci, cnt in c.get("sub_bins", [])]
+        gmax = max(counts) if counts else 0
+        if gmax <= 0:
+            return dim("·" * width)
+        seps = len(cars) - 1
+        avail = max(len(cars), width - seps)
+        total = sum(max(1, c["op_count"]) for c in cars) or 1
+        parts = []
+        for c in cars:
+            w = max(1, round(avail * max(1, c["op_count"]) / total))
+            seg = ""
+            for n in _bucket_density(c.get("sub_bins", []), w):
+                if n <= 0:
+                    seg += dim("·")
+                    continue
+                frac = n / gmax
+                ch = _SPARK[min(len(_SPARK) - 1, int(frac * (len(_SPARK) - 1) + 0.5))]
+                seg += dim(ch) if c.get("is_future") else (_shade(hexc, frac ** 0.5, ch) if color else ch)
+            parts.append(seg)
+        return dim("│").join(parts)
+
     # Nearest co-change neighbours (strongest first), for the optional per-lane annotation.
     nbrs: dict[str, list] = {}
     for e in sorted(layout["edges"], key=lambda e: -e["weight"]):
@@ -584,34 +707,47 @@ def render_graph_lines(
                              "ambiguous prefix/label)"))
             return lines
         focus = fid_match
-        handle = focus[:10]  # the copy-paste token -- same prefix the gutter itself prints
+        handle = focus[2:10] if focus.startswith("f-") else focus[:8]  # copy token: the bare hex the gutter prints
         hexc = color_for(focus)
         raw = labels.get(focus, focus)
-        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {dim(focus)}  ·  {lane['op_count']} op(s)")
+        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {brighten_prefix(focus, hexc, full=True)}  ·  {lane['op_count']} op(s)")
         lines.append("")
         if not lane["cars"]:
-            lines.append(dim("   no checkpoints yet -- run `sgt intent build` (or `sgt graph --refresh`)"))
+            lines.append(dim("   no checkpoints yet -- run `sgt intent build` (or `sgt log --refresh`)"))
+        example_slug = None
         for car in lane["cars"]:
             head = render_car(car, 6, hexc)
             future = dim(" (not yet reached)") if car["is_future"] else ""
-            lines.append(f"   {head}  {handle}@{car['seg_index']}  {car['label']}  "
+            slug = checkpoint_slug(car["label"])
+            if example_slug is None and not car["is_future"]:
+                example_slug = slug
+            lines.append(f"   {head}  {handle}@{car['seg_index']}  {dim(':' + slug)}  {car['label']}  "
                          f"({car['op_count']} op, {car['tier']}, {car['source']}){future}")
         lines.append("")
-        lines.append(dim(f" operate:  sgt revert {handle}  (whole feature)   ·   "
-                         f"sgt revert {handle}@<n>  (one car)   ·   sgt intent show {handle}"))
+        slug_hint = example_slug or "<slug>"
+        lines.append(dim(f" operate:  sgt revert {handle}:{slug_hint}  (one checkpoint, by name)   ·   "
+                         f"sgt revert {handle}  (whole feature)   ·   sgt revert {handle}@<n>  (by index)"))
         return lines
 
     lanes_by_row = {l["row"]: l for l in layout["lanes"]}
     headers_by_row = {h["row"]: h for h in layout["headers"]}
-    # A time ruler aligned under the car strip -- the prefix width matches the row layout below
-    # (leading space + marker + glyph + space + 10-char handle + space + label + space).
-    ruler = _time_ruler(label_width + 16, bar_width, layout["commit_count"])
-    if ruler:
-        lines.append(dim(ruler))
+
+    # A time ruler aligned under the car strip -- only the timeline tier has a shared axis to place
+    # along. The prefix width matches the row layout below (space + marker + glyph + space + 10-char
+    # handle + space + label + space).
+    if timeline:
+        ruler = _time_ruler(label_width + 16, bar_width, layout["commit_count"])
+        if ruler:
+            lines.append(dim(ruler))
     for row in range(layout["row_count"]):
         if row in headers_by_row:
             hd = headers_by_row[row]
-            label = ("▾ " + hd["label"])[:label_width + 2].ljust(label_width + 2)
+            if not timeline and lines and lines[-1] != "":
+                lines.append("")  # breathing room between subsystems (overview only)
+            # Overview: header width aligns the `N feat · M op` meta over the sparkline column below
+            # (indent+marker+glyph+handle+30-char title). Timeline keeps its label_width.
+            hdr_w = 45 if not timeline else label_width + 2
+            label = ("▾ " + hd["label"])[:hdr_w].ljust(hdr_w)
             meta = f"{hd['lane_count']} feat · {hd['op_count']} op"
             lines.append(dim(f" {label} {meta}"))
         elif row in lanes_by_row:
@@ -624,28 +760,340 @@ def render_graph_lines(
             raw = labels.get(fid, fid)
             if l["is_meta"]:
                 raw = f"{raw} ({len(l['leaves'])})"
-            label = raw[:label_width].ljust(label_width)
-            handle = dim(fid[:10].ljust(10))  # the copy-paste token for revert
-            bar = render_cars(l["cars"], hexc, bar_width)
+            handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = the minimal unique prefix
             count = str(l["op_count"]).rjust(5)
-            n_ckpt = len(l["cars"])
-            ckpt = dim(f" ✦{n_ckpt}") if n_ckpt else ""  # rewind points on this lane
-            row_s = (f" {marker}{paint(hexc, glyph)} {handle} "
-                     f"{bold(label) if is_sel else label} {bar} {dim(count)}{ckpt}")
+            if timeline:
+                label = raw[:label_width].ljust(label_width)
+                bar = render_cars(l["cars"], hexc, bar_width)
+                n_ckpt = len(l["cars"])
+                trailer = dim(f" ✦{n_ckpt}") if n_ckpt else ""  # rewind points (listed below the row)
+                indent = " "
+            else:
+                # Overview: a moderate title (room for the chips), a compact density sparkline, then the
+                # checkpoints spelled out -- the rewind targets by name instead of an opaque `✦N` count.
+                ov_title = 30
+                label = _ellipsize(raw, ov_title).ljust(ov_title)
+                bar = sparkline(l["cars"], hexc)
+                slugs = [checkpoint_slug(c["label"]) for c in l["cars"]]
+                shown = slugs[:3]
+                trailer = ("  " + dim(" · ".join(shown) + (f" · +{len(slugs) - 3}" if len(slugs) > 3 else ""))) if slugs else ""
+                indent = "   "  # nest features under their subsystem header
+            row_s = (f"{indent}{marker}{paint(hexc, glyph)} {handle} "
+                     f"{bold(label) if is_sel else label} {bar} {dim(count)}{trailer}")
             row_s += links_note(fid)
             lines.append(row_s)
-            if is_sel and l["cars"]:
-                chapters = "   ".join(f"{c['seg_index']} {c['label']}" for c in l["cars"])
-                lines.append(dim(f"      {chapters}"))
+            if timeline and l["cars"]:
+                # The car glyph shows a bare `[n]`; a digit alone is not a rewind target a user can
+                # reason about ("go back to 2" -- 2 of what?). So spell each checkpoint out beneath its
+                # lane, led by the `@n` token that IS the revert handle and matches the car's digit,
+                # then the label that carries the meaning. Shown for every lane with cars, not just the
+                # selected one -- the labels are the whole point of the rail.
+                shown = l["cars"][:6]
+                parts = [f"@{c['seg_index']} {_ellipsize(c['label'], 26)}" for c in shown]
+                more = len(l["cars"]) - len(shown)
+                if more > 0:
+                    parts.append(f"+{more} more")
+                lines.append(dim("      " + "  ·  ".join(parts)))
     lines.append("")
 
     # Legend + next-step hints: the view explains its own encoding and what to do from here.
-    lines.append(dim(" [0···] = a checkpoint car at its commit-time (digit = its @n, brightness = op"
-                     " density); [ ] co-changed · ( ) thematic · bold = the lane's big event · dim = past frontier"))
-    lines.append(dim(" daily:  sgt graph  (fast, cached)   ·   sgt graph --refresh  (after edits: re-name"
-                     " features + checkpoints)   ·   sgt graph --focus <f-XXXX>  (one feature, full detail)"))
-    lines.append(dim(" operate:  sgt revert <f-XXXX>  (whole feature)   ·   sgt revert <f-XXXX>@<n>"
-                     "  (one checkpoint/car)   ·   sgt intent show <f-XXXX>  (its chapters)"))
+    if timeline:
+        lines.append(dim(" [0···] = a checkpoint car at its commit-time (digit = its @n, brightness = op"
+                         " density); [ ] co-changed · ( ) thematic · bold = the lane's big event · dim = past frontier"))
+    else:
+        lines.append(dim(" ▁▂▃▄▅▆▇█ = op-density (taller = busier), │ = a rewind boundary between checkpoints"
+                         "   ·   trailing chips = the checkpoints (rewind by name)   ·   bright handle chars = the minimal prefix to type"))
+    # lines.append(dim(" daily:  sgt log  (overview)   ·   sgt log --focus <XXXX>  (one feature's named"
+    #                  " checkpoints)   ·   sgt log --timeline  (commit-time rail)   ·   sgt log --refresh  (re-name)"))
+    # lines.append(dim(" operate:  sgt revert <XXXX>:<slug>  (one checkpoint, by name)   ·   "
+    #                  "sgt revert <XXXX>  (whole feature)   ·   sgt intent show <XXXX>  (its chapters)"))
+    return lines
+
+
+def render_verb_preview_lines(
+    map_view: dict,
+    grid_view: dict,
+    segments: list[dict] | None,
+    preview_view: dict,
+    *,
+    focus_fid: str | None,
+    color: bool = True,
+) -> list[str]:
+    """The **feedforward** graph for a revert/restore: instead of applying blind, draw *where it
+    lands*. The target feature's checkpoints are shown vertically (like `--focus`) with the affected
+    slice marked -- `▸`/`✗` a checkpoint the edit removes, `◐` one partly touched, else `kept`; a
+    restore marks the re-added slice instead. Below it, the OTHER features the dependency blast hits,
+    each badged `blast` (loses ops -> must re-draft) or `foundation` (a locked prerequisite). Ends
+    with a one-line summary. Pure over the `_project_verb_preview` dict + the same
+    map/grid/segments the log reads, so it's testable and shares `_render_car`/`color_for` with the
+    overview. The `[y/N]` prompt and any capped diff stay in the CLI caller."""
+    from sgt.intent.segment import checkpoint_slug
+
+    segments = segments or []
+    verb = preview_view.get("verb", "revert")
+    target = preview_view.get("target", "")
+    removed = set(preview_view.get("removed", []))
+    added = set(preview_view.get("added", []))
+    touched = removed if verb == "revert" else added
+    affected = preview_view.get("affected", []) or []
+    files = preview_view.get("files", {}) or {}
+
+    layout = segment_layout(map_view, grid_view, segments)
+    labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
+    prefix_len = _min_unique_prefixes(list(layout["node_by_id"]))
+
+    def bp(fid: str, hexc: str) -> str:
+        # Bare-hex handle (no `f-`), minimal-unique prefix brightened -- matches the overview's handles.
+        has_tag = fid.startswith("f-")
+        disp = (fid[2:] if has_tag else fid)[:8]
+        k = max(0, min(prefix_len.get(fid, 5) - (2 if has_tag else 0), len(disp)))
+        head = _bold(_paint(hexc, disp[:k], color=color), color=color) if color else disp[:k]
+        return head + _dim(disp[k:], color=color)
+
+    # Per-checkpoint status for the target feature: is the whole segment in the edit's op-set, some
+    # of it, or none? (segments carry their `op_ids`; the car dict drops them, so join on segments.)
+    seg_status: dict = {}
+    for seg in segments:
+        if seg.get("feature_id") != focus_fid:
+            continue
+        ops = set(seg.get("op_ids", []))
+        hit = ops & touched
+        seg_status[seg["seg_index"]] = "gone" if (ops and hit == ops) else ("partial" if hit else "kept")
+
+    lines: list[str] = []
+    action = "rewind" if verb == "revert" else "restore"
+    if focus_fid:
+        hexc = color_for(focus_fid)
+        flabel = labels.get(focus_fid, focus_fid)
+        lines.append(f" {_paint(hexc, '▸', color=color)} {_bold(action, color=color)}  "
+                     f"{_bold(flabel, color=color)}  {bp(focus_fid, hexc)}")
+        lines.append(_dim(f"      {verb}  {target}", color=color))
+        lines.append("")
+
+        lane = layout["node_by_id"].get(focus_fid)
+        if lane is None or not lane.get("cars"):
+            lines.append(_dim("   (no checkpoints cached -- run `sgt log --refresh` to name them)", color=color))
+        else:
+            gone_word = "removed" if verb == "revert" else "restored"
+            first_gone = True
+            for car in lane["cars"]:
+                status = seg_status.get(car["seg_index"], "kept")
+                head = _render_car(car, 6, hexc, color=color)
+                slug = checkpoint_slug(car["label"])
+                tail = f"@{car['seg_index']} :{slug}  {car['label']}"
+                if status == "gone":
+                    mark = _paint(hexc, "▸", color=color) if (verb == "revert" and first_gone) else _dim("✗", color=color)
+                    first_gone = False
+                    note = _dim(f"· {car['op_count']} op {gone_word}", color=color)
+                    lines.append(f"   {mark} {head}  {_dim(tail, color=color)}  {note}")
+                elif status == "partial":
+                    lines.append(f"   {_dim('◐', color=color)} {head}  {tail}  {_dim('· partly affected', color=color)}")
+                else:
+                    lines.append(f"     {head}  {_dim(tail, color=color)}  {_dim('· kept', color=color)}")
+        lines.append("")
+    else:
+        # No feature context (a single-op target on an un-mapped tree): skip the checkpoint rail and
+        # let the affected-features section + summary carry the feedforward. No "?" placeholder lane.
+        lines.append(f" {_paint('#888888', '▸', color=color)} {_bold(action, color=color)}  "
+                     f"{_dim(target, color=color)}")
+        lines.append("")
+
+    others = [a for a in affected if a.get("feature_id") != focus_fid]
+    if others:
+        lines.append(_dim(" also affected (dependency blast):", color=color))
+        for a in others[:8]:
+            afid = a["feature_id"]
+            ahex = color_for(afid)
+            albl = labels.get(afid, afid)
+            if a.get("direction") == "blast":
+                glyph, badge = _paint(ahex, "●", color=color), f"{a.get('op_count', 0)} op · must re-draft"
+            else:
+                glyph, badge = _paint(ahex, "◈", color=color), "locked prerequisite"
+            lines.append(f"   {glyph} {bp(afid, ahex)} {albl}  {_dim('[' + badge + ']', color=color)}")
+        if len(others) > 8:
+            lines.append(_dim(f"   +{len(others) - 8} more feature(s)", color=color))
+        lines.append("")
+
+    n_op = len(removed) if verb == "revert" else len(added)
+    verbword = "removes" if verb == "revert" else "restores"
+    lines.append(_dim(f" {verbword} {n_op} op · {len(files)} file(s) changed · "
+                      f"{len(others)} other feature(s) affected", color=color))
+    return lines
+
+
+def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> list[str]:
+    """The `sync` feedforward: what folding a teammate's branch in would bring. A sync never blocks
+    -- the fork-free part always merges -- so a fork is drawn as *surfacing* (work waits at the
+    common ancestor, not lost), and a degraded base/lost-provenance tip is surfaced loudly (R12)."""
+    src = f"{preview_view.get('remote', '')}/{preview_view.get('target', '')}"
+    ops_added = preview_view.get("ops_added", 0)
+    forks = preview_view.get("forks", []) or []
+    contradictions = preview_view.get("pin_contradictions", []) or []
+    cycles = preview_view.get("declared_cycles", []) or []
+    tagline = _dim("fold in a teammate's work", color=color)
+
+    lines: list[str] = [
+        f" {_paint('#5fafff', '▸', color=color)} {_bold('sync', color=color)}  "
+        f"{_bold(src, color=color)}  {tagline}",
+        "",
+        f"   {_paint('#5fafff', '↓', color=color)} brings in "
+        f"{_bold(str(ops_added), color=color)} op(s) from {src}",
+        "",
+    ]
+
+    if forks:
+        lines.append(_paint("#ffaf00", f"   ⚠ {len(forks)} fork(s) surface -- the fork-free work "
+                                       f"still merges; resolve these when ready (nothing is lost):",
+                            color=color))
+        for sym, a, b in forks[:8]:
+            remedy = _dim(f"sgt merge-op {a[:8]} {b[:8]}", color=color)
+            lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
+        if len(forks) > 8:
+            lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
+        lines.append("")
+
+    for c in contradictions:
+        lines.append(_paint("#ffaf00", f"   ⚠ pin contradiction: {c.get('detail', '')}", color=color))
+    for pair in cycles:
+        lines.append(_paint("#ffaf00", f"   ⚠ declared-edge cycle: {pair}", color=color))
+    if contradictions or cycles:
+        lines.append("")
+
+    # R12 loudness: a degraded base or a lost-provenance tip fell back to weaker semantics. Never
+    # silent -- name the recovery path that was refused, exactly as the post-merge report does.
+    if preview_view.get("base_recovery") == "none":
+        lines.append(_paint("#ff5f5f", "   ⚠ base recovery: none -- no witnessed merge-base; union "
+                                       "semantics (cannot delete work one side removed)", color=color))
+    if preview_view.get("theirs_recovery") == "none":
+        lines.append(_paint("#ff5f5f", "   ⚠ theirs' tip has sgt ops but no witnessed trailers -- "
+                                       "re-mine on their side, then sync again", color=color))
+
+    lines.append("")
+    tail = (f" folds in {ops_added} op · {len(forks)} fork(s) surface to resolve · not auto-undoable"
+            if forks else f" folds in {ops_added} op · no forks · not auto-undoable")
+    lines.append(_dim(tail, color=color))
+    return lines
+
+
+def _render_resolve_preview_lines(preview_view: dict, *, color: bool = True) -> list[str]:
+    """The `resolve <symbol>` feedforward: the three-step remedy `--apply` runs to close a fork --
+    fulfill the drafted reconciliation from the edited tree, run the oracle, land it. An unclean plan
+    (no open fork, or no drafted reconciliation yet) renders its `error` alone."""
+    sym = preview_view.get("target", "")
+
+    if not preview_view.get("clean", True):
+        return [f" {_paint('#cc5500', '✗', color=color)} {_bold('resolve', color=color)}  "
+                f"{_dim(sym, color=color)}",
+                "",
+                _dim(f"   {preview_view.get('error', 'not resolvable')}", color=color)]
+
+    tips = preview_view.get("tips", []) or []
+    lines: list[str] = [
+        f" {_paint('#5fafff', '▸', color=color)} {_bold('resolve', color=color)}  "
+        f"{_bold(sym, color=color)}  {_dim('reconcile a same-symbol fork', color=color)}",
+        "",
+    ]
+    if len(tips) == 2:
+        lines.append(f"   {_dim('tips', color=color)} "
+                     f"{_paint('#ffaf00', tips[0][:8], color=color)} "
+                     f"{_dim('↔', color=color)} {_paint('#ffaf00', tips[1][:8], color=color)}")
+        lines.append("")
+    lines.append(f"   {_paint('#5fafff', '1', color=color)} fulfill your merged edit from the tree")
+    lines.append(f"   {_paint('#5fafff', '2', color=color)} run the oracle on the reconciled candidate")
+    lines.append(f"   {_paint('#5fafff', '3', color=color)} land it -- closes the fork on {sym}")
+    lines.append("")
+    if not preview_view.get("oracle_configured", True):
+        lines.append(_paint("#ffaf00", "   oracle: none configured -- the reconciliation lands "
+                                       "unverified", color=color))
+    else:
+        lines.append(_dim("   oracle: green required -- runs the tests on confirm before landing",
+                          color=color))
+    lines.append("")
+    lines.append(_dim(f" fulfill + oracle + land · closes the fork on {sym} · not auto-undoable",
+                      color=color))
+    return lines
+
+
+def render_collab_preview_lines(preview_view: dict, *, color: bool = True) -> list[str]:
+    """The **feedforward** graph for a collaboration verb -- `land`, `sync`, `propose land`, or
+    `resolve` -- drawn before the one-way step runs. Unlike a revert's checkpoint rail, the
+    consequence here is *where your work is going and what stops it*: for `land`/`propose land` the
+    op count it would advance the shared branch by, any fork that BLOCKS it, and the LAW-G oracle
+    gate; for `sync` the op count it folds *in* and any fork that SURFACES (a sync never blocks --
+    the fork-free part still merges); for `resolve` the three-step remedy it runs. Pure over the
+    projection dict; the `[y/N]` prompt stays in the CLI caller. An unclean plan (`clean` False)
+    renders its `error` alone."""
+    verb = preview_view.get("verb", "land")
+    if verb == "sync":
+        return _render_sync_preview_lines(preview_view, color=color)
+    if verb == "resolve":
+        return _render_resolve_preview_lines(preview_view, color=color)
+
+    branch = preview_view.get("target", "")
+    forks = preview_view.get("forks", []) or []
+    contradictions = preview_view.get("pin_contradictions", []) or []
+    cycles = preview_view.get("declared_cycles", []) or []
+    advisory = preview_view.get("advisory")
+
+    if not preview_view.get("clean", True):
+        return [f" {_paint('#cc5500', '✗', color=color)} {_bold('land', color=color)}  "
+                f"{_dim(branch, color=color)}",
+                "",
+                _dim(f"   {preview_view.get('error', 'not landable')}", color=color)]
+
+    ops_added = preview_view.get("ops_added", 0)
+    lines: list[str] = [
+        f" {_paint('#5fafff', '▸', color=color)} {_bold(verb, color=color)}  "
+        f"{_bold(branch, color=color)}  {_dim('advance the shared branch', color=color)}",
+        "",
+    ]
+    # Only claim "adds N op" when there's something to advance -- when a fork blocks and nothing
+    # else would land, "adds 0 op" is noise the fork line already explains.
+    if ops_added:
+        lines.append(f"   {_paint('#5fafff', '↑', color=color)} your work adds "
+                     f"{_bold(str(ops_added), color=color)} op(s) to {branch}")
+        lines.append("")
+
+    if forks:
+        lines.append(_paint("#ffaf00", f"   ⚠ {len(forks)} fork(s) block the land -- "
+                                       f"reconcile before it can advance:", color=color))
+        for sym, a, b in forks[:8]:
+            remedy = _dim(f"sgt merge-op {a[:8]} {b[:8]}", color=color)
+            lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
+        if len(forks) > 8:
+            lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
+        lines.append("")
+
+    for c in contradictions:
+        lines.append(_paint("#ffaf00", f"   ⚠ pin contradiction: {c.get('detail', '')}", color=color))
+    for pair in cycles:
+        lines.append(_paint("#ffaf00", f"   ⚠ declared-edge cycle: {pair}", color=color))
+    if contradictions or cycles:
+        lines.append("")
+
+    # The LAW-G gate: name what the confirm will (or won't) do. A fork short-circuits before the
+    # oracle; no oracle configured refuses outright; otherwise the oracle runs the tests on confirm.
+    if not preview_view.get("oracle_configured", True):
+        lines.append(_paint("#ff5f5f", "   oracle: none configured -- land refuses to advance an "
+                                       "unverified op-set (LAW-G)", color=color))
+    elif forks:
+        lines.append(_dim("   oracle: not reached -- the fork blocks the land first", color=color))
+    else:
+        lines.append(_dim("   oracle: green required -- runs the tests on confirm, then CAS onto "
+                          "the tip", color=color))
+
+    if advisory:
+        lines.append("")
+        lines.append(_paint("#ffaf00", f"   ⚠ {advisory}", color=color))
+
+    lines.append("")
+    if forks:
+        tail = f" won't advance -- {len(forks)} fork(s) to resolve first"
+    elif not preview_view.get("oracle_configured", True):
+        tail = " won't advance -- no oracle to verify against (LAW-G)"
+    else:
+        tail = f" advances {branch} by {ops_added} op · runs tests on confirm · not auto-undoable"
+    lines.append(_dim(f" {tail.strip()}", color=color))
     return lines
 
 
@@ -654,7 +1102,7 @@ def render_graph_lines(
 
 def render_rail_lines(
     map_view: dict,
-    history_view: dict,
+    grid_view: dict,
     *,
     selected: str | None = None,
     color: bool = True,
@@ -666,7 +1114,7 @@ def render_rail_lines(
     spans. Each row is one commit-episode -- the "what I did, in order" rewind unit -- with its
     subject and the dominant feature it advanced. Capped at `max_rows` (newest first); a footer
     notes how many older episodes were folded (the lazy nod for a long history)."""
-    ep = episodes(map_view, history_view)
+    ep = episodes(map_view, grid_view)
     layout = episode_rail_layout(ep)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
     rows = layout["rows"]
@@ -734,5 +1182,5 @@ def render_rail_lines(
         lines.append("")
         lines.append(dim(f" … {n_ep - len(shown)} older episode(s) folded (newest {len(shown)} shown)"))
     lines.append("")
-    lines.append(dim(" operate:  sgt revert <f-XXXX>@<n>  (rewind one checkpoint)   ·   sgt graph  (the timeline)"))
+    lines.append(dim(" operate:  sgt revert <XXXX>@<n>  (rewind one checkpoint)   ·   sgt log  (the timeline)"))
     return lines

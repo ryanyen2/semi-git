@@ -99,6 +99,22 @@ def is_content_bearing(sym: str) -> bool:
     return _symbol_kind(sym) in CONTENT_BEARING_KINDS
 
 
+# A named top-level entity or a whole (unparsed) file -- the symbols whose creation/removal is a
+# *behavioral* change the user would recognize as a distinct piece of work. Deliberately excludes
+# `residue`: residue is positional gap-bytes that shift merely because an entity was inserted
+# before/after them (appending `sub` after `mul` "modifies" `__residue__::mul`), so counting it
+# would attribute new behavior to a neighbour that did not change. Anchors/nested emit no bytes.
+BEHAVIORAL_KINDS = frozenset({"whole_file", "entity"})
+
+
+def is_behavioral(sym: str) -> bool:
+    """True iff `sym` is a named entity or whole file -- a behavioral unit, not positional residue
+    or ordering metadata. `is_content_bearing` is the *fold* predicate (residue carries bytes, so
+    it is content); this is the *segmentation* predicate (residue is not new behaviour). They
+    differ only on `residue`, and that difference is the point."""
+    return _symbol_kind(sym) in BEHAVIORAL_KINDS
+
+
 @dataclass(frozen=True)
 class Attribution:
     """Structured provenance for one witnessing commit (D7): who/what produced it, beyond the bare

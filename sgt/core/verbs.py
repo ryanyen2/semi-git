@@ -242,6 +242,14 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
         assert preview.declared_edge is not None
         lens.declare_after(repo, *preview.declared_edge)  # OR-Set add with a fresh tag (U21/D6)
         return ""
+    if preview.after_ids == preview.before_ids:
+        # An ok no-op edit (e.g. `revert <lane> --to <last-commit>`, `pin` already at the tip,
+        # `restore` of an already-present op): nothing changed, so there is nothing to materialize.
+        # Committing an unchanged tree would fail (`git commit` with no diff), so return the current
+        # HEAD unchanged rather than a spurious empty commit.
+        from sgt.store.gitbind import GitBinding
+
+        return GitBinding(repo).head() or ""
     edited = Ideal.from_ops(preview.after_ids, Store(repo).all_ops())
     sha = lens.put(repo, edited, message=message or f"sgt {preview.verb} {preview.target}")
     lens.record_ideal(repo, edited, sha)

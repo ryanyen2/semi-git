@@ -125,19 +125,25 @@ def test_kernel_views_are_pure(tmp_path):
 
 
 def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monkeypatch):
-    """R21: `sgt log/state --json` output is byte-identical to the api views -- the single
-    projection, no drift between the CLI surface and the api."""
+    """R21: the CLI `--json` surface is byte-identical to the api views -- one projection, no drift.
+    `sgt log` defaults to the grid (`grid_view`, KTD9); the raw op DAG moved to `sgt log --ops`
+    (`oplog_view`); `state` is re-homed under the `advanced` grouping (KTD2)."""
+    from sgt.api import grid_view
     from sgt.cli import main
+    from sgt.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
-    expected = {"log": json.dumps(oplog_view(repo), indent=2),
-                "state": json.dumps(state_view(repo), indent=2)}
+    build_map(repo)  # a stable built map so `sgt log`'s grid doesn't auto-build mid-test
+    expected = {
+        ("log",): json.dumps(grid_view(repo), indent=2),
+        ("log", "--ops"): json.dumps(oplog_view(repo), indent=2),
+        ("advanced", "state"): json.dumps(state_view(repo), indent=2),
+    }
 
     monkeypatch.chdir(repo)
-    # `log` stays a top-level spine verb; `state` is re-homed under the `advanced` grouping (KTD2).
-    for verb, argv in (("log", ["log"]), ("state", ["advanced", "state"])):
+    for argv, want in expected.items():
         assert main([*argv, "--json"]) == 0
-        assert capsys.readouterr().out.rstrip("\n") == expected[verb]
+        assert capsys.readouterr().out.rstrip("\n") == want
 
 
 def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch):
@@ -188,6 +194,170 @@ def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
     v = history_view(repo, full=True)
     assert v["ops"]
     assert any(op["feature_id"] is not None for op in v["ops"])
+
+
+def test_grid_view_joins_ops_into_feature_commit_cells(tmp_path):
+    """U1/R5: `grid_view` is the canonical (op -> cell) join. Every cell holds exactly the ops that
+    share one (feature_id, commit_index), and that join is faithful to `history_view` -- each
+    cell's ops carry that cell's feature and commit-index, and every attributed op lands in exactly
+    one cell."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+
+    hv = history_view(repo, full=True)
+    v = grid_view(repo)
+
+    # the join reproduces history_view's attributed ops exactly, partitioned by cell.
+    attributed = {op["id"] for op in hv["ops"] if op["feature_id"] is not None}
+    from_cells = [oid for cell in v["cells"] for oid in cell["op_ids"]]
+    assert sorted(from_cells) == sorted(attributed)          # every attributed op, once
+    assert len(from_cells) == len(set(from_cells))           # no op in two cells
+
+    op_by_id = {op["id"]: op for op in hv["ops"]}
+    for cell in v["cells"]:
+        assert cell["op_count"] == len(cell["op_ids"])
+        assert cell["fidelity"] == "full"                    # nothing dropped in this fixture
+        for oid in cell["op_ids"]:
+            assert op_by_id[oid]["feature_id"] == cell["feature_id"]
+            assert op_by_id[oid]["commit_index"] == cell["commit_index"]
+
+    # cells sorted by (feature_id, commit_index); the feature roster covers every celled feature.
+    assert v["cells"] == sorted(v["cells"], key=lambda c: (c["feature_id"], c["commit_index"]))
+    assert set(v["features"]) == {c["feature_id"] for c in v["cells"]}
+    assert v["commits"] == hv["commits"]
+
+
+def test_grid_view_is_deterministic_across_calls(tmp_path):
+    """A grid surface polls; the join must be byte-stable so a re-render never reshuffles."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    assert json.dumps(grid_view(repo), sort_keys=True) == json.dumps(grid_view(repo), sort_keys=True)
+
+
+def test_grid_view_omits_unattributed_ops_before_a_tree_is_built(tmp_path):
+    """An op with no feature (no `sgt map` yet) has no lane, so it produces no cell -- the same
+    drop `graph_layout`/`episodes` already apply. The commit axis is still present."""
+    from sgt.api import grid_view
+
+    repo = _mined(tmp_path, "mixed_coverage")  # mined, but no build_map
+    v = grid_view(repo)
+    assert v["cells"] == []
+    assert v["feature_count"] == 0
+    assert v["op_count"] == 0
+    assert v["commits"]  # the time axis exists regardless of feature assignment
+    assert v["partial_commits"] == []
+
+
+def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_path):
+    """U1's fidelity field reads "full" for every cell until U2's producer records a real drop --
+    forward-compatible, not a stub: `partial_commits` is empty and no cell is "partial"."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    v = grid_view(repo)
+    assert v["partial_commits"] == []
+    assert all(c["fidelity"] == "full" for c in v["cells"])
+
+
+def test_coupling_flags_a_shared_residue_removal():
+    """U4/R3: `_coupling_rows` names when a removal drops a residue op in a file a *different*
+    surviving feature still occupies -- the shared whitespace the U32 corruption cuts through --
+    so a preview shows which feature it reaches into. No flag when the shared file has no surviving
+    other-feature entity, or when no residue is dropped."""
+    from sgt.api import _coupling_rows
+
+    foo = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"})
+    bar = make_op({"a.py::bar": (None, "v1")}, {"a.py::bar": b"1"})
+    residue = make_op({"a.py::__residue__::foo": (None, "v1")}, {"a.py::__residue__::foo": b" "})
+    ops = [foo, bar, residue]
+    op_leaf = {foo.id: "A", residue.id: "A", bar.id: "B"}  # residue follows foo's lane (U4)
+
+    # revert A drops foo + its residue; B's bar survives in a.py -> coupling flagged.
+    coupling = _coupling_rows(ops, op_leaf, {foo.id, residue.id}, {bar.id})
+    assert coupling == [{"file": "a.py", "removed_feature": "A", "coupled_feature": "B"}]
+
+    # no surviving other-feature entity in the file -> no coupling.
+    assert _coupling_rows(ops, op_leaf, {foo.id, residue.id}, set()) == []
+    # a removal that drops no residue -> no coupling (nothing shared was cut).
+    assert _coupling_rows(ops, op_leaf, {foo.id}, {bar.id}) == []
+
+
+def test_grid_view_marks_partial_commits_over_a_fork(tmp_path):
+    """U2/R6 end to end: once `_record_fidelity` records a fork's dropped commits, `grid_view`
+    reports them in `partial_commits` and marks every cell at those commit-indices "partial" --
+    the commit couldn't be fully reconstructed, so its whole column is flagged."""
+    from sgt.api import grid_view
+    from sgt.core import sync
+    from sgt.lens.map import build_map
+    from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
+
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
+    _push(a)
+    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
+    sync.sync(b, remote="origin", branch="main")
+    get(b)          # record fidelity for the post-fork ideal
+    build_map(b)    # so surviving ops land in cells
+
+    v = grid_view(b)
+    assert v["partial_commits"]  # the fork's commits are flagged
+    partial = set(v["partial_commits"])
+    for cell in v["cells"]:
+        assert cell["fidelity"] == ("partial" if cell["commit_index"] in partial else "full")
+
+
+def test_grid_view_surfaces_a_pending_plan_prediction_as_a_ghost(tmp_path):
+    """A pending plan step predicting a feature is a ghost cell -- the only place a prediction
+    reaches the grid (off-chain hollows never enter the ideal). `known_feature` flags whether the
+    predicted lane still exists."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    real_feature = next(iter(grid_view(repo)["features"]))
+
+    table = plan_mod._load_sessions(repo)
+    table["s1"] = {
+        "plan_text": "1. extend it\n2. ghost step\n", "created_ts": 0.0, "last_activity_ts": 0.0,
+        "status": "active", "baseline_op_ids": [],
+        "steps": [
+            {"hollow_id": "h0", "title": "extend it", "predicted_footprint": [],
+             "predicted_feature": real_feature, "rationale": "", "status": "pending", "matched_op_ids": []},
+            {"hollow_id": "h1", "title": "unknown lane", "predicted_footprint": [],
+             "predicted_feature": "f-doesnotexist", "rationale": "", "status": "matched", "matched_op_ids": []},
+        ],
+    }
+    plan_mod._save_sessions(repo, table)
+
+    ghosts = grid_view(repo)["ghosts"]
+    assert len(ghosts) == 1  # only the pending step; the matched one is not a ghost
+    g = ghosts[0]
+    assert g["feature_id"] == real_feature
+    assert g["title"] == "extend it"
+    assert g["known_feature"] is True
+
+
+def test_grid_view_feature_roster_labels_match_the_map(tmp_path):
+    """The label a lane shows on the grid is the same one `sgt map` shows -- `grid_view` resolves
+    labels the same way `map_view` does (tree labels + authored overrides), just without the
+    expensive `fused_graph` recompute."""
+    from sgt.api import grid_view
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    map_labels = {n["id"]: n["label"] for n in map_view(repo)["nodes"]}
+    for fid, roster in grid_view(repo)["features"].items():
+        assert roster["label"] == map_labels[fid]
 
 
 def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
@@ -289,7 +459,9 @@ def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):
 def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredicted_op(tmp_path):
     """A hand-seeded session predicting `a.py::foo` matches the real op that edits it; a second,
     unrelated real op (`a.py::bar`) is unpredicted -- it shows up as drift, with its own current
-    line span, decoupled from the session."""
+    line span, decoupled from the session. The session carries a second, never-built step so it
+    stays active after the first match confirms -- that partial-progress state is exactly when
+    `plan_view` surfaces a matched step's spans (a fully-matched session completes and drops off)."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -301,12 +473,20 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
     footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
     hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
     store.add_hollow(hollow)
+    # A second step predicting an entity that never gets built: it stays pending, keeping the
+    # session active so its already-matched sibling step still surfaces through `plan_view`.
+    fp2 = {"a.py::qux": (None, plan_mod._PENDING), "__plan__::s1::step1": (None, plan_mod._PENDING)}
+    hollow2 = make_op(fp2, {}, kind="planned", off_chain=True, intent="build qux")
+    store.add_hollow(hollow2)
     table = plan_mod._load_sessions(repo)
     table["s1"] = {
-        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
-        "baseline_op_ids": baseline,
+        "plan_text": "1. touch foo\n2. build qux\n", "created_ts": 0.0, "last_activity_ts": 0.0,
+        "status": "active", "baseline_op_ids": baseline,
         "steps": [{
             "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }, {
+            "hollow_id": hollow2.id, "title": "build qux", "predicted_footprint": ["a.py::qux"],
             "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
         }],
     }
@@ -694,6 +874,26 @@ def test_verb_preview_frontier_classifies_blast_carry_and_foundation(tmp_path):
     assert user_op.id not in rows  # the revert target itself is not a frontier row
 
 
+def test_blame_view_on_an_uncovered_working_file_is_not_an_error(tmp_path):
+    """A working-tree file sgt has no op for (a doc like JOURNAL.md, an untracked config) has no
+    semantic blame -- a valid empty answer, not a failure. `blame_view` must not stamp an `error`
+    key for it: that key flips the CLI `--json` exit code to 1, which the editor's per-file blame
+    surfaces as a repeated "Command failed" for every non-code tab the user focuses. It reports
+    `covered: False` with empty spans instead. A genuinely absent path still gets an `error`."""
+    from sgt.api import blame_view
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    (repo / "JOURNAL.md").write_text("# notes\n")  # exists on disk, but no op produces it
+
+    v = blame_view(repo, "JOURNAL.md")
+    assert v["covered"] is False
+    assert v["spans"] == [] and v["features"] == {}
+    assert "error" not in v  # not a failure -> `_emit_json` exits 0
+
+    missing = blame_view(repo, "does-not-exist.py")
+    assert missing.get("error")  # genuinely absent path -> a real error
+
+
 def test_verb_preview_frontier_populates_for_a_symbol_ref_not_only_an_op_id(tmp_path):
     """The frontier must resolve a `file::symbol` (or op-id prefix) ref to its op the same way the
     plan does -- otherwise a symbol-targeted revert (the editor/blame entry point) gets an empty
@@ -750,3 +950,28 @@ def test_verb_preview_frontier_is_empty_for_non_revert_verbs(tmp_path):
     helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
     # `restore` of an already-live op is a no-op preview; its frontier block is empty.
     assert verb_preview_view(repo, "restore", helper_op.id)["frontier"] == []
+
+
+def test_so_what_layer_fallout_is_act_required_only_and_carry_is_a_hidden_count(tmp_path):
+    """The consequence-pane contract: `fallout` carries exactly the toggleable blast dependents
+    (never carry, never foundation), `carry_count` counts the hidden mechanical repoints, and
+    `reversible` is True for an ideal edit -- so the pane can lead with "so what" and footnote the
+    carries without ever listing them."""
+    from sgt.api import verb_preview_view
+
+    repo = _chain_repo(tmp_path)
+    ops = Store(repo).all_ops()
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+
+    view = verb_preview_view(repo, "revert", user_op.id)
+    frontier = view["frontier"]
+    blast = {r["op_id"] for r in frontier if r["bucket"] == "blast"}
+    carry = {r["op_id"] for r in frontier if r["bucket"] == "carry"}
+
+    fallout_ids = {r["op_id"] for r in view["fallout"] if r["kind"] == "blast"}
+    assert fallout_ids == blast  # every act-required blast op is in the fallout
+    assert fallout_ids.isdisjoint(carry)  # carry is never in the fallout
+    assert all(r["kind"] == "blast" for r in view["fallout"])  # no fork row on a clean revert
+    assert view["carry_count"] == len(carry) > 0  # the chain has a transitive dependent
+    assert view["reversible"] is True
+    assert view["so_what"].startswith("b.py::user will break —")

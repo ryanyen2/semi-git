@@ -3,8 +3,8 @@
 every edge value with a surviving tag. Unlike the pre-U21 flat G-Set, a retraction is durable,
 travelling state -- and a concurrent add elsewhere survives it.
 
-`_load_declared` (the consumer-facing live set) and the legacy `.sgt/declared.json` dual-write are
-both exercised so the behavior-preserving integration with `order`/`sync` is pinned.
+`_load_declared` (the consumer-facing live set) is exercised so the behavior-preserving integration
+with `order`/`sync` is pinned.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from sgt.core import lens, sync
 from sgt.core.lens import (
     DeclaredORSet,
     _load_declared,
-    _save_declared,
     declare_after,
     load_declared_orset,
     retract_after,
@@ -82,22 +81,6 @@ def test_union_is_order_independent(tmp_path):
     assert a.union(b) == b.union(a)  # commutative merge (LAW-U)
     # (x,y) stays live via t1 even though t2 is tombstoned; (p,q) is live via t3.
     assert a.union(b).live() == frozenset({("x", "y"), ("p", "q")})
-
-
-def test_legacy_flat_gset_is_lifted_and_dual_written(tmp_path):
-    repo = _repo(tmp_path)
-    # a pre-U21 repo has only the flat committed G-Set, no OR-Set file yet.
-    _save_declared(repo, frozenset({("opA", "opB"), ("opC", "opD")}))
-    assert not (repo / ".sgt" / "declared_edges.json").exists()
-
-    live = _load_declared(repo)  # reads the OR-Set, lifting the flat G-Set on the fly
-    assert live == frozenset({("opA", "opB"), ("opC", "opD")})
-
-    # once anything writes the OR-Set, the legacy path is dual-written so old readers still see edges.
-    save_declared_orset(repo, load_declared_orset(repo))
-    assert (repo / ".sgt" / "declared_edges.json").exists()
-    from sgt import state
-    assert frozenset(tuple(p) for p in state.load_json(repo, "declared")) == live
 
 
 # --- two-clone: a declared edge travels by tag through a real sync ------------------------------

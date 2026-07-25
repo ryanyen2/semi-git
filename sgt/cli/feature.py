@@ -12,6 +12,18 @@ def _fail_preview(preview, as_json: bool) -> int:
     return _emit_json({"ok": False, "message": preview.message}) if as_json else _fail(preview.message)
 
 
+def _confirm(repo: str, verb: str, preview) -> bool:
+    """The consequence-pane gate for a metadata verb (merge/rename/move) on a tty. Returns False
+    only when the user explicitly aborted the pane; True to proceed -- which covers a pane confirm
+    *and* the non-tty / no-textual case, so the immediate-apply contract stays byte-for-byte."""
+    from sgt.api import _project_feature_preview
+
+    from ._common import maybe_confirm
+
+    decision = maybe_confirm(_project_feature_preview(repo, verb, preview))
+    return decision.apply if decision is not None else True
+
+
 def register(subs, parent) -> None:
     m = subs.add_parser("merge", parents=[parent])
     m.add_argument("survivor")
@@ -58,6 +70,9 @@ def _feature_merge(repo: str, survivor_id: str, absorbed_id: str, as_json: bool 
     preview = lens_verbs.plan_merge(repo, survivor_id, absorbed_id)
     if not preview.ok:
         return _fail_preview(preview, as_json)
+    if not as_json and not _confirm(repo, "merge", preview):
+        print("  skipped — nothing changed.")
+        return 1
     lens_verbs.apply_merge(repo, preview)
     if as_json:
         return _emit_json({
@@ -77,6 +92,9 @@ def _feature_rename(repo: str, feature_id: str, new_label: str, as_json: bool = 
     preview = lens_verbs.plan_rename(repo, feature_id, new_label)
     if not preview.ok:
         return _fail_preview(preview, as_json)
+    if not as_json and not _confirm(repo, "rename", preview):
+        print("  skipped — nothing changed.")
+        return 1
     lens_verbs.apply_rename(repo, preview)
     if as_json:
         return _emit_json({
@@ -98,6 +116,9 @@ def _feature_move(repo: str, ops: list[str], target: str | None, as_json: bool =
     preview = lens_verbs.plan_move(repo, ops, target)
     if not preview.ok:
         return _fail_preview(preview, as_json)
+    if not as_json and not _confirm(repo, "move", preview):
+        print("  skipped — nothing changed.")
+        return 1
     lens_verbs.apply_move(repo, preview)
     if as_json:
         return _emit_json({"ok": True, "op_ids": list(preview.op_ids), "target": preview.target_id})
@@ -116,6 +137,20 @@ def _feature_split(repo: str, feature: str | None, do_apply: bool, as_json: bool
     preview = lens_verbs.plan_split(repo, feature)
     if not preview.ok:
         return _fail_preview(preview, as_json)
+
+    if not do_apply and not as_json:
+        # On an interactive tty the split preview *is* the consequence pane -- confirming it splits.
+        # A `None` decision (non-tty / no textual) falls through to the printed preview-only path.
+        from sgt.api import _project_feature_preview
+
+        from ._common import maybe_confirm
+
+        decision = maybe_confirm(_project_feature_preview(repo, "split", preview))
+        if decision is not None:
+            if not decision.apply:
+                print("  skipped — nothing changed.")
+                return 1
+            do_apply = True
 
     if not do_apply:
         if as_json:

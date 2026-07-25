@@ -119,12 +119,24 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         // Fall through with the empty map; the rail just shows no lanes rather than erroring.
       }
     }
+    // The canonical lane×commit cell join (`grid_view`, plan U3): the timeline/rail layouts render
+    // from this instead of re-deriving the (op -> cell) join client-side. Fetched after any heal
+    // above so it reflects the just-built tree; an empty fallback just yields no lanes.
+    let grid;
+    try {
+      grid = await this.store.gridView();
+    } catch {
+      grid = { commits: [], cells: [] };
+    }
     const nodes = compose.map.nodes.map((n) => ({
       ...n,
       color: n.kind === "feature" ? colorForNode(n.id) : null,
     }));
     this.previewCache.clear();
-    void this.view?.webview.postMessage({ type: "state", compose: { ...compose, map: { ...compose.map, nodes } } });
+    void this.view?.webview.postMessage({
+      type: "state",
+      compose: { ...compose, grid, map: { ...compose.map, nodes } },
+    });
   }
 
   private async onMessage(msg: any): Promise<void> {
@@ -298,7 +310,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // common case, since the chip itself is that report.
   private async runOracle(): Promise<void> {
     try {
-      await this.store.sgt.mutate(["oracle", "run"]);
+      await this.store.sgt.mutate(["advanced", "oracle", "run"]);
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     } finally {
@@ -318,18 +330,19 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     try {
-      await this.store.sgt.mutate(["oracle", "override", "--status", status, "--reason", reason]);
+      await this.store.sgt.mutate(["advanced", "oracle", "override", "--status", status, "--reason", reason]);
       this.store.invalidate();
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     }
   }
 
-  // The plan-mark inspector card's "Confirm match" action: promotes a `sgt checkpoint`
-  // footprint-overlap candidate to an actual confirmed match, which is what flips the step to
-  // "matched" and lands its rail mark on the next refresh.
+  // The plan-mark inspector card's "Confirm match" action: promotes a footprint-overlap candidate
+  // to an actual confirmed match, which is what flips the step to "matched" and lands its rail mark
+  // on the next refresh. The former `sgt checkpoint --confirm-*` verb folded into `sgt save
+  // --resolve-plan` (U12); the confirm-hollow/confirm-op pairs are unchanged.
   private async confirmCheckpoint(hollowIds: string[], opIds: string[]): Promise<void> {
-    const args = ["checkpoint"];
+    const args = ["save", "--resolve-plan"];
     for (const h of hollowIds) args.push("--confirm-hollow", h);
     for (const o of opIds) args.push("--confirm-op", o);
     try {

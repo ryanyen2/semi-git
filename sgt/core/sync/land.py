@@ -48,7 +48,26 @@ from . import log as _log
 from . import materialize as _materialize
 from . import resolve as _resolve
 
-__all__ = ["LandReport", "land"]
+__all__ = ["LandReport", "land", "LandPlan", "plan_land"]
+
+
+@dataclass(frozen=True)
+class LandPlan:
+    """The dry-run consequence of a `land` (plan U19/D4): what the CAS *would* advance the shared
+    branch by, computed with `ingest -> resolve` alone -- no oracle run, no ref move, and rolled
+    back to leave zero trace (R7), so a feedforward pane can show it before the expensive/one-way
+    part. `oracle_configured` is the LAW-G pre-check (no oracle -> the land will refuse); `clean`
+    is False (with `error` set) when the tree isn't landable yet."""
+
+    branch: str
+    ops_added: int = 0
+    forks: tuple[tuple[str, str, str], ...] = ()
+    pin_contradictions: tuple[Contradiction, ...] = ()
+    declared_cycles: tuple[tuple[str, str], ...] = ()
+    oracle_configured: bool = True
+    advisory: str | None = None
+    clean: bool = True
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,11 +119,58 @@ def _recover_pending_land(repo: Path, gb: GitBinding) -> None:
         state.save_json(repo, "land_pending", {})
 
 
+# `.sgt/local/` files a non-landing land legitimately keeps, so the rollback below must NOT rewind
+# them -- exactly `tests/core/test_land.py::_worktree_state`'s exempt set: the oracle verdict is real
+# work worth caching, `land_pending` is the crash journal `land` manages itself, and `lock` is the
+# store mutex. Every other local artifact `lens.get`'s mine-on-contact touches (fidelity/sync_cache
+# marks, the derived ideal/witness/backfill caches, the op-index sidecar) is derived and
+# self-healing, so it must roll back for a land that does not land to leave no trace (R7).
+_LAND_KEEPS_LOCAL = frozenset({"oracle.json", "land_pending.json", "lock"})
+
+
+def _iter_local_caches(repo: Path):
+    """The top-level `.sgt/local/` files that participate in a land's transaction. Top-level only,
+    so the `.sgt/local/hollow/` op-store subtree (monotone, like `.sgt/ops/`) is left untouched; the
+    exempt caches and in-flight temp files are skipped."""
+    local = repo / state.SGT_DIR / "local"
+    if not local.is_dir():
+        return
+    for p in local.iterdir():
+        if p.is_file() and p.name not in _LAND_KEEPS_LOCAL and not p.name.startswith(".tmp-"):
+            yield p
+
+
+def _snapshot_local_caches(repo: Path) -> dict[str, bytes]:
+    """Byte snapshot of the transactional local caches, captured before mine-on-contact touches
+    them so every non-landing exit can restore the true pre-land baseline."""
+    return {p.name: p.read_bytes() for p in _iter_local_caches(repo)}
+
+
+def _restore_local_caches(repo: Path, before: dict[str, bytes]) -> None:
+    """Roll the transactional local caches back to `before` (R7): rewrite any the land changed,
+    delete any it newly created, and re-create any it removed. `restore_worktree_to` only rewinds
+    git-*tracked* state, so these gitignored caches -- which a `restore_worktree_to` never sees --
+    need their own restore for a land that does not land to leave the tree byte-identical."""
+    local = repo / state.SGT_DIR / "local"
+    now = {p.name: p for p in _iter_local_caches(repo)}
+    for name, p in now.items():
+        if name not in before:
+            p.unlink()  # appeared during the land -> remove it
+        elif p.read_bytes() != before[name]:
+            state._atomic_write_text(p, before[name].decode("utf-8"))  # churned -> rewind
+    for name, data in before.items():
+        if name not in now:
+            state._atomic_write_text(local / name, data.decode("utf-8"))  # land removed it -> restore
+
+
 def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandReport:
     repo = Path(repo)
     gb = GitBinding(repo)
 
     _recover_pending_land(repo, gb)  # undo any crashed prior land before touching the tree (R7)
+    # Baseline the gitignored local caches now -- `_recover_pending_land` already rewound any crashed
+    # prior land, so this is the true pre-land state every non-landing exit rolls back to (R7).
+    local_before = _snapshot_local_caches(repo)
     lens.get(repo)  # mine-on-contact: absorb local reality first (R9)
     if not gb.is_clean():
         raise lens.DirtyWorkingTreeError(
@@ -114,6 +180,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     # LAW-G with zero mutation: no oracle -> a green verdict cannot exist, so refuse before staging
     # anything (not even the monotone op adds). Pre-checked here so this path leaves no trace at all.
     if load_oracle_config(repo) is None:
+        _restore_local_caches(repo, local_before)  # refuse with zero trace -- even the get() caches
         return LandReport(branch=branch or "?", landed=False, blocked_reason=_NO_ORACLE)
 
     if branch is None:
@@ -155,6 +222,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
 
     def _blocked(reason: str, attempt: int, res=None, forks=()) -> LandReport:
         gb.restore_worktree_to(snapshot)  # a land that does not land leaves no trace (R7)
+        _restore_local_caches(repo, local_before)  # ...and rewind the gitignored local caches too
         state.save_json(repo, "land_pending", {})  # normal (non-crash) exit -- clear the journal
         extra = {} if res is None else dict(
             pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
@@ -231,3 +299,58 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     return _blocked(
         f"persistent contention -- branch moved on every one of {retries} attempts", retries,
     )
+
+
+def plan_land(repo: str | Path, branch: str | None = None) -> LandPlan:
+    """Dry-run a `land` (D4): run `ingest -> resolve` against the branch tip to compute what the CAS
+    *would* advance the shared branch by, then roll the transactional local caches back so the
+    preview leaves no trace (R7). Deliberately skips the two mutating/expensive steps `land` does --
+    `stage_candidate` + the oracle gate, and the ref CAS -- so a feedforward can show the
+    consequence before the user commits to running the tests and moving the shared tip. The oracle
+    verdict is *not* computed here; `oracle_configured` only reports whether one exists (LAW-G will
+    refuse a land with none). Mirrors `land`'s own `ops_added`/`advisory` computation so the preview
+    predicts the report."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+
+    local_before = _snapshot_local_caches(repo)
+    try:
+        lens.get(repo)  # mine-on-contact: preview against local reality, exactly as `land` does
+        if not gb.is_clean():
+            return LandPlan(branch=branch or "?", clean=False,
+                            error="working tree not clean -- `sgt put` or commit first")
+
+        if branch is None:
+            ref_name = gb.symbolic_ref()
+            if ref_name is None:
+                return LandPlan(branch="?", clean=False,
+                                error="HEAD is detached -- pass a branch name to land onto")
+            branch = ref_name.rsplit("/", 1)[-1]
+        ref = f"refs/heads/{branch}"
+
+        ours = gb.head()
+        if ours is None:
+            return LandPlan(branch=branch, clean=False, error="no commit to land")
+
+        old = gb.rev_parse(ref)
+        theirs_sha = old if old is not None else ours
+
+        ing = _ingest.ingest(repo, gb, theirs_sha, ours, branch=branch)
+        res = _resolve.resolve(repo, ing)
+        ops_added = len(res.merged_ideal.op_ids - ing.theirs_ideal_ids)
+
+        advisory = None
+        log_entries = _log.read(gb, branch)
+        if log_entries and not gb.is_ancestor(log_entries[0].landed_sha, ours):
+            advisory = (
+                f"{branch} has landed work since your last sync ({log_entries[0].landed_sha[:12]} "
+                f"is not an ancestor of HEAD) -- `sgt sync` first to fold it in before landing"
+            )
+
+        return LandPlan(
+            branch=branch, ops_added=ops_added, forks=res.forks,
+            pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
+            oracle_configured=load_oracle_config(repo) is not None, advisory=advisory,
+        )
+    finally:
+        _restore_local_caches(repo, local_before)
