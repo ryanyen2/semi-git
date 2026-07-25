@@ -75,6 +75,27 @@ def reference_edges(ops: list[Op]) -> frozenset[Edge]:
     return frozenset(edges)
 
 
+# Bounded memo for `chain_edges | reference_edges`, keyed by the op-id set -- the same
+# "content-addressed ids fix the answer" invariant `_REDUCE_CACHE` documents (both edge sets
+# read only footprint/requires, which the id hashes). One `compose`/`intent` read used to
+# recompute the full-store union dozens of times (once per scope bundle / checkpoint tier).
+_EDGES_CACHE: "OrderedDict[frozenset, frozenset[Edge]]" = OrderedDict()
+_EDGES_CACHE_MAX = 16
+
+
+def _chain_ref_edges(ops: list[Op]) -> frozenset[Edge]:
+    key = frozenset(op.id for op in ops)
+    cached = _EDGES_CACHE.get(key)
+    if cached is not None:
+        _EDGES_CACHE.move_to_end(key)
+        return cached
+    edges = chain_edges(ops) | reference_edges(ops)
+    _EDGES_CACHE[key] = edges
+    if len(_EDGES_CACHE) > _EDGES_CACHE_MAX:
+        _EDGES_CACHE.popitem(last=False)
+    return edges
+
+
 def _adjacency(
     ops: list[Op], declared: Declared = frozenset()
 ) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
@@ -84,7 +105,7 @@ def _adjacency(
     ids = {op.id for op in ops}
     predecessors: dict[str, set[str]] = {op.id: set() for op in ops}
     successors: dict[str, set[str]] = {op.id: set() for op in ops}
-    for a, b in chain_edges(ops) | reference_edges(ops) | declared:
+    for a, b in _chain_ref_edges(ops) | declared:
         if a in ids and b in ids and a != b:
             predecessors[b].add(a)
             successors[a].add(b)
@@ -118,7 +139,7 @@ def components_in(
     which requires a genuine ideal to mean anything)."""
     ids = frozenset(op_ids)
     adjacency: dict[str, set[str]] = {oid: set() for oid in ids}
-    for a, b in chain_edges(ops) | reference_edges(ops) | declared:
+    for a, b in _chain_ref_edges(ops) | declared:
         if a in ids and b in ids and a != b:
             adjacency[a].add(b)
             adjacency[b].add(a)
@@ -477,6 +498,15 @@ def downset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = froze
     closed transitively. Reference prerequisites include *every* in-ideal producer of a required
     version -- a safe over-approximation when a dependency itself was reverted to earlier bytes
     (two producers of one version); the final `Ideal.from_ops` still rejects any union that forks."""
+    return downset_in_many({target}, ideal_ids, ops, declared)
+
+
+def downset_in_many(targets, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+    """The set generalization of `downset_in`: everything any of `targets` builds on, within
+    `ideal_ids`. Reachability closures distribute over union, so this equals
+    `∪ downset_in(t)` exactly -- but pays the by-id / chain / producer index construction once
+    for the whole set instead of once per target (which made a feature-sized restore preview
+    O(|X|·|ops|))."""
     by_id = {op.id: op for op in ops}
     chains = _ordered_chains(ideal_ids, ops)
     pos = {sym: {oid: i for i, oid in enumerate(seq)} for sym, seq in chains.items()}
@@ -486,7 +516,7 @@ def downset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = froze
             producers.setdefault((sym, after), set()).add(oid)
 
     result: set[str] = set()
-    stack = [target]
+    stack = list(targets)
     while stack:
         oid = stack.pop()
         if oid in result or oid not in by_id:

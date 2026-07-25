@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sgt.core import lens as kernel_lens
+from sgt.core import opindex
 from sgt.core import order
 from sgt.core import verbs as core_verbs
 from sgt.core.store import Store
@@ -507,12 +508,14 @@ def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, st
 
 
 def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
-    """Resolve `ref` to a feature's op-set X, then the exact ideal edit `I \\ (∪ upset_in(x))`
-    over `x∈X` -- the feature-grouped generalization of `core.verbs.plan_revert`'s single-op
-    case, reusing its collision-safe up-set and `Ideal.from_ops` fork validation verbatim so a
-    feature revert refuses on a chain fork exactly as a single-op revert would."""
+    """Resolve `ref` to a feature's op-set X, then the exact ideal edit `I \\ upset_in_many(X)`
+    -- the feature-grouped generalization of `core.verbs.plan_revert`'s single-op case, reusing
+    its collision-safe up-set and `Ideal.from_ops` fork validation verbatim so a feature revert
+    refuses on a chain fork exactly as a single-op revert would. One grounding pass for the whole
+    op-set: the per-op union it replaces cost O(|X|·|ops|), which made the feature-revert
+    feedforward preview take tens of seconds on a large store."""
     repo = Path(repo)
-    ops = Store(repo).all_ops()
+    ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
     ideal = kernel_lens.current_ideal(repo)
     declared = kernel_lens._load_declared(repo)
 
@@ -525,10 +528,7 @@ def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
         return core_verbs._preview("revert", feature_id, ideal.op_ids, ideal.op_ids, ops,
                                     message=f"feature {label!r} has no ops in the current ideal; no change")
 
-    upset_union: set[str] = set()
-    for op_id in op_ids:
-        upset_union |= order.upset_in(op_id, ideal.op_ids, ops, declared)
-    after = ideal.op_ids - frozenset(upset_union)
+    after = ideal.op_ids - order.upset_in_many(op_ids, ideal.op_ids, ops, declared)
     return core_verbs._validated("revert", feature_id, ideal.op_ids, after, ops, declared)
 
 
@@ -546,7 +546,7 @@ def plan_revert_lane_to_commit(
     from sgt.api import history_view
 
     repo = Path(repo)
-    ops = Store(repo).all_ops()
+    ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
     ideal = kernel_lens.current_ideal(repo)
     declared = kernel_lens._load_declared(repo)
 
@@ -563,9 +563,7 @@ def plan_revert_lane_to_commit(
         return core_verbs._preview("revert", target, ideal.op_ids, ideal.op_ids, ops,
                                     message=f"{label!r} has no ops after commit {commit_index}; no change")
 
-    removal: set[str] = set()
-    for oid in seed:
-        removal |= order.upset_in(oid, ideal.op_ids, ops, declared)
+    removal = set(order.upset_in_many(seed, ideal.op_ids, ops, declared))
     for keep_ref in keep:  # a kept lane's ops survive even where the up-set would sweep them
         kept = resolve_feature(repo, keep_ref)
         if kept is not None:
@@ -577,11 +575,13 @@ def plan_revert_lane_to_commit(
 def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     """`revert`'s inverse: resolve `ref` to a feature's op-set X (via `op_leaf`, which still
     names a reverted feature's ops -- it's built from every mined op, not just the ones live in
-    the current ideal), then the exact ideal edit `I \\ union(downset_in(x))` over `x∈X` against
-    the full provenance ideal (`HEAD`, which still holds reverted ops) -- the feature-grouped
-    generalization of `core.verbs.plan_restore`'s single-op case."""
+    the current ideal), then the exact ideal edit `I ∪ downset_in_many(X)` against the full
+    provenance ideal (`HEAD`, which still holds reverted ops) -- the feature-grouped
+    generalization of `core.verbs.plan_restore`'s single-op case. `downset_in_many` equals the
+    per-op union exactly (reachability distributes over union) but builds its chain/producer
+    indexes once for the whole set instead of once per op."""
     repo = Path(repo)
-    ops = Store(repo).all_ops()
+    ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
     ideal = kernel_lens.current_ideal(repo)
     declared = kernel_lens._load_declared(repo)
     source = kernel_lens.ideal_for_ref(repo, "HEAD")
@@ -595,8 +595,5 @@ def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
         return core_verbs._preview("restore", feature_id, ideal.op_ids, ideal.op_ids, ops,
                                     message=f"feature {label!r} has no ops; no change")
 
-    downset_union: set[str] = set()
-    for op_id in op_ids:
-        downset_union |= order.downset_in(op_id, source.op_ids, ops, declared)
-    after = ideal.op_ids | frozenset(downset_union)
+    after = ideal.op_ids | order.downset_in_many(op_ids, source.op_ids, ops, declared)
     return core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops, declared)

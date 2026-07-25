@@ -213,7 +213,9 @@ def compute_checkpoint(repo: str | Path) -> CheckpointResult:
     per-session grouping / global-drift reconciliation."""
     repo = Path(repo)
     store = Store(repo)
-    ops = store.all_ops()
+    from sgt.core import opindex
+
+    ops = opindex.index_ops(repo)  # footprint-overlap matching only -- never reads op.images
     sessions = _load_sessions(repo)
 
     groups: list[CheckpointGroup] = []

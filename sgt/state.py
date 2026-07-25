@@ -67,6 +67,8 @@ class _Artifact:
     committed: bool
     sort_keys: bool = True
     newline: bool = True
+    compact: bool = False  # no indent, tight separators -- only for large *local* sidecars,
+    # where encode/parse time scales with the artifact and nothing diffs the file by eye.
 
 
 # The registry: logical name -> layout. New collaboration artifacts (U20-U24: committed
@@ -176,8 +178,9 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # local, gitignored footprint-only sidecar over the op store (`sgt.core.opindex`): every op's
     # payload minus `images`, so read-only projection views skip `Store.all_ops()`'s per-op images
     # hex-decode (85%+ of the store's on-disk bytes) entirely. Self-healing (rebuilt on staleness),
-    # never authoritative -- the ops directory always is. Per-clone, never travels.
-    "op_index": _Artifact(("local", "op_index.json"), committed=False),
+    # never authoritative -- the ops directory always is. Per-clone, never travels. Compact: at
+    # thousands of ops the pretty-printed encode/parse dominated every rebuild and every read.
+    "op_index": _Artifact(("local", "op_index.json"), committed=False, compact=True),
     # local, gitignored cache of `sgt.entities.graph.build_entity_graph`'s edges at a given HEAD
     # sha (`sgt.lens.cluster`): that full-repo source parse is by far the costliest step in the
     # clustering signal build, yet its result is a pure function of HEAD alone -- so a no-op
@@ -232,7 +235,10 @@ def _unwrap(payload):
 
 def _encode(body, art: _Artifact) -> str:
     envelope = {"schema": SCHEMA, "data": body}
-    text = json.dumps(envelope, indent=2, sort_keys=art.sort_keys)
+    if art.compact:
+        text = json.dumps(envelope, separators=(",", ":"), sort_keys=art.sort_keys)
+    else:
+        text = json.dumps(envelope, indent=2, sort_keys=art.sort_keys)
     return text + "\n" if art.newline else text
 
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -130,15 +131,33 @@ def _prior_whole_file_version(
     return None
 
 
+# Content-addressed parse-error cache, mirroring `extract.py`'s `_EXTRACT_CACHE`: the rebirth
+# lookback re-checks the same historical blob versions commit after commit, and each check was a
+# full tree-sitter parse of bytes already seen. Bounded LRU for the same reason as the extract
+# cache -- history walks retire old content versions naturally.
+_PARSE_ERR_CACHE: "OrderedDict[tuple, bool]" = OrderedDict()
+_PARSE_ERR_CACHE_MAX = 4096
+
+
 def _parse_has_error(path: str, source: bytes) -> bool:
     """True if tree-sitter could not cleanly parse `source` as `path`'s language -- the signal
     that separates "legitimately no entities" (e.g. a pure-constants module) from "unparseable
-    mid-edit", which must degrade to a whole-file symbol rather than report zero entities (R7)."""
+    mid-edit", which must degrade to a whole-file symbol rather than report zero entities (R7).
+    Content-addressed cache: a pure function of (language, bytes)."""
     lang = _language_for(path)
     if lang is None:
         return False
+    key = (lang, hashlib.sha256(source).digest())
+    cached = _PARSE_ERR_CACHE.get(key)
+    if cached is not None:
+        _PARSE_ERR_CACHE.move_to_end(key)
+        return cached
     tree = Parser(_language(lang)).parse(source)
-    return tree.root_node.has_error
+    result = tree.root_node.has_error
+    _PARSE_ERR_CACHE[key] = result
+    if len(_PARSE_ERR_CACHE) > _PARSE_ERR_CACHE_MAX:
+        _PARSE_ERR_CACHE.popitem(last=False)
+    return result
 
 
 def _is_unparseable_whole_file(path: str, raw: bytes | None) -> bool:
@@ -230,13 +249,36 @@ def _close_entity_rep(emit_entity, emit_other, path: str, raw: bytes, bottom: st
             emit_other(f"{path}::__residue__::{anchor}", _content_version(seg), bottom, None)
 
 
-def _present_symbols_at(gb: GitBinding, tree_ish: str, path: str) -> set[str]:
+# Memo for `_present_symbols_at`: a pure function of (repo, tree-ish, path) -- a commit's tree
+# and its committed tier config are immutable, so the answer never changes for a given key. The
+# rebirth lookback walks a path's history pairwise (each commit against its parent), so on a
+# linear history every interior commit is asked twice back-to-back; across the fresh symbols of
+# one mined commit -- and across the commits of one chunk -- the same (tree, path) recurs far
+# more. Bounded LRU, same retirement logic as the extract cache.
+_PRESENT_SYMS_CACHE: "OrderedDict[tuple, frozenset[str]]" = OrderedDict()
+_PRESENT_SYMS_CACHE_MAX = 8192
+
+
+def _present_symbols_at(gb: GitBinding, tree_ish: str, path: str) -> frozenset[str]:
     """The content-bearing / chained symbol ids mining represents `path` with at `tree_ish` --
     `{path}` when whole-file (opaque tier or unparseable), else its entity ids (top-level and
     nested) plus non-empty residue-segment symbols. Anchors are excluded: they are ordering
     metadata mining never revises to BOTTOM, so they never *close* and never chain a rebirth.
     Empty when the path is absent or tier-ignored. The exact join the rebirth lookback compares
     across two trees to decide where a symbol went present -> absent (i.e. was closed)."""
+    key = (gb.repo_key(), tree_ish, path)
+    cached = _PRESENT_SYMS_CACHE.get(key)
+    if cached is not None:
+        _PRESENT_SYMS_CACHE.move_to_end(key)
+        return cached
+    result = frozenset(_present_symbols_at_uncached(gb, tree_ish, path))
+    _PRESENT_SYMS_CACHE[key] = result
+    if len(_PRESENT_SYMS_CACHE) > _PRESENT_SYMS_CACHE_MAX:
+        _PRESENT_SYMS_CACHE.popitem(last=False)
+    return result
+
+
+def _present_symbols_at_uncached(gb: GitBinding, tree_ish: str, path: str) -> set[str]:
     raw = gb.blob_bytes(tree_ish, path)
     if raw is None:
         return set()
@@ -275,10 +317,16 @@ def _apply_rebirth_chaining(gb: GitBinding, sha: str, parent: str | None, touche
     for t in touches:
         if t.before_version is None and _symbol_kind(t.surface_id) != "anchor":
             fresh_by_path.setdefault(t.surface_id.split("::", 1)[0], []).append(t)
+    if not fresh_by_path:
+        return
+    # One union walk for every fresh path this commit has (instead of one `git log` spawn per
+    # path): the union pathspec yields a superset of each path's own walk, and the presence
+    # comparison below is exact per (commit, path), so a row that didn't touch a given path
+    # simply matches nothing for it.
+    commits = gb.commits_touching_paths(parent, sorted(fresh_by_path))
+    if not commits:
+        return
     for path, group in fresh_by_path.items():
-        commits = gb.commits_touching(parent, path)  # (D, first_parent_of_D), newest-first, D < sha
-        if not commits:
-            continue
         remaining = {t.surface_id: t for t in group}
         for d_sha, d_parent in commits:
             if not remaining:

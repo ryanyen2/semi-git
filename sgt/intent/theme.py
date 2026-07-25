@@ -16,6 +16,8 @@ resolves against.
 from __future__ import annotations
 
 import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -27,6 +29,8 @@ from sgt.intent.group import Bundle, IntentAtom, _atom_sort_key
 
 EFFORT = "low"
 MAX_ATOMS = 40  # keeps the scope-less coalescing prompt bounded on a large store
+MAX_WORKERS = 6  # concurrent LLM calls in flight -- network-bound, bounded to be a considerate API
+# citizen (mirrors `sgt.lens.label`'s labeler concurrency).
 
 
 class ThemeLabel(BaseModel):
@@ -77,6 +81,20 @@ def _fallback_bundle_label(bundle: Bundle) -> ThemeLabel:
     return ThemeLabel(label=label, rationale=f"Commits declaring scope {label!r} (no LLM label available).")
 
 
+def _bundle_prompt(bundle: Bundle) -> str:
+    """The exact naming prompt for one scope bundle -- shared by the serial `label_bundle` and the
+    concurrent `label_bundles` so a batched call is byte-identical to a solo one (same prompt ->
+    same cache entry, no drift between the two paths)."""
+    subjects = "\n".join(f"- {a.subject}" for a in sorted(bundle.atoms, key=lambda a: a.commit_sha))
+    return (
+        "Name the theme these commits share, in a semantic version-control tool.\n"
+        "label: 2-5 words, Title Case, concrete.\n"
+        "rationale: ONE factual sentence naming what changed. Do not start with 'These'.\n\n"
+        f"Scope: {bundle.scope}\n"
+        f"Commit subjects:\n{subjects}\n"
+    )
+
+
 def _fallback_scopeless_groups(atoms: list[IntentAtom]) -> list[ThemeGroup]:
     """Zero-network fallback: every scope-less atom stays its own singleton, labeled from its
     commit subject (already a ready-made human label -- KTD2)."""
@@ -94,6 +112,7 @@ class IntentThemer:
         self.tokens_in = 0
         self.tokens_out = 0
         self.calls = 0
+        self._lock = threading.Lock()  # guards token/call counters across concurrent LLM calls
         self.scopeless_chunk_key_by_sha: dict[str, str] = {}  # populated by group_scopeless (U6/R8)
 
     @property
@@ -107,9 +126,10 @@ class IntentThemer:
             model=get_model(self._repo), input=prompt, text_format=schema,
             reasoning={"effort": EFFORT},
         )
-        self.calls += 1
-        self.tokens_in += r.usage.input_tokens
-        self.tokens_out += r.usage.output_tokens
+        with self._lock:
+            self.calls += 1
+            self.tokens_in += r.usage.input_tokens
+            self.tokens_out += r.usage.output_tokens
         return r.output_parsed
 
     def label_bundle(self, bundle: Bundle) -> ThemeLabel:
@@ -120,21 +140,44 @@ class IntentThemer:
         cached = self.cache.get(key)
         if cached is not None and cached.get("source") == "llm":
             return ThemeLabel(label=cached["label"], rationale=cached["rationale"])
-
-        subjects = "\n".join(f"- {a.subject}" for a in sorted(bundle.atoms, key=lambda a: a.commit_sha))
-        prompt = (
-            "Name the theme these commits share, in a semantic version-control tool.\n"
-            "label: 2-5 words, Title Case, concrete.\n"
-            "rationale: ONE factual sentence naming what changed. Do not start with 'These'.\n\n"
-            f"Scope: {bundle.scope}\n"
-            f"Commit subjects:\n{subjects}\n"
-        )
         try:
-            out, source = self._request(prompt, ThemeLabel), "llm"
+            out, source = self._request(_bundle_prompt(bundle), ThemeLabel), "llm"
         except Exception:
             out, source = _fallback_bundle_label(bundle), "fallback"
         self.cache[key] = {**out.model_dump(), "source": source}
         return out
+
+    def label_bundles(self, bundles: list[Bundle]) -> list[ThemeLabel]:
+        """Batch form of `label_bundle` (the `build_themes` hot loop): serve cache hits inline with
+        zero network, run the cache-missing LLM calls concurrently (`ThreadPoolExecutor`, network-
+        bound), then write each result back to the cache sequentially in this thread -- the cache
+        dict isn't thread-safe. Each bundle's resolved label, cache entry, and offline fallback are
+        byte-identical to what the serial `label_bundle` loop produced, results kept in input
+        order, so this is a pure latency win over naming bundles one blocking call at a time."""
+        keys = [_bundle_key(b) for b in bundles]
+        results: list[ThemeLabel | None] = [None] * len(bundles)
+        misses: list[int] = []
+        for i, key in enumerate(keys):
+            cached = self.cache.get(key)
+            if cached is not None and cached.get("source") == "llm":
+                results[i] = ThemeLabel(label=cached["label"], rationale=cached["rationale"])
+            else:
+                misses.append(i)
+        if not misses:
+            return results  # type: ignore[return-value]
+
+        def _label(i: int) -> tuple[ThemeLabel, str]:
+            try:
+                return self._request(_bundle_prompt(bundles[i]), ThemeLabel), "llm"
+            except Exception:
+                return _fallback_bundle_label(bundles[i]), "fallback"
+
+        with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(misses))) as pool:
+            resolved = list(pool.map(_label, misses))
+        for i, (out, source) in zip(misses, resolved):
+            self.cache[keys[i]] = {**out.model_dump(), "source": source}
+            results[i] = out
+        return results  # type: ignore[return-value]
 
     def group_scopeless(self, atoms: list[IntentAtom]) -> list[ThemeGroup]:
         """Coalesce scope-less atoms into named themes. Unlike `label_bundle`, membership here
@@ -152,27 +195,52 @@ class IntentThemer:
             return []
         ordered = sorted(atoms, key=_atom_sort_key)
         chunks = [ordered[i:i + MAX_ATOMS] for i in range(0, len(ordered), MAX_ATOMS)]
-        groups: list[ThemeGroup] = []
-        for chunk in chunks:
-            chunk_key = _scopeless_key(chunk)
+        keys = [_scopeless_key(chunk) for chunk in chunks]
+        for chunk, chunk_key in zip(chunks, keys):
             for atom in chunk:
                 self.scopeless_chunk_key_by_sha[atom.commit_sha] = chunk_key
-            groups.extend(self._group_scopeless_chunk(chunk, chunk_key))
-        return groups
 
-    def _group_scopeless_chunk(self, chunk: list[IntentAtom], key: str) -> list[ThemeGroup]:
-        """One `MAX_ATOMS`-bounded chunk's LLM/cache call. `assigned` (R7) tracks which atom
-        shas an earlier group (in the LLM's own returned order) already claimed, so a later
-        group naming an already-claimed sha -- an overlapping LLM response -- drops it instead of
-        letting the atom land in two persisted themes; first group wins."""
-        cached = self.cache.get(key)
+        # Read every chunk's cache before dispatching (chunk keys are all distinct -- one chunk's
+        # write can never turn another into a hit -- so resolving hits up front is equivalent to the
+        # old serial per-chunk loop), run the cache-missing chunks' LLM calls concurrently, then
+        # write their results back in this thread (the cache isn't thread-safe). Output stays in
+        # chunk order, byte-identical to the serial version.
+        results: list[list[ThemeGroup] | None] = [None] * len(chunks)
+        misses: list[int] = []
+        for i, key in enumerate(keys):
+            cached = self.cache.get(key)
+            if cached is not None and cached.get("source") == "llm":
+                results[i] = [
+                    ThemeGroup(label=g["label"], rationale=g["rationale"], atom_shas=g["atom_shas"])
+                    for g in cached["groups"]
+                ]
+            else:
+                misses.append(i)
+
+        if misses:
+            with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(misses))) as pool:
+                computed = list(pool.map(lambda i: self._scopeless_chunk_compute(chunks[i]), misses))
+            for i, (groups, source) in zip(misses, computed):
+                self.cache[keys[i]] = {
+                    "source": source,
+                    "groups": [{"label": g.label, "rationale": g.rationale, "atom_shas": g.atom_shas} for g in groups],
+                }
+                results[i] = groups
+
+        out: list[ThemeGroup] = []
+        for r in results:
+            out.extend(r)  # type: ignore[arg-type]  -- every slot filled above
+        return out
+
+    def _scopeless_chunk_compute(self, chunk: list[IntentAtom]) -> tuple[list[ThemeGroup], str]:
+        """One `MAX_ATOMS`-bounded chunk's LLM/validation work, returning ``(groups, source)``
+        WITHOUT touching the cache -- split out of the old `_group_scopeless_chunk` so
+        `group_scopeless` can run chunks concurrently and persist their results from the main
+        thread. `assigned` (R7) tracks which atom shas an earlier group (in the LLM's own returned
+        order) already claimed, so a later group naming an already-claimed sha -- an overlapping
+        LLM response -- drops it instead of letting the atom land in two persisted themes; first
+        group wins."""
         valid_shas = frozenset(a.commit_sha for a in chunk)
-        if cached is not None and cached.get("source") == "llm":
-            return [
-                ThemeGroup(label=g["label"], rationale=g["rationale"], atom_shas=g["atom_shas"])
-                for g in cached["groups"]
-            ]
-
         lines = "\n".join(f"{a.commit_sha[:8]} | {a.subject}" for a in chunk)
         prompt = (
             "These commits in a semantic version-control tool declared no conventional-commit "
@@ -207,11 +275,7 @@ class IntentThemer:
             groups, source = _fallback_scopeless_groups(chunk), "fallback"
 
         groups = filter_to_shown(groups, valid_shas, lambda g: g.atom_shas)
-        self.cache[key] = {
-            "source": source,
-            "groups": [{"label": g.label, "rationale": g.rationale, "atom_shas": g.atom_shas} for g in groups],
-        }
-        return groups
+        return groups, source
 
     def save(self) -> None:
         state.save_json_if_changed(self._repo, "intent_cache", self.cache)
@@ -256,11 +320,14 @@ def build_themes(repo: str | Path) -> dict[str, dict]:
 
     themes: dict[str, dict] = {}
     scopeless: list[IntentAtom] = []
+    scoped: list[Bundle] = []
     for bundle in bundles:
         if bundle.scope is None:
             scopeless.extend(bundle.atoms)
-            continue
-        label = themer.label_bundle(bundle)
+        else:
+            scoped.append(bundle)
+
+    for bundle, label in zip(scoped, themer.label_bundles(scoped)):
         shas = frozenset(a.commit_sha for a in bundle.atoms)
         tid = theme_id_for(shas)
         cache_key = _bundle_key(bundle)

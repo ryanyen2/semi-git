@@ -83,10 +83,14 @@ def resolve_target(ideal: Ideal, ops: list[Op], ref: str) -> tuple[str | None, s
 
 
 def _load(repo: str | Path) -> tuple[list[Op], Ideal, frozenset[tuple[str, str]]]:
-    """(all stored ops, current committed ideal, declared edges) -- the pure plan-time inputs."""
+    """(all stored ops, current committed ideal, declared edges) -- the pure plan-time inputs.
+    Footprint-only (`opindex.index_ops`, never `Store.all_ops`'s images decode): every consumer
+    in this module is a plan/preview built from footprints, frontiers, and order math alone --
+    nothing here materializes bytes."""
+    from sgt.core import opindex
+
     repo = Path(repo)
-    ops = Store(repo).all_ops()
-    return ops, lens.current_ideal(repo), lens._load_declared(repo)
+    return opindex.index_ops(repo), lens.current_ideal(repo), lens._load_declared(repo)
 
 
 def _preview(
@@ -170,8 +174,10 @@ def plan_cherry_pick(repo: str | Path, target: str, source_ref: str) -> VerbPrev
 def plan_revert_session(repo: str | Path, name: str) -> VerbPreview:
     """Resolve a session name (plan U31, S7: addressing by provenance) to the op-set it landed --
     `sgt.core.session.ops_by_session`, which reads structured attribution and so still resolves
-    long after the session record itself is gone -- then the exact ideal edit `I \\ (∪ upset_in(x))`
-    over `x∈X`, reusing `plan_revert_feature`'s grouped generalization verbatim."""
+    long after the session record itself is gone -- then the exact ideal edit
+    `I \\ upset_in_many(X)`: one grounding pass for the whole set, not one per op (which cost
+    O(|X|·|ops|) and could also under-remove an op OR-supported by two removed targets, leaving
+    an invalid after-set for `_validated` to refuse instead of this valid maximal edit)."""
     from sgt.core import session as session_mod
 
     ops, ideal, declared = _load(repo)
@@ -184,16 +190,13 @@ def plan_revert_session(repo: str | Path, name: str) -> VerbPreview:
         return _preview("revert", name, ideal.op_ids, ideal.op_ids, ops,
                         message=f"session {name!r}'s ops are not in the current ideal; no change")
 
-    upset_union: set[str] = set()
-    for op_id in op_ids:
-        upset_union |= order.upset_in(op_id, ideal.op_ids, ops, declared)
-    after = ideal.op_ids - frozenset(upset_union)
+    after = ideal.op_ids - order.upset_in_many(op_ids, ideal.op_ids, ops, declared)
     return _validated("revert", name, ideal.op_ids, after, ops, declared)
 
 
 def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> VerbPreview:
-    """Revert an already-resolved op-set X as the exact ideal edit `I \\ (∪ upset_in(x))` over
-    `x∈X` -- the fully-generic form `plan_revert_session` and `lens.verbs.plan_revert_feature`
+    """Revert an already-resolved op-set X as the exact ideal edit `I \\ upset_in_many(X)` --
+    the fully-generic form `plan_revert_session` and `lens.verbs.plan_revert_feature`
     each specialize with their own resolution step (session attribution / feature `op_leaf`).
     `sgt.intent.group.resolve_group` is a third resolution step (a theme or commit-sha's atom
     union, plan U8): the LLM only ever decides *which* op-set this is; the actual removal is this
@@ -206,10 +209,7 @@ def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> Ve
         return _preview("revert", tag, ideal.op_ids, ideal.op_ids, ops,
                         message=f"{tag}: none of its ops are in the current ideal; no change")
 
-    upset_union: set[str] = set()
-    for op_id in op_ids:
-        upset_union |= order.upset_in(op_id, ideal.op_ids, ops, declared)
-    after = ideal.op_ids - frozenset(upset_union)
+    after = ideal.op_ids - order.upset_in_many(op_ids, ideal.op_ids, ops, declared)
     return _validated("revert", tag, ideal.op_ids, after, ops, declared)
 
 

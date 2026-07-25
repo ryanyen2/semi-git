@@ -420,9 +420,14 @@ function episodeRailLayout(epView) {
     status: { oracle: { configured: false, status: "pending" } }, sessions: { sessions: [] }, proposals: [],
   };
   let map = compose.map;
+  // id -> node index, rebuilt whenever `map` is reassigned (the "state" handler below). byId is a
+  // hot path -- called per lane and per rail row (directly and via laneColor) -- so it's a Map
+  // lookup rather than an O(nodes) scan on every call.
+  let nodeIndex = new Map((map.nodes || []).map((n) => [n.id, n]));
   let history = compose.history; // still the per-op stream the render half reads (op-set panel, plan/drift joins)
   let grid = compose.grid;       // grid_view's cell table -- the layout functions' canonical join (plan U3)
   let layout = computeSegmentLayout(map, grid, segmentsOf(compose), { collapsed: state.collapsed });
+  let lastRenderWidth = -1; // rail width the last render() drew at; the resize observer skips no-op width reflows
   let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
   let previewSeq = 0;
   let pendingPreview = null;
@@ -498,7 +503,7 @@ function episodeRailLayout(epView) {
   }
 
   function byId(id) {
-    return (map.nodes || []).find((n) => n.id === id);
+    return nodeIndex.get(id);
   }
 
   // ─── Plan marks (Phase 6) ─────────────────────────────────────────────────────────────────────
@@ -750,6 +755,7 @@ function episodeRailLayout(epView) {
   }
 
   function render() {
+    lastRenderWidth = rail.clientWidth; // baseline the resize observer compares against (item below)
     renderTitlebar();
     // Plan-badge transition bookkeeping: a step newly seen pending gets an entering pulse; a step
     // that just matched drops its pending badge. (The rail's cross-row comet/FLIP morphs retired
@@ -2345,6 +2351,7 @@ function episodeRailLayout(epView) {
       history = compose.history || { commits: [], ops: [] };
       grid = compose.grid || { commits: [], cells: [] };
       map = compose.map || { nodes: [], roots: [], edges: [] };
+      nodeIndex = new Map((map.nodes || []).map((n) => [n.id, n])); // keep byId's index in sync
       planMarks = collectPlanMarks(compose.plan, history);
       driftMarks = collectDriftMarks(compose.drift, history);
       forkMarks = collectForkMarks(compose.forks, map.nodes);
@@ -2421,14 +2428,14 @@ function episodeRailLayout(epView) {
   // the axis width is derived from the pane width (measureAxis). Re-render on width change so the
   // ops re-spread and the graph re-flows -- debounced, and gated on a real width delta so the
   // scrollbar appearing/disappearing mid-render can't feed a render back into itself.
-  let lastRailWidth = 0;
   let resizeTimer = null;
   new ResizeObserver(() => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      const w = rail.clientWidth;
-      if (Math.abs(w - lastRailWidth) < 4) return;
-      lastRailWidth = w;
+      // The layout is width-derived, so only a width change needs a reflow. render() records the
+      // width it last drew at (lastRenderWidth), updated by every render path -- so a height-only
+      // resize (rows added, scrollbar toggling) at an unchanged width is skipped entirely.
+      if (Math.abs(rail.clientWidth - lastRenderWidth) < 4) return;
       render();
     }, 80);
   }).observe(rail);

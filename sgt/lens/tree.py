@@ -34,7 +34,7 @@ from pathlib import Path
 from sgt import state
 from sgt.core.op import Op, _symbol_kind
 from sgt.lens import cluster
-from sgt.lens.cluster import _dominant_dir, _fuse, _leiden
+from sgt.lens.cluster import _dominant_dir, _fuse, _leiden_graph, _leiden_partition
 from sgt.lens.pins import (
     Pins, _expand_members, _must_link_groups, apply_must_link, enforce_cannot_link, load_pins,
 )
@@ -102,6 +102,8 @@ def _split_once(
     gamma); too many means too fine -- search coarser (lower gamma). Keeps the closest-to-target
     result seen across the search as a fallback when no gamma in range lands exactly in range."""
     induced = _induced(fused, set(members))
+    sorted_members = sorted(members)
+    g = _leiden_graph(sorted_members, induced)  # built once; only `gamma` changes across the search
     lo_log, hi_log = math.log(lo), math.log(hi)
     best_big: list[list[str]] | None = None
     best_small: list[list[str]] = []
@@ -110,7 +112,7 @@ def _split_once(
     for _ in range(max_iter):
         mid_log = (lo_log + hi_log) / 2
         gamma = math.exp(mid_log)
-        parts = _leiden(sorted(members), induced, gamma)
+        parts = _leiden_partition(g, sorted_members, gamma)
         big = sorted((p for p in parts if len(p) >= min_lane), key=lambda p: -len(p))
         small = [p for p in parts if len(p) < min_lane]
         count = len(big)
@@ -657,12 +659,21 @@ def match_identities(
         for j in (_jaccard(om, nm),)
         if j >= theta
     ]
+    # Bucket `pairs` once by old-id and by new-id, rather than re-scanning all of `pairs` per id to
+    # find each id's best match -- that made this O(|pairs|·(|old|+|new|)), quadratic on a large
+    # recluster. Each (oid, nid) is unique in `pairs`, so the (-j, id) tie-break is total within a
+    # bucket; appending in `pairs` order reproduces the old per-id comprehension's order exactly.
+    pairs_by_old: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    pairs_by_new: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    for oid, nid, j in pairs:
+        pairs_by_old[oid].append((nid, j))
+        pairs_by_new[nid].append((oid, j))
 
     def _best(cands: list[tuple[str, float]]) -> str | None:
         return min(cands, key=lambda t: (-t[1], t[0]))[0] if cands else None
 
-    old_best = {oid: _best([(nid, j) for (o, nid, j) in pairs if o == oid]) for oid in old}
-    new_best = {nid: _best([(oid, j) for (oid, n, j) in pairs if n == nid]) for nid in new}
+    old_best = {oid: _best(pairs_by_old.get(oid, [])) for oid in old}
+    new_best = {nid: _best(pairs_by_new.get(nid, [])) for nid in new}
 
     used: set[str] = set(old)  # never mint an id that collides with a carried old id
 
