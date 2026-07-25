@@ -113,10 +113,26 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
     open fork, or persistent contention) exits non-zero with the reason and the `sgt merge-op` remedy
     for a fork. (`sgt commit`, U11's staged-rewrite-candidate commit, is a distinct verb -- kept out
     of `land`'s name so "land" only ever means the branch-CAS advance.)"""
+    import sys
+
     from sgt.core import sync as sync_mod
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.core.sync import MinerVersionMismatch
     from sgt.store.gitbind import GitError
+
+    # The confirm step. On an interactive tty (not --json) `land` shows the consequence feedforward
+    # first -- where your work is going, the fork that blocks it, the oracle gate the confirm runs --
+    # in place of applying blind, and lets the user back out. `--json` and a non-tty keep applying
+    # immediately (the machine/CI contract): no new args, only what the user sees interactively.
+    if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
+        from sgt.api import land_preview_view
+
+        from ._common import confirm_collab
+
+        pview = land_preview_view(repo, branch)
+        if not confirm_collab(pview, f"land onto {pview['target']}?"):
+            print("  aborted — nothing landed.")
+            return 1
 
     try:
         report = sync_mod.land(repo, branch=branch)
@@ -146,10 +162,32 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
 
 
 def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
+    import sys
+
     from sgt.core import sync as sync_mod
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.core.sync import MinerVersionMismatch
     from sgt.store.gitbind import GitError
+
+    # The confirm step. On an interactive tty (not --json) `sync` shows the feedforward first -- the
+    # ops it would fold in and any fork that would *surface* (a sync never blocks; the fork-free part
+    # still merges) -- and lets the user back out before the merge lands. `--json` and a non-tty keep
+    # merging immediately (the machine/CI contract): no new args, only what the user sees.
+    if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
+        from sgt.api import sync_preview_view
+
+        from ._common import confirm_collab
+
+        try:
+            pview = sync_preview_view(repo, remote, branch)
+        except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
+            return _fail_json(str(e), as_json)
+        if pview.get("up_to_date"):
+            print(f"✓ sync {pview['remote']}/{pview['target']}: already up to date")
+            return 0
+        if not confirm_collab(pview, f"sync {pview['remote']}/{pview['target']}?"):
+            print("  aborted — nothing synced.")
+            return 1
 
     try:
         report = sync_mod.sync(repo, remote=remote, branch=branch)

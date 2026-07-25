@@ -8,7 +8,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"file\": \"a.py\",\n  \"spans\": [],\n  \"features\": {}\n}\n"
+      "out": "{\n  \"file\": \"a.py\",\n  \"spans\": [],\n  \"features\": {},\n  \"covered\": true\n}\n"
     },
     "text": {
       "argv": [
@@ -175,7 +175,7 @@
         "log"
       ],
       "exit": 0,
-      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n\u001b[1m 1 feature(s)  \u00b7  7 commit(s)  \u00b7  14 op(s)\u001b[0m\n\n    \u001b[38;2;182;143;231m\u25cf\u001b[0m \u001b[1m\u001b[38;2;182;143;231m23f\u001b[0m\u001b[0m\u001b[2m7fcfe\u001b[0m baz qux                        \u001b[38;2;182;143;231m\u2588\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;150;117;190m\u2585\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m \u001b[2m   14\u001b[0m  \u001b[2madd-foo-qux-config\u001b[0m\n\n\u001b[2m \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588 = op-density (taller = busier), \u2502 = a rewind boundary between checkpoints   \u00b7   trailing chips = the checkpoints (rewind by name)   \u00b7   bright handle chars = the minimal prefix to type\u001b[0m\n\u001b[2m daily:  sgt log  (overview)   \u00b7   sgt log --focus <XXXX>  (one feature's named checkpoints)   \u00b7   sgt log --timeline  (commit-time rail)   \u00b7   sgt log --refresh  (re-name)\u001b[0m\n\u001b[2m operate:  sgt revert <XXXX>:<slug>  (one checkpoint, by name)   \u00b7   sgt revert <XXXX>  (whole feature)   \u00b7   sgt intent show <XXXX>  (its chapters)\u001b[0m\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n\u001b[1m 1 feature(s)  \u00b7  7 commit(s)  \u00b7  14 op(s)\u001b[0m\n\n    \u001b[38;2;182;143;231m\u25cf\u001b[0m \u001b[1m\u001b[38;2;182;143;231m23f\u001b[0m\u001b[0m\u001b[2m7fcfe\u001b[0m baz qux                        \u001b[38;2;182;143;231m\u2588\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;150;117;190m\u2585\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m \u001b[2m   14\u001b[0m  \u001b[2madd-foo-qux-config\u001b[0m\n\n\u001b[2m \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588 = op-density (taller = busier), \u2502 = a rewind boundary between checkpoints   \u00b7   trailing chips = the checkpoints (rewind by name)   \u00b7   bright handle chars = the minimal prefix to type\u001b[0m\n"
     }
   },
   "map": {
@@ -434,7 +434,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"coupling\": [],\n  \"frontier\": [\n    {\n      \"op_id\": \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n      \"bucket\": \"foundation\",\n      \"toggleable\": false\n    }\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"coupling\": [],\n  \"frontier\": [\n    {\n      \"op_id\": \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n      \"bucket\": \"foundation\",\n      \"toggleable\": false\n    }\n  ],\n  \"reversible\": true,\n  \"fallout\": [],\n  \"carry_count\": 0,\n  \"so_what\": \"Removes c.py::qux. Nothing depends on it \\u2014 clean revert. Undo-able.\"\n}\n"
     },
     "text": {
       "argv": [

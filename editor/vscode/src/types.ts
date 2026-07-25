@@ -571,17 +571,6 @@ export interface LandCandidateResult {
   sha?: string;
 }
 
-// `sgt review-queue ack <op-id>... [--session <name>] [--note "..."] --json` (plan U31, S7): the
-// trust queue's dequeue mechanism.
-export interface ReviewAckResult {
-  ok: boolean;
-  id?: string;
-  op_ids?: string[];
-  scope?: string;
-  note?: string | null;
-  error?: string;
-}
-
 // `sgt propose publish <id> [--remote origin] --json` (plan U32, D7).
 export interface PublishResult {
   ok: boolean;

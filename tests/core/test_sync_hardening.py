@@ -244,7 +244,6 @@ def test_c4_fork_free_construction_is_a_valid_ideal(tmp_path):
     ing = Ingested(
         ours_pins=Pins(), theirs_pins=Pins(),
         ours_declared_orset=lens.DeclaredORSet(), theirs_declared_orset=lens.DeclaredORSet(),
-        ours_aliases=frozenset(), theirs_aliases=frozenset(),
         ours_tree=None,
         ours_ideal=Ideal.from_ops({add_foo.id, rework_b.id, add_bar.id}, all_ops),
         theirs_ideal_ids=frozenset({add_foo.id, rework_a.id, add_bar.id}),

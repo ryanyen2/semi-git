@@ -116,6 +116,8 @@ def _render(repo, propose, pid, github, as_json) -> int:
 
 
 def _land(repo, propose, pid, subset, as_json) -> int:
+    import sys
+
     from sgt.api import land_view
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.core.sync import MinerVersionMismatch
@@ -126,6 +128,23 @@ def _land(repo, propose, pid, subset, as_json) -> int:
         accept_ids, err = _resolve_subset(repo, pid, subset)
         if err is not None:
             return _fail_json(err, as_json)
+
+    # The confirm step. On an interactive tty (not --json) `propose land` shows the same land
+    # feedforward -- the ops it would advance the base branch by, a stale-fork blocker, the oracle
+    # gate -- scoped to this proposal's Δ, and lets the user back out. `--json`/non-tty apply
+    # immediately (the machine/CI contract): no new args, only what the user sees interactively.
+    if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
+        from sgt.api import proposal_land_preview_view
+
+        from ._common import confirm_collab
+
+        try:
+            pview = proposal_land_preview_view(repo, pid, accept_ids=accept_ids)
+        except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
+            return _fail_json(str(e), as_json)
+        if not confirm_collab(pview, f"land proposal {pid} onto {pview['target']}?"):
+            print("  aborted — nothing landed.")
+            return 1
 
     try:
         report = propose.land(repo, pid, accept_ids=accept_ids)

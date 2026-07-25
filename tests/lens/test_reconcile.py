@@ -9,7 +9,7 @@ schedule converges. The `is_ancestor` callable is a plain in-memory fake -- no g
 from __future__ import annotations
 
 from sgt.lens.pins import Pins
-from sgt.lens.reconcile import _assign_winner, resolve_alias, union_aliases, union_pins
+from sgt.lens.reconcile import _assign_winner, union_pins
 
 
 def _ancestry(edges: set[tuple[str, str]]):
@@ -65,30 +65,6 @@ def test_contradicting_label_rename_is_hash_deterministic():
     merged, _ = union_pins(ours, theirs)
     swapped, _ = union_pins(theirs, ours)
     assert merged.labels == swapped.labels  # order-independent, not theirs-wins
-
-
-def test_union_aliases_disjoint_is_a_plain_union():
-    a = frozenset({("F0", "f-a")})
-    b = frozenset({("F1", "f-b")})
-    assert union_aliases(a, b) == frozenset({("F0", "f-a"), ("F1", "f-b")})
-
-
-def test_union_aliases_collision_elects_one_winner_and_aliases_the_loser():
-    # the same old id re-minted to two different new ids (divergent unsynced curation).
-    a = frozenset({("F0", "f-alpha")})
-    b = frozenset({("F0", "f-beta")})
-    merged = union_aliases(a, b)
-    assert union_aliases(a, b) == union_aliases(b, a)  # order-independent (LAW-U)
-    winner = resolve_alias(merged, "F0")
-    assert winner in ("f-alpha", "f-beta")
-    # every reference -- the old id and *either* minted new id -- resolves to the one winner.
-    assert resolve_alias(merged, "f-alpha") == winner
-    assert resolve_alias(merged, "f-beta") == winner
-
-
-def test_resolve_alias_follows_a_chain_to_the_terminal():
-    aliases = frozenset({("F0", "f-a"), ("f-a", "f-b")})
-    assert resolve_alias(aliases, "F0") == "f-b"  # F0 -> f-a -> f-b
 
 
 def test_authored_label_register_reuses_assign_winner_not_pins_labels():

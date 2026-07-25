@@ -1,5 +1,6 @@
 {
   "blame_view": {
+    "covered": true,
     "features": {
       "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736": {
         "label": "compute helper"

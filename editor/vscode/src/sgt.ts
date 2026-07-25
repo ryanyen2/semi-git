@@ -26,7 +26,6 @@ import {
   ProposalView,
   PublishResult,
   RenameResult,
-  ReviewAckResult,
   RewriteDraft,
   SaveResult,
   SelectionView,
@@ -296,18 +295,8 @@ export class Sgt {
     return this.json<ProposalReviewView>(["propose", "status", id, "--checklist", "--json"]);
   }
 
-  // Dequeues an op-set from `trust_view` (plan U31, S7). `--json` before the variadic `op_ids`
-  // so argparse doesn't try to swallow it into that list.
-  reviewAck(opIds: string[], note?: string): Promise<ReviewAckResult> {
-    const args = [
-      "advanced", "review-queue", "ack", "--json",
-      ...(note ? ["--note", note] : []), ...opIds,
-    ];
-    return this.json<ReviewAckResult>(args);
-  }
-
-  // Partial-accept review + CAS advance (plan U24/C10/U32). `--json` before `--subset` for the
-  // same reason as `reviewAck`.
+  // Partial-accept review + CAS advance (plan U24/C10/U32). `--json` before `--subset` so
+  // argparse doesn't swallow it into that variadic list.
   proposeLand(id: string, subset?: string[]): Promise<LandReport> {
     const args = ["propose", "land", id, "--json"];
     if (subset && subset.length) args.push("--subset", ...subset);

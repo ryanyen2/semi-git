@@ -121,19 +121,32 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             view = {**view, **extra}
         return _emit_json(view) if as_json else _print_verb_view(view)
 
-    # Plain-text apply: draw the feedforward graph, then confirm before touching the ideal.
+    # Plain-text apply: the confirm step. On an interactive tty this *is* the consequence focus
+    # pane (a zoomed region of `sgt log`: what breaks, adjust with space, apply with enter); with
+    # `--yes`, a non-tty, or textual absent it degrades to the feedforward-graph + `[y/N]` prompt.
     if preview.ok and not as_json:
         import sys
 
         from sgt.api import _project_verb_preview, grid_view, map_view, segments_view
+
+        from ._common import maybe_confirm
+
+        pview = _project_verb_preview(repo, preview)
+        mv, gv, sv = map_view(repo), grid_view(repo), segments_view(repo)
+
+        if not yes:
+            decision = maybe_confirm(pview, mv, gv, sv, focus_fid=focus_fid)
+            if decision is not None:  # interactive tty + textual: the pane is the confirm step
+                if not decision.apply:
+                    print("  skipped — nothing changed.")
+                    return 1
+                return _apply_decision(repo, preview, decision.kept, as_json)
+
+        # Degrade path (--yes, non-tty, or no textual): draw the feedforward, gate on [y/N].
         from sgt.tui.graph import render_verb_preview_lines
 
         color = sys.stdout.isatty()
-        pview = _project_verb_preview(repo, preview)
-        for line in render_verb_preview_lines(
-            map_view(repo), grid_view(repo), segments_view(repo), pview,
-            focus_fid=focus_fid, color=color,
-        ):
+        for line in render_verb_preview_lines(mv, gv, sv, pview, focus_fid=focus_fid, color=color):
             print(line)
         if not yes:
             if not sys.stdin.isatty():
@@ -162,6 +175,21 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
     if extra:
         view = {**view, **extra}
     return _emit_json(view) if as_json else _print_verb_view(view)
+
+
+def _apply_decision(repo: str, preview, kept: frozenset[str], as_json: bool) -> int:
+    """Apply a consequence-pane Decision. A kept-set on a `revert` is exactly the existing
+    `--keep <ids>` continuation-hollow path -- each kept dependent stays live as a draft instead
+    of cascading out with the up-set; everything else is the plain exact edit through
+    `verbs.apply`. Empty kept-set = a bare apply (identical to the old `[y/N]` yes path)."""
+    from sgt.core import verbs
+
+    if kept and preview.verb == "revert":
+        return _revert_keep_dependents(repo, [preview.target], None, False, as_json, keep=kept)
+    verbs.apply(repo, preview)
+    print(f"  ✓ {preview.verb} applied — {len(preview.removed)} op(s) removed, "
+          f"{len(preview.added)} added.")
+    return 0
 
 
 def _revert_lane_to_commit(
@@ -240,12 +268,17 @@ def _kernel_edit_verb(
     focus_fid = None
     if handle_shaped:
         resolved_feature = lens_verbs.resolve_feature(repo, target)
-        if resolved_feature is None:
-            # A typo'd/stale/ambiguous handle -- not a natural-language phrase. Answer deterministically
-            # and instantly rather than paying the 2-minute LLM rung a real NL target deserves.
-            return _no_feature_match(repo, cmd, target, as_json)
-        focus_fid = resolved_feature[1]  # (op_set, feature_id, label)
-        preview = plan_feature(repo, target)
+        if resolved_feature is not None:
+            focus_fid = resolved_feature[1]  # (op_set, feature_id, label): feature scope wins over the op it shadows
+            preview = plan_feature(repo, target)
+        else:
+            # No feature claims this hex handle -- but a *full* op id (the copy token `log --ops`
+            # prints) is all-hex too, so it lands here while genuinely naming an op. Try the single-op
+            # plan before giving up. Only a hex string that is *neither* feature nor op is a
+            # typo'd/stale handle; answer that deterministically (no NL rung a bare hex never deserves).
+            preview = plan_single(repo, target)
+            if not preview.ok:
+                return _no_feature_match(repo, cmd, target, as_json)
     else:
         preview = plan_single(repo, target)
         if not preview.ok:

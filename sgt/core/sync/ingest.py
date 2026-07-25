@@ -25,7 +25,7 @@ from sgt.core.mine import mine
 from sgt.core.op import MINER_VERSION, Op, merge_attribution
 from sgt.core.store import Store, _deserialize
 from sgt.intent import prompts as intent_prompts
-from sgt.lens import authored, reconcile, tree
+from sgt.lens import authored, tree
 from sgt.lens.authored import AuthoredFeature
 from sgt.lens.pins import Pins, _pins_from_payload, load_pins
 from sgt.store.gitbind import GitBinding, parse_op_ids
@@ -48,8 +48,6 @@ class Ingested:
     theirs_pins: Pins
     ours_declared_orset: lens.DeclaredORSet
     theirs_declared_orset: lens.DeclaredORSet
-    ours_aliases: frozenset[tuple[str, str]]
-    theirs_aliases: frozenset[tuple[str, str]]
     ours_tree: dict | None
     ours_ideal: Ideal
     theirs_ideal_ids: frozenset[str]
@@ -133,8 +131,6 @@ def ingest(
         theirs_pins=_pins_at(gb, theirs_sha),
         ours_declared_orset=lens.load_declared_orset(repo),
         theirs_declared_orset=lens.declared_orset_at(gb, theirs_sha),
-        ours_aliases=reconcile.load_aliases(repo),
-        theirs_aliases=reconcile.aliases_at(gb, theirs_sha),
         ours_prompts=intent_prompts.load_prompts(repo),
         theirs_prompts=intent_prompts.prompts_at(gb, theirs_sha),
         ours_authored=authored.load_authored(repo),

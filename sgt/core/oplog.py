@@ -8,11 +8,10 @@ story, which is explicitly out of scope).
 
 **Subsumes `ideal_journal` (KTD6).** This is a single store: it reuses the existing
 `.sgt/local/ideal_journal.json` slot, now holding a list of typed events per ref-key rather than
-only `{ideal, witness}` dicts. An entry with no `kind` is read as the legacy `ideal_edit` shape, so
-every ideal-edit undo that existed before this unit (save/revert/restore/pin/cherry-pick/rewrite)
-is preserved byte-for-byte: `record_ideal` still pushes the outgoing ideal (now tagged
-`kind="ideal_edit"`), and that restore is folded in as one event kind here. There is one pop per
-undo, so an ideal-edit event and a journal entry can never be popped by two mechanisms.
+only `{ideal, witness}` dicts. Every event carries an explicit `kind`: `record_ideal` pushes the
+outgoing ideal tagged `kind="ideal_edit"`, and that restore is folded in as one event kind here.
+There is one pop per undo, so an ideal-edit event and a journal entry can never be popped by two
+mechanisms.
 
 **Inverse-descriptor = a snapshot of the affected artifact(s) captured at append time**, restored
 on undo -- the simplest robust inverse:
@@ -169,7 +168,7 @@ def undo(repo: str | Path) -> UndoOutcome:
     if event is None:
         return UndoOutcome("empty", "nothing to undo -- no recorded ideal edits")
 
-    kind = event.get("kind", "ideal_edit")
+    kind = event["kind"]
     if kind in ("land", "propose"):
         return UndoOutcome(
             "refused",
@@ -193,7 +192,7 @@ def apply_inverse(repo: str | Path, event: dict) -> UndoOutcome:
     short-circuits before reaching here, so this is defensive)."""
     from sgt.core import lens
 
-    kind = event.get("kind", "ideal_edit")
+    kind = event["kind"]
     if kind == "ideal_edit":
         res = lens._apply_ideal_edit_inverse(repo, event)
         return UndoOutcome("ideal_edit", f"restored {len(res.ideal.op_ids)} op(s)", ideal=res, kind=kind)

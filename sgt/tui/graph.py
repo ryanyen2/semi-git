@@ -803,10 +803,10 @@ def render_graph_lines(
     else:
         lines.append(dim(" ▁▂▃▄▅▆▇█ = op-density (taller = busier), │ = a rewind boundary between checkpoints"
                          "   ·   trailing chips = the checkpoints (rewind by name)   ·   bright handle chars = the minimal prefix to type"))
-    lines.append(dim(" daily:  sgt log  (overview)   ·   sgt log --focus <XXXX>  (one feature's named"
-                     " checkpoints)   ·   sgt log --timeline  (commit-time rail)   ·   sgt log --refresh  (re-name)"))
-    lines.append(dim(" operate:  sgt revert <XXXX>:<slug>  (one checkpoint, by name)   ·   "
-                     "sgt revert <XXXX>  (whole feature)   ·   sgt intent show <XXXX>  (its chapters)"))
+    # lines.append(dim(" daily:  sgt log  (overview)   ·   sgt log --focus <XXXX>  (one feature's named"
+    #                  " checkpoints)   ·   sgt log --timeline  (commit-time rail)   ·   sgt log --refresh  (re-name)"))
+    # lines.append(dim(" operate:  sgt revert <XXXX>:<slug>  (one checkpoint, by name)   ·   "
+    #                  "sgt revert <XXXX>  (whole feature)   ·   sgt intent show <XXXX>  (its chapters)"))
     return lines
 
 
@@ -918,6 +918,182 @@ def render_verb_preview_lines(
     verbword = "removes" if verb == "revert" else "restores"
     lines.append(_dim(f" {verbword} {n_op} op · {len(files)} file(s) changed · "
                       f"{len(others)} other feature(s) affected", color=color))
+    return lines
+
+
+def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> list[str]:
+    """The `sync` feedforward: what folding a teammate's branch in would bring. A sync never blocks
+    -- the fork-free part always merges -- so a fork is drawn as *surfacing* (work waits at the
+    common ancestor, not lost), and a degraded base/lost-provenance tip is surfaced loudly (R12)."""
+    src = f"{preview_view.get('remote', '')}/{preview_view.get('target', '')}"
+    ops_added = preview_view.get("ops_added", 0)
+    forks = preview_view.get("forks", []) or []
+    contradictions = preview_view.get("pin_contradictions", []) or []
+    cycles = preview_view.get("declared_cycles", []) or []
+    tagline = _dim("fold in a teammate's work", color=color)
+
+    lines: list[str] = [
+        f" {_paint('#5fafff', '▸', color=color)} {_bold('sync', color=color)}  "
+        f"{_bold(src, color=color)}  {tagline}",
+        "",
+        f"   {_paint('#5fafff', '↓', color=color)} brings in "
+        f"{_bold(str(ops_added), color=color)} op(s) from {src}",
+        "",
+    ]
+
+    if forks:
+        lines.append(_paint("#ffaf00", f"   ⚠ {len(forks)} fork(s) surface -- the fork-free work "
+                                       f"still merges; resolve these when ready (nothing is lost):",
+                            color=color))
+        for sym, a, b in forks[:8]:
+            remedy = _dim(f"sgt merge-op {a[:8]} {b[:8]}", color=color)
+            lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
+        if len(forks) > 8:
+            lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
+        lines.append("")
+
+    for c in contradictions:
+        lines.append(_paint("#ffaf00", f"   ⚠ pin contradiction: {c.get('detail', '')}", color=color))
+    for pair in cycles:
+        lines.append(_paint("#ffaf00", f"   ⚠ declared-edge cycle: {pair}", color=color))
+    if contradictions or cycles:
+        lines.append("")
+
+    # R12 loudness: a degraded base or a lost-provenance tip fell back to weaker semantics. Never
+    # silent -- name the recovery path that was refused, exactly as the post-merge report does.
+    if preview_view.get("base_recovery") == "none":
+        lines.append(_paint("#ff5f5f", "   ⚠ base recovery: none -- no witnessed merge-base; union "
+                                       "semantics (cannot delete work one side removed)", color=color))
+    if preview_view.get("theirs_recovery") == "none":
+        lines.append(_paint("#ff5f5f", "   ⚠ theirs' tip has sgt ops but no witnessed trailers -- "
+                                       "re-mine on their side, then sync again", color=color))
+
+    lines.append("")
+    tail = (f" folds in {ops_added} op · {len(forks)} fork(s) surface to resolve · not auto-undoable"
+            if forks else f" folds in {ops_added} op · no forks · not auto-undoable")
+    lines.append(_dim(tail, color=color))
+    return lines
+
+
+def _render_resolve_preview_lines(preview_view: dict, *, color: bool = True) -> list[str]:
+    """The `resolve <symbol>` feedforward: the three-step remedy `--apply` runs to close a fork --
+    fulfill the drafted reconciliation from the edited tree, run the oracle, land it. An unclean plan
+    (no open fork, or no drafted reconciliation yet) renders its `error` alone."""
+    sym = preview_view.get("target", "")
+
+    if not preview_view.get("clean", True):
+        return [f" {_paint('#cc5500', '✗', color=color)} {_bold('resolve', color=color)}  "
+                f"{_dim(sym, color=color)}",
+                "",
+                _dim(f"   {preview_view.get('error', 'not resolvable')}", color=color)]
+
+    tips = preview_view.get("tips", []) or []
+    lines: list[str] = [
+        f" {_paint('#5fafff', '▸', color=color)} {_bold('resolve', color=color)}  "
+        f"{_bold(sym, color=color)}  {_dim('reconcile a same-symbol fork', color=color)}",
+        "",
+    ]
+    if len(tips) == 2:
+        lines.append(f"   {_dim('tips', color=color)} "
+                     f"{_paint('#ffaf00', tips[0][:8], color=color)} "
+                     f"{_dim('↔', color=color)} {_paint('#ffaf00', tips[1][:8], color=color)}")
+        lines.append("")
+    lines.append(f"   {_paint('#5fafff', '1', color=color)} fulfill your merged edit from the tree")
+    lines.append(f"   {_paint('#5fafff', '2', color=color)} run the oracle on the reconciled candidate")
+    lines.append(f"   {_paint('#5fafff', '3', color=color)} land it -- closes the fork on {sym}")
+    lines.append("")
+    if not preview_view.get("oracle_configured", True):
+        lines.append(_paint("#ffaf00", "   oracle: none configured -- the reconciliation lands "
+                                       "unverified", color=color))
+    else:
+        lines.append(_dim("   oracle: green required -- runs the tests on confirm before landing",
+                          color=color))
+    lines.append("")
+    lines.append(_dim(f" fulfill + oracle + land · closes the fork on {sym} · not auto-undoable",
+                      color=color))
+    return lines
+
+
+def render_collab_preview_lines(preview_view: dict, *, color: bool = True) -> list[str]:
+    """The **feedforward** graph for a collaboration verb -- `land`, `sync`, `propose land`, or
+    `resolve` -- drawn before the one-way step runs. Unlike a revert's checkpoint rail, the
+    consequence here is *where your work is going and what stops it*: for `land`/`propose land` the
+    op count it would advance the shared branch by, any fork that BLOCKS it, and the LAW-G oracle
+    gate; for `sync` the op count it folds *in* and any fork that SURFACES (a sync never blocks --
+    the fork-free part still merges); for `resolve` the three-step remedy it runs. Pure over the
+    projection dict; the `[y/N]` prompt stays in the CLI caller. An unclean plan (`clean` False)
+    renders its `error` alone."""
+    verb = preview_view.get("verb", "land")
+    if verb == "sync":
+        return _render_sync_preview_lines(preview_view, color=color)
+    if verb == "resolve":
+        return _render_resolve_preview_lines(preview_view, color=color)
+
+    branch = preview_view.get("target", "")
+    forks = preview_view.get("forks", []) or []
+    contradictions = preview_view.get("pin_contradictions", []) or []
+    cycles = preview_view.get("declared_cycles", []) or []
+    advisory = preview_view.get("advisory")
+
+    if not preview_view.get("clean", True):
+        return [f" {_paint('#cc5500', '✗', color=color)} {_bold('land', color=color)}  "
+                f"{_dim(branch, color=color)}",
+                "",
+                _dim(f"   {preview_view.get('error', 'not landable')}", color=color)]
+
+    ops_added = preview_view.get("ops_added", 0)
+    lines: list[str] = [
+        f" {_paint('#5fafff', '▸', color=color)} {_bold(verb, color=color)}  "
+        f"{_bold(branch, color=color)}  {_dim('advance the shared branch', color=color)}",
+        "",
+    ]
+    # Only claim "adds N op" when there's something to advance -- when a fork blocks and nothing
+    # else would land, "adds 0 op" is noise the fork line already explains.
+    if ops_added:
+        lines.append(f"   {_paint('#5fafff', '↑', color=color)} your work adds "
+                     f"{_bold(str(ops_added), color=color)} op(s) to {branch}")
+        lines.append("")
+
+    if forks:
+        lines.append(_paint("#ffaf00", f"   ⚠ {len(forks)} fork(s) block the land -- "
+                                       f"reconcile before it can advance:", color=color))
+        for sym, a, b in forks[:8]:
+            remedy = _dim(f"sgt merge-op {a[:8]} {b[:8]}", color=color)
+            lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
+        if len(forks) > 8:
+            lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
+        lines.append("")
+
+    for c in contradictions:
+        lines.append(_paint("#ffaf00", f"   ⚠ pin contradiction: {c.get('detail', '')}", color=color))
+    for pair in cycles:
+        lines.append(_paint("#ffaf00", f"   ⚠ declared-edge cycle: {pair}", color=color))
+    if contradictions or cycles:
+        lines.append("")
+
+    # The LAW-G gate: name what the confirm will (or won't) do. A fork short-circuits before the
+    # oracle; no oracle configured refuses outright; otherwise the oracle runs the tests on confirm.
+    if not preview_view.get("oracle_configured", True):
+        lines.append(_paint("#ff5f5f", "   oracle: none configured -- land refuses to advance an "
+                                       "unverified op-set (LAW-G)", color=color))
+    elif forks:
+        lines.append(_dim("   oracle: not reached -- the fork blocks the land first", color=color))
+    else:
+        lines.append(_dim("   oracle: green required -- runs the tests on confirm, then CAS onto "
+                          "the tip", color=color))
+
+    if advisory:
+        lines.append("")
+        lines.append(_paint("#ffaf00", f"   ⚠ {advisory}", color=color))
+
+    lines.append("")
+    if forks:
+        tail = f" won't advance -- {len(forks)} fork(s) to resolve first"
+    elif not preview_view.get("oracle_configured", True):
+        tail = " won't advance -- no oracle to verify against (LAW-G)"
+    else:
+        tail = f" advances {branch} by {ops_added} op · runs tests on confirm · not auto-undoable"
+    lines.append(_dim(f" {tail.strip()}", color=color))
     return lines
 
 

@@ -209,27 +209,30 @@ def test_match_identities_continuation_keeps_feature_id():
     assert events == [{"event": "continuation", "feature_id": "F3"}]
 
 
-def test_match_identities_birth_mints_id_past_the_largest_existing():
-    # old has F0 and F5 -> a birth must not reuse either; fresh ids start at F6
+def test_match_identities_birth_mints_a_content_addressed_id():
+    # a birth mints `f-<founding op>` from the founding op, never reusing an existing id
     id_map, events = tree.match_identities(
-        {"F0": frozenset("ab"), "F5": frozenset("cd")}, {"N1": frozenset("xyz")}
+        {"F0": frozenset("ab"), "F5": frozenset("cd")}, {"N1": frozenset("xyz")},
+        founding={"N1": "op-xyz"},
     )
-    assert id_map["N1"] == "F6"
-    assert {"event": "birth", "feature_id": "F6"} in events
+    assert id_map["N1"] == "f-op-xyz"
+    assert {"event": "birth", "feature_id": "f-op-xyz"} in events
     assert sorted(e["event"] for e in events) == ["birth", "death", "death"]
 
 
 def test_match_identities_split_one_old_into_two_new():
     # F0's members divide evenly; both halves overlap F0 at exactly theta=0.5
     id_map, events = tree.match_identities(
-        {"F0": frozenset("abcd")}, {"N1": frozenset("ab"), "N2": frozenset("cd")}
+        {"F0": frozenset("abcd")}, {"N1": frozenset("ab"), "N2": frozenset("cd")},
+        founding={"N2": "op-cd"},
     )
-    # tie-break gives the continuation to the smaller new id; the other is a split off F0
+    # tie-break gives the continuation to the smaller new id; the other is a split off F0,
+    # minting a content-addressed `f-<founding op>` id
     assert id_map["N1"] == "F0"
-    assert id_map["N2"] == "F1"
+    assert id_map["N2"] == "f-op-cd"
     by_event = {e["event"]: e for e in events}
     assert by_event["continuation"]["feature_id"] == "F0"
-    assert by_event["split"] == {"event": "split", "feature_id": "F1", "parent": "F0"}
+    assert by_event["split"] == {"event": "split", "feature_id": "f-op-cd", "parent": "F0"}
 
 
 def test_match_identities_merge_two_old_into_one_new():
@@ -345,12 +348,10 @@ def test_assign_pin_overrides_greene_and_survives_reruns(tmp_path):
         tree.save(repo, result)
 
 
-def test_pinned_label_on_a_legacy_id_survives_an_ordinary_rebuild(tmp_path):
-    """Regression (U21): an ordinary `tree.build` must NOT silently re-mint a legacy `F<n>` id that
-    a pin still references -- doing so orphaned the pinned label (`label_tree`'s raw lookup by the
-    old id missed the re-minted leaf). A pre-U21 repo whose feature was renamed (a `labels` pin on
-    the legacy id) rebuilds without `sgt migrate`: the id is carried (not re-minted) and the label
-    survives. Only the explicit migration re-mints those, atomically with the pin rewrite."""
+def test_pinned_label_on_a_carried_id_survives_an_ordinary_rebuild(tmp_path):
+    """A continuation always carries its old feature id, so a feature the user renamed (a `labels`
+    pin keyed to that id) rebuilds with the id -- and therefore the pinned label -- intact. The id
+    is never re-minted out from under the pin by an ordinary build."""
     from sgt.lens.pins import Pins
 
     repo = corpus.CORPUS["class_with_methods"].build(tmp_path / "repo")
@@ -359,37 +360,22 @@ def test_pinned_label_on_a_legacy_id_survives_an_ordinary_rebuild(tmp_path):
     natural = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
     members = sorted({m for nd in natural["nodes"].values() if not nd["children"] for m in nd["members"]})
 
-    # pre-U21 shape: the feature lives under a legacy id and carries a user-pinned label keyed to it.
-    prev = {"nodes": {"F7": {"members": members, "children": [], "parent": None, "depth": 0}}, "roots": ["F7"]}
-    pins = Pins(labels={"F7": "My Custom Label"})
+    # the feature lives under a carried id and carries a user-pinned label keyed to it.
+    carried_id = next(nid for nid, nd in natural["nodes"].items() if not nd["children"])
+    prev = {"nodes": {carried_id: {"members": members, "children": [], "parent": None, "depth": 0}}, "roots": [carried_id]}
+    pins = Pins(labels={carried_id: "My Custom Label"})
     result = tree.build(repo, ops, ideal, pins=pins, previous=prev)
     tree.label_tree(result, repo, pins=pins)
 
     leaf = next(nid for nid, nd in result["nodes"].items() if not nd["children"])
-    assert leaf == "F7"  # carried, not silently re-minted out from under the pin
+    assert leaf == carried_id  # carried across the rebuild
     assert result["nodes"][leaf]["label"] == "My Custom Label"  # the pinned label survived
-
-
-def test_unreferenced_legacy_id_still_converges_on_rebuild(tmp_path):
-    """The other side of the guard: with *no* pin referencing it, a legacy continuation id still
-    re-mints to its content-addressed form (LAW-U) -- the guard only spares *referenced* ids."""
-    from sgt.lens.pins import Pins
-
-    repo = corpus.CORPUS["class_with_methods"].build(tmp_path / "repo")
-    ideal, ops = get(repo), Store(repo).all_ops()
-    natural = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
-    members = sorted({m for nd in natural["nodes"].values() if not nd["children"] for m in nd["members"]})
-
-    prev = {"nodes": {"F7": {"members": members, "children": [], "parent": None, "depth": 0}}, "roots": ["F7"]}
-    result = tree.build(repo, ops, ideal, pins=Pins(), previous=prev)  # empty pins -> nothing protected
-    leaf = next(nid for nid, nd in result["nodes"].items() if not nd["children"])
-    assert leaf.startswith("f-") and leaf != "F7"  # re-minted content-addressed (converges)
 
 
 def test_authored_feature_label_overrides_the_cluster_leaf_and_survives_a_rebuild(tmp_path):
     """U7/R3: an authored feature (U6) is the authority over the clustered leaf. `label_tree` shows
     the authored label where a leaf's symbols are claimed, and a re-cluster does not scatter the
-    authored members or drop the override -- the authored id is `protected`."""
+    authored members or drop the override."""
     from sgt.lens import authored
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
@@ -403,7 +389,7 @@ def test_authored_feature_label_overrides_the_cluster_leaf_and_survives_a_rebuil
     feat = authored.create(members, "Authored Authority")
     authored.save_authored(repo, {feat.id: feat})
 
-    result = tree.build(repo, ops, ideal)  # a plain re-cluster, authored `af-` id now protected
+    result = tree.build(repo, ops, ideal)  # a plain re-cluster; the authored `af-` id is carried
     tree.label_tree(result, repo)
 
     member_leaf = tree.leaf_member_index(result["nodes"])
@@ -413,10 +399,37 @@ def test_authored_feature_label_overrides_the_cluster_leaf_and_survives_a_rebuil
     assert result["nodes"][claimed]["label"] == "Authored Authority"  # authored label wins
 
 
+def test_authored_feature_with_empty_label_defers_to_the_clustered_label(tmp_path):
+    """A claim with an *empty* label register (what `ledger.assign_at_save`'s new-lane cascade seeds)
+    is "claimed but unnamed": it must NOT override the clustered/LLM label -- otherwise a save-time
+    lane permanently shadows the real name a rebuild computes. Only a deliberate `rename` (non-empty)
+    overrides (the test above)."""
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+
+    first = tree.build(repo, ops, ideal)
+    tree.label_tree(first, repo)
+    tree.save(repo, first)
+    fid, node = next((nid, nd) for nid, nd in first["nodes"].items() if not nd["children"])
+    members, clustered_label = node["members"], node["label"]
+
+    feat = authored.create(members, "")  # empty register -- claimed, not deliberately named
+    authored.save_authored(repo, {feat.id: feat})
+
+    result = tree.build(repo, ops, ideal)
+    tree.label_tree(result, repo)
+
+    member_leaf = tree.leaf_member_index(result["nodes"])
+    claimed = member_leaf[members[0]]
+    assert result["nodes"][claimed]["label"] == clustered_label  # clustered label stands, not blank
+
+
 def test_build_is_shape_stable_whether_or_not_authored_features_exist(tmp_path):
-    """Adding authored `af-` ids to `build`'s `protected` set is additive: a build with an authored
-    collection present produces the same tree shape as one without (authored features overlay the
-    tree, they do not restructure it)."""
+    """Authored `af-` ids are additive: a build with an authored collection present produces the
+    same tree shape as one without (authored features overlay the tree, they do not restructure
+    it)."""
     from sgt.lens import authored
     from sgt.lens.pins import Pins
 
@@ -525,6 +538,39 @@ def test_dedup_disambiguates_cross_subsystem_label_collision():
         nd["label"] for nd in result["nodes"].values() if not nd["children"] and nd["label"].startswith("Store")
     )
     assert store_leaves == ["Store · cli", "Store · core"]
+
+
+def test_assign_pin_with_scattered_members_resolves_to_one_leaf(tmp_path):
+    # Regression: `_apply_assign_pins` assumed must-link keeps every member of one assign target in a
+    # single leaf. But a target orphaned in the *previous* tree is spliced verbatim (never reclustered),
+    # so its pinned members can scatter across several current leaves. Renaming *every* such leaf to the
+    # pinned id aliased two leaves onto one node -> duplicate children -> `_dedup` deleted the survivor
+    # and crashed with KeyError. The pin must resolve to the single plurality leaf instead.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "roots": ["N0"],
+        "op_leaf": {"opA": "N1", "opB": "N2"},
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["c1", "c2", "t1"],
+                   "size": 3, "dir": "pkg", "children": ["N1", "N2"], "split_reason": None},
+            "N1": _leaf("N1", "N0", ["c1", "c2"], "pkg"),   # plurality: 2 pinned members
+            "N2": _leaf("N2", "N0", ["t1"], "tests"),        # 1 pinned member
+        },
+    }
+    # all three members pinned to one orphan feature id, scattered across N1 (2) and N2 (1).
+    pins = Pins(assign={"c1": "af-x", "c2": "af-x", "t1": "af-x"})
+
+    tree._apply_assign_pins(result, pins)
+
+    children = result["nodes"]["N0"]["children"]
+    assert len(children) == len(set(children))                 # no aliased/duplicate child id
+    assert children.count("af-x") == 1                          # pin attaches to exactly one leaf
+    assert set(result["nodes"]) - {"N0"} == set(children)       # nodes and children stay consistent
+    # the plurality leaf (N1, 2 members) becomes af-x; the minority leaf keeps its own id.
+    assert "af-x" in result["nodes"] and result["nodes"]["af-x"]["members"] == ["c1", "c2"]
+    assert "N2" in result["nodes"]
+    assert result["op_leaf"] == {"opA": "af-x", "opB": "N2"}    # op_leaf remapped for the renamed leaf
 
 
 def test_regroup_flat_root_groups_by_package_leaves_singletons_flat_and_is_idempotent():

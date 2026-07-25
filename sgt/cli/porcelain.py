@@ -190,21 +190,58 @@ def _fold_plan_matches(repo: str) -> dict | None:
     return {"auto_confirmed": auto, "ambiguous": ambiguous, "drift_op_ids": list(result.drift_op_ids)}
 
 
-def _confirm_plan_match(repo: str, hollow_ids: list[str], op_ids: list[str], as_json: bool) -> int:
+def _resolve_prefix(ref: str, known: set[str], kind: str) -> tuple[str | None, str]:
+    """Resolve `ref` to a full id in `known` -- exact, else unique prefix -- mirroring
+    `rewrite._resolve_op` for ids that aren't ops (a pending hollow). The `--resolve-plan` output
+    prints truncated ids, so a user pasting one back must resolve, not be rejected for not being a
+    verbatim full id (and a silently-wrong key must never reach `plan_matches.json`)."""
+    if ref in known:
+        return ref, ""
+    matches = sorted(k for k in known if k.startswith(ref))
+    if len(matches) == 1:
+        return matches[0], ""
+    if matches:
+        return None, f"ambiguous {kind} prefix {ref!r}: {[m[:12] for m in matches[:5]]}"
+    return None, f"{ref!r} is not a known pending {kind} id"
+
+
+def _confirm_plan_match(repo: str, hollow_refs: list[str], op_refs: list[str], as_json: bool) -> int:
     """`save --resolve-plan --confirm-hollow ... --confirm-op ...`: confirm one named step<->op
     group, the explicit path the removed `checkpoint --confirm-*` verb owned (`confirm_match` is
-    unchanged)."""
+    unchanged). Both ref kinds resolve by exact-or-unique-prefix so the (truncated) ids the
+    `--resolve-plan` preview prints can be pasted straight back -- an op ref *must* resolve to a
+    full canonical id, or `plan_matches.json` would key the match under the prefix and the real op
+    would resurface as drift on the next checkpoint."""
+    from pathlib import Path
+
+    from sgt.core.rewrite import _resolve_op
+    from sgt.core.store import Store
     from sgt.loop import plan as plan_mod
     from sgt.loop.match import confirm_match
 
     sessions = plan_mod.active_sessions(repo)
+    known_hollows = {s["hollow_id"] for rec in sessions.values() for s in rec["steps"]}
+    hollow_ids: list[str] = []
+    for ref in hollow_refs:
+        hid, err = _resolve_prefix(ref, known_hollows, "hollow")
+        if hid is None:
+            return _fail_json(err, as_json)
+        hollow_ids.append(hid)
+
+    ops = Store(repo).all_ops()
+    op_ids: list[str] = []
+    for ref in op_refs:
+        oid, err = _resolve_op(Path(repo), ops, ref)
+        if oid is None:
+            return _fail_json(err, as_json)
+        op_ids.append(oid)
+
     session_id = next(
         (sid for sid, rec in sessions.items() if any(s["hollow_id"] in hollow_ids for s in rec["steps"])),
         None,
     )
     if session_id is None:
-        return _emit_json({"error": "no session"}) if as_json else _fail(
-            f"no active session owns hollow(s) {hollow_ids}")
+        return _fail_json(f"no active session owns hollow(s) {hollow_ids}", as_json)
     confirm_match(repo, session_id, hollow_ids, op_ids)
     if as_json:
         return _emit_json({"ok": True, "session_id": session_id, "hollow_ids": hollow_ids, "op_ids": op_ids})

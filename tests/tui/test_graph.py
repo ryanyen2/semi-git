@@ -14,6 +14,7 @@ import pytest
 from sgt.tui.graph import (
     _min_unique_prefixes,
     graph_layout,
+    render_collab_preview_lines,
     render_graph_lines,
     render_verb_preview_lines,
     segment_layout,
@@ -389,6 +390,113 @@ def test_render_verb_preview_restore_shows_restored_and_partial():
     assert "restored" in text                                 # seg0 (o0) fully re-added
     assert "◐" in text                                        # seg1 (o1 of o1,o2) partly re-added
     assert "restores 2 op" in text
+
+
+def test_render_collab_preview_clean_land_shows_ops_and_the_oracle_gate():
+    """A clean land feedforward: the op count it advances the branch by, and the LAW-G oracle gate
+    the confirm will run. No fork lines, and the summary says it advances + is one-way."""
+    pv = {"verb": "land", "target": "main", "clean": True, "ops_added": 3, "forks": [],
+          "oracle_configured": True, "pin_contradictions": [], "declared_cycles": []}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "land" in text and "main" in text
+    assert "adds 3 op(s) to main" in text
+    assert "oracle: green required" in text
+    assert "advances main by 3 op" in text and "not auto-undoable" in text
+
+
+def test_render_collab_preview_fork_blocks_and_names_the_merge_op_remedy():
+    """A fork blocks the land: it's listed with the exact `sgt merge-op` remedy, the oracle is
+    reported as not reached, and the summary says it won't advance."""
+    pv = {"verb": "land", "target": "main", "clean": True, "ops_added": 0,
+          "forks": [["api.py::route", "0ee9a65f11aa", "5e6eaf5822bb"]],
+          "oracle_configured": True, "pin_contradictions": [], "declared_cycles": []}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "1 fork(s) block the land" in text
+    assert "api.py::route" in text and "sgt merge-op 0ee9a65f 5e6eaf58" in text
+    assert "oracle: not reached" in text
+    assert "adds 0 op" not in text          # the noisy zero-op line is suppressed under a blocking fork
+    assert "won't advance" in text
+
+
+def test_render_collab_preview_no_oracle_reports_law_g_refusal():
+    pv = {"verb": "land", "target": "main", "clean": True, "ops_added": 2, "forks": [],
+          "oracle_configured": False, "pin_contradictions": [], "declared_cycles": []}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "oracle: none configured" in text and "LAW-G" in text
+    assert "won't advance" in text
+
+
+def test_render_collab_preview_unclean_plan_renders_the_error_alone():
+    pv = {"verb": "land", "target": "main", "clean": False, "error": "working tree not clean"}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "working tree not clean" in text
+
+
+def test_render_collab_preview_clean_sync_brings_in_ops_with_no_forks():
+    """A fork-free sync: the op count it folds in, and a tail that says no forks + one-way. No
+    fork-surface block, no R12 recovery warnings."""
+    pv = {"verb": "sync", "remote": "origin", "target": "main", "ops_added": 4, "forks": [],
+          "pin_contradictions": [], "declared_cycles": [], "base_recovery": "mined",
+          "theirs_recovery": "mined"}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "sync" in text and "origin/main" in text
+    assert "brings in 4 op(s)" in text
+    assert "fork(s) surface" not in text
+    assert "folds in 4 op · no forks · not auto-undoable" in text
+
+
+def test_render_collab_preview_sync_fork_surfaces_without_blocking():
+    """A sync fork *surfaces* (work waits at the common ancestor) rather than blocking: the fork is
+    drawn with its `merge-op` remedy and the tail counts it, but the fold still happens."""
+    pv = {"verb": "sync", "remote": "origin", "target": "main", "ops_added": 2,
+          "forks": [["api.py::route", "0ee9a65f11aa", "5e6eaf5822bb"]],
+          "pin_contradictions": [], "declared_cycles": [], "base_recovery": "mined",
+          "theirs_recovery": "mined"}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "1 fork(s) surface" in text and "nothing is lost" in text
+    assert "api.py::route" in text and "sgt merge-op 0ee9a65f 5e6eaf58" in text
+    assert "folds in 2 op · 1 fork(s) surface to resolve · not auto-undoable" in text
+
+
+def test_render_collab_preview_sync_surfaces_degraded_recovery_loudly():
+    """R12: a sync that fell back to union semantics (no witnessed merge-base) or a lost-provenance
+    tip says so loudly -- never silent."""
+    pv = {"verb": "sync", "remote": "origin", "target": "main", "ops_added": 1, "forks": [],
+          "pin_contradictions": [], "declared_cycles": [], "base_recovery": "none",
+          "theirs_recovery": "none"}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "base recovery: none" in text
+    assert "theirs' tip has sgt ops but no witnessed trailers" in text
+
+
+def test_render_collab_preview_resolve_shows_the_three_step_remedy_and_oracle():
+    """A clean resolve feedforward: the two fork tips, the numbered fulfill/oracle/land steps, and
+    the green-required oracle gate."""
+    pv = {"verb": "resolve", "target": "api.py::route", "clean": True,
+          "tips": ["0ee9a65f11aa", "5e6eaf5822bb"], "oracle_configured": True}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "resolve" in text and "api.py::route" in text
+    assert "0ee9a65f" in text and "5e6eaf58" in text
+    assert "fulfill your merged edit" in text
+    assert "run the oracle" in text
+    assert "land it" in text
+    assert "oracle: green required" in text
+    assert "fulfill + oracle + land · closes the fork on api.py::route · not auto-undoable" in text
+
+
+def test_render_collab_preview_resolve_without_a_draft_renders_the_error_alone():
+    pv = {"verb": "resolve", "target": "api.py::route", "clean": False,
+          "error": "no drafted reconciliation — run `sgt resolve api.py::route` first"}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "no drafted reconciliation" in text
+    assert "fulfill" not in text          # the step list is suppressed when the plan is unclean
+
+
+def test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified():
+    pv = {"verb": "resolve", "target": "api.py::route", "clean": True,
+          "tips": ["0ee9a65f11aa", "5e6eaf5822bb"], "oracle_configured": False}
+    text = "\n".join(render_collab_preview_lines(pv, color=False))
+    assert "oracle: none configured" in text and "lands unverified" in text
 
 
 # ── TUI overlay (Textual) ──────────────────────────────────────────────────────────────────────

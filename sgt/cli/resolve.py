@@ -50,8 +50,23 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool) -> int:
         print(f"  edit {fork['file']} to merge both versions, then: sgt resolve {symbol} --apply")
         return 0
 
-    # --apply: find the reconciliation drafted for this symbol, fulfill it from the edited tree,
-    # and land it (rewrite.land refuses unless the oracle passes; landing closes the fork record).
+    # --apply: the confirm step. On an interactive tty show the three-step remedy feedforward first
+    # (fulfill your merge → run the oracle → land, closing the fork) and let the user back out;
+    # --json and a non-tty apply immediately (the machine/CI contract), no new args.
+    import sys
+
+    if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
+        from sgt.api import resolve_apply_preview_view
+
+        from ._common import confirm_collab
+
+        pview = resolve_apply_preview_view(repo, symbol)
+        if not confirm_collab(pview, f"resolve {symbol}?"):
+            print("  aborted — nothing resolved.")
+            return 1
+
+    # find the reconciliation drafted for this symbol, fulfill it from the edited tree, and land it
+    # (rewrite.land refuses unless the oracle passes; landing closes the fork record).
     store = Store(repo)
     draft_id = next(
         (did for did, rec in rewrite.pending_drafts(repo).items()

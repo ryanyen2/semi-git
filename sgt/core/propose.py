@@ -28,11 +28,12 @@ from sgt import state
 from sgt.core import lens, oracle, order
 from sgt.core.ideal import Ideal
 from sgt.core.store import Store
-from sgt.core.sync import LandReport, land as _sync_land
+from sgt.config import load_oracle_config
+from sgt.core.sync import LandPlan, LandReport, land as _sync_land, plan_land as _sync_plan_land
 from sgt.lens import tree
 
 __all__ = [
-    "Proposal", "create", "status", "land", "load", "all_proposals", "render_github",
+    "Proposal", "create", "status", "land", "plan_land", "load", "all_proposals", "render_github",
 ]
 
 
@@ -224,6 +225,35 @@ def land(repo: str | Path, proposal_id: str, accept_ids=None) -> LandReport:
             lens.record_ideal(repo, accepted, put_sha)
 
     return _sync_land(repo, branch=branch)
+
+
+def plan_land(repo: str | Path, proposal_id: str, accept_ids=None) -> LandPlan:
+    """Dry-run a `propose land` (D4) into the shared `LandPlan` shape a feedforward consumes. A
+    stale-forked proposal short-circuits to a plan whose `forks` are set (the pane's fork branch
+    then names the same `sgt merge-op` remedy `land` would refuse with). Otherwise the session HEAD
+    already carries Δ, so the CAS advance is exactly `sync.plan_land` on the base branch -- delegate
+    to it for an accurate incoming-op count and oracle-configured check. A proper `--subset` can't be
+    predicted without materializing it (a mutation), so it's estimated from `status` -- the accepted
+    delta ops not already on the live base -- without touching disk."""
+    repo = Path(repo)
+    p = load(repo, proposal_id)
+    if p is None:
+        raise ValueError(f"no proposal {proposal_id!r}")
+    branch = p.base_ref.rsplit("/", 1)[-1]
+
+    st = status(repo, proposal_id)
+    if st["state"] == "fork":
+        forks = tuple((f["symbol"], f["tips"][0], f["tips"][1]) for f in st["forks"])
+        return LandPlan(branch=branch, forks=forks,
+                        oracle_configured=load_oracle_config(repo) is not None)
+
+    if accept_ids is not None and frozenset(accept_ids) != frozenset(p.delta_ids):
+        base_now = lens.ideal_for_ref(repo, p.base_ref)
+        ops_added = len(frozenset(accept_ids) - base_now.op_ids)
+        return LandPlan(branch=branch, ops_added=ops_added,
+                        oracle_configured=load_oracle_config(repo) is not None)
+
+    return _sync_plan_land(repo, branch=branch)
 
 
 def load(repo: str | Path, proposal_id: str) -> Proposal | None:

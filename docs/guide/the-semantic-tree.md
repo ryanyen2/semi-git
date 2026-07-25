@@ -36,8 +36,8 @@ order, with the surrounding text between symbols kept exactly as it was. The res
 byte what ends up checked out. There is no separate copy of your files that can drift out of sync
 with the ops. The files you see are just this ideal turned back into code.
 
-`sgt fsck` checks that the current ideal is valid and that the files it produces match what git
-actually has.
+`sgt advanced fsck` checks that the current ideal is valid and that the files it produces match
+what git actually has.
 
 ## The feature tree
 
@@ -50,8 +50,8 @@ keeps its identity as your code grows.
 This automatic grouping needs history to learn from. On a brand-new repo there is not enough
 signal yet to split features apart, so `sgt log --tree` reports one feature for everything. As real
 commits build up, the seams start to appear. You can correct or seed the grouping by hand at any
-time with `sgt merge`, `sgt split`, `sgt rename`, and `sgt move`. These only change labels and
-grouping. They never touch your code.
+time with `sgt feature regroup merge`, `sgt feature regroup split`, `sgt feature rename`, and `sgt
+feature regroup move`. These only change labels and grouping. They never touch your code.
 
 ## The one rule: sgt never writes your code
 

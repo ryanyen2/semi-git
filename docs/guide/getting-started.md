@@ -71,9 +71,10 @@ propose candidates and previews each one before applying anything. See
 ## For coding agents
 
 `sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of running it as a
-shell command. It exposes 11 tools today: `sgt_init`, `sgt_log`, `sgt_state`, `sgt_diff`,
-`sgt_fsck`, `sgt_revert`, `sgt_restore`, `sgt_oracle_run`, `sgt_plan_intake`, `sgt_checkpoint`, and
-`sgt_drift`. An agent using MCP can inspect state and do symbol-level revert and restore. The
+shell command. It exposes 13 tools today: `sgt_init`, `sgt_log`, `sgt_grid`, `sgt_status`,
+`sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`, `sgt_advanced_oracle_run`,
+`sgt_plan_intake`, `sgt_checkpoint`, `sgt_drift`, and `sgt_plan_done`. An agent using MCP can
+inspect state, run the plan → checkpoint → drift loop, and do symbol-level revert and restore. The
 commands for working with other people (`sync`, `land`, `merge-op`, `session`, `propose`) have no
 MCP tool yet, so those still need to run from the terminal. See [User workflows](workflows.md) for
 the full picture.

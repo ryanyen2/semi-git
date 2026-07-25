@@ -48,7 +48,7 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
     assert names == {"sgt_init", "sgt_log", "sgt_grid", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
                       "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
-                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift"}
+                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -251,7 +251,11 @@ def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
 
     from sgt.api import plan_view
 
-    assert plan_view(repo, full=True)["sessions"][0]["steps"][0]["status"] == "matched"
+    # Confirming the only step completes the session, so it leaves the active review surface
+    # (`plan_view`); its matched step is recorded in the full table for provenance.
+    assert plan_view(repo, full=True)["sessions"] == []
+    assert plan_mod._load_sessions(repo_path)["s1"]["status"] == "completed"
+    assert plan_mod._load_sessions(repo_path)["s1"]["steps"][0]["status"] == "matched"
 
 
 def test_drift_tool_reports_nothing_with_no_active_session(tmp_path):

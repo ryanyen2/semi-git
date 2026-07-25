@@ -498,6 +498,120 @@ def _frontier_rows(repo, preview) -> list[dict]:
     return rows
 
 
+_REVERSIBLE_VERBS = frozenset({"revert", "restore", "after", "merge", "split", "rename", "move"})
+
+
+def _reversible(verb: str) -> bool:
+    """Whether a verb's effect can be walked back with `sgt undo` -- the ideal-edit and
+    metadata-reorg verbs -- or is a shared/one-way advance (`land`/`propose`/`push`/`sync`,
+    default False). Feeds the consequence pane's escape line: the one bit that changes how
+    carefully a user reads the rest of the preview."""
+    return verb in _REVERSIBLE_VERBS
+
+
+def _carry_count(projected: dict) -> int:
+    """How many frontier dependents repoint mechanically (the `carry` bucket). Surfaced only as a
+    quiet number -- carry is deliberately kept out of the act-required fallout (it needs no
+    decision), so the pane can footnote "N auto-repoint" without ever listing them."""
+    return sum(1 for r in projected.get("frontier", []) if r.get("bucket") == "carry")
+
+
+def _fallout_rows(projected: dict) -> list[dict]:
+    """The act-required subset of a verb preview -- the items a user must decide about. Toggleable
+    `blast` dependents (keeping one drafts a continuation hollow; dropping it lets the symbol
+    break) plus one `fork` row per forked symbol. Deliberately EXCLUDES `carry` (mechanical) and
+    `foundation` (locked prerequisite): the "so what?" fix is to show what needs a decision, not
+    everything touched. Pure over the already-projected dict."""
+    rows = [
+        {"kind": "blast", "op_id": r["op_id"], "toggleable": True}
+        for r in projected.get("frontier", [])
+        if r.get("bucket") == "blast" and r.get("toggleable")
+    ]
+    if projected.get("forked"):
+        rows += [
+            {"kind": "fork", "symbol": s, "toggleable": False}
+            for s in projected.get("affected_symbols", [])
+        ]
+    return rows
+
+
+def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
+    """The one-line consequence of a verb preview -- what breaks, what to do next, whether it can
+    be undone -- recomputed live as the pane's kept-set changes. Pure over the projection dict plus
+    the caller's kept op-ids (no store reads), so the TUI can call it on every toggle. `primary`
+    leads with the `file::symbol` the user named when the target is one (not an alphabetically-first
+    dependent from the up-set closure); when the target is an op-id/feature ref it falls back to a
+    touched symbol, then to the raw target. Carry is never named."""
+    verb = projected.get("verb", "")
+    target = projected.get("target")
+    primary = (
+        target if target and "::" in target
+        else (projected.get("affected_symbols") or [None])[0] or target or "this"
+    )
+    undo = ("Undo-able." if projected.get("reversible", _reversible(verb))
+            else "Not auto-undoable — review carefully.")
+
+    if verb == "land":
+        branch = projected.get("target") or "the branch"
+        if not projected.get("clean", True):
+            return f"Can't land onto {branch} yet — {projected.get('error') or 'tree not ready'}."
+        forks = projected.get("forks") or []
+        if forks:
+            sym, a, b = forks[0]
+            more = f" (+{len(forks) - 1} more)" if len(forks) > 1 else ""
+            return (f"Won't advance {branch} — {len(forks)} fork(s) block it{more}. "
+                    f"Resolve first: sgt merge-op {a[:8]} {b[:8]}.")
+        if not projected.get("oracle_configured", True):
+            return (f"Won't advance {branch} — no oracle configured; land refuses an "
+                    f"unverified op-set (LAW-G).")
+        n = projected.get("ops_added", 0)
+        return f"Advances {branch} by {n} op — runs the oracle (tests) then CAS. {undo}"
+
+    if verb == "sync":
+        src = f"{projected.get('remote') or 'the remote'}/{projected.get('target') or 'the branch'}"
+        if projected.get("up_to_date"):
+            return f"Already up to date with {src} — nothing to fold in."
+        n = projected.get("ops_added", 0)
+        forks = projected.get("forks") or []
+        if forks:
+            return (f"Folds in {n} op(s) from {src}; {len(forks)} fork(s) surface for you to "
+                    f"resolve — no work is lost, they wait at the common ancestor. {undo}")
+        return f"Folds in {n} op(s) from {src} — footprint-disjoint, no forks. {undo}"
+
+    if verb == "resolve":
+        sym = projected.get("target") or "the symbol"
+        if not projected.get("clean", True):
+            return f"Can't resolve {sym} yet — {projected.get('error') or 'no drafted reconciliation'}."
+        return (f"Resolves the fork on {sym}: fulfills your merged edit, runs the oracle, then lands "
+                f"it (closes the fork). {undo}")
+
+    if not projected.get("ok", True):
+        if projected.get("forked"):
+            return (f"Won't apply — {verb} of {primary} would fork it. "
+                    f"Resolve the fork first (sgt resolve {primary}).")
+        return f"Won't apply — {projected.get('message') or 'refused'}."
+
+    blast_ids = {r["op_id"] for r in projected.get("fallout", []) if r["kind"] == "blast"}
+    n = len(blast_ids)
+    n_kept = len(set(kept) & blast_ids)
+    n_break = n - n_kept
+
+    if verb == "revert":
+        if n == 0:
+            return f"Removes {primary}. Nothing depends on it — clean revert. {undo}"
+        kept_clause = f", keeping {n_kept}" if n_kept else ""
+        return f"{primary} will break — {n_break} dependent(s) to re-draft{kept_clause}. {undo}"
+    if verb == "restore":
+        return f"Re-adds {primary} and its prerequisites. Nothing to reconcile. {undo}"
+    meta_phrase = {
+        "merge": "Merges into", "split": "Splits", "rename": "Relabels to",
+        "move": "Moves ops onto", "after": "Reorders",
+    }.get(verb)
+    if meta_phrase is not None:
+        return f"{meta_phrase} {primary} — metadata only, code untouched. {undo}"
+    return f"{verb} {primary}. {undo}"
+
+
 def _project_verb_preview(repo, preview) -> dict:
     """Given an already-computed `sgt.core.verbs.VerbPreview`, the per-file before/after bytes
     plus the rest of `verb_preview_view`'s shape. Factored out so a caller that resolves its own
@@ -522,7 +636,7 @@ def _project_verb_preview(repo, preview) -> dict:
     }
     tree = load_tree(repo)
     op_leaf = tree["op_leaf"] if tree else {}
-    return {
+    projected = {
         "ok": preview.ok,
         "verb": preview.verb,
         "target": preview.target,
@@ -536,6 +650,220 @@ def _project_verb_preview(repo, preview) -> dict:
         "coupling": _coupling_rows(ops, op_leaf, preview.removed, preview.after_ids),
         "frontier": _frontier_rows(repo, preview),
     }
+    # The "so-what" layer (consequence pane): reversibility bit, act-required fallout, the hidden
+    # carry count, and the one-line consequence. Pure over `projected`, so every surface that reads
+    # this dict (CLI gate, TUI pane, VS Code) inherits them without extra wiring.
+    projected["reversible"] = _reversible(preview.verb)
+    projected["fallout"] = _fallout_rows(projected)
+    projected["carry_count"] = _carry_count(projected)
+    projected["so_what"] = so_what_for(projected)
+    return projected
+
+
+def _project_feature_preview(repo, verb: str, preview) -> dict:
+    """Project a metadata-only feature-reorg preview (`merge`/`rename`/`move`/`split`) into the
+    shared consequence shape the pane and `so_what_for` consume. These verbs touch no code, so
+    `fallout` and `carry_count` are empty and `reversible` is always True; the projection instead
+    carries a short human `summary` (resolved labels, counts, the split groups) the pane renders in
+    place of the code rail. Only call on an `ok` preview -- a refusal is handled by the CLI's
+    `_fail_preview` before this point."""
+    from sgt.lens.tree import load as load_tree
+
+    nodes = (load_tree(repo) or {}).get("nodes", {})
+
+    def label(fid: str) -> str:
+        return (nodes.get(fid) or {}).get("label") or fid[:8]
+
+    if verb == "merge":
+        primary = label(preview.survivor_id)
+        summary = [f"absorb {label(preview.absorbed_id)} → {primary}",
+                   f"{preview.op_count} op(s) · {preview.member_count} member(s)"]
+    elif verb == "rename":
+        primary = preview.new_label
+        summary = [f"{preview.old_label!r} → {preview.new_label!r}"]
+    elif verb == "move":
+        primary = label(preview.target_id)
+        summary = [f"{len(preview.op_ids)} op(s) → {primary}"]
+    elif verb == "split":
+        primary = label(preview.feature_id)
+        g0, g1 = preview.groups or ((), ())
+        summary = [
+            f"{primary} splits in two:",
+            f"  keep ({len(g0)}): {', '.join(sorted(g0)[:6])}" + (" …" if len(g0) > 6 else ""),
+            f"  new  ({len(g1)}): {', '.join(sorted(g1)[:6])}" + (" …" if len(g1) > 6 else ""),
+            f"→ mints {preview.new_id[:8]}",
+        ]
+    else:  # pragma: no cover -- only the four reorg verbs are projected here
+        primary, summary = verb, []
+
+    projected = {
+        "ok": True, "verb": verb, "target": primary,
+        "affected_symbols": [primary] if primary else [],
+        "forked": False, "message": getattr(preview, "message", ""),
+        "files": {}, "fallout": [], "carry_count": 0, "reversible": True,
+        "summary": summary,
+    }
+    projected["so_what"] = so_what_for(projected)
+    return projected
+
+
+def _project_land_preview(repo, plan) -> dict:
+    """Project a `sgt.core.sync.LandPlan` dry-run into the shared consequence shape the pane and
+    `so_what_for` consume. A land advances shared state, so `reversible` is False (the pane's escape
+    line reads "review carefully") and there is no toggleable `fallout` -- a fork isn't a
+    keep/drop choice, it's a blocker to resolve. The graph rail is precomputed into `summary` (like
+    the feature-reorg projection) because a land has no code-diff rail; it draws where your work is
+    going and what stops it (`render_collab_preview_lines`)."""
+    from sgt.tui.graph import render_collab_preview_lines
+
+    projected = {
+        # LAW-G pre-refuses a land with no oracle before it stages anything, so a no-oracle plan is
+        # not `ok` even though ingest/resolve found no fork -- the honest bit for the pane.
+        "ok": plan.clean and not plan.forks and plan.oracle_configured,
+        "verb": "land",
+        "target": plan.branch,
+        "affected_symbols": [f[0] for f in plan.forks],
+        "forked": bool(plan.forks),
+        "files": {},
+        "message": plan.error or "",
+        "fallout": [],
+        "carry_count": 0,
+        "reversible": False,
+        "clean": plan.clean,
+        "error": plan.error,
+        "ops_added": plan.ops_added,
+        "forks": [list(t) for t in plan.forks],
+        "pin_contradictions": [
+            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
+            for c in plan.pin_contradictions
+        ],
+        "declared_cycles": [list(pair) for pair in plan.declared_cycles],
+        "oracle_configured": plan.oracle_configured,
+        "advisory": plan.advisory,
+    }
+    projected["so_what"] = so_what_for(projected)
+    projected["summary"] = render_collab_preview_lines(projected, color=True)
+    return projected
+
+
+def land_preview_view(repo, branch: str | None = None) -> dict:
+    """The dry-run consequence of `sgt land [branch]` (plan U19/D4) -- what the CAS *would* advance
+    the shared branch by, computed side-effect-free (`sync.plan_land`: `ingest -> resolve`, no
+    oracle, no ref move, rolled back to leave no trace). Unlike `land_view` (which projects an
+    already-run land), this is a pure read the CLI can call to show a feedforward pane before the
+    one-way advance. Carries the shared consequence shape (`so_what`, `reversible` False, the graph
+    `summary`) plus the structured fields (`ops_added`, `forks`, `oracle_configured`)."""
+    from sgt.core import sync as sync_mod
+
+    plan = sync_mod.plan_land(repo, branch=branch)
+    return _project_land_preview(repo, plan)
+
+
+def _project_sync_preview(repo, plan) -> dict:
+    """Project a `sgt.core.sync.SyncPlan` dry-run into the shared consequence shape. Unlike `land`, a
+    sync fork does not block -- the fork-free part still merges and the fork surfaces as state -- so
+    `forks` here is *what would surface*, and `ok` is False only to flag that attention is needed,
+    not that nothing happens. No clean-tree precondition, so `clean` is always True; the graph rail
+    is precomputed into `summary` (`render_collab_preview_lines`)."""
+    from sgt.tui.graph import render_collab_preview_lines
+
+    projected = {
+        "ok": not plan.forks,
+        "verb": "sync",
+        "target": plan.branch,
+        "remote": plan.remote,
+        "affected_symbols": [f[0] for f in plan.forks],
+        "forked": bool(plan.forks),
+        "files": {},
+        "message": "",
+        "fallout": [],
+        "carry_count": 0,
+        "reversible": False,
+        "clean": True,
+        "up_to_date": plan.up_to_date,
+        "ops_added": plan.ops_added,
+        "forks": [list(t) for t in plan.forks],
+        "pin_contradictions": [
+            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
+            for c in plan.pin_contradictions
+        ],
+        "declared_cycles": [list(pair) for pair in plan.declared_cycles],
+        "base_recovery": plan.base_recovery,
+        "theirs_recovery": plan.theirs_recovery,
+    }
+    projected["so_what"] = so_what_for(projected)
+    projected["summary"] = render_collab_preview_lines(projected, color=True)
+    return projected
+
+
+def sync_preview_view(repo, remote: str | None = None, branch: str | None = None) -> dict:
+    """The dry-run consequence of `sgt sync [remote] [branch]` -- what folding the teammate's branch
+    in *would* bring (incoming op count, any fork that would surface, recovery modes), computed
+    side-effect-free (`sync.plan_sync`: `fetch -> ingest -> resolve`, no `materialize`, rolled back
+    to leave no trace). A pure read the CLI shows as a feedforward pane before the merge lands."""
+    from sgt.core import sync as sync_mod
+
+    plan = sync_mod.plan_sync(repo, remote=remote, branch=branch)
+    return _project_sync_preview(repo, plan)
+
+
+def proposal_land_preview_view(repo, proposal_id: str, accept_ids=None) -> dict:
+    """The dry-run consequence of `sgt propose land <id> [--subset ...]` -- reuses the shared land
+    projection over `propose.plan_land` (a stale-forked proposal surfaces as a fork blocker; an
+    up-to-date proposal delegates to `sync.plan_land`). The pane reads exactly as a `land` because
+    it *is* one, scoped to the proposal's Δ."""
+    from sgt.core import propose
+
+    plan = propose.plan_land(repo, proposal_id, accept_ids=accept_ids)
+    return _project_land_preview(repo, plan)
+
+
+def resolve_apply_preview_view(repo, symbol: str) -> dict:
+    """The dry-run consequence of `sgt resolve <symbol> --apply` -- the three-step remedy it will run
+    (fulfill the drafted reconciliation from your edited tree, run the oracle, land it, closing the
+    fork). Reports `clean=False` with a reason when there's no open fork or no drafted reconciliation
+    yet (so the pane refuses before the apply path would). A pure read; the draft lookup mirrors the
+    `--apply` path's own."""
+    from sgt.config import load_oracle_config
+    from sgt.core import rewrite
+    from sgt.core.store import Store
+    from sgt.tui.graph import render_collab_preview_lines
+
+    fork = next((f for f in forks_view(repo)["forks"] if f["symbol"] == symbol), None)
+    store = Store(repo)
+    has_draft = any(
+        (h := store.get_hollow(hid)) is not None and symbol in h.footprint
+        for rec in rewrite.pending_drafts(repo).values()
+        for hid in rec["hollow_ids"]
+    )
+    if fork is None:
+        error = f"no open fork for {symbol!r} — run `sgt forks` to list the open forks"
+    elif not has_draft:
+        error = (f"no drafted reconciliation — run `sgt resolve {symbol}` first, then edit the "
+                 f"file to merge both versions")
+    else:
+        error = None
+    clean = error is None
+
+    projected = {
+        "ok": clean,
+        "verb": "resolve",
+        "target": symbol,
+        "affected_symbols": [symbol],
+        "forked": False,
+        "files": {},
+        "message": error or "",
+        "fallout": [],
+        "carry_count": 0,
+        "reversible": False,
+        "clean": clean,
+        "error": error,
+        "oracle_configured": load_oracle_config(repo) is not None,
+        "tips": list(fork["tips"]) if fork else [],
+    }
+    projected["so_what"] = so_what_for(projected)
+    projected["summary"] = render_collab_preview_lines(projected, color=True)
+    return projected
 
 
 def rewrite_view(repo) -> dict:
@@ -586,7 +914,7 @@ def map_view(repo) -> dict:
     dependency-light projection. Empty (`{"nodes": [], ...}`) if no tree has been built yet, so a
     UI can render "run `sgt map`" rather than erroring.
 
-    Every node -- leaf (a `label_tree`/Greene-matched feature, `F<n>` id) or internal (a
+    Every node -- leaf (a `label_tree`/Greene-matched feature, `f-<op>` id) or internal (a
     structural subsystem grouping, build-local `N<n>` id) -- is emitted uniformly with
     `kind: "feature" | "subsystem"` distinguishing them; `op_count` is the number of ops
     `op_leaf` assigns to a feature, rolled up through subsystems. `edges` rolls the fused
@@ -669,8 +997,9 @@ def map_view(repo) -> dict:
         }
         claim = authored_claims.get(nid)
         if claim is not None:
-            row["label"] = claim.label
             row["authored_id"] = claim.id
+            if claim.label:  # empty = save-time cascade lane, unnamed; keep the clustered label
+                row["label"] = claim.label
         return row
 
     emitted = [_emit(nid, nd) for nid, nd in sorted(nodes.items())]
@@ -761,7 +1090,8 @@ def _grid_labels(repo) -> dict:
     nodes = tree["nodes"] if tree else {}
     labels = {nid: nd.get("label", nid) for nid, nd in nodes.items()}
     for nid, claim in _authored_leaf_claims(nodes, load_authored(repo)).items():
-        labels[nid] = claim.label
+        if claim.label:  # empty = save-time cascade lane, unnamed; keep the clustered label
+            labels[nid] = claim.label
     return labels
 
 
@@ -1018,13 +1348,23 @@ def blame_view(repo, file: str) -> dict:
     feature tree's `op_leaf`. Returns `{"file", "spans", "features", "error"?}`; an entity whose
     tip op has no feature assignment yet (tree stale, or `sgt map` never run) is omitted from
     `spans` rather than guessed at."""
+    from pathlib import Path
+
     from sgt.core.lens import current_ideal
     from sgt.core.store import Store
     from sgt.lens.tree import load as load_tree
 
     line_spans, error = _entity_line_spans(repo, file)
     if error:
-        return {"file": file, "spans": [], "features": {}, "error": error}
+        # "Not covered by the ideal" is the normal answer for a working-tree file sgt has no op
+        # for -- a doc (JOURNAL.md), an untracked config -- not a failure. Reporting it under
+        # `error` flips the CLI `--json` exit code to 1, which the editor's per-file blame reads as
+        # a hard failure and re-appends "Command failed" every time such a tab is focused. A file
+        # that merely lacks coverage reports `covered: False`; only a genuinely absent path errors.
+        result = {"file": file, "spans": [], "features": {}, "covered": False}
+        if not (Path(repo) / file).exists():
+            result["error"] = error
+        return result
 
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
@@ -1048,7 +1388,7 @@ def blame_view(repo, file: str) -> dict:
             "feature_id": feature_id, "label": label, "sessions": sessions,
         })
         features[feature_id] = {"label": label}
-    return {"file": file, "spans": spans, "features": features}
+    return {"file": file, "spans": spans, "features": features, "covered": True}
 
 
 def plan_view(repo, *, full: bool = False) -> dict:
@@ -1717,7 +2057,10 @@ def status_view(repo) -> dict:
     open_forks = state_mod.load_json(repo, "forks", default=[])
 
     return {
-        "files": len(st["covered_paths"]),
+        # Count files from the *same* `current_ideal` the symbol count comes from, not
+        # `state_view`'s HEAD ideal -- on an init-only repo (no sgt commit advancing HEAD) the two
+        # diverge, which read as the nonsensical "0 file(s), N symbol(s)".
+        "files": len(ideal.covered_paths(ops)),
         "symbols": symbol_count,
         "features": feature_count,
         "coverage_fraction": st["coverage_fraction"],

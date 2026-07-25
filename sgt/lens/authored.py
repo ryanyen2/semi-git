@@ -162,13 +162,13 @@ def _features_from_payload(payload: dict) -> dict[str, AuthoredFeature]:
 
 def load_authored(repo: str | Path = ".") -> dict[str, AuthoredFeature]:
     """The committed authored-feature collection from the working tree, empty when absent -- every
-    caller treats "no file" the same as "no authored features", like `load_pins`/`load_aliases`."""
+    caller treats "no file" the same as "no authored features", like `load_pins`."""
     return _features_from_payload(state.load_json(repo, "authored_features", default={}))
 
 
 def authored_at(gb, sha: str) -> dict[str, AuthoredFeature]:
     """A teammate's authored-feature collection as committed at `sha` -- the historical-blob read
-    `sync` merges, the same version dispatch as a working-tree read (like `aliases_at`)."""
+    `sync` merges, the same version dispatch as a working-tree read (like the pins blob read)."""
     return _features_from_payload(state.load_blob_json(gb, sha, "authored_features", default={}))
 
 

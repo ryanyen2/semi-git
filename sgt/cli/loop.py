@@ -27,8 +27,9 @@ def _plan(repo: str, rest: list[str], as_json: bool, full: bool = False) -> int:
     [--full]` (plan U14): plan-session intake, abandonment, and the read view over active
     sessions. `status`'s default is compact (per-session step/matched counts, no per-step
     detail); `--full` restores each step's title/status/spans."""
-    usage = 'usage: sgt plan intake "<text>" | sgt plan abandon <session> | sgt plan status [--json]'
-    if not rest or rest[0] not in ("intake", "abandon", "status"):
+    usage = ('usage: sgt plan intake "<text>" | sgt plan done <session> | '
+             'sgt plan abandon <session> | sgt plan status [--json]')
+    if not rest or rest[0] not in ("intake", "done", "abandon", "status"):
         print(usage)
         return 2
     sub, opts = rest[0], rest[1:]
@@ -53,6 +54,17 @@ def _plan(repo: str, rest: list[str], as_json: bool, full: bool = False) -> int:
             suffix = f"  [{s['predicted_feature']}]" if s["predicted_feature"] else ""
             print(f"    {s['title']}{suffix}")
         return 0
+
+    if sub == "done":
+        if not opts:
+            print(usage)
+            return 2
+        from sgt.loop import plan as plan_mod
+
+        ok = plan_mod.mark_done(repo, opts[0])
+        if as_json:
+            return _emit_json({"ok": ok})
+        return 0 if ok else _fail(f"no such session: {opts[0]}")
 
     if sub == "abandon":
         if not opts:

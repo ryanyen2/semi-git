@@ -116,8 +116,7 @@ def capture_cli_surface(root: str) -> dict:
     views["help"] = _capture(rf, ["help"])
     # U14: the grid (`sgt log`) is the only inspection surface -- `status`/`map` collapsed onto
     # `sgt log --summary`/`--tree`, `blame` demoted under `advanced`; state/history/fsck stay rare
-    # under `advanced` (U2/KTD2). `checkpoint`/`drift` folded into `save` (U12); their redirect is
-    # covered in tests/test_cli.py::test_folded_verbs_redirect_to_save, not the surface snapshot.
+    # under `advanced` (U2/KTD2). `checkpoint`/`drift` folded into `save` (U12).
     for key, argv in (
         ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["log", "--summary"]),
         ("map", ["log", "--tree"]), ("history", ["advanced", "history"]),

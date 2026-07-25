@@ -29,6 +29,20 @@ def _split_into_two(repo):
     return verbs.apply_split(repo, preview, confirm=True)
 
 
+# -- authored-id handle ------------------------------------------------------------------------
+
+
+def test_authored_id_for_is_idempotent_on_an_already_authored_id():
+    # A *cluster* feature id gets the deterministic af- handle so a reorg verb updates one feature.
+    assert verbs._authored_id_for("N42") == "af-N42"
+    # But an id that is ALREADY an authored feature (af-<uuid>) is its own authored id. Wrapping it a
+    # second time (af-af-<uuid>) mints a phantom lane no pin/tree references: `ledger.assign_at_save`
+    # pins the symbol to `af-<uuid>` but adds the member under `af-af-<uuid>`, so the assign pin and
+    # the carried-across-sync CRDT permanently disagree. The handle must be idempotent.
+    aid = "af-b1f33996a55e480aae1e9f4b1a9b812b"
+    assert verbs._authored_id_for(aid) == aid
+
+
 # -- split ------------------------------------------------------------------------------------
 
 
@@ -443,6 +457,48 @@ def test_feature_verb_preview_view_revert_ripples_across_a_second_feature(tmp_pa
     assert reverted in preview["affected_features"]
 
 
+def test_project_feature_preview_merge_carries_summary_and_metadata_so_what(tmp_path):
+    """The consequence pane's projection for a metadata verb: no code rail (`files`/`fallout`
+    empty, `reversible` True), a human `summary`, and a so-what that says code is untouched."""
+    from sgt.api import _project_feature_preview
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    split_result = _split_into_two(repo)
+    survivor, absorbed = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
+
+    preview = verbs.plan_merge(repo, survivor, absorbed)
+    assert preview.ok
+    projected = _project_feature_preview(repo, "merge", preview)
+
+    assert projected["ok"] and projected["verb"] == "merge"
+    assert projected["reversible"] is True
+    assert projected["files"] == {} and projected["fallout"] == [] and projected["carry_count"] == 0
+    assert projected["summary"]  # non-empty human summary lines
+    assert f"{preview.op_count} op(s)" in projected["summary"][1]
+    assert "metadata only, code untouched" in projected["so_what"]
+    assert tree.load(repo) == split_result  # projection is pure -- nothing written
+
+
+def test_project_feature_preview_split_summary_names_both_groups(tmp_path):
+    from sgt.api import _project_feature_preview
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    before = lensmap.build_map(repo)
+    fid = next(iter(before["nodes"]))
+
+    preview = verbs.plan_split(repo, fid)
+    assert preview.ok
+    projected = _project_feature_preview(repo, "split", preview)
+
+    assert projected["verb"] == "split"
+    joined = "\n".join(projected["summary"])
+    assert "splits in two" in joined
+    assert preview.new_id[:8] in joined  # the fresh id the split would mint is surfaced
+    assert tree.load(repo) == before  # pure
+
+
 def test_feature_verb_preview_view_reports_an_error_for_an_unknown_verb_or_bad_arity(tmp_path):
     repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
     get(repo)
@@ -505,7 +561,7 @@ def test_map_view_authored_label_overrides_the_cluster_leaf(tmp_path):
 def test_split_mints_an_identical_content_id_on_two_replicas_of_one_store(tmp_path):
     """KTD4 regression: `apply_split` must mint a content-addressed `f-<founding-op>` id, not a
     replica-local `F<n>`. Two independent clones splitting the identical members over a byte-
-    identical op store must converge to the same id (the old `_fresh_id_gen` mint did not)."""
+    identical op store must converge to the same id (a replica-local sequential mint did not)."""
     repo_a = corpus.CORPUS["linear_history"].build(tmp_path / "a")  # has a natural 2-way split
     repo_b = corpus.CORPUS["linear_history"].build(tmp_path / "b")
     get(repo_a)
