@@ -1,5 +1,5 @@
 """Tests for the intent overlay's sync reconciliation (plan U5, KTD7): the prompt sidecar unions
-by key as a real part of the sync commit (transactional, like pins/tree/aliases), while
+by key as a real part of the sync commit (transactional, like pins/tree), while
 `themes.json` is deliberately left to the next explicit `sgt intent build` -- rebuilding it needs
 `GitBinding.history()`, which only reflects the merged history once the sync/land commit actually
 exists, so a transactional rebuild would either see stale history or write a committed artifact

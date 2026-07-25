@@ -99,7 +99,7 @@ def capture_cli_surface(root: str) -> dict:
         repo = corpus.CORPUS[case].build(root / f"f{seq[0]}")
         get(repo)
         if mapped:
-            _capture(repo, ["map"])
+            _capture(repo, ["log", "--tree", "--refresh"])  # U14: `sgt map` is now a `log` mode
         if prep:
             _capture(repo, prep)
         return repo
@@ -114,16 +114,17 @@ def capture_cli_surface(root: str) -> dict:
     rf = fresh(mapped=True)
     feat = _feature_ids(rf)[0]
     views["help"] = _capture(rf, ["help"])
-    # log/status/map/drift stay top-level; state/history/fsck are rare, so under `advanced` (U2/KTD2).
+    # U14: the grid (`sgt log`) is the only inspection surface -- `status`/`map` collapsed onto
+    # `sgt log --summary`/`--tree`, `blame` demoted under `advanced`; state/history/fsck stay rare
+    # under `advanced` (U2/KTD2). `checkpoint`/`drift` folded into `save` (U12).
     for key, argv in (
-        ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["status"]),
-        ("map", ["map"]), ("history", ["advanced", "history"]),
-        ("fsck", ["advanced", "fsck"]), ("drift", ["drift"]),
+        ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["log", "--summary"]),
+        ("map", ["log", "--tree"]), ("history", ["advanced", "history"]),
+        ("fsck", ["advanced", "fsck"]),
     ):
         views[key] = _both(rf, argv)
-    views["blame"] = _both(rf, ["blame", "a.py"])
+    views["blame"] = _both(rf, ["advanced", "blame", "a.py"])
     views["plan_status"] = _both(rf, ["plan", "status"])
-    views["checkpoint"] = _both(rf, ["checkpoint"])
     views["split_preview"] = _both(fresh(mapped=True), ["feature", "regroup", "split", feat])
     views["preview_revert_feature"] = _both(fresh(mapped=True), ["advanced", "preview", "revert", feat])
     views["revert_emit"] = _both(fresh(), ["revert", "--emit", "c.py::qux"])  # --emit writes nothing
@@ -139,13 +140,17 @@ def capture_cli_surface(root: str) -> dict:
     # -- deterministic error / refusal surfaces (fail before mutating; safe to re-run) ----------
     views["revert_unknown"] = _both(fresh(), ["revert", "nope::nothing"])
     views["oracle_run_no_config"] = _both(fresh(), ["advanced", "oracle", "run"])
-    views["fulfill_no_draft"] = _both(fresh(), ["fulfill", "no-such-draft", "--from-tree"])
-    views["commit_nothing_staged"] = _both(fresh(), ["commit"])
+    views["fulfill_no_draft"] = _both(fresh(), ["advanced", "fulfill", "no-such-draft", "--from-tree"])
+    views["commit_nothing_staged"] = _both(fresh(), ["advanced", "commit"])
     views["sync_refuses_dirty_tree"] = _both(fresh(), ["sync"])  # untracked .sgt/ -> clean-tree guard
 
     # -- mutating verbs (text + --json each on its own fresh fixture) ---------------------------
-    views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux"])
-    views["restore"] = both_isolated(lambda r: ["restore", "c.py::qux"], prep=["revert", "c.py::qux"])
+    # `--yes` skips the feedforward confirm gate so the mutation actually applies (a non-tty capture
+    # would otherwise draw the preview and refuse, exit 2). The gate itself is covered in
+    # tests/cli/test_revert.py; here we freeze the applied surface.
+    views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux", "--yes"], mapped=True)
+    views["restore"] = both_isolated(lambda r: ["restore", "c.py::qux", "--yes"],
+                                     prep=["revert", "c.py::qux", "--yes"], mapped=True)
     # oracle override's --json carries a wall-clock `ts`; only its (deterministic) text is frozen.
     views["oracle_override"] = {
         "text": _capture(fresh(), ["advanced", "oracle", "override", "--status", "pass", "--reason", "manual"])
@@ -194,7 +199,7 @@ def capture_cli_surface(root: str) -> dict:
         seq[0] += 1
         repo = corpus.CORPUS["linear_history"].build(root / f"f{seq[0]}")
         get(repo)
-        _capture(repo, ["revert", "c.py::qux"])  # journal one ideal edit to undo
+        _capture(repo, ["revert", "c.py::qux", "--yes"])  # journal one ideal edit to undo
         return repo
 
     views["undo"] = {

@@ -57,42 +57,51 @@ sgt init                            # read your existing git history into the op
 # daily loop
 sgt save -m "..."                   # read your edits and commit a record of them
 sgt switch <branch>                 # git switch, and rebuild that branch's files from its ideal
-sgt undo                            # undo your last change (moves forward, never rewinds history)
+sgt undo                            # invert your last mutating command (moves forward, never rewinds history)
 
-# inspect
-sgt status                          # files, symbols, features, coverage, oracle status, drift
-sgt map                             # the feature tree
-sgt graph                           # feature timeline (Gantt): lanes over commit-time
-sgt episodes                        # episode rail (vertical git-log): what I did, in order
-sgt blame <file>                    # which feature owns each symbol in a file
-sgt intent list/show/build/revert   # intent-clustering overlay: themes that span features
-sgt log / sgt state / sgt diff <a> <b>   # the op set, the current state, a symbol-level diff
-sgt history                         # mined commits, and each op's kind, feature, and commit index
+# inspect — sgt log is the one surface, its modes are the old views
+sgt log                             # the lane×commit grid (the default)
+sgt log --tree                      # the feature tree
+sgt log --rail                      # episode rail (vertical git-log): what I did, in order
+sgt log --summary                   # files, symbols, features, coverage, oracle status, drift
+sgt log --ops                       # the raw op DAG
+sgt diff <a> <b>                    # a symbol-level diff of two ideals
+sgt advanced blame <file>           # which feature owns each symbol in a file
+sgt advanced state / history        # the current state; mined commits and each op's kind + feature
+sgt intent list/show/build          # intent-clustering overlay: themes that span features
 
 # add or remove ops
-sgt revert [--emit] <ref>           # remove a symbol, op, or feature, and anything built on it
+sgt revert [--emit] <sel>           # remove a symbol, op, or feature, and anything built on it
 sgt revert --session <name>         # remove everything one agent session landed
-sgt restore [--emit] <ref>          # add an op back, along with everything it needs
+sgt revert <feature>@<n>            # rewind one checkpoint (intent segment) of a feature
+sgt restore [--emit] <sel>          # add an op back, along with everything it needs
 sgt revert "<intent>" / sgt restore "<intent>"  # no exact name to give it? an LLM proposes
                                                  # candidates, previews each, and asks before applying
+sgt resolve <symbol>                # guided same-symbol fork resolution (merge-op → fulfill → land)
 
 # regroup the feature tree (labels only, instant, never touches your code)
-sgt merge <survivor> <absorbed>     # fold one feature into another
-sgt split <feature>                 # cut one feature into two
-sgt rename <feature> "..."          # change a feature's label
-sgt move <op>... --to <feature>     # move ops to another feature
+sgt feature regroup merge <survivor> <absorbed>   # fold one feature into another
+sgt feature regroup split <feature>               # cut one feature into two
+sgt feature rename <feature> "..."                # change a feature's label
+sgt feature regroup move <op>... --to <feature>   # move ops to another feature
+sgt feature select/why <ref>                      # explain a feature's closure / an op's attribution
 
 # for edits the ideal can't represent on its own (two competing versions, or one op mixing
-# two unrelated changes)
-sgt merge-op <a> <b>                # draft a placeholder op that reconciles a fork
-sgt split-op <op>                   # draft an intermediate cut of an op that mixes two changes
-sgt transplant <op>... --onto <ref> # draft ops carried over onto another chain
-sgt fulfill <draft-id> --from-tree  # supply the real content for a drafted placeholder
-sgt commit                          # commit a staged rewrite, once your build and test checks pass
+# two unrelated changes) — the rare kernel verbs live under `sgt advanced`
+sgt advanced merge-op <a> <b>       # draft a placeholder op that reconciles a fork
+sgt advanced split-op <op>          # draft an intermediate cut of an op that mixes two changes
+sgt advanced transplant <op>... --onto <ref>   # draft ops carried over onto another chain
+sgt advanced fulfill <draft-id> --from-tree    # supply the real content for a drafted placeholder
+sgt advanced commit                 # commit a staged rewrite, once your build and test checks pass
+
+# the agentic loop: state a plan, then let save match the work against it
+sgt plan intake "<text>"            # decompose a stated plan into predicted hollow ops
+sgt plan status / done / abandon    # a plan's match state; close it; drop it
+sgt save --resolve-plan             # settle an ambiguous plan-step match a save couldn't auto-confirm
 
 # collaboration
 sgt sync [remote] [branch]          # fetch a teammate's work, merge the op sets, and report any fork
-sgt forks                           # open forks, and the merge-op that resolves each one
+sgt advanced forks                  # open forks, and the merge-op that resolves each one
 sgt push [remote] [branch]          # push, and tell you to run sgt sync if it gets rejected
 sgt land <branch>                   # advance a shared branch to a verified op set
 
@@ -105,13 +114,16 @@ sgt propose create/status/land/render/publish   # a review object with a base an
                                                  # changes on top, acceptable feature by feature,
                                                  # opened or updated as a GitHub PR through gh
 
-sgt oracle run                      # run your build and test checks against the current op set
+sgt advanced oracle run             # run your build and test checks against the current op set
 sgt mcp                             # a stdio MCP server for coding-agent clients
 ```
 
-`merge`, `split`, `rename`, and `move` only change labels in the feature tree. `merge-op`,
-`split-op`, and `transplant` change the actual chain of ops. The names look similar but the jobs
-are different. Run `sgt help` for the full list.
+`sgt log` is the single inspection surface — the old `sgt map`/`graph`/`episodes`/`status` are now
+its `--tree`/(default grid)/`--rail`/`--summary` modes. The daily spine stays top-level; rare and
+maintenance verbs live under `sgt advanced` and `sgt feature`. `sgt feature regroup merge/split/move`
+and `sgt feature rename` only change labels in the feature tree. `sgt advanced merge-op`, `split-op`,
+and `transplant` change the actual chain of ops. The names look similar but the jobs are different.
+Run `sgt help` for the full list.
 
 `sgt revert` and `sgt restore` also take a plain-English target, e.g. `sgt revert "the caching
 layer"`, when no op id, symbol name, or feature label matches exactly. An LLM proposes ranked
@@ -125,9 +137,10 @@ command at. It never writes code, and it never applies anything without your con
 Conflicts do not go away. If two people edit the same function at the same time, that is a real
 conflict. What `sgt` changes is the size of it. `sgt sync` isolates the conflict to that one
 symbol, which it calls a fork, and merges everything else right away. You resolve the fork with
-`sgt merge-op`, then `sgt fulfill`, then `sgt commit`. `commit` runs your build and test checks
-first and refuses to commit a version that has not passed them, so a fork can't be closed by code
-nobody verified. [`docs/guide/workflows.md`](docs/guide/workflows.md) walks through this case end
+`sgt resolve <symbol>`, which sequences the merge-op → fulfill → oracle → land steps for you (the
+raw kernel verbs are still there as `sgt advanced merge-op` / `advanced fulfill` / `advanced
+commit`). The oracle gate runs your build and test checks first and refuses to close a fork with
+code that has not passed them, so a fork can't be closed by code nobody verified. [`docs/guide/workflows.md`](docs/guide/workflows.md) walks through this case end
 to end, along with parallel agent sessions and the points where a person still has to step in.
 
 ## Docs
@@ -154,12 +167,12 @@ uv run pytest
 
 `sgt` is built around an operation-ideal kernel: it reads a set of ops from your history, holds
 the current state as an ideal, and turns that back into files exactly. On top of that sits the
-feature tree, the `merge`, `split`, `rename`, and `move` commands, tracking of who or what session
-made each change, and the sync, land, and propose commands for working with other people.
+feature tree, the `sgt feature regroup`/`rename` commands, tracking of who or what session made
+each change, and the sync, land, and propose commands for working with other people.
 
 A review on 2026-07-12 found four ways that ordinary git history could break the kernel's rules,
 and all four are now fixed. A file that was deleted and then re-added no longer disappears from
 your working tree. `sgt land` no longer writes state before its build and test check runs, so a
 failed or interrupted land can't leave things half-changed. `sgt sync` no longer brings back a
 change a teammate had deliberately reverted. See [`FINDINGS.md`](FINDINGS.md) for the full
-picture, including that `sgt status` is currently slow on a large op store.
+picture, including that `sgt log --summary` is currently slow on a large op store.

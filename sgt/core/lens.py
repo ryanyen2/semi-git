@@ -54,8 +54,6 @@ class DirtyWorkingTreeError(Exception):
     into the ideal) so the materialization reproduces it rather than reverting it."""
 
 
-_DECLARED_FILE = "declared.json"
-
 _CHUNK_BUDGET_SECONDS = 10.0  # KTD-3: one _sync() chunk's wall-clock ceiling on mine() work.
 
 
@@ -153,80 +151,39 @@ class DeclaredORSet:
         return DeclaredORSet(self.adds | other.adds, self.tombstones | other.tombstones)
 
 
-def _legacy_tag(a: str, b: str) -> str:
-    """A deterministic tag for a pre-U21 flat G-Set edge lifted into the OR-Set. Deterministic (not
-    a fresh UUID) so the lift is idempotent and two clones lifting the *same* legacy edge produce
-    the same tag -- their union dedups it instead of double-counting, and a retraction of it
-    propagates (as a shared legacy edge should)."""
-    return f"legacy:{a}:{b}"
-
-
-def _load_declared_flat(repo: Path) -> frozenset[Edge]:
-    """The legacy flat G-Set at `.sgt/declared.json` (pre-U21), with the one-shot pre-U15
-    local-path migration. Read only to *lift* into the OR-Set when no OR-Set exists yet, and to
-    dual-write for old readers (D3); the OR-Set at `.sgt/declared_edges.json` is authoritative."""
-    body = state.load_json(repo, "declared")
+def _orset_from_body(body: dict | None) -> DeclaredORSet:
     if body is None:
-        old_path = repo / ".sgt" / "local" / _DECLARED_FILE
-        if not old_path.is_file():
-            return frozenset()
-        edges = frozenset(tuple(pair) for pair in json.loads(old_path.read_text(encoding="utf-8")))
-        _save_declared(repo, edges)
-        old_path.unlink()
-        return edges
-    return frozenset(tuple(pair) for pair in body)
-
-
-def _save_declared(repo: Path, edges: frozenset[Edge]) -> None:
-    """Write the flat G-Set at the legacy path (v0 shape). Retained as the old-reader dual-write
-    target of `save_declared_orset` (D3) and for the state round-trip tests."""
-    state.save_json(repo, "declared", sorted([a, b] for a, b in edges))
-
-
-def _orset_from_body(body: dict | None, repo_or_flat) -> DeclaredORSet:
-    if body is not None:
-        return DeclaredORSet(
-            adds=frozenset((a, b, tag) for a, b, tag in body.get("adds", [])),
-            tombstones=frozenset(body.get("tombstones", [])),
-        )
-    # No OR-Set present: lift the legacy flat G-Set (add-only, deterministically tagged).
-    flat = repo_or_flat if isinstance(repo_or_flat, frozenset) else _load_declared_flat(repo_or_flat)
-    return DeclaredORSet(adds=frozenset((a, b, _legacy_tag(a, b)) for a, b in flat))
+        return DeclaredORSet()
+    return DeclaredORSet(
+        adds=frozenset((a, b, tag) for a, b, tag in body.get("adds", [])),
+        tombstones=frozenset(body.get("tombstones", [])),
+    )
 
 
 def load_declared_orset(repo: Path) -> DeclaredORSet:
-    """The declared-edge OR-Set from the working tree, lifting the legacy flat G-Set when the OR-Set
-    file doesn't exist yet (an un-migrated repo)."""
-    return _orset_from_body(state.load_json(repo, "declared_orset"), Path(repo))
+    """The declared-edge OR-Set from the working tree (empty when the file doesn't exist yet)."""
+    return _orset_from_body(state.load_json(repo, "declared_orset"))
 
 
 def declared_orset_at(gb: GitBinding, sha: str) -> DeclaredORSet:
     """A teammate's declared-edge OR-Set as committed at `sha` -- the historical-blob read `sync`
-    unions by tag. Falls back to their legacy flat `declared.json` blob (an older sgt that never
-    wrote an OR-Set), lifted the same way, so a mixed-version team still reconciles edges."""
-    body = state.load_blob_json(gb, sha, "declared_orset")
-    if body is not None:
-        return _orset_from_body(body, frozenset())
-    legacy = state.load_blob_json(gb, sha, "declared")
-    flat = frozenset() if legacy is None else frozenset(tuple(pair) for pair in legacy)
-    return _orset_from_body(None, flat)
+    unions by tag."""
+    return _orset_from_body(state.load_blob_json(gb, sha, "declared_orset"))
 
 
 def save_declared_orset(repo: Path, orset: DeclaredORSet) -> None:
-    """Persist the OR-Set, and dual-write its live edges to the legacy flat path in v0 shape so an
-    older sgt reader (D3 old-reader policy) still sees the current declared edges."""
+    """Persist the OR-Set."""
     state.save_json(repo, "declared_orset", {
         "adds": sorted([a, b, tag] for a, b, tag in orset.adds),
         "tombstones": sorted(orset.tombstones),
     })
-    _save_declared(repo, orset.live())
 
 
 def declare_after(repo: Path, a: str, b: str) -> None:
     """`sgt after a b`: add the edge `a <= b` with a fresh, globally-unique tag (OR-Set add)."""
     from sgt.core import oplog
 
-    snap = oplog.snapshot(repo, ["declared_orset", "declared"])  # inverse: the OR-Set before the add
+    snap = oplog.snapshot(repo, ["declared_orset"])  # inverse: the OR-Set before the add
     # Record the inverse for `undo` (U8) *before* mutating, so a failed edge write is still
     # recoverable. Best-effort like the D1 land log: `after` runs on repos that may lack a HEAD/ref
     # (a bare `.sgt` dir in a unit test), so a failed append must never break the edge add.
@@ -264,6 +221,13 @@ def _ref_key(gb: GitBinding) -> str | None:
     return gb.symbolic_ref() or gb.head()
 
 
+def current_ref_key(repo: str | Path) -> str | None:
+    """The current ref's key in the per-ref local tables (witness/ideal/fidelity) -- a thin public
+    wrapper over `_ref_key` for callers outside this module (`sgt.api.grid_view`, the fidelity
+    writer) that need to read or write the row belonging to whatever is checked out now."""
+    return _ref_key(GitBinding(Path(repo)))
+
+
 def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     """Every stored op whose provenance intersects this ref's own commit ancestry -- the ref's
     ideal derived fresh from content-addressed history. Used only to *seed* the persisted
@@ -281,6 +245,41 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     all_ops = opindex.index_ops(store.repo)
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
     return set(order.reduce_to_ideal(included, all_ops))
+
+
+def _fidelity_fp(committed_ids) -> str:
+    """A stable fingerprint of a ref's committed ideal -- the key the fidelity marks are cached
+    against, so a stale entry is detected whenever the ideal moved (a new commit, a fork surfaced,
+    a fork resolved) regardless of *which* verb moved it."""
+    return hashlib.sha256(",".join(sorted(committed_ids)).encode()).hexdigest()[:16]
+
+
+def _ensure_fidelity(repo: Path, gb: GitBinding, key: str, committed_ids, all_ops: list) -> None:
+    """Keep this ref's mining-fidelity marks current (R6/U2): the commits whose ops
+    `order.reduce_to_ideal` had to drop from the ideal -- a fork tip, or an op whose chain
+    predecessor is off this ref -- so `grid_view` marks them "partial" instead of silently omitting
+    the loss. The dropped set is `included \\ reduce_to_ideal(included)` over the ref's *raw*
+    provenance union, so it isolates a genuine reconstruction loss from an intentional user edit:
+    a revert removes an op from the persisted ideal but not from `included`, so it is never mistaken
+    for a fidelity mark.
+
+    Cached against the committed ideal's fingerprint: a no-op when the ideal is unchanged (a hash +
+    a small JSON read), so the warm path pays nothing. The full-store `reduce_to_ideal` -- the ~28s
+    large-store cost U8/U9 optimize -- runs only when the ideal actually moved (or the entry is
+    absent), never on a glance."""
+    fp = _fidelity_fp(committed_ids)
+    entry = state.load_json(repo, "fidelity", default={}).get(key)
+    if isinstance(entry, dict) and entry.get("ideal_fp") == fp:
+        return  # marks already current for this exact ideal
+    ref_commits = set(gb.commit_shas())
+    included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
+    reduced = set(order.reduce_to_ideal(included, all_ops))
+    by_id = {op.id: op for op in all_ops}
+    dropped_shas = sorted({sha for oid in (included - reduced) for sha in by_id[oid].provenance})
+    with locked_section(repo):
+        table = state.load_json(repo, "fidelity", default={})
+        table[key] = {"ideal_fp": fp, "shas": dropped_shas}
+        state.save_json(repo, "fidelity", table)
 
 
 def current_ideal(repo: str | Path) -> Ideal:
@@ -325,7 +324,26 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
 
     head = gb.head()
     if head is None:
-        return Ideal.from_ops(frozenset(), [])  # nothing committed yet
+        # Bootstrap (R9 from day zero): a repo with no commits yet can still carry mineable source
+        # in an untracked/dirty working tree -- that is exactly the state a fresh `sgt init` leaves,
+        # and the first `sgt save` must be able to capture it into the first witness commit. The
+        # main sync body below keys every persisted table (witness/ideal/backfill/cache) on a
+        # committed ref that does not exist yet, so here we run only the dirty mining pass, persist
+        # the resulting pending ops into the store + opindex, and return them as the current ideal.
+        # `put()` then materializes the first real commit; every later `get()` takes the ordinary
+        # first-contact path. A clean tree still yields the empty ideal, exactly as before.
+        if not gb.has_dirty_source():
+            return Ideal.from_ops(frozenset(), [])
+        mined_ops, _ = mine(repo, include_dirty=True)
+        stored_ops = [store.add(op) for op in mined_ops]
+        with locked_section(repo):
+            if opindex.is_stale(repo):
+                opindex.rebuild(repo, store)
+            else:
+                opindex.apply_delta(repo, stored_ops)
+        all_ops = opindex.index_ops(repo)
+        pending_ids = {op.id for op in stored_ops}
+        return Ideal.from_ops(order.reduce_to_ideal(pending_ids, all_ops), all_ops)
 
     key = _ref_key(gb) or head
     prev_head = _load_witnesses(repo).get(key)
@@ -349,7 +367,23 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
         fp = _sync_fingerprint(gb, head, ideal_entry)
         cached = _load_sync_cache(repo).get(key)
         if fp is not None and cached is not None and cached.get("fp") == fp:
-            return Ideal.from_ops(frozenset(cached.get("ids", [])), opindex.index_ops(repo))
+            # Fidelity (U2): the warm no-op path skips the whole sync body, so refresh the marks
+            # here too -- keyed on the cached ideal's fingerprint, so this is a cheap no-op unless
+            # the ideal actually moved since the marks were last computed (e.g. a `sync` that
+            # surfaced a fork updated the ideal but not through this function). No re-mining.
+            cached_ids = frozenset(cached.get("ids", []))
+            index_ops = opindex.index_ops(repo)
+            # The fingerprint covers HEAD, the working tree, and the persisted ideal entry -- but
+            # NOT the `.sgt/ops` store, which a `git switch` can swap underneath us: ops committed
+            # on one branch and absent on another are removed by the checkout, while the gitignored
+            # ideal table (and this cache) survive it and keep pointing at the vanished op ids. That
+            # leaves the gate's HEAD/tree/ideal-entry fingerprint unchanged, so a blind short-circuit
+            # would hand back a cached ideal whose ops are no longer materialized -- `Ideal.from_ops`
+            # then rejects it. Only gate when every cached id is still in the index; otherwise fall
+            # through to a full sync, which re-mines the ref and reduces the stale set to what survives.
+            if cached_ids <= {op.id for op in index_ops}:
+                _ensure_fidelity(repo, gb, key, cached_ids, index_ops)
+                return Ideal.from_ops(cached_ids, index_ops)
 
     # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
     # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
@@ -479,6 +513,11 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
             if backfill_changed:
                 backfill_table[key] = new_backfill_state
                 _save_backfill_state(repo, backfill_table)
+
+    # Fidelity marks (U2/R6): refresh the ref's marks against the current committed ideal. A cheap
+    # fingerprint no-op unless the ideal moved. Outside the section above -- `_ensure_fidelity`
+    # takes its own lock and `locked_section` is non-reentrant (U23).
+    _ensure_fidelity(repo, gb, key, committed_ids, all_ops)
 
     # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
     # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
@@ -618,8 +657,7 @@ def record_ideal(
         if journal and key in itable:
             # The journal is the unified operation log (U8/KTD6): this push is one `ideal_edit`
             # event carrying the prior ideal (+ witness). Tagged `kind` so `oplog.undo` dispatches
-            # it; a legacy entry with no `kind` is read as `ideal_edit` too, so old journals still
-            # undo. Kept inline (not `oplog.append`) because we already hold `locked_section` and
+            # it. Kept inline (not `oplog.append`) because we already hold `locked_section` and
             # the flock is non-reentrant -- the same read-modify-write that closes the
             # double-journal-entry window (R5/R6).
             jtable = _load_ideal_journal(repo)

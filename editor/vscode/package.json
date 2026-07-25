@@ -1,7 +1,7 @@
 {
   "name": "semi-git",
   "displayName": "semi-git (sgt)",
-  "description": "Read your code by feature, not by diff — semantic blame, a feature DAG, and one-click plug-in/plug-out, in-situ.",
+  "description": "Read your code by feature, not by diff: semantic blame, a feature DAG, and one-click plug-in/plug-out, in-situ.",
   "version": "0.1.0",
   "publisher": "semi-git",
   "engines": {
@@ -81,7 +81,7 @@
     "viewsWelcome": [
       {
         "view": "sgtFeatures",
-        "contents": "No `.sgt` store found in this workspace.\n[Initialize semi-git](command:sgt.init)\nReads your existing git history into the op store under `.sgt/` — your git history and working tree are left untouched.",
+        "contents": "No `.sgt` store found in this workspace.\n[Initialize semi-git](command:sgt.init)\nReads your existing git history into the op store under `.sgt/`. Your git history and working tree are left untouched.",
         "when": "!sgt.hasRoot"
       }
     ],
@@ -98,10 +98,9 @@
       { "command": "sgt.showPlanDiff", "title": "Show Plan Step Diff", "category": "semi-git" },
       { "command": "sgt.init", "title": "Initialize (sgt init)", "category": "semi-git" },
       { "command": "sgt.resolveFork", "title": "Resolve Fork", "category": "semi-git" },
-      { "command": "sgt.reviewAck", "title": "Acknowledge (dequeue from trust queue)", "category": "semi-git" },
-      { "command": "sgt.proposeLand", "title": "Land Proposal", "category": "semi-git" },
-      { "command": "sgt.proposePublish", "title": "Publish Proposal (GitHub PR)", "category": "semi-git" },
-      { "command": "sgt.viewProposal", "title": "View Proposal", "category": "semi-git" },
+      { "command": "sgt.proposeLand", "title": "Land Proposal", "category": "semi-git (advanced)" },
+      { "command": "sgt.proposePublish", "title": "Publish Proposal (GitHub PR)", "category": "semi-git (advanced)" },
+      { "command": "sgt.viewProposal", "title": "View Proposal", "category": "semi-git (advanced)" },
       { "command": "sgt.jumpToLocation", "title": "Jump to Location", "category": "semi-git" },
       { "command": "sgt.switch", "title": "Switch Branch", "category": "semi-git" },
       { "command": "sgt.save", "title": "Save", "category": "semi-git" },
@@ -128,8 +127,6 @@
         { "command": "sgt.restore", "when": "view == sgtFeatures && viewItem == sgtFeature" },
         { "command": "sgt.edit", "when": "view == sgtFeatures && viewItem == sgtFeature" },
         { "command": "sgt.resolveFork", "when": "view == sgtForks && viewItem == sgtFork" },
-        { "command": "sgt.reviewAck", "when": "view == sgtChanges && viewItem == sgtTrustGroup" },
-        { "command": "sgt.reviewAck", "when": "view == sgtChanges && viewItem == sgtTrustOp" },
         { "command": "sgt.proposeLand", "when": "view == sgtCompositions && viewItem == sgtProposal" },
         { "command": "sgt.proposePublish", "when": "view == sgtCompositions && viewItem == sgtProposal" }
       ]

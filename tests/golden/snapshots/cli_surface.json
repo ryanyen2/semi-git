@@ -2,15 +2,17 @@
   "blame": {
     "json": {
       "argv": [
+        "advanced",
         "blame",
         "a.py",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"file\": \"a.py\",\n  \"spans\": [],\n  \"features\": {}\n}\n"
+      "out": "{\n  \"file\": \"a.py\",\n  \"spans\": [],\n  \"features\": {},\n  \"covered\": true\n}\n"
     },
     "text": {
       "argv": [
+        "advanced",
         "blame",
         "a.py"
       ],
@@ -18,26 +20,10 @@
       "out": ""
     }
   },
-  "checkpoint": {
-    "json": {
-      "argv": [
-        "checkpoint",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"matches\": [],\n  \"drift_op_ids\": []\n}\n"
-    },
-    "text": {
-      "argv": [
-        "checkpoint"
-      ],
-      "exit": 0,
-      "out": "(nothing to checkpoint)\n"
-    }
-  },
   "commit_nothing_staged": {
     "json": {
       "argv": [
+        "advanced",
         "commit",
         "--json"
       ],
@@ -46,6 +32,7 @@
     },
     "text": {
       "argv": [
+        "advanced",
         "commit"
       ],
       "exit": 1,
@@ -73,23 +60,6 @@
       "out": "2 differing op(s) between main (a) and release (b):\n  slugify.py::slugify\n    a: 4b1644d01e98\n    b: 73ca5ab500ec\n"
     }
   },
-  "drift": {
-    "json": {
-      "argv": [
-        "drift",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"count\": 0,\n  \"op_ids\": [],\n  \"kinds\": {}\n}\n"
-    },
-    "text": {
-      "argv": [
-        "drift"
-      ],
-      "exit": 0,
-      "out": "(no drift \u2014 every recent op was predicted by an active plan)\n"
-    }
-  },
   "fsck": {
     "json": {
       "argv": [
@@ -112,6 +82,7 @@
   "fulfill_no_draft": {
     "json": {
       "argv": [
+        "advanced",
         "fulfill",
         "no-such-draft",
         "--from-tree",
@@ -122,6 +93,7 @@
     },
     "text": {
       "argv": [
+        "advanced",
         "fulfill",
         "no-such-draft",
         "--from-tree"
@@ -135,7 +107,7 @@
       "help"
     ],
     "exit": 0,
-    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness for it\n  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n  sgt log [--json]            the mined operation DAG\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n  sgt graph [--at]            feature timeline (Gantt): lanes over commit-time\n  sgt episodes                episode rail (vertical git-log): what I did, in order\n  sgt blame <path>            per-symbol semantic blame from the op DAG\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt checkpoint [--json]     preview + confirm plan-step <-> mined-op matches\n  sgt drift [--json]          ops no active plan predicted\n\n  rewrite pipeline:\n  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n  sgt commit                  commit a staged rewrite, gated oracle-green\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n                              after, fold, preview, tiers, identity, migrate,\n                              history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
+    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness (auto-matches plan steps)\n  sgt log [--json]            the lane\u00d7commit grid \u2014 the one inspection surface:\n                              --tree (feature tree) \u00b7 --rail (episode rail) \u00b7 --summary\n                              (status scalars) \u00b7 --ops (raw op DAG) \u00b7 --rebuild (recluster)\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op \u2192 fulfill \u2192 land)\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n                              reindex, state, oracle, after, fold, preview, tiers,\n                              identity, migrate, history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
   },
   "history": {
     "json": {
@@ -145,7 +117,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"commit_count\": 7,\n  \"op_count\": 29,\n  \"kinds\": {\n    \"add\": 19,\n    \"rework\": 4,\n    \"prune\": 5,\n    \"move\": 1\n  },\n  \"features\": {\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\": 12\n  },\n  \"latest_commits\": [\n    {\n      \"sha\": \"b558b8b181a39275346b572e85dcbd4bcde9e56d\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6\n    },\n    {\n      \"sha\": \"f3a8be67501678ab5e88f271a636be25fe80a599\",\n      \"subject\": \"delete bar\",\n      \"index\": 5\n    },\n    {\n      \"sha\": \"d1a2bc5f59bfa84096a83c6aeafd77c6d9e70db1\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4\n    },\n    {\n      \"sha\": \"00cc584679966f0932f1767e619a4aeaaf9702eb\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3\n    },\n    {\n      \"sha\": \"1e57edf2fe1e51ee3d25bc2618b43dd9bfcd55b1\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2\n    },\n    {\n      \"sha\": \"716bae4d81f2032000ac811f4229b78061b50264\",\n      \"subject\": \"modify foo\",\n      \"index\": 1\n    },\n    {\n      \"sha\": \"b511794289b3d52552ed664bd582b155dda2d54b\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0\n    }\n  ]\n}\n"
+      "out": "{\n  \"commit_count\": 7,\n  \"op_count\": 29,\n  \"kinds\": {\n    \"add\": 19,\n    \"rework\": 4,\n    \"prune\": 5,\n    \"move\": 1\n  },\n  \"features\": {\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\": 14\n  },\n  \"latest_commits\": [\n    {\n      \"sha\": \"b558b8b181a39275346b572e85dcbd4bcde9e56d\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6\n    },\n    {\n      \"sha\": \"f3a8be67501678ab5e88f271a636be25fe80a599\",\n      \"subject\": \"delete bar\",\n      \"index\": 5\n    },\n    {\n      \"sha\": \"d1a2bc5f59bfa84096a83c6aeafd77c6d9e70db1\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4\n    },\n    {\n      \"sha\": \"00cc584679966f0932f1767e619a4aeaaf9702eb\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3\n    },\n    {\n      \"sha\": \"1e57edf2fe1e51ee3d25bc2618b43dd9bfcd55b1\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2\n    },\n    {\n      \"sha\": \"716bae4d81f2032000ac811f4229b78061b50264\",\n      \"subject\": \"modify foo\",\n      \"index\": 1\n    },\n    {\n      \"sha\": \"b511794289b3d52552ed664bd582b155dda2d54b\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0\n    }\n  ]\n}\n"
     },
     "text": {
       "argv": [
@@ -196,31 +168,33 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"count\": 29,\n  \"kinds\": {\n    \"add\": 19,\n    \"prune\": 5,\n    \"rework\": 4,\n    \"move\": 1\n  },\n  \"truncated\": false,\n  \"ops\": [\n    {\n      \"id\": \"23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"README.md\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"292c222d78c189ed2b9db86ae4e174c71ef1e1672d67be2ed2ffa042c7418d5c\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"a.py::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"29d3914a28f930b6aa9c2a0fc5135f819bd51406c9136b37c16c0b67c50c1fac\",\n      \"kind\": \"prune\",\n      \"symbols\": [\n        \"a.py::__residue__::foo\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"411dacc96d7c3c09bc0fac45402cd50b69e1db00cdd466c30f2127b6cccfd3a8\",\n      \"kind\": \"rework\",\n      \"symbols\": [\n        \"a.py::foo\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"4b99d72c3411a207132a133e3398de0d50b14872461dd35b5f83770680b413e6\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"a.py::foo\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"4bd96c53fd11cf6e9652229b3b852abc3736f1d941fde38149e73f09c8e57fd9\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"b.py::__residue__::\\u0000HEAD\\u0000\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"5b6559337e904d83072cf6422bbdcd99b3d14bb728434e8a76f8b2d5b7a57f0c\",\n      \"kind\": \"prune\",\n      \"symbols\": [\n        \"a.py::foo\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"709cfe47c2999d00ced79bf638f9725007a3ce7dd406d91b8cc460e0a0ebd650\",\n      \"kind\": \"prune\",\n      \"symbols\": [\n        \"a.py::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"77bda56fe1a872080ae7834ddd2a462e06a2a1228131fa18947cdae973271ce8\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"c.py::__residue__::\\u0000HEAD\\u0000\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"7b1fea10726dae8a37759b9c2018b1899712bc29ee25c0792b0800adc59d06d5\",\n      \"kind\": \"rework\",\n      \"symbols\": [\n        \"b.py::__residue__::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"7b20f2b1d27c3837f6f93d8ffaf505923ba4a5a740036ae56f16535a06f0cfd9\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"b.py::__residue__::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"863fbfa9e62cc6819353b6fcf42b2ec2833708cf6a8fa41d4e0b7834ea40b3b8\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"a.py::__residue__::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"8a82be2fc1dd1301d63a48e53fc57861acb9717df85622e7e90e5c51c841ce24\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"b.py::__anchor__::baz\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"9108caafd794f06771d24a71ee07a0b710f1f4d66d6b55bb163079a5053aff81\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"a.py::__anchor__::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"c.py::qux\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"9eb2a5427251ab7312a3823c534c1fdfd160a99e22f9603c1cedb983a4618ce4\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"logo.bin\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"b1341521b6ae6f698103579afddddc90684afd3128d61b4f87d4d1cd76032277\",\n      \"kind\": \"prune\",\n      \"symbols\": [\n        \"b.py::__residue__::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"b21c6318debe104506c504838002c73cff09b92877d691f052d4900a5b682d15\",\n      \"kind\": \"prune\",\n      \"symbols\": [\n        \"a.py::__residue__::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"ba1035839db56b77ed63bed111bb83faba72c97348fe979077f113d85e23d757\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"a.py::__residue__::foo\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"baeef7cc7dee46c4df01fc713e11dd1ca34281c76a99c5c8ab508cdb88a205bd\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"b.py::baz\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\",\n      \"kind\": \"rework\",\n      \"symbols\": [\n        \"c.py::qux\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"c5e38558eed5624a5088921e50a720d323bbf46924e2a9405312e2f9f0fcbd29\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"a.py::__anchor__::foo\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"cf110902df35109ffc95a94654b97dec252c7970a34b2d32d0aecba75fa662d7\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"config.yaml\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"d47535acad14cd05ba3a577985efa790720529ca9ea9f63781edd00edaaf5bbe\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"c.py::__residue__::qux\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"d861121e3a932fcefa2b01144d0514bff1c60b9fb1504e4b7ea930f338afa5fa\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"a.py::__residue__::\\u0000HEAD\\u0000\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"eb47dbfbfc364d71adaeda494b58ed5c0caf85486da0c330bfabdc5521ad9ef8\",\n      \"kind\": \"move\",\n      \"symbols\": [\n        \"a.py::bar\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"f18597bda48a47114023e85bc756aff4db608f3444e0b87b31d0f17fc1ea5920\",\n      \"kind\": \"rework\",\n      \"symbols\": [\n        \"config.yaml\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"fb384e3d10d102c5e31cce4a9ebe2449d44ef8a9124eda1580a4683fd76526e9\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"b.py::__residue__::baz\"\n      ],\n      \"intent\": null\n    },\n    {\n      \"id\": \"fb939ac8c252f83ad6758085dd6a3287c6116e7c8d0c3a047c3a165bd46142bc\",\n      \"kind\": \"add\",\n      \"symbols\": [\n        \"c.py::__anchor__::qux\"\n      ],\n      \"intent\": null\n    }\n  ]\n}\n"
+      "out": "{\n  \"commits\": [\n    {\n      \"sha\": \"b511794289b3d52552ed664bd582b155dda2d54b\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0\n    },\n    {\n      \"sha\": \"716bae4d81f2032000ac811f4229b78061b50264\",\n      \"subject\": \"modify foo\",\n      \"index\": 1\n    },\n    {\n      \"sha\": \"1e57edf2fe1e51ee3d25bc2618b43dd9bfcd55b1\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2\n    },\n    {\n      \"sha\": \"00cc584679966f0932f1767e619a4aeaaf9702eb\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3\n    },\n    {\n      \"sha\": \"d1a2bc5f59bfa84096a83c6aeafd77c6d9e70db1\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4\n    },\n    {\n      \"sha\": \"f3a8be67501678ab5e88f271a636be25fe80a599\",\n      \"subject\": \"delete bar\",\n      \"index\": 5\n    },\n    {\n      \"sha\": \"b558b8b181a39275346b572e85dcbd4bcde9e56d\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6\n    }\n  ],\n  \"cells\": [\n    {\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"commit_index\": 0,\n      \"op_ids\": [\n        \"23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n        \"77bda56fe1a872080ae7834ddd2a462e06a2a1228131fa18947cdae973271ce8\",\n        \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n        \"9eb2a5427251ab7312a3823c534c1fdfd160a99e22f9603c1cedb983a4618ce4\",\n        \"cf110902df35109ffc95a94654b97dec252c7970a34b2d32d0aecba75fa662d7\",\n        \"d47535acad14cd05ba3a577985efa790720529ca9ea9f63781edd00edaaf5bbe\",\n        \"d861121e3a932fcefa2b01144d0514bff1c60b9fb1504e4b7ea930f338afa5fa\",\n        \"fb939ac8c252f83ad6758085dd6a3287c6116e7c8d0c3a047c3a165bd46142bc\"\n      ],\n      \"op_count\": 8,\n      \"kinds\": {\n        \"add\": 8\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"commit_index\": 3,\n      \"op_ids\": [\n        \"4bd96c53fd11cf6e9652229b3b852abc3736f1d941fde38149e73f09c8e57fd9\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"add\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"commit_index\": 4,\n      \"op_ids\": [\n        \"8a82be2fc1dd1301d63a48e53fc57861acb9717df85622e7e90e5c51c841ce24\",\n        \"baeef7cc7dee46c4df01fc713e11dd1ca34281c76a99c5c8ab508cdb88a205bd\",\n        \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\",\n        \"fb384e3d10d102c5e31cce4a9ebe2449d44ef8a9124eda1580a4683fd76526e9\"\n      ],\n      \"op_count\": 4,\n      \"kinds\": {\n        \"add\": 3,\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"commit_index\": 6,\n      \"op_ids\": [\n        \"f18597bda48a47114023e85bc756aff4db608f3444e0b87b31d0f17fc1ea5920\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    }\n  ],\n  \"features\": {\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\": {\n      \"label\": \"baz qux\",\n      \"op_count\": 14\n    }\n  },\n  \"ghosts\": [],\n  \"partial_commits\": [],\n  \"commit_count\": 7,\n  \"op_count\": 14,\n  \"feature_count\": 1\n}\n"
     },
     "text": {
       "argv": [
         "log"
       ],
       "exit": 0,
-      "out": "29 op(s):\n  23f7fcfeda31 [add]: README.md\n  292c222d78c1 [add]: a.py::bar\n  29d3914a28f9 [prune]: a.py::__residue__::foo\n  411dacc96d7c [rework]: a.py::foo\n  4b99d72c3411 [add]: a.py::foo\n  4bd96c53fd11 [add]: b.py::__residue__::\u0000HEAD\u0000\n  5b6559337e90 [prune]: a.py::foo\n  709cfe47c299 [prune]: a.py::bar\n  77bda56fe1a8 [add]: c.py::__residue__::\u0000HEAD\u0000\n  7b1fea10726d [rework]: b.py::__residue__::bar\n  7b20f2b1d27c [add]: b.py::__residue__::bar\n  863fbfa9e62c [add]: a.py::__residue__::bar\n  8a82be2fc1dd [add]: b.py::__anchor__::baz\n  9108caafd794 [add]: a.py::__anchor__::bar\n  9914d46ada9b [add]: c.py::qux\n  9eb2a5427251 [add]: logo.bin\n  b1341521b6ae [prune]: b.py::__residue__::bar\n  b21c6318debe [prune]: a.py::__residue__::bar\n  ba1035839db5 [add]: a.py::__residue__::foo\n  baeef7cc7dee [add]: b.py::baz\n  bf137aca1399 [rework]: c.py::qux\n  c5e38558eed5 [add]: a.py::__anchor__::foo\n  cf110902df35 [add]: config.yaml\n  d47535acad14 [add]: c.py::__residue__::qux\n  d861121e3a93 [add]: a.py::__residue__::\u0000HEAD\u0000\n  eb47dbfbfc36 [move]: a.py::bar\n  f18597bda48a [rework]: config.yaml\n  fb384e3d10d1 [add]: b.py::__residue__::baz\n  fb939ac8c252 [add]: c.py::__anchor__::qux\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n\u001b[1m 1 feature(s)  \u00b7  7 commit(s)  \u00b7  14 op(s)\u001b[0m\n\n    \u001b[38;2;182;143;231m\u25cf\u001b[0m \u001b[1m\u001b[38;2;182;143;231m23f\u001b[0m\u001b[0m\u001b[2m7fcfe\u001b[0m baz qux                        \u001b[38;2;182;143;231m\u2588\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;150;117;190m\u2585\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[38;2;111;87;141m\u2582\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m\u001b[2m\u00b7\u001b[0m \u001b[2m   14\u001b[0m  \u001b[2madd-foo-qux-config\u001b[0m\n\n\u001b[2m \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588 = op-density (taller = busier), \u2502 = a rewind boundary between checkpoints   \u00b7   trailing chips = the checkpoints (rewind by name)   \u00b7   bright handle chars = the minimal prefix to type\u001b[0m\n"
     }
   },
   "map": {
     "json": {
       "argv": [
-        "map",
+        "log",
+        "--tree",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"README.md baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 12,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"continuation\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
+      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 14,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"birth\",\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
     },
     "text": {
       "argv": [
-        "map"
+        "log",
+        "--tree"
       ],
       "exit": 0,
-      "out": "README.md baz qux (f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b) \u00b7 12 op(s)\n1 feature(s)\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\nbaz qux (f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b) \u00b7 14 op(s)\n1 feature(s)\n"
     }
   },
   "merge": {
@@ -373,7 +347,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"message\": \"\",\n  \"target\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"removed\": [\n    \"23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n    \"4bd96c53fd11cf6e9652229b3b852abc3736f1d941fde38149e73f09c8e57fd9\",\n    \"77bda56fe1a872080ae7834ddd2a462e06a2a1228131fa18947cdae973271ce8\",\n    \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n    \"9eb2a5427251ab7312a3823c534c1fdfd160a99e22f9603c1cedb983a4618ce4\",\n    \"baeef7cc7dee46c4df01fc713e11dd1ca34281c76a99c5c8ab508cdb88a205bd\",\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\",\n    \"cf110902df35109ffc95a94654b97dec252c7970a34b2d32d0aecba75fa662d7\",\n    \"d47535acad14cd05ba3a577985efa790720529ca9ea9f63781edd00edaaf5bbe\",\n    \"d861121e3a932fcefa2b01144d0514bff1c60b9fb1504e4b7ea930f338afa5fa\",\n    \"f18597bda48a47114023e85bc756aff4db608f3444e0b87b31d0f17fc1ea5920\",\n    \"fb384e3d10d102c5e31cce4a9ebe2449d44ef8a9124eda1580a4683fd76526e9\"\n  ],\n  \"added\": [],\n  \"affected_features\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"affected\": [\n    {\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"direction\": \"blast\",\n      \"op_count\": 12\n    }\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"message\": \"\",\n  \"target\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"removed\": [\n    \"23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n    \"4bd96c53fd11cf6e9652229b3b852abc3736f1d941fde38149e73f09c8e57fd9\",\n    \"77bda56fe1a872080ae7834ddd2a462e06a2a1228131fa18947cdae973271ce8\",\n    \"8a82be2fc1dd1301d63a48e53fc57861acb9717df85622e7e90e5c51c841ce24\",\n    \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n    \"9eb2a5427251ab7312a3823c534c1fdfd160a99e22f9603c1cedb983a4618ce4\",\n    \"baeef7cc7dee46c4df01fc713e11dd1ca34281c76a99c5c8ab508cdb88a205bd\",\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\",\n    \"cf110902df35109ffc95a94654b97dec252c7970a34b2d32d0aecba75fa662d7\",\n    \"d47535acad14cd05ba3a577985efa790720529ca9ea9f63781edd00edaaf5bbe\",\n    \"d861121e3a932fcefa2b01144d0514bff1c60b9fb1504e4b7ea930f338afa5fa\",\n    \"f18597bda48a47114023e85bc756aff4db608f3444e0b87b31d0f17fc1ea5920\",\n    \"fb384e3d10d102c5e31cce4a9ebe2449d44ef8a9124eda1580a4683fd76526e9\",\n    \"fb939ac8c252f83ad6758085dd6a3287c6116e7c8d0c3a047c3a165bd46142bc\"\n  ],\n  \"added\": [],\n  \"affected_features\": [\n    \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\"\n  ],\n  \"affected\": [\n    {\n      \"feature_id\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n      \"direction\": \"blast\",\n      \"op_count\": 14\n    }\n  ]\n}\n"
     },
     "text": {
       "argv": [
@@ -396,7 +370,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"old_label\": \"README.md baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b\",\n  \"old_label\": \"baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
     },
     "text": {
       "argv": [
@@ -406,7 +380,7 @@
         "Renamed Feature"
       ],
       "exit": 0,
-      "out": "\u2713 renamed f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b: 'README.md baz qux' \u2192 'Renamed Feature'\n"
+      "out": "\u2713 renamed f-23f7fcfeda31c1233cff32484f9bb91a4e0a1bcf76e94b90ab7225525674ee6b: 'baz qux' \u2192 'Renamed Feature'\n"
     }
   },
   "restore": {
@@ -414,6 +388,7 @@
       "argv": [
         "restore",
         "c.py::qux",
+        "--yes",
         "--json"
       ],
       "exit": 0,
@@ -422,10 +397,11 @@
     "text": {
       "argv": [
         "restore",
-        "c.py::qux"
+        "c.py::qux",
+        "--yes"
       ],
       "exit": 0,
-      "out": "\u2713 [restore] c.py::qux\n    added 1 op(s): bf137aca1399\n    affected: c.py::qux\n"
+      "out": " \u25b8 restore  baz qux  23f7fcfe\n      restore  c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 :add-foo-qux-config  add foo, qux, config, binary  \u00b7 partly affected\n\n restores 1 op \u00b7 1 file(s) changed \u00b7 0 other feature(s) affected\n  \u2713 restore applied \u2014 0 op(s) removed, 1 added.\n"
     }
   },
   "revert": {
@@ -433,6 +409,7 @@
       "argv": [
         "revert",
         "c.py::qux",
+        "--yes",
         "--json"
       ],
       "exit": 0,
@@ -441,10 +418,11 @@
     "text": {
       "argv": [
         "revert",
-        "c.py::qux"
+        "c.py::qux",
+        "--yes"
       ],
       "exit": 0,
-      "out": "\u2713 [revert] c.py::qux\n    removed 1 op(s): bf137aca1399\n    affected: c.py::qux\n"
+      "out": " \u25b8 rewind  baz qux  23f7fcfe\n      revert  c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 :add-foo-qux-config  add foo, qux, config, binary  \u00b7 partly affected\n\n removes 1 op \u00b7 1 file(s) changed \u00b7 0 other feature(s) affected\n  \u2713 revert applied \u2014 1 op(s) removed, 0 added.\n"
     }
   },
   "revert_emit": {
@@ -456,7 +434,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"frontier\": [\n    {\n      \"op_id\": \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n      \"bucket\": \"foundation\",\n      \"toggleable\": false\n    }\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"bf137aca1399abcecec60d7f789036e0aef02421288fee8715d123832a5c323f\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"coupling\": [],\n  \"frontier\": [\n    {\n      \"op_id\": \"9914d46ada9b7a8c23552f0d642de37c7a356b97dae225b26cac721c652f9eac\",\n      \"bucket\": \"foundation\",\n      \"toggleable\": false\n    }\n  ],\n  \"reversible\": true,\n  \"fallout\": [],\n  \"carry_count\": 0,\n  \"so_what\": \"Removes c.py::qux. Nothing depends on it \\u2014 clean revert. Undo-able.\"\n}\n"
     },
     "text": {
       "argv": [
@@ -570,7 +548,8 @@
   "status": {
     "json": {
       "argv": [
-        "status",
+        "log",
+        "--summary",
         "--json"
       ],
       "exit": 0,
@@ -578,7 +557,8 @@
     },
     "text": {
       "argv": [
-        "status"
+        "log",
+        "--summary"
       ],
       "exit": 0,
       "out": "6 file(s), 14 symbol(s), 1 feature(s), 33% entity coverage\n  oracle: unconfigured\n  \u2713 in sync\n"
@@ -703,6 +683,6 @@
       "not-a-verb"
     ],
     "exit": 0,
-    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness for it\n  sgt status [--json]         files/symbols/features, coverage, oracle status, drift\n  sgt log [--json]            the mined operation DAG\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt edit <sel> [--repair]   change a symbol/feature in place; dependents repoint\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt map [--rebuild]         (re)build + print the hierarchical feature tree\n  sgt graph [--at]            feature timeline (Gantt): lanes over commit-time\n  sgt episodes                episode rail (vertical git-log): what I did, in order\n  sgt blame <path>            per-symbol semantic blame from the op DAG\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt checkpoint [--json]     preview + confirm plan-step <-> mined-op matches\n  sgt drift [--json]          ops no active plan predicted\n\n  rewrite pipeline:\n  sgt fulfill <draft> --from-tree   fill a drafted hollow op from the working tree\n  sgt commit                  commit a staged rewrite, gated oracle-green\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: fsck, reindex, state, oracle,\n                              after, fold, preview, tiers, identity, migrate,\n                              history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
+    "out": "sgt \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  sgt save [-m \"<msg>\"]       mine the working tree + commit a witness (auto-matches plan steps)\n  sgt log [--json]            the lane\u00d7commit grid \u2014 the one inspection surface:\n                              --tree (feature tree) \u00b7 --rail (episode rail) \u00b7 --summary\n                              (status scalars) \u00b7 --ops (raw op DAG) \u00b7 --rebuild (recluster)\n  sgt undo                    invert the last mutating operation (the unified op log)\n  sgt revert <sel> [--emit]   remove a selection and everything built on it (I \\ upset X)\n  sgt restore <sel> [--emit]  re-add a selection and its prerequisites (I \u222a downset X)\n  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op \u2192 fulfill \u2192 land)\n\n  navigation + inspection:\n  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  sgt diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  sgt intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `sgt revert <feature>@<n>`\n\n  agentic loop:\n  sgt plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  sgt save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  groupings:\n  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select, why\n  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n                              reindex, state, oracle, after, fold, preview, tiers,\n                              identity, migrate, history, compose, forks, review-queue,\n                              unstage, repair, merge-op, split-op, transplant\n\n  collaboration + setup:\n  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  sgt land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  sgt push [remote] [branch]  non-forcing git push; a rejection routes you to `sgt sync`\n  sgt propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  sgt session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  sgt init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  sgt mcp [path]              run the MCP stdio server for coding-agent clients\n  sgt git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable sgt.api projection.\n\n"
   }
 }

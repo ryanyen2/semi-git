@@ -12,16 +12,18 @@ The tool names mirror their CLI paths after the spine re-triage (KTD2): the dail
 kernel verbs, the semantic diff, and the agentic loop) keep their bare ``sgt_`` names, while only
 the genuinely rare/maintenance tools carry the ``sgt_advanced_`` prefix of their re-homed CLI verbs.
 
-* **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_status`` (the current
-  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between
-  two refs' ideals), ``sgt_advanced_fsck`` (op-store integrity).
+* **read** (no API key, no writes): ``sgt_log`` (the mined op DAG), ``sgt_grid`` (the lane×commit
+  timeline join — features × commits, ghost cells, fidelity marks), ``sgt_status`` (the current
+  ref's ideal: frontier, coverage, oracle verdict), ``sgt_diff`` (semantic diff between two refs'
+  ideals), ``sgt_advanced_fsck`` (op-store integrity).
 * **write**: ``sgt_init`` (bind git + the kernel store, mine existing history), ``sgt_revert`` /
   ``sgt_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run preview),
   ``sgt_advanced_oracle_run`` (execute configured build/test tiers against the current ideal).
 * **agentic loop** (plan U14): ``sgt_plan_intake`` (decompose a plan into predicted hollow
   ops), ``sgt_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given
   ``confirm`` -- the explicit, one-group-at-a-time write that resolves it), ``sgt_drift``
-  (ops no active plan predicted).
+  (ops no active plan predicted), ``sgt_plan_done`` (close a finished session so it leaves the
+  active surface -- a fully-matched plan closes itself on the last confirm).
 
 Every write tool mines the working tree on contact first (R9), so it reflects whatever the agent
 just edited. The feature-lens verbs (merge/split/rename/move) have no MCP surface yet -- CLI-only
@@ -63,6 +65,14 @@ def tool_log(repo_path: str, args: dict) -> dict:
     if args.get("offset") is not None:
         kwargs["offset"] = int(args["offset"])
     return oplog_view(repo_path, **kwargs)
+
+
+def tool_grid(repo_path: str, args: dict) -> dict:
+    from sgt.api import grid_view
+    from sgt.core.lens import get
+
+    get(repo_path)  # mine-on-contact before projecting the grid
+    return grid_view(repo_path)
 
 
 def tool_state(repo_path: str, args: dict) -> dict:
@@ -200,6 +210,19 @@ def tool_drift(repo_path: str, args: dict) -> dict:
     return drift_view(repo_path, full=bool(args.get("full", False)))
 
 
+def tool_plan_done(repo_path: str, args: dict) -> dict:
+    """Close a finished plan session (plan U14). A fully-matched session already completes on its
+    own via `sgt_checkpoint`'s confirm; this is the explicit close for a plan whose remaining steps
+    were done differently than predicted and will never match, so it stops showing as active."""
+    from sgt.loop import plan as plan_mod
+
+    session_id = (args.get("session_id") or "").strip()
+    if not session_id:
+        return {"error": "missing 'session_id'"}
+    ok = plan_mod.mark_done(repo_path, session_id)
+    return {"ok": ok} if ok else {"error": f"no such session: {session_id}"}
+
+
 # ---------------------------------------------------------------------------
 # Tool registry (name -> (description, inputSchema, handler))
 # ---------------------------------------------------------------------------
@@ -224,6 +247,14 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
             [],
         ),
         tool_log,
+    ),
+    "sgt_grid": (
+        "The lane×commit grid: the canonical join every timeline surface renders (plan U1). "
+        "Returns {commits, cells, features, ghosts, partial_commits} -- one cell per (feature, "
+        "commit) that carries ops, the commit axis, active-plan ghost cells, and per-commit "
+        "mining-fidelity marks. A complete projection (not paged): a grid needs every cell.",
+        _schema({}, []),
+        tool_grid,
     ),
     "sgt_status": (
         "The current ref's ideal: covered paths, entity-granularity coverage fraction, and the "
@@ -297,6 +328,15 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "kinds}, no spans. Pass full=true for each entry's footprint and current file/line spans.",
         _schema({"full": {"type": "boolean", "description": "restore per-op footprint and file/line spans"}}, []),
         tool_drift,
+    ),
+    "sgt_plan_done": (
+        "Close a finished plan session so it stops showing as active. A fully-matched plan "
+        "completes automatically when its last step is confirmed; call this for a plan whose "
+        "remaining steps were built differently than predicted and will never match. The record is "
+        "kept as completed history (its work stays attributable); use `sgt plan abandon` to delete "
+        "an unwanted plan entirely.",
+        _schema({"session_id": {"type": "string"}}, ["session_id"]),
+        tool_plan_done,
     ),
 }
 

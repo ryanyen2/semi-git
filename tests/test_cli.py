@@ -5,7 +5,10 @@ Verb *behavior* (the algebra) is tested in `tests/core/`; this file is the thin 
 
 import json
 import os
+import sys
 from types import SimpleNamespace
+
+import pytest
 
 from sgt.cli import main
 from sgt.intent import resolve as resolve_mod
@@ -51,7 +54,7 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
     assert not (tmp_path / "--horizon").exists()  # not misparsed as the repo path
 
     capsys.readouterr()
-    assert _in(tmp_path, ["log", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     foo_ops = [op for op in payload["ops"] if "a.py::foo" in [f["symbol"] for f in op["footprint"]]]
     # v1 (pre-horizon) is never mined at all; v2 becomes one root "add", v3 one modify on top --
@@ -61,16 +64,18 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
 
 
 def test_init_and_log_roundtrip(tmp_path, capsys):
+    # U1 moved the raw op-DAG dump under `sgt log --ops` (bare `sgt log` is now the lane×commit
+    # grid, which doesn't print raw `file::symbol` names).
     _seed(tmp_path, 1)
     capsys.readouterr()  # drain seed commit output (none, but keep symmetry with other tests)
-    assert _in(tmp_path, ["log"]) == 0
+    assert _in(tmp_path, ["log", "--ops"]) == 0
     out = capsys.readouterr().out
     assert "op(s)" in out and "a.py::foo" in out
 
 
 def test_log_json_is_machine_readable(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["log", "--json"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["count"] >= 1
     assert any("a.py::foo" in op["symbols"] for op in payload["ops"])
@@ -78,7 +83,7 @@ def test_log_json_is_machine_readable(tmp_path, capsys):
 
 def test_log_json_full_is_machine_readable(tmp_path, capsys):
     _seed(tmp_path, 1)
-    assert _in(tmp_path, ["log", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--full"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["count"] >= 1
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
@@ -125,15 +130,15 @@ def test_log_json_limit_and_offset_flags(tmp_path, capsys):
     _seed(tmp_path, 3)  # a.py::foo v1/v2/v3, at least 3 distinct ops
     capsys.readouterr()
 
-    assert _in(tmp_path, ["log", "--json"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
     total = json.loads(capsys.readouterr().out)["count"]
     assert total > 1
 
-    assert _in(tmp_path, ["log", "--json", "--limit", "1", "--offset", "0"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--limit", "1", "--offset", "0"]) == 0
     first_page = json.loads(capsys.readouterr().out)
     assert len(first_page["ops"]) == 1
 
-    assert _in(tmp_path, ["log", "--json", "--limit", str(total), "--offset", "1"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json", "--limit", str(total), "--offset", "1"]) == 0
     rest = json.loads(capsys.readouterr().out)
     assert len(rest["ops"]) == total - 1
     assert rest["ops"][0]["id"] != first_page["ops"][0]["id"]
@@ -157,22 +162,6 @@ def test_history_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
     assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path), full=True), indent=2)
 
 
-def test_drift_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
-    """R21 guardrail for `drift`, mirroring `test_history_json_cli_matches_view_at_default_and_full`."""
-    from sgt.api import drift_view
-    from sgt.core.lens import get
-
-    _seed(tmp_path, 2)
-    get(tmp_path)
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["drift", "--json"]) == 0
-    assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path)), indent=2)
-
-    assert _in(tmp_path, ["drift", "--json", "--full"]) == 0
-    assert capsys.readouterr().out.rstrip("\n") == json.dumps(drift_view(str(tmp_path), full=True), indent=2)
-
-
 def test_revert_emit_previews_without_writing(tmp_path, capsys):
     _seed(tmp_path, 2)
     assert _in(tmp_path, ["revert", "--emit", "a.py::foo"]) == 0
@@ -183,7 +172,7 @@ def test_revert_emit_previews_without_writing(tmp_path, capsys):
 
 def test_revert_then_restore_roundtrip(tmp_path, capsys):
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
     capsys.readouterr()
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
 
@@ -227,7 +216,7 @@ class FakeClient:
 def test_revert_by_op_id_never_touches_the_intent_resolver(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(resolve_mod, "get_client", _boom)
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["log", "--json"]) == 0
+    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
     op_id = json.loads(capsys.readouterr().out)["ops"][0]["id"]
 
     assert _in(tmp_path, ["revert", "--emit", op_id]) == 0  # resolves as an op-id; NL rung never runs
@@ -379,7 +368,7 @@ def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path,
     from sgt.core.lens import current_ideal
 
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
     capsys.readouterr()
     before = current_ideal(tmp_path).op_ids
 
@@ -397,7 +386,7 @@ def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path,
 def test_restore_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
     capsys.readouterr()
 
     assert _in(tmp_path, ["restore", "something vague"]) == 1
@@ -484,62 +473,122 @@ def test_plan_abandon(tmp_path, capsys, monkeypatch):
     assert _in(tmp_path, ["plan", "abandon", "no-such-session"]) == 1
 
 
-def test_checkpoint_preview_then_confirm(tmp_path, capsys, monkeypatch):
-    """A session predicting `a.py::foo` previews a match against a real follow-up edit to it,
-    then `--confirm-hollow/--confirm-op` applies exactly that group."""
+def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1"):
+    """A one-step active plan session predicting `a.py::foo`, its baseline being the current op set.
+    Returns the session's single hollow id."""
     from pathlib import Path
 
     from sgt.core.op import make_op
     from sgt.core.store import Store
-    from sgt.loop import plan as plan_mod
 
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    gb = _seed(tmp_path, 1)  # a.py::foo == "return 1"
     store = Store(tmp_path)
     baseline = sorted(op.id for op in store.all_ops())
-
-    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
+    footprint = {"a.py::foo": (None, plan_mod._PENDING),
+                 f"__plan__::{session}::{hollow_id_suffix}": (None, plan_mod._PENDING)}
     hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
     store.add_hollow(hollow)
     table = plan_mod._load_sessions(Path(tmp_path))
-    table["s1"] = {
+    table.setdefault(session, {
         "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
-        "baseline_op_ids": baseline,
-        "steps": [{
-            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
-            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-        }],
-    }
+        "baseline_op_ids": baseline, "steps": [],
+    })
+    table[session]["steps"].append({
+        "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+        "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+    })
     plan_mod._save_sessions(Path(tmp_path), table)
+    return hollow.id
+
+
+def test_save_auto_confirms_a_single_plan_step(tmp_path, capsys, monkeypatch):
+    """A save fulfilling exactly one pending plan step auto-confirms it -- no separate `checkpoint`
+    verb (U12/R10). The save reports the fold and the step flips to `matched`."""
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)  # a.py::foo == "return 1"
+    _seed_pending_step(tmp_path, plan_mod, "step0")
 
     (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    gb.commit_all("touch foo")
     capsys.readouterr()
+    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["saved"] is True
+    assert len(out["plan"]["auto_confirmed"]) == 1
+    assert out["plan"]["auto_confirmed"][0]["session_id"] == "s1"
+    assert not out["plan"]["ambiguous"]
 
-    assert _in(tmp_path, ["checkpoint", "--json"]) == 0
-    preview = json.loads(capsys.readouterr().out)
-    assert len(preview["matches"]) == 1
-    group = preview["matches"][0]
+    # Auto-confirming the only step completes the one-step session: it leaves the active
+    # `plan status` surface, and its step is recorded matched in the full table.
+    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
+    assert json.loads(capsys.readouterr().out)["sessions"] == []
+    table = plan_mod._load_sessions(tmp_path)
+    assert table["s1"]["status"] == "completed"
+    assert table["s1"]["steps"][0]["status"] == "matched"
 
-    argv = ["checkpoint", "--json"]
-    for hid in group["hollow_ids"]:
-        argv += ["--confirm-hollow", hid]
-    for oid in group["op_ids"]:
-        argv += ["--confirm-op", oid]
+
+def test_save_resolve_plan_settles_an_ambiguous_match(tmp_path, capsys, monkeypatch):
+    """Two pending steps both predicting `a.py::foo` tangle into one op cluster on a save -- an n:m
+    match that does NOT auto-confirm. `save --resolve-plan --confirm-hollow/--confirm-op` settles
+    one group by name (the standalone-on-a-clean-tree resolution path)."""
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)
+    h0 = _seed_pending_step(tmp_path, plan_mod, "step0")
+    _seed_pending_step(tmp_path, plan_mod, "step1")  # second step, same predicted symbol -> n:m
+
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+    capsys.readouterr()
+    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["saved"] is True
+    assert not out["plan"]["auto_confirmed"]  # two steps -> ambiguous, nothing auto-confirmed
+    ambiguous = out["plan"]["ambiguous"]
+    assert len(ambiguous) == 1 and len(ambiguous[0]["hollow_ids"]) == 2
+    op_id = ambiguous[0]["op_ids"][0]
+
+    # Resolve one step by name, standalone on the now-clean tree (nothing new to save).
+    argv = ["save", "--resolve-plan", "--confirm-hollow", h0, "--confirm-op", op_id, "--json"]
     assert _in(tmp_path, argv) == 0
     confirmed = json.loads(capsys.readouterr().out)
-    assert confirmed["session_id"] == "s1"
+    assert confirmed["ok"] is True and confirmed["session_id"] == "s1"
 
     assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
-    status = json.loads(capsys.readouterr().out)
-    assert status["sessions"][0]["steps"][0]["status"] == "matched"
+    steps = json.loads(capsys.readouterr().out)["sessions"][0]["steps"]
+    by_hollow = {s["hollow_id"]: s["status"] for s in steps}
+    assert by_hollow[h0] == "matched"  # exactly the named step resolved; the other stays pending
 
 
-def test_drift_json_reports_nothing_with_no_active_session(tmp_path, capsys):
-    _seed(tmp_path, 2)
+def test_resolve_plan_confirm_resolves_truncated_refs_to_full_ids(tmp_path, capsys, monkeypatch):
+    """`--resolve-plan` prints truncated (12-char) ids, so a user pasting one back must resolve to
+    the full canonical id -- and the recorded match must key on the *full* op id, never the prefix.
+    Keying on a prefix would leave the real op absent from `recorded_matches`, so it would resurface
+    as drift on the next checkpoint. Also asserts unknown/ambiguous refs fail cleanly."""
+    from sgt.loop import plan as plan_mod
+    from sgt.loop.match import recorded_matches
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)
+    h0 = _seed_pending_step(tmp_path, plan_mod, "step0")
+    _seed_pending_step(tmp_path, plan_mod, "step1")  # second step, same symbol -> n:m, no auto-confirm
+
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
     capsys.readouterr()
-    assert _in(tmp_path, ["drift", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["op_ids"] == []
+    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
+    full_op = json.loads(capsys.readouterr().out)["plan"]["ambiguous"][0]["op_ids"][0]
+
+    # Confirm using the *truncated* ids the preview prints (h0/full_op are 64-char; feed 12).
+    argv = ["save", "--resolve-plan", "--confirm-hollow", h0[:12], "--confirm-op", full_op[:12], "--json"]
+    assert _in(tmp_path, argv) == 0
+    confirmed = json.loads(capsys.readouterr().out)
+    assert confirmed["op_ids"] == [full_op] and confirmed["hollow_ids"] == [h0]  # resolved, not echoed
+    assert full_op in recorded_matches(tmp_path)  # keyed on the FULL id -> never resurfaces as drift
+    assert full_op[:12] not in recorded_matches(tmp_path)  # the prefix is NOT an orphan key
+
+    capsys.readouterr()
+    assert _in(tmp_path, ["save", "--resolve-plan", "--confirm-hollow", h0[:12],
+                          "--confirm-op", "deadbeef", "--json"]) == 1  # unknown op ref fails cleanly
 
 
 def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys):
@@ -611,7 +660,7 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
     gb.commit_all("add foo and bar")
-    assert _in(tmp_path, ["map"]) == 0
+    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0  # U14: `map` is now a `log` mode
     capsys.readouterr()
     tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
 
@@ -630,14 +679,15 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
 
 
 def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
-    """`sgt map --rebuild` is the escape hatch out of dirty-subtree splicing (Phase 2): it must at
-    least run without error and still produce a valid tree, even though the common no-op-edit case
-    would otherwise splice everything through verbatim."""
+    """`sgt log --tree --rebuild` (the former `sgt map --rebuild`, folded into `log` in U14) is the
+    escape hatch out of dirty-subtree splicing (Phase 2): it must at least run without error and
+    still produce a valid tree, even though the common no-op-edit case would otherwise splice
+    everything through verbatim."""
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["map"]) == 0
+    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0
     capsys.readouterr()
-    assert _in(tmp_path, ["map", "--rebuild"]) == 0
+    assert _in(tmp_path, ["log", "--tree", "--rebuild"]) == 0
     out = capsys.readouterr().out
     assert "feature(s)" in out
 
@@ -695,12 +745,12 @@ def test_help_mentions_kernel_verbs(capsys):
 
 
 def test_help_mentions_agentic_loop_verbs(capsys):
-    # The agentic-loop verbs are re-homed under the `advanced` grouping (KTD2); help advertises
-    # them there rather than at the top level.
+    # The agentic loop is `sgt plan` + `sgt save --resolve-plan`; checkpoint/drift folded into
+    # `save` (U12), so help advertises the loop, not those (now-removed) verbs.
     main(["help"])
     out = capsys.readouterr().out
     assert "advanced" in out
-    assert "plan" in out and "checkpoint" in out and "drift" in out
+    assert "plan" in out and "resolve-plan" in out
 
 
 def test_help_mentions_history_and_preview_verbs(capsys):
@@ -717,32 +767,20 @@ def test_unknown_verb_falls_back_to_help(capsys):
 
 
 def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
-    """R2/KTD2 (re-triaged): the top-level `_VERBS` is exactly the daily spine + the daily
-    navigation/inspection/loop/rewrite verbs + the two groupings + the unchanged collaboration/setup
-    verbs. Only rare/maintenance verbs live under `advanced`."""
+    """R12/KTD8/KTD9 (U14): the grid is the only inspection surface, so the top-level `_VERBS` is
+    the daily spine + `log` + the two groupings + the unchanged collaboration/setup verbs.
+    `status`/`map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/
+    `commit`/`fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't
+    map to a `log` mode; re-promoted in c4f9966/KTD8)."""
     from sgt.cli import _VERBS
 
     assert _VERBS == {
-        "save", "status", "log", "undo", "revert", "restore", "edit",
-        "switch", "diff", "map", "graph", "episodes", "blame", "intent",
-        "plan", "checkpoint", "drift",
-        "commit", "fulfill",
+        "save", "log", "undo", "revert", "restore", "resolve",
+        "switch", "diff", "intent",
+        "plan",  # checkpoint/drift folded into `save` (U12)
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",
     }
-
-
-def test_removed_top_level_verb_points_to_its_new_home(capsys):
-    """A removed-but-known old verb errors with a clear pointer to its new home (KTD2's hard
-    rename, no alias layer); a genuinely unknown token still falls to `_help()`."""
-    assert main(["merge-op"]) == 2
-    assert "advanced merge-op" in capsys.readouterr().err
-    assert main(["reindex"]) == 2
-    assert "advanced reindex" in capsys.readouterr().err
-    assert main(["state"]) == 2
-    assert "advanced state" in capsys.readouterr().err
-    assert main(["merge"]) == 2  # re-homed two levels deep under `feature regroup`
-    assert "feature regroup merge" in capsys.readouterr().err
 
 
 def test_grouping_verbs_resolve(tmp_path, capsys):
@@ -788,3 +826,205 @@ def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsy
     assert _in(tmp_path, ["revert", helper_op.id, "--keep", "", "--json"]) == 0
     none = json.loads(capsys.readouterr().out)
     assert none["ok"] and none["hollow_ids"] == []
+
+
+# -- consequence pane gate (interactive confirm step replacing `[y/N]`) --------------------------
+#
+# On an interactive tty a bare `sgt revert <ref>` shows the consequence focus pane instead of the
+# `[y/N]` prompt; these pin the CLI<->pane contract. The pane itself is tested in
+# `tests/tui/test_consequence.py`; here `run_consequence` is monkeypatched so no TUI actually
+# launches (which would also block the suite), and both isattys are forced so the gate is entered
+# deterministically regardless of how pytest was invoked.
+
+def _force_tty(monkeypatch, stdin=True, stdout=True):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: stdin)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: stdout)
+
+
+def test_revert_on_a_tty_applies_when_the_pane_returns_apply(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("textual")
+    from sgt.tui import consequence
+
+    _seed(tmp_path, 2)
+    _force_tty(monkeypatch)
+    monkeypatch.setattr(consequence, "run_consequence",
+                        lambda *a, **k: consequence.Decision(True, frozenset()))
+
+    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert "applied" in capsys.readouterr().out
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"  # reverted
+
+
+def test_revert_on_a_tty_changes_nothing_when_the_pane_aborts(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("textual")
+    from sgt.tui import consequence
+
+    _seed(tmp_path, 2)
+    _force_tty(monkeypatch)
+    monkeypatch.setattr(consequence, "run_consequence",
+                        lambda *a, **k: consequence.Decision(False))
+
+    assert _in(tmp_path, ["revert", "a.py::foo"]) == 1
+    assert "skipped" in capsys.readouterr().out
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
+
+
+def test_pane_kept_set_routes_through_the_keep_dependents_path(tmp_path, monkeypatch):
+    """A non-empty kept-set from the pane is exactly the existing `--keep` continuation-hollow
+    path -- `_apply_decision` must route there (not a plain `verbs.apply`) with that frontier."""
+    pytest.importorskip("textual")
+    from sgt.core.store import Store
+    from sgt.tui import consequence
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("helper")
+    (tmp_path / "b.py").write_text(
+        "from a import helper\n\ndef user():\n    return helper()\n", encoding="utf-8")
+    gb.commit_all("user")
+    assert _in(tmp_path, ["init", "."]) == 0
+
+    ops = Store(tmp_path).all_ops()
+    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+
+    _force_tty(monkeypatch)
+    monkeypatch.setattr(consequence, "run_consequence",
+                        lambda *a, **k: consequence.Decision(True, frozenset({user_op.id})))
+
+    captured = {}
+    from sgt.cli import ideal_edit
+    real = ideal_edit._revert_keep_dependents
+
+    def spy(repo, ref_tokens, intent, do_repair, as_json, keep=None):
+        captured["ref_tokens"], captured["keep"] = ref_tokens, keep
+        return real(repo, ref_tokens, intent, do_repair, as_json, keep=keep)
+
+    monkeypatch.setattr(ideal_edit, "_revert_keep_dependents", spy)
+
+    assert _in(tmp_path, ["revert", helper_op.id]) == 0
+    assert captured["ref_tokens"] == [helper_op.id]
+    assert captured["keep"] == frozenset({user_op.id})
+
+
+def test_revert_without_tty_or_yes_still_refuses_with_exit_2(tmp_path, monkeypatch, capsys):
+    """The machine/degrade contract is byte-unchanged: no tty and no `--yes` prints the feedforward
+    and refuses (exit 2), never launching the pane."""
+    _seed(tmp_path, 2)
+    _force_tty(monkeypatch, stdin=False)
+
+    assert _in(tmp_path, ["revert", "a.py::foo"]) == 2
+    assert "not applied (no tty)" in capsys.readouterr().out
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
+
+
+def test_revert_json_still_applies_immediately_without_the_pane(tmp_path, capsys):
+    """`--json` is the immediate-apply machine contract VS Code/tests depend on -- unchanged."""
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["revert", "a.py::foo", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] and payload["removed"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"  # reverted
+
+
+# -- feature-reorg gate (merge/rename/move share `_confirm`; split has its own inline path) ------
+#
+# Metadata verbs touch no code, so their pane renders a `summary` rather than a code rail; the gate
+# is `_common.maybe_confirm`, monkeypatched here so no TUI launches. `--json` and the non-tty case
+# (maybe_confirm -> None) must keep the immediate-apply / preview-only behaviour byte-for-byte.
+
+def _feature_repo(tmp_path):
+    """A repo with one mined feature; returns its content-addressed feature id."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("add foo and bar")
+    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0
+    from sgt.lens.tree import load as _load_tree
+    return next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
+
+
+def test_rename_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, capsys):
+    from sgt.cli import _common
+    from sgt.tui.consequence import Decision
+
+    fid = _feature_repo(tmp_path)
+    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 0
+    assert "renamed" in capsys.readouterr().out
+    from sgt.lens.pins import load_pins
+    assert load_pins(tmp_path).labels[fid] == "Renamed"
+
+
+def test_rename_on_a_tty_changes_nothing_when_the_pane_aborts(tmp_path, monkeypatch, capsys):
+    from sgt.cli import _common
+    from sgt.tui.consequence import Decision
+
+    fid = _feature_repo(tmp_path)
+    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(False))
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 1
+    assert "skipped" in capsys.readouterr().out
+    from sgt.lens.pins import load_pins
+    assert "Renamed" not in load_pins(tmp_path).labels.values()  # not applied
+
+
+def test_rename_json_never_launches_the_pane_and_applies(tmp_path, monkeypatch, capsys):
+    from sgt.cli import _common
+
+    fid = _feature_repo(tmp_path)
+
+    def boom(*a, **k):
+        raise AssertionError("--json must not launch the consequence pane")
+
+    monkeypatch.setattr(_common, "maybe_confirm", boom)
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["feature", "rename", fid, "Renamed", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["new_label"] == "Renamed"
+
+
+def test_rename_non_tty_keeps_immediate_apply(tmp_path, monkeypatch, capsys):
+    """maybe_confirm -> None (no tty / no textual) means proceed: the metadata verb still applies
+    immediately, exactly as it did before the pane existed."""
+    from sgt.cli import _common
+
+    fid = _feature_repo(tmp_path)
+    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: None)
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 0
+    from sgt.lens.pins import load_pins
+    assert load_pins(tmp_path).labels[fid] == "Renamed"
+
+
+def test_split_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, capsys):
+    from sgt.cli import _common
+    from sgt.tui.consequence import Decision
+
+    fid = _feature_repo(tmp_path)
+    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
+    capsys.readouterr()
+
+    # No --apply: on a tty the pane *is* the confirm, so a confirm splits.
+    assert _in(tmp_path, ["feature", "regroup", "split", fid]) == 0
+    assert "split" in capsys.readouterr().out
+    from sgt.lens.tree import load as _load_tree
+    leaves = [nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"]]
+    assert len(leaves) == 2  # actually split
+
+
+def test_split_non_tty_still_prints_the_preview_only(tmp_path, monkeypatch, capsys):
+    from sgt.cli import _common
+
+    fid = _feature_repo(tmp_path)
+    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: None)
+    tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["feature", "regroup", "split", fid]) == 0
+    assert "preview only" in capsys.readouterr().out
+    assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # nothing applied

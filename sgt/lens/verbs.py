@@ -10,7 +10,7 @@ Each verb writes the `assign`/`labels`/`cannot_link` pin that keeps the metadata
 across the *next* `sgt map` re-cluster (`tree.build`'s Greene matching + `_apply_assign_pins`
 otherwise has no reason to reproduce a hand edit). Patterns reused rather than duplicated:
 `tree._dedup`'s in-place `op_leaf` remap, `tree.enforce_cannot_link`'s in-place member moves, and
-`tree._fresh_id_gen`'s collision-free `F<n>` minting.
+`tree._content_birth_id`'s content-addressed `f-<founding op>` minting.
 """
 
 from __future__ import annotations
@@ -112,7 +112,16 @@ def _authored_id_for(feature_id: str) -> str:
     when two clones author *different* features over the same seed. A reorg verb, by contrast, always
     targets one specific existing cluster feature, so a content-derived handle is the correct, always-
     collision-free correspondence -- and two clones renaming that same feature reconcile through the
-    LWW label register exactly as intended."""
+    LWW label register exactly as intended.
+
+    Idempotent by contract: the authored id *for something that is already an authored feature* is
+    itself. A cluster id (`N42`) gets the handle (`af-N42`), but an `af-<uuid>` lane -- which
+    `ledger.assign_at_save` can pass in when a new symbol attaches to a previously-minted lane, and
+    which any reorg verb sees when it targets an authored feature directly -- is returned unchanged.
+    Re-wrapping it (`af-af-<uuid>`) would mint a phantom lane no pin or tree node references, so its
+    member_adds would accrete under an id the assign pin never uses and the two stores would diverge."""
+    if feature_id.startswith("af-"):
+        return feature_id
     return f"af-{feature_id}"
 
 
@@ -472,26 +481,25 @@ def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = Fals
 
 
 def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, str] | None:
-    """Match `ref` against a feature id (`f-<op>`/legacy `F<n>`) or an exact leaf label -- the
-    feature's op-set (from `op_leaf`), its id, and its label; `None` if `ref` names no leaf feature.
-    A raw id miss is retried through the alias G-Set (`reconcile.resolve_alias`, U21/D6), so a
-    reference to a pre-migration id (or another clone's colliding birth id) still resolves to the
-    feature it was re-minted to."""
-    from sgt.lens import reconcile
-
+    """Match `ref` against a content-addressed feature id (`f-<op>`) or an exact leaf label -- the
+    feature's op-set (from `op_leaf`), its id, and its label; `None` if `ref` names no leaf
+    feature."""
     result = tree.load(repo)
     if result is None:
         return None
     nodes = result["nodes"]
     feature_id = ref if _leaf(nodes, ref) is not None else None
     if feature_id is None:
-        aliased = reconcile.resolve_alias(reconcile.load_aliases(repo), ref)
-        if aliased != ref and _leaf(nodes, aliased) is not None:
-            feature_id = aliased
-    if feature_id is None:
         feature_id = next(
             (nid for nid, nd in nodes.items() if not nd["children"] and nd.get("label") == ref), None,
         )
+    if feature_id is None and ref:  # a unique id-prefix -- `f-`-prefixed or the bare hex the graph prints
+        hits = [
+            nid for nid, nd in nodes.items()
+            if not nd["children"] and (nid.startswith(ref) or nid.startswith("f-" + ref))
+        ]
+        if len(hits) == 1:
+            feature_id = hits[0]
     if feature_id is None:
         return None
     op_ids = frozenset(op for op, leaf in result["op_leaf"].items() if leaf == feature_id)
@@ -522,6 +530,48 @@ def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
         upset_union |= order.upset_in(op_id, ideal.op_ids, ops, declared)
     after = ideal.op_ids - frozenset(upset_union)
     return core_verbs._validated("revert", feature_id, ideal.op_ids, after, ops, declared)
+
+
+def plan_revert_lane_to_commit(
+    repo: str | Path, ref: str, commit_index: int, keep: tuple[str, ...] = (),
+) -> core_verbs.VerbPreview:
+    """`revert <lane> --to <commit>` (plan U11/R9): truncate a lane at a commit boundary -- drop the
+    lane's ops *after* `commit_index` (and everything built on them), keeping the lane's shape at or
+    before it. `keep` names other lanes whose ops must survive even where the up-set would otherwise
+    sweep them: their op-sets are subtracted from the removal before validating, so `_validated`
+    refuses (rather than silently dropping) if that would leave an invalid ideal. Reuses
+    `plan_revert_feature`'s exact `upset_in` + `Ideal.from_ops` algebra -- only the *seed* op-set
+    (the lane's post-`commit_index` ops) is new; the coupling a truncation cuts through surfaces in
+    the preview via U4's `_coupling_rows`, unchanged."""
+    from sgt.api import history_view
+
+    repo = Path(repo)
+    ops = Store(repo).all_ops()
+    ideal = kernel_lens.current_ideal(repo)
+    declared = kernel_lens._load_declared(repo)
+
+    resolved = resolve_feature(repo, ref)
+    if resolved is None:
+        return core_verbs._preview("revert", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
+                                    message=f"feature {ref!r} not found; run `sgt map`")
+    op_ids, feature_id, label = resolved
+    target = f"{feature_id}@{commit_index}"
+
+    ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
+    seed = {oid for oid in op_ids if oid in ideal.op_ids and ci.get(oid, -1) > commit_index}
+    if not seed:
+        return core_verbs._preview("revert", target, ideal.op_ids, ideal.op_ids, ops,
+                                    message=f"{label!r} has no ops after commit {commit_index}; no change")
+
+    removal: set[str] = set()
+    for oid in seed:
+        removal |= order.upset_in(oid, ideal.op_ids, ops, declared)
+    for keep_ref in keep:  # a kept lane's ops survive even where the up-set would sweep them
+        kept = resolve_feature(repo, keep_ref)
+        if kept is not None:
+            removal -= set(kept[0])
+    after = ideal.op_ids - frozenset(removal)
+    return core_verbs._validated("revert", target, ideal.op_ids, after, ops, declared)
 
 
 def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:

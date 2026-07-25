@@ -21,10 +21,24 @@ downward-closed and still contain both.
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 from sgt.core.op import Op
 
 Edge = tuple[str, str]  # (A, B) meaning A <= B: A must be in the ideal whenever B is
 Declared = frozenset[Edge]
+
+# Bounded LRU memo for `reduce_to_ideal` (U8). Its result is a pure function of the *present-op* id
+# set and `declared`: grounding and fork-freedom only ever read ops *in* `ideal_ids` (a path from a
+# forked tip to an ideal op through a missing op leaves that op ungrounded, so it is gone before
+# fork-freeing runs), and every op is content-addressed, so a set of *materialized* ids fixes the
+# answer. `reduce_to_ideal` intersects `ideal_ids` with the present ops before keying, so an id that
+# no longer has an op in `ops` (a `git switch` can swap the committed store out from under a surviving
+# gitignored ideal table) does not collide with a hit computed while it was still present.
+# Bounded (not `functools.lru_cache`, whose args must be hashable and which never evicts by size)
+# so a long-running MCP/TUI session over an append-only store doesn't accumulate an entry per save.
+_REDUCE_CACHE: "OrderedDict[tuple, frozenset[str]]" = OrderedDict()
+_REDUCE_CACHE_MAX = 64
 
 
 def chain_edges(ops: list[Op]) -> frozenset[Edge]:
@@ -193,17 +207,20 @@ def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
     so a ref whose committed history contains both tips of a fork still projects a valid ideal (the
     forked tip never surfaces in `sgt state`/`sgt map`; only the common ancestor does).
 
-    Builds `_adjacency` once and reuses it across every fork tip's `upset` (`_reachable` over the
-    same successors map) rather than calling the public `upset()` helper per tip -- that would
-    rebuild `chain_edges`/`reference_edges` over the *whole* op universe on every call, turning a
-    repo with many forked rebirths (add/delete/re-add) into O(forks * ops) instead of O(ops)."""
-    excluded: set[str] = set()
+    The tip up-sets are removed by *re-grounding* the remainder (`_grounded(ideal_ids - tips)`), the
+    same collision-safe way `upset_in_many` computes what stops being grounded once a set is taken
+    out -- NOT by `_adjacency`/`_reachable` graph-edge reachability. Those bare
+    `(symbol, after_version)` edges pick one producer on an after-value collision (a revert landing
+    on an earlier version's exact bytes, or an add/delete/re-add rebirth), so a graph-edge up-set can
+    leave behind an op that actually lost its footing when a tip was removed -- yielding a set that
+    is fork-free but no longer downward-closed, which `Ideal.from_ops` then rejects. Grounding reasons
+    about which `(symbol, version)` pairs survive rather than following a single mis-resolved edge, so
+    the result is downward-closed and fork-free (removing ops never creates a new `(symbol, before)`
+    collision) -- a valid ideal by construction. One O(ops) grounding pass, same order as before."""
     tips = {tip for _sym, tip_a, tip_b in forks(ops, ideal_ids) for tip in (tip_a, tip_b)}
-    if tips:
-        _, successors = _adjacency(ops, declared)
-        for tip in tips:
-            excluded |= _reachable(tip, successors)
-    return frozenset(ideal_ids) - excluded
+    if not tips:
+        return frozenset(ideal_ids)
+    return _grounded(set(ideal_ids) - tips, ops, declared)
 
 
 def reduce_to_ideal(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
@@ -221,8 +238,30 @@ def reduce_to_ideal(ideal_ids, ops: list[Op], declared: Declared = frozenset()) 
     only the composition is constructible. This is the reduction every provenance-derived ideal
     goes through -- `lens._sync` on the mine-on-contact write path, and the pure-read
     `_committed_ids_by_provenance`/`ideal_for_ref` -- so all three agree on what a ref's history
-    means (divergence, historical or concurrent, is state, never a crash; U20/C4)."""
-    return fork_free(_grounded(ideal_ids, ops, declared), ops, declared)
+    means (divergence, historical or concurrent, is state, never a crash; U20/C4).
+
+    Memoized (U8): the ~28s-per-call cost on a large store is the dominant `sgt status` bottleneck,
+    and `status_view` invokes this reduction two-to-three times per call on the same op set. The
+    memo is keyed by the *present-op* id set (see `_REDUCE_CACHE`).
+
+    Ids in `ideal_ids` with no op in `ops` are dropped up front, before the memo key is built.
+    `_grounded` already excludes them (its by-id map only holds present ops), so this changes no
+    result -- but it makes the memo key sound: the cache's "id set fixes the answer" invariant
+    holds only when every keyed id is materialized. A `git switch` can swap the committed `.sgt/ops`
+    store while a gitignored ideal table survives, referencing ops the new ref doesn't have; without
+    this filter the same `ideal_ids` maps to a result computed against the *old* universe, which then
+    fails `Ideal.from_ops` against the new one."""
+    present = {op.id for op in ops}
+    key = (frozenset(ideal_ids) & present, declared)
+    cached = _REDUCE_CACHE.get(key)
+    if cached is not None:
+        _REDUCE_CACHE.move_to_end(key)
+        return cached
+    result = fork_free(_grounded(key[0], ops, declared), ops, declared)
+    _REDUCE_CACHE[key] = result
+    if len(_REDUCE_CACHE) > _REDUCE_CACHE_MAX:
+        _REDUCE_CACHE.popitem(last=False)
+    return result
 
 
 def find_declared_cycles(ops: list[Op], declared: Declared) -> list[tuple[str, str]]:

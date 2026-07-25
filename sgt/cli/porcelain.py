@@ -21,7 +21,7 @@ Two things live here, both small and both *data*:
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail_json
+from ._common import _emit_json, _fail, _fail_json
 
 # D2 routing table (design doc §1): git subcommand -> the sgt verb that owns that job. A subcommand
 # here is refused by `sgt git`; anything absent passes through untouched (read/inspect verbs, and
@@ -65,6 +65,13 @@ def register(subs, parent) -> None:
 
     sv = subs.add_parser("save", parents=[parent])
     sv.add_argument("-m", "--message", dest="message")
+    sv.add_argument("--resolve-plan", action="store_true", dest="resolve_plan",
+                    help="settle plan-step matches this save couldn't auto-confirm (n:m / "
+                         "multi-step); runs standalone on a clean tree to resolve a prior save's "
+                         "leftover ambiguity. Pass --confirm-hollow/--confirm-op to confirm a group.")
+    sv.add_argument("--confirm-hollow", action="append", dest="confirm_hollow", default=[],
+                    help="(with --resolve-plan) the plan step hollow(s) to confirm against --confirm-op")
+    sv.add_argument("--confirm-op", action="append", dest="confirm_op", default=[])
     sv.set_defaults(func=_cmd_save)
 
     subs.add_parser("undo", parents=[parent]).set_defaults(func=_cmd_undo)
@@ -75,7 +82,8 @@ def _cmd_switch(args) -> int:
 
 
 def _cmd_save(args) -> int:
-    return _save(".", args.message, args.as_json)
+    return _save(".", args.message, args.as_json, resolve_plan=args.resolve_plan,
+                 confirm_hollow=args.confirm_hollow, confirm_op=args.confirm_op)
 
 
 def _cmd_undo(args) -> int:
@@ -105,34 +113,168 @@ def _switch(repo: str, branch: str, as_json: bool) -> int:
     return 0
 
 
-def _save(repo: str, message: str | None, as_json: bool) -> int:
+def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
+          confirm_hollow: list[str] = (), confirm_op: list[str] = ()) -> int:
     """`sgt save [-m]` (D3): the put-path sugar -- mine the working tree (R9), then materialize a
     witness commit for the resulting ideal and record it. "Nothing to save" is decided by the
     ideal, not git's dirty flag: with no uncommitted ops the mined ideal equals the recorded one
-    (a `.sgt/` untracked in an unconfigured repo would otherwise always read as dirty)."""
+    (a `.sgt/` untracked in an unconfigured repo would otherwise always read as dirty).
+
+    Plan-matching is folded in (U12/R10): after a save, every *unambiguous* single-step match
+    between an active plan session's pending steps and the just-mined ops auto-confirms -- no
+    separate `sgt checkpoint`. An n:m / multi-step match instead waits for `sgt save --resolve-plan`
+    (which also runs standalone on a clean tree to settle a prior save's leftover ambiguity, and,
+    given `--confirm-hollow`/`--confirm-op`, confirms one named group). Ops matching no active plan
+    (the old `sgt drift`) surface in this output; the working-tree sense of "drift" keeps its name
+    in `status`/`fsck --tree`."""
     from sgt.core.lens import (
         DirtyWorkingTreeError, current_ideal, get, put, record_ideal,
     )
     from sgt.store.gitbind import GitError
 
     ideal = get(repo)  # mine the working tree (R9)
-    if ideal.op_ids == current_ideal(repo).op_ids:
+
+    # `save --resolve-plan --confirm-hollow ... --confirm-op ...` settles one ambiguous group by
+    # name -- exactly what the removed `checkpoint --confirm-*` did, now reached through `save`.
+    if resolve_plan and (confirm_hollow or confirm_op):
+        return _confirm_plan_match(repo, list(confirm_hollow), list(confirm_op), as_json)
+
+    nothing_new = ideal.op_ids == current_ideal(repo).op_ids
+    saved, sha, n = False, None, len(ideal.op_ids)
+    if not nothing_new:
+        try:
+            sha = put(repo, ideal, message=message or "sgt save")
+        except (DirtyWorkingTreeError, GitError, ValueError) as e:
+            return _fail_json(str(e), as_json)
+        record_ideal(repo, ideal, sha)
+        saved = True
+        # Fold the save-time ownership cascade in (U6/R1/R2): assign every genuinely-new symbol a
+        # durable lane (assign pin + authored CRDT) and patch the persisted tree's `op_leaf` so the
+        # new op is visible on the grid immediately. Guarded: the ideal is already committed, so a
+        # lane-assignment hiccup must never fail the save. Local import keeps the hot path light.
+        try:
+            from sgt.core.store import Store
+            from sgt.lens import ledger
+            ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
+        except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
+            pass
+    elif not resolve_plan:
         msg = "nothing to save -- no uncommitted ops"
         if as_json:
             return _emit_json({"ok": True, "saved": False, "message": msg})
         print(f"✓ {msg}")
         return 0
 
-    try:
-        sha = put(repo, ideal, message=message or "sgt save")
-    except (DirtyWorkingTreeError, GitError, ValueError) as e:
-        return _fail_json(str(e), as_json)
-    record_ideal(repo, ideal, sha)
+    plan = _fold_plan_matches(repo)
+    return _render_save(as_json, saved, sha, n, plan, resolve_plan)
 
-    n = len(ideal.op_ids)
+
+def _fold_plan_matches(repo: str) -> dict | None:
+    """After a save (U12/R10), auto-confirm every unambiguous single-step plan match -- one pending
+    step matched to its op(s) -- and leave n:m / multi-step groups for `save --resolve-plan`.
+    Returns the fold summary, or `None` when no active plan session produced any match/drift (the
+    common case), so `save`'s output and JSON are byte-unchanged then."""
+    from sgt.loop.match import compute_checkpoint, confirm_match
+
+    result = compute_checkpoint(repo)
+    if not result.matches and not result.drift_op_ids:
+        return None
+    auto, ambiguous = [], []
+    for g in result.matches:
+        entry = {"session_id": g.session_id, "hollow_ids": list(g.hollow_ids), "op_ids": list(g.op_ids)}
+        if len(g.hollow_ids) == 1:  # one pending step, unambiguous which -> confirm it now
+            confirm_match(repo, g.session_id, list(g.hollow_ids), list(g.op_ids))
+            auto.append(entry)
+        else:  # multiple steps tangled in one op cluster -> needs `save --resolve-plan`
+            ambiguous.append(entry)
+    return {"auto_confirmed": auto, "ambiguous": ambiguous, "drift_op_ids": list(result.drift_op_ids)}
+
+
+def _resolve_prefix(ref: str, known: set[str], kind: str) -> tuple[str | None, str]:
+    """Resolve `ref` to a full id in `known` -- exact, else unique prefix -- mirroring
+    `rewrite._resolve_op` for ids that aren't ops (a pending hollow). The `--resolve-plan` output
+    prints truncated ids, so a user pasting one back must resolve, not be rejected for not being a
+    verbatim full id (and a silently-wrong key must never reach `plan_matches.json`)."""
+    if ref in known:
+        return ref, ""
+    matches = sorted(k for k in known if k.startswith(ref))
+    if len(matches) == 1:
+        return matches[0], ""
+    if matches:
+        return None, f"ambiguous {kind} prefix {ref!r}: {[m[:12] for m in matches[:5]]}"
+    return None, f"{ref!r} is not a known pending {kind} id"
+
+
+def _confirm_plan_match(repo: str, hollow_refs: list[str], op_refs: list[str], as_json: bool) -> int:
+    """`save --resolve-plan --confirm-hollow ... --confirm-op ...`: confirm one named step<->op
+    group, the explicit path the removed `checkpoint --confirm-*` verb owned (`confirm_match` is
+    unchanged). Both ref kinds resolve by exact-or-unique-prefix so the (truncated) ids the
+    `--resolve-plan` preview prints can be pasted straight back -- an op ref *must* resolve to a
+    full canonical id, or `plan_matches.json` would key the match under the prefix and the real op
+    would resurface as drift on the next checkpoint."""
+    from pathlib import Path
+
+    from sgt.core.rewrite import _resolve_op
+    from sgt.core.store import Store
+    from sgt.loop import plan as plan_mod
+    from sgt.loop.match import confirm_match
+
+    sessions = plan_mod.active_sessions(repo)
+    known_hollows = {s["hollow_id"] for rec in sessions.values() for s in rec["steps"]}
+    hollow_ids: list[str] = []
+    for ref in hollow_refs:
+        hid, err = _resolve_prefix(ref, known_hollows, "hollow")
+        if hid is None:
+            return _fail_json(err, as_json)
+        hollow_ids.append(hid)
+
+    ops = Store(repo).all_ops()
+    op_ids: list[str] = []
+    for ref in op_refs:
+        oid, err = _resolve_op(Path(repo), ops, ref)
+        if oid is None:
+            return _fail_json(err, as_json)
+        op_ids.append(oid)
+
+    session_id = next(
+        (sid for sid, rec in sessions.items() if any(s["hollow_id"] in hollow_ids for s in rec["steps"])),
+        None,
+    )
+    if session_id is None:
+        return _fail_json(f"no active session owns hollow(s) {hollow_ids}", as_json)
+    confirm_match(repo, session_id, hollow_ids, op_ids)
     if as_json:
-        return _emit_json({"ok": True, "saved": True, "commit": sha, "ops": n})
-    print(f"✓ save {sha[:12]}: {n} op(s)")
+        return _emit_json({"ok": True, "session_id": session_id, "hollow_ids": hollow_ids, "op_ids": op_ids})
+    print(f"✓ confirmed {len(hollow_ids)} hollow(s) matched to {len(op_ids)} op(s) in session {session_id}")
+    return 0
+
+
+def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
+                 plan: dict | None, resolve_plan: bool) -> int:
+    if as_json:
+        out: dict = {"ok": True, "saved": saved}
+        if saved:
+            out["commit"], out["ops"] = sha, n
+        if plan is not None:
+            out["plan"] = plan
+        return _emit_json(out)
+
+    if saved:
+        print(f"✓ save {sha[:12]}: {n} op(s)")
+    if plan is not None:
+        for e in plan["auto_confirmed"]:
+            steps = ", ".join(h[:12] for h in e["hollow_ids"])
+            print(f"  ✓ plan step {steps} fulfilled by {len(e['op_ids'])} op(s)")
+        for e in plan["ambiguous"]:  # show the group so the user can name it to --resolve-plan
+            print(f"  ⚠ ambiguous: {len(e['hollow_ids'])} step(s) <-> {len(e['op_ids'])} op(s) "
+                  "-- run `sgt save --resolve-plan`")
+            if resolve_plan:
+                print(f"      hollow: {', '.join(h[:12] for h in e['hollow_ids'])}")
+                print(f"      op:     {', '.join(o[:12] for o in e['op_ids'])}")
+        if plan["drift_op_ids"]:
+            print(f"  drift: {', '.join(o[:12] for o in plan['drift_op_ids'])}")
+    elif resolve_plan and not saved:
+        print("✓ no plan matches to resolve")
     return 0
 
 

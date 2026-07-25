@@ -35,6 +35,12 @@ _PLAN_SENTINEL_PREFIX = "__plan__::"
 
 EFFORT = "low"
 
+# A plan with no activity (no intake, no confirmed match) for this long is presumed walked-away and
+# is reaped on the next `intake` (the housekeeping beat). Deliberately generous -- reaping deletes a
+# session's still-pending hollows, so it must never fire on a plan an agent is slowly working; a
+# terminal `completed`/explicit `abandon` is the normal way a plan leaves the active surface.
+STALE_SECONDS = 7 * 24 * 3600
+
 
 class PlanStep(BaseModel):
     title: str
@@ -71,9 +77,13 @@ def _save_sessions(repo: Path, table: dict) -> None:
 
 
 def active_sessions(repo: str | Path) -> dict:
-    """Every session, keyed by id -- the review surface's read side (mirrors
-    `sgt.core.rewrite.pending_drafts`)."""
-    return _load_sessions(Path(repo))
+    """Every *active* session, keyed by id -- the review surface's read side (mirrors
+    `sgt.core.rewrite.pending_drafts`). A `completed` (every step matched, or explicitly
+    `mark_done`) or already-abandoned plan is history, not review surface, so it drops out here:
+    that is what stops the workbench and status bar from rendering a growing pile of finished
+    plans. The full table -- including completed history -- is still readable via `_load_sessions`
+    for provenance."""
+    return {sid: rec for sid, rec in _load_sessions(Path(repo)).items() if rec["status"] == "active"}
 
 
 # -- decomposition (LLM first, deterministic fallback second) -------------------------------------
@@ -100,7 +110,10 @@ def _llm_decompose(repo: Path, plan_text: str) -> PlanDecomposition | None:
             "Decompose this engineering plan into discrete implementation steps for a coding "
             "agent to execute one at a time.\n"
             "For each step, name: title (short, imperative), predicted_footprint (best-guess "
-            "`file::symbol` ids the step will touch -- [] if you can't guess any), "
+            "`file::symbol` ids the step will touch: when the step centers on a named function, "
+            "class, or method, include it at symbol granularity as `file::Symbol` -- reserve a "
+            "bare `file` with no `::` for genuine whole-file work like a module skeleton, and "
+            "use [] only when you truly cannot name a file), "
             "predicted_feature (the id of the ONE feature below this step most likely belongs "
             "to, or null if none plausibly fit -- never invent an id not in the list), "
             "rationale (one line).\n"
@@ -173,6 +186,8 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None) -> P
     session_id = session_id or uuid.uuid4().hex
     now = time.time()
 
+    sweep_stale_sessions(repo, STALE_SECONDS, now=now)  # housekeeping beat: reap walked-away plans
+
     decomposition = _llm_decompose(repo, plan_text) or _fallback_decompose(plan_text)
     _backfill_predicted_feature(repo, decomposition.steps)
     baseline_op_ids = tuple(sorted(op.id for op in store.all_ops()))
@@ -226,6 +241,30 @@ def abandon(repo: str | Path, session_id: str) -> bool:
         if step["status"] == "pending":
             (store.hollow_dir / step["hollow_id"]).unlink(missing_ok=True)
     del table[session_id]
+    _save_sessions(repo, table)
+    return True
+
+
+def mark_done(repo: str | Path, session_id: str) -> bool:
+    """Explicitly close a session an agent (or human) has finished with. Unlike `abandon` (which
+    deletes the record), the record is kept as `completed` history -- so `sgt revert --session` and
+    the trust queue can still attribute its landed work -- while its still-pending hollows are
+    cleaned up and it leaves the active review surface. `False` if `session_id` is unknown.
+
+    A fully-matched session already reaches `completed` on its own (see
+    `sgt.loop.match.confirm_match`); this is the manual close for a plan whose remaining steps were
+    done differently than predicted and will never match."""
+    repo = Path(repo)
+    table = _load_sessions(repo)
+    record = table.get(session_id)
+    if record is None:
+        return False
+    store = Store(repo)
+    for step in record["steps"]:
+        if step["status"] == "pending":
+            (store.hollow_dir / step["hollow_id"]).unlink(missing_ok=True)
+    record["status"] = "completed"
+    record["last_activity_ts"] = time.time()
     _save_sessions(repo, table)
     return True
 

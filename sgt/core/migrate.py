@@ -4,7 +4,7 @@ boundary U9 opened. Every op's id embeds `miner_version` (`op.compute_id`), so t
 which `fsck` flags (U2 backstop). This migration crosses the whole store, and every op-id-bearing
 artifact with it, as one resumable write set.
 
-It follows the U21 gated pattern (`sgt.lens.reconcile.migrate_feature_ids`) at full-store scope:
+It follows the U21 gated migration pattern at full-store scope:
 dry-run default returns a report and writes nothing; `--apply` performs the atomic, idempotent
 crossing under a manifest so a crash mid-apply resumes to the same final state rather than stranding
 a mixed store.

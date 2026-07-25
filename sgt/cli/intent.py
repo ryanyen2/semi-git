@@ -34,16 +34,17 @@ def register(subs, parent) -> None:
     p.add_argument("rest", nargs="*")  # the new label words for `relabel`
     p.add_argument("--subset", nargs="*")
     p.add_argument("--emit", action="store_true")
+    p.add_argument("--yes", action="store_true")
     p.set_defaults(func=_cmd_intent)
 
 
 def _cmd_intent(args) -> int:
-    return _intent(".", args.sub, args.target, args.rest, args.subset, args.emit, args.as_json)
+    return _intent(".", args.sub, args.target, args.rest, args.subset, args.emit, args.as_json, args.yes)
 
 
 def _intent(
     repo: str, sub: str | None, target: str | None, rest: list[str] | None,
-    subset: list[str] | None, emit: bool, as_json: bool,
+    subset: list[str] | None, emit: bool, as_json: bool, yes: bool = False,
 ) -> int:
     from sgt.core.lens import get
 
@@ -61,7 +62,7 @@ def _intent(
     if sub == "relabel":
         return _relabel(repo, target, " ".join(rest or []), as_json)
     if sub == "revert":
-        return _revert(repo, target, subset, emit, as_json)
+        return _revert(repo, target, subset, emit, as_json, yes)
     return _show(repo, target, as_json)
 
 
@@ -236,7 +237,8 @@ def _build(repo: str, as_json: bool) -> int:
     return 0
 
 
-def _revert(repo: str, target: str, subset: list[str] | None, emit: bool, as_json: bool) -> int:
+def _revert(repo: str, target: str, subset: list[str] | None, emit: bool, as_json: bool,
+            yes: bool = False) -> int:
     from sgt import state
     from sgt.core import verbs
     from sgt.core.lens import _load_declared
@@ -285,6 +287,12 @@ def _revert(repo: str, target: str, subset: list[str] | None, emit: bool, as_jso
 
     preview = verbs.plan_revert_op_set(repo, target, op_ids)
 
+    from collections import Counter
+
     from .ideal_edit import _emit_verb_result
 
-    return _emit_verb_result(repo, preview, emit, as_json, extra={"tier": tier})
+    # Focus the feedforward on the feature that owns the most reverted ops (op_leaf already loaded).
+    tally = Counter(op_leaf[o] for o in preview.removed if o in op_leaf)
+    focus_fid = tally.most_common(1)[0][0] if tally else None
+    return _emit_verb_result(repo, preview, emit, as_json, extra={"tier": tier},
+                             yes=yes, focus_fid=focus_fid)

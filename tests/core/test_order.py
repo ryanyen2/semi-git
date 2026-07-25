@@ -261,3 +261,54 @@ def test_revert_of_mid_chain_op_removes_its_upset_exactly(n):
         remaining = full - upset(target, ops)
         assert is_valid_ideal(ops, remaining)
         assert remaining == {op.id for op in ops[:cut]}
+
+
+def test_reduce_to_ideal_is_memoized_correct_and_bounded():
+    """U8: `reduce_to_ideal` is memoized by `(ideal_ids, declared)` (its result is a pure function
+    of those over content-addressed ops). The memo returns the identical result, agrees with a
+    fresh computation, and is size-bounded so a long-running process over an append-only store never
+    accumulates one entry per save."""
+    from sgt.core import order
+
+    root = make_op({"a.py::x": (None, "v0")}, {"a.py::x": b"r"})
+    tip_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"}, provenance=("branch-a",))
+    tip_b = make_op({"a.py::x": ("v0", "v2")}, {"a.py::x": b"b"}, provenance=("branch-b",))
+    ops = [root, tip_a, tip_b]
+    ids = {root.id, tip_a.id, tip_b.id}  # a fork: both tips + their up-sets drop out
+
+    order._REDUCE_CACHE.clear()
+    r1 = order.reduce_to_ideal(ids, ops)
+    assert r1 == frozenset({root.id})              # fork tips dropped, root kept
+    assert (frozenset(ids), frozenset()) in order._REDUCE_CACHE
+    r2 = order.reduce_to_ideal(ids, ops)
+    assert r2 is r1                                 # the cached object, not a recomputation
+
+    # bound: pushing more distinct keys than the cap never grows the cache past it.
+    order._REDUCE_CACHE.clear()
+    for i in range(order._REDUCE_CACHE_MAX + 20):
+        op = make_op({f"z{i}.py::f": (None, "v0")}, {f"z{i}.py::f": b"x"})
+        order.reduce_to_ideal({op.id}, [op])
+    assert len(order._REDUCE_CACHE) == order._REDUCE_CACHE_MAX
+
+
+def test_reduce_to_ideal_memo_is_sound_when_the_op_universe_shrinks():
+    """Regression: the memo must key on the *present* ops, not the raw id set. A `git switch` can
+    remove committed `.sgt/ops` while a gitignored ideal table survives, referencing ops the new ref
+    no longer has. Reducing the same id set first against the full universe then against the shrunk
+    one must return only the surviving ops -- never the stale full-universe result, which would then
+    fail `Ideal.from_ops` against the smaller universe (the `sgt switch` invalid-ideal crash)."""
+    from sgt.core import order
+
+    sym = "a.py::foo"
+    add = make_op({sym: (None, "v0")}, {sym: b"b0"}, provenance=("c0",))
+    mod = make_op({sym: ("v0", "v1")}, {sym: b"b1"}, provenance=("c1",))
+    ids = {add.id, mod.id}
+
+    order._REDUCE_CACHE.clear()
+    full = order.reduce_to_ideal(ids, [add, mod])
+    assert full == frozenset(ids)                    # both present -> valid ideal as-is
+
+    # Same id set, but `mod`'s op has vanished from the universe (checkout swapped the store).
+    shrunk = order.reduce_to_ideal(ids, [add])
+    assert shrunk == frozenset({add.id})             # NOT the cached {add, mod}
+    assert is_valid_ideal([add], shrunk)             # constructible against the shrunk universe

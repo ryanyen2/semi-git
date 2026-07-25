@@ -18,11 +18,11 @@ export class FeatureItem extends vscode.TreeItem {
   constructor(public readonly node: MapNode) {
     super(
       node.label || node.id,
-      node.children.length
-        ? node.kind === "subsystem"
-          ? vscode.TreeItemCollapsibleState.Collapsed // subsystems collapsed by default (scale)
-          : vscode.TreeItemCollapsibleState.Expanded
-        : vscode.TreeItemCollapsibleState.None
+      // Expanded by default so the rail shows the whole feature tree at a glance -- the common
+      // repo has a handful of features and a collapsed subsystem read as an empty rail. VS Code's
+      // tree virtualization, type-to-filter, and remembered per-tree collapse state absorb the
+      // rare large tree; the user collapses what they don't want.
+      node.children.length ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
     );
     this.id = node.id;
     // An `authored_id` marks a user-authored feature (a named selection you own) vs. a purely

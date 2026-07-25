@@ -136,3 +136,40 @@ def index_ops(repo: str | Path) -> list[Op]:
     if body is None:
         return []
     return [_to_op(entry) for entry in body["ops"]]
+
+
+def earliest_commit_sha(gb, rows, ops) -> dict[str, str]:
+    """``op_id -> sha of the earliest commit that embodies it`` -- the one time-axis rule
+    `history_view`, `intent.segment.feature_runs`, and `intent.group.atoms` all read, so the three
+    projections agree on *when* an op happened.
+
+    An op's own in-history provenance wins (the earliest of its witnessing commits present in
+    `rows`). A *pending* op -- one materialized by a `put`/`commit_materialized` witness commit that
+    a later `record_ideal` advanced the ref's witness past, so `_sync` never re-mined its diff to
+    stamp provenance -- carries an empty `provenance` and would otherwise be dropped, hiding
+    just-saved work from every time-aware view. It falls back to the earliest commit whose committed
+    ``Sgt-Op:`` trailers name it (the tree-witnessed record of which ops that commit embodies).
+
+    Read-time only: no store write, so a save leaves the working tree clean. (Stamping the witness
+    sha into the store instead would rewrite tracked ``.sgt/ops`` files *after* the commit, leaving
+    the tree dirty and making the next `sgt sync`/`land` refuse -- and provenance can never live in
+    its own witnessing commit anyway, since writing it changes that commit's tree and thus its sha.)
+
+    `gb` is a `GitBinding`, `rows` its `history()` (oldest-first), `ops` the store's ops -- passed in
+    so a caller that already computed them pays no extra git call. An op embodied by no commit in
+    `rows` is absent from the result (dropped, exactly as before)."""
+    commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
+    out: dict[str, str] = {}
+    pending: set[str] = set()
+    for op in ops:
+        witnessed = [sha for sha in op.provenance if sha in commit_index]
+        if witnessed:
+            out[op.id] = min(witnessed, key=lambda s: commit_index[s])
+        else:
+            pending.add(op.id)
+    if pending:
+        trailers_by_sha = gb.op_ids_by_commit()
+        for sha, _parent, _subject in rows:  # oldest-first, so the first hit is the earliest
+            for oid in pending & trailers_by_sha.get(sha, set()):
+                out.setdefault(oid, sha)
+    return out

@@ -8,13 +8,13 @@ import * as vscode from "vscode";
 import {
   BlameView,
   ComposeView,
-  DriftView,
   EmitView,
   FeatureVerbPreview,
   FoldView,
   ForkDetailView,
   ForksView,
   FulfillResult,
+  GridView,
   HistoryView,
   LandCandidateResult,
   LandReport,
@@ -26,7 +26,6 @@ import {
   ProposalView,
   PublishResult,
   RenameResult,
-  ReviewAckResult,
   RewriteDraft,
   SaveResult,
   SelectionView,
@@ -132,17 +131,21 @@ export class Sgt {
   }
 
   // The feature tree (rebuilds it first — clustering, Greene identity, pins, labeling — then
-  // reads the kernel-backed projection, same as `sgt map --json` on the command line).
+  // reads the kernel-backed projection). U14 folded `sgt map` onto `sgt log --tree`; `--refresh`
+  // preserves the rebuild-first contract this method relies on (a cached read would return an
+  // empty tree on first build).
   map(): Promise<MapView> {
-    return this.json<MapView>(["map", "--json"]);
+    return this.json<MapView>(["log", "--tree", "--refresh", "--json"]);
   }
 
+  // U14 demoted `sgt blame` under `advanced` (same handler, re-homed path).
   blame(file: string): Promise<BlameView> {
-    return this.json<BlameView>(["blame", "--json", file]);
+    return this.json<BlameView>(["advanced", "blame", "--json", file]);
   }
 
+  // U14 folded `sgt status` onto `sgt log --summary` (identical status_view projection).
   status(): Promise<StatusView> {
-    return this.json<StatusView>(["status", "--json"]);
+    return this.json<StatusView>(["log", "--summary", "--json"]);
   }
 
   // Structured dry-run of a feature revert: `sgt revert <feature> --emit --json`. Carries the
@@ -175,10 +178,11 @@ export class Sgt {
     return this.json<PlanView>(["plan", "status", "--json", "--full"]);
   }
 
-  // Ops mined that no active plan predicted (plan U14). `--full`: compact `drift_view` drops the
-  // per-op footprint/spans this extension's `DriftView` type expects.
-  drift(): Promise<DriftView> {
-    return this.json<DriftView>(["drift", "--json", "--full"]);
+  // The canonical lane×commit cell join (`grid_view`, plan U1/U3): the single projection the TUI
+  // and this webview both render from, so the (op -> cell) join is computed once in `sgt.api` and
+  // never re-derived per surface. `sgt log --json` == `grid_view(repo)`.
+  grid(): Promise<GridView> {
+    return this.json<GridView>(["log", "--json"]);
   }
 
   // The feature-map webview's shared commit-index axis: mined commits in order + every op's
@@ -270,11 +274,11 @@ export class Sgt {
   }
 
   fulfillDraft(draftId: string): Promise<FulfillResult> {
-    return this.json<FulfillResult>(["fulfill", draftId, "--from-tree", "--json"]);
+    return this.json<FulfillResult>(["advanced", "fulfill", draftId, "--from-tree", "--json"]);
   }
 
   landCandidate(message?: string): Promise<LandCandidateResult> {
-    const args = ["commit", "--json"];
+    const args = ["advanced", "commit", "--json"];
     if (message) args.push("--message", message);
     return this.json<LandCandidateResult>(args);
   }
@@ -291,18 +295,8 @@ export class Sgt {
     return this.json<ProposalReviewView>(["propose", "status", id, "--checklist", "--json"]);
   }
 
-  // Dequeues an op-set from `trust_view` (plan U31, S7). `--json` before the variadic `op_ids`
-  // so argparse doesn't try to swallow it into that list.
-  reviewAck(opIds: string[], note?: string): Promise<ReviewAckResult> {
-    const args = [
-      "advanced", "review-queue", "ack", "--json",
-      ...(note ? ["--note", note] : []), ...opIds,
-    ];
-    return this.json<ReviewAckResult>(args);
-  }
-
-  // Partial-accept review + CAS advance (plan U24/C10/U32). `--json` before `--subset` for the
-  // same reason as `reviewAck`.
+  // Partial-accept review + CAS advance (plan U24/C10/U32). `--json` before `--subset` so
+  // argparse doesn't swallow it into that variadic list.
   proposeLand(id: string, subset?: string[]): Promise<LandReport> {
     const args = ["propose", "land", id, "--json"];
     if (subset && subset.length) args.push("--subset", ...subset);

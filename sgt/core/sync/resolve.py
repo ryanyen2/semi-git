@@ -39,7 +39,6 @@ class Resolution:
     declared_cycles: tuple[tuple[str, str], ...] = ()
     unioned_pins: Pins | None = None
     pin_contradictions: tuple[Contradiction, ...] = ()
-    aliases: frozenset[tuple[str, str]] = frozenset()
     tree_result: dict | None = None
     prompts: dict[str, str] = field(default_factory=dict)  # union-by-key (U5/KTD5)
     # Authored features merged field-by-field (U6/R3): OR-Set membership + witness-topo LWW label +
@@ -115,10 +114,6 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     # the tree below: membership unions as an OR-Set, the label uses the same witness-topo LWW rule
     # as pins, and the carried af- id is never recomputed. Reuses the exact `_assign_winner` tie-break.
     unioned_authored = authored.merge(ing.ours_authored, ing.theirs_authored, is_ancestor=is_ancestor)
-    # Feature-id aliases union as a G-Set with the alias-merge rule (D6): a stale old-id reference
-    # from either side still resolves, and a genuine collision (two clones minting different new ids
-    # for one old id) picks a single deterministic winner on every replica.
-    aliases = reconcile.union_aliases(ing.ours_aliases, ing.theirs_aliases)
     tree_result = reconcile.reconcile_tree(
         repo, ing.all_ops, merged_ideal, unioned_pins, ing.ours_tree
     )
@@ -134,7 +129,6 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
         declared_cycles=tuple(declared_cycles),
         unioned_pins=unioned_pins,
         pin_contradictions=tuple(pin_contradictions),
-        aliases=aliases,
         tree_result=tree_result,
         prompts=prompts,
         unioned_authored=unioned_authored,

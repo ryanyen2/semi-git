@@ -1,5 +1,20 @@
 # semi-git — v1 findings
 
+> **Superseded in part (2026-07-23) — grid-as-only-surface + ownership-ledger refactor.** The
+> lane×commit grid is now the single model and surface, and lanes are *stable*: instead of
+> re-deriving feature membership by clustering on every rebuild, `save` runs an ownership cascade
+> (`sgt.lens.ledger.assign_at_save`) that assigns each genuinely-new symbol a deterministic lane and
+> writes it durably as an assign-pin + an authored-feature CRDT member — so a symbol keeps its lane
+> across a full recluster (the old instability was the core complaint this refactor fixes).
+> Operations are "scrubbing" that grid: `sgt revert <feature>` (whole lane), `sgt revert
+> <feature>@<n>` (one checkpoint), and `sgt revert <lane> --to <commit>` (truncate a lane at a
+> commit boundary). The verb surface collapsed to a 19-verb spine (`docs/plans/
+> 2026-07-22-001-refactor-ownership-ledger-grid-verb-collapse-plan.md`): `checkpoint`/`drift` are
+> **folded into `sgt save`** (a save auto-confirms unambiguous plan-step matches; `sgt save
+> --resolve-plan` settles ambiguous ones), and `map`/`graph`/`episodes`/`status` are now `sgt log`
+> modes (`--tree`/`--rail`/`--summary`, default grid). Wherever a section below says the spine is
+> `plan → implement → checkpoint`, read `checkpoint` as folded into `save`.
+
 > **Superseded in part (2026-06-19):** sgt has pivoted to **graph-only** — it no longer authors
 > code (the `sgt do` / OpenAI-backend path described below is removed). The current spine is
 > `plan` → implement (your coding agent) → `checkpoint`. See **"Graph-only pivot (2026-06-19)"**

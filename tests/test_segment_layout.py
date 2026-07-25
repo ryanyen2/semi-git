@@ -18,7 +18,7 @@ import pytest
 _JS = pathlib.Path(__file__).resolve().parents[1] / "editor/vscode/media/workbench.js"
 
 
-def _run(map_view: dict, history: dict, segments: list, opts: dict | None = None) -> dict:
+def _run(map_view: dict, grid: dict, segments: list, opts: dict | None = None) -> dict:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -29,9 +29,9 @@ def _run(map_view: dict, history: dict, segments: list, opts: dict | None = None
     snippet = text[start:end]
     harness = snippet + (
         f"const m = {json.dumps(map_view)};\n"
-        f"const h = {json.dumps(history)};\n"
+        f"const g = {json.dumps(grid)};\n"
         f"const s = {json.dumps(segments)};\n"
-        f"const L = computeSegmentLayout(m, h, s, {json.dumps(opts or {})});\n"
+        f"const L = computeSegmentLayout(m, g, s, {json.dumps(opts or {})});\n"
         "console.log(JSON.stringify(L));\n"
     )
     res = subprocess.run([node, "-e", harness], capture_output=True, text=True)
@@ -44,10 +44,18 @@ def _node(id_, parent, children, kind="feature"):
             "size": 1, "op_count": 0, "dir": f"src/{id_}/"}
 
 
-def _ops(*specs):
-    return {"commits": [{"index": i} for i in range(200)],
-            "ops": [{"id": f"o{i}", "kind": "add", "feature_id": f, "commit_index": c}
-                    for i, (f, c) in enumerate(specs)]}
+def _grid(*specs):
+    """A `grid_view`-shaped cell table from `(feature_id, commit_index)` op specs (op id = `o<i>`),
+    the canonical join `computeSegmentLayout`/`computeGraphLayout` now consume (plan U3)."""
+    cells: dict[tuple, dict] = {}
+    for i, (f, c) in enumerate(specs):
+        cell = cells.setdefault((f, c), {"op_ids": [], "kinds": {}})
+        cell["op_ids"].append(f"o{i}")
+        cell["kinds"]["add"] = cell["kinds"].get("add", 0) + 1
+    return {"commits": [{"index": i} for i in range(200)], "commit_count": 200,
+            "cells": [{"feature_id": f, "commit_index": c, "op_ids": sorted(v["op_ids"]),
+                       "op_count": len(v["op_ids"]), "kinds": v["kinds"], "fidelity": "full"}
+                      for (f, c), v in sorted(cells.items())]}
 
 
 def _seg(feature_id, seg_index, op_ids, first_index, last_index,
@@ -61,7 +69,7 @@ def _seg(feature_id, seg_index, op_ids, first_index, last_index,
 
 def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
-    hist = _ops(("A", 0), ("A", 1), ("A", 2))
+    hist = _grid(("A", 0), ("A", 1), ("A", 2))
     segs = [_seg("A", 1, ["o2"], 2, 2, label="second"), _seg("A", 0, ["o0", "o1"], 0, 1, label="first")]
     out = _run(m, hist, segs)
     cars = out["laneById"]["A"]["cars"]
@@ -73,7 +81,7 @@ def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
 
 def test_sub_bins_group_a_cars_ops_by_commit_index():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
-    hist = _ops(("A", 5), ("A", 5), ("A", 6))
+    hist = _grid(("A", 5), ("A", 5), ("A", 6))
     segs = [_seg("A", 0, ["o0", "o1", "o2"], 5, 6)]
     out = _run(m, hist, segs)
     car = out["laneById"]["A"]["cars"][0]
@@ -82,7 +90,7 @@ def test_sub_bins_group_a_cars_ops_by_commit_index():
 
 def test_lane_with_no_ops_has_no_cars_even_if_segments_exist():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
-    out = _run(m, {"commits": [], "ops": []}, [_seg("A", 0, ["o0"], 0, 0)])
+    out = _run(m, {"commits": [], "cells": []}, [_seg("A", 0, ["o0"], 0, 0)])
     assert out["lanes"] == []
 
 
@@ -90,7 +98,7 @@ def test_collapsed_subsystem_aggregates_cars_from_all_its_features():
     m = {"roots": ["N0"],
          "nodes": [_node("N0", None, ["F1", "F2"], kind="subsystem"),
                    _node("F1", "N0", []), _node("F2", "N0", [])], "edges": []}
-    hist = _ops(("F1", 0), ("F2", 1))
+    hist = _grid(("F1", 0), ("F2", 1))
     segs = [_seg("F1", 0, ["o0"], 0, 0, label="f1 chapter"),
             _seg("F2", 0, ["o1"], 1, 1, label="f2 chapter")]
     out = _run(m, hist, segs, opts={"collapsed": ["N0"]})
@@ -102,7 +110,7 @@ def test_collapsed_subsystem_aggregates_cars_from_all_its_features():
 
 def test_car_past_frontier_is_flagged_future_not_dropped():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
-    hist = _ops(("A", 0), ("A", 50))
+    hist = _grid(("A", 0), ("A", 50))
     segs = [_seg("A", 0, ["o0"], 0, 0), _seg("A", 1, ["o1"], 50, 50)]
     out = _run(m, hist, segs, opts={"frontier": 10})
     cars = out["laneById"]["A"]["cars"]
@@ -113,7 +121,7 @@ def test_car_past_frontier_is_flagged_future_not_dropped():
 
 def test_deterministic_across_runs():
     m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
-    hist = _ops(("A", 0), ("A", 1), ("B", 2))
+    hist = _grid(("A", 0), ("A", 1), ("B", 2))
     segs = [_seg("A", 0, ["o0"], 0, 0), _seg("A", 1, ["o1"], 1, 1), _seg("B", 0, ["o2"], 2, 2)]
     key = lambda o: [(l["id"], [c["checkpoint"] for c in l["cars"]]) for l in o["lanes"]]
     assert key(_run(m, hist, segs)) == key(_run(m, hist, segs))

@@ -230,27 +230,6 @@ export function registerCommands(
     ForkResolutionPanel.createOrShow(context, store, root, symbol);
   });
 
-  // Ack a trust-queue group or a single op (`sgtChanges`'s trustGroup/trustOp context menu),
-  // dequeuing it from future `trust_view` calls.
-  reg("sgt.reviewAck", async (node?: { kind?: string; group?: { op_ids: string[] }; op?: { op_id: string } }) => {
-    const opIds = node?.kind === "trustGroup" ? node.group?.op_ids : node?.op ? [node.op.op_id] : undefined;
-    if (!opIds?.length) {
-      return;
-    }
-    const note = await vscode.window.showInputBox({ prompt: "Note (optional)" });
-    try {
-      const result = await store.sgt.reviewAck(opIds, note || undefined);
-      store.invalidate();
-      vscode.window.showInformationMessage(
-        result.ok
-          ? `✓ review ${result.id}: acked ${result.op_ids?.length ?? 0} op(s) (${result.scope})`
-          : result.error || "ack failed"
-      );
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
-    }
-  });
-
   // Partial-accept review + the U23 CAS advance (`sgtCompositions`'s proposal context menu).
   // Refuses a subset that omits a feature another chosen feature `requires`, naming it -- that
   // validation lives server-side (`propose.py::_resolve_subset`), surfaced here via `report.error`.
