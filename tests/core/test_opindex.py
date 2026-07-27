@@ -99,6 +99,28 @@ def test_is_stale_true_when_op_file_rewritten_without_count_change(tmp_path):
     assert opindex.is_stale(tmp_path) is True
 
 
+def test_ops_dir_stat_recounts_dirents_within_the_same_mtime_tick(tmp_path):
+    """The `_ops_dir_stat` memo keys on (dir_mtime, dirent_count): on a coarse-granularity
+    filesystem a store write can land in the same mtime tick as a memoized read, leaving the dir
+    mtime unchanged. Recounting dirents (one readdir, cheap) catches the add that slipped through
+    that tick, so a stale op count is never served on the memo fast path. The unchanged dir mtime
+    is simulated by resetting it after the add."""
+    import os
+
+    store = Store(tmp_path)
+    store.init()
+    ops_dir = store.ops_dir
+    (ops_dir / "aaaaaaaa").write_bytes(b"{}")
+    count1, _ = opindex._ops_dir_stat(tmp_path)  # memoizes (dir_mtime, count1)
+    frozen_mtime = ops_dir.stat().st_mtime_ns
+
+    (ops_dir / "bbbbbbbb").write_bytes(b"{}")  # a second file lands...
+    os.utime(ops_dir, ns=(frozen_mtime, frozen_mtime))  # ...within the same (simulated) tick
+
+    count2, _ = opindex._ops_dir_stat(tmp_path)
+    assert count2 == count1 + 1  # recount caught the add despite the unchanged dir mtime
+
+
 def test_apply_delta_upserts_without_full_rebuild(tmp_path):
     store = Store(tmp_path)
     store.init()

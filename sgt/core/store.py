@@ -27,14 +27,17 @@ import fcntl
 import json
 import os
 import tempfile
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sgt.core.op import Attribution, Images, Op, compute_id, merge_attribution
 
-# `Store.all_ops` process memo: ops-dir realpath -> (ops-dir mtime_ns, parsed ops).
-_ALL_OPS_MEMO: dict[str, tuple[int, list[Op]]] = {}
+# `Store.all_ops` process memo: ops-dir realpath -> ((ops-dir mtime_ns, dirent_count), parsed ops).
+# LRU (matches the codebase's OrderedDict cache convention); the dirent count keyed alongside the
+# dir mtime is the same-tick backstop `sgt.core.opindex._ops_dir_stat` documents.
+_ALL_OPS_MEMO: "OrderedDict[str, tuple[tuple[int, int], list[Op]]]" = OrderedDict()
 
 _OPS_DIR = "ops"
 _LOCAL_DIR = "local"
@@ -269,14 +272,18 @@ class Store:
             return []
         # The directory's own mtime is the staleness signal: every writer lands entries via
         # rename into this directory (`_write_atomic`, git), and rename/add/delete bumps a
-        # directory's mtime -- so an unchanged value proves the listing (and every entry) is
-        # what it was when the memo was built.
+        # directory's mtime -- so an unchanged value proves the listing (and every entry) is what
+        # it was when the memo was built. The dirent count is keyed alongside it as a same-tick
+        # backstop (a write landing in the memoized read's mtime tick leaves the dir mtime
+        # unchanged); the scan that produces `names` gives the count for free, and the memo still
+        # spares the expensive part -- reading and decoding every op file (images hex included).
         sig = self.ops_dir.stat().st_mtime_ns
+        names = sorted(e.name for e in os.scandir(self.ops_dir) if e.is_file())
         memo_key = os.path.realpath(self.ops_dir)
         memo = _ALL_OPS_MEMO.get(memo_key)
-        if memo is not None and memo[0] == sig:
+        if memo is not None and memo[0] == (sig, len(names)):
+            _ALL_OPS_MEMO.move_to_end(memo_key)
             return list(memo[1])
-        names = sorted(e.name for e in os.scandir(self.ops_dir) if e.is_file())
         with ThreadPoolExecutor(max_workers=8) as pool:
             raws = list(pool.map(lambda n: (self.ops_dir / n).read_bytes(), names))
         ops: list[Op] = []
@@ -285,9 +292,9 @@ class Store:
                 ops.append(_deserialize(raw))
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 continue  # corrupt: skipped here, surfaced by fsck
-        _ALL_OPS_MEMO[memo_key] = (sig, ops)
+        _ALL_OPS_MEMO[memo_key] = ((sig, len(names)), ops)
         if len(_ALL_OPS_MEMO) > 4:
-            _ALL_OPS_MEMO.pop(next(iter(_ALL_OPS_MEMO)))
+            _ALL_OPS_MEMO.popitem(last=False)
         return list(ops)
 
     def __contains__(self, op_id: str) -> bool:

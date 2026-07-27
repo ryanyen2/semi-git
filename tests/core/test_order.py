@@ -16,6 +16,7 @@ from sgt.core.order import (
     reference_edges,
     upset,
     upset_in,
+    upset_in_many,
 )
 
 
@@ -182,6 +183,37 @@ def test_upset_in_reverting_a_head_removes_the_whole_chain_despite_the_collision
     # reverting the tip removes only the tip
     assert upset_in(rev.id, ideal, ops) == {rev.id}
     assert is_valid_ideal(ops, ideal - {rev.id})
+
+
+def test_upset_in_many_equals_per_op_union_and_stays_valid_on_an_or_supported_set():
+    """Pins the set-revert switch `revert(X) = ideal \\ upset_in_many(X)` (was `ideal \\ ∪
+    upset_in(x)`) against the OR-support case reviewers flagged as a possible semantic change.
+
+    A required version's producers form an OR-group (grounding needs *any one* of them), so a naive
+    per-op union could under-remove an op kept alive only by a co-removed alternative -- leaving an
+    ungrounded op that `_validated` would refuse. `consumer` here is OR-supported by the `(sym, v0)`
+    producer group `{add, rev}`. In a *fork-free* ideal that group is chain-ordered, so grounding any
+    producer implies grounding the chain-minimal one and the two forms coincide -- but the set form
+    is the robust one: it's `ideal \\ _grounded(ideal - X)`, a superset of the union in general
+    (removing more only ungrounds more) whose complement is a valid ideal by construction. So the
+    switch can only ever turn a would-be refusal into a valid maximal edit, never silently
+    over-remove. This pins both halves: equality with the union on every subset, and validity of the
+    complement."""
+    sym = "a.py::foo"
+    add, mod, rev = _revert_chain(sym)
+    consumer = make_op(
+        {"b.py::c": (None, "v0")}, {"b.py::c": b"c"},
+        requires=frozenset({(sym, "v0")}), provenance=("c3",),
+    )
+    ops = [add, mod, rev, consumer]
+    ideal = {op.id for op in ops}
+    assert is_valid_ideal(ops, ideal)
+
+    for removed in ({mod.id}, {rev.id}, {mod.id, rev.id}, {add.id}, {add.id, rev.id}):
+        union = frozenset().union(*(upset_in(x, ideal, ops) for x in removed))
+        many = upset_in_many(removed, ideal, ops)
+        assert many == union, removed  # no divergence on the OR-shaped case within a valid ideal
+        assert is_valid_ideal(ops, ideal - many)  # and the complement is always a valid ideal
 
 
 def test_upset_in_cascades_a_declared_successor():
