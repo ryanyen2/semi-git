@@ -76,9 +76,15 @@ function computeGraphLayout(map, grid, opts) {
     }
     return out;
   }
+  const seen = new Set();
   function visit(id) {
     const node = byId[id];
     if (!node) return;
+    // The map is a DAG: a feature can be a child of more than one subsystem, so the same node is
+    // reachable by multiple paths. Emit it once -- a duplicate lane shares an id, and the id-keyed
+    // `laneById` would drop all but the last copy, leaving a stray, un-rowed duplicate.
+    if (seen.has(id)) return;
+    seen.add(id);
     const isSub = node.kind === "subsystem";
     if (isSub && !collapsed.has(id)) {
       for (const c of node.children || []) visit(c);
@@ -485,9 +491,11 @@ function episodeRailLayout(epView) {
   const oracleChip = document.getElementById("oracleChip");
   const offscreenAbove = document.getElementById("offscreenAbove");
   const offscreenBelow = document.getElementById("offscreenBelow");
-  let planChipsEl = null; // created lazily on first renderTitlebar(), inserted after oracleChip
-  let viewToggleEl = null; // Gantt <-> Rail view switch, created lazily on first renderTitlebar()
-  let inspectorToggleEl = null; // minimize/restore the detail pane, created lazily in renderTitlebar
+  const viewSeg = document.getElementById("viewSeg"); // segmented Timeline│Rail control
+  const plansChip = document.getElementById("plansChip"); // consolidated "Plans M/N" chip + popover trigger
+  const plansPopover = document.getElementById("plansPopover");
+  const driftChip = document.getElementById("driftChip"); // ◇ unplanned / ⑂ unplaced-fork indicator
+  const inspectorToggle = document.getElementById("inspectorToggle");
 
   const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line", "title"]);
 
@@ -670,88 +678,83 @@ function episodeRailLayout(epView) {
   }
 
   function renderTitlebar() {
-    compositionBtn.textContent = state.compositionLabel || "HEAD";
+    // ── Nav zone: composition + segmented view control ──────────────────────────────────────────
+    compositionBtn.textContent = `${state.compositionLabel || "HEAD"} ▾`;
+    for (const btn of viewSeg.querySelectorAll(".seg-btn")) {
+      btn.classList.toggle("active", btn.dataset.view === state.view);
+    }
+
+    // ── Status zone: oracle dot, consolidated plans chip, drift indicator ───────────────────────
     const oracle = (compose.status && compose.status.oracle) || { configured: false, status: "pending" };
     const st = oracle.configured ? oracle.status : "unconfigured";
     oracleChip.dataset.state = st;
-    oracleChip.textContent = `oracle: ${st}`;
+    oracleChip.querySelector(".oracle-label").textContent = st === "unconfigured" ? "oracle" : `oracle · ${st}`;
 
-    if (!viewToggleEl) {
-      viewToggleEl = document.createElement("button");
-      viewToggleEl.className = "view-toggle";
-      viewToggleEl.addEventListener("click", () => {
-        state.view = state.view === "rail" ? "gantt" : "rail";
-        saveState();
-        render();
-      });
-      compositionBtn.insertAdjacentElement("beforebegin", viewToggleEl);
-    }
-    viewToggleEl.textContent = state.view === "rail" ? "◫ Rail" : "▤ Timeline";
-    viewToggleEl.title = state.view === "rail"
-      ? "Showing the episode rail (what I did, in order) — click for the feature timeline"
-      : "Showing the feature timeline (Gantt) — click for the episode rail";
+    // Fold the N per-session chips into one "Plans matched/total" chip whose ring shows aggregate
+    // progress; the per-session breakdown moves into a click popover (renderPlansPopover).
+    const sessions = planMarks.sessions;
+    const totalMatched = sessions.reduce((n, s) => n + s.matchedCount, 0);
+    const totalSteps = sessions.reduce((n, s) => n + s.stepCount, 0);
+    const allComplete = sessions.length > 0 && totalMatched === totalSteps;
+    plansChip.classList.toggle("complete", allComplete);
+    plansChip.hidden = sessions.length === 0;
+    const ringSvg = plansChip.querySelector(".plans-ring");
+    ringSvg.innerHTML = "";
+    ringSvg.appendChild(renderPlanRing(0, totalMatched, totalSteps));
+    plansChip.querySelector(".plans-label").textContent = `Plans ${totalMatched}/${totalSteps}`;
+    if (!plansPopover.hidden) renderPlansPopover(); // keep an open popover in sync with fresh state
 
-    // Minimize/restore the detail pane -- collapsing it hands the full width to the timeline, which
-    // matters most when the workbench is docked narrow. Lives in the daily-loop action group.
-    if (!inspectorToggleEl) {
-      inspectorToggleEl = document.createElement("button");
-      inspectorToggleEl.addEventListener("click", () => {
-        state.inspectorCollapsed = !state.inspectorCollapsed;
-        saveState();
-        render(); // re-measures the rail against the now-full width via the ResizeObserver too
-      });
-      const actions = document.getElementById("titlebarActions");
-      actions.insertBefore(inspectorToggleEl, actions.firstChild);
-    }
-    inspectorToggleEl.textContent = state.inspectorCollapsed ? "◨" : "◧";
-    inspectorToggleEl.title = state.inspectorCollapsed ? "Show detail panel" : "Hide detail panel";
+    // Drift/forks with no matching row have nowhere on the rail to attach -- one compact indicator
+    // rather than the signal being dropped silently.
+    const driftN = driftMarks.unplaced.length;
+    const forkN = forkMarks.unplaced.length;
+    driftChip.hidden = !(driftN || forkN);
+    driftChip.textContent = [driftN ? `◇${driftN}` : "", forkN ? `⑂${forkN}` : ""].filter(Boolean).join(" ");
+    driftChip.title = [
+      ...driftMarks.unplaced.map((e) => `unplanned: ${e.footprint.join(", ")}`),
+      ...forkMarks.unplaced.map((f) => `unplaced fork: ${f.symbol}`),
+    ].join("\n");
+    driftChip.onclick = forkN ? () => vscode.postMessage({ type: "resolveFork", symbol: forkMarks.unplaced[0].symbol }) : null;
+
+    // ── Actions zone: inspector toggle (Save/Commit/Undo are wired once at init) ─────────────────
+    inspectorToggle.textContent = state.inspectorCollapsed ? "◨" : "◧";
+    inspectorToggle.title = state.inspectorCollapsed ? "Show detail panel" : "Hide detail panel";
     document.getElementById("app").classList.toggle("inspector-collapsed", !!state.inspectorCollapsed);
-
-    if (!planChipsEl) {
-      planChipsEl = document.createElement("div");
-      planChipsEl.className = "plan-chips";
-      oracleChip.insertAdjacentElement("afterend", planChipsEl);
-    }
-    planChipsEl.innerHTML = "";
-    for (const session of planMarks.sessions) {
-      planChipsEl.appendChild(renderPlanChip(session));
-    }
-    // Drift/forks with no matching row have nowhere on the rail to attach -- surfaced the same
-    // way an unplaced plan step is, rather than dropping the signal silently.
-    if (driftMarks.unplaced.length) {
-      const chip = document.createElement("span");
-      chip.className = "plan-chip";
-      chip.textContent = `◇ ${driftMarks.unplaced.length} unplanned (no rail row)`;
-      chip.title = driftMarks.unplaced.map((e) => e.footprint.join(", ")).join("\n");
-      planChipsEl.appendChild(chip);
-    }
-    if (forkMarks.unplaced.length) {
-      const chip = document.createElement("span");
-      chip.className = "plan-chip";
-      chip.textContent = `⑂ ${forkMarks.unplaced.length} unplaced fork(s)`;
-      chip.title = forkMarks.unplaced.map((f) => f.symbol).join("\n");
-      chip.addEventListener("click", () => vscode.postMessage({ type: "resolveFork", symbol: forkMarks.unplaced[0].symbol }));
-      planChipsEl.appendChild(chip);
-    }
   }
 
-  // One compact "Plan · text" chip per active session with an inline progress ring -- replaces
-  // the old ghost-root row's ring now that predictions live on the rail itself, not in a subtree.
-  function renderPlanChip(session) {
-    const chip = document.createElement("span");
-    chip.className = "plan-chip";
-    if (session.stepCount > 0 && session.matchedCount === session.stepCount) chip.classList.add("complete");
-    chip.title = session.planText;
-    const ring = mk("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" });
-    ring.appendChild(renderPlanRing(0, session.matchedCount, session.stepCount));
-    chip.appendChild(ring);
-    const label = document.createElement("span");
-    const floatingForSession = planMarks.floating.filter((s) => s.sessionId === session.sessionId);
-    label.textContent = `Plan · ${session.matchedCount}/${session.stepCount}` +
-      (floatingForSession.length ? ` · ${floatingForSession.length} unplaced` : "");
-    chip.appendChild(label);
-    chip.addEventListener("click", () => selectPlanSession(session.sessionId));
-    return chip;
+  // The plans popover: one row per active session (○/● glyph + name + matched/total, ✓ when
+  // complete). Built from the same planMarks.sessions data the consolidated chip aggregates.
+  function renderPlansPopover() {
+    plansPopover.innerHTML = "";
+    if (!planMarks.sessions.length) {
+      const empty = document.createElement("div");
+      empty.className = "plans-pop-empty";
+      empty.textContent = "No active plan sessions";
+      plansPopover.appendChild(empty);
+      return;
+    }
+    for (const session of planMarks.sessions) {
+      const done = session.stepCount > 0 && session.matchedCount === session.stepCount;
+      const floatingN = planMarks.floating.filter((s) => s.sessionId === session.sessionId).length;
+      const row = document.createElement("button");
+      row.className = "plans-pop-row" + (done ? " complete" : "");
+      row.title = session.planText;
+      const glyph = document.createElement("span");
+      glyph.className = "plans-pop-glyph";
+      glyph.textContent = done ? "✓" : session.matchedCount > 0 ? "●" : "○";
+      const name = document.createElement("span");
+      name.className = "plans-pop-name";
+      name.textContent = session.planText;
+      const count = document.createElement("span");
+      count.className = "plans-pop-count";
+      count.textContent = `${session.matchedCount}/${session.stepCount}` + (floatingN ? ` · ${floatingN}⤶` : "");
+      row.append(glyph, name, count);
+      row.addEventListener("click", () => {
+        plansPopover.hidden = true;
+        selectPlanSession(session.sessionId);
+      });
+      plansPopover.appendChild(row);
+    }
   }
 
   function render() {
@@ -833,8 +836,12 @@ function episodeRailLayout(epView) {
     const plotW = Math.max(60, paneW - plotX0 - 16);
     const w = paneW;
     const rowsH = layout.rowCount * GANTT.rowH;
-    const axisY = GANTT.padT + rowsH + 12;
-    const h = axisY + GANTT.axisH;
+    // Rows stay top-anchored, but the axis pins to the bottom of the pane: the SVG grows to fill the
+    // rail's viewport (minus its 8px padding each side) so a short timeline no longer leaves a dead
+    // band of background below it -- the void becomes an honest empty plot with a full-height axis.
+    const naturalH = GANTT.padT + rowsH + 12 + GANTT.axisH;
+    const h = Math.max(naturalH, (rail.clientHeight || 0) - 16);
+    const axisY = h - GANTT.axisH;
     const maxCommit = Math.max(1, layout.commitCount - 1);
     const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
     return {
@@ -1038,8 +1045,12 @@ function episodeRailLayout(epView) {
     const g = mk("g", { class: "swimlane", "data-id": hd.collapsedId, "data-first": hd.firstCommit });
     g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "swimlane-band" }));
     g.appendChild(mk("text", { x: 8 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-caret", text: "▾" }));
+    // The end-anchored meta grows leftward from ~labelW into the same column, so reserve its width
+    // (10px font ~= 6px/char, + an 8px gap) out of the label's char budget or the two overprint.
+    const metaText = `${hd.laneCount} feat · ${hd.opCount}`;
+    const metaW = metaText.length * 6 + 8;
     const label = mk("text", { x: 22 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
-    label.textContent = truncate(hd.label, Math.max(4, Math.floor((geom.labelW - 30 - ind) / 6.5)));
+    label.textContent = truncate(hd.label, Math.max(4, Math.floor((geom.labelW - 30 - ind - metaW) / 6.5)));
     g.appendChild(label);
     // The subsystem's own activity envelope in the plot, so the header still shows "when".
     const bx = geom.xOf(hd.firstCommit), bx2 = geom.xOf(hd.lastCommit);
@@ -1048,7 +1059,7 @@ function episodeRailLayout(epView) {
       rx: 2, class: "swimlane-span", "data-first": hd.firstCommit,
     }));
     const meta = mk("text", { x: geom.plotX0 - 8, y: y + GANTT.rowH / 2 + 4, class: "swimlane-meta" });
-    meta.textContent = `${hd.laneCount} feat · ${hd.opCount}`;
+    meta.textContent = metaText;
     g.appendChild(meta);
     g.addEventListener("click", () => toggleCollapse(hd.collapsedId)); // fold cluster -> meta-lane
     return g;
@@ -1153,6 +1164,9 @@ function episodeRailLayout(epView) {
     for (let i = 0; i <= 4; i++) {
       const ci = Math.round((i / 4) * geom.maxCommit);
       const tx = geom.xOf(ci);
+      // Faint full-height gridline so the (now bottom-pinned) plot reads as a structured field of
+      // time columns rather than an empty expanse above the axis.
+      svg.appendChild(mk("line", { x1: tx, x2: tx, y1: GANTT.padT, y2: y, class: "axis-gridline" }));
       svg.appendChild(mk("text", {
         x: tx, y: y + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: `c${ci}`,
       }));
@@ -2074,15 +2088,23 @@ function episodeRailLayout(epView) {
     }
 
     const allPaths = (cached && cached.files) || {};
-    const files = featureNode
-      ? Object.fromEntries(Object.entries(allPaths).filter(([p]) => p.startsWith(featureNode.dir)))
-      : allPaths;
-    renderCachedFrontierBody(section, cached, files);
+    renderCachedFrontierBody(section, cached, filesForFeature(allPaths, featureNode));
     inspector.appendChild(section);
   }
 
+  // code(I) file filter: keep a fold path if it's one of the feature's member files
+  // (MapNode.members, `file::qualname`) OR sits under its majority-prefix dir. Dir alone drops a
+  // feature's own production file when its members span dirs (e.g. a test-labeled leaf that also
+  // owns `livehub/conflict.py`), which showed as an empty "No files under this path" panel.
+  function filesForFeature(allPaths, featureNode) {
+    if (!featureNode) return allPaths;
+    const memberFiles = new Set((featureNode.members || []).map((m) => m.split("::")[0]));
+    return Object.fromEntries(Object.entries(allPaths).filter(
+      ([p]) => memberFiles.has(p) || p.startsWith(featureNode.dir)));
+  }
+
   // Composition-picker hover-preview panel: same shape as the playhead panel (unfiltered fold,
-  // filtered to the selected feature's `dir` client-side), fed by `compositionPreviewResult`
+  // filtered to the selected feature's files client-side), fed by `compositionPreviewResult`
   // instead of `playheadResult`. Lets arrowing through the composition QuickPick show what each
   // candidate would put in the code(I) panel before committing to a real `sgt switch`.
   function renderCompositionPreviewPanel(featureNode) {
@@ -2100,10 +2122,7 @@ function episodeRailLayout(epView) {
     }
 
     const allPaths = (cached && cached.files) || {};
-    const files = featureNode
-      ? Object.fromEntries(Object.entries(allPaths).filter(([p]) => p.startsWith(featureNode.dir)))
-      : allPaths;
-    renderCachedFrontierBody(section, cached, files);
+    renderCachedFrontierBody(section, cached, filesForFeature(allPaths, featureNode));
     inspector.appendChild(section);
   }
 
@@ -2333,8 +2352,38 @@ function episodeRailLayout(epView) {
       return;
     }
     oracleChip.dataset.state = "pending";
-    oracleChip.textContent = "oracle: running…";
+    oracleChip.querySelector(".oracle-label").textContent = "oracle · running…";
     vscode.postMessage({ type: "runOracle" });
+  });
+
+  // Segmented Timeline│Rail control: each segment sets state.view directly (active segment is filled
+  // via .active in renderTitlebar).
+  for (const btn of viewSeg.querySelectorAll(".seg-btn")) {
+    btn.addEventListener("click", () => {
+      if (state.view === btn.dataset.view) return;
+      state.view = btn.dataset.view;
+      saveState();
+      render();
+    });
+  }
+
+  // Consolidated plans chip toggles the per-session popover; dismiss on any outside click.
+  plansChip.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    plansPopover.hidden = !plansPopover.hidden;
+    if (!plansPopover.hidden) renderPlansPopover();
+  });
+  document.addEventListener("click", (ev) => {
+    if (!plansPopover.hidden && !plansPopover.contains(ev.target) && ev.target !== plansChip) {
+      plansPopover.hidden = true;
+    }
+  });
+
+  // Minimize/restore the detail pane -- hands the full width to the timeline when docked narrow.
+  inspectorToggle.addEventListener("click", () => {
+    state.inspectorCollapsed = !state.inspectorCollapsed;
+    saveState();
+    render(); // re-measures the rail against the now-full width via the ResizeObserver too
   });
 
   const saveBtn = document.getElementById("saveBtn");

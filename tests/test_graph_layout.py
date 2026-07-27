@@ -66,6 +66,19 @@ def test_only_features_with_ops_are_placed():
     assert {n["id"] for n in out["lanes"]} == {"A", "B"}
 
 
+def test_feature_shared_by_two_subsystems_is_a_single_lane():
+    # The map is a DAG: feature F is a child of both subsystems S1 and S2. The visibility walk
+    # reaches it via both paths, but it must resolve to a single lane -- else a duplicate lane
+    # shares an id and the id-keyed lane table drops all but the last copy.
+    m = {"roots": ["S1", "S2"],
+         "nodes": [_node("S1", None, ["F"], kind="subsystem"),
+                   _node("S2", None, ["F"], kind="subsystem"),
+                   _node("F", "S1", [])],
+         "edges": []}
+    out = _run(m, _grid(("F", 0), ("F", 3)))
+    assert [l["id"] for l in out["lanes"]] == ["F"]
+
+
 def test_op_count_is_lane_magnitude_and_span_is_first_last():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     out = _run(m, _grid(("A", 2), ("A", 0), ("A", 3)))

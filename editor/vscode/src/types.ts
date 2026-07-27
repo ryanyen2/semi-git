@@ -10,6 +10,10 @@ export interface MapNode {
   size: number;
   op_count: number;
   dir: string;
+  // The feature's member entities as `file::qualname` (sgt.api.map_view). The majority-prefix `dir`
+  // can exclude a feature's own production file when its members span dirs, so file filters union
+  // the member file-set with the dir prefix.
+  members: string[];
   why: string;
   split_reason: string | null;
   // Present (an `af-` id) only when this leaf is claimed by a user-authored feature; absent for
