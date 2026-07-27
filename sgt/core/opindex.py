@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections import OrderedDict
 from pathlib import Path
 
 from sgt import state
@@ -83,12 +84,18 @@ def apply_delta(repo: str | Path, stored_ops: list[Op]) -> None:
     })
 
 
-# `_ops_dir_stat` memo keyed by the ops directory's own mtime: every store write lands via
-# rename into the directory (`_write_atomic`'s `os.replace`, git's object/checkout writes), and
-# any rename/add/delete in a directory bumps its mtime -- so an unchanged dir mtime proves the
-# per-entry scan would return what it returned last time. At ~20k dirents the full scan is
-# ~100ms and several views run it per command.
-_DIR_STAT_MEMO: dict[str, tuple[int, tuple[int, int]]] = {}
+# `_ops_dir_stat` memo keyed by the ops directory's mtime *and* its dirent count: every store
+# write lands via rename into the directory (`_write_atomic`'s `os.replace`, git's object/checkout
+# writes), and any rename/add/delete bumps the dir mtime -- so an unchanged dir mtime usually
+# proves the per-entry scan would return what it returned last time. The count is the same-tick
+# backstop: on a coarse-granularity filesystem a write can land in the same mtime tick as the
+# memoized read, leaving the dir mtime unchanged, and recounting dirents (cheap, one readdir)
+# catches any add/remove that slipped through that tick. (A count-neutral in-place rewrite within
+# the same tick still isn't caught -- but every writer renames a fresh temp file into place, so a
+# rewrite replaces a dirent and normally bumps the dir mtime; the residual needs a same-tick
+# collision, deliberately left rather than paying git-style racy-clean logic on this hot path.)
+# LRU: hits re-order, overflow evicts the oldest.
+_DIR_STAT_MEMO: "OrderedDict[str, tuple[tuple[int, int], tuple[int, int]]]" = OrderedDict()
 
 
 def _ops_dir_stat(repo: Path) -> tuple[int, int]:
@@ -99,21 +106,40 @@ def _ops_dir_stat(repo: Path) -> tuple[int, int]:
     except OSError:
         return 0, -1
     key = os.path.realpath(ops_dir)
+    # One scan feeds both the cheap count (the same-tick guard) and the per-entry stat (the
+    # expensive part the memo actually skips on a hit).
+    entries = [e for e in os.scandir(ops_dir) if e.is_file()]
+    count = len(entries)
     memo = _DIR_STAT_MEMO.get(key)
-    if memo is not None and memo[0] == dir_mtime:
+    if memo is not None and memo[0] == (dir_mtime, count):
+        _DIR_STAT_MEMO.move_to_end(key)
         return memo[1]
-    count = 0
     max_mtime = -1
-    for entry in os.scandir(ops_dir):
-        if entry.is_file():
-            count += 1
-            mtime = entry.stat().st_mtime_ns
-            if mtime > max_mtime:
-                max_mtime = mtime
-    _DIR_STAT_MEMO[key] = (dir_mtime, (count, max_mtime))
+    for entry in entries:
+        mtime = entry.stat().st_mtime_ns
+        if mtime > max_mtime:
+            max_mtime = mtime
+    _DIR_STAT_MEMO[key] = ((dir_mtime, count), (count, max_mtime))
     if len(_DIR_STAT_MEMO) > 8:
-        _DIR_STAT_MEMO.pop(next(iter(_DIR_STAT_MEMO)))
+        _DIR_STAT_MEMO.popitem(last=False)
     return count, max_mtime
+
+
+def _stale_against_dir(repo: Path, miner_version, op_count, built_mtime_ns: int) -> bool:
+    """Whether a snapshot with this `(miner_version, op_count, built_mtime_ns)` is stale against
+    `.sgt/ops/`, checked stat-only (no op file reads). The single staleness rule, shared by
+    `_is_stale_body` (which reads the fields off a loaded snapshot body) and `index_ops`' memo
+    fast path (which reads them off the memoized parse), so the two cannot silently diverge if the
+    rule ever gains a signal: a miner-version mismatch (catches `migrate ops-v3`), a dirent-count
+    mismatch (catches sync ingest / prune), or a build timestamp at or before the newest op file's
+    mtime (catches `Store.add`'s provenance-merge and `Store.attribute` rewrites, which bump mtime
+    without changing count)."""
+    if miner_version != MINER_VERSION:
+        return True
+    count, max_mtime = _ops_dir_stat(repo)
+    if op_count != count:
+        return True
+    return built_mtime_ns <= max_mtime
 
 
 def _is_stale_body(repo: Path, body: dict | None) -> bool:
@@ -122,12 +148,9 @@ def _is_stale_body(repo: Path, body: dict | None) -> bool:
     file a second time."""
     if body is None:
         return True
-    if body.get("miner_version") != MINER_VERSION:
-        return True
-    count, max_mtime = _ops_dir_stat(repo)
-    if body.get("op_count") != count:
-        return True
-    return body.get("built_mtime_ns", -1) <= max_mtime
+    return _stale_against_dir(
+        repo, body.get("miner_version"), body.get("op_count"), body.get("built_mtime_ns", -1)
+    )
 
 
 def is_stale(repo: str | Path) -> bool:
@@ -141,13 +164,14 @@ def is_stale(repo: str | Path) -> bool:
 
 
 # Process-level memo of the parsed snapshot, keyed by the snapshot file's identity
-# (mtime_ns, size) plus the metadata `_is_stale_body` gates on. One CLI command reads the
-# index through several projection views (map/grid/segments/history all call `index_ops`),
-# and each call re-parsed the same multi-megabyte JSON into the same Op list. Staleness
-# against `.sgt/ops/` is still re-verified stat-only on every call with the *same rule* as
-# `_is_stale_body` (memoized `built_mtime_ns`/`op_count`, never the file's own mtime), so a
-# concurrent writer is caught exactly as before -- the memo skips the parse, never the check.
-_PARSED_MEMO: dict[str, tuple[tuple[int, int], int, int, list[Op]]] = {}
+# (mtime_ns, size) plus the metadata staleness gates on (miner_version, built_mtime_ns,
+# op_count). One CLI command reads the index through several projection views (map/grid/segments/
+# history all call `index_ops`), and each call re-parsed the same multi-megabyte JSON into the
+# same Op list. Staleness against `.sgt/ops/` is still re-verified stat-only on every call
+# through the *shared* `_stale_against_dir` predicate `_is_stale_body` uses, so a concurrent
+# writer is caught exactly as before -- the memo skips the parse, never the check. LRU: hits
+# re-order, overflow evicts the oldest.
+_PARSED_MEMO: "OrderedDict[str, tuple[tuple[int, int], object, int, object, list[Op]]]" = OrderedDict()
 
 
 def _snapshot_stat(repo: Path) -> tuple[int, int] | None:
@@ -169,24 +193,25 @@ def index_ops(repo: str | Path) -> list[Op]:
     memo = _PARSED_MEMO.get(repo_key)
     snap_stat = _snapshot_stat(repo)
     if memo is not None and snap_stat is not None and memo[0] == snap_stat:
-        stat_key, built_mtime_ns, op_count, memo_ops = memo
-        count, max_mtime = _ops_dir_stat(repo)
-        if op_count == count and built_mtime_ns > max_mtime:
+        _stat_key, miner_v, built_mtime_ns, op_count, memo_ops = memo
+        if not _stale_against_dir(repo, miner_v, op_count, built_mtime_ns):
+            _PARSED_MEMO.move_to_end(repo_key)
             return list(memo_ops)
     body = state.load_json(repo, "op_index", default=None)
     if _is_stale_body(repo, body):
         rebuild(repo)
-        body = state.load_json(repo, "op_index", default=None)
-        snap_stat = _snapshot_stat(repo)
+        snap_stat = _snapshot_stat(repo)  # stat before the reload (mirrors the top-of-function
+        body = state.load_json(repo, "op_index", default=None)  # order): a stale key just misses
     if body is None:
         return []
     ops = [_to_op(entry) for entry in body["ops"]]
     if snap_stat is not None:
         _PARSED_MEMO[repo_key] = (
-            snap_stat, body.get("built_mtime_ns", -1), body.get("op_count", -1), ops,
+            snap_stat, body.get("miner_version"), body.get("built_mtime_ns", -1),
+            body.get("op_count", -1), ops,
         )
         if len(_PARSED_MEMO) > 8:  # a CLI process touches one repo; long-lived hosts a few
-            _PARSED_MEMO.pop(next(iter(_PARSED_MEMO)))
+            _PARSED_MEMO.popitem(last=False)
     return list(ops)
 
 

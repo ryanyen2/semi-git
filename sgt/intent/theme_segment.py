@@ -117,22 +117,12 @@ class SegmentThemer:
         return r.output_parsed
 
     def segment_feature(self, feature_label: str, runs: list[Run], by_id, prompt_for) -> list[dict]:
-        """Cut+name one feature's runs into contiguous chapter records. A single-run feature (or
-        one past `MAX_RUNS`) is labeled deterministically with no LLM call. Otherwise one cached
-        LLM call groups consecutive runs and names each; the grouping is validated (shown shas
-        only) and coalesced into contiguous blocks. Cache-hit / fallback / retry-on-fallback shape
-        mirrors `IntentThemer.label_bundle`."""
-        if len(runs) <= 1 or len(runs) > MAX_RUNS:
-            return self._fallback(runs)
-
-        key = "\x02seg-" + _feature_key(runs)
-        cached = self.cache.get(key)
-        if cached is not None and cached.get("source") == "llm":
-            return cached["records"]
-
-        records, source = self._segment_compute(feature_label, runs, by_id, prompt_for)
-        self.cache[key] = {"source": source, "records": records}
-        return records
+        """Cut+name one feature's runs into contiguous chapter records -- the single-feature form of
+        `segment_features`, which is the one source of truth for the single-run / over-`MAX_RUNS` /
+        cache-hit / LLM-cut / offline-fallback handling (so the two can't drift). A multi-run feature
+        gets one cached LLM call that groups consecutive runs and names each; the grouping is
+        validated (shown shas only) and coalesced into contiguous blocks."""
+        return self.segment_features([(feature_label, runs)], by_id, prompt_for)[0]
 
     def _segment_compute(self, feature_label: str, runs: list[Run], by_id, prompt_for) -> tuple[list[dict], str]:
         """One multi-run feature's LLM cut + validation, returning ``(records, source)`` WITHOUT
@@ -159,12 +149,12 @@ class SegmentThemer:
             return self._fallback(runs), "fallback"
 
     def segment_features(self, items: list[tuple[str, list[Run]]], by_id, prompt_for) -> list[list[dict]]:
-        """Batch form of `segment_feature` (the `build_segments` hot loop): resolve many features'
-        chapter records at once. Single-run features, over-`MAX_RUNS` features, and cache hits are
-        served inline with zero network; the remaining multi-run cuts run their LLM calls
-        concurrently (`ThreadPoolExecutor`, network-bound), then each result is written to the cache
-        sequentially in this thread (the cache isn't thread-safe). Every feature's records are
-        byte-identical to what the serial `segment_feature` produced, kept in input order."""
+        """Resolve many features' chapter records at once (the `build_segments` hot loop, and the
+        shared implementation `segment_feature` delegates to for one). Single-run features,
+        over-`MAX_RUNS` features, and cache hits are served inline with zero network; the remaining
+        multi-run cuts run their LLM calls concurrently (`ThreadPoolExecutor`, network-bound), then
+        each result is written to the cache sequentially in this thread (the cache isn't
+        thread-safe). Records are kept in input order."""
         results: list[list[dict] | None] = [None] * len(items)
         keys: list[str | None] = [None] * len(items)
         misses: list[int] = []

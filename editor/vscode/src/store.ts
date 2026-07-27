@@ -41,6 +41,13 @@ export class Store {
   private sessionsCache: SessionsView | undefined;
   private proposalCache = new Map<string, ProposalView>();
   private foldCache = new Map<string, FoldView>(); // bounded LRU of recent frontier folds (see foldAt)
+  // Bumped once per invalidate(). Every coalesced fetch captures it before shelling out and
+  // commits to its cache only if it still matches on resolution -- so a read already in flight
+  // when an external `.sgt/**/*.json` mutation fires the watcher (another terminal, an agent)
+  // can't settle *after* invalidate() cleared the caches and overwrite them with pre-mutation
+  // data. Without this the surface would show stale state until an unrelated event triggered
+  // another read (the "webview doesn't match the CLI until reload" failure).
+  private generation = 0;
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
@@ -54,16 +61,20 @@ export class Store {
   async map(force = false): Promise<MapView> {
     if (this.mapCache && !force) return this.mapCache;
     if (!this.mapInFlight || force) {
-      this.mapInFlight = this.sgt
+      const gen = this.generation;
+      const p: Promise<MapView> = this.sgt
         .map()
         .then((v) => {
-          this.mapCache = v;
-          this.nodeById = new Map(v.nodes.map((n) => [n.id, n]));
+          if (gen === this.generation) {
+            this.mapCache = v;
+            this.nodeById = new Map(v.nodes.map((n) => [n.id, n]));
+          }
           return v;
         })
         .finally(() => {
-          this.mapInFlight = undefined;
+          if (this.mapInFlight === p) this.mapInFlight = undefined; // never clear a newer slot
         });
+      this.mapInFlight = p;
     }
     return this.mapInFlight;
   }
@@ -74,15 +85,17 @@ export class Store {
   async history(force = false): Promise<HistoryView> {
     if (this.historyCache && !force) return this.historyCache;
     if (!this.historyInFlight || force) {
-      this.historyInFlight = this.sgt
+      const gen = this.generation;
+      const p: Promise<HistoryView> = this.sgt
         .history()
         .then((v) => {
-          this.historyCache = v;
+          if (gen === this.generation) this.historyCache = v;
           return v;
         })
         .finally(() => {
-          this.historyInFlight = undefined;
+          if (this.historyInFlight === p) this.historyInFlight = undefined;
         });
+      this.historyInFlight = p;
     }
     return this.historyInFlight;
   }
@@ -93,15 +106,17 @@ export class Store {
   async gridView(force = false): Promise<GridView> {
     if (this.gridCache && !force) return this.gridCache;
     if (!this.gridInFlight || force) {
-      this.gridInFlight = this.sgt
+      const gen = this.generation;
+      const p: Promise<GridView> = this.sgt
         .grid()
         .then((v) => {
-          this.gridCache = v;
+          if (gen === this.generation) this.gridCache = v;
           return v;
         })
         .finally(() => {
-          this.gridInFlight = undefined;
+          if (this.gridInFlight === p) this.gridInFlight = undefined;
         });
+      this.gridInFlight = p;
     }
     return this.gridInFlight;
   }
@@ -115,15 +130,17 @@ export class Store {
   async status(force = false): Promise<StatusView> {
     if (this.statusCache && !force) return this.statusCache;
     if (!this.statusInFlight || force) {
-      this.statusInFlight = this.sgt
+      const gen = this.generation;
+      const p: Promise<StatusView> = this.sgt
         .status()
         .then((v) => {
-          this.statusCache = v;
+          if (gen === this.generation) this.statusCache = v;
           return v;
         })
         .finally(() => {
-          this.statusInFlight = undefined;
+          if (this.statusInFlight === p) this.statusInFlight = undefined;
         });
+      this.statusInFlight = p;
     }
     return this.statusInFlight;
   }
@@ -162,15 +179,17 @@ export class Store {
   async composeView(force = false): Promise<ComposeView> {
     if (this.composeCache && !force) return this.composeCache;
     if (!this.composeInFlight || force) {
-      this.composeInFlight = this.sgt
+      const gen = this.generation;
+      const p: Promise<ComposeView> = this.sgt
         .compose()
         .then((v) => {
-          this.composeCache = v;
+          if (gen === this.generation) this.composeCache = v;
           return v;
         })
         .finally(() => {
-          this.composeInFlight = undefined;
+          if (this.composeInFlight === p) this.composeInFlight = undefined;
         });
+      this.composeInFlight = p;
     }
     return this.composeInFlight;
   }
@@ -180,15 +199,17 @@ export class Store {
   async forksView(force = false): Promise<ForksView> {
     if (this.forksCache && !force) return this.forksCache;
     if (!this.forksInFlight || force) {
-      this.forksInFlight = this.sgt
+      const gen = this.generation;
+      const p: Promise<ForksView> = this.sgt
         .forksView()
         .then((v) => {
-          this.forksCache = v;
+          if (gen === this.generation) this.forksCache = v;
           return v;
         })
         .finally(() => {
-          this.forksInFlight = undefined;
+          if (this.forksInFlight === p) this.forksInFlight = undefined;
         });
+      this.forksInFlight = p;
     }
     return this.forksInFlight;
   }
@@ -216,6 +237,11 @@ export class Store {
   // per insert past the cap), and cleared in `invalidate()` with the other caches. Signature and
   // promise semantics are unchanged.
   async foldAt(frontier: FoldFrontier): Promise<FoldView> {
+    // A `ref` frontier ("HEAD", a branch) is a *moving* target: its spec string is stable but the
+    // content it resolves to changes as the ref advances, so caching it by spec would serve the
+    // pre-advance fold after a checkpoint. Only `commitIndex`/`opIds` frontiers name fixed content
+    // and are safe to memoize. Ref folds always shell out.
+    if ("ref" in frontier) return this.sgt.foldAt(frontier);
     const key = foldAtSpec(frontier);
     const cached = this.foldCache.get(key);
     if (cached) {
@@ -223,7 +249,9 @@ export class Store {
       this.foldCache.set(key, cached);
       return cached;
     }
+    const gen = this.generation;
     const view = await this.sgt.foldAt(frontier);
+    if (gen !== this.generation) return view; // an invalidate() raced this fetch -- don't repopulate
     this.foldCache.set(key, view);
     if (this.foldCache.size > 32) {
       const oldest = this.foldCache.keys().next().value; // least-recently-used
@@ -234,6 +262,7 @@ export class Store {
 
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
+    this.generation++; // any fetch begun before now must not repopulate a cache it's about to clear
     this.mapCache = undefined;
     this.mapInFlight = undefined;
     this.historyCache = undefined;

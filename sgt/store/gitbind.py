@@ -440,7 +440,7 @@ class GitBinding:
         """Raw bytes of ``path`` at ``sha`` (absent -> None). Unlike ``file_at``, never decodes
         as text -- the safe way to read a path that might be binary. Served by the repo's
         persistent ``cat-file --batch`` process, not a subprocess spawn per call."""
-        return _batch_for(self.repo).read_many([(sha, path)])[0]
+        return self.blob_bytes_many([(sha, path)])[0]
 
     def blob_bytes_many(self, specs: list[tuple[str, str]]) -> list[bytes | None]:
         """Raw bytes for many ``(sha, path)`` pairs, aligned with ``specs`` order -- the batched
@@ -449,10 +449,36 @@ class GitBinding:
         mining scale as O(commits x files) subprocess spawns. All reads go through the repo's
         one persistent ``git cat-file --batch`` process (``<rev>:<path>`` object specs, so no
         oid lookup is needed first) -- even the per-batch spawn this method used to pay was the
-        dominant mining cost at hundreds of batches per history chunk."""
+        dominant mining cost at hundreds of batches per history chunk.
+
+        A spec whose rev or path contains a newline can't be framed as a ``<rev>:<path>`` line in
+        that pipe protocol -- it would split into two requests and silently desync the shared
+        stream for every later reader in the process -- so it detours through a one-shot ``git
+        show`` argv read. Newlines in tracked paths are legal in git trees and exotic in practice,
+        but the tool's bar is that a read never errors on a noisy repo."""
         if not specs:
             return []
-        return _batch_for(self.repo).read_many(specs)
+        results: list[bytes | None] = [None] * len(specs)
+        batchable: list[tuple[int, tuple[str, str]]] = []
+        for i, (rev, path) in enumerate(specs):
+            if "\n" in rev or "\n" in path:
+                results[i] = self._show_blob(rev, path)  # argv: immune to newline framing
+            else:
+                batchable.append((i, (rev, path)))
+        if batchable:
+            batched = _batch_for(self.repo).read_many([spec for _, spec in batchable])
+            for (i, _), value in zip(batchable, batched):
+                results[i] = value
+        return results
+
+    def _show_blob(self, sha: str, path: str) -> bytes | None:
+        """One-shot raw-bytes read of ``path`` at ``sha`` via ``git show`` argv -- the fallback
+        `blob_bytes_many` uses for a spec a newline makes unframeable in the shared batch pipe.
+        Never text-decodes, so a binary blob comes back as its bytes rather than raising."""
+        proc = subprocess.run(
+            ["git", "-C", str(self.repo), "show", f"{sha}:{path}"], capture_output=True
+        )
+        return proc.stdout if proc.returncode == 0 else None
 
     def list_tree(self, sha: str, prefix: str) -> list[str]:
         """Every tracked path under ``prefix`` at ``sha`` -- e.g. every op file a remote's commit
@@ -467,7 +493,19 @@ class GitBinding:
         persistent ``cat-file --batch-check`` process (object info only, no content transfer)
         instead of an ``ls-tree`` subprocess spawn per call."""
         info = _batch_for(self.repo).info_many([(sha, path)])[0]
-        return info[0] if info is not None else None
+        if info is not None:
+            return info[0]
+        # A gitlink (submodule, mode 160000) or a promisor-filtered blob on a partial clone is
+        # not in this repo's object store, so `--batch-check` reports it `missing` -- but the tree
+        # still records the oid (the submodule's commit sha, or the filtered blob's id), which
+        # `ls-tree` reads straight from the tree object without touching the odb. Fall back to it
+        # so those entries keep their stable content address instead of folding to a `None`
+        # (unchained) whole-file version and silently breaking chain continuity across the commit.
+        proc = self._git("ls-tree", sha, "--", path, check=False)
+        if proc.returncode != 0 or not proc.stdout:
+            return None
+        fields = proc.stdout.splitlines()[0].split()  # <mode> <type> <oid>\t<path>
+        return fields[2] if len(fields) >= 3 else None
 
     def symlink_paths(self, tree_ish: str, paths: list[str]) -> set[str]:
         """The subset of ``paths`` that are symlinks (git mode ``120000``) in the tree at
@@ -560,20 +598,13 @@ class GitBinding:
         *closed* a symbol is found by walking the path's own history -- a pure function of git
         (LAW-0), never the local op store, so it holds across clones and even when the closing
         commit predates a ``since``-restricted incremental mine. First-parent of each row matches
-        the parent ``mine`` diffs that commit against."""
-        return self.commits_touching_paths(ref, [path])
+        the parent ``mine`` diffs that commit against.
 
-    def commits_touching_paths(self, ref: str, paths: list[str]) -> list[tuple[str, str | None]]:
-        """``commits_touching`` over a *pathspec set*, in one ``git log`` walk: every commit
-        reachable from ``ref`` that changed any of ``paths``, newest-first. The rebirth lookback
-        used to spawn one walk per (commit, fresh path); a commit re-adding several files paid
-        one subprocess each for near-identical history. The union walk is a superset of each
-        single path's own walk (git's history simplification prunes strictly less against a
-        wider pathspec), and the lookback compares actual symbol presence per candidate commit,
-        so extra rows are no-ops -- never false closures."""
-        if not paths:
-            return []
-        proc = self._git("log", "--format=%H%x1f%P", ref, "--", *paths, check=False)
+        Scoped to a single path deliberately: a union pathspec over several paths is NOT a superset
+        of each path's own walk, because git's history simplification follows only one TREESAME
+        parent at a merge and a wider pathspec can flip which parent that is (see the caller in
+        `mine._apply_rebirth_chaining`)."""
+        proc = self._git("log", "--format=%H%x1f%P", ref, "--", path, check=False)
         if proc.returncode != 0:
             return []
         rows: list[tuple[str, str | None]] = []

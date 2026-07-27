@@ -296,10 +296,25 @@ def ops_with_frontier_images(repo: str | Path, ideal: Ideal) -> list:
     ops = opindex.index_ops(repo)
     need = sorted(set(ideal.frontier(ops).values()))
     store = Store(repo)
+
+    def _safe_get(oid: str):
+        # Mirror `Store.all_ops`' R1 skip: a truncated/corrupt frontier op file degrades to a
+        # read-side skip rather than propagating out of `pool.map` and erroring a read view
+        # (`status_view`, `fsck_tree`, `_reproducible_content`) -- ops must never error.
+        try:
+            return store.get(oid)
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            return None
+
     with ThreadPoolExecutor(max_workers=8) as pool:
-        full = list(pool.map(store.get, need))
+        full = list(pool.map(_safe_get, need))
     by_id = {op.id: op for op in full if op is not None}
-    return [by_id.get(op.id, op) for op in ops]
+    # A frontier producer whose full op couldn't be read (corrupt, or vanished after the index
+    # snapshot) is dropped entirely -- exactly as `all_ops` would exclude it -- not kept
+    # footprint-only: its `images={}` would fold to silent zero-length content for the symbols it
+    # produces, which is a worse failure than the op's absence.
+    unreadable = set(need) - set(by_id)
+    return [by_id.get(op.id, op) for op in ops if op.id not in unreadable]
 
 
 def current_ideal(repo: str | Path) -> Ideal:
@@ -473,7 +488,15 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # `rebuild` -- an every-op-file re-read -- on every mining sync, leaving `apply_delta`
     # unreachable. Checked here, "stale" means someone *else* wrote ops the snapshot missed
     # (rebuild is right); "fresh" means the snapshot covers the pre-mine store exactly, so
-    # upserting just the ops this sync touched reproduces a complete snapshot.
+    # upserting just the ops this sync touched reproduces a complete snapshot. `store.add` takes
+    # its own lock per op, so these adds cannot move inside the `locked_section` below (that would
+    # nest the store lock, violating the U23 contract) -- hence the check is unavoidably outside
+    # it. Residual (accepted, same class as `opindex._ops_dir_stat`'s same-tick note): if a
+    # concurrent writer's provenance-merge rewrites an existing op file (count-neutral mtime bump)
+    # after this check and then crashes before its own `apply_delta`, our `apply_delta` stamps a
+    # newer `built_mtime_ns` that masks the rewrite until the next unrelated op-store write. Needs
+    # a concurrent writer plus a crash in that window; closing it would cost a per-op-file mtime
+    # re-scan on this hot path for no steady-state benefit.
     index_stale_before_add = opindex.is_stale(repo)
 
     new_committed_ids: set[str] = set()

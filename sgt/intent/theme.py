@@ -133,27 +133,18 @@ class IntentThemer:
         return r.output_parsed
 
     def label_bundle(self, bundle: Bundle) -> ThemeLabel:
-        """Name one scope bundle. Membership is never decided here -- only `label`/`rationale`,
-        exactly as `Labeler.label` only ever names a fixed membership it's handed (mirrors that
-        method's cache-hit / fallback / retry-on-fallback shape line for line)."""
-        key = _bundle_key(bundle)
-        cached = self.cache.get(key)
-        if cached is not None and cached.get("source") == "llm":
-            return ThemeLabel(label=cached["label"], rationale=cached["rationale"])
-        try:
-            out, source = self._request(_bundle_prompt(bundle), ThemeLabel), "llm"
-        except Exception:
-            out, source = _fallback_bundle_label(bundle), "fallback"
-        self.cache[key] = {**out.model_dump(), "source": source}
-        return out
+        """Name one scope bundle -- the single-bundle form of `label_bundles`, which is the one
+        source of truth for cache-hit / LLM / offline-fallback handling (so the two can't drift).
+        Membership is never decided here, only `label`/`rationale`."""
+        return self.label_bundles([bundle])[0]
 
     def label_bundles(self, bundles: list[Bundle]) -> list[ThemeLabel]:
-        """Batch form of `label_bundle` (the `build_themes` hot loop): serve cache hits inline with
-        zero network, run the cache-missing LLM calls concurrently (`ThreadPoolExecutor`, network-
-        bound), then write each result back to the cache sequentially in this thread -- the cache
-        dict isn't thread-safe. Each bundle's resolved label, cache entry, and offline fallback are
-        byte-identical to what the serial `label_bundle` loop produced, results kept in input
-        order, so this is a pure latency win over naming bundles one blocking call at a time."""
+        """Name many scope bundles (the `build_themes` hot loop, and the shared implementation
+        `label_bundle` delegates to for one): serve cache hits inline with zero network, run the
+        cache-missing LLM calls concurrently (`ThreadPoolExecutor`, network-bound), then write each
+        result back to the cache sequentially in this thread -- the cache dict isn't thread-safe.
+        Results are kept in input order, so this is a pure latency win over naming bundles one
+        blocking call at a time."""
         keys = [_bundle_key(b) for b in bundles]
         results: list[ThemeLabel | None] = [None] * len(bundles)
         misses: list[int] = []

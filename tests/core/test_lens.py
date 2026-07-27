@@ -21,6 +21,7 @@ from sgt.core.lens import (
     _save_ideal_table,
     get,
     init,
+    ops_with_frontier_images,
     put,
     sync_status,
 )
@@ -38,6 +39,33 @@ def test_put_get_fixed_point(tmp_path):
     put(repo, ideal)
     reidealed = get(repo)
     assert reidealed.op_ids == ideal.op_ids
+
+
+def test_ops_with_frontier_images_skips_a_corrupt_frontier_op(tmp_path, monkeypatch):
+    """R1 read-side skip: a truncated/garbled frontier op file must degrade to a drop, not error
+    the read views (`status_view`, `fsck_tree`, `_reproducible_content`) built on this. The op is
+    excluded entirely rather than kept footprint-only -- its `images={}` would fold to silent
+    zero-length content for the symbols it produces, a worse failure than its absence.
+
+    The index is pinned to the pre-corruption footprint list so the corrupt file is still named as a
+    frontier producer; otherwise `index_ops`' self-heal would drop it before `_safe_get` ever ran
+    (that path is itself fine, but it wouldn't exercise the read-side skip this pins)."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal = get(repo)
+    put(repo, ideal)
+    ideal = lens_mod.current_ideal(repo)
+
+    store = Store(repo)
+    all_ops = store.all_ops()
+    frontier_ids = set(ideal.frontier(all_ops).values())
+    assert frontier_ids  # the fixture has live symbols at the frontier
+    victim = sorted(frontier_ids)[0]
+
+    monkeypatch.setattr("sgt.core.opindex.index_ops", lambda _repo: all_ops)
+    (store.ops_dir / victim).write_bytes(b"{ truncated not json")  # corrupt the on-disk full op
+
+    result = ops_with_frontier_images(repo, ideal)  # must not raise
+    assert all(op.id != victim for op in result)  # the unreadable frontier op is dropped
 
 
 def test_squash_merge_creates_zero_new_ops(tmp_path):

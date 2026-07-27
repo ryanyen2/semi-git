@@ -86,6 +86,12 @@ How reliable each of these is depends on where the grouping comes from.
   session lands with which session it came from, so `sgt revert --session <name>` is exact from
   the very first run, before there is any history to cluster.
 
+Reverting a set (a feature or a session) removes those ops *and* anything left dangling once the
+whole set is gone -- the same "along with anything built on top of it" rule as a single-symbol
+revert, applied to the set as a unit. So a dependent that two removed ops both propped up comes out
+too, rather than being left in an unbuildable state; the preview always shows the full removal
+before you apply it.
+
 So symbol-level revert and session-level revert are the reliable tools today. Feature-level revert
 works well once `sgt log --tree`, or your own corrections, has had real history to learn from. Run
 `sgt advanced blame <file>` to check whether the current grouping actually covers the file you care

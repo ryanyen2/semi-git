@@ -317,16 +317,17 @@ def _apply_rebirth_chaining(gb: GitBinding, sha: str, parent: str | None, touche
     for t in touches:
         if t.before_version is None and _symbol_kind(t.surface_id) != "anchor":
             fresh_by_path.setdefault(t.surface_id.split("::", 1)[0], []).append(t)
-    if not fresh_by_path:
-        return
-    # One union walk for every fresh path this commit has (instead of one `git log` spawn per
-    # path): the union pathspec yields a superset of each path's own walk, and the presence
-    # comparison below is exact per (commit, path), so a row that didn't touch a given path
-    # simply matches nothing for it.
-    commits = gb.commits_touching_paths(parent, sorted(fresh_by_path))
-    if not commits:
-        return
     for path, group in fresh_by_path.items():
+        # Walk this path's OWN history, one path per `git log`. A single union-pathspec walk over
+        # all fresh paths is NOT a sound superset: git's history simplification follows only one
+        # TREESAME parent at a merge, and widening the pathspec can flip which parent is TREESAME,
+        # rerouting the walk away from the very side branch that closed a symbol (the closing
+        # commit then goes unseen and the re-add mis-mints a fresh `None` birth instead of chaining
+        # it). `_present_symbols_at` is memoized, so the extra `git log` spawns are cheap next to
+        # the presence comparison they feed.
+        commits = gb.commits_touching(parent, path)  # (D, first_parent_of_D), newest-first, D < sha
+        if not commits:
+            continue
         remaining = {t.surface_id: t for t in group}
         for d_sha, d_parent in commits:
             if not remaining:
