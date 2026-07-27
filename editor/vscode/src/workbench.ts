@@ -74,13 +74,31 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 <body>
 <div id="app">
   <div id="titlebar">
-    <button id="compositionBtn" class="composition-btn">HEAD</button>
-    <span id="oracleChip" class="oracle-chip" data-state="pending">oracle: pending</span>
+    <div class="tb-zone tb-nav">
+      <div id="viewSeg" class="view-seg" role="group" aria-label="view">
+        <button class="seg-btn" data-view="gantt" title="Feature timeline (Gantt)">▤ Timeline</button>
+        <button class="seg-btn" data-view="rail" title="Episode rail (what I did, in order)">◫ Rail</button>
+      </div>
+      <button id="compositionBtn" class="composition-btn">HEAD</button>
+    </div>
+    <div class="tb-divider"></div>
+    <div class="tb-zone tb-status">
+      <button id="oracleChip" class="oracle-chip" data-state="pending" title="oracle — click to run, alt-click to override">
+        <span class="oracle-dot"></span><span class="oracle-label">oracle</span>
+      </button>
+      <button id="plansChip" class="plans-chip" title="plan sessions — click for details">
+        <svg class="plans-ring" width="14" height="14" viewBox="-7 -7 14 14"></svg>
+        <span class="plans-label">Plans 0/0</span>
+      </button>
+      <span id="driftChip" class="drift-chip" hidden></span>
+    </div>
     <div id="titlebarActions" class="titlebar-actions">
-      <button id="saveBtn" title="sgt save">Save</button>
+      <button id="inspectorToggle" title="Hide detail panel">◧</button>
+      <button id="saveBtn" class="btn-primary" title="sgt save">Save</button>
       <button id="commitBtn" title="sgt commit">Commit</button>
       <button id="undoBtn" title="sgt undo">Undo</button>
     </div>
+    <div id="plansPopover" class="plans-popover" hidden></div>
   </div>
   <div id="main">
     <div id="rail"></div>
@@ -516,9 +534,10 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  // One non-interactive fold per feature selection, filtered to that feature's files by
-  // prefix-matching `MapNode.dir` -- `fold_view.files` has no feature attribution field, so this
-  // reuses the tree's existing `dir` rather than requesting a new API field ahead of need.
+  // One non-interactive fold per feature selection, filtered to that feature's files. Filtering by
+  // the majority-prefix `dir` alone drops the feature's own production files when its members span
+  // dirs (e.g. a leaf labeled by its test dir but owning `livehub/conflict.py`), leaving an empty
+  // panel; so union the member file-set (`MapNode.members`, `file::qualname`) with the dir prefix.
   private async requestFold(featureId: string, ref: string, seq: number): Promise<void> {
     let map;
     try {
@@ -531,8 +550,10 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     const frontier: FoldFrontier = { ref: ref || "HEAD" };
     try {
       const fold = await this.store.foldAt(frontier);
+      const memberFiles = new Set((node?.members || []).map((m) => m.split("::")[0]));
       const files = node
-        ? Object.fromEntries(Object.entries(fold.files || {}).filter(([path]) => path.startsWith(node.dir)))
+        ? Object.fromEntries(Object.entries(fold.files || {}).filter(
+            ([path]) => memberFiles.has(path) || path.startsWith(node.dir)))
         : fold.files;
       void this.view?.webview.postMessage({
         type: "foldResult",

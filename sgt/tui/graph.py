@@ -81,11 +81,18 @@ def graph_layout(
     # Visible lanes: a collapsed subsystem folds to one meta-lane (subtree aggregated); an expanded
     # subsystem contributes its feature descendants as lanes under a header; a feature is a lane.
     visible = []
+    seen: set[str] = set()
 
     def visit(node_id: str):
         node = by_id.get(node_id)
         if not node:
             return
+        # The map is a DAG: a feature can be a child of more than one subsystem, so the same node is
+        # reachable by multiple paths. Emit it once -- a duplicate lane shares an id, and the id-keyed
+        # `lane_by_id` would drop all but the last copy, leaving the earlier one without a row.
+        if node_id in seen:
+            return
+        seen.add(node_id)
         is_sub = node.get("kind") == "subsystem"
         if is_sub and node_id not in collapsed:
             for c in node.get("children") or []:

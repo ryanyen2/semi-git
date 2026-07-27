@@ -56,6 +56,24 @@ def test_only_features_with_ops_are_placed():
     assert {n["id"] for n in out["lanes"]} == {"A", "B"}
 
 
+def test_feature_shared_by_two_subsystems_is_one_rowed_lane():
+    # The map is a DAG: feature F is a child of both subsystems S1 and S2. The visibility walk
+    # reaches it via both, but it must resolve to a single lane -- a duplicate lane shares an id, and
+    # the id-keyed lane table would drop all but the last copy, leaving a stray lane with no `row`
+    # (which crashed render_graph_lines with KeyError: 'row').
+    m = {"roots": ["S1", "S2"],
+         "nodes": [_node("S1", None, ["F"], kind="subsystem"),
+                   _node("S2", None, ["F"], kind="subsystem"),
+                   _node("F", "S1", [])],
+         "edges": []}
+    grid = _grid(("F", 0), ("F", 3))
+    out = graph_layout(m, grid)
+    assert [l["id"] for l in out["lanes"]] == ["F"]  # exactly one lane, not two
+    assert all("row" in l for l in out["lanes"])  # every lane is placed
+    # The renderer that crashed with KeyError: 'row' now completes.
+    render_graph_lines(m, grid, color=False)
+
+
 def test_op_count_magnitude_and_span():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     out = graph_layout(m, _grid(("A", 3), ("A", 0), ("A", 1)))
