@@ -54,6 +54,12 @@ THETA = 0.5         # Greene member-overlap threshold for feature identity acros
 MIN_EDGE_SIGNAL = 0.1  # a leaf-pair cross-edge below this weight is noise, not a real coupling --
 # used only to detect a *gain*/*loss* of significant coupling between two previous leaves
 # (Phase 2's cross-edge dirtying trigger), not to threshold clustering itself.
+INTERNAL_DIRTY_FRAC = 0.25  # a previous leaf is internally dirty (should be re-clustered) when its
+# summed |Δw| over pairs internal to the leaf is >= this fraction of its old internal mass -- the
+# intra-leaf counterpart to the cross-edge trigger (plan §3.3). PROVISIONAL: swept in the harness.
+ABS_FLOOR = 0.5  # absolute floor for the internal-dirty trigger, so a small leaf with little
+# internal mass isn't marked dirty by sub-episode noise (≈ half a co-commit episode edge, scale
+# 1.0). Threshold = max(ABS_FLOOR, INTERNAL_DIRTY_FRAC × old internal mass). PROVISIONAL: swept.
 
 
 def _induced(fused: dict, member_set: set[str]) -> dict:
@@ -247,6 +253,33 @@ def _cross_edge_dirty_leaves(
         if (old_cross.get(pair, 0.0) >= threshold) != (new_cross.get(pair, 0.0) >= threshold):
             dirty.update(pair)
     return dirty
+
+
+def _internal_dirty_leaves(
+    old_leaf_of: dict[str, str], old_fused: dict, new_fused: dict,
+    frac: float = INTERNAL_DIRTY_FRAC, abs_floor: float = ABS_FLOOR,
+) -> set[str]:
+    """Previous leaves whose *internal* coupling changed significantly between the cached previous
+    fused graph and the current one: ``Σ_{pairs ⊆ L} |Δw| >= max(abs_floor, frac × Σ_{pairs ⊆ L}
+    w_old)`` (plan §3.3). Closes `_cross_edge_dirty_leaves`'s intra-leaf blindness -- a leaf whose
+    members re-coupled among themselves (so it should now split, or a stale sub-split should
+    dissolve) while its coupling to *other* leaves stayed the same. One pass over the union of both
+    graphs' edges; the temporal prior (§3.1) then keeps whatever re-cluster this triggers anchored
+    to the previous shape wherever the evidence still supports it."""
+    delta: dict[str, float] = defaultdict(float)         # Σ |Δw| over pairs internal to each leaf
+    old_internal: dict[str, float] = defaultdict(float)  # Σ w_old over pairs internal to each leaf
+    for pair in old_fused.keys() | new_fused.keys():
+        a, b = tuple(pair)
+        la, lb = old_leaf_of.get(a), old_leaf_of.get(b)
+        if la is None or la != lb:  # only pairs internal to one previous leaf
+            continue
+        w_old = old_fused.get(pair, 0.0)
+        delta[la] += abs(new_fused.get(pair, 0.0) - w_old)
+        old_internal[la] += w_old
+    return {
+        leaf for leaf, d in delta.items()
+        if d >= max(abs_floor, frac * old_internal.get(leaf, 0.0))
+    }
 
 
 def _dirty_subdivide(
@@ -562,11 +595,13 @@ def build(
     real_adj = _adjacency(fused)  # per-real-member weights: cannot-link's reassignment choice, and
     # `_dirty_subdivide`'s new-member-attachment choice below.
 
-    # A signal-recipe change (cluster.SIGNALS_VERSION) forces one full recluster: dirty-subtree
-    # splicing carries a previous leaf through verbatim on unchanged membership, so it can't tell
-    # that a leaf should now split *internally* under the new signals (cross-edge dirtying only
-    # sees coupling *between* existing leaves). Greene identity below still carries feature ids
-    # across the rebuild wherever members overlap, so this migration doesn't churn ids.
+    # A signal-recipe change (cluster.SIGNALS_VERSION) triggers one full re-optimization rather than
+    # a splice: dirty-subtree splicing carries a previous leaf through verbatim on unchanged
+    # membership, so it can't tell that a leaf should now split *internally* under the new signals.
+    # This is *prior-guided* (α as normal, Phase C/§8), not cold -- the temporal prior anchors the
+    # re-cluster to the previous shape wherever the new evidence still supports it, retiring the old
+    # "signal bump ⇒ id-safe but shape-amnesiac tree" behavior. Greene identity below still carries
+    # feature ids across the rebuild wherever members overlap. `force_rebuild` alone stays cold (α=0).
     stale_signals = previous is not None and previous.get("signals_version") != cluster.SIGNALS_VERSION
     if force_rebuild or stale_signals:
         root = _resplit_real(all_nodes, fused, pins, 0, max_depth, prior_leaf_of=prior_leaf_of, alpha=alpha)
@@ -641,7 +676,9 @@ def _build_root(
     fingerprint = _tree_fingerprint(previous_nodes)
     old_fused = _load_fused_snapshot(repo, fingerprint)
     dirty_leaves = (
-        _cross_edge_dirty_leaves(old_leaf_of, old_fused, fused) if old_fused is not None else set()
+        _cross_edge_dirty_leaves(old_leaf_of, old_fused, fused)
+        | _internal_dirty_leaves(old_leaf_of, old_fused, fused)  # Phase C: intra-leaf delta trigger
+        if old_fused is not None else set()
     )
     prev_root_id = previous["roots"][0] if previous.get("roots") else None
     return _dirty_subdivide(
