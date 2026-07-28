@@ -43,6 +43,18 @@ def _label_context(repo: Path, ops: list, result: dict) -> tuple[dict, dict]:
     return subjects_by_leaf, kinds_by_leaf
 
 
+def _op_touch_weights(ops: list) -> dict[str, float]:
+    """Per-symbol op-touch count: how many mined ops list this symbol in their footprint. Feeds
+    the weighted-Jaccard drift budget for graded label reuse (§3.2) so a label follows the
+    feature's center of historical mass, not its raw symbol count -- dropping one heavily-worked
+    symbol should cost more than dropping a one-touch residue segment."""
+    w: Counter = Counter()
+    for op in ops:
+        for sym in op.footprint:
+            w[sym] += 1
+    return dict(w)
+
+
 def build_map(repo: str | Path, rebuild: bool = False) -> dict:
     """Cluster every alive symbol over the fused coupling graph (`tree.build`, carrying feature
     identity across runs via Greene matching against the last committed tree and honoring
@@ -58,7 +70,8 @@ def build_map(repo: str | Path, rebuild: bool = False) -> dict:
     result = tree.build(repo, ops, ideal, force_rebuild=rebuild, refresh_caches=True)
     subjects_by_leaf, kinds_by_leaf = _label_context(repo, ops, result)
     labeler = tree.label_tree(
-        result, repo, subjects_by_leaf=subjects_by_leaf, kinds_by_leaf=kinds_by_leaf
+        result, repo, subjects_by_leaf=subjects_by_leaf, kinds_by_leaf=kinds_by_leaf,
+        weights=_op_touch_weights(ops),
     )
     labeler.save()  # persist the member-hash label cache so an unchanged cluster never re-pays
     # the (non-deterministic) LLM call on the next build -- without this the cache is rebuilt cold

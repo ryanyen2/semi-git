@@ -909,7 +909,7 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
 def label_tree(
     result: dict, repo: str | Path = ".", labeler=None,
     subjects_by_leaf: dict[str, list[str]] | None = None, pins: Pins | None = None,
-    kinds_by_leaf: dict[str, str] | None = None,
+    kinds_by_leaf: dict[str, str] | None = None, weights: dict[str, float] | None = None,
 ) -> object:
     """Label every node bottom-up (leaves from members, a single-child node reuses its child's
     label, an internal node from its children's labels), then DEDUP. Mutates `result` in place:
@@ -917,7 +917,10 @@ def label_tree(
     leaf a merge removed. Returns the `Labeler` (for `cost_line()` / `save()`).
 
     Labeling is intentionally separate from `build` so the tree exists deterministically offline;
-    the labeler carries its own member-hash cache and deterministic fallback (`sgt.lens.label`).
+    the labeler carries its own cache and deterministic fallback (`sgt.lens.label`). Leaf labels
+    are cached by feature id with graded, generation-anchored reuse (`weights` = op-touch counts
+    used for the weighted-Jaccard drift budget; None ⇒ unit weights), so a small membership change
+    keeps the name instead of forcing a fresh LLM call (§3.2).
 
     Runs level-by-level bottom-up (a node is only labeled once every child already is), but *all*
     nodes ready in the same wave -- across every root, leaves and multi-child subsystems alike --
@@ -949,7 +952,8 @@ def label_tree(
             nd = nodes[nid]
             if not nd["children"]:
                 batch.append((nid, labeler.leaf_request(
-                    nd["members"], subjects_by_leaf.get(nid), kinds_by_leaf.get(nid))))
+                    nid, nd["members"], weights,
+                    subjects_by_leaf.get(nid), kinds_by_leaf.get(nid))))
             elif len(nd["children"]) == 1:
                 only = nodes[nd["children"][0]]
                 nd["label"], nd["why"] = only["label"], only["why"]

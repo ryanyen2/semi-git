@@ -28,6 +28,25 @@ MAX_MEMBERS = 24
 MAX_SUBJECTS = 6
 MAX_BATCH = 8  # cluster-naming requests per `responses.parse` call in `label_many`
 MAX_WORKERS = 6  # concurrent batches in flight -- network-bound, bounded to be a considerate API citizen
+TAU_LABEL = 0.5  # weighted-Jaccard drift budget for reusing a leaf's LLM label (plan §3.2). A
+# feature keeps its cached name across a re-cluster while the current member set stays within this
+# much drift of the set the label was GENERATED on -- not the previous snapshot: anchoring at the
+# generation set bounds cumulative drift (the ship-of-Theseus lemma), and each relabel resets the
+# anchor. Aligned with Greene θ: identity continuation and name continuation share a notion of
+# "still the same thing". Swept in the harness (§5).
+
+
+def _weighted_jaccard(a: set[str], b: set[str], weights: dict[str, float]) -> float:
+    """``J_w(A,B) = Σ_{x∈A∩B} w(x) / Σ_{x∈A∪B} w(x)``, ``w(x)`` = op-touch count of symbol x
+    (default 1 when absent) -- so the label follows the feature's center of historical mass, not
+    its raw symbol count. Two empty sets are identical (1.0)."""
+    union = a | b
+    if not union:
+        return 1.0
+    den = sum(weights.get(x, 1.0) for x in union)
+    if den <= 0:
+        return 1.0
+    return sum(weights.get(x, 1.0) for x in (a & b)) / den
 
 
 class FeatureLabel(BaseModel):
@@ -230,32 +249,70 @@ class Labeler:
         return self._resolve(key, _super_prompt(child_labels, files), [*child_labels, *files])
 
     def leaf_request(
-        self, members: list[str], subjects: list[str] | None = None, kinds: str | None = None,
-    ) -> tuple[str, str, list[str]]:
-        """``(key, prompt, fallback_members)`` for `label_many` -- the exact key/prompt `label()`
-        would use for a solo call, so a batched result caches identically to an unbatched one.
-        The cache key is the member-set hash only; `subjects`/`kinds` enrich the prompt but a
-        recluster (new member-set) is what busts the cache to pick up an enriched label."""
-        return _key(members), _leaf_prompt(members, subjects, kinds), members
+        self, feature_id: str, members: list[str], weights: dict[str, float] | None = None,
+        subjects: list[str] | None = None, kinds: str | None = None,
+    ) -> tuple[str, str, list[str], dict[str, float]]:
+        """``(key, prompt, members, weights)`` for `label_many`. The cache key is the FEATURE ID
+        (leaf node ids are feature ids at `label_tree` time), so an unchanged feature keeps its
+        cache entry across a re-cluster even when a member is added/dropped -- reuse is graded by
+        weighted-Jaccard drift from the generation-time member set (§3.2), not exact member-set
+        match. `weights` (op-touch counts) grades that drift; a dict (even empty) marks this a leaf
+        entry, ``None`` becomes unit weights. `subjects`/`kinds` enrich the prompt."""
+        return feature_id, _leaf_prompt(members, subjects, kinds), members, dict(weights or {})
 
-    def super_request(self, child_labels: list[str], files: list[str]) -> tuple[str, str, list[str]]:
-        """``(key, prompt, fallback_members)`` for `label_many` -- mirrors `label_super()`."""
+    def super_request(
+        self, child_labels: list[str], files: list[str],
+    ) -> tuple[str, str, list[str], None]:
+        """``(key, prompt, members, None)`` for `label_many` -- content-keyed exact reuse, mirrors
+        `label_super()`. The ``None`` weights slot marks a super entry (no graded drift budget):
+        stabilizing leaf labels stabilizes the super cascade for free (super keys are child labels)."""
         key = _key(["\x01super", *child_labels, *files])
-        return key, _super_prompt(child_labels, files), [*child_labels, *files]
+        return key, _super_prompt(child_labels, files), [*child_labels, *files], None
 
-    def label_many(self, entries: list[tuple[str, str, list[str]]]) -> list[FeatureLabel]:
-        """Resolve many ``(key, prompt, fallback_members)`` triples -- built by `leaf_request`/
+    def _cache_lookup(
+        self, key: str, members: list[str], weights: dict[str, float] | None,
+    ) -> FeatureLabel | None:
+        """The reusable cached label for one `label_many` entry, or ``None`` to (re)compute.
+        A `fallback`-sourced entry is never reused (retry-on-next-client, unchanged). A super entry
+        (`weights is None`) reuses on exact-key match. A leaf entry reuses iff the current member
+        set is within `TAU_LABEL` weighted-Jaccard drift of the generation-time set the label was
+        earned on. On a leaf miss with no id-keyed entry, a legacy member-hash entry is adopted
+        as this feature's generation point without an LLM call (lazy re-key). Mutates the cache
+        only on that adoption; called single-threaded before the batch pool starts."""
+        cached = self.cache.get(key)
+        if cached is not None and cached.get("source") == "llm":
+            if weights is None:  # super: content-keyed, exact match is identity
+                return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
+            gen = cached.get("gen_members")
+            if gen is None or _weighted_jaccard(set(members), set(gen), weights) >= TAU_LABEL:
+                return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
+            return None  # drifted past the budget -> force a relabel (resets the anchor)
+        if cached is None and weights is not None:  # leaf miss: try the pre-graded member-hash key
+            legacy = self.cache.get(_key(members))
+            if legacy is not None and legacy.get("source") == "llm":
+                self.cache[key] = {
+                    "label": legacy["label"], "rationale": legacy["rationale"], "source": "llm",
+                    "gen_members": sorted(members), "member_hash": _key(members),
+                }
+                return FeatureLabel(label=legacy["label"], rationale=legacy["rationale"])
+        return None
+
+    def label_many(
+        self, entries: list[tuple[str, str, list[str], dict[str, float] | None]],
+    ) -> list[FeatureLabel]:
+        """Resolve many ``(key, prompt, members, weights)`` entries -- built by `leaf_request`/
         `super_request` -- batching cache misses (`MAX_BATCH` per `responses.parse` call) and
         running the batches concurrently (`ThreadPoolExecutor`; network-bound, releases the GIL).
-        Cache hits are served locally with zero network calls, same as `label`/`label_super`. A
-        batch item the model drops or misindexes gets the same deterministic fallback a solo call
-        would use on failure -- one bad item never fails the whole batch."""
+        Cache hits are served locally with zero network calls; leaf reuse is graded (`_cache_lookup`,
+        §3.2) so a small membership drift keeps the name. A batch item the model drops or misindexes
+        gets the same deterministic fallback a solo call would use -- one bad item never fails the
+        whole batch."""
         results: list[FeatureLabel | None] = [None] * len(entries)
         misses: list[int] = []
-        for i, (key, _prompt, _members) in enumerate(entries):
-            cached = self.cache.get(key)
-            if cached is not None and cached.get("source") == "llm":
-                results[i] = FeatureLabel(label=cached["label"], rationale=cached["rationale"])
+        for i, (key, _prompt, members, weights) in enumerate(entries):
+            hit = self._cache_lookup(key, members, weights)
+            if hit is not None:
+                results[i] = hit
             else:
                 misses.append(i)
         if not misses:
@@ -271,13 +328,17 @@ class Labeler:
                 self._note_failure(e)
                 batch_out = [None] * len(prompts)
             for local_i, global_i in enumerate(batch_idx):
-                key, _prompt, members = entries[global_i]
+                key, _prompt, members, weights = entries[global_i]
                 out = batch_out[local_i]
                 source = "llm"
                 if out is None:
                     out, source = _fallback_label(members), "fallback"
+                entry = {**out.model_dump(), "source": source}
+                if weights is not None:  # leaf: anchor the drift budget at this generation
+                    entry["gen_members"] = sorted(members)
+                    entry["member_hash"] = _key(members)
                 with self._lock:
-                    self.cache[key] = {**out.model_dump(), "source": source}
+                    self.cache[key] = entry
                 results[global_i] = out
 
         with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(batches))) as pool:
