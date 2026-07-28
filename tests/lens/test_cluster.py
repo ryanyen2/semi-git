@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from itertools import product
+from math import comb
+
 from sgt.core.lens import get
 from sgt.core.op import make_op
 from sgt.core.store import Store
@@ -158,3 +161,103 @@ def test_leiden_splits_two_disjoint_dense_pairs_into_two_communities():
 def test_dominant_dir_picks_most_common_two_segment_prefix():
     members = ["sgt/core/op.py::Op", "sgt/core/ideal.py::Ideal", "sgt/entities/graph.py::EntityGraph"]
     assert cluster._dominant_dir(members) == "sgt/core"
+
+
+# --- Phase B temporal prior (plan §3.1 / §5 pinned tests) ---------------------------------------
+
+def _set_partitions(items):
+    """Every set partition of `items` (Bell(n) of them) -- the brute-force universe the augmented-
+    CPM lemma is checked against. n<=8 keeps Bell(n) tractable (Bell(6)=203)."""
+    if not items:
+        yield []
+        return
+    first, rest = items[0], items[1:]
+    for parts in _set_partitions(rest):
+        for i in range(len(parts)):
+            yield parts[:i] + [[first] + parts[i]] + parts[i + 1:]
+        yield [[first]] + parts
+
+
+def _cpm_objective(partition, edges, size_of, gamma):
+    """CPM objective from first principles (NOT leidenalg's normalized `quality()`): within-community
+    edge weight minus gamma times the size-penalty sum(binom(sum node_sizes, 2)). Computed by hand so
+    the lemma is a pure arithmetic identity about the graph `_augment_with_prior` builds -- an anchor
+    of node_size 0 contributes to the edge term but never the penalty, which is the whole point."""
+    comm_of = {n: i for i, c in enumerate(partition) for n in c}
+    within = sum(w for e, w in edges.items() if len({comm_of[x] for x in e}) == 1)
+    penalty = gamma * sum(comb(sum(size_of[n] for n in c), 2) for c in partition)
+    return within - penalty
+
+
+def test_augment_with_prior_places_one_size_zero_anchor_per_reused_leaf():
+    """Structural guard (plan §3.1, Risks row "leidenalg changes node_sizes=0 behavior"): one anchor
+    per previous leaf with >= 2 survivors, edge weight ω = alpha x mean positive induced weight to
+    each survivor, node_size 0 (no CPM size penalty), a lone survivor gets no anchor, and alpha<=0
+    returns the graph unaugmented."""
+    members = ["m0", "m1", "m2", "m3", "m4"]
+    induced = {frozenset(("m0", "m1")): 2.0, frozenset(("m1", "m2")): 4.0}
+    prior = {"m0": "L1", "m1": "L1", "m2": "L1", "m3": "L2", "m4": "L3"}  # L2/L3 lone -> no anchor
+    omega = 0.5 * (2.0 + 4.0) / 2  # alpha x mean positive induced weight
+
+    aug_nodes, aug_edges, node_sizes, anchor_ids = cluster._augment_with_prior(members, induced, prior, 0.5)
+    size_of = dict(zip(aug_nodes, node_sizes))
+
+    assert anchor_ids == ["__prioranchor__::L1"]  # only L1 has >= 2 survivors; sorted, deterministic
+    anchor = anchor_ids[0]
+    assert size_of[anchor] == 0  # zero-size => no CPM size penalty (the size-neutrality construction)
+    assert all(size_of[m] == 1 for m in members)
+    assert {m: aug_edges[frozenset((anchor, m))] for m in ("m0", "m1", "m2")} == {
+        "m0": omega, "m1": omega, "m2": omega}
+    assert frozenset((anchor, "m3")) not in aug_edges  # anchor only bridges its own leaf's survivors
+
+    # alpha <= 0 => omega 0 => the graph is returned exactly as given, no anchors.
+    n2, e2, s2, a2 = cluster._augment_with_prior(members, induced, prior, 0.0)
+    assert n2 == members and e2 == induced and s2 == [1] * len(members) and a2 == []
+
+
+def test_augmented_cpm_optimum_equals_cpm_plus_omega_plurality():
+    """The §5 lemma, brute-forced over every partition of a 6-node graph: the augmented-CPM optimum
+    (best placement of each zero-size anchor given a fixed real partition P) equals
+    CPM(P) + ω x Σ_L max_c |L ∩ c|. The identity holds *at a nonzero resolution* only because anchors
+    carry no size penalty -- so this simultaneously pins the plurality lemma and anchor size-neutrality.
+    Anchor placement is itself brute-forced (every community or its own singleton), confirming the
+    plurality community is the optimum rather than assuming it."""
+    members = ["m0", "m1", "m2", "m3", "m4", "m5"]
+    induced = {
+        frozenset(("m0", "m1")): 3.0, frozenset(("m1", "m2")): 2.0,
+        frozenset(("m3", "m4")): 4.0, frozenset(("m4", "m5")): 1.0,
+        frozenset(("m0", "m3")): 0.5,
+    }
+    prior = {"m0": "L1", "m1": "L1", "m2": "L1", "m3": "L2", "m4": "L2", "m5": "L3"}
+    alpha, gamma = 0.5, 0.3
+    positives = [w for w in induced.values() if w > 0]
+    omega = alpha * sum(positives) / len(positives)
+    reused = [L for L in set(prior.values()) if sum(v == L for v in prior.values()) >= 2]
+
+    aug_nodes, aug_edges, node_sizes, anchor_ids = cluster._augment_with_prior(members, induced, prior, alpha)
+    aug_size_of = dict(zip(aug_nodes, node_sizes))
+
+    checked = 0
+    for P in _set_partitions(members):
+        cpm_p = _cpm_objective(P, induced, {m: 1 for m in members}, gamma)
+        plurality = sum(omega * max(sum(prior.get(m) == L for m in c) for c in P) for L in reused)
+        # brute-force every anchor placement: into one of P's communities, or its own singleton.
+        best_aug = max(
+            _augmented_value(P, anchor_ids, aug_edges, aug_size_of, gamma, placement)
+            for placement in product(range(len(P) + 1), repeat=len(anchor_ids))
+        )
+        assert abs(best_aug - (cpm_p + plurality)) < 1e-9, (P, best_aug, cpm_p, plurality)
+        checked += 1
+    assert checked == 203  # Bell(6) -- every partition exercised
+
+
+def _augmented_value(P, anchor_ids, aug_edges, size_of, gamma, placement):
+    """CPM objective of the augmented graph for real partition `P` with each anchor placed per
+    `placement` (community index in range(len(P)), or len(P) meaning its own singleton)."""
+    aug_part = [list(c) for c in P]
+    for anchor, choice in zip(anchor_ids, placement):
+        if choice == len(P):
+            aug_part.append([anchor])
+        else:
+            aug_part[choice].append(anchor)
+    return _cpm_objective(aug_part, aug_edges, size_of, gamma)

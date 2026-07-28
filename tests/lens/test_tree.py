@@ -58,6 +58,54 @@ def test_split_once_refuses_a_single_cohesive_clique():
     assert result.reason == "stop_split"
 
 
+def test_alpha_zero_prior_is_byte_identical_to_the_prior_free_split():
+    """§5 pinned: passing a temporal prior at `alpha=0` takes the exact pre-Phase-B code path
+    (`use_prior` is False), so the split is byte-identical to today's prior-free build. This is the
+    guarantee that shipping the prior at α=0 changes nothing until a nonzero α is chosen."""
+    members, fused = _clique_graph(num_cliques=6, clique_size=5)
+    adj = tree._adjacency(fused)
+    prior = {m: "L0" for m in members}  # a nontrivial prior that must have no effect at alpha=0
+
+    prior_free = tree._split_once(members, fused, adj)
+    with_prior_alpha0 = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=0.0)
+
+    assert with_prior_alpha0.groups == prior_free.groups
+    assert with_prior_alpha0.reason == prior_free.reason
+
+
+def test_prior_strength_drives_a_monotone_split_to_hold_phase_transition():
+    """§5 pinned (anchor size-neutrality + phase-transition, promoting the 2026-07-28 scratchpad):
+    six disjoint cliques that were previously one leaf. At α=0 the data wins and shatters the leaf
+    into its cliques; as α rises the prior anchor resists the split, and the child count falls
+    monotonically until the leaf holds together entirely (`stop_split`). A single monotone transition
+    from data-optimal to prior-preserving -- not a gradual smear, and never *more* groups than α=0."""
+    members, fused = _clique_graph(num_cliques=6, clique_size=4)
+    adj = tree._adjacency(fused)
+    prior = {m: "L0" for m in members}  # all six cliques were one leaf last build
+
+    counts = []
+    for alpha in (0.0, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0):
+        r = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=alpha)
+        counts.append(0 if r.groups is None else len(r.groups))
+
+    assert counts[0] == 6                                  # α=0: the data optimum, fully shattered
+    assert counts[-1] == 0                                 # strong prior: the leaf holds (stop_split)
+    assert counts == sorted(counts, reverse=True)          # monotone non-increasing in α
+
+
+def test_prior_guided_split_is_deterministic():
+    """§5 pinned: a prior-augmented split (fixed SEED, warm start) is byte-identical across repeated
+    runs -- a rebuild never flickers the tree from clustering nondeterminism."""
+    members, fused = _clique_graph(num_cliques=6, clique_size=5)
+    adj = tree._adjacency(fused)
+    prior = {m: f"L{i // 5}" for i, m in enumerate(members)}  # each clique its own previous leaf
+
+    a = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=0.25)
+    b = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=0.25)
+
+    assert a.groups == b.groups and a.reason == b.reason
+
+
 def test_attach_orphans_folds_sub_min_cluster_into_most_coupled_sibling():
     big = [["a", "b", "c", "d"], ["e", "f", "g", "h"]]
     orphan = ["x"]
