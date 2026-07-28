@@ -73,6 +73,22 @@ def _run_line(run: Run, by_id, prompt_for) -> str:
             f"nov={run.novelty:.2f} | {sym_txt}{prompt_txt}")
 
 
+def _split_window(runs: list[Run], record: list[dict] | None) -> tuple[list[dict], list[Run]]:
+    """Split a feature's chronological runs into `(frozen_prefix, window)` for the incremental tail
+    re-cut (§3.4). An intent chapter is a claim about a *past* stretch, and future commits are not
+    evidence about it, so every committed chapter but the last is frozen verbatim; only the last
+    persisted chapter plus any newer commits (the `window`) is live and re-cut. A record with fewer
+    than two chapters freezes nothing -- the whole feature is the window (a first build, or a single
+    remaining chapter). `MAX_RUNS` then applies to the window, not the whole timeline, so a long-
+    lived feature keeps getting LLM segmentation instead of falling back."""
+    if not record or len(record) < 2:
+        return [], runs
+    frozen = record[:-1]
+    frozen_shas = {sha for entry in frozen for sha in entry.get("commit_shas", [])}
+    window = [r for r in runs if r.commit_sha not in frozen_shas]  # last chapter + newer commits
+    return frozen, window
+
+
 def _coalesce(runs: list[Run], run_label: dict[str, tuple[str, str]]) -> list[dict]:
     """Turn a per-run label assignment into contiguous, non-overlapping, total segment records
     (chronological). Consecutive runs carrying the *same* label coalesce into one chapter; a label
@@ -116,13 +132,15 @@ class SegmentThemer:
             self.tokens_out += r.usage.output_tokens
         return r.output_parsed
 
-    def segment_feature(self, feature_label: str, runs: list[Run], by_id, prompt_for) -> list[dict]:
+    def segment_feature(self, feature_label: str, runs: list[Run], by_id, prompt_for,
+                        record: list[dict] | None = None) -> list[dict]:
         """Cut+name one feature's runs into contiguous chapter records -- the single-feature form of
         `segment_features`, which is the one source of truth for the single-run / over-`MAX_RUNS` /
         cache-hit / LLM-cut / offline-fallback handling (so the two can't drift). A multi-run feature
         gets one cached LLM call that groups consecutive runs and names each; the grouping is
-        validated (shown shas only) and coalesced into contiguous blocks."""
-        return self.segment_features([(feature_label, runs)], by_id, prompt_for)[0]
+        validated (shown shas only) and coalesced into contiguous blocks. `record` is the feature's
+        previous persisted entry (`None` re-cuts the whole feature)."""
+        return self.segment_features([(feature_label, runs)], by_id, prompt_for, [record])[0]
 
     def _segment_compute(self, feature_label: str, runs: list[Run], by_id, prompt_for) -> tuple[list[dict], str]:
         """One multi-run feature's LLM cut + validation, returning ``(records, source)`` WITHOUT
@@ -148,36 +166,47 @@ class SegmentThemer:
         except Exception:
             return self._fallback(runs), "fallback"
 
-    def segment_features(self, items: list[tuple[str, list[Run]]], by_id, prompt_for) -> list[list[dict]]:
+    def segment_features(self, items: list[tuple[str, list[Run]]], by_id, prompt_for,
+                        prior_records: list[list[dict] | None] | None = None) -> list[list[dict]]:
         """Resolve many features' chapter records at once (the `build_segments` hot loop, and the
         shared implementation `segment_feature` delegates to for one). Single-run features,
         over-`MAX_RUNS` features, and cache hits are served inline with zero network; the remaining
         multi-run cuts run their LLM calls concurrently (`ThreadPoolExecutor`, network-bound), then
         each result is written to the cache sequentially in this thread (the cache isn't
-        thread-safe). Records are kept in input order."""
+        thread-safe). Records are kept in input order.
+
+        `prior_records[i]` (aligned with `items`, `None` = re-cut whole) drives the §3.4 incremental
+        tail re-cut: `_split_window` freezes every chapter but the last, and only the live window is
+        cut/cached (`_feature_key` of the *window*, not the whole timeline) and then re-joined onto
+        the frozen prefix. So an unchanged prefix never re-pays, every `pin_key`/`@n` below the tail
+        survives by construction, and `MAX_RUNS` bounds the window rather than the timeline."""
+        prior_records = prior_records or [None] * len(items)
         results: list[list[dict] | None] = [None] * len(items)
+        split: list[tuple[list[dict], list[Run]]] = [([], [])] * len(items)
         keys: list[str | None] = [None] * len(items)
         misses: list[int] = []
         for i, (_label, runs) in enumerate(items):
-            if len(runs) <= 1 or len(runs) > MAX_RUNS:
-                results[i] = self._fallback(runs)
+            frozen, window = _split_window(runs, prior_records[i])
+            split[i] = (frozen, window)
+            if len(window) <= 1 or len(window) > MAX_RUNS:
+                results[i] = frozen + self._fallback(window)
                 continue
-            key = "\x02seg-" + _feature_key(runs)
+            key = "\x02seg-" + _feature_key(window)
             keys[i] = key
             cached = self.cache.get(key)
             if cached is not None and cached.get("source") == "llm":
-                results[i] = cached["records"]
+                results[i] = frozen + cached["records"]
             else:
                 misses.append(i)
 
         if misses:
             with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(misses))) as pool:
                 computed = list(pool.map(
-                    lambda i: self._segment_compute(items[i][0], items[i][1], by_id, prompt_for), misses,
+                    lambda i: self._segment_compute(items[i][0], split[i][1], by_id, prompt_for), misses,
                 ))
             for i, (records, source) in zip(misses, computed):
                 self.cache[keys[i]] = {"source": source, "records": records}
-                results[i] = records
+                results[i] = split[i][0] + records
         return results  # type: ignore[return-value]
 
     def _validate(self, plan: SegmentPlan, runs: list[Run]) -> list[dict]:
@@ -222,16 +251,41 @@ class SegmentThemer:
                 f"tokens (~${est:.4f})")
 
 
-def build_segments(repo: str | Path) -> dict[str, list[dict]]:
+def _resolve_recut(spec: str | None, nodes: dict) -> set[str]:
+    """Resolve `sgt intent build --recut <feature>`'s feature spec to the leaf feature ids whose
+    whole timeline should be re-cut (freezing nothing). Matches a feature id exactly, else a unique
+    id *prefix* (`f-`-prefixed or the bare hex the graph prints), else a case-insensitive feature
+    label -- the same resolution `resolve_checkpoint` uses. An unresolved/ambiguous spec re-cuts
+    nothing (the incremental tail path stays in effect); `None` re-cuts nothing."""
+    if not spec:
+        return set()
+    leaves = {nid for nid, nd in nodes.items() if not nd.get("children")}
+    if spec in leaves:
+        return {spec}
+    hits = [nid for nid in leaves if nid.startswith(spec) or nid.startswith("f-" + spec)]
+    if len(hits) == 1:
+        return set(hits)
+    want = spec.strip().lower()
+    labels = [nid for nid in leaves if nodes[nid].get("label", "").strip().lower() == want]
+    return set(labels) if len(labels) == 1 else set()
+
+
+def build_segments(repo: str | Path, recut: str | None = None) -> dict[str, list[dict]]:
     """The segmentation write path (mirrors `theme.build_themes` and `map.build_map`): cut+name
     every feature's runs (rung 2, `SegmentThemer`) and persist to committed
     `.sgt/intent/segments.json` -- `{feature_id: [{commit_shas, label, rationale, source}]}`.
     Only the boundary+label decision is stored; op membership is re-derived on read (KTD6).
 
+    Incremental by default (§3.4): each feature's previous persisted record freezes all but its last
+    chapter, so only the live tail window is re-cut/re-named and every checkpoint below it survives
+    a rebuild by construction. `recut=<feature spec>` (the `--recut` escape hatch, mirroring
+    `sgt map --rebuild`) re-cuts one whole feature from scratch when the frozen history itself needs
+    reinterpreting.
+
     Like `build_themes`, deliberately NOT auto-triggered by sync/land: it needs
     `GitBinding.history()`, which only reflects merged history once the merge commit exists.
     Rebuilt on demand (`sgt intent build`). Content-hash caching keeps a re-build cheap -- an
-    unchanged feature hits the cache; only a feature with new commits costs a live call."""
+    unchanged tail window hits the cache; only a feature with new commits costs a live call."""
     from sgt.core.store import Store
     from sgt.intent.prompts import prompt_for as _prompt_for
     from sgt.lens.tree import load as load_tree
@@ -249,7 +303,11 @@ def build_segments(repo: str | Path) -> dict[str, list[dict]]:
     themer = SegmentThemer(repo)
     fids = sorted(runs_by_feature)
     items = [(nodes.get(fid, {}).get("label", fid), runs_by_feature[fid]) for fid in fids]
-    out: dict[str, list[dict]] = dict(zip(fids, themer.segment_features(items, by_id, prompt_for)))
+    prior = state.load_json(repo, "intent_segments", default={})
+    recut_ids = _resolve_recut(recut, nodes)
+    prior_records = [None if fid in recut_ids else prior.get(fid) for fid in fids]
+    out: dict[str, list[dict]] = dict(zip(
+        fids, themer.segment_features(items, by_id, prompt_for, prior_records)))
     themer.save()
     state.save_json_if_changed(repo, "intent_segments", out)
     return out

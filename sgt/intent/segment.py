@@ -52,6 +52,12 @@ MAX_SEGMENTS = 6     # soft cap: past this, offline segmentation merges its weak
 # the deterministic rung was already median-1 car/feature, but the handful of features that did hit
 # the old cap (8) read as a wall of cars in the timeline; 6 keeps every lane focus-mode-scannable
 # without touching the boundary weights that drive the (already healthy) common case.
+SEAM_BONUS = 0.5     # (η, plan §3.4) hysteresis added to a seam that already starts a chapter in the
+# persisted record, so the deterministic re-cut prefers to *keep* a boundary it drew last time. It
+# is strictly below `CUT_THRESHOLD`, so it can only preserve a boundary hovering near threshold,
+# never invent one -- and it survives `_cap_cuts` re-ranking (a previously-kept seam scores higher
+# and is strictly less likely to be dropped as the weakest). PROVISIONAL: the boundary-flicker
+# sweep (§5) is deferred; 0.5 (half the cut threshold) is the shipping default pending it.
 
 
 @dataclass(frozen=True)
@@ -163,28 +169,33 @@ def feature_runs(repo: str | Path, op_leaf: dict[str, str]) -> dict[str, list[Ru
     return runs
 
 
-def _boundary_score(a: Run, b: Run) -> float:
+def _boundary_score(a: Run, b: Run, prior_boundaries: frozenset[str] = frozenset()) -> float:
     """How strongly runs `a` -> `b` (consecutive in one feature) should be cut apart. Scope shift
     and a dormancy gap are full boundaries; a novel `b` opens a chapter proportional to how much
-    new behavior it introduces. A same-scope, no-gap, modify-only `b` scores 0 and merges."""
+    new behavior it introduces. A same-scope, no-gap, modify-only `b` scores 0 and merges. A seam
+    whose `b` already *started a chapter* in the persisted record gets `SEAM_BONUS` -- pure
+    hysteresis (§3.4), sub-threshold, so it can only keep a near-threshold boundary, never add one."""
     score = 0.0
     if a.scope and b.scope and a.scope != b.scope:
         score += W_SCOPE
     if (b.commit_index - a.commit_index) >= GAP_THRESHOLD:
         score += W_GAP
     score += b.novelty * W_NOVELTY
+    if b.commit_sha in prior_boundaries:
+        score += SEAM_BONUS
     return score
 
 
-def _cut_points(runs: list[Run]) -> list[int]:
+def _cut_points(runs: list[Run], prior_boundaries: frozenset[str] = frozenset()) -> list[int]:
     """Indices `k` (1..len-1) where run `k` starts a new segment, cheapest-seam-first capped at
     `MAX_SEGMENTS`. First collects every seam scoring >= `CUT_THRESHOLD`; if that leaves too many
     segments, drops the lowest-scoring seams until within the cap (a long-lived feature stays
     readable offline). Deterministic: ties spread evenly (`_cap_cuts`) rather than broken by
     commit-index, so a pathological feature where every seam ties (e.g. every commit its own
     scope) merges into a few evenly-sized cars, not a wall of untouched singles plus one lopsided
-    blob at whichever end commit-index ordering favored."""
-    seams = [(i, _boundary_score(runs[i - 1], runs[i])) for i in range(1, len(runs))]
+    blob at whichever end commit-index ordering favored. `prior_boundaries` (persisted chapter
+    starts) biases the score toward keeping last build's boundaries (§3.4 hysteresis)."""
+    seams = [(i, _boundary_score(runs[i - 1], runs[i], prior_boundaries)) for i in range(1, len(runs))]
     cuts = [i for i, s in seams if s >= CUT_THRESHOLD]
     if len(cuts) + 1 > MAX_SEGMENTS:
         cuts = _cap_cuts(cuts, dict(seams), MAX_SEGMENTS - 1)
@@ -244,13 +255,13 @@ def _segment_label(runs: list[Run]) -> tuple[str, str]:
     return label, rationale
 
 
-def _partition_runs(runs: list[Run]) -> list[list[Run]]:
+def _partition_runs(runs: list[Run], prior_boundaries: frozenset[str] = frozenset()) -> list[list[Run]]:
     """Group chronological runs into contiguous chunks at `_cut_points`' boundaries -- the capped
     partition both `segment_runs` and `overlay_persisted`'s un-persisted tail share, so `MAX_SEGMENTS`
     bounds a feature's segment count the same way regardless of which path produced the runs."""
     if not runs:
         return []
-    cuts = set(_cut_points(runs))
+    cuts = set(_cut_points(runs, prior_boundaries))
     groups: list[list[Run]] = []
     current: list[Run] = []
     for i, run in enumerate(runs):
@@ -263,12 +274,13 @@ def _partition_runs(runs: list[Run]) -> list[list[Run]]:
     return groups
 
 
-def segment_runs(runs: list[Run]) -> list[Segment]:
+def segment_runs(runs: list[Run], prior_boundaries: frozenset[str] = frozenset()) -> list[Segment]:
     """Rung 1: cut one feature's chronological runs into contiguous `Segment`s. Every run lands in
     exactly one segment (a total partition of the feature's ops -- KTD2), boundaries chosen by
     `_cut_points`, each segment labeled from its own commits. `source="fallback"`; the LLM rung
-    renames/re-cuts on top of this."""
-    return [_finish_segment(m, i) for i, m in enumerate(_partition_runs(runs))]
+    renames/re-cuts on top of this. `prior_boundaries` (persisted chapter starts) applies the §3.4
+    seam hysteresis; empty (the default) is byte-identical to a first, prior-free cut."""
+    return [_finish_segment(m, i) for i, m in enumerate(_partition_runs(runs, prior_boundaries))]
 
 
 def _finish_segment(runs: list[Run], seg_index: int) -> Segment:
@@ -448,9 +460,24 @@ def _relabel(seg: Segment, label: str, rationale: str, source: str) -> Segment:
     return replace(seg, label=label, rationale=rationale, source=source)
 
 
+def prior_boundaries(record: list[dict] | None) -> frozenset[str]:
+    """The commit shas that *start* a chapter in a persisted per-feature record -- the seams the
+    §3.4 rung-1 hysteresis (`SEAM_BONUS`) prefers to keep. Each record entry's first sha; empty for
+    a never-built feature."""
+    return frozenset(
+        entry["commit_shas"][0] for entry in (record or []) if entry.get("commit_shas")
+    )
+
+
 def deterministic_segments(repo: str | Path, op_leaf: dict[str, str]) -> dict[str, list[Segment]]:
-    """The whole offline pass: every feature's runs, cut into segments (rungs 0/1). Deterministic
-    and pure; the one entry point a caller (`intent_view`, `theme_segment`'s fallback) needs when
-    no LLM is available. Features iterated in sorted id order for a stable projection."""
+    """The whole offline pass: every feature's runs, cut into segments (rungs 0/1). The one entry
+    point a caller (`intent_view`, `theme_segment`'s fallback) needs when no LLM is available.
+    Features iterated in sorted id order for a stable projection. Deterministic given repo state:
+    when a prior `intent_segments` record exists, its chapter starts bias the cut (`SEAM_BONUS`
+    hysteresis) so a re-derivation doesn't flicker a near-threshold boundary the last build drew;
+    with no record it is byte-identical to a first, prior-free cut."""
+    from sgt import state
+
     runs = feature_runs(repo, op_leaf)
-    return {fid: segment_runs(runs[fid]) for fid in sorted(runs)}
+    record = state.load_json(repo, "intent_segments", default={})
+    return {fid: segment_runs(runs[fid], prior_boundaries(record.get(fid))) for fid in sorted(runs)}

@@ -35,6 +35,9 @@ def register(subs, parent) -> None:
     p.add_argument("target", nargs="?")
     p.add_argument("rest", nargs="*")  # the new label words for `relabel`
     p.add_argument("--subset", nargs="*")
+    p.add_argument("--recut", metavar="FEATURE",
+                   help="with `build`: re-cut one whole feature's checkpoints from scratch "
+                        "(id/prefix/label), instead of the default incremental tail re-cut")
     # Hidden but functional (see revert): the tty consequence pane is the default confirm step.
     p.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
@@ -42,12 +45,14 @@ def register(subs, parent) -> None:
 
 
 def _cmd_intent(args) -> int:
-    return _intent(".", args.sub, args.target, args.rest, args.subset, args.emit, args.as_json, args.yes)
+    return _intent(".", args.sub, args.target, args.rest, args.subset, args.emit, args.as_json,
+                   args.yes, args.recut)
 
 
 def _intent(
     repo: str, sub: str | None, target: str | None, rest: list[str] | None,
     subset: list[str] | None, emit: bool, as_json: bool, yes: bool = False,
+    recut: str | None = None,
 ) -> int:
     from sgt.core.lens import get
 
@@ -58,7 +63,7 @@ def _intent(
     if sub == "list":
         return _list(repo, as_json)
     if sub == "build":
-        return _build(repo, as_json)
+        return _build(repo, as_json, recut)
     if target is None:
         print(_USAGE)
         return 2
@@ -223,15 +228,16 @@ def _relabel(repo: str, target: str, label: str, as_json: bool) -> int:
     return 0
 
 
-def _build(repo: str, as_json: bool) -> int:
+def _build(repo: str, as_json: bool, recut: str | None = None) -> int:
     """Run the LLM passes that name the overlay: feature-scoped checkpoints (`build_segments`, the
     primary unit) and the cross-feature themes (`build_themes`). Both are LLM-labeled with a
     deterministic offline fallback, content-hash cached, and rebuilt on demand -- kept out of the
-    read verbs exactly as `sgt map` (the write) is distinct from `map_view` (the read)."""
+    read verbs exactly as `sgt map` (the write) is distinct from `map_view` (the read). `recut`
+    (`--recut <feature>`) forces a whole-feature re-cut instead of the default incremental tail."""
     from sgt.intent.theme import build_themes
     from sgt.intent.theme_segment import build_segments
 
-    segments = build_segments(repo)
+    segments = build_segments(repo, recut)
     themes = build_themes(repo)
     n_ckpt = sum(len(v) for v in segments.values())
     if as_json:
