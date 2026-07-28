@@ -11,9 +11,6 @@ Shapes (stable; additive changes only):
 
 * ``oplog_view``        — the mined operation DAG: every op's id, kind, footprint, provenance,
   structured attribution (D7: session/agent/plan per witnessing sha), intent.
-* ``oplog_actions_view`` — the U8 unified *action* log (distinct from ``oplog_view``'s content
-  DAG): the current ref's undoable operation events (ideal-edit / feature-reorg / after /
-  land·propose), newest first, each with its kind and whether ``undo`` can invert it.
 * ``state_view``        — the current ref's ideal: frontier, coverage, entity-granularity fraction,
   and the async oracle's verdict (U9).
 * ``ideal_diff_view``   — the semantic diff between two refs' ideals, grouped by symbol.
@@ -132,31 +129,6 @@ def oplog_view(repo, *, full: bool = False, limit: int = 100, offset: int = 0) -
         "ops": [
             {"id": op.id, "kind": op.kind, "symbols": sorted(op.footprint), "intent": op.intent}
             for op in window
-        ],
-    }
-
-
-def oplog_actions_view(repo, *, ref: str | None = None) -> dict:
-    """The U8 unified *action* log for `ref` (the current ref by default) -- the append-only
-    operation-event history `sgt undo` walks, newest first. Distinct from ``oplog_view``, which
-    projects the mined *content* op-DAG; this is the user-action log that subsumes the old
-    ``ideal_journal``. Each event carries its ``kind`` (``ideal_edit``/``feature_reorg``/``after``/
-    ``land``/``propose``) and ``undoable`` -- False for a shared-out ``land``/``propose`` whose
-    inverse ``undo`` refuses to apply. A pure read (no mining, no undo)."""
-    from pathlib import Path
-
-    from sgt.core import oplog
-
-    key = ref if ref is not None else oplog._ref_key(Path(repo))
-    events = oplog.load(repo).get(key, []) if key is not None else []
-    _REFUSED = ("land", "propose")
-    return {
-        "ref": key,
-        "count": len(events),
-        # Newest first: `undo` pops the tail, so index 0 is the next event a bare `undo` reverses.
-        "events": [
-            {"kind": e.get("kind", "ideal_edit"), "undoable": e.get("kind", "ideal_edit") not in _REFUSED}
-            for e in reversed(events)
         ],
     }
 
@@ -657,7 +629,88 @@ def _project_verb_preview(repo, preview) -> dict:
     projected["fallout"] = _fallout_rows(projected)
     projected["carry_count"] = _carry_count(projected)
     projected["so_what"] = so_what_for(projected)
+    projected["focus"] = focus_subgraph(preview, repo, so_what=projected["so_what"])
     return projected
+
+
+def focus_subgraph(preview, repo, *, so_what: str = "") -> dict:
+    """The "Focus & Morph" contract for a mutating ideal-edit preview (revert/restore/edit): the
+    affected feature subgraph *only*, each node carrying its op-count before and after the edit, so
+    a renderer (VS Code webview, TUI pane) can dim the rest of the graph and morph just these nodes
+    -- instead of printing "removes 64 ops from X to Y, including …" that nobody can read as a
+    consequence. Pure over the preview's before/after op-sets plus the current feature tree; it rolls
+    those op-sets up through the same `op_leaf` map `_affected_rows`/`_frontier_rows` use, so a node's
+    role matches what the fallout checklist shows.
+
+    Roles are hue-free (the shared invariant: hue = identity, impact = opacity/size/shape/motion):
+    * ``target``     -- owns the plurality of touched ops, the acted-on node.
+    * ``blast``      -- a feature *losing* ops (it shrinks / collapses in the morph).
+    * ``foundation`` -- a feature *gaining* ops, or a live prerequisite the edit is built on (it
+      grows / stays lit).
+    * ``context``    -- unaffected: summarized by ``context_count``, never listed.
+
+    ``carry`` (a per-op mechanical repoint) adds no new *feature* node -- its ops are already in the
+    up-set, so its feature is a ``blast`` node -- and stays a footnote (`_carry_count`), not a role.
+
+    ``so_what`` is passed in (the caller already computed it via `so_what_for`); ``nodes`` is empty
+    when no tree has been built or the preview touched no feature (e.g. a whole-file pseudo-symbol),
+    so the renderer falls back to the ``so_what`` headline alone."""
+    from collections import Counter
+
+    from sgt.lens.tree import load as load_tree
+
+    op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
+
+    def per_feature(op_ids) -> Counter:
+        return Counter(op_leaf[o] for o in op_ids if o in op_leaf)
+
+    before, after = per_feature(preview.before_ids), per_feature(preview.after_ids)
+    touched = per_feature(preview.removed) + per_feature(preview.added)
+    if not touched:
+        return {"so_what": so_what, "nodes": [], "edges": [], "context_count": 0}
+
+    # target = the feature owning the most touched ops (the same focus_fid heuristic the CLI uses).
+    target_fid = touched.most_common(1)[0][0]
+
+    # Live prerequisites the revert is built on (frontier `foundation`, never removed): name them so
+    # the subgraph shows the kept ground the edit stands on, not dim context. Non-revert verbs have
+    # no frontier, so this is empty for them.
+    prereq_fids = {
+        op_leaf[r["op_id"]]
+        for r in _frontier_rows(repo, preview)
+        if r.get("bucket") == "foundation" and r["op_id"] in op_leaf
+    }
+
+    changed = {f for f in (set(before) | set(after)) if before.get(f, 0) != after.get(f, 0)}
+    focus_ids = changed | prereq_fids
+
+    mv = map_view(repo)
+    node_by_id = {n["id"]: n for n in mv["nodes"]}
+    nodes = []
+    for fid in sorted(focus_ids):
+        ob, oa = before.get(fid, 0), after.get(fid, 0)
+        if fid == target_fid:
+            role = "target"
+        elif oa > ob or (fid in prereq_fids and ob == oa):
+            role = "foundation"
+        else:
+            role = "blast"
+        nodes.append({
+            "feature_id": fid,
+            "label": (node_by_id.get(fid) or {}).get("label", fid[:8]),
+            "role": role,
+            "ops_before": ob,
+            "ops_after": oa,
+        })
+
+    edges = [
+        {"a": e["a"], "b": e["b"]}
+        for e in mv["edges"]
+        if e["a"] in focus_ids and e["b"] in focus_ids
+    ]
+    focus_features = sum(1 for fid in focus_ids if (node_by_id.get(fid) or {}).get("kind") == "feature")
+    context_count = max(mv["feature_count"] - focus_features, 0)
+    return {"so_what": so_what, "nodes": nodes, "edges": edges, "context_count": context_count}
 
 
 def _project_feature_preview(repo, verb: str, preview) -> dict:
@@ -943,8 +996,18 @@ def map_view(repo) -> dict:
     for leaf in op_leaf.values():
         leaf_op_count[leaf] = leaf_op_count.get(leaf, 0) + 1
 
+    # The tree is a DAG: an authored feature (U6) can be spliced under more than one subsystem, so a
+    # shared leaf is listed in several parents' `children` yet carries exactly one canonical `parent`.
+    # Every projection below -- the emitted `children`, `op_count`, and the session rollup -- walks
+    # only the *canonical* children (those whose `parent` points back here), so a shared feature is
+    # rendered once, under its one parent. That keeps the feature tree, the workbench timeline, and
+    # the TUI consistent; a raw double-listing otherwise double-counts the shared ops in every
+    # ancestor's rollup and draws the feature under whichever parent a surface happens to visit first.
+    def canonical_children(nid: str) -> list[str]:
+        return [c for c in nodes[nid]["children"] if nodes[c]["parent"] == nid]
+
     def op_count(nid: str) -> int:
-        children = nodes[nid]["children"]
+        children = canonical_children(nid)
         if not children:
             return leaf_op_count.get(nid, 0)
         return sum(op_count(c) for c in children)
@@ -965,7 +1028,7 @@ def map_view(repo) -> dict:
     def node_sessions(nid: str) -> list[str]:
         """Every session (plan U30/D5) whose attributed ops sit under this node -- additive
         provenance rollup (plan U31, S7), same children-recursion shape as `op_count`."""
-        children = nodes[nid]["children"]
+        children = canonical_children(nid)
         if not children:
             return sorted(leaf_sessions.get(nid, ()))
         merged: set[str] = set()
@@ -984,9 +1047,9 @@ def map_view(repo) -> dict:
         row = {
             "id": nid,
             "label": nd.get("label", nid),
-            "kind": "feature" if not nd["children"] else "subsystem",
+            "kind": "feature" if not canonical_children(nid) else "subsystem",
             "parent": nd["parent"],
-            "children": sorted(nd["children"]),
+            "children": sorted(canonical_children(nid)),
             "size": nd["size"],
             "members": list(nd.get("members", [])),
             "op_count": op_count(nid),
@@ -1010,7 +1073,7 @@ def map_view(repo) -> dict:
         "nodes": emitted,
         "roots": sorted(result["roots"]),
         "identity_events": sorted(result.get("identity_events", []), key=lambda e: (e["event"], e["feature_id"])),
-        "feature_count": sum(1 for nd in nodes.values() if not nd["children"]),
+        "feature_count": sum(1 for nid in nodes if not canonical_children(nid)),
         "edges": feature_edges(nodes, fused),
         "sync_status": sync_status(repo),
     }
@@ -1403,12 +1466,20 @@ def plan_view(repo, *, full: bool = False) -> dict:
     fold) while keeping `hollow_ids`/`op_ids` -- small, activity-bounded lists `sgt checkpoint`'s
     default preview and `--confirm-...` workflow still need. `full=True` restores per-step detail
     (with spans) and per-match `files`; the MCP `tool_checkpoint` always requests it."""
+    import time
+
     from sgt.core import opindex
     from sgt.loop import plan as plan_mod
     from sgt.loop.match import compute_checkpoint
+    from sgt.loop.plan import STALLED_SECONDS
 
     by_id = {op.id: op for op in opindex.index_ops(repo)}
     checkpoint = compute_checkpoint(repo)
+    now = time.time()
+    # A session with a live candidate has uncommitted work flowing toward it right now, so it is
+    # actively *building* regardless of how long ago its last step was confirmed -- age alone must
+    # not flag an agent mid-edit (or a fresh intake) as stalled.
+    sessions_with_candidates = {g.session_id for g in checkpoint.matches}
 
     def _files_for_ops(op_ids) -> list[dict]:
         symbols = {sym for op_id in op_ids if op_id in by_id for sym in by_id[op_id].footprint}
@@ -1417,9 +1488,24 @@ def plan_view(repo, *, full: bool = False) -> dict:
     sessions = []
     for session_id, rec in sorted(plan_mod.active_sessions(repo).items()):
         steps = rec["steps"]
+        pending = [s for s in steps if s["status"] == "pending"]
+        # Derived (never stored, never a writer): an active plan is `stalled` iff it has unbuilt
+        # steps, no work in flight toward it, and has gone quiet past STALLED_SECONDS -- interrupted,
+        # resumable. Otherwise `building`. A fully-matched active session (edge case; normally it
+        # has already flipped to `completed`) reads `complete`, never stalled.
+        if not pending:
+            derived_status = "complete"
+        elif session_id in sessions_with_candidates or now - rec["last_activity_ts"] <= STALLED_SECONDS:
+            derived_status = "building"
+        else:
+            derived_status = "stalled"
         base = {
             "session_id": session_id, "plan_text": rec["plan_text"], "status": rec["status"],
             "created_ts": rec["created_ts"], "last_activity_ts": rec["last_activity_ts"],
+            "claude_session_id": rec.get("claude_session_id"),
+            "derived_status": derived_status,
+            "pending_count": len(pending),
+            "remaining_titles": [s["title"] for s in pending],
         }
         if full:
             base["steps"] = [
@@ -1474,6 +1560,59 @@ def drift_view(repo, *, full: bool = False) -> dict:
         files = [{"path": f, "spans": s} for f, s in sorted(_spans_for_symbols(repo, footprint).items())]
         entries.append({"op_id": op.id, "kind": op.kind, "footprint": footprint, "files": files})
     return {"entries": entries}
+
+
+def save_preview_view(repo) -> dict:
+    """The in-situ "what would a save land" query: which existing features would gain ops if you
+    ran `sgt save` right now. Answers the workbench's ghost-checkpoint render -- a dashed car on
+    each affected lane at the frontier -- so the user sees the consequence of saving before saving.
+
+    Feature-granular by design (the workflow-legibility redesign keeps op/symbol reconciliation as
+    drill-down, never the default surface): the delta is `get(repo).op_ids - current_ideal(repo).op_ids`
+    (the same equality `porcelain._save` uses for "nothing_new"), attributed to the *current* tree via
+    the pure `tree.assign_ops_to_leaves` re-attributor -- not the persisted `op_leaf`, which only
+    covers committed ops. Ops that touch no owned symbol are the "new work" bucket, reported as a
+    count only (v1 does not predict which new lane they'd mint).
+
+    Shape: `{"affected": [{"feature_id", "op_count", "op_ids"}], "new_work_count": int,
+    "total_op_count": int}`. Clean tree -> `affected: []`, all counts 0 (no ghosts render).
+
+    NOT fully side-effect-free: `get(repo)` mines the working tree and persists the mined ops +
+    sync cache + witness into `.sgt/` (like `sgt save`/`status` already do). It creates no git
+    commit and does not advance the recorded ideal, so it is safe as a preview -- but it is a
+    mine-on-contact, not a pure read."""
+    from sgt.core import opindex
+    from sgt.core.lens import current_ideal, get
+    from sgt.lens.tree import assign_ops_to_leaves
+    from sgt.lens.tree import load as load_tree
+
+    delta = get(repo).op_ids - current_ideal(repo).op_ids
+    if not delta:
+        return {"affected": [], "new_work_count": 0, "total_op_count": 0}
+
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
+    uncommitted = [by_id[oid] for oid in delta if oid in by_id]
+
+    tree_result = load_tree(repo)
+    nodes = tree_result["nodes"] if tree_result else {}
+    op_leaf = assign_ops_to_leaves(nodes, uncommitted) if nodes else {}
+
+    by_feature: dict[str, list[str]] = {}
+    for op in uncommitted:
+        leaf = op_leaf.get(op.id)
+        if leaf is not None:
+            by_feature.setdefault(leaf, []).append(op.id)
+
+    affected = [
+        {"feature_id": fid, "op_count": len(ids), "op_ids": sorted(ids)}
+        for fid, ids in sorted(by_feature.items())
+    ]
+    attributed = sum(len(ids) for ids in by_feature.values())
+    return {
+        "affected": affected,
+        "new_work_count": len(uncommitted) - attributed,
+        "total_op_count": len(delta),
+    }
 
 
 def trust_view(repo, *, full: bool = False) -> dict:
@@ -1864,8 +2003,8 @@ def segments_view(repo) -> list[dict]:
 
 def compose_view(repo, *, full: bool = False) -> dict:
     """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
-    `sessions`/`trust`/`intent`, the current ideal's oracle verdict, and a lightweight open-
-    proposal list, each delegated to its own view function with no reshaping. Collapses what
+    `sessions`/`trust`/`intent`/`save_preview`, the current ideal's oracle verdict, and a lightweight
+    open-proposal list, each delegated to its own view function with no reshaping. Collapses what
     would otherwise be ~9 separate `sgt <verb> --json` shell-outs (each a fresh process) into one
     call -- the single biggest responsiveness win for a UI that refreshes on every `.sgt/` change.
 
@@ -1895,6 +2034,7 @@ def compose_view(repo, *, full: bool = False) -> dict:
         "sessions": sessions_view(repo),
         "trust": trust_view(repo, full=full),
         "intent": intent_view(repo),
+        "save_preview": save_preview_view(repo),
         "oracle_verdict": verdict_for(repo, current_ideal(repo)),
         "proposals": proposals,
     }
@@ -2049,7 +2189,13 @@ def status_view(repo) -> dict:
     )
 
     tree_result = load_tree(repo)
-    feature_count = sum(1 for nd in tree_result["nodes"].values() if not nd["children"]) if tree_result else 0
+    # Count feature (leaf) nodes by *canonical* children, matching `map_view`: a node whose listed
+    # children are all borrowed (spliced from another subsystem, their `parent` points elsewhere)
+    # owns no features of its own and is itself the feature, so both views report the same count.
+    _tnodes = tree_result["nodes"] if tree_result else {}
+    feature_count = sum(
+        1 for nid, nd in _tnodes.items() if not any(_tnodes[c]["parent"] == nid for c in nd["children"])
+    )
 
     from sgt.core.lens import materialization_skips
 

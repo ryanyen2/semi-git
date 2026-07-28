@@ -481,7 +481,9 @@ def test_rebirth_lookback_walks_each_path_alone_across_merges(tmp_path):
     merge_sha = gb.head()
 
     single = [sha for sha, _ in gb.commits_touching(merge_sha, "a.txt")]
-    union = [sha for sha, _ in gb.commits_touching_paths(merge_sha, ["a.txt", "b.txt"])]
+    # The union walk the miner deliberately avoids -- built inline (production has no such helper,
+    # by design: it's the anti-pattern `commits_touching`'s docstring warns against) to show why.
+    union = gb._git("log", "--format=%H", merge_sha, "--", "a.txt", "b.txt").stdout.split()
     # Per-path: the merge is TREESAME to both parents for a.txt alone; git's first-parent
     # tie-break descends the side branch and surfaces the deleting commit.
     assert del_sha in single

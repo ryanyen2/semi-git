@@ -16,6 +16,7 @@ import {
   MapView,
   PlanView,
   ProposalView,
+  SavePreviewView,
   SessionsView,
   StatusView,
 } from "./types";
@@ -170,6 +171,13 @@ export class Store {
       this.driftCache = (await this.composeView(force)).drift;
     }
     return this.driftCache;
+  }
+
+  // The in-situ save preview -- which features would gain ops on the next `sgt save`. Like
+  // `driftView`, it's one child of the `compose_view` aggregate the store already fetches, so
+  // source it from there rather than a separate shell-out.
+  async savePreview(force = false): Promise<SavePreviewView> {
+    return (await this.composeView(force)).save_preview;
   }
 
   // The workbench's primary poll -- one aggregate refresh instead of ~9 separate shell-outs.

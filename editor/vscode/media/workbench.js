@@ -437,6 +437,7 @@ function episodeRailLayout(epView) {
   let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
   let previewSeq = 0;
   let pendingPreview = null;
+  let previewActive = false; // a held Focus & Morph consequence overlay owns the field dim
   let foldSeq = 0;
   let pendingFold = null;
   let foldResultCache = {}; // featureId -> {files, oracle_verdict, forked, error}, reset per composition
@@ -485,12 +486,24 @@ function episodeRailLayout(epView) {
 
   let forkMarks = { byFeature: {}, unplaced: [] };
 
+  // Save-preview marks: which features would GAIN ops on the next `sgt save` (compose.save_preview)
+  // -- rendered as a dashed "ghost car" at the now-frontier of each affected lane, so the user sees
+  // the consequence of saving before saving. Feature-granular by design (op-level reconciliation
+  // stays out of the default surface). `prevPendingFeatures`/`prevCarCounts` snapshot across renders
+  // so a ghost that just LANDED (the save turned it into a real car) can play a one-shot solidify
+  // transition instead of the ghost popping and a solid car appearing from nowhere.
+  let savePreviewMarks = { byFeature: {}, newWork: 0 };
+  let prevPendingFeatures = new Set();
+  let prevCarCounts = {};
+  let landingFeatures = new Set(); // leaf lanes whose newest car should play the solidify anim
+
   const rail = document.getElementById("rail");
   const inspector = document.getElementById("inspector");
   const compositionBtn = document.getElementById("compositionBtn");
   const oracleChip = document.getElementById("oracleChip");
   const offscreenAbove = document.getElementById("offscreenAbove");
   const offscreenBelow = document.getElementById("offscreenBelow");
+  const previewContext = document.getElementById("previewContext"); // "＋N unchanged" context tally
   const viewSeg = document.getElementById("viewSeg"); // segmented Timeline│Rail control
   const plansChip = document.getElementById("plansChip"); // consolidated "Plans M/N" chip + popover trigger
   const plansPopover = document.getElementById("plansPopover");
@@ -562,6 +575,9 @@ function episodeRailLayout(epView) {
       sessions.push({
         sessionId: session.session_id, planText: session.plan_text,
         matchedCount, stepCount: (session.steps || []).length,
+        derivedStatus: session.derived_status || null,
+        pendingCount: session.pending_count != null ? session.pending_count : null,
+        remainingTitles: session.remaining_titles || [],
       });
     }
 
@@ -650,6 +666,15 @@ function episodeRailLayout(epView) {
     return { byFeature, unplaced };
   }
 
+  // Save-preview marks: fold `compose.save_preview` into a {feature_id -> pending op_count} map plus
+  // the new-work count (ops belonging to no built feature). Feature-granular by design -- the ghost
+  // car answers "which features gain work on save", never op/symbol-level reconciliation.
+  function collectSavePreview(sp) {
+    const byFeature = {};
+    for (const row of (sp && sp.affected) || []) byFeature[row.feature_id] = row.op_count;
+    return { byFeature, newWork: (sp && sp.new_work_count) || 0 };
+  }
+
   function saveState() {
     vscode.setState(state);
   }
@@ -735,13 +760,15 @@ function episodeRailLayout(epView) {
     }
     for (const session of planMarks.sessions) {
       const done = session.stepCount > 0 && session.matchedCount === session.stepCount;
+      const stalled = session.derivedStatus === "stalled";
       const floatingN = planMarks.floating.filter((s) => s.sessionId === session.sessionId).length;
       const row = document.createElement("button");
-      row.className = "plans-pop-row" + (done ? " complete" : "");
-      row.title = session.planText;
+      row.className = "plans-pop-row" + (done ? " complete" : "") + (stalled ? " stalled" : "");
+      row.title = stalled ? `Interrupted — ${session.planText}` : session.planText;
       const glyph = document.createElement("span");
       glyph.className = "plans-pop-glyph";
-      glyph.textContent = done ? "✓" : session.matchedCount > 0 ? "●" : "○";
+      // A stalled plan reads paused (⏸), distinct from building (●/○) and done (✓).
+      glyph.textContent = stalled ? "⏸" : done ? "✓" : session.matchedCount > 0 ? "●" : "○";
       const name = document.createElement("span");
       name.className = "plans-pop-name";
       name.textContent = session.planText;
@@ -754,6 +781,22 @@ function episodeRailLayout(epView) {
         selectPlanSession(session.sessionId);
       });
       plansPopover.appendChild(row);
+      // Stalled plans get the one clear next action right in the list -- hand it back to Claude
+      // Code. A <span role=button> (not a nested <button>, which is invalid inside the row button).
+      if (stalled) {
+        const resume = document.createElement("span");
+        resume.className = "plan-resume";
+        resume.setAttribute("role", "button");
+        resume.setAttribute("tabindex", "0");
+        resume.textContent = "Resume";
+        resume.title = "Relaunch this Claude Code session in a terminal";
+        resume.addEventListener("click", (e) => {
+          e.stopPropagation();
+          plansPopover.hidden = true;
+          vscode.postMessage({ type: "resumePlan", sessionId: session.sessionId });
+        });
+        row.appendChild(resume);
+      }
     }
   }
 
@@ -781,6 +824,24 @@ function episodeRailLayout(epView) {
     knownPlanSteps = nextKnown;
     pendingPlanSteps = nextPending;
     knownDriftIds = new Set(driftMarks.ids);
+
+    // Save-preview landing: a leaf lane that HAD a ghost last render and now has a genuinely new car
+    // (its car count rose because the save committed the pending work into a real checkpoint) plays
+    // the one-shot solidify transition. A ghost that vanished with no new car (the user reverted the
+    // uncommitted edit instead of saving) is not a landing -- so gate on the car-count rise.
+    const nowPending = new Set(Object.keys(savePreviewMarks.byFeature));
+    const carCounts = {};
+    for (const l of (layout.lanes || [])) carCounts[l.id] = (l.cars || []).length;
+    landingFeatures = new Set();
+    if (!prefersReducedMotion()) {
+      for (const fid of prevPendingFeatures) {
+        if (!nowPending.has(fid) && (carCounts[fid] || 0) > (prevCarCounts[fid] || 0)) {
+          landingFeatures.add(fid);
+        }
+      }
+    }
+    prevPendingFeatures = nowPending;
+    prevCarCounts = carCounts;
 
     renderGraph();
     renderInspector();
@@ -880,6 +941,9 @@ function episodeRailLayout(epView) {
       return x2;
     }
     const plotR = geom.plotX0 + geom.plotW;
+    // A lane flagged for landing (its ghost just became a real save): the newest (last) car plays
+    // the solidify transition -- entering from the dashed/low-opacity ghost look into a solid car.
+    const landing = landingFeatures.has(l.id);
     // The "big event": the fattest chapter in this lane. It gets a stronger fill and first claim on
     // an inline label, so the lane's most consequential edit reads at a glance.
     const laneMaxOps = Math.max(1, ...cars.map((c) => c.opCount));
@@ -904,7 +968,8 @@ function episodeRailLayout(epView) {
         `\nRewind: sgt revert ${car.checkpoint}`;
       wrap.appendChild(mk("rect", {
         x, y: barY, width: w, height: GANTT.barH, rx: 3,
-        class: "gcar" + (car.tier === "thematic" ? " gcar-thematic" : "") + (isBig ? " gcar-big-rect" : ""),
+        class: "gcar" + (car.tier === "thematic" ? " gcar-thematic" : "") + (isBig ? " gcar-big-rect" : "") +
+          (landing && i === cars.length - 1 ? " gcar-landing" : ""),
         fill: color, "data-checkpoint": car.checkpoint,
       }, [mk("title", { text: tip })]));
       // Within-car density texture: the chapter's own per-commit runs, opacity by sqrt(count /
@@ -945,6 +1010,32 @@ function episodeRailLayout(epView) {
       lastRight = x + w;
     }
     return lastRight;
+  }
+
+  // Pending ops a lane would gain on the next save. A meta (collapsed-subsystem) lane rolls up its
+  // member leaves; a normal lane reads its own entry.
+  function pendingOpsForLane(l) {
+    if (l.isMeta) return (l.leaves || []).reduce((s, f) => s + (savePreviewMarks.byFeature[f] || 0), 0);
+    return savePreviewMarks.byFeature[l.id] || 0;
+  }
+
+  // A dashed "ghost car" at the now-frontier: the work that WOULD land on the next `sgt save`.
+  // Uncommitted ops have no commit index yet, so it's anchored at the right of the plot (just past
+  // the lane's last real car), reading as "coming next" on the same shared time axis. The `+N` tag
+  // floats above so it never collides with the mid-row op-count label.
+  function renderPendingCar(g, l, geom, color, barY, midY, lastX, pendingOps) {
+    const plotR = geom.plotX0 + geom.plotW;
+    const w = GANTT.minCarW;
+    let x = Math.max(geom.xOf(geom.maxCommit), lastX + GANTT.carGap);
+    if (x + w > plotR) x = plotR - w;
+    const wrap = mk("g", { class: "gcar-wrap gcar-pending-wrap" });
+    wrap.appendChild(mk("rect", {
+      x, y: barY, width: w, height: GANTT.barH, rx: 3, class: "gcar gcar-pending", fill: color,
+    }, [mk("title", { text: `+${pendingOps} pending — will land on save` })]));
+    wrap.appendChild(mk("text", {
+      x: x + w / 2, y: barY - 3, class: "gcar-pending-count", text: `+${pendingOps}`,
+    }));
+    g.appendChild(wrap);
   }
 
   function renderGraph() {
@@ -1110,6 +1201,11 @@ function episodeRailLayout(epView) {
     // Op count just past the cars (clamped so it stays on-screen).
     const cx = Math.min(lastX + 6, geom.w - 30);
     g.appendChild(mk("text", { x: cx, y: midY + 4, class: "gbar-count", text: String(l.opCount) }));
+
+    // In-situ save preview: a dashed ghost car at the frontier for the work this lane would gain on
+    // the next save (see collectSavePreview / renderPendingCar).
+    const pendingOps = pendingOpsForLane(l);
+    if (pendingOps > 0) renderPendingCar(g, l, geom, color, barY, midY, lastX, pendingOps);
 
     renderLaneBadges(g, l, geom, color, barY, midY, geom.plotX0, lastX);
 
@@ -1408,6 +1504,7 @@ function episodeRailLayout(epView) {
       }
       return;
     }
+    if (previewActive) return; // a held consequence preview owns the field dim; don't re-light co-change
     // Focus the hovered lane + its co-change neighbors; dim the rest (the "what changes with this").
     // This is the only place co-change is shown -- kept off the default view to avoid a hairball.
     svg.classList.add("focus");
@@ -1547,6 +1644,7 @@ function episodeRailLayout(epView) {
       el.classList.remove("ghost-blast", "ghost-target", "ghost-foundation");
     });
     clearOffscreenPills();
+    exitPreviewMode(); // a held Focus & Morph overlay tears down on the same mouseleave path
   }
 
   function requestPreview(verb, args, onResult) {
@@ -1555,11 +1653,19 @@ function episodeRailLayout(epView) {
     pendingPreview = { seq, onResult };
   }
 
-  // Every hover-preview site wants the same thing: paint the revert closure if the preview came
-  // back ok, do nothing otherwise. The target is args[0] (revert/restore take one feature).
+  // Every hover-preview site wants the same thing: show the consequence if the preview came back
+  // ok, do nothing otherwise. The target is args[0] (revert/restore take one feature). When the
+  // backend hands back a `focus` subgraph (a feature map is built) and we're not mid-arming, use the
+  // richer deep-dim morph; otherwise fall back to the flat three-role ghost paint.
   function previewAndBlast(verb, args) {
     requestPreview(verb, args, (res) => {
-      if (res && res.ok) paintClosure(classifyAffected(res, args[0]));
+      if (!res || !res.ok) return;
+      const focus = res.focus;
+      if (!armedVerb && focus && focus.nodes && focus.nodes.length) {
+        enterPreviewMode(focus, args[0]);
+      } else {
+        paintClosure(classifyAffected(res, args[0]));
+      }
     });
   }
 
@@ -1913,6 +2019,28 @@ function episodeRailLayout(epView) {
     meta.textContent = `${session.matchedCount}/${session.stepCount} step(s) landed`;
     wrap.appendChild(meta);
 
+    // Stalled: the plan stopped part-way and no work is flowing toward it. State it plainly, then
+    // offer the single clear next action -- hand the conversation back to the real Claude Code
+    // session. This is the primary HIG affordance (what it is + one thing to do about it).
+    if (session.derivedStatus === "stalled") {
+      const pending = session.pendingCount != null
+        ? session.pendingCount
+        : session.stepCount - session.matchedCount;
+      const interrupted = document.createElement("div");
+      interrupted.className = "detail-why stalled";
+      interrupted.textContent = `Interrupted — ${pending} step(s) not built`;
+      wrap.appendChild(interrupted);
+
+      const resume = document.createElement("button");
+      resume.className = "action plan-resume-primary";
+      resume.textContent = "▶ Resume in terminal";
+      resume.title = "Relaunch this Claude Code session (claude --resume) to finish the plan";
+      resume.addEventListener("click", () => {
+        vscode.postMessage({ type: "resumePlan", sessionId: session.sessionId });
+      });
+      wrap.appendChild(resume);
+    }
+
     const floatingSteps = planMarks.floating.filter((s) => s.sessionId === session.sessionId);
     if (floatingSteps.length) {
       const why = document.createElement("div");
@@ -2260,6 +2388,74 @@ function episodeRailLayout(epView) {
     renderOffscreenPills([closure.target, ...closure.blast, ...closure.foundation]);
   }
 
+  // The richer, held cousin of paintClosure: drive the "Focus & Morph" overlay from the backend
+  // `focus` subgraph (sgt.api.focus_subgraph). Deep-dim the whole field, re-light only the affected
+  // lanes with their role, and stamp each one's op-count with the "N -> M" delta -- so a revert
+  // reads as "these features shrink, everything else is context" instead of an op-id wall. The morph
+  // (a fully-emptied lane fading to a dashed ghost, a gaining lane landing) is CSS; this only sets
+  // the classes. Torn down by clearGhosts (the same mouseleave path the ghosts use).
+  function enterPreviewMode(focus, targetId) {
+    const svg = rail.querySelector("svg");
+    if (!svg) return;
+    exitPreviewMode();
+    // The shallow co-change hover dim (.focus) would fight the deep field dim -- drop it first.
+    svg.classList.remove("focus");
+    svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
+    svg.classList.add("preview");
+    previewActive = true;
+    const lit = [];
+    for (const n of focus.nodes) {
+      const row = findRow(n.feature_id);
+      if (!row) continue;
+      lit.push(n.feature_id);
+      row.classList.add("preview-lit");
+      if (n.role === "target") {
+        row.classList.add("preview-target");
+      } else if (n.role === "foundation") {
+        row.classList.add("preview-foundation");
+        if (n.ops_after > n.ops_before) row.classList.add("preview-arriving"); // genuinely gains
+      } else {
+        row.classList.add("preview-blast");
+        if (n.ops_after === 0) row.classList.add("preview-leaving"); // fully emptied -> ghost
+      }
+      // The "N -> M" delta lives in the lane's own count label (kept when motion is off).
+      if (n.ops_before !== n.ops_after) {
+        const count = row.querySelector(".gbar-count");
+        if (count) {
+          if (!count.hasAttribute("data-orig")) count.setAttribute("data-orig", count.textContent);
+          count.textContent = `${n.ops_before} → ${n.ops_after}`;
+          count.classList.add("preview-delta", n.ops_after < n.ops_before ? "losing" : "gaining");
+        }
+      }
+    }
+    renderOffscreenPills(lit);
+    if (focus.context_count > 0) {
+      previewContext.hidden = false;
+      previewContext.textContent = `＋${focus.context_count} unchanged`;
+    }
+  }
+
+  function exitPreviewMode() {
+    if (!previewActive) return;
+    previewActive = false;
+    const svg = rail.querySelector("svg");
+    if (svg) svg.classList.remove("preview");
+    rail.querySelectorAll(".preview-lit").forEach((el) =>
+      el.classList.remove(
+        "preview-lit", "preview-target", "preview-blast", "preview-foundation",
+        "preview-leaving", "preview-arriving",
+      ));
+    rail.querySelectorAll(".gbar-count.preview-delta").forEach((c) => {
+      if (c.hasAttribute("data-orig")) {
+        c.textContent = c.getAttribute("data-orig");
+        c.removeAttribute("data-orig");
+      }
+      c.classList.remove("preview-delta", "losing", "gaining");
+    });
+    previewContext.hidden = true;
+    clearOffscreenPills();
+  }
+
   // Off-screen affected (huge-tree scale): a blast can paint rows outside #rail's current scroll
   // window, where a hover preview would otherwise be invisible. Pills are anchored to #main (not
   // #rail) so they stay pinned regardless of scroll, per-row visibility is a plain
@@ -2404,6 +2600,7 @@ function episodeRailLayout(epView) {
       planMarks = collectPlanMarks(compose.plan, history);
       driftMarks = collectDriftMarks(compose.drift, history);
       forkMarks = collectForkMarks(compose.forks, map.nodes);
+      savePreviewMarks = collectSavePreview(compose.save_preview);
       checkpointsByFeature = collectCheckpoints(compose.intent);
       foldResultCache = {};
       playheadResultCache = {};

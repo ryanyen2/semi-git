@@ -222,6 +222,29 @@ export function registerCommands(
   reg("sgt.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));
   reg("sgt.showPlanDiff", (target) => planDiff.showDiff(target));
 
+  // Hand a stalled plan back to Claude Code: relaunch the interrupted session in a terminal.
+  // sgt never authors code itself -- resuming the real agent conversation is the correct on-ramp.
+  // Tradeoff: `claude` must be on PATH; if not, the terminal shows command-not-found -- which is
+  // exactly the "relaunch that session in their terminal" behavior the user asked for.
+  reg("sgt.resumePlan", async (sessionId?: string) => {
+    if (!sessionId) {
+      return;
+    }
+    const view = await store.planView();
+    const session = view.sessions.find((s) => s.session_id === sessionId);
+    // With a captured Claude session id we resume that exact conversation (its plan context is
+    // already restored); otherwise the bare picker lets the user pick -- sgt has already shown
+    // which plan stalled and its remaining steps.
+    const cmd = session?.claude_session_id
+      ? `claude --resume ${session.claude_session_id}`
+      : "claude --resume";
+    // Run the resume (it launches the interactive session and restores context); we deliberately
+    // do NOT append a `-p` prompt -- the user continues the restored conversation by typing.
+    const term = vscode.window.createTerminal({ name: "sgt resume" });
+    term.sendText(cmd, true);
+    term.show();
+  });
+
   // The N-column tip diff + merge-op/fulfill/land wizard (Phase 6).
   reg("sgt.resolveFork", (symbol?: string) => {
     if (!symbol) {

@@ -41,6 +41,13 @@ EFFORT = "low"
 # terminal `completed`/explicit `abandon` is the normal way a plan leaves the active surface.
 STALE_SECONDS = 7 * 24 * 3600
 
+# Far shorter than STALE_SECONDS and *non-destructive*: a session idle past this (and with no
+# uncommitted work flowing toward it -- that check lives in `sgt.api.plan_view`, not here) is
+# *derived* as "stalled" for the review surface, so the user can see an interrupted plan and resume
+# it long before the 7-day reap silently deletes it. Purely a display threshold -- nothing is
+# stored or deleted at this age.
+STALLED_SECONDS = 3600
+
 
 class PlanStep(BaseModel):
     title: str
@@ -177,10 +184,13 @@ def _backfill_predicted_feature(repo: Path, steps: list[PlanStep]) -> None:
 
 # -- intake / abandon / staleness sweep ------------------------------------------------------------
 
-def intake(repo: str | Path, plan_text: str, session_id: str | None = None) -> PlanSession:
+def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
+           claude_session_id: str | None = None) -> PlanSession:
     """Decompose `plan_text` (LLM first, fallback second) and mint one hollow op per step,
     off-chain. `session_id` defaults to a fresh `uuid4` hex; an explicit id is accepted so tests
-    are deterministic."""
+    are deterministic. `claude_session_id`, when the drafting agent can read its own
+    `$CLAUDE_CODE_BRIDGE_SESSION_ID`, is stored so a stalled plan can be resumed directly with
+    `claude --resume <id>` (else the resume affordance falls back to Claude Code's session picker)."""
     repo = Path(repo)
     store = Store(repo)
     session_id = session_id or uuid.uuid4().hex
@@ -214,6 +224,7 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None) -> P
         "created_ts": now,
         "last_activity_ts": now,
         "status": "active",
+        "claude_session_id": claude_session_id,
         "baseline_op_ids": list(baseline_op_ids),
         "steps": steps,
     }

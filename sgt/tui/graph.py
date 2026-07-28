@@ -443,17 +443,6 @@ def _bucket_density(sub_bins: list, width: int) -> list[int]:
 _SPARK = "▁▂▃▄▅▆▇█"
 
 
-def _lane_sub_bins(cars: list[dict]) -> list:
-    """Union a lane's cars into one `[(commit_index, op_count), ...]` density series -- summing the
-    per-car `sub_bins` (`sorted(commit_index -> op_count)`, built in `segment_layout`) by commit so
-    the overview sparkline reflects the whole feature's op-density over its lifetime, not one car."""
-    merged: dict[int, int] = {}
-    for c in cars:
-        for ci, cnt in c.get("sub_bins", []):
-            merged[ci] = merged.get(ci, 0) + cnt
-    return sorted(merged.items())
-
-
 def _time_ruler(prefix_w: int, bar_w: int, commit_count: int) -> str:
     """A commit-index ruler aligned under the car strip: start/mid/end ticks (`c0 … cN`) at the same
     columns `render_cars` maps commits onto, so a car's horizontal position reads as *when*. Blank
@@ -528,6 +517,29 @@ def _render_car(car: dict, width: int, hexc: str, *, color: bool, is_big: bool =
         return _bold(painted, color=color) if (is_big and color) else painted  # big event = bold
 
     return f"{bracket(lo)}{body}{bracket(hi)}"
+
+
+_BAR_MAX = 12  # cap+scale wide op-sets so a bar stays one legible glyph run
+
+
+def _magnitude_bar(before: int, after: int, present: int, hexc: str, *, color: bool) -> str:
+    """The static stand-in for the webview's collapsing lane: a bar `max(before, after)` cells wide
+    where the ops *present in this frame* are solid in the feature hue and the rest are dim `░`
+    ghosts. Because the length is fixed by the union of both states, flipping `present` (before↔after
+    via the pane's `b` key) fills or empties the bar *in place* -- the eye sees the shrink/grow the
+    terminal can't animate. Counts above `_BAR_MAX` scale down proportionally (min one cell for any
+    nonzero side) so a 64-op revert is still one glyph run, not a wrapped wall."""
+    total = max(before, after, 1)
+    scale = min(1.0, _BAR_MAX / total)
+
+    def cells(n: int) -> int:
+        return 0 if n <= 0 else max(1, round(n * scale))
+
+    width = cells(total)
+    solid = min(width, cells(present))
+    ghost = max(0, width - solid)
+    solid_s = (_shade(hexc, 1.0, "█" * solid) if color else "█" * solid) if solid else ""
+    return solid_s + _dim("░" * ghost, color=color)
 
 
 def _min_unique_prefixes(ids, *, floor: int = 5, cap: int = 10) -> dict:
@@ -825,24 +837,32 @@ def render_verb_preview_lines(
     *,
     focus_fid: str | None,
     color: bool = True,
+    frame: str = "after",
 ) -> list[str]:
     """The **feedforward** graph for a revert/restore: instead of applying blind, draw *where it
     lands*. The target feature's checkpoints are shown vertically (like `--focus`) with the affected
     slice marked -- `▸`/`✗` a checkpoint the edit removes, `◐` one partly touched, else `kept`; a
-    restore marks the re-added slice instead. Below it, the OTHER features the dependency blast hits,
-    each badged `blast` (loses ops -> must re-draft) or `foundation` (a locked prerequisite). Ends
-    with a one-line summary. Pure over the `_project_verb_preview` dict + the same
-    map/grid/segments the log reads, so it's testable and shares `_render_car`/`color_for` with the
-    overview. The `[y/N]` prompt and any capped diff stay in the CLI caller."""
-    from sgt.intent.segment import checkpoint_slug
+    restore marks the re-added slice instead. Below it, the OTHER features the edit reaches, each
+    carrying its op-count `before → after` and its role (`blast` loses ops -> must re-draft;
+    `foundation` a locked prerequisite it stands on), then a `· N unchanged` floor for the dim
+    context -- the "Focus & Morph" grammar the webview also renders, sourced from the same
+    `focus_subgraph` projection so both surfaces agree.
 
+    `frame` toggles the before/after view of the morph (the terminal's stand-in for the animated
+    webview): `"after"` (default) ghosts the removed checkpoints (`✗`) and shows each lane's
+    post-edit count; `"before"` shows them still present so the user can compare. Pure over the
+    `_project_verb_preview` dict + the same map/grid/segments the log reads, so it's testable and
+    shares `_render_car`/`color_for` with the overview. The `[y/N]` prompt and any capped diff stay
+    in the CLI caller."""
     segments = segments or []
     verb = preview_view.get("verb", "revert")
     target = preview_view.get("target", "")
     removed = set(preview_view.get("removed", []))
     added = set(preview_view.get("added", []))
     touched = removed if verb == "revert" else added
-    affected = preview_view.get("affected", []) or []
+    fnodes = (preview_view.get("focus") or {}).get("nodes", [])
+    focus_by_fid = {n["feature_id"]: n for n in fnodes}
+    context_count = (preview_view.get("focus") or {}).get("context_count", 0)
     files = preview_view.get("files", {}) or {}
 
     layout = segment_layout(map_view, grid_view, segments)
@@ -859,21 +879,31 @@ def render_verb_preview_lines(
 
     # Per-checkpoint status for the target feature: is the whole segment in the edit's op-set, some
     # of it, or none? (segments carry their `op_ids`; the car dict drops them, so join on segments.)
+    # Keep the op total + the touched count so the magnitude bar can split a *partial* checkpoint
+    # into its kept vs. leaving cells, not just flag it.
     seg_status: dict = {}
     for seg in segments:
         if seg.get("feature_id") != focus_fid:
             continue
         ops = set(seg.get("op_ids", []))
         hit = ops & touched
-        seg_status[seg["seg_index"]] = "gone" if (ops and hit == ops) else ("partial" if hit else "kept")
+        status = "gone" if (ops and hit == ops) else ("partial" if hit else "kept")
+        seg_status[seg["seg_index"]] = (status, len(ops), len(hit))
 
     lines: list[str] = []
     action = "rewind" if verb == "revert" else "restore"
     if focus_fid:
         hexc = color_for(focus_fid)
         flabel = labels.get(focus_fid, focus_fid)
+        tgt = focus_by_fid.get(focus_fid)
+        delta = ""
+        if tgt:
+            ob, oa = tgt["ops_before"], tgt["ops_after"]
+            present = ob if frame == "before" else oa
+            bar = _magnitude_bar(ob, oa, present, hexc, color=color)
+            delta = f"  {bar}  " + _dim(f"{ob}→{oa} op", color=color)
         lines.append(f" {_paint(hexc, '▸', color=color)} {_bold(action, color=color)}  "
-                     f"{_bold(flabel, color=color)}  {bp(focus_fid, hexc)}")
+                     f"{_bold(flabel, color=color)}  {bp(focus_fid, hexc)}{delta}")
         lines.append(_dim(f"      {verb}  {target}", color=color))
         lines.append("")
 
@@ -882,21 +912,37 @@ def render_verb_preview_lines(
             lines.append(_dim("   (no checkpoints cached -- run `sgt log --refresh` to name them)", color=color))
         else:
             gone_word = "removed" if verb == "revert" else "restored"
+            stem = gone_word.rstrip("d").rstrip("e")  # remov / restor
             first_gone = True
             for car in lane["cars"]:
-                status = seg_status.get(car["seg_index"], "kept")
+                idx = car["seg_index"]
+                st, total, leaving = seg_status.get(idx, ("kept", car["op_count"], 0))
                 head = _render_car(car, 6, hexc, color=color)
-                slug = checkpoint_slug(car["label"])
-                tail = f"@{car['seg_index']} :{slug}  {car['label']}"
-                if status == "gone":
-                    mark = _paint(hexc, "▸", color=color) if (verb == "revert" and first_gone) else _dim("✗", color=color)
+                raw = f"@{idx} {car['label']}"
+                tail = raw[:24].ljust(24)
+                # The checkpoint's own two-state span, so its bar fills/empties on the `b` toggle in
+                # lockstep with the header: revert peels `leaving` ops off `total`, restore adds them.
+                kept = max(0, total - leaving)
+                seg_before, seg_after = (total, kept) if verb == "revert" else (kept, total)
+                present = seg_before if frame == "before" else seg_after
+                bar = _magnitude_bar(seg_before, seg_after, present, hexc, color=color)
+                if st == "kept":
+                    lines.append(f"     {head}  {_dim(tail, color=color)}  {bar}  {_dim('· kept', color=color)}")
+                    continue
+                if st == "partial":
+                    mark = _dim("◐", color=color)
+                    note = f"· {leaving}/{total} op {gone_word}"
+                else:  # fully touched: ▸ leads the slice; ✗ ghosts only a *removed* car (revert/after)
+                    if first_gone:
+                        mark = _paint(hexc, "▸", color=color)
+                    elif verb == "revert" and frame != "before":
+                        mark = _dim("✗", color=color)
+                    else:
+                        mark = " "
                     first_gone = False
-                    note = _dim(f"· {car['op_count']} op {gone_word}", color=color)
-                    lines.append(f"   {mark} {head}  {_dim(tail, color=color)}  {note}")
-                elif status == "partial":
-                    lines.append(f"   {_dim('◐', color=color)} {head}  {tail}  {_dim('· partly affected', color=color)}")
-                else:
-                    lines.append(f"     {head}  {_dim(tail, color=color)}  {_dim('· kept', color=color)}")
+                    note = (f"· {total} op will {stem}e" if frame == "before"
+                            else f"· {total} op {gone_word}")
+                lines.append(f"   {mark} {head}  {_dim(tail, color=color)}  {bar}  {_dim(note, color=color)}")
         lines.append("")
     else:
         # No feature context (a single-op target on an un-mapped tree): skip the checkpoint rail and
@@ -905,26 +951,38 @@ def render_verb_preview_lines(
                      f"{_dim(target, color=color)}")
         lines.append("")
 
-    others = [a for a in affected if a.get("feature_id") != focus_fid]
+    # The focus subgraph beyond the target: each reached feature with its op-count `before → after`
+    # and role -- the "morph" numbers a terminal shows in place of the webview's animation. Blast
+    # loses ops (must re-draft); foundation is the kept prerequisite the edit stands on.
+    others = [n for n in fnodes if n["feature_id"] != focus_fid]
     if others:
-        lines.append(_dim(" also affected (dependency blast):", color=color))
-        for a in others[:8]:
-            afid = a["feature_id"]
+        lines.append(_dim(" also affected", color=color))
+        for n in others[:8]:
+            afid = n["feature_id"]
             ahex = color_for(afid)
-            albl = labels.get(afid, afid)
-            if a.get("direction") == "blast":
-                glyph, badge = _paint(ahex, "●", color=color), f"{a.get('op_count', 0)} op · must re-draft"
-            else:
-                glyph, badge = _paint(ahex, "◈", color=color), "locked prerequisite"
-            lines.append(f"   {glyph} {bp(afid, ahex)} {albl}  {_dim('[' + badge + ']', color=color)}")
+            albl = labels.get(afid, n.get("label", afid))
+            ob, oa = n["ops_before"], n["ops_after"]
+            present = ob if frame == "before" else oa
+            bar = _magnitude_bar(ob, oa, present, ahex, color=color)
+            if n["role"] == "foundation":
+                glyph = _paint(ahex, "◈", color=color)
+                badge = "prerequisite, kept" if ob == oa else f"gains {oa - ob}"
+            else:  # blast (target is drawn as the rail above, never here)
+                glyph = _paint(ahex, "●", color=color)
+                badge = f"loses {ob - oa}, re-draft"
+            note = _dim(f"{ob}→{oa} · {badge}", color=color)
+            lines.append(f"   {glyph} {albl[:18].ljust(18)}  {bar}  {note}")
         if len(others) > 8:
             lines.append(_dim(f"   +{len(others) - 8} more feature(s)", color=color))
         lines.append("")
+    if context_count:
+        lines.append(_dim(f" · {context_count} unchanged feature(s) in the dim field", color=color))
 
     n_op = len(removed) if verb == "revert" else len(added)
     verbword = "removes" if verb == "revert" else "restores"
+    frame_hint = "" if frame == "after" else "  · showing before"
     lines.append(_dim(f" {verbword} {n_op} op · {len(files)} file(s) changed · "
-                      f"{len(others)} other feature(s) affected", color=color))
+                      f"{len(others)} other feature(s) affected{frame_hint}", color=color))
     return lines
 
 

@@ -70,11 +70,11 @@ sgt advanced blame <file>           # which feature owns each symbol in a file
 sgt advanced state / history        # the current state; mined commits and each op's kind + feature
 sgt intent list/show/build          # intent-clustering overlay: themes that span features
 
-# add or remove ops
-sgt revert [--emit] <sel>           # remove a symbol, op, or feature, and anything built on it
+# add or remove ops (each shows the consequence and asks before writing)
+sgt revert <sel>                    # remove a symbol, op, or feature, and anything built on it
 sgt revert --session <name>         # remove everything one agent session landed
 sgt revert <feature>@<n>            # rewind one checkpoint (intent segment) of a feature
-sgt restore [--emit] <sel>          # add an op back, along with everything it needs
+sgt restore <sel>                   # add an op back, along with everything it needs
 sgt revert "<intent>" / sgt restore "<intent>"  # no exact name to give it? an LLM proposes
                                                  # candidates, previews each, and asks before applying
 sgt resolve <symbol>                # guided same-symbol fork resolution (merge-op → fulfill → land)

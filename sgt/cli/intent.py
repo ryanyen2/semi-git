@@ -17,13 +17,15 @@ preview and adjustable with `--subset`, never a silent destructive edit.
 
 from __future__ import annotations
 
+import argparse
+
 from ._common import _emit_json, _fail_json
 
 _USAGE = ("usage: sgt intent list [--json] | "
           "sgt intent show <feature@n | theme-id | commit-sha> [--json] | "
           "sgt intent build [--json] | "
           "sgt intent relabel <feature@n> \"<intent>\" [--json] | "
-          "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--emit] [--json]\n"
+          "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--json]\n"
           "  (rewind a single checkpoint with `sgt revert <feature>@<n>`)")
 
 
@@ -33,8 +35,9 @@ def register(subs, parent) -> None:
     p.add_argument("target", nargs="?")
     p.add_argument("rest", nargs="*")  # the new label words for `relabel`
     p.add_argument("--subset", nargs="*")
-    p.add_argument("--emit", action="store_true")
-    p.add_argument("--yes", action="store_true")
+    # Hidden but functional (see revert): the tty consequence pane is the default confirm step.
+    p.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=_cmd_intent)
 
 

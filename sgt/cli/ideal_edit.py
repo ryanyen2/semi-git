@@ -5,13 +5,17 @@
 
 from __future__ import annotations
 
+import argparse
+
 from ._common import _emit_json, _fail, _fail_json
 from .rewrite import _print_draft, _print_repair_result
 
 
 def register(subs, parent) -> None:
     r = subs.add_parser("revert", parents=[parent])
-    r.add_argument("--emit", action="store_true")
+    # `--emit` (machine dry-run: VS Code/MCP) and `--yes` (non-tty apply) stay functional but hidden
+    # -- on a tty the consequence pane is the default confirm step, so a human never types them.
+    r.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("--keep-dependents", action="store_true", dest="keep_dependents")
     r.add_argument("--keep", help="comma-separated dependent op-ids to keep (from the --emit "
                                   "frontier); implies --keep-dependents. Empty = keep none. "
@@ -20,16 +24,15 @@ def register(subs, parent) -> None:
                    help="scrub <lane> back to its state as of commit <COMMIT> (a grid column "
                         "index from `sgt log`); drops that lane's ops after it and their up-set.")
     r.add_argument("--repair", action="store_true")
-    r.add_argument("--backend", default="api", choices=["api"])
     r.add_argument("--intent")
     r.add_argument("--session")
-    r.add_argument("--yes", action="store_true")
+    r.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("ref", nargs="*")
     r.set_defaults(func=_cmd_revert)
 
     s = subs.add_parser("restore", parents=[parent])
-    s.add_argument("--emit", action="store_true")
-    s.add_argument("--yes", action="store_true")
+    s.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
+    s.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     s.add_argument("ref", nargs="*")
     s.set_defaults(func=_cmd_restore)
 
@@ -204,7 +207,7 @@ def _revert_lane_to_commit(
     from sgt.lens import verbs as lens_verbs
 
     if not ref_tokens:
-        print("usage: sgt revert <lane> --to <commit> [--keep <lane>,...] [--emit] [--json]")
+        print("usage: sgt revert <lane> --to <commit> [--keep <lane>,...] [--json]")
         return 2
     get(repo)  # mine-on-contact before planning the edit (R9)
     preview = lens_verbs.plan_revert_lane_to_commit(repo, " ".join(ref_tokens), commit_index, keep=keep)
@@ -229,7 +232,7 @@ def _kernel_edit_verb(
     from sgt.core.lens import get
 
     if not ref_tokens:
-        print(f"usage: sgt {cmd} [--emit] [--json] <ref>")
+        print(f"usage: sgt {cmd} [--json] <ref>")
         return 2
     target = " ".join(ref_tokens)
     get(repo)  # mine-on-contact before planning/applying the edit (R9)

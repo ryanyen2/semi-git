@@ -26,7 +26,7 @@ on undo -- the simplest robust inverse:
                        `sgt/core/sync/land.py:207`), so its inverse is never applied.
 
 This is distinct from `sgt.api.oplog_view`, which projects the *content* op-DAG (the mined ops),
-not this user-action history; the action projection is `sgt.api.oplog_actions_view`.
+not this user-action history.
 """
 
 from __future__ import annotations

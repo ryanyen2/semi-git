@@ -1,6 +1,6 @@
 """The consequence focus pane (`sgt.tui.consequence.ConsequenceApp`): the interactive confirm step
 a mutating verb shows on a tty in place of `[y/N]`. Driven through a real pilot (the
-`app.run_test()` pattern shared with `test_app_interactions`). We verify the pane is wired to the
+`app.run_test()` pattern). We verify the pane is wired to the
 pure so-what layer -- `space` toggles a blast dependent into the kept-set and the so-what line
 recomputes; `enter` returns `Decision(True, kept)`; `escape` returns `Decision(False)`. The
 sentence wording itself is pinned in `tests/test_so_what.py`."""
@@ -17,7 +17,7 @@ from sgt.core.lens import get  # noqa: E402
 from sgt.core.store import Store  # noqa: E402
 from sgt.lens.map import build_map  # noqa: E402
 from sgt.store.gitbind import init_store  # noqa: E402
-from sgt.tui.consequence import ConsequenceApp, Decision  # noqa: E402
+from sgt.tui.consequence import ConsequenceApp, Decision, frontier_counts  # noqa: E402
 
 
 def _chain_repo(tmp_path):
@@ -147,3 +147,37 @@ def test_metadata_verb_pane_escape_aborts():
         return app.return_value
 
     assert asyncio.run(drive()) == Decision(False, frozenset())
+
+
+# -- frontier_counts (pure logic, no pilot) -----------------------------------
+
+
+def _frontier():
+    return [
+        {"op_id": "a", "bucket": "blast", "toggleable": True},
+        {"op_id": "b", "bucket": "carry", "toggleable": True},
+        {"op_id": "c", "bucket": "foundation", "toggleable": False},
+    ]
+
+
+def test_frontier_counts_default_kept_removes_every_toggleable_dependent():
+    c = frontier_counts(_frontier(), kept=set())
+    assert c["removed"] == 2 and c["kept"] == 0
+    assert c["toggleable"] == ["a", "b"]
+    assert c["foundation"] == ["c"]
+
+
+def test_frontier_counts_keeping_a_dependent_moves_it_out_of_removed():
+    c = frontier_counts(_frontier(), kept={"a"})
+    assert c["removed"] == 1 and c["kept"] == 1
+
+
+def test_frontier_counts_ignores_a_kept_id_that_is_not_toggleable():
+    # foundation ("c") is read-only: it can never be "kept" and never counts as removed.
+    c = frontier_counts(_frontier(), kept={"c", "stale"})
+    assert c["removed"] == 2 and c["kept"] == 0
+
+
+def test_frontier_counts_empty_rows():
+    c = frontier_counts([], kept=set())
+    assert c == {"toggleable": [], "foundation": [], "kept": 0, "removed": 0}

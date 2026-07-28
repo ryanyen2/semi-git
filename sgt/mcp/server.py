@@ -161,8 +161,10 @@ def tool_plan_intake(repo_path: str, args: dict) -> dict:
     if not plan_text:
         return {"error": "missing 'plan_text'"}
     session_id = (args.get("session_id") or "").strip() or None
+    claude_session_id = (args.get("claude_session_id") or "").strip() or None
     get(repo_path)
-    session = plan_mod.intake(repo_path, plan_text, session_id=session_id)
+    session = plan_mod.intake(repo_path, plan_text, session_id=session_id,
+                              claude_session_id=claude_session_id)
     return {
         "session_id": session.session_id, "status": session.status, "step_count": len(session.steps),
         "steps": [
@@ -300,7 +302,9 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "predicted hollow ops -- one per step, off-chain, never touching the ideal algebra. "
         "Grounds `predicted_feature` in the repo's own feature tree (`sgt map`) when one exists.",
         _schema(
-            {"plan_text": {"type": "string"}, "session_id": {"type": "string", "description": "explicit id (optional; defaults to a fresh one)"}},
+            {"plan_text": {"type": "string"},
+             "session_id": {"type": "string", "description": "explicit id (optional; defaults to a fresh one)"},
+             "claude_session_id": {"type": "string", "description": "your Claude Code session id (read $CLAUDE_CODE_BRIDGE_SESSION_ID via Bash if available); stored so an interrupted plan can be resumed directly with `claude --resume`"}},
             ["plan_text"],
         ),
         tool_plan_intake,

@@ -443,6 +443,48 @@ svg.railsvg {
   fill-opacity: 0.78;
 }
 
+/* In-situ save preview: a dashed, translucent "ghost car" at the frontier showing the work that
+   would land on the next `sgt save`. Dashed + low-opacity (family with .gcar-thematic / .gbar-plan)
+   reads as anticipated, not yet real; a slow pulse marks it live. Not a click target. */
+.gcar-pending {
+  fill-opacity: 0.18;
+  stroke: var(--accent);
+  stroke-width: 1.4px;
+  stroke-dasharray: 3 3;
+  cursor: default;
+  animation: gcar-pending-pulse 1.8s ease-in-out infinite;
+}
+
+.gcar-pending-count {
+  fill: var(--accent);
+  font-size: 9px;
+  text-anchor: middle;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+
+@keyframes gcar-pending-pulse {
+  0%, 100% { fill-opacity: 0.14; }
+  50% { fill-opacity: 0.30; }
+}
+
+/* The ghost just landed (a save committed it into a real checkpoint): the newest car enters once
+   from the ghost look into a solid car. A one-shot keyframe -- not a transition -- because
+   renderGraph rebuilds the car DOM each render, so there's no persistent element to interpolate. */
+.gcar-landing {
+  animation: gcar-land 340ms ease-out;
+}
+
+@keyframes gcar-land {
+  from { fill-opacity: 0.18; stroke: var(--accent); stroke-dasharray: 3 3; }
+  to { fill-opacity: 0.55; stroke: var(--bg); stroke-dasharray: 0; }
+}
+
 /* A label tag floated just above a narrow big-event car (when the car itself is too thin to hold
    inline text) -- names the one chapter most worth noticing per lane. */
 .gcar-tag {
@@ -508,7 +550,7 @@ svg.railsvg {
    co-change shows -- kept off the default view to avoid a hairball). */
 .gantt.focus .glane,
 .gantt.focus .swimlane {
-  opacity: 0.28;
+  opacity: 0.78;
 }
 
 .gantt.focus .glane.lit,
@@ -576,6 +618,92 @@ svg.railsvg {
   stroke-width: 1.5px;
 }
 
+/* ── Focus & Morph preview: the held consequence overlay ────────────────────────────────────────
+   A deeper, persistent sibling of the hover ghosts above. While a revert/restore is previewed the
+   whole field recedes to a background floor (0.18, the veil intensity) and only the affected
+   subgraph (`.preview-lit`) holds full presence -- so the edit reads as "these features change,
+   the rest is context," not a wall of op-ids. Roles reuse the ghost channels (--fg target, --blast
+   losing, --land gaining); impact stays opacity/stroke/dash/motion, never a second identity hue.
+   The morph is the before->after cue: a lane whose ops fully leave fades to a dashed "leaving"
+   ghost (inverting `gcar-land`), a lane that gains ops lands solid. The "N -> M" op delta sits in
+   the lane's own count label, so the numbers survive with motion off. */
+.gantt.preview .glane,
+.gantt.preview .swimlane {
+  opacity: 0.18;
+}
+
+.gantt.preview .glane.preview-lit {
+  opacity: 1;
+}
+
+.gantt.preview .preview-target .glane-swatch {
+  stroke: var(--fg);
+  stroke-width: 1.5px;
+}
+
+.gantt.preview .preview-target .glane-label {
+  font-weight: 700;
+}
+
+.gantt.preview .preview-blast .gbar-track {
+  stroke: var(--blast);
+  stroke-width: 1.5px;
+  fill-opacity: 0.3;
+}
+
+.gantt.preview .preview-foundation .gbar-track {
+  stroke: var(--land);
+  stroke-width: 1.5px;
+  fill-opacity: 0.3;
+}
+
+/* Morph: ops leaving (revert) collapse the lane's cars to a dashed ghost; ops arriving land solid. */
+.gantt.preview .preview-leaving .gcar {
+  animation: preview-leave 360ms ease-out forwards;
+}
+
+.gantt.preview .preview-arriving .gcar {
+  animation: gcar-land 360ms ease-out;
+}
+
+@keyframes preview-leave {
+  from { fill-opacity: 0.55; stroke-dasharray: 0; }
+  to { fill-opacity: 0.14; stroke: var(--blast); stroke-dasharray: 3 3; }
+}
+
+/* The "N -> M" delta in the lane's op-count slot -- the plain replacement for "removes 64 ops from
+   X to Y." Amber when the lane loses ops, green when it gains. */
+.gbar-count.preview-delta {
+  font-weight: 700;
+}
+
+.gbar-count.preview-delta.losing {
+  fill: var(--blast);
+}
+
+.gbar-count.preview-delta.gaining {
+  fill: var(--land);
+}
+
+/* Context tally, pinned bottom-right like the off-screen pills: how many features stay unchanged. */
+.preview-context-pill {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  z-index: 5;
+  background: var(--panel-bg);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.preview-context-pill[hidden] {
+  display: none;
+}
+
 #rail.arming .glane {
   cursor: crosshair;
 }
@@ -632,7 +760,7 @@ svg.railsvg {
 
 .frontier-line.at-head {
   stroke-dasharray: 2 2;
-  opacity: 0.4;
+  opacity: 0.5;
 }
 
 .frontier-handle {
@@ -882,6 +1010,54 @@ svg.railsvg {
   font-variant-numeric: tabular-nums;
 }
 
+/* A stalled (interrupted) plan reads paused on the warning channel -- attention, not error. */
+.plans-pop-row.stalled .plans-pop-glyph {
+  color: var(--blast);
+}
+
+.plan-resume {
+  flex: 0 0 auto;
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--blast);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--blast);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.plan-resume:hover {
+  background: var(--blast);
+  color: var(--vscode-editor-background);
+}
+
+/* Inspector card: the plain "what it is" line + the one prominent next action. */
+.detail-why.stalled {
+  color: var(--blast);
+}
+
+.action.plan-resume-primary {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  border: 1px solid var(--blast);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--blast);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.action.plan-resume-primary:hover {
+  background: var(--blast);
+  color: var(--vscode-editor-background);
+}
+
 .plans-pop-empty {
   padding: 6px 8px;
   color: var(--dim);
@@ -954,6 +1130,15 @@ svg.railsvg {
   .code-panel-heading,
   .plan-ring-fill {
     transition: none !important;
+  }
+  /* The ghost car stays visible (its base dashed/low-opacity look) but never pulses, and a landed
+     car appears solid immediately instead of animating in. The preview morph likewise snaps to its
+     end state -- the "N -> M" delta label and the dimmed field carry the consequence without it. */
+  .gcar-pending,
+  .gcar-landing,
+  .preview-leaving .gcar,
+  .preview-arriving .gcar {
+    animation: none !important;
   }
 }
 
@@ -1107,7 +1292,7 @@ svg.railsvg {
 }
 
 .checkpoint.trivial {
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .checkpoint-dot {

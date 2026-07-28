@@ -139,6 +139,28 @@ export interface AffectedRow {
   op_count: number;
 }
 
+// One node of the "Focus & Morph" consequence subgraph (sgt.api.focus_subgraph): a feature the
+// edit touches, carrying its op-count before and after so the webview can morph just this lane
+// (N → M) against a dimmed field. `role` is hue-free — `target` acted-on, `blast` losing ops,
+// `foundation` gaining ops or a kept prerequisite.
+export interface FocusNode {
+  feature_id: string;
+  label: string;
+  role: "target" | "blast" | "foundation";
+  ops_before: number;
+  ops_after: number;
+}
+
+// The affected subgraph only (not the whole graph): the nodes above, their co-change edges, and a
+// tally of the unaffected features that stay dimmed as context. `nodes` is empty when no feature
+// map is built, so a renderer falls back to the `so_what` headline.
+export interface FocusView {
+  so_what: string;
+  nodes: FocusNode[];
+  edges: { a: string; b: string }[];
+  context_count: number;
+}
+
 // `sgt revert <ref> --emit --json` — a sandboxed dry-run preview, shared by single-op and
 // feature-grouped revert (both resolve to the same `sgt.api._project_verb_preview` shape).
 export interface EmitView {
@@ -154,6 +176,8 @@ export interface EmitView {
   // U3 additions -- the selectable dependent frontier and the rolled-up affected features.
   frontier?: FrontierRow[];
   affected?: AffectedRow[];
+  // The "Focus & Morph" subgraph the webview dims-and-morphs from (sgt.api.focus_subgraph).
+  focus?: FocusView;
 }
 
 // `sgt merge <survivor> <absorbed> --json`.
@@ -226,6 +250,14 @@ export interface PlanSession {
   created_ts: number;
   last_activity_ts: number;
   steps: PlanStep[];
+  // Derived in `sgt.api.plan_view` (not stored): "building" | "stalled" | "complete". A stalled
+  // plan has unbuilt steps, no work in flight, and has gone quiet -- the Resume affordance targets it.
+  derived_status?: "building" | "stalled" | "complete";
+  pending_count?: number;
+  remaining_titles?: string[];
+  // Best-effort Claude Code session id captured at intake; when present, Resume relaunches this
+  // exact conversation via `claude --resume <id>`, else the bare `claude --resume` picker.
+  claude_session_id?: string | null;
 }
 
 export interface CheckpointGroup {
@@ -464,6 +496,22 @@ export interface GridView {
   feature_count: number;
 }
 
+// `sgt.api.save_preview_view` -- the in-situ "what would a save land" read (feature-granular):
+// which existing features would gain ops if you saved now (`affected`), how many pending ops
+// belong to no built feature (`new_work_count`), and the total pending op count. Drives the
+// workbench's dashed ghost-checkpoint cars. Empty `affected` + zero counts == nothing pending.
+export interface SavePreviewAffected {
+  feature_id: string;
+  op_count: number;
+  op_ids: string[];
+}
+
+export interface SavePreviewView {
+  affected: SavePreviewAffected[];
+  new_work_count: number;
+  total_op_count: number;
+}
+
 export interface ComposeView {
   map: MapView;
   history: HistoryView;
@@ -474,6 +522,7 @@ export interface ComposeView {
   sessions: SessionsView;
   trust: TrustView;
   intent: IntentView;
+  save_preview: SavePreviewView;
   oracle_verdict: OracleVerdict;
   proposals: ComposeProposalSummary[];
 }
