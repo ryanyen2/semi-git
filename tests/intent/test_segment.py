@@ -337,6 +337,48 @@ def test_persisted_entries_are_never_recut_only_the_unclaimed_tail_is(tmp_path):
     assert len(llm_segs) == 1 and llm_segs[0].label == "kept as-is"
 
 
+# -- rung-1 seam hysteresis (§3.4) ----------------------------------------------------------------
+
+
+def _mk_run(i, sha, novelty=0.0, scope="x"):
+    return segment.Run(feature_id="F-A", commit_index=i, commit_sha=sha, subject=f"s{i}",
+                       scope=scope, op_ids=frozenset({f"op{i}"}), novelty=novelty)
+
+
+def test_seam_bonus_preserves_a_near_threshold_persisted_boundary():
+    """A seam scoring just below `CUT_THRESHOLD` (novelty 0.6, same scope, no gap) is normally
+    merged; if it already started a chapter in the persisted record, `SEAM_BONUS` pushes it over
+    and the boundary is kept -- pure anti-flicker hysteresis."""
+    runs = [_mk_run(0, "aaaaaaaa"), _mk_run(1, "bbbbbbbb", novelty=0.6)]
+    assert segment._cut_points(runs) == []                                # 0.6 < 1.0 -> merged
+    assert segment._cut_points(runs, frozenset({"bbbbbbbb"})) == [1]       # 0.6 + 0.5 >= 1.0 -> kept
+
+
+def test_seam_bonus_never_invents_a_boundary_from_nothing():
+    """`SEAM_BONUS` is strictly below `CUT_THRESHOLD`, so a seam with no real signal (score 0)
+    stays merged even when named as a prior boundary -- the bonus can only *preserve*, never invent."""
+    runs = [_mk_run(0, "aaaaaaaa"), _mk_run(1, "bbbbbbbb", novelty=0.0)]
+    assert segment._cut_points(runs, frozenset({"bbbbbbbb"})) == []        # 0.0 + 0.5 < 1.0
+
+
+def test_seam_bonus_survives_cap_reranking():
+    """A persisted boundary must survive `_cap_cuts`: when every seam ties (each commit a fresh
+    scope) the cap drops some to stay within `MAX_SEGMENTS`, but a bonused seam ranks strictly
+    highest and is always kept."""
+    runs = [_mk_run(i, f"c{i:07d}", scope=f"s{i}") for i in range(segment.MAX_SEGMENTS + 3)]
+    base = segment._cut_points(runs)
+    assert len(base) == segment.MAX_SEGMENTS - 1  # capped, all seams tied at W_SCOPE
+    pinned = runs[3].commit_sha
+    assert 3 in segment._cut_points(runs, frozenset({pinned}))
+
+
+def test_segment_runs_prior_boundaries_default_is_byte_identical():
+    """The `prior_boundaries` default (empty) leaves `segment_runs` byte-identical to a prior-free
+    cut -- the migration-safe guarantee the hysteresis is layered on top of."""
+    runs = [_mk_run(0, "aaaaaaaa"), _mk_run(1, "bbbbbbbb", novelty=0.6)]
+    assert segment.segment_runs(runs) == segment.segment_runs(runs, frozenset())
+
+
 # -- granularity gate ------------------------------------------------------------------------------
 # The redesign plan (2026-07-21, "segment-chunks as the atom") makes the segment the visual atom of
 # `sgt graph` -- if the cut weights ever drift towards over-fragmenting, every lane in that view

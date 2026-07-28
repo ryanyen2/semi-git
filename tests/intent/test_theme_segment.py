@@ -156,6 +156,83 @@ def test_op_membership_is_preserved_through_overlay(tmp_path, monkeypatch):
     assert covered == frozenset().union(*(r.op_ids for r in runs))
 
 
+def _n_commit_feature(tmp_path, n):
+    gb, _ = init_store(tmp_path)
+    for i in range(n):
+        body = "".join(f"def f{j}():\n    return {j}\n\n\n" for j in range(i + 1))
+        (tmp_path / "a.py").write_text(body)
+        gb.commit_all(f"feat(x): step {i}")
+    get(tmp_path)
+    op_leaf = _save_tree(tmp_path, {"F-A": [f"a.py::f{j}" for j in range(n)]})
+    runs = feature_runs(tmp_path, op_leaf)["F-A"]
+    by_id = {op.id: op for op in Store(tmp_path).all_ops()}
+    return runs, by_id
+
+
+class _RecordingClient:
+    """A fake LLM client that records the sha prefixes it was shown per call and groups every shown
+    commit into one 'Tail' chapter -- so a test can assert exactly which runs the incremental
+    windowing sent to the model."""
+    def __init__(self):
+        self.shown: list[list[str]] = []
+
+    class _Usage:
+        input_tokens = output_tokens = 1
+
+    @property
+    def responses(self):
+        return self
+
+    def parse(self, **kwargs):
+        import re
+        prefixes = re.findall(r"\[\d+\] ([0-9a-f]{8}) \|", kwargs["input"])
+        self.shown.append(prefixes)
+        plan = SegmentPlan(segments=[SegmentGroup(label="Tail", rationale="r", commit_shas=prefixes)])
+        r = type("R", (), {})()
+        r.output_parsed = plan
+        r.usage = self._Usage()
+        return r
+
+
+def test_tail_recut_freezes_all_but_last_chapter_and_windows_the_llm(tmp_path, monkeypatch):
+    """§3.4 incremental tail re-cut: given a feature's previous persisted record, every chapter but
+    the last freezes verbatim; only the last persisted chapter's runs + newer commits are sent to
+    the LLM and re-cut. So a rebuild after new commits re-pays only O(new work), and every
+    `pin_key`/`@n` below the tail survives by construction."""
+    runs, by_id = _n_commit_feature(tmp_path, 6)
+    shas = [r.commit_sha for r in runs]
+    # A previous build named runs 0,1 "Scaffold" and 2,3 "Finish"; runs 4,5 landed since.
+    record = [
+        {"commit_shas": shas[0:2], "label": "Scaffold", "rationale": "", "source": "llm"},
+        {"commit_shas": shas[2:4], "label": "Finish", "rationale": "", "source": "llm"},
+    ]
+    client = _RecordingClient()
+    themer = SegmentThemer(tmp_path)
+    themer._client = client
+    recs = themer.segment_features([("F-A", runs)], by_id, lambda s: None, [record])[0]
+
+    # The LLM saw only the window (last frozen chapter's runs 2,3 + new runs 4,5), never 0,1.
+    assert len(client.shown) == 1
+    assert client.shown[0] == [s[:8] for s in shas[2:6]]
+    # The frozen prefix chapter is spliced back verbatim -- its pin_key (first sha) is untouched.
+    assert recs[0]["commit_shas"] == shas[0:2] and recs[0]["label"] == "Scaffold"
+    # Total coverage preserved: every run lands in exactly one spliced chapter.
+    covered = [sha for r in recs for sha in r["commit_shas"]]
+    assert sorted(covered) == sorted(shas)
+
+
+def test_no_prior_record_windows_the_whole_timeline(tmp_path, monkeypatch):
+    """With no persisted record (`prior_records=None`, a first build or `--recut`), the window is
+    the whole feature -- byte-identical to the pre-incremental behavior."""
+    runs, by_id = _n_commit_feature(tmp_path, 4)
+    client = _RecordingClient()
+    themer = SegmentThemer(tmp_path)
+    themer._client = client
+    themer.segment_features([("F-A", runs)], by_id, lambda s: None)
+
+    assert client.shown == [[r.commit_sha[:8] for r in runs]]  # all four commits, one call
+
+
 def test_build_segments_no_client_writes_deterministic(tmp_path, monkeypatch):
     def _no_client(*a, **k):
         raise RuntimeError("OPENAI_API_KEY not found")
