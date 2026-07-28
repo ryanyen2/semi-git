@@ -461,7 +461,7 @@ class _StubLabeler:
     def label_super(self, child_labels, files):
         return self._fl(" / ".join(sorted(set(child_labels))))
 
-    def leaf_request(self, members, subjects=None, kinds=None):
+    def leaf_request(self, feature_id, members, weights=None, subjects=None, kinds=None):
         return ("leaf", members, members)
 
     def super_request(self, child_labels, files):

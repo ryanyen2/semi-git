@@ -166,6 +166,74 @@ def test_clean_symbol_name_distinguishes_names_from_artifacts():
     assert label_mod._clean_symbol_name("a.py::__anchor__::x") is None
 
 
+def test_weighted_jaccard_grades_by_op_mass_not_symbol_count():
+    # a shared heavy symbol keeps two sets similar; dropping it is expensive
+    w = {"a": 10.0, "b": 1.0, "c": 1.0}
+    assert label_mod._weighted_jaccard({"a", "b"}, {"a", "c"}, w) == 10.0 / 12.0  # keep the heavy one
+    assert label_mod._weighted_jaccard({"b"}, {"c"}, w) == 0.0                     # disjoint light ones
+    assert label_mod._weighted_jaccard(set(), set(), w) == 1.0                     # two empties identical
+    assert label_mod._weighted_jaccard({"x"}, {"x"}, {}) == 1.0                    # unit-weight default
+
+
+def test_graded_reuse_ship_of_theseus_relabels_within_bounded_swaps(tmp_path, monkeypatch):
+    """Graded leaf-label reuse anchors drift at the GENERATION member set, not the previous
+    snapshot (plan §3.2). A chain of single-member swaps -- each step individually similar to the
+    one before -- composes to unbounded drift; anchoring at generation forces a relabel within a
+    bounded number of swaps (⌈1/(1−τ)⌉ = 2 for τ=0.5 on this constant-size chain) and each relabel
+    resets the anchor. Were reuse graded against the previous snapshot instead, no single swap in
+    the chain would ever cross the threshold and the label would survive total replacement."""
+    calls: list[int] = []
+
+    class _CountingResponses:
+        def parse(self, **kwargs):
+            n = kwargs["input"].count("=== Group ")
+            calls.append(n)
+            idx = len(calls)
+            batch = label_mod._FeatureLabelBatch(items=[
+                label_mod._BatchItem(index=i, label=f"Label {idx}", rationale="r") for i in range(n)
+            ])
+            return _FakeResponse(output_parsed=batch, usage=_FakeUsage(1, 1))
+
+    class _CountingClient:
+        def __init__(self):
+            self.responses = _CountingResponses()
+
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _CountingClient())
+    labeler = label_mod.Labeler(tmp_path)
+    fid = "f-0001"
+
+    def name_for(members):
+        entry = labeler.leaf_request(fid, sorted(members))  # unit weights
+        return labeler.label_many([entry])[0].label
+
+    first = name_for(["a", "b", "c", "d"])                 # generation -> LLM call #1
+    assert name_for(["b", "c", "d", "e"]) == first          # J vs gen = 3/5 = 0.6 >= 0.5 -> reuse
+    relabel = name_for(["c", "d", "e", "f"])                # J vs gen = 2/6 = 0.33 < 0.5 -> relabel
+    assert relabel != first
+    assert name_for(["d", "e", "f", "g"]) == relabel        # J vs reset anchor = 3/5 = 0.6 -> reuse
+    assert calls == [1, 1]  # exactly two live calls: the generation and the one forced relabel
+
+
+def test_graded_reuse_lazily_adopts_legacy_member_hash_entry(tmp_path, monkeypatch):
+    """A pre-graded build keyed leaf labels by member hash. The first graded lookup for that
+    feature id finds no id-keyed entry, adopts the legacy member-hash entry as the generation
+    point (no LLM call), and re-keys it -- "first hit under the new rule re-keys them" (§3.2)."""
+    members = ["sgt/a.py::foo", "sgt/a.py::bar"]
+    legacy_key = label_mod._key(members)
+    # simulate a cache written by the old member-hash scheme (no gen_members)
+    labeler = label_mod.Labeler(tmp_path)
+    labeler.cache[legacy_key] = {"label": "Adopted", "rationale": "r", "source": "llm"}
+    monkeypatch.setattr(label_mod, "get_client", _no_client)  # any LLM call would fail loudly
+
+    fid = "f-0002"
+    out = labeler.label_many([labeler.leaf_request(fid, members)])[0]
+
+    assert out.label == "Adopted"
+    assert labeler.calls == 0  # adopted without paying
+    assert labeler.cache[fid]["source"] == "llm"
+    assert labeler.cache[fid]["gen_members"] == sorted(members)
+
+
 def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path, monkeypatch):
     """Regression: `build_map` used to label the tree but never `save()` the labeler, so the
     member-hash cache was rebuilt cold on every run -- a second `sgt map` re-called the (non-
