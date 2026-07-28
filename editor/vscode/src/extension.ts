@@ -77,10 +77,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.languages.registerInlayHintsProvider({ scheme: "file" }, inlayHints)
   );
 
-  registerCommands(context, store, preview, () => void blame.render(), planDiff, root);
+  const workbenchProvider = new WorkbenchProvider(context, store);
+  registerCommands(context, store, preview, () => void blame.render(), planDiff, root, workbenchProvider);
   registerGitBridgeCommands(context, store);
 
-  const workbenchProvider = new WorkbenchProvider(context, store);
   context.subscriptions.push(
     workbenchProvider,
     vscode.window.registerWebviewViewProvider("sgtWorkbench", workbenchProvider, {

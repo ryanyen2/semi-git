@@ -23,6 +23,8 @@ chapters does this feature have, which one is live, and what can I revert."
 
 from __future__ import annotations
 
+import re
+
 from .color import color_for
 
 # ── Layout (pure) ────────────────────────────────────────────────────────────────────────────────
@@ -373,7 +375,7 @@ def episode_rail_layout(ep_view: dict) -> dict:
     rows = [
         {"index": e["index"], "row": row_of[e["index"]], "feature": e["dominant_feature"],
          "lane": lane_of.get(e["dominant_feature"], 0), "subject": e["subject"],
-         "op_count": e["op_count"], "sha": e["sha"]}
+         "op_count": e["op_count"], "sha": e["sha"], "features": e["features"]}
         for e in ordered
     ]
     return {"rows": rows, "lane_of": lane_of, "lane_count": max(1, len(lane_bot)),
@@ -709,11 +711,10 @@ def render_graph_lines(
         return ("  " + dim("↔ " + links + (f" +{extra}" if extra > 0 else ""))) if links else ""
 
     lines: list[str] = []
-    total_ops = sum(l["op_count"] for l in layout["lanes"])
     n_sub = len(layout["headers"])
     sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
-    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['commit_count']} commit(s)  ·  "
-                       f"{total_ops} op(s){sub_note}"))
+    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['commit_count']} save(s)"
+                      f"{sub_note}"))
     if frontier is not None:
         lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
     lines.append("")
@@ -729,10 +730,12 @@ def render_graph_lines(
         handle = focus[2:10] if focus.startswith("f-") else focus[:8]  # copy token: the bare hex the gutter prints
         hexc = color_for(focus)
         raw = labels.get(focus, focus)
-        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {brighten_prefix(focus, hexc, full=True)}  ·  {lane['op_count']} op(s)")
+        n_ckpt = len(lane["cars"])
+        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {brighten_prefix(focus, hexc, full=True)}"
+                     f"  ·  {n_ckpt} checkpoint(s)")
         lines.append("")
         if not lane["cars"]:
-            lines.append(dim("   no checkpoints yet -- run `sgt intent build` (or `sgt log --refresh`)"))
+            lines.append(dim("   no checkpoints yet -- run `sgt log --refresh` to name them"))
         example_slug = None
         for car in lane["cars"]:
             head = render_car(car, 6, hexc)
@@ -740,8 +743,8 @@ def render_graph_lines(
             slug = checkpoint_slug(car["label"])
             if example_slug is None and not car["is_future"]:
                 example_slug = slug
-            lines.append(f"   {head}  {handle}@{car['seg_index']}  {dim(':' + slug)}  {car['label']}  "
-                         f"({car['op_count']} op, {car['tier']}, {car['source']}){future}")
+            lines.append(f"   {head}  {handle}@{car['seg_index']}  {dim(':' + slug)}  {car['label']}"
+                         f"{future}")
         lines.append("")
         slug_hint = example_slug or "<slug>"
         lines.append(dim(f" operate:  sgt revert {handle}:{slug_hint}  (one checkpoint, by name)   ·   "
@@ -767,7 +770,7 @@ def render_graph_lines(
             # (indent+marker+glyph+handle+30-char title). Timeline keeps its label_width.
             hdr_w = 45 if not timeline else label_width + 2
             label = ("▾ " + hd["label"])[:hdr_w].ljust(hdr_w)
-            meta = f"{hd['lane_count']} feat · {hd['op_count']} op"
+            meta = f"{hd['lane_count']} feature(s)"
             lines.append(dim(f" {label} {meta}"))
         elif row in lanes_by_row:
             l = lanes_by_row[row]
@@ -780,7 +783,6 @@ def render_graph_lines(
             if l["is_meta"]:
                 raw = f"{raw} ({len(l['leaves'])})"
             handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = the minimal unique prefix
-            count = str(l["op_count"]).rjust(5)
             if timeline:
                 label = raw[:label_width].ljust(label_width)
                 bar = render_cars(l["cars"], hexc, bar_width)
@@ -798,7 +800,7 @@ def render_graph_lines(
                 trailer = ("  " + dim(" · ".join(shown) + (f" · +{len(slugs) - 3}" if len(slugs) > 3 else ""))) if slugs else ""
                 indent = "   "  # nest features under their subsystem header
             row_s = (f"{indent}{marker}{paint(hexc, glyph)} {handle} "
-                     f"{bold(label) if is_sel else label} {bar} {dim(count)}{trailer}")
+                     f"{bold(label) if is_sel else label} {bar}{trailer}")
             row_s += links_note(fid)
             lines.append(row_s)
             if timeline and l["cars"]:
@@ -817,10 +819,10 @@ def render_graph_lines(
 
     # Legend + next-step hints: the view explains its own encoding and what to do from here.
     if timeline:
-        lines.append(dim(" [0···] = a checkpoint car at its commit-time (digit = its @n, brightness = op"
+        lines.append(dim(" [0···] = a checkpoint car at its save-time (digit = its @n, brightness = edit"
                          " density); [ ] co-changed · ( ) thematic · bold = the lane's big event · dim = past frontier"))
     else:
-        lines.append(dim(" ▁▂▃▄▅▆▇█ = op-density (taller = busier), │ = a rewind boundary between checkpoints"
+        lines.append(dim(" ▁▂▃▄▅▆▇█ = edit density (taller = busier), │ = a rewind boundary between checkpoints"
                          "   ·   trailing chips = the checkpoints (rewind by name)   ·   bright handle chars = the minimal prefix to type"))
     # lines.append(dim(" daily:  sgt log  (overview)   ·   sgt log --focus <XXXX>  (one feature's named"
     #                  " checkpoints)   ·   sgt log --timeline  (commit-time rail)   ·   sgt log --refresh  (re-name)"))
@@ -901,10 +903,14 @@ def render_verb_preview_lines(
             ob, oa = tgt["ops_before"], tgt["ops_after"]
             present = ob if frame == "before" else oa
             bar = _magnitude_bar(ob, oa, present, hexc, color=color)
-            delta = f"  {bar}  " + _dim(f"{ob}→{oa} op", color=color)
+            delta = f"  {bar}  " + _dim(f"{ob}→{oa} edits", color=color)
         lines.append(f" {_paint(hexc, '▸', color=color)} {_bold(action, color=color)}  "
                      f"{_bold(flabel, color=color)}  {bp(focus_fid, hexc)}{delta}")
-        lines.append(_dim(f"      {verb}  {target}", color=color))
+        # The typeable form of what is about to run -- a long content-hash target collapses to
+        # the same 8-char handle every other surface prints.
+        short = target[2:10] if (target.startswith("f-") and len(target) > 20) else (
+            target[:8] if re.fullmatch(r"[0-9a-f]{40,}", target) else target)
+        lines.append(_dim(f"      sgt {verb} {short}", color=color))
         lines.append("")
 
         lane = layout["node_by_id"].get(focus_fid)
@@ -919,7 +925,7 @@ def render_verb_preview_lines(
                 st, total, leaving = seg_status.get(idx, ("kept", car["op_count"], 0))
                 head = _render_car(car, 6, hexc, color=color)
                 raw = f"@{idx} {car['label']}"
-                tail = raw[:24].ljust(24)
+                tail = _ellipsize(raw, 34).ljust(34)
                 # The checkpoint's own two-state span, so its bar fills/empties on the `b` toggle in
                 # lockstep with the header: revert peels `leaving` ops off `total`, restore adds them.
                 kept = max(0, total - leaving)
@@ -931,7 +937,7 @@ def render_verb_preview_lines(
                     continue
                 if st == "partial":
                     mark = _dim("◐", color=color)
-                    note = f"· {leaving}/{total} op {gone_word}"
+                    note = f"· {leaving}/{total} edits {gone_word}"
                 else:  # fully touched: ▸ leads the slice; ✗ ghosts only a *removed* car (revert/after)
                     if first_gone:
                         mark = _paint(hexc, "▸", color=color)
@@ -940,8 +946,8 @@ def render_verb_preview_lines(
                     else:
                         mark = " "
                     first_gone = False
-                    note = (f"· {total} op will {stem}e" if frame == "before"
-                            else f"· {total} op {gone_word}")
+                    note = (f"· will be {gone_word}" if frame == "before"
+                            else f"· {gone_word}")
                 lines.append(f"   {mark} {head}  {_dim(tail, color=color)}  {bar}  {_dim(note, color=color)}")
         lines.append("")
     else:
@@ -966,23 +972,30 @@ def render_verb_preview_lines(
             bar = _magnitude_bar(ob, oa, present, ahex, color=color)
             if n["role"] == "foundation":
                 glyph = _paint(ahex, "◈", color=color)
-                badge = "prerequisite, kept" if ob == oa else f"gains {oa - ob}"
+                badge = "prerequisite, kept" if ob == oa else f"gains {oa - ob} edits"
             else:  # blast (target is drawn as the rail above, never here)
                 glyph = _paint(ahex, "●", color=color)
-                badge = f"loses {ob - oa}, re-draft"
-            note = _dim(f"{ob}→{oa} · {badge}", color=color)
-            lines.append(f"   {glyph} {albl[:18].ljust(18)}  {bar}  {note}")
+                badge = f"loses {ob - oa} edits, re-draft"
+            note = _dim(badge, color=color)
+            lines.append(f"   {glyph} {_ellipsize(albl, 18).ljust(18)}  {bar}  {note}")
         if len(others) > 8:
             lines.append(_dim(f"   +{len(others) - 8} more feature(s)", color=color))
         lines.append("")
     if context_count:
-        lines.append(_dim(f" · {context_count} unchanged feature(s) in the dim field", color=color))
+        lines.append(_dim(f" · {context_count} other feature(s) unchanged", color=color))
 
     n_op = len(removed) if verb == "revert" else len(added)
     verbword = "removes" if verb == "revert" else "restores"
     frame_hint = "" if frame == "after" else "  · showing before"
-    lines.append(_dim(f" {verbword} {n_op} op · {len(files)} file(s) changed · "
-                      f"{len(others)} other feature(s) affected{frame_hint}", color=color))
+    syms = [s for s in preview_view.get("affected_symbols", []) if "::__" not in s]
+    sym_note = f" across {len(syms)} symbol(s)" if syms else ""
+    shown_files = sorted(files)[:4]
+    file_note = ", ".join(shown_files) + (f" +{len(files) - 4} more" if len(files) > 4 else "")
+    lines.append(_dim(f" {verbword} {n_op} edit(s){sym_note} · "
+                      f"{len(files)} file(s): {file_note}{frame_hint}"
+                      if files else
+                      f" {verbword} {n_op} edit(s){sym_note} · no file changes{frame_hint}",
+                      color=color))
     return lines
 
 
@@ -1218,9 +1231,22 @@ def render_rail_lines(
     lines: list[str] = []
     n_ep = len(rows)
     n_feat = len(span)
-    lines.append(bold(f" {n_ep} episode(s)  ·  {n_feat} feature(s)  ·  {lane_count} lane(s)   (newest on top)"))
-    lines.append(dim(" each row = one commit-episode; each column = a feature; ● the episode's feature"))
+    lines.append(bold(f" {n_ep} save(s)  ·  {n_feat} feature(s)   (newest on top)"))
+    lines.append(dim(" each row = one save; chips name the feature(s) it touched, ● its main one"))
     lines.append("")
+
+    def chips(r: dict) -> str:
+        """The save's feature attribution: each touched feature's label in its own hue, main
+        feature first, densest-first after that -- the save -> feature mapping, on every row."""
+        feats = r.get("features") or {}
+        order_ = sorted(feats, key=lambda f: (f != r["feature"], -feats[f], f))
+        shown_f = order_[:3]
+        parts = [_paint(color_for(f or ""), _ellipsize(labels.get(f, f or "(unattributed)"), 20),
+                        color=color) for f in shown_f]
+        extra = len(order_) - len(shown_f)
+        if extra > 0:
+            parts.append(dim(f"+{extra}"))
+        return dim(" · ").join(parts) if parts else dim("(unattributed)")
 
     shown = rows[:max_rows]
     for r in shown:
@@ -1237,15 +1263,16 @@ def render_rail_lines(
         rail = " ".join(cells)
         sha = dim((r["sha"] or "")[:7].ljust(7))
         subj = (r["subject"] or "").replace("\n", " ")[:label_width].ljust(label_width)
-        flabel = labels.get(this_fid, this_fid or "(unattributed)")
         is_sel = this_fid == selected
-        tail = dim(f"{flabel} · {r['op_count']} op")
         subj_s = bold(subj) if is_sel else subj
-        lines.append(f" {rail}  {sha}  {subj_s}  {tail}")
+        lines.append(f" {rail}  {sha}  {subj_s}  {chips(r)}")
 
     if n_ep > len(shown):
         lines.append("")
-        lines.append(dim(f" … {n_ep - len(shown)} older episode(s) folded (newest {len(shown)} shown)"))
+        lines.append(dim(f" … {n_ep - len(shown)} older save(s) folded (newest {len(shown)} shown)"))
     lines.append("")
-    lines.append(dim(" operate:  sgt revert <XXXX>@<n>  (rewind one checkpoint)   ·   sgt log  (the timeline)"))
+    example = next((r["feature"] for r in shown if r["feature"]), None)
+    handle = (example[2:10] if example and example.startswith("f-") else (example or "<feature>")[:8])
+    lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt log --focus {handle}  "
+                     f"(one feature's checkpoints)   ·   sgt revert {handle}  (remove that feature)"))
     return lines

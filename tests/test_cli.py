@@ -914,7 +914,7 @@ def test_revert_without_tty_or_yes_still_refuses_with_exit_2(tmp_path, monkeypat
     _force_tty(monkeypatch, stdin=False)
 
     assert _in(tmp_path, ["revert", "a.py::foo"]) == 2
-    assert "not applied (no tty)" in capsys.readouterr().out
+    assert "not applied — this was the preview" in capsys.readouterr().out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
 
 

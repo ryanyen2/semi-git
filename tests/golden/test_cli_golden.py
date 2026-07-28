@@ -219,7 +219,7 @@ def capture_cli_surface(root: str) -> dict:
     return views
 
 
-_WITNESS_SHA_TEXT_RE = re.compile(r"(save |undo )[0-9a-f]{12}(:)")
+_WITNESS_SHA_TEXT_RE = re.compile(r"(save |undo )[0-9a-f]{7}(?=[\s\n]|$)")
 
 
 def _redact_witness_sha(capture: dict) -> dict:
@@ -233,7 +233,7 @@ def _redact_witness_sha(capture: dict) -> dict:
         if sha:
             out = out.replace(sha, "<witness-sha>")
     else:
-        out = _WITNESS_SHA_TEXT_RE.sub(r"\1<witness-sha-12>\2", out)
+        out = _WITNESS_SHA_TEXT_RE.sub(r"\1<witness-sha>", out)
     return {**capture, "out": out}
 
 

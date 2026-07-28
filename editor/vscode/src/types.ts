@@ -574,7 +574,28 @@ export interface SwitchResult {
   error?: string;
 }
 
-// `sgt save [-m <message>] [--json]` (D3).
+// One feature this save's new ops landed in -- the label feedforward
+// (`sgt.cli.porcelain._save_attribution`): its id, current label, a typeable handle, the real
+// symbols the save touched in it, its edit count, and whether the save minted the lane (still unnamed).
+export interface SaveFeature {
+  feature_id: string;
+  label: string;
+  handle: string;
+  symbols: string[];
+  edits: number;
+  new: boolean;
+}
+
+// `sgt save --as "<label>"`'s name-at-encode result -- present only when the save named a feature.
+export interface SaveRename {
+  ok: boolean;
+  feature_id?: string;
+  label?: string;
+  message?: string;
+}
+
+// `sgt save [-m <message>] [--as "<label>"] [--json]` (D3). `features`/`renamed` are additive: which
+// feature(s) the save's new ops landed in, and any inline `--as` rename result.
 export interface SaveResult {
   ok: boolean;
   saved?: boolean;
@@ -582,6 +603,8 @@ export interface SaveResult {
   commit?: string;
   ops?: number;
   error?: string;
+  features?: SaveFeature[];
+  renamed?: SaveRename;
 }
 
 // `sgt undo [--json]` (D3).

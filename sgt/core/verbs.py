@@ -154,9 +154,20 @@ def plan_restore(repo: str | Path, target: str) -> VerbPreview:
     ops, ideal, declared = _load(repo)
     source = lens.ideal_for_ref(repo, "HEAD")  # the full provenance ideal still holds reverted ops
     op_id, err = resolve_target(source, ops, target)
+    source_ids = source.op_ids
+    if err and "::" not in target:
+        # The reduced source parks a superseded/forked version (both competing tips are dropped by
+        # `reduce_to_ideal`), so the ghost op a `revert` printed can never resolve there. Fall back
+        # to an exact-or-unique-prefix match over the whole store: the downset is the ghost's own
+        # chain, and `_validated` still refuses any re-entry that would fork the ideal -- so this
+        # widens *resolution*, never legality. (`::` symbol targets keep the live-frontier path.)
+        ids = {op.id for op in ops}
+        matches = sorted(oid for oid in ids if oid.startswith(target))
+        if len(matches) == 1:
+            op_id, err, source_ids = matches[0], "", frozenset(ids)
     if err:
         return _preview("restore", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
-    after = ideal.op_ids | order.downset_in(op_id, source.op_ids, ops, declared)
+    after = ideal.op_ids | order.downset_in(op_id, source_ids, ops, declared)
     return _validated("restore", target, ideal.op_ids, after, ops, declared)
 
 

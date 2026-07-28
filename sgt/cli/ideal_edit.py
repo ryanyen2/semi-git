@@ -153,7 +153,7 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             print(line)
         if not yes:
             if not sys.stdin.isatty():
-                print("\n  not applied (no tty). re-run with --yes to apply, or --emit for a no-op preview.")
+                print("\n  not applied — this was the preview. re-run with --yes to apply.")
                 return 2
             try:
                 reply = input(f"\napply this {preview.verb}? [y/N] ").strip().lower()
@@ -163,8 +163,8 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
                 print("  skipped — nothing changed.")
                 return 1
         verbs.apply(repo, preview)
-        print(f"  ✓ {preview.verb} applied — {len(preview.removed)} op(s) removed, "
-              f"{len(preview.added)} added.")
+        print(f"  ✓ {preview.verb} applied — {len(preview.removed)} edit(s) removed, "
+              f"{len(preview.added)} added. (`sgt undo` reverses this.)")
         return 0
 
     if preview.ok:
@@ -190,8 +190,8 @@ def _apply_decision(repo: str, preview, kept: frozenset[str], as_json: bool) -> 
     if kept and preview.verb == "revert":
         return _revert_keep_dependents(repo, [preview.target], None, False, as_json, keep=kept)
     verbs.apply(repo, preview)
-    print(f"  ✓ {preview.verb} applied — {len(preview.removed)} op(s) removed, "
-          f"{len(preview.added)} added.")
+    print(f"  ✓ {preview.verb} applied — {len(preview.removed)} edit(s) removed, "
+          f"{len(preview.added)} added. (`sgt undo` reverses this.)")
     return 0
 
 
@@ -281,6 +281,13 @@ def _kernel_edit_verb(
             # typo'd/stale handle; answer that deterministically (no NL rung a bare hex never deserves).
             preview = plan_single(repo, target)
             if not preview.ok:
+                if cmd == "restore":
+                    # The id a `revert` just printed names an op the *reduced* ideal no longer
+                    # holds, so plan_restore can't see it -- explain the block instead of
+                    # "no feature matches".
+                    explained = _explain_restore_block(repo, target, as_json)
+                    if explained is not None:
+                        return explained
                 return _no_feature_match(repo, cmd, target, as_json)
     else:
         preview = plan_single(repo, target)
@@ -291,6 +298,12 @@ def _kernel_edit_verb(
                 preview = plan_feature(repo, target)
             else:
                 return _resolve_via_intent(repo, cmd, target, as_json, yes)
+
+    if cmd == "restore" and preview.ok and not preview.added and "::" in target:
+        # "restores 0 op" is an honest set answer but a useless human one: the symbol is already
+        # live. Say that, and surface any parked (ghost) versions -- the thing the user was
+        # probably reaching for -- with the exact swap commands.
+        return _restore_already_live(repo, target, as_json)
 
     if focus_fid is None and preview.ok:
         # Single-op target: focus the feedforward on the feature that owns the most touched ops.
@@ -329,12 +342,130 @@ def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
         print(json.dumps({"ok": False, "verb": cmd, "target": target, "candidates": cands}, indent=2))
         return 2
     if not hits:
-        print(f"? [{cmd}] no feature matches handle {target!r} -- run `sgt log` to see the handles.")
+        print(f"? [{cmd}] no feature matches handle {target!r} -- run `sgt log --map` to see the handles.")
         return 2
     print(f"? [{cmd}] {target!r} is an ambiguous handle; did you mean:")
     for nid in hits[:8]:
         print(f"  sgt {cmd} {body(nid)[:8]}   {nodes[nid].get('label', nid)}")
     return 2
+
+
+def _save_of(repo: str, op_ids) -> dict[str, tuple[str, str]]:
+    """``op_id -> (short sha, subject)`` of the save that produced each op -- the anchor users
+    actually remember. Reads the same earliest-witness rule every time-aware view uses."""
+    from sgt.core import opindex
+    from sgt.store.gitbind import GitBinding
+
+    gb = GitBinding(repo)
+    rows = gb.history()
+    ops = [op for op in opindex.index_ops(repo) if op.id in set(op_ids)]
+    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
+    subject = {sha: subj for sha, _parent, subj in rows}
+    return {oid: (sha[:7], subject.get(sha, "")) for oid, sha in sha_of.items()}
+
+
+def _live_and_ghosts(repo: str, symbol: str):
+    """(live tip op-id or None, [out-of-ideal op-ids touching `symbol`, oldest-first])."""
+    from sgt.core import lens, opindex, order
+
+    ops = opindex.index_ops(repo)
+    ideal = lens.current_ideal(repo)
+    tip = order.frontier(ideal.op_ids, ops).get(symbol)
+    ghosts = sorted(op.id for op in ops if symbol in op.footprint and op.id not in ideal.op_ids)
+    return tip, ghosts
+
+
+def _explain_restore_block(repo: str, target: str, as_json: bool) -> int | None:
+    """A hex restore target that names a real stored op the current ideal can't legally re-admit.
+    `plan_restore` resolves against the reduced HEAD ideal, which parks a superseded or forked
+    version -- so the very id a `revert` printed reads as "not found". Resolve it against the
+    whole store instead and, when another version of its symbol is live, explain the one-live-
+    version rule and the two ways out (swap / reconcile). Returns None when no stored op matches
+    (the caller's ladder continues)."""
+    from sgt.core import lens, opindex, order
+    from sgt.core.op import _symbol_kind
+
+    ops = opindex.index_ops(repo)
+    ids = {op.id for op in ops}
+    matches = sorted(oid for oid in ids if oid == target or oid.startswith(target))
+    if not matches:
+        return None
+    if len(matches) > 1:
+        msg = f"ambiguous op-id prefix {target!r}: {[m[:12] for m in matches[:5]]}"
+        return _fail_json(msg, as_json)
+    op_id = matches[0]
+    ideal = lens.current_ideal(repo)
+    if op_id in ideal.op_ids:
+        if as_json:
+            return _emit_json({"ok": True, "verb": "restore", "target": target,
+                               "removed": [], "added": [], "message": "already live"})
+        print(f"✓ {op_id[:8]} is already live — nothing to restore.")
+        return 0
+
+    op = next(o for o in ops if o.id == op_id)
+    tips = order.frontier(ideal.op_ids, ops)
+    blocked = []
+    for sym in sorted(op.footprint):
+        if _symbol_kind(sym) not in ("entity", "nested", "whole_file"):
+            continue
+        tip = tips.get(sym)
+        if tip is not None and tip != op_id:
+            blocked.append((sym, tip))
+    if not blocked:
+        return None  # parked for some other reason -- let the normal ladder report it
+
+    saves = _save_of(repo, [op_id] + [tip for _s, tip in blocked])
+    if as_json:
+        # Shape-compatible with the verb-preview projection (`forked` is what a client keys the
+        # refusal overlay on), plus the block detail no other field carries.
+        return _emit_json({
+            "ok": False, "verb": "restore", "target": target, "forked": True, "blocked": True,
+            "removed": [], "added": [],
+            "symbols": [{"symbol": s, "live_op": t, "ghost_op": op_id} for s, t in blocked],
+            "message": "another version of the symbol is live; revert it first or resolve",
+        })
+    sym, tip = blocked[0]
+    g_sha, g_subj = saves.get(op_id, ("?", ""))
+    t_sha, t_subj = saves.get(tip, ("?", ""))
+    print(f"✗ can't restore {op_id[:8]} — another version of {sym} is live")
+    print(f"    one live version per symbol: {tip[:8]}"
+          + (f" (save {t_sha} \"{t_subj}\")" if t_subj else "") + " is live;")
+    print(f"    {op_id[:8]}" + (f" (save {g_sha} \"{g_subj}\")" if g_subj else "")
+          + " waits behind it as a ghost.")
+    print(f"      swap       sgt revert {tip[:8]}   then   sgt restore {op_id[:8]}")
+    print(f"      reconcile  sgt resolve {sym}   (combine both versions)")
+    for sym_extra, _tip in blocked[1:]:
+        print(f"    (also blocked on {sym_extra})")
+    return 2
+
+
+def _restore_already_live(repo: str, symbol: str, as_json: bool) -> int:
+    """`sgt restore <file::symbol>` when the symbol is already live: name that plainly, then list
+    any parked versions with the swap commands -- the likely reason the user reached for restore."""
+    tip, ghosts = _live_and_ghosts(repo, symbol)
+    if as_json:
+        return _emit_json({"ok": True, "verb": "restore", "target": symbol, "removed": [],
+                           "added": [], "already_live": True, "parked_versions": ghosts})
+    print(f"✓ {symbol} is already live — nothing to restore.")
+    if ghosts and tip:
+        from sgt.core import verbs
+
+        saves = _save_of(repo, ghosts + [tip])
+        print(f"  {len(ghosts)} parked version(s) of this symbol exist:")
+        for g in ghosts[:4]:
+            sha, subj = saves.get(g, ("?", ""))
+            note = f"  from save {sha} \"{subj}\"" if subj else ""
+            print(f"    {g[:8]}{note}")
+            # Re-plan for a truthful hint: a ghost whose live tip is its own ancestor restores
+            # directly (a chain extension); a competing sibling needs the swap.
+            replan = verbs.plan_restore(repo, g)
+            if replan.ok and replan.added:
+                print(f"      bring it back:  sgt restore {g[:8]}")
+            else:
+                print(f"      swap it in:  sgt revert {tip[:8]}  then  sgt restore {g[:8]}")
+        if len(ghosts) > 4:
+            print(f"    +{len(ghosts) - 4} more")
+    return 0
 
 
 def _plan_for(verb: str, repo: str, ref: str, kind: str = ""):
@@ -482,14 +613,14 @@ def _print_verb_view(view: dict) -> int:
     print(f"{icon} [{view['verb']}] {view['target']}" + (f" — {view['message']}" if view["message"] else ""))
     if not view["ok"]:
         return 1
-    def _op_ids(ids: list, limit: int = 8) -> str:
-        head = ", ".join(o[:12] for o in ids[:limit])
-        return head + (f" +{len(ids) - limit} more" if len(ids) > limit else "")
-
+    # Human units: symbols, not op ids (the ids stay in --json; `sgt undo` is the recovery path,
+    # and a blocked restore lists parked versions by symbol).
+    syms = [s for s in view.get("affected_symbols", []) if "::__" not in s]
+    sym_note = (": " + ", ".join(syms[:6]) + (f" +{len(syms) - 6} more" if len(syms) > 6 else "")) if syms else ""
     if view["removed"]:
-        print(f"    removed {len(view['removed'])} op(s): " + _op_ids(view["removed"]))
+        print(f"    removed {len(view['removed'])} edit(s){sym_note}")
     if view["added"]:
-        print(f"    added {len(view['added'])} op(s): " + _op_ids(view["added"]))
+        print(f"    added {len(view['added'])} edit(s){sym_note}")
     # The dependent frontier: what reverting *lands on*. blast = a direct dependent that must be
     # re-drafted (a hollow to fulfill); carry = a transitive dependent that repoints mechanically;
     # foundation = an upstream prerequisite a revert cannot drop. This is the "where does it lead".
@@ -514,8 +645,6 @@ def _print_verb_view(view: dict) -> int:
         )
         more = f" +{len(affected) - 6}" if len(affected) > 6 else ""
         print(f"    features touched: {rows}{more}")
-    elif view["affected_symbols"]:
-        print(f"    affected: {', '.join(view['affected_symbols'])}")
     _print_verb_diff(view.get("files") or {})
     return 0
 

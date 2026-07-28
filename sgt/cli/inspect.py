@@ -8,6 +8,8 @@ before reading (R9)."""
 
 from __future__ import annotations
 
+import argparse as _dep
+
 from ._common import _add_view_flags, _emit_json, _fail
 
 
@@ -18,29 +20,34 @@ def register(subs, parent) -> None:
     # --rebuild` reuses `_map`'s full-recluster path.
     lp = subs.add_parser("log", parents=[parent])
     lmode = lp.add_mutually_exclusive_group()
-    lmode.add_argument("--ops", action="store_true",
-                       help="the raw mined op DAG (the pre-grid `sgt log`)")
+    lmode.add_argument("--map", action="store_true", dest="map",
+                       help="the feature map: one lane per feature, density over time")
     lmode.add_argument("--tree", action="store_true",
-                       help="the feature tree, no time axis (what `sgt map` shows)")
+                       help="the feature tree, no time axis")
     lmode.add_argument("--rail", action="store_true",
-                       help="the episode rail / vertical git-log (what `sgt episodes` shows)")
+                       help=_dep.SUPPRESS)  # the default view; kept as a compat alias
     lmode.add_argument("--summary", action="store_true",
-                       help="file/symbol/feature/coverage/oracle/drift scalars (what `sgt status` shows)")
+                       help="files/symbols/features, coverage, oracle, anything needing attention")
+    lmode.add_argument("--ops", action="store_true",
+                       help=_dep.SUPPRESS)  # relocated to `sgt advanced ops`; kept as a compat alias
     _add_view_flags(lp, paged=True)  # --full/--limit/--offset (used by --ops)
     lp.add_argument("--at", type=int, default=None, metavar="COMMIT",
-                    help="grid: fold frontier — only ops up to this commit-index count")
-    lp.add_argument("--no-color", action="store_true", help="grid/rail: plain text, no ANSI color")
+                    help="map: fold frontier — only ops up to this commit-index count")
+    lp.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     lp.add_argument("--refresh", action="store_true",
                     help="re-mine + rebuild the map first (default: fast read of the last-built map)")
     lp.add_argument("--rebuild", action="store_true",
-                    help="refresh with a full from-scratch recluster (the former `sgt map --rebuild`)")
+                    help="refresh with a full from-scratch recluster")
     lp.add_argument("--focus", default=None, metavar="FEATURE",
-                    help="grid: one feature, full width, one detail line per checkpoint car")
+                    help="one feature, full width, one line per checkpoint (implies --map)")
     lp.add_argument("--timeline", action="store_true",
-                    help="grid: the commit-time car rail (default is the compact per-feature overview)")
+                    help="map: the commit-time car rail (default is the compact per-feature overview)")
     lp.add_argument("--links", action="store_true",
-                    help="grid: show the co-change ↔ annotation trailing each lane")
+                    help="map: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
+    op = subs.add_parser("ops", parents=[parent])
+    _add_view_flags(op, paged=True)
+    op.set_defaults(func=_cmd_ops)
     hp = subs.add_parser("history", parents=[parent])
     _add_view_flags(hp, paged=True)
     hp.set_defaults(func=_cmd_history)
@@ -74,22 +81,32 @@ def register(subs, parent) -> None:
 
 
 def _cmd_log(args) -> int:
-    """`sgt log` is the daily grid surface (KTD9): bare `sgt log` renders the lane×commit grid
-    (`grid_view`), with mode flags for its sibling projections. The old op-DAG dump lives on under
-    `--ops`. `--json` returns the view matching the mode: grid (default/`--rail`), the feature tree
-    (`--tree`), the status scalars (`--summary`), or the op DAG (`--ops`)."""
-    if args.ops:
+    """`sgt log` is the daily inspection surface (KTD9). Bare `sgt log` answers "what did I do":
+    the episode rail, newest save on top. `--map` is the spatial overview (one lane per feature,
+    density over time); `--tree`/`--summary` are its sibling projections. `--focus`/`--timeline`/
+    `--links`/`--at` are map refinements, so any of them implies `--map`. `--json` returns the
+    canonical view for the mode: `grid_view` (default and `--map` — the rail is a time-major
+    rotation of the same cells), the feature tree (`--tree`), or the status scalars (`--summary`)."""
+    if args.ops:  # compat alias; the listed home is `sgt advanced ops`
         return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
     if args.tree:
         return _log_tree(".", args.as_json, args.refresh, args.rebuild)
     if args.summary:
-        return _status(".", args.as_json)
-    if args.rail:
-        return _log_rail(".", as_json=args.as_json, color=not args.no_color,
-                         refresh=args.refresh, rebuild=args.rebuild)
-    return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
-                     refresh=args.refresh, rebuild=args.rebuild, focus=args.focus, links=args.links,
-                     timeline=args.timeline)
+        return _status(".", args.as_json, full=args.full)
+    map_mode = (args.map or args.timeline or args.links or args.focus is not None
+                or args.at is not None)
+    if map_mode:
+        return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
+                         refresh=args.refresh, rebuild=args.rebuild, focus=args.focus,
+                         links=args.links, timeline=args.timeline)
+    return _log_rail(".", as_json=args.as_json, color=not args.no_color,
+                     refresh=args.refresh, rebuild=args.rebuild)
+
+
+def _cmd_ops(args) -> int:
+    """`sgt advanced ops`: the raw mined op DAG -- kernel plumbing, not a daily view (ops are how
+    sgt re-puzzles states internally; the human units are saves, features, symbols, files)."""
+    return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
 
 
 def _cmd_state(args) -> int:
@@ -166,16 +183,16 @@ def _fsck(repo: str, as_json: bool = False) -> int:
         print(f"    corrupt: {name}")
     for key in report.invalid_ideals:
         print(f"    invalid ideal for {key!r}: names an op the store can't produce -- "
-              f"re-mine the ref (`sgt get`) to rebuild it")
+              f"re-mine the ref (`sgt log --refresh`) to rebuild it")
     for key in report.unreachable_witnesses:
         print(f"    unreachable witness for {key!r}: its SHA no longer resolves -- prune the ref "
-              f"or re-seed it (`sgt get` on a live ref)")
+              f"or re-seed it (`sgt switch` to a live ref)")
     if report.mixed_versions:
         print(f"    mixed miner versions {', '.join(report.mixed_versions)} -- "
               f"run `sgt migrate ops-v3` to unify the store")
     if report.op_index_stale:
         print("    op index stale (advisory): the next read rebuilds it -- "
-              "`sgt reindex` forces it now")
+              "`sgt advanced reindex` forces it now")
     for gap in report.chain_gaps:
         print(f"    chain gap (advisory): {gap} has no producing op "
               f"(off-ref predecessor -- benign unless unexpected)")
@@ -201,8 +218,8 @@ def _fsck_tree(repo: str, as_json: bool = False) -> int:
     icon = "✗" if drift else "✓"
     print(f"{icon} fsck --tree — {len(drift)} drifted path(s)")
     for path in drift:
-        print(f"    drift: {path} — `sgt get` to absorb HEAD's bytes, or `sgt save` to enforce "
-              f"the ideal (opposite data-loss profiles)")
+        print(f"    drift: {path} — `sgt log --refresh` to absorb HEAD's bytes, or `sgt save` to "
+              f"enforce the ideal (opposite data-loss profiles)")
     for cls, label in (("backstop_kept", "backstop-kept"), ("unmanaged", "unmanaged"),
                        ("staged", "staged candidate"), ("unseeded", "unseeded ref")):
         for path in result[cls]:
@@ -297,7 +314,7 @@ def _log_ops(repo: str, as_json: bool = False, full: bool = False,
     if as_json:
         return _emit_json(view)
     if not view["ops"]:
-        print("(no ops — nothing mined yet; commit some work then run `sgt log --ops`)")
+        print("(no ops — nothing mined yet; commit some work then run `sgt advanced ops`)")
         return 0
     note = "" if full else (" (truncated)" if view["truncated"] else "")
     print(f"{view['count']} op(s){note}:")
@@ -360,12 +377,23 @@ def _diff(repo: str, ref_a: str, ref_b: str, as_json: bool = False) -> int:
 
 
 def _print_map_tree(view: dict) -> None:
-    """Indented `label (id) · N op(s)` tree, DFS from `roots` via each node's `children`. A feature
-    leaf with no live members is a clustering-algorithm artifact (an empty split child), not a real
-    feature -- same "drop what has nothing to show" filter `graph_layout` applies to lanes with no
-    ops (`sgt/tui/graph.py`) -- so it and any subsystem left with no other visible descendant are
-    skipped here. Display-only: the underlying tree/clustering is untouched."""
+    """Indented `label (handle) · N symbol(s)` tree, DFS from `roots` via each node's `children`.
+    The handle is the same minimal-unique prefix every other surface prints (typeable back into
+    `revert`/`restore`/`--focus`); internal cluster nodes show no handle -- they aren't operable
+    targets. A feature leaf with no live members is a clustering-algorithm artifact (an empty split
+    child), not a real feature -- same "drop what has nothing to show" filter `graph_layout` applies
+    to lanes with no ops (`sgt/tui/graph.py`) -- so it and any subsystem left with no other visible
+    descendant are skipped here. Display-only: the underlying tree/clustering is untouched."""
+    from sgt.tui.graph import _min_unique_prefixes
+
     by_id = {n["id"]: n for n in view["nodes"]}
+    leaves = [n["id"] for n in view["nodes"] if not n["children"]]
+    prefix_len = _min_unique_prefixes(leaves)
+
+    def handle(nid: str) -> str:
+        body = nid[2:] if nid.startswith("f-") else nid
+        k = max(3, prefix_len.get(nid, 8) - (2 if nid.startswith("f-") else 0))
+        return body[:max(k, 8)]
 
     def is_visible(nid: str) -> bool:
         n = by_id[nid]
@@ -375,7 +403,10 @@ def _print_map_tree(view: dict) -> None:
 
     def visit(nid: str, depth: int) -> None:
         n = by_id[nid]
-        print(f"{'  ' * depth}{n['label']} ({n['id']}) · {n['op_count']} op(s)")
+        if n["children"]:
+            print(f"{'  ' * depth}{n['label']}")
+        else:
+            print(f"{'  ' * depth}{n['label']} ({handle(nid)}) · {len(n['members'])} symbol(s)")
         for child in n["children"]:
             if is_visible(child):
                 visit(child, depth + 1)
@@ -457,9 +488,10 @@ def _blame(repo: str, file: str, as_json: bool = False) -> int:
     return 0
 
 
-def _status(repo: str, as_json: bool = False) -> int:
+def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
     """`sgt log --summary` (formerly `sgt status`, plan U13/U14): file/symbol/feature counts,
-    coverage, oracle status, drift."""
+    coverage, oracle status, drift. Path lists are capped at 5 (`--full` for all of them) --
+    a summary that dumps three hundred paths answers nothing."""
     from sgt.api import status_view
     from sgt.core.lens import get
 
@@ -467,20 +499,30 @@ def _status(repo: str, as_json: bool = False) -> int:
     view = status_view(repo)
     if as_json:
         return _emit_json(view)
+
+    def clip(paths, head: int = 5) -> str:
+        paths = list(paths)
+        if full or len(paths) <= head:
+            return ", ".join(paths)
+        return ", ".join(paths[:head]) + f"  (+{len(paths) - head} more — --full lists them)"
+
     print(f"{view['files']} file(s), {view['symbols']} symbol(s), {view['features']} feature(s), "
           f"{view['coverage_fraction'] * 100:.0f}% entity coverage")
     print(f"  oracle: {view['oracle']['status']}")
     if view["forks"]["open"]:
-        print(f"  ⚠ {view['forks']['open']} OPEN FORK(S) — run `sgt forks` for the merge-op remedies")
+        print(f"  ⚠ {view['forks']['open']} open fork(s) — `sgt resolve <symbol>` fixes one; "
+              f"`sgt advanced forks` lists them")
     if view["drift"]["any"]:
-        print(f"  ⚠ drift: {', '.join(view['drift']['paths'])}")
+        n = len(view["drift"]["paths"])
+        print(f"  ⚠ {n} file(s) on disk differ from the recorded state — `sgt save` absorbs them")
+        print(f"      {clip(view['drift']['paths'])}")
     if view.get("backstop_kept"):
-        print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s): "
-              f"{', '.join(view['backstop_kept'])} — left on disk (not deleted); repair the chain "
-              f"(`sgt fsck --tree`) to materialize them")
+        print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s) — left on disk (not "
+              f"deleted); repair the chain (`sgt fsck --tree`) to materialize them")
+        print(f"      {clip(view['backstop_kept'])}")
     if view.get("unmanaged"):
         print(f"  ⚠ {len(view['unmanaged'])} unmanaged path(s) (symlinks, untouched): "
-              f"{', '.join(view['unmanaged'])}")
+              f"{clip(view['unmanaged'])}")
     if not view["drift"]["any"] and not view["forks"]["open"]:
         print("  ✓ in sync")
     return 0

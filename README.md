@@ -23,9 +23,10 @@ This ran against a scratch repo while writing this doc:
 
 ```
 $ sgt revert cache.py::get_cached
-✓ [revert] cache.py::get_cached
-    removed 1 op(s): a776620b9b56
-    affected: cache.py::get_cached
+ ▸ rewind  cache.py::get_cached
+
+ removes 1 edit(s) across 1 symbol(s) · 1 file(s): cache.py
+  ✓ revert applied — 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)
 ```
 
 `get_cached` is gone from `cache.py`. `set_cached`, the other function in the same file, is
@@ -55,19 +56,19 @@ valid ideal, and `sgt fsck` checks that it still is.
 sgt init                            # read your existing git history into the op store
 
 # daily loop
-sgt save -m "..."                   # read your edits and commit a record of them
+sgt save -m "..."                   # record your edits, and see which feature(s) they landed in
+sgt save -m "..." --as "<label>"    # same, and name that feature yourself, right now
 sgt switch <branch>                 # git switch, and rebuild that branch's files from its ideal
 sgt undo                            # invert your last mutating command (moves forward, never rewinds history)
 
 # inspect — sgt log is the one surface, its modes are the old views
-sgt log                             # the lane×commit grid (the default)
+sgt log                             # what you did: one row per save, feature chips per row
+sgt log --map                       # the feature map: one lane per feature, density over time
 sgt log --tree                      # the feature tree
-sgt log --rail                      # episode rail (vertical git-log): what I did, in order
 sgt log --summary                   # files, symbols, features, coverage, oracle status, drift
-sgt log --ops                       # the raw op DAG
 sgt diff <a> <b>                    # a symbol-level diff of two ideals
 sgt advanced blame <file>           # which feature owns each symbol in a file
-sgt advanced state / history        # the current state; mined commits and each op's kind + feature
+sgt advanced state / history / ops  # the current state; mined commits; the raw op DAG (plumbing)
 sgt intent list/show/build          # intent-clustering overlay: themes that span features
 
 # add or remove ops (each shows the consequence and asks before writing)
@@ -118,8 +119,12 @@ sgt advanced oracle run             # run your build and test checks against the
 sgt mcp                             # a stdio MCP server for coding-agent clients
 ```
 
-`sgt log` is the single inspection surface — the old `sgt map`/`graph`/`episodes`/`status` are now
-its `--tree`/(default grid)/`--rail`/`--summary` modes. The daily spine stays top-level; rare and
+`sgt log` is the single inspection surface. Bare `sgt log` answers "what did I do": one row per
+save, newest first, with the feature(s) each save touched named on the row. `--map` is the spatial
+overview (one lane per feature over time), `--tree` the hierarchy, `--summary` what needs
+attention. Ops never appear in these views except as density — they are how `sgt` re-puzzles
+states internally, not something you operate on (`sgt advanced ops` dumps them if you need the
+plumbing). The daily spine stays top-level; rare and
 maintenance verbs live under `sgt advanced` and `sgt feature`. `sgt feature regroup merge/split/move`
 and `sgt feature rename` only change labels in the feature tree. `sgt advanced merge-op`, `split-op`,
 and `transplant` change the actual chain of ops. The names look similar but the jobs are different.

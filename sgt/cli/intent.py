@@ -94,17 +94,18 @@ def _list(repo: str, as_json: bool) -> int:
 
     segments = view["segments"]
     if not segments:
-        print("(no feature tree yet -- run `sgt map` first)")
+        print("(no feature tree yet -- run `sgt log --refresh` first)")
+    any_unnamed = False
     for feature_id, segs in groupby(segments, key=lambda s: s["feature_id"]):
         segs = list(segs)
         label = segs[0]["feature_label"]
-        total = sum(s["op_count"] for s in segs)
-        built = any(s["source"] == "llm" for s in segs)
-        hint = "" if built else "  (run `sgt intent build` to name checkpoints)"
-        print(f"● {label}  [{feature_id[:14]}]  {len(segs)} checkpoint(s), {total} op(s){hint}")
+        any_unnamed = any_unnamed or not any(s["source"] == "llm" for s in segs)
+        print(f"● {label}  [{feature_id[:14]}]  {len(segs)} checkpoint(s)")
         for s in segs:
             print(f"    {_novelty_bar(s['novelty'])} [{s['seg_index']}] {s['intent']}  "
-                  f"({s['feature_id'][:10]}@{s['seg_index']})  {s['op_count']} op(s) · {s['tier']}")
+                  f"({s['feature_id'][:10]}@{s['seg_index']})")
+    if any_unnamed:
+        print("\n(some checkpoints are unnamed -- `sgt intent build` names them)")
     # Cross-feature themes: a compact secondary section (superseded by checkpoints as the primary
     # unit, but still the "one PR spanning several features" rollup, and the target of
     # `sgt intent revert <theme-id>`). Stale members are surfaced here, not silently dropped.
@@ -113,7 +114,7 @@ def _list(repo: str, as_json: bool) -> int:
         for t in view["themes"]:
             span = ", ".join(f[:10] for f in t["feature_span"]) or "(no feature)"
             print(f"  {_tier_badge(t['tier'])} {t['label']}  [{t['theme_id']}]  "
-                  f"{len(t['op_ids'])} op(s) across {span}  ({t['tier']}, {t['source']})")
+                  f"across {span}  ({t['tier']}, {t['source']})")
             if t["stale_shas"]:
                 names = ", ".join(sha[:8] for sha in t["stale_shas"])
                 print(f"    ⚠ stale: {len(t['stale_shas'])} member commit(s) no longer resolve ({names})")

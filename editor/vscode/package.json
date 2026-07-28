@@ -89,6 +89,7 @@
       { "command": "sgt.refresh", "title": "Refresh", "category": "semi-git", "icon": "$(refresh)" },
       { "command": "sgt.toggleBlame", "title": "Toggle Feature Blame", "category": "semi-git" },
       { "command": "sgt.openWorkbench", "title": "Open Composition Workbench", "category": "semi-git", "icon": "$(type-hierarchy)" },
+      { "command": "sgt.revealInWorkbench", "title": "Reveal Feature in Workbench", "category": "semi-git" },
       { "command": "sgt.previewRevert", "title": "Preview Revert (plug out)", "category": "semi-git", "icon": "$(diff)" },
       { "command": "sgt.revert", "title": "Revert (choose which dependents to keep)", "category": "semi-git" },
       { "command": "sgt.revertSymbol", "title": "Revert Symbol Under Cursor (choose dependents)", "category": "semi-git" },
@@ -119,7 +120,8 @@
         { "command": "sgt.push", "when": "view == sgtCompositions", "group": "navigation" }
       ],
       "editor/context": [
-        { "command": "sgt.revertSymbol", "when": "sgt.hasRoot && editorTextFocus", "group": "sgt@1" }
+        { "command": "sgt.revertSymbol", "when": "sgt.hasRoot && editorTextFocus", "group": "sgt@1" },
+        { "command": "sgt.revealInWorkbench", "when": "sgt.hasRoot && editorTextFocus", "group": "sgt@2" }
       ],
       "view/item/context": [
         { "command": "sgt.previewRevert", "when": "view == sgtFeatures && viewItem == sgtFeature" },

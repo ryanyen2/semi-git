@@ -400,6 +400,9 @@ function episodeRailLayout(epView) {
     index: e.index, row: rowOf.get(e.index), feature: e.dominantFeature,
     lane: laneOf.has(e.dominantFeature) ? laneOf.get(e.dominantFeature) : 0,
     subject: e.subject, opCount: e.opCount, sha: e.sha,
+    // The save's per-feature attribution (mirrors sgt/tui/graph.py::episode_rail_layout): a row is
+    // a save, and its chips name every feature it touched, `feature` (the dominant one) first.
+    features: e.features,
   }));
   return { rows, laneCount: Math.max(1, laneBot.length), rowCount: ordered.length };
 }
@@ -449,6 +452,7 @@ function episodeRailLayout(epView) {
   let selectionSeq = 0;
   let pendingSelection = null;
   let selectionResult = null; // { refs, view } for the current state.multi, or null
+  let pendingReveal = null; // an editor->graph reveal target awaiting the graph's next render (task 4)
 
   // Composition-picker hover-preview: while the titlebar's composition QuickPick is open, arrowing
   // over a session/branch item folds it live and takes over the code(I) slot -- "what would
@@ -504,6 +508,7 @@ function episodeRailLayout(epView) {
   const offscreenAbove = document.getElementById("offscreenAbove");
   const offscreenBelow = document.getElementById("offscreenBelow");
   const previewContext = document.getElementById("previewContext"); // "＋N unchanged" context tally
+  const previewRefusal = document.getElementById("previewRefusal"); // blocked-restore remedies overlay
   const viewSeg = document.getElementById("viewSeg"); // segmented Timeline│Rail control
   const plansChip = document.getElementById("plansChip"); // consolidated "Plans M/N" chip + popover trigger
   const plansPopover = document.getElementById("plansPopover");
@@ -858,7 +863,7 @@ function episodeRailLayout(epView) {
     const multi = state.multi || [];
     if (multi.length >= 2) {
       const view = selectionResult && selectionResult.view;
-      const clo = view && view.ok ? ` → ${view.closure_op_count} op` : "";
+      const clo = view && view.ok ? ` → ${view.closure_op_count} edits` : "";
       parts.push(`${multi.length} selected${clo}`);
     } else if (state.selected) {
       const n = byId(state.selected);
@@ -963,7 +968,7 @@ function episodeRailLayout(epView) {
       });
       // Native tooltip: an SVG element ignores a `title` attribute, so the hover text has to be a
       // `<title>` child of the rect (not attrs.title) to actually show on hover.
-      const tip = `${car.label}\n${car.opCount} op(s) · ${car.tier}` +
+      const tip = `${car.label}\n${car.tier}` +
         (car.source === "fallback" ? "" : ` · ${car.source}`) +
         `\nRewind: sgt revert ${car.checkpoint}`;
       wrap.appendChild(mk("rect", {
@@ -1031,7 +1036,7 @@ function episodeRailLayout(epView) {
     const wrap = mk("g", { class: "gcar-wrap gcar-pending-wrap" });
     wrap.appendChild(mk("rect", {
       x, y: barY, width: w, height: GANTT.barH, rx: 3, class: "gcar gcar-pending", fill: color,
-    }, [mk("title", { text: `+${pendingOps} pending — will land on save` })]));
+    }, [mk("title", { text: `+${pendingOps} edit(s) — will land on save` })]));
     wrap.appendChild(mk("text", {
       x: x + w / 2, y: barY - 3, class: "gcar-pending-count", text: `+${pendingOps}`,
     }));
@@ -1098,13 +1103,16 @@ function episodeRailLayout(epView) {
       if (s.bot === s.top) continue;
       spineLayer.appendChild(mk("line", {
         x1: xOf(s.lane), x2: xOf(s.lane), y1: yOf(s.top), y2: yOf(s.bot),
-        class: "rail-spine", stroke: laneColor(fid || ""),
+        class: "rail-spine", stroke: laneColor(fid || ""), "data-feature": fid || "",
       }));
     }
     svg.appendChild(spineLayer);
 
     const textX = gutterW + 8;
-    const subjChars = Math.max(8, Math.floor((paneW - textX - RAIL.shaW - 12) / 6.2));
+    // Reserve a right-hand zone for each save's feature chips; the subject takes what's left.
+    const chipZoneW = Math.min(Math.round(paneW * 0.42), 280);
+    const chipX0 = paneW - chipZoneW;
+    const subjChars = Math.max(6, Math.floor((chipX0 - 8 - (textX + RAIL.shaW)) / 6.2));
     for (const r of rows) {
       const inSel = r.feature === state.selected || (state.multi || []).includes(r.feature);
       const g = mk("g", { class: "rail-row" + (inSel ? " selected" : ""), "data-id": r.feature || "" });
@@ -1112,24 +1120,82 @@ function episodeRailLayout(epView) {
         x: 0, y: RAIL.padT + r.row * RAIL.rowH, width: paneW, height: RAIL.rowH, class: "rail-hit",
       }));
       g.appendChild(mk("circle", {
-        cx: xOf(r.lane), cy: yOf(r.row), r: RAIL.dotR, class: "rail-dot", fill: laneColor(r.feature || ""),
+        cx: xOf(r.lane), cy: yOf(r.row), r: RAIL.dotR, class: "rail-dot",
+        fill: laneColor(r.feature || ""), "data-feature": r.feature || "",
       }));
       g.appendChild(mk("text", { x: textX, y: yOf(r.row) + 4, class: "rail-sha", text: (r.sha || "").slice(0, 7) }));
       const subj = mk("text", { x: textX + RAIL.shaW, y: yOf(r.row) + 4, class: "rail-subject" });
       subj.textContent = truncate((r.subject || "").replace(/\n/g, " "), subjChars);
       g.appendChild(subj);
+      renderRailChips(g, r, chipX0, yOf(r.row) + 4, chipZoneW - 8);
       if (r.feature) {
         g.addEventListener("click", (ev) => selectRow(r.feature, ev.metaKey || ev.ctrlKey || ev.shiftKey));
       }
+      // Hover a save-row -> light the lane columns of EVERY feature that save touched (task 5), not
+      // just its dominant one, so the save->feature spread reads at a glance.
+      g.addEventListener("mouseenter", () => lightRailFeatures(Object.keys(r.features || {})));
+      g.addEventListener("mouseleave", () => lightRailFeatures(null));
       svg.appendChild(g);
     }
     rail.appendChild(svg);
     rail.scrollTop = prevScroll;
   }
 
-  // A subsystem swimlane header: a faint full-width band with a ▾ caret + label + "(N features · M
-  // ops)", and the group's [first,last] span drawn faintly in the plot. Clicking collapses the
-  // subsystem back to a single meta-lane (toggleCollapse), so it's the "fold this cluster" affordance.
+  // One save-row's feature chips: each touched feature's label in its own identity hue, the
+  // dominant feature first, then densest-first (mirrors sgt/tui/graph.py's `chips`). Up to three,
+  // with a dim "+N" for the rest -- the save -> feature mapping, on every row. SVG text spans flow
+  // left->right in the reserved right-hand zone; widths are the same ~6px/char estimate the rail's
+  // subject truncation uses (no text metrics available in the webview).
+  function renderRailChips(g, r, x0, y, maxW) {
+    const feats = r.features || {};
+    const ids = Object.keys(feats);
+    if (!ids.length) return;
+    const main = r.feature;
+    ids.sort((a, b) => {
+      const am = a === main ? 0 : 1, bm = b === main ? 0 : 1;
+      if (am !== bm) return am - bm;
+      if (feats[a] !== feats[b]) return feats[b] - feats[a];
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+    const shown = ids.slice(0, 3);
+    const right = x0 + maxW;
+    let x = x0;
+    for (let i = 0; i < shown.length; i++) {
+      if (x >= right) return;
+      if (i > 0) {
+        g.appendChild(mk("text", { x, y, class: "rail-chip-sep", text: "·" }));
+        x += 8;
+      }
+      const fid = shown[i];
+      const node = byId(fid);
+      const label = truncate((node && node.label) || fid || "(unattributed)", 16);
+      const t = mk("text", { x, y, class: "rail-chip", fill: laneColor(fid || "") });
+      t.textContent = label;
+      g.appendChild(t);
+      x += label.length * 6.2 + 2;
+    }
+    const extra = ids.length - shown.length;
+    if (extra > 0 && x < right) {
+      g.appendChild(mk("text", { x, y, class: "rail-chip-more", text: `+${extra}` }));
+    }
+  }
+
+  // Light the rail lane-columns (feature spines + dots) of a hovered save's touched features, so a
+  // save reads as "these feature columns". Hover-only; clears when `featureIds` is null/empty.
+  function lightRailFeatures(featureIds) {
+    const svg = rail.querySelector("svg");
+    if (!svg) return;
+    svg.querySelectorAll(".rail-lit").forEach((el) => el.classList.remove("rail-lit"));
+    if (!featureIds || !featureIds.length) return;
+    const set = new Set(featureIds);
+    svg.querySelectorAll(".rail-spine, .rail-dot").forEach((el) => {
+      if (set.has(el.getAttribute("data-feature"))) el.classList.add("rail-lit");
+    });
+  }
+
+  // A subsystem swimlane header: a faint full-width band with a ▾ caret + label + "(N feat)", and
+  // the group's [first,last] span drawn faintly in the plot. Clicking collapses the subsystem back
+  // to a single meta-lane (toggleCollapse), so it's the "fold this cluster" affordance.
   function renderSwimlaneHeader(hd, geom) {
     const y = geom.rowY(hd.row);
     const ind = (hd.depth || 0) * GANTT.indent; // nested subsystems step in like their member lanes
@@ -1138,7 +1204,7 @@ function episodeRailLayout(epView) {
     g.appendChild(mk("text", { x: 8 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-caret", text: "▾" }));
     // The end-anchored meta grows leftward from ~labelW into the same column, so reserve its width
     // (10px font ~= 6px/char, + an 8px gap) out of the label's char budget or the two overprint.
-    const metaText = `${hd.laneCount} feat · ${hd.opCount}`;
+    const metaText = `${hd.laneCount} feat`;
     const metaW = metaText.length * 6 + 8;
     const label = mk("text", { x: 22 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
     label.textContent = truncate(hd.label, Math.max(4, Math.floor((geom.labelW - 30 - ind - metaW) / 6.5)));
@@ -1262,9 +1328,9 @@ function episodeRailLayout(epView) {
       const tx = geom.xOf(ci);
       // Faint full-height gridline so the (now bottom-pinned) plot reads as a structured field of
       // time columns rather than an empty expanse above the axis.
-      svg.appendChild(mk("line", { x1: tx, x2: tx, y1: GANTT.padT, y2: y, class: "axis-gridline" }));
+      svg.appendChild(mk("line", { x1: tx, x2: tx, y1: GANTT.padT, y2: y, class: "axis-gridline", "data-ci": ci }));
       svg.appendChild(mk("text", {
-        x: tx, y: y + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: `c${ci}`,
+        x: tx, y: y + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: `c${ci}`, "data-ci": ci,
       }));
     }
     svg.appendChild(mk("text", { x: geom.plotX0, y: GANTT.padT - 3, class: "axis-title", text: "time →" }));
@@ -1482,10 +1548,25 @@ function episodeRailLayout(epView) {
     return (layout.opsByFeature[featureId] || []).map((op) => op.id);
   }
 
+  // Brighten the time-axis gridlines/ticks within a hovered lane's active commit span, so hovering a
+  // feature also shows *when* on the shared axis it was worked (task 5). Hover-only; the same
+  // dim/light grammar the lanes use, no new hue. `laneId == null` clears.
+  function markAxisSpan(svg, laneId) {
+    svg.querySelectorAll(".axis-gridline.lit, .axis-tick.lit").forEach((el) => el.classList.remove("lit"));
+    if (laneId == null) return;
+    const l = layout.laneById[laneId];
+    if (!l) return;
+    svg.querySelectorAll(".axis-gridline, .axis-tick").forEach((el) => {
+      const ci = Number(el.getAttribute("data-ci"));
+      if (ci >= l.firstCommit && ci <= l.lastCommit) el.classList.add("lit");
+    });
+  }
+
   function onHover(id) {
     const svg = rail.querySelector("svg");
     if (!svg) return;
     if (!id) {
+      markAxisSpan(svg, null);
       if (!armedVerb) clearGhosts();
       if (state.spotlight) { applySpotlight(); return; } // a pinned spotlight survives mouse-out
       svg.classList.remove("focus");
@@ -1514,6 +1595,7 @@ function episodeRailLayout(epView) {
       el.classList.toggle("lit", rid === id);
       el.classList.toggle("ctx", neighbors.has(rid));
     });
+    markAxisSpan(svg, id); // brighten the time columns this lane spans
   }
 
   function previewArmed(targetId) {
@@ -1617,6 +1699,42 @@ function episodeRailLayout(epView) {
     });
   }
 
+  // Reveal a feature from the editor (task 4): select it (so the inspector opens), pin a spotlight on
+  // it, and scroll its lane/row into view -- the same primitives selectRow/toggleSpotlight use, but
+  // deterministic (never toggling off). Robust to message ordering: if the graph hasn't loaded this
+  // feature yet, stash it and re-apply after the next state render (see the "state" handler).
+  function revealFeature(featureId) {
+    if (!featureId || !byId(featureId)) { pendingReveal = featureId || null; return; }
+    pendingReveal = null;
+    // In the Gantt a feature folded inside a collapsed subsystem has no lane -- expand its ancestors
+    // so the row exists to select and scroll to. (The rail ignores collapse, so this is a no-op there.)
+    let changed = false;
+    let cur = byId(featureId);
+    cur = cur ? byId(cur.parent) : null;
+    while (cur) {
+      const i = state.collapsed.indexOf(cur.id);
+      if (i >= 0) { state.collapsed.splice(i, 1); changed = true; }
+      cur = byId(cur.parent);
+    }
+    state.multi = [featureId];
+    state.selected = featureId;
+    state.selectedStep = null;
+    state.selectedPlanSession = null;
+    state.selectedCheckpoint = null;
+    selectionResult = null;
+    state.spotlight = featureId; // pin the spotlight (applySpotlight runs inside render's renderGraph)
+    saveState();
+    if (changed) recompute();
+    render();
+    const node = byId(featureId);
+    if (node && node.kind === "feature") requestFold(featureId);
+    let target = null;
+    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
+      if (!target && el.getAttribute("data-id") === featureId) target = el;
+    });
+    if (target) target.scrollIntoView({ block: "center" });
+  }
+
   function requestSelectionClosure(refs) {
     const seq = ++selectionSeq;
     pendingSelection = { seq, refs: refs.slice() };
@@ -1644,6 +1762,7 @@ function episodeRailLayout(epView) {
       el.classList.remove("ghost-blast", "ghost-target", "ghost-foundation");
     });
     clearOffscreenPills();
+    clearPreviewRefusal(); // a blocked-restore overlay clears on the same mouseleave path
     exitPreviewMode(); // a held Focus & Morph overlay tears down on the same mouseleave path
   }
 
@@ -1659,7 +1778,12 @@ function episodeRailLayout(epView) {
   // richer deep-dim morph; otherwise fall back to the flat three-role ghost paint.
   function previewAndBlast(verb, args) {
     requestPreview(verb, args, (res) => {
-      if (!res || !res.ok) return;
+      if (!res || !res.ok) {
+        // A blocked restore -- the symbol has a competing live version, so sgt refuses. Surface the
+        // two ways out in the preview overlay instead of silently doing nothing.
+        if (verb === "restore" && res && res.forked) showRestoreRefusal(res, args[0]);
+        return;
+      }
       const focus = res.focus;
       if (!armedVerb && focus && focus.nodes && focus.nodes.length) {
         enterPreviewMode(focus, args[0]);
@@ -1711,7 +1835,7 @@ function episodeRailLayout(epView) {
 
       const meta = document.createElement("div");
       meta.className = "detail-meta";
-      meta.textContent = `${node.id} · ${node.size} member(s) · ${node.op_count} op(s)`;
+      meta.textContent = `${node.id} · ${node.size} member(s)`;
       inspector.appendChild(meta);
 
       if (node.kind === "feature") {
@@ -1759,7 +1883,7 @@ function episodeRailLayout(epView) {
       const meta = document.createElement("div");
       meta.className = "detail-meta";
       meta.textContent =
-        `${view.direct_op_count} direct op(s) · ${view.closure_op_count} in closure · ${(view.files || []).length} file(s)`;
+        `${view.direct_op_count} direct edit(s) · ${view.closure_op_count} in closure · ${(view.files || []).length} file(s)`;
       wrap.appendChild(meta);
 
       const direct = new Set(view.feature_ids || []);
@@ -1781,7 +1905,7 @@ function episodeRailLayout(epView) {
         wrap.appendChild(chips);
       }
       if (view.hub) {
-        wrap.appendChild(statusLine(`⚠ hub ${view.hub.symbol} pulls ${view.hub.pulled_op_count} op(s)`, ""));
+        wrap.appendChild(statusLine(`⚠ hub ${view.hub.symbol} pulls ${view.hub.pulled_op_count} edit(s)`, ""));
       }
     }
 
@@ -1960,7 +2084,7 @@ function episodeRailLayout(epView) {
         const group = step.checkpointMatch;
         const btn = document.createElement("button");
         btn.className = "action";
-        btn.textContent = `Confirm match (${group.op_ids.length} op(s))`;
+        btn.textContent = `Confirm match (${group.op_ids.length} edit(s))`;
         btn.addEventListener("click", () => {
           vscode.postMessage({ type: "confirmCheckpoint", hollowIds: group.hollow_ids, opIds: group.op_ids });
         });
@@ -2283,7 +2407,7 @@ function episodeRailLayout(epView) {
       row.className = "checkpoint" + (seg.novelty <= 0.2 ? " trivial" : "") +
         (seg.checkpoint === state.selectedCheckpoint ? " selected" : "");
       row.dataset.checkpoint = seg.checkpoint;
-      row.title = `${seg.rationale} · ${seg.op_count} op(s) · ${seg.tier}\nRewind: sgt revert ${seg.checkpoint}`;
+      row.title = `${seg.rationale} · ${seg.tier}\nRewind: sgt revert ${seg.checkpoint}`;
       row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
 
       const dot = document.createElement("span");
@@ -2295,11 +2419,6 @@ function episodeRailLayout(epView) {
       label.className = "checkpoint-label";
       label.textContent = seg.intent;
       row.appendChild(label);
-
-      const meta = document.createElement("span");
-      meta.className = "checkpoint-meta";
-      meta.textContent = `${seg.op_count} op`;
-      row.appendChild(meta);
 
       const rewind = document.createElement("button");
       rewind.className = "checkpoint-rewind";
@@ -2454,6 +2573,34 @@ function episodeRailLayout(epView) {
     });
     previewContext.hidden = true;
     clearOffscreenPills();
+  }
+
+  // A blocked-restore overlay: sgt refuses to restore a symbol that has a competing live version
+  // (`ok:false, forked:true`). Show the two ways out as plain text -- swap (revert the live tip, then
+  // restore) and reconcile (`sgt resolve <symbol>`) -- mirroring the CLI's own refusal, rather than
+  // swallowing the preview. The symbol is the preview's `file::symbol` target, else its first
+  // affected symbol. Hover-scoped; torn down by clearGhosts on the same mouseleave path as the ghosts.
+  function showRestoreRefusal(res, fallbackId) {
+    const sym = res.target && String(res.target).includes("::") ? res.target
+      : (res.affected_symbols && res.affected_symbols[0]) || res.target || fallbackId;
+    previewRefusal.innerHTML = "";
+    const head = document.createElement("div");
+    head.className = "refusal-head";
+    head.textContent = res.message || "Can't restore — this symbol has a competing live version.";
+    previewRefusal.appendChild(head);
+    const swap = document.createElement("div");
+    swap.className = "refusal-remedy";
+    swap.textContent = "swap · revert the live tip, then restore";
+    previewRefusal.appendChild(swap);
+    const rec = document.createElement("div");
+    rec.className = "refusal-remedy";
+    rec.textContent = `reconcile · sgt resolve ${sym}`;
+    previewRefusal.appendChild(rec);
+    previewRefusal.hidden = false;
+  }
+
+  function clearPreviewRefusal() {
+    previewRefusal.hidden = true;
   }
 
   // Off-screen affected (huge-tree scale): a blast can paint rows outside #rail's current scroll
@@ -2615,6 +2762,7 @@ function episodeRailLayout(epView) {
         if (state.multi.length < 2) selectionResult = null;
       }
       render();
+      if (pendingReveal) revealFeature(pendingReveal); // deliver a reveal that arrived before its lane existed
     } else if (msg.type === "selectionResult" && pendingSelection && pendingSelection.seq === msg.seq) {
       selectionResult = { refs: pendingSelection.refs, view: msg.result };
       pendingSelection = null;
@@ -2653,6 +2801,8 @@ function episodeRailLayout(epView) {
     } else if (msg.type === "compositionPreviewEnd") {
       compositionPreviewActive = null;
       renderInspector();
+    } else if (msg.type === "revealFeature") {
+      revealFeature(msg.featureId);
     } else if (msg.type === "error") {
       inspector.innerHTML = "";
       inspector.appendChild(statusLine(msg.message, "error"));

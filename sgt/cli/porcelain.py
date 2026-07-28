@@ -65,6 +65,9 @@ def register(subs, parent) -> None:
 
     sv = subs.add_parser("save", parents=[parent])
     sv.add_argument("-m", "--message", dest="message")
+    sv.add_argument("--as", dest="as_label", metavar="LABEL",
+                    help="name the feature this save's work lands in -- a permanent, user-authored "
+                         "label that wins over any auto-generated one")
     sv.add_argument("--resolve-plan", action="store_true", dest="resolve_plan",
                     help="settle plan-step matches this save couldn't auto-confirm (n:m / "
                          "multi-step); runs standalone on a clean tree to resolve a prior save's "
@@ -83,7 +86,8 @@ def _cmd_switch(args) -> int:
 
 def _cmd_save(args) -> int:
     return _save(".", args.message, args.as_json, resolve_plan=args.resolve_plan,
-                 confirm_hollow=args.confirm_hollow, confirm_op=args.confirm_op)
+                 confirm_hollow=args.confirm_hollow, confirm_op=args.confirm_op,
+                 as_label=args.as_label)
 
 
 def _cmd_undo(args) -> int:
@@ -114,7 +118,8 @@ def _switch(repo: str, branch: str, as_json: bool) -> int:
 
 
 def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
-          confirm_hollow: list[str] = (), confirm_op: list[str] = ()) -> int:
+          confirm_hollow: list[str] = (), confirm_op: list[str] = (),
+          as_label: str | None = None) -> int:
     """`sgt save [-m]` (D3): the put-path sugar -- mine the working tree (R9), then materialize a
     witness commit for the resulting ideal and record it. "Nothing to save" is decided by the
     ideal, not git's dirty flag: with no uncommitted ops the mined ideal equals the recorded one
@@ -139,8 +144,10 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     if resolve_plan and (confirm_hollow or confirm_op):
         return _confirm_plan_match(repo, list(confirm_hollow), list(confirm_op), as_json)
 
-    nothing_new = ideal.op_ids == current_ideal(repo).op_ids
+    prev_ids = current_ideal(repo).op_ids
+    nothing_new = ideal.op_ids == prev_ids
     saved, sha, n = False, None, len(ideal.op_ids)
+    cascade = None
     if not nothing_new:
         try:
             sha = put(repo, ideal, message=message or "sgt save")
@@ -155,7 +162,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
         try:
             from sgt.core.store import Store
             from sgt.lens import ledger
-            ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
+            cascade = ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
         except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
             pass
     elif not resolve_plan:
@@ -165,8 +172,17 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
         print(f"✓ {msg}")
         return 0
 
+    # The labeling moment (feedforward): the save is when the user encodes what this work *was*,
+    # so show which feature(s) the new ops landed in -- by name -- and let `--as` name the
+    # dominant one right here (an authored label, which permanently wins over generated ones).
+    features = _save_attribution(repo, ideal.op_ids - prev_ids, cascade) if saved else []
+    renamed = _apply_save_label(repo, features, as_label) if (saved and as_label) else None
+    if as_label and not saved:
+        print('  --as names the feature a save lands in; nothing was saved, so nothing to name.')
+
     plan = _fold_plan_matches(repo)
-    return _render_save(as_json, saved, sha, n, plan, resolve_plan)
+    return _render_save(as_json, saved, sha, n, plan, resolve_plan,
+                        message=message, features=features, renamed=renamed)
 
 
 def _fold_plan_matches(repo: str) -> dict | None:
@@ -249,18 +265,105 @@ def _confirm_plan_match(repo: str, hollow_refs: list[str], op_refs: list[str], a
     return 0
 
 
+def _save_attribution(repo: str, new_op_ids: frozenset, cascade: dict | None) -> list[dict]:
+    """Which feature(s) this save's new ops landed in -- the label feedforward. One row per
+    touched feature: its id, current label, a typeable handle, the (real) symbols this save
+    touched in it, and whether the save minted the lane (`new` -- still unnamed). Empty when no
+    tree has been built yet (a brand-new repo has nothing to attribute against)."""
+    from sgt.core import opindex
+    from sgt.core.op import _symbol_kind
+    from sgt.lens.tree import load as load_tree
+
+    tree_result = load_tree(repo)
+    if not tree_result or not new_op_ids:
+        return []
+    op_leaf = tree_result.get("op_leaf", {})
+    nodes = tree_result.get("nodes", {})
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
+    new_lanes = set((cascade or {}).get("new_lanes", []))
+
+    rows: dict[str, dict] = {}
+    for oid in new_op_ids:
+        leaf = op_leaf.get(oid)
+        if leaf is None:
+            continue
+        row = rows.setdefault(leaf, {"feature_id": leaf, "symbols": set(), "edits": 0})
+        row["edits"] += 1
+        op = by_id.get(oid)
+        if op is not None:
+            row["symbols"].update(
+                s for s in op.footprint
+                if _symbol_kind(s) in ("entity", "nested", "whole_file")
+            )
+    out = []
+    for leaf, row in rows.items():
+        nd = nodes.get(leaf, {})
+        out.append({
+            "feature_id": leaf,
+            "label": nd.get("label", leaf),
+            "handle": leaf[2:10] if leaf.startswith("f-") else leaf[:11],
+            "symbols": sorted(row["symbols"]),
+            "edits": row["edits"],
+            "new": leaf in new_lanes,
+        })
+    out.sort(key=lambda r: (-r["edits"], r["feature_id"]))
+    return out
+
+
+def _apply_save_label(repo: str, features: list[dict], label: str) -> dict:
+    """`sgt save --as "<label>"`: name the save's feature at the moment of encoding. A lane this
+    save minted wins (naming a brand-new thing); otherwise the save's dominant feature. Routed
+    through the same plan/apply rename every `sgt feature rename` uses (authored LWW register,
+    permanent)."""
+    from sgt.lens import verbs as lens_verbs
+
+    target = next((f for f in features if f["new"]), features[0] if features else None)
+    if target is None:
+        return {"ok": False,
+                "message": 'no feature attribution yet -- run `sgt log --refresh`, then '
+                           '`sgt feature rename <handle> "..."`'}
+    pv = lens_verbs.plan_rename(repo, target["feature_id"], label)
+    if not pv.ok:
+        return {"ok": False, "message": pv.message}
+    lens_verbs.apply_rename(repo, pv)
+    target["label"] = label  # reflect the new name in this very output
+    return {"ok": True, "feature_id": target["feature_id"], "label": label}
+
+
 def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
-                 plan: dict | None, resolve_plan: bool) -> int:
+                 plan: dict | None, resolve_plan: bool, *, message: str | None = None,
+                 features: list[dict] = (), renamed: dict | None = None) -> int:
     if as_json:
         out: dict = {"ok": True, "saved": saved}
         if saved:
             out["commit"], out["ops"] = sha, n
+        if features:
+            out["features"] = list(features)
+        if renamed is not None:
+            out["renamed"] = renamed
         if plan is not None:
             out["plan"] = plan
         return _emit_json(out)
 
     if saved:
-        print(f"✓ save {sha[:12]}: {n} op(s)")
+        title = f' "{message}"' if message else ""
+        print(f"✓ save {sha[:7]}{title}")
+        for f in features:
+            syms = ", ".join(f["symbols"][:3]) + (f" +{len(f['symbols']) - 3} more"
+                                                  if len(f["symbols"]) > 3 else "")
+            if f["new"]:
+                print(f"  → new feature ({f['handle']})  {syms}"
+                      f'  — unnamed; name it: sgt feature rename {f["handle"]} "<label>"')
+            else:
+                print(f"  → {f['label']} ({f['handle']})  {syms}")
+        if renamed is not None:
+            if renamed["ok"]:
+                print(f'  ✓ named "{renamed["label"]}"')
+            else:
+                print(f"  ⚠ --as failed: {renamed['message']}")
+        if len(features) >= 3:
+            print(f"  ⚠ one save touched {len(features)} features — deliberate? "
+                  f"`sgt log --map` shows them; `sgt feature regroup move` re-files work")
     if plan is not None:
         for e in plan["auto_confirmed"]:
             steps = ", ".join(h[:12] for h in e["hollow_ids"])
@@ -312,13 +415,13 @@ def _undo(repo: str, as_json: bool) -> int:
                 "restored_ops": len(result.ideal.op_ids),
                 "removed": sorted(result.removed), "added": sorted(result.added),
             })
-        print(f"✓ undo {result.witness_sha[:12]}: restored {len(result.ideal.op_ids)} op(s)")
+        parts = []
         if result.removed:
-            print(f"    dropped {len(result.removed)} op(s): "
-                  + ", ".join(o[:12] for o in sorted(result.removed)))
+            parts.append(f"{len(result.removed)} edit(s) dropped")
         if result.added:
-            print(f"    re-added {len(result.added)} op(s): "
-                  + ", ".join(o[:12] for o in sorted(result.added)))
+            parts.append(f"{len(result.added)} edit(s) re-added")
+        detail = f" — {', '.join(parts)}" if parts else ""
+        print(f"✓ undo {result.witness_sha[:7]}{detail}")
         return 0
 
     # A metadata-snapshot kind (feature reorg / declared edge).

@@ -9,6 +9,16 @@
 
 import * as vscode from "vscode";
 import { Store } from "./store";
+import { SaveFeature } from "./types";
+
+// One feature's clause in the save attribution toast: its label (or "NEW unnamed feature" for a lane
+// the save just minted), plus the first symbol it touched and a "+N" for the rest.
+function summarizeSaveFeature(f: SaveFeature): string {
+  const name = f.new ? "NEW unnamed feature" : f.label;
+  const syms = f.symbols || [];
+  const symPart = syms.length ? ` (${syms[0]}${syms.length > 1 ? ` +${syms.length - 1}` : ""})` : "";
+  return `${name}${symPart}`;
+}
 
 async function pickBranch(store: Store, prompt: string): Promise<string | undefined> {
   let branches: string[] = [];
@@ -62,11 +72,40 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     try {
       const result = await store.sgt.save(message || undefined);
       store.invalidate();
-      vscode.window.showInformationMessage(
-        result.saved
-          ? `✓ save ${(result.commit || "").slice(0, 12)}: ${result.ops} op(s)`
-          : result.message || "nothing to save"
-      );
+      if (!result.saved) {
+        vscode.window.showInformationMessage(result.message || "nothing to save");
+        return;
+      }
+      const sha = (result.commit || "").slice(0, 7);
+      const features = result.features || [];
+      // Feed the save's feature attribution forward: which feature(s) the new ops landed in, so a
+      // just-minted (still unnamed) lane is both visible and nameable straight from the save toast.
+      let text = features.length
+        ? `Saved ${sha} — ${features.map(summarizeSaveFeature).join("; ")}`
+        : `Saved ${sha} · ${result.ops ?? 0} edit(s)`;
+      if (result.renamed?.ok && result.renamed.label) {
+        text += ` · named "${result.renamed.label}"`;
+      }
+      const newFeat = features.find((f) => f.new);
+      // Offer to name a just-minted lane (unless the save already named one via --as) -- one toast,
+      // one button, resolved through the same `sgt feature rename` any rename uses.
+      const actions = newFeat && !result.renamed?.ok ? ["Name it…"] : [];
+      const choice = await vscode.window.showInformationMessage(text, ...actions);
+      if (choice === "Name it…" && newFeat) {
+        const label = await vscode.window.showInputBox({
+          prompt: `Name the new feature (${newFeat.handle})`,
+          placeHolder: "e.g. caching layer",
+        });
+        if (label) {
+          try {
+            await store.sgt.mutate(["feature", "rename", newFeat.handle, label]);
+            store.invalidate();
+            vscode.window.showInformationMessage(`Named "${label}".`);
+          } catch (e: any) {
+            vscode.window.showErrorMessage(e.message);
+          }
+        }
+      }
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     }
