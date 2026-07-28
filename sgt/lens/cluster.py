@@ -270,12 +270,19 @@ def _structural_edges_at(
 
 def signals(
     repo: Path, ops: list[Op], ideal: Ideal, *, refresh_cache: bool = True,
+    head: str | None = None,
 ) -> tuple[set[str], set[str], dict[frozenset, float], dict[frozenset, float]]:
     """The clustering graph's raw ingredients: ``(nodes, hubs, cochange, structural)``. `ops`
     should be the *full* mined history (`Store.all_ops()`), not just `ideal`'s own op-set --
     co-change is a historical fact even about symbols whose current chain tip came from a later
     op. Structural edges are read from the ideal's materialized tree at HEAD (round-trip laws
     guarantee this equals `fold.code(ideal, ops)`).
+
+    `head` selects which commit's source tree the structural (calls/imports/contains) edges are
+    read from; it defaults to `gb.head()` -- production's only caller. A historical replay
+    (`experiments/patch_clustering`) passes the commit it is reconstructing so the structural
+    signal matches that point in time rather than the working tree's HEAD. Passing today's HEAD
+    (or leaving it None) is byte-identical to the pre-parameter behavior.
 
     `refresh_cache=False` propagates to `_structural_edges_at` -- see its docstring."""
     gb = GitBinding(repo)
@@ -296,7 +303,8 @@ def signals(
                 cochange[frozenset((a, b))] += w
 
     structural: dict[frozenset, float] = defaultdict(float)
-    head = gb.head()
+    if head is None:
+        head = gb.head()
     if head is not None:
         for edge in _structural_edges_at(repo, gb, head, refresh_cache=refresh_cache):
             if edge.src in nodes and edge.dst in nodes and edge.src != edge.dst:

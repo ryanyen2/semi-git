@@ -412,15 +412,19 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
 
 def fused_graph_with_hubs(
     repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
+    head: str | None = None,
 ) -> tuple[list[str], dict[frozenset, float], set[str]]:
     """`fused_graph`, additionally returning the hub-suppressed symbol set `cluster.signals`
     computed. The save-time ledger's local move (`sgt.lens.ledger.assign_at_save`) needs both the
     fused graph *and* `hubs` from ONE `cluster.signals` call -- a second `signals`/`fused_graph`
     would reparse the whole codebase twice. `fused_graph` routes through this and drops the hubs, so
-    the two can never diverge."""
+    the two can never diverge.
+
+    `head` (default `gb.head()`) selects the commit the structural signal is read at -- see
+    `cluster.signals`; a historical replay passes the point it is reconstructing."""
     gb = GitBinding(repo)
     nodes_set, hubs, cochange, structural = cluster.signals(
-        repo, ops, ideal, refresh_cache=refresh_structural_cache,
+        repo, ops, ideal, refresh_cache=refresh_structural_cache, head=head,
     )
     subjects = {sha: subject for sha, _parent, subject in gb.history()}
     scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
@@ -433,6 +437,7 @@ def fused_graph_with_hubs(
 
 def fused_graph(
     repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
+    head: str | None = None,
 ) -> tuple[list[str], dict[frozenset, float]]:
     """The fused (structural ⊕ co-change ⊕ scope ⊕ co-commit ⊕ path) coupling graph over every
     alive symbol -- shared by `build` (the full recursive tree) and `sgt.lens.verbs.plan_split` (a
@@ -443,9 +448,11 @@ def fused_graph(
     other coupling out of one god-lane.
 
     `refresh_structural_cache=False` (passed by `build` for `land`/`reconcile`) still reads the
-    head-keyed structural-edge cache but never writes it -- see `cluster._structural_edges_at`."""
+    head-keyed structural-edge cache but never writes it -- see `cluster._structural_edges_at`.
+    `head` (default `gb.head()`) selects the commit the structural signal is read at -- see
+    `cluster.signals`; a historical replay passes the point it is reconstructing."""
     nodes, fused, _hubs = fused_graph_with_hubs(
-        repo, ops, ideal, refresh_structural_cache=refresh_structural_cache,
+        repo, ops, ideal, refresh_structural_cache=refresh_structural_cache, head=head,
     )
     return nodes, fused
 
@@ -471,6 +478,7 @@ def feature_edges(nodes: dict, fused: dict[frozenset, float]) -> list[dict]:
 def build(
     repo: Path, ops: list[Op], ideal, max_depth: int = MAX_DEPTH, pins: Pins | None = None,
     previous: dict | None = None, force_rebuild: bool = False, refresh_caches: bool = False,
+    head: str | None = None,
 ) -> dict:
     """Build the tree from `ops`/`ideal` with stable feature ids and durable pins (no labeling --
     that is `tree.label_tree` / `sgt.lens.label`).
@@ -495,13 +503,18 @@ def build(
     head-keyed structural-edge cache. Default `False` because `land`/`reconcile` may build a
     candidate tree it discards -- that cache is not git-tracked, so a write here would survive a
     rolled-back land attempt (R7's "no trace" guarantee), even though the cache is itself always
-    content-safe (see `cluster._structural_edges_at`)."""
+    content-safe (see `cluster._structural_edges_at`).
+
+    `head` (default `gb.head()`) selects the commit the structural signal is read at, threaded to
+    `fused_graph`/`cluster.signals`. Production leaves it None (reads HEAD); a historical replay
+    (`experiments/patch_clustering`) passes the commit it is reconstructing so the structural edges
+    match that point in time."""
     if pins is None:
         pins = load_pins(repo)
     if previous is None:
         previous = load(repo)
 
-    all_nodes, fused = fused_graph(repo, ops, ideal, refresh_structural_cache=refresh_caches)
+    all_nodes, fused = fused_graph(repo, ops, ideal, refresh_structural_cache=refresh_caches, head=head)
     real_adj = _adjacency(fused)  # per-real-member weights: cannot-link's reassignment choice, and
     # `_dirty_subdivide`'s new-member-attachment choice below.
 
