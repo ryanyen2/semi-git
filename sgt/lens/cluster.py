@@ -53,6 +53,17 @@ SIGNALS_VERSION = "2"  # bump on any change to the fused-signal recipe (which ed
 # when the persisted tree's version differs, so a signal change reaches users without a manual
 # `--rebuild` (dirty-subtree splicing can't detect that an existing leaf should now split).
 # v1 = structural ⊕ co-change ⊕ scope. v2 = + co-commit (episode) + path (file-cohesion) edges.
+STABILITY_ALPHA = 0.25  # temporal-prior strength (plan §3.1): each split augments its induced graph
+# with one zero-size "anchor" vertex per previous leaf, tying that leaf's surviving members together
+# with edge weight ω = STABILITY_ALPHA × (mean positive induced edge weight). The augmented-CPM
+# optimum equals CPM(P) + ω·plurality-agreement(P, P_prev), so a split resists gratuitously
+# shattering a previous leaf while still following real coupling change. 0 short-circuits both the
+# augmentation and the warm start -- byte-identical to the pre-prior build. PROVISIONAL: the churn-
+# vs-cohesion α sweep (§6) is deferred; 0.25 is the shipping default pending that confirmation.
+ANCHOR_NORM = "member"  # anchor edge-weight normalization (plan §3.1). "member": each surviving
+# member gets an edge of weight ω, so a big previous leaf resists splitting proportionally harder
+# (total anchor mass grows with size). "leaf": weight ω/|L∩M|, so every previous leaf's total
+# break-price is ≈ω regardless of size. "member" is the shipping default.
 
 
 def alive_nodes(ideal: Ideal, ops: list[Op]) -> set[str]:
@@ -243,6 +254,94 @@ def _leiden_partition(g: ig.Graph, nodes: list[str], gamma: float) -> list[list[
 
 def _leiden(nodes: list[str], weights: dict[frozenset, float], gamma: float) -> list[list[str]]:
     return _leiden_partition(_leiden_graph(nodes, weights), nodes, gamma)
+
+
+def _augment_with_prior(
+    members: list[str], induced: dict[frozenset, float], prior_leaf_of: dict[str, str],
+    alpha: float, norm: str = ANCHOR_NORM,
+) -> tuple[list[str], dict[frozenset, float], list[int], list[str]]:
+    """Augment the induced graph G[members] with the Phase B temporal prior (plan §3.1): one zero-
+    size anchor vertex per previous leaf L that still has >= 2 surviving members here, with an edge
+    (a_L, i) of weight ω to each surviving member i of L. Anchors carry no CPM size penalty and no
+    anchor-anchor edges, so in the CPM optimum each anchor joins the community holding the plurality
+    of its leaf's members -- making the augmented optimum exactly CPM(P) + ω·Σ_L max_c|L∩c| (the §5
+    lemma). ω = alpha × mean positive edge weight of `induced`; alpha<=0 or no positive induced edge
+    => ω=0 => the graph is returned unaugmented. Returns (aug_nodes, aug_edges, node_sizes,
+    anchor_ids): real members first (size 1, in `members` order), anchors appended (size 0)."""
+    positives = [w for w in induced.values() if w > 0]
+    omega = alpha * (sum(positives) / len(positives)) if (alpha > 0 and positives) else 0.0
+
+    by_leaf: dict[str, list[str]] = defaultdict(list)
+    if omega > 0:
+        for m in members:
+            leaf = prior_leaf_of.get(m)
+            if leaf is not None:
+                by_leaf[leaf].append(m)
+
+    aug_nodes = list(members)
+    aug_edges = dict(induced)
+    node_sizes = [1] * len(members)
+    anchor_ids: list[str] = []
+    for leaf in sorted(by_leaf):  # sorted => deterministic anchor naming/order
+        surviving = by_leaf[leaf]
+        if len(surviving) < 2:
+            continue  # a lone survivor's anchor adds a constant to every partition -- no selective effect
+        anchor = f"__prioranchor__::{leaf}"
+        w = omega if norm == "member" else omega / len(surviving)
+        for m in surviving:
+            aug_edges[frozenset((anchor, m))] = w
+        aug_nodes.append(anchor)
+        node_sizes.append(0)
+        anchor_ids.append(anchor)
+    return aug_nodes, aug_edges, node_sizes, anchor_ids
+
+
+def _leiden_graph_prior(
+    members: list[str], induced: dict[frozenset, float], prior_leaf_of: dict[str, str],
+    alpha: float, norm: str = ANCHOR_NORM,
+) -> tuple[ig.Graph, list[str], list[int], list[int], int]:
+    """Build the prior-augmented CPM graph (built once per split; only gamma varies across the
+    resolution search) plus its node_sizes and a P_prev warm-start membership. Returns
+    (g, aug_nodes, node_sizes, initial_membership, n_real): real members occupy indices
+    0..n_real-1 in `members` order, so `_leiden_partition_prior` strips anchors by index. The warm
+    start seeds each member into its previous leaf's community (a new member -> a fresh singleton)
+    and each anchor into its own leaf's community, so Leiden refines from the previous cut rather
+    than a cold start."""
+    aug_nodes, aug_edges, node_sizes, anchor_ids = _augment_with_prior(
+        members, induced, prior_leaf_of, alpha, norm
+    )
+    g = _leiden_graph(aug_nodes, aug_edges)
+    comm_of_leaf: dict[str, int] = {}
+    init: list[int] = []
+    next_comm = 0
+    for m in members:
+        leaf = prior_leaf_of.get(m)
+        if leaf is None:
+            init.append(next_comm)
+            next_comm += 1
+        else:
+            if leaf not in comm_of_leaf:
+                comm_of_leaf[leaf] = next_comm
+                next_comm += 1
+            init.append(comm_of_leaf[leaf])
+    for anchor in anchor_ids:
+        init.append(comm_of_leaf[anchor.split("::", 1)[1]])  # anchor exists => its leaf is seeded
+    return g, aug_nodes, node_sizes, init, len(members)
+
+
+def _leiden_partition_prior(
+    g: ig.Graph, aug_nodes: list[str], node_sizes: list[int], initial_membership: list[int],
+    n_real: int, gamma: float,
+) -> list[list[str]]:
+    """Partition a prior-augmented graph at resolution `gamma` with zero-size anchors and a warm
+    start, then strip the anchors (indices >= n_real) and drop any community left with no real
+    member. Deterministic (fixed SEED), like `_leiden_partition`."""
+    part = la.find_partition(
+        g, la.CPMVertexPartition, resolution_parameter=gamma, weights="weight",
+        node_sizes=node_sizes, initial_membership=initial_membership, seed=SEED, n_iterations=-1,
+    )
+    comms = [[aug_nodes[i] for i in comm if i < n_real] for comm in part]
+    return [c for c in comms if c]
 
 
 def _structural_edges_at(

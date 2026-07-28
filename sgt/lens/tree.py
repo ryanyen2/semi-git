@@ -34,7 +34,10 @@ from pathlib import Path
 from sgt import state
 from sgt.core.op import Op, _symbol_kind
 from sgt.lens import cluster
-from sgt.lens.cluster import _dominant_dir, _fuse, _leiden_graph, _leiden_partition
+from sgt.lens.cluster import (
+    _dominant_dir, _fuse, _leiden_graph, _leiden_graph_prior, _leiden_partition,
+    _leiden_partition_prior,
+)
 from sgt.lens.pins import (
     Pins, _expand_members, _must_link_groups, apply_must_link, enforce_cannot_link, load_pins,
 )
@@ -94,16 +97,27 @@ class SplitResult:
 def _split_once(
     members: list[str], fused: dict, adj: dict, min_lane: int = MIN_LANE,
     target: tuple[int, int] = TARGET_ARITY, lo: float = GAMMA_LO, hi: float = GAMMA_HI,
-    max_iter: int = MAX_SEARCH_ITER,
+    max_iter: int = MAX_SEARCH_ITER, prior_leaf_of: dict[str, str] | None = None,
+    alpha: float = 0.0, norm: str = cluster.ANCHOR_NORM,
 ) -> SplitResult:
     """Binary-search the CPM resolution (log-scale) for a gamma whose partition has between
     `target[0]` and `target[1]` groups of size >= `min_lane` (sub-MIN groups are folded in via
     NO-ORPHAN either way). Too few groups means the split is too coarse -- search finer (higher
     gamma); too many means too fine -- search coarser (lower gamma). Keeps the closest-to-target
-    result seen across the search as a fallback when no gamma in range lands exactly in range."""
+    result seen across the search as a fallback when no gamma in range lands exactly in range.
+
+    When `alpha > 0` and a `prior_leaf_of` map is given, the induced graph is augmented with the
+    Phase B temporal prior (`cluster._leiden_graph_prior`) so the search resists gratuitously
+    shattering a previous leaf; `alpha == 0` (the default) is the exact pre-prior path."""
     induced = _induced(fused, set(members))
     sorted_members = sorted(members)
-    g = _leiden_graph(sorted_members, induced)  # built once; only `gamma` changes across the search
+    use_prior = bool(alpha > 0 and prior_leaf_of)
+    if use_prior:  # augmented graph built once; only `gamma` changes across the search
+        g, aug_nodes, node_sizes, init, n_real = _leiden_graph_prior(
+            sorted_members, induced, prior_leaf_of, alpha, norm
+        )
+    else:
+        g = _leiden_graph(sorted_members, induced)  # built once; only `gamma` changes across the search
     lo_log, hi_log = math.log(lo), math.log(hi)
     best_big: list[list[str]] | None = None
     best_small: list[list[str]] = []
@@ -112,7 +126,10 @@ def _split_once(
     for _ in range(max_iter):
         mid_log = (lo_log + hi_log) / 2
         gamma = math.exp(mid_log)
-        parts = _leiden_partition(g, sorted_members, gamma)
+        parts = (
+            _leiden_partition_prior(g, aug_nodes, node_sizes, init, n_real, gamma)
+            if use_prior else _leiden_partition(g, sorted_members, gamma)
+        )
         big = sorted((p for p in parts if len(p) >= min_lane), key=lambda p: -len(p))
         small = [p for p in parts if len(p) < min_lane]
         count = len(big)
@@ -136,8 +153,11 @@ def _split_once(
 def _subdivide(
     members: list[str], fused: dict, adj: dict, depth: int, max_depth: int,
     min_lane: int = MIN_LANE, max_leaf: int = MAX_LEAF,
+    prior_leaf_of: dict[str, str] | None = None, alpha: float = 0.0,
+    norm: str = cluster.ANCHOR_NORM,
 ) -> dict:
-    """Recursively split `members` into a node tree. A node with empty `children` is a leaf."""
+    """Recursively split `members` into a node tree. A node with empty `children` is a leaf. The
+    Phase B temporal prior (`prior_leaf_of`/`alpha`) is threaded to `_split_once` at every level."""
     node = {
         "members": sorted(members), "size": len(members), "dir": _dominant_dir(members),
         "depth": depth, "children": [], "split_reason": None,
@@ -149,13 +169,15 @@ def _subdivide(
         node["split_reason"] = "max_leaf"
         return node
 
-    result = _split_once(members, fused, adj, min_lane=min_lane)
+    result = _split_once(members, fused, adj, min_lane=min_lane,
+                         prior_leaf_of=prior_leaf_of, alpha=alpha, norm=norm)
     if result.groups is None:
         node["split_reason"] = result.reason
         return node
 
     node["children"] = [
-        _subdivide(sorted(g), fused, adj, depth + 1, max_depth, min_lane, max_leaf)
+        _subdivide(sorted(g), fused, adj, depth + 1, max_depth, min_lane, max_leaf,
+                   prior_leaf_of, alpha, norm)
         for g in result.groups
     ]
     node["split_reason"] = result.reason
@@ -165,16 +187,22 @@ def _subdivide(
 def _resplit_real(
     real_members: list[str], real_fused: dict, pins: Pins, depth: int, max_depth: int,
     min_lane: int = MIN_LANE, max_leaf: int = MAX_LEAF,
+    prior_leaf_of: dict[str, str] | None = None, alpha: float = 0.0,
+    norm: str = cluster.ANCHOR_NORM,
 ) -> dict:
     """Cluster `real_members` from scratch in real (uncontracted) member space: contract must-link
     pins scoped to this exact member set (`apply_must_link` self-restricts to `real_members`), run
     the ordinary `_subdivide` over the contracted graph, then expand the synthetic pin-group
     vertices back to real members. The one path that actually invokes Leiden -- both `build`'s
     cold-start root and `_dirty_subdivide`'s per-subtree resplit (Phase 2) funnel through here, so
-    a dirty subtree is clustered exactly as if it had been built from scratch on its own."""
+    a dirty subtree is clustered exactly as if it had been built from scratch on its own.
+
+    The Phase B temporal prior is keyed by real symbol (`prior_leaf_of`); a synthetic pin-group
+    vertex isn't in it, so it simply gets no anchor (a documented simplification -- pins are rare)."""
     contracted_nodes, contracted_fused, expansion = apply_must_link(real_members, real_fused, pins)
     contracted_adj = _adjacency(contracted_fused)
-    node = _subdivide(contracted_nodes, contracted_fused, contracted_adj, depth, max_depth, min_lane, max_leaf)
+    node = _subdivide(contracted_nodes, contracted_fused, contracted_adj, depth, max_depth,
+                      min_lane, max_leaf, prior_leaf_of, alpha, norm)
     _expand_members(node, expansion)
     return node
 
@@ -225,6 +253,8 @@ def _dirty_subdivide(
     members: list[str], real_fused: dict, real_adj: dict, depth: int, max_depth: int,
     previous_nodes: dict, prev_id: str | None, dirty_leaves: set[str], pins: Pins,
     min_lane: int = MIN_LANE, max_leaf: int = MAX_LEAF,
+    prior_leaf_of: dict[str, str] | None = None, alpha: float = 0.0,
+    norm: str = cluster.ANCHOR_NORM,
 ) -> dict:
     """Phase 2: splice a previous subtree through verbatim wherever its member set and cross-leaf
     coupling are both unchanged; only re-cluster (`_resplit_real`) the subtrees that actually
@@ -247,7 +277,8 @@ def _dirty_subdivide(
             return _splice(previous_nodes, prev_id, depth)
 
     if prev_node is None or not prev_node["children"]:
-        return _resplit_real(sorted(members), real_fused, pins, depth, max_depth, min_lane, max_leaf)
+        return _resplit_real(sorted(members), real_fused, pins, depth, max_depth, min_lane, max_leaf,
+                             prior_leaf_of, alpha, norm)
 
     prev_children_ids = prev_node["children"]
     assigned: dict[str, set[str]] = {
@@ -266,6 +297,7 @@ def _dirty_subdivide(
         _dirty_subdivide(
             sorted(assigned[cid]), real_fused, real_adj, depth + 1, max_depth,
             previous_nodes, cid, dirty_leaves, pins, min_lane, max_leaf,
+            prior_leaf_of, alpha, norm,
         )
         for cid in prev_children_ids
     ]
@@ -478,7 +510,7 @@ def feature_edges(nodes: dict, fused: dict[frozenset, float]) -> list[dict]:
 def build(
     repo: Path, ops: list[Op], ideal, max_depth: int = MAX_DEPTH, pins: Pins | None = None,
     previous: dict | None = None, force_rebuild: bool = False, refresh_caches: bool = False,
-    head: str | None = None,
+    head: str | None = None, stability_alpha: float | None = None,
 ) -> dict:
     """Build the tree from `ops`/`ideal` with stable feature ids and durable pins (no labeling --
     that is `tree.label_tree` / `sgt.lens.label`).
@@ -508,11 +540,23 @@ def build(
     `head` (default `gb.head()`) selects the commit the structural signal is read at, threaded to
     `fused_graph`/`cluster.signals`. Production leaves it None (reads HEAD); a historical replay
     (`experiments/patch_clustering`) passes the commit it is reconstructing so the structural edges
-    match that point in time."""
+    match that point in time.
+
+    `stability_alpha` (default `cluster.STABILITY_ALPHA`) sets the Phase B temporal-prior strength:
+    every re-cluster of a subtree that has a `previous` cut augments its induced graph with anchors
+    tying each previous leaf's surviving members together (see `_split_once`), so the new cut
+    resists gratuitously shattering a previous leaf. `force_rebuild` forces alpha=0 (the `--rebuild`
+    escape hatch stays cold, reflecting only current evidence); the α sweep passes it explicitly."""
     if pins is None:
         pins = load_pins(repo)
     if previous is None:
         previous = load(repo)
+    alpha = 0.0 if force_rebuild else (
+        cluster.STABILITY_ALPHA if stability_alpha is None else stability_alpha
+    )
+    prior_leaf_of = (
+        leaf_member_index(previous["nodes"]) if (previous and previous.get("nodes")) else None
+    )
 
     all_nodes, fused = fused_graph(repo, ops, ideal, refresh_structural_cache=refresh_caches, head=head)
     real_adj = _adjacency(fused)  # per-real-member weights: cannot-link's reassignment choice, and
@@ -525,9 +569,10 @@ def build(
     # across the rebuild wherever members overlap, so this migration doesn't churn ids.
     stale_signals = previous is not None and previous.get("signals_version") != cluster.SIGNALS_VERSION
     if force_rebuild or stale_signals:
-        root = _resplit_real(all_nodes, fused, pins, 0, max_depth)
+        root = _resplit_real(all_nodes, fused, pins, 0, max_depth, prior_leaf_of=prior_leaf_of, alpha=alpha)
     else:
-        root = _build_root(repo, all_nodes, fused, real_adj, pins, previous, max_depth)
+        root = _build_root(repo, all_nodes, fused, real_adj, pins, previous, max_depth,
+                           prior_leaf_of=prior_leaf_of, alpha=alpha)
     _regroup_flat_root(root)  # a navigable package hierarchy over the flat Leiden root; idempotent
     # (a no-op once children have distinct package dirs), so a splice that inherits an already-
     # regrouped structure isn't re-nested.
@@ -565,6 +610,7 @@ def build(
 def _build_root(
     repo: Path, all_nodes: list[str], fused: dict, real_adj: dict, pins: Pins,
     previous: dict | None, max_depth: int,
+    prior_leaf_of: dict[str, str] | None = None, alpha: float = 0.0,
 ) -> dict:
     """Decide whether this build can splice unchanged subtrees of `previous` through verbatim
     (Phase 2), or must fall back to a full from-scratch resplit. Dirty-subtree splicing is only
@@ -572,9 +618,10 @@ def _build_root(
     leaf -- otherwise a group could be split across two independently-resplit subtrees, since
     `_dirty_subdivide`/`_resplit_real` only contract must-link *within* whatever subtree they're
     handed. A pin edit (rare, manual curation) or a first-ever build simply falls back to a full
-    resplit; the common "small code edit" case is unaffected."""
+    resplit; the common "small code edit" case is unaffected. `prior_leaf_of`/`alpha` carry the
+    Phase B temporal prior into every re-cluster below."""
     if previous is None or not previous.get("nodes"):
-        return _resplit_real(all_nodes, fused, pins, 0, max_depth)
+        return _resplit_real(all_nodes, fused, pins, 0, max_depth, prior_leaf_of=prior_leaf_of, alpha=alpha)
 
     previous_nodes = previous["nodes"]
     old_leaf_of = leaf_member_index(previous_nodes)
@@ -585,9 +632,11 @@ def _build_root(
         if not alive_members:
             continue
         if not all(m in old_leaf_of for m in alive_members):
-            return _resplit_real(all_nodes, fused, pins, 0, max_depth)  # a pinned member is new
+            return _resplit_real(all_nodes, fused, pins, 0, max_depth,  # a pinned member is new
+                                 prior_leaf_of=prior_leaf_of, alpha=alpha)
         if len({old_leaf_of[m] for m in alive_members}) > 1:
-            return _resplit_real(all_nodes, fused, pins, 0, max_depth)  # pins now span 2+ leaves
+            return _resplit_real(all_nodes, fused, pins, 0, max_depth,  # pins now span 2+ leaves
+                                 prior_leaf_of=prior_leaf_of, alpha=alpha)
 
     fingerprint = _tree_fingerprint(previous_nodes)
     old_fused = _load_fused_snapshot(repo, fingerprint)
@@ -597,6 +646,7 @@ def _build_root(
     prev_root_id = previous["roots"][0] if previous.get("roots") else None
     return _dirty_subdivide(
         all_nodes, fused, real_adj, 0, max_depth, previous_nodes, prev_root_id, dirty_leaves, pins,
+        prior_leaf_of=prior_leaf_of, alpha=alpha,
     )
 
 
