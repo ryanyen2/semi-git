@@ -144,13 +144,20 @@ export class PlanStatusBar implements vscode.Disposable {
     // than one active plan (concurrent agents) lead with the plan count. Drift lives in the
     // tooltip, not as an always-visible badge -- it's a read-only diff, not a chore to clear.
     const plans = plan.sessions.length;
-    this.item.text = plans === 1
+    const base = plans === 1
       ? `$(checklist) Plan ${matched}/${total}`
       : `$(checklist) ${plans} plans ${matched}/${total}`;
+    // A stalled plan (interrupted, resumable) gets one quiet suffix -- deferential, no loud badge;
+    // the click-through quick pick is where the Resume action lives.
+    const stalled = plan.sessions.filter((s) => s.derived_status === "stalled");
+    this.item.text = stalled.length ? `${base} · ${stalled.length} stalled` : base;
     const driftCount = plan.checkpoint.drift_op_ids.length;
     const stepLines = plan.sessions
       .flatMap((s) => s.steps.map((st) => `${STATUS_ICON[st.status] ?? "?"} ${st.title}`));
-    this.item.tooltip = stepLines.join("\n") +
+    const stalledLines = stalled.length
+      ? `\n\n⏸ ${stalled.length} stalled — click to resume`
+      : "";
+    this.item.tooltip = stepLines.join("\n") + stalledLines +
       (driftCount ? `\n\n${driftCount} unplanned change(s)` : "");
     this.item.show();
   }
@@ -215,10 +222,23 @@ export async function showPlanQuickPick(store: Store, diff: PlanDiffProvider): P
     vscode.window.showErrorMessage(e.message);
     return;
   }
-  const items: (vscode.QuickPickItem & { target?: PlanLensTarget })[] = [];
+  type Item = vscode.QuickPickItem & { target?: PlanLensTarget; resumeSessionId?: string };
+  const items: Item[] = [];
   for (const session of plan.sessions) {
+    // A stalled session leads with a single Resume action -- the one clear next step for an
+    // interrupted plan (selecting it hands the conversation back to Claude Code via `claude --resume`).
+    if (session.derived_status === "stalled") {
+      items.push({
+        label: `$(debug-continue) Resume stalled plan`,
+        description: session.session_id,
+        detail: session.remaining_titles?.length
+          ? `${session.remaining_titles.length} step(s) not built: ${session.remaining_titles.join(", ")}`
+          : undefined,
+        resumeSessionId: session.session_id,
+      });
+    }
     session.steps.forEach((step, idx) => {
-      const item: vscode.QuickPickItem & { target?: PlanLensTarget } = {
+      const item: Item = {
         label: `${STATUS_ICON[step.status] ?? "?"} step ${idx + 1}: ${step.title}`,
         description: session.session_id,
       };
@@ -239,7 +259,9 @@ export async function showPlanQuickPick(store: Store, diff: PlanDiffProvider): P
     return;
   }
   const pick = await vscode.window.showQuickPick(items, { placeHolder: "Plan steps" });
-  if (pick?.target) {
+  if (pick?.resumeSessionId) {
+    await vscode.commands.executeCommand("sgt.resumePlan", pick.resumeSessionId);
+  } else if (pick?.target) {
     await diff.showDiff(pick.target);
   }
 }

@@ -17,19 +17,15 @@ from __future__ import annotations
 import hashlib
 from collections import OrderedDict
 from dataclasses import dataclass
-from pathlib import Path
 
 from tree_sitter import Parser
 
 from sgt.entities.extract import (
     Entity,
-    _EXT_LANG,
     _language,
     _language_for,
     extract_codebase,
 )
-
-_IGNORE_DIRS = {".sgt", ".git", ".venv", "venv", "__pycache__", "node_modules"}
 
 
 @dataclass(frozen=True)
@@ -48,22 +44,6 @@ class EntityGraph:
     edges: list[EntityEdge]  # full set
     reduced_edges: list[EntityEdge]  # transitive reduction (calls/imports) + containment
     components: list[list[str]]  # weakly-connected component membership (entity ids)
-
-
-# -- working-tree reader -----------------------------------------------------
-def read_entity_sources(repo: Path) -> dict[str, str]:
-    """All supported-language sources in the working tree (whole-repo, KTD1: disk is truth)."""
-    out: dict[str, str] = {}
-    for ext in _EXT_LANG:
-        for p in repo.rglob(f"*{ext}"):
-            rel = p.relative_to(repo)
-            if any(part in _IGNORE_DIRS or part.startswith(".") for part in rel.parts):
-                continue
-            try:
-                out[str(rel)] = p.read_text(encoding="utf-8")
-            except OSError:
-                continue
-    return out
 
 
 # -- reference extraction ----------------------------------------------------

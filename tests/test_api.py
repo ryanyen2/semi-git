@@ -9,7 +9,7 @@ import json
 
 from sgt.api import (
     compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, oplog_view,
-    plan_view, resolve_selection, state_view, status_view, trust_view,
+    plan_view, resolve_selection, save_preview_view, state_view, status_view, trust_view,
 )
 from sgt.core.lens import get
 from sgt.core.op import make_op
@@ -196,6 +196,110 @@ def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
     assert any(op["feature_id"] is not None for op in v["ops"])
 
 
+def _shared_feature_dag(tmp_path):
+    """Build a minimal DAG for the shared-feature projection tests. Corpus fixtures are all
+    single-node, so we reshape a freshly built `tree.json` by hand: a LEAF listed under *both* N1
+    and N2 (a DAG) but canonically parented to N1 -- N2 only borrows it. Returns
+    (repo, leaf_id, real_op_id); the caller reads `map_view(repo)`."""
+    from sgt.lens import tree
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    res = tree.load(repo)
+    real_op = next(iter(res["op_leaf"]))  # a real op so leaf_op_count / attribution pick it up
+
+    def node(nid, parent, children, label, members=()):
+        return {"id": nid, "parent": parent, "children": list(children), "depth": 0,
+                "members": list(members), "size": max(1, len(members)), "dir": "",
+                "label": label, "why": "", "split_reason": None}
+
+    leaf = "f-shared"
+    res["nodes"] = {
+        "N0": node("N0", None, ["N1", "N2"], "root"),
+        "N1": node("N1", "N0", [leaf], "SubA"),
+        "N2": node("N2", "N0", [leaf], "SubB"),  # DAG: also lists the leaf, but is not its parent
+        leaf: node(leaf, "N1", [], "Shared", members=["x"]),
+    }
+    res["roots"] = ["N0"]
+    res["op_leaf"] = {real_op: leaf}
+    tree.save(repo, res)
+    return repo, leaf, real_op
+
+
+def test_map_view_renders_a_shared_feature_under_its_one_canonical_parent(tmp_path):
+    """The tree is a DAG: an authored feature can be spliced under more than one subsystem, so its
+    id is listed in several parents' `children` while carrying a single canonical `parent`. `map_view`
+    must render it once -- under that one parent -- so the feature tree, the workbench timeline, and
+    the TUI agree, and it must not double-count the shared ops in every ancestor's `op_count` rollup."""
+    repo, leaf, _ = _shared_feature_dag(tmp_path)
+
+    v = map_view(repo)
+    by_id = {n["id"]: n for n in v["nodes"]}
+    # the shared leaf is rendered under its canonical parent only, never the borrowing subsystem
+    assert by_id["N1"]["children"] == [leaf]
+    assert by_id["N2"]["children"] == []
+    assert [n["id"] for n in v["nodes"] if leaf in n["children"]] == ["N1"]
+    # and its single op is counted once at the root, not once per listing parent
+    assert by_id[leaf]["op_count"] == 1
+    assert by_id["N2"]["op_count"] == 0
+    assert by_id["N0"]["op_count"] == 1
+    # `kind` must agree with the now-canonical `children`: a borrower-only node (all its listed
+    # children are borrowed, none canonically its own) is a leaf, not a subsystem. Consumers gate on
+    # this pair -- VS Code tree actions/collapsibility, TUI expand, timeline recursion -- so a
+    # `kind:"subsystem"` row emitting `children:[]` is mishandled (drops actions / vanishes).
+    assert by_id["N2"]["kind"] == "feature"
+    assert by_id["N1"]["kind"] == "subsystem"
+    # `feature_count` counts feature nodes, so it must agree with the canonical `kind`: the borrower-
+    # only N2 and the shared leaf are the two features here (raw children would miscount N2 as a
+    # subsystem and report 1).
+    assert v["feature_count"] == 2
+    # Canonical de-duplication must yield a proper forest, which is what makes each node's canonical
+    # parent well-defined (the residual-risk the whole scheme rests on): every non-root node appears
+    # in exactly one node's emitted `children`, and that node is its `parent`. Reverting `children`
+    # to raw would list the shared leaf under both N1 and N2 (listers == ["N1", "N2"]) -- so this
+    # bites the double-listing directly, and also flags an orphan (a parent that fails to list its
+    # child would give listers == []).
+    for nid, nd in by_id.items():
+        if nd["parent"] is None:
+            continue
+        listers = [p for p in by_id if nid in by_id[p]["children"]]
+        assert listers == [nd["parent"]], (nid, listers)
+
+
+def test_map_view_rolls_sessions_up_through_the_canonical_parent_only(tmp_path, monkeypatch):
+    """`node_sessions` must roll provenance up through *canonical* children, exactly like `op_count`:
+    a session attributed to the shared leaf reaches its one canonical ancestor chain (N1 -> N0), not
+    the borrowing subsystem N2. Sessions come from `opindex` attribution keyed by op-id and can't be
+    injected via `tree.save`, so we attach one to the shared leaf's op. Reverting `node_sessions` to
+    raw children would leak the session onto N2 -- this asserts it does not."""
+    import dataclasses
+
+    from sgt.core import opindex
+    from sgt.core.op import Attribution
+
+    repo, leaf, real_op = _shared_feature_dag(tmp_path)
+
+    real_ops = opindex.index_ops(repo)
+    assert any(op.id == real_op for op in real_ops)  # the leaf's op is attributable
+
+    def with_session(_repo):
+        return [
+            dataclasses.replace(op, attribution=op.attribution + (Attribution(sha=op.id, session="sess-1"),))
+            if op.id == real_op else op
+            for op in real_ops
+        ]
+
+    monkeypatch.setattr(opindex, "index_ops", with_session)
+
+    v = map_view(repo)
+    by_id = {n["id"]: n for n in v["nodes"]}
+    assert by_id[leaf]["sessions"] == ["sess-1"]  # attributed directly to the shared leaf
+    assert by_id["N1"]["sessions"] == ["sess-1"]  # its one canonical parent rolls it up
+    assert by_id["N0"]["sessions"] == ["sess-1"]  # ...to the root
+    assert by_id["N2"]["sessions"] == []  # the borrower does NOT (bites a raw-children revert)
+
+
 def test_grid_view_joins_ops_into_feature_commit_cells(tmp_path):
     """U1/R5: `grid_view` is the canonical (op -> cell) join. Every cell holds exactly the ops that
     share one (feature_id, commit_index), and that join is faithful to `history_view` -- each
@@ -373,7 +477,7 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
 
     assert set(v) == {
         "map", "history", "status", "forks", "plan", "drift", "sessions", "trust", "intent",
-        "oracle_verdict", "proposals",
+        "save_preview", "oracle_verdict", "proposals",
     }
     assert v["map"] == map_view(repo)
     assert v["history"] == history_view(repo)
@@ -384,8 +488,46 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
     assert v["sessions"] == sessions_view(repo)
     assert v["trust"] == trust_view(repo)
     assert v["intent"] == intent_view(repo)
+    assert v["save_preview"] == save_preview_view(repo)
     assert v["oracle_verdict"] == verdict_for(repo, current_ideal(repo))
     assert v["proposals"] == []  # nothing proposed in this fixture
+
+
+def test_save_preview_view_splits_affected_features_from_new_work(tmp_path):
+    """The in-situ save preview answers "which features gain ops if I save now". A clean tree has
+    nothing pending; uncommitted work that reworks an existing feature's symbol lands in `affected`
+    (attributed to that feature's leaf), while a brand-new symbol -- a member of no built leaf --
+    falls into the `new_work` bucket. `total_op_count` accounts for both."""
+    from sgt.lens.map import build_map
+    from sgt.lens.tree import load as load_tree
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    build_map(repo)
+
+    # the leaf that owns the committed symbol -- affected work should attribute here
+    nodes = load_tree(repo)["nodes"]
+    foo_leaf = next(nid for nid, nd in nodes.items()
+                    if not nd["children"] and "a.py::foo" in nd["members"])
+
+    # clean tree: nothing would land on save
+    assert save_preview_view(repo) == {"affected": [], "new_work_count": 0, "total_op_count": 0}
+
+    # uncommitted: rework the existing symbol (-> its feature) + add a brand-new one (-> new work)
+    (repo / "a.py").write_text(
+        "def foo():\n    return 2\n\n\ndef bar():\n    return 3\n", encoding="utf-8")
+
+    v = save_preview_view(repo)
+    assert v["total_op_count"] > 0
+    affected_ids = {row["feature_id"] for row in v["affected"]}
+    assert foo_leaf in affected_ids  # the reworked symbol's feature is flagged
+    assert v["new_work_count"] >= 1  # `bar` belongs to no built leaf
+    # the split is exhaustive: every pending op is either attributed or new work
+    attributed = sum(row["op_count"] for row in v["affected"])
+    assert attributed + v["new_work_count"] == v["total_op_count"]
 
 
 def test_fold_view_at_commit_index_matches_that_frontiers_code(tmp_path):
@@ -802,6 +944,68 @@ def test_plan_view_default_reports_step_counts_not_steps(tmp_path):
     assert "files" in full
 
 
+def _seed_plan_session(repo, gb, *, session_id, last_activity_ts, claude_session_id=None):
+    """Seed one active, single-pending-step plan session directly into `plan_sessions.json` (the
+    same shape `intake` writes) so a test can control `last_activity_ts` deterministically.
+    `baseline_op_ids` is the store's current op set, so no already-mined op is ever a candidate."""
+    store = Store(repo)
+    baseline = sorted(op.id for op in store.all_ops())
+    footprint = {"a.py::foo": (None, plan_mod._PENDING),
+                 f"__plan__::{session_id}::step0": (None, plan_mod._PENDING)}
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    store.add_hollow(hollow)
+    table = plan_mod._load_sessions(repo)
+    table[session_id] = {
+        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": last_activity_ts,
+        "status": "active", "claude_session_id": claude_session_id, "baseline_op_ids": baseline,
+        "steps": [{
+            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
+        }],
+    }
+    plan_mod._save_sessions(repo, table)
+
+
+def test_plan_view_derives_building_and_stalled_from_activity_and_candidates(tmp_path):
+    """A pending plan is `building` while recently active, `stalled` once it goes quiet past
+    STALLED_SECONDS with no work flowing toward it, and `building` again -- age notwithstanding --
+    the moment a checkpoint candidate names it. `claude_session_id` is surfaced for the Resume
+    hand-off, and `pending_count`/`remaining_titles` come along without a `full` fetch."""
+    import time
+
+    from sgt.loop.plan import STALLED_SECONDS
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+
+    # Recent activity, pending step, no candidate -> building.
+    _seed_plan_session(repo, gb, session_id="fresh", last_activity_ts=time.time(),
+                       claude_session_id="sess-abc")
+    session = plan_view(repo)["sessions"][0]
+    assert session["derived_status"] == "building"
+    assert session["pending_count"] == 1
+    assert session["remaining_titles"] == ["touch foo"]
+    assert session["claude_session_id"] == "sess-abc"
+
+    # Same session backdated well past STALLED_SECONDS with still no candidate -> stalled.
+    table = plan_mod._load_sessions(repo)
+    table["fresh"]["last_activity_ts"] = time.time() - STALLED_SECONDS - 60
+    plan_mod._save_sessions(repo, table)
+    assert plan_view(repo)["sessions"][0]["derived_status"] == "stalled"
+
+    # Commit work matching the predicted footprint -> a live candidate names the session, so it
+    # reads `building` again despite the stale activity timestamp (candidate overrides age).
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("touch foo")
+    get(repo)
+    view = plan_view(repo)
+    assert view["checkpoint"]["matches"], "expected a checkpoint candidate for the matching work"
+    assert view["sessions"][0]["derived_status"] == "building"
+
+
 def test_trust_view_default_reports_op_count_not_op_detail(tmp_path):
     from pathlib import Path
 
@@ -975,3 +1179,113 @@ def test_so_what_layer_fallout_is_act_required_only_and_carry_is_a_hidden_count(
     assert view["carry_count"] == len(carry) > 0  # the chain has a transitive dependent
     assert view["reversible"] is True
     assert view["so_what"].startswith("b.py::user will break —")
+
+
+# -- focus_subgraph: the "Focus & Morph" preview contract ---------------------------------------
+
+def _per_file_leaf_tree(tmp_path):
+    """The small-repo clusterer fuses the whole `_chain_repo` into one Leiden community, so to test a
+    *multi*-feature subgraph we hand-reshape the built tree to one leaf per file (mirroring
+    `_shared_feature_dag`): a.py→f-a, b.py→f-b, ... . Reverting `user` (b.py) then removes ops from
+    the user/caller/deep leaves (blast/target) and leaves the helper leaf they build on (foundation).
+    Returns (repo, ops)."""
+    from sgt.lens import tree as tree_mod
+    from sgt.lens.map import build_map
+
+    repo = _chain_repo(tmp_path)
+    build_map(repo)
+    ops = Store(repo).all_ops()
+
+    def leaf_of(op) -> str:
+        path = next((s.partition("::")[0] for s in op.footprint), "?")
+        return "f-" + path.removesuffix(".py")
+
+    op_leaf = {op.id: leaf_of(op) for op in ops}
+    leaves = sorted(set(op_leaf.values()))
+
+    def node(nid, parent, children, label):
+        return {"id": nid, "parent": parent, "children": list(children), "depth": 0,
+                "members": [], "size": 1, "dir": "", "label": label, "why": "", "split_reason": None}
+
+    res = tree_mod.load(repo)
+    res["nodes"] = {"N0": node("N0", None, leaves, "root"),
+                    **{lf: node(lf, "N0", [], lf) for lf in leaves}}
+    res["roots"] = ["N0"]
+    res["op_leaf"] = op_leaf
+    tree_mod.save(repo, res)
+    return repo, ops
+
+
+def test_focus_subgraph_revert_splits_target_blast_and_foundation_with_before_after_counts(tmp_path):
+    """The keystone morph contract: a revert's focus subgraph names exactly the affected features,
+    one spotlight `target`, the rest of the shrinking leaves as `blast`, and the live prerequisite the
+    revert is built on as an unchanged `foundation` -- each carrying its op-count before and after, so
+    a renderer can dim the field and morph just these nodes instead of listing 64 op-ids."""
+    from sgt.api import map_view, verb_preview_view
+
+    repo, ops = _per_file_leaf_tree(tmp_path)
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+
+    view = verb_preview_view(repo, "revert", user_op.id)
+    focus = view["focus"]
+    assert focus["so_what"] == view["so_what"]  # the headline is the same line the pane leads with
+    by_fid = {n["feature_id"]: n for n in focus["nodes"]}
+
+    # helper's leaf is the prerequisite the revert stands on: lit as foundation, its count untouched.
+    assert by_fid["f-a"]["role"] == "foundation"
+    assert by_fid["f-a"]["ops_before"] == by_fid["f-a"]["ops_after"] > 0
+
+    roles = [n["role"] for n in focus["nodes"]]
+    assert roles.count("target") == 1  # exactly one spotlight node
+    target = next(n for n in focus["nodes"] if n["role"] == "target")
+    assert target["ops_after"] < target["ops_before"]  # the acted-on leaf shrinks
+    assert all(n["ops_after"] < n["ops_before"] for n in focus["nodes"] if n["role"] == "blast")
+    assert set(roles) <= {"target", "blast", "foundation"}
+
+    # the per-node deltas account for exactly the reverted ops (nothing added on a revert).
+    total_dropped = sum(n["ops_before"] - n["ops_after"] for n in focus["nodes"])
+    assert total_dropped == len(view["removed"])
+
+    # edges are the map's cross-feature edges restricted to focus members; context is the rest.
+    fids = set(by_fid)
+    assert all(e["a"] in fids and e["b"] in fids for e in focus["edges"])
+    assert focus["context_count"] == map_view(repo)["feature_count"] - len(focus["nodes"])
+
+
+def test_focus_subgraph_restore_grows_the_restored_features_lane(tmp_path):
+    """The reverse morph: a `restore` adds ops back, so the touched leaf's `ops_after` exceeds its
+    `ops_before` and it grows against the dim field -- nothing shrinks. Built from a preview whose
+    `after_ids` re-adds a removed op, so the direction flips without a full apply round-trip."""
+    from sgt.api import focus_subgraph
+    from sgt.core import verbs
+
+    repo, ops = _per_file_leaf_tree(tmp_path)
+    deep_op = next(o for o in ops if "d.py::deep" in o.footprint)
+    all_ids = frozenset(o.id for o in ops)
+
+    preview = verbs._preview("restore", deep_op.id, all_ids - {deep_op.id}, all_ids, ops)
+    focus = focus_subgraph(preview, repo)
+    by_fid = {n["feature_id"]: n for n in focus["nodes"]}
+
+    # the restored op's leaf is the one acted-on lane, and it grows.
+    assert by_fid["f-d"]["role"] == "target"
+    assert by_fid["f-d"]["ops_after"] > by_fid["f-d"]["ops_before"]
+    assert all(n["role"] != "blast" for n in focus["nodes"])  # nothing shrinks on a pure restore
+    assert sum(n["ops_after"] - n["ops_before"] for n in focus["nodes"]) == 1
+
+
+def test_focus_subgraph_is_empty_when_no_feature_tree_is_built(tmp_path):
+    """Degrade cleanly: before `sgt map` builds the tree there is no `op_leaf` to roll ops up
+    through, so the subgraph is empty (`nodes: []`) and the renderer falls back to the `so_what`
+    headline alone -- never an error."""
+    from sgt.api import focus_subgraph
+    from sgt.core import verbs
+
+    repo = _chain_repo(tmp_path)  # mined, but no `build_map` -> no op_leaf
+    ops = Store(repo).all_ops()
+    user_op = next(o for o in ops if "b.py::user" in o.footprint)
+    all_ids = frozenset(o.id for o in ops)
+
+    preview = verbs._preview("revert", user_op.id, all_ids, all_ids - {user_op.id}, ops)
+    focus = focus_subgraph(preview, repo, so_what="X")
+    assert focus == {"so_what": "X", "nodes": [], "edges": [], "context_count": 0}

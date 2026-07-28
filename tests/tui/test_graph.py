@@ -375,22 +375,48 @@ def _preview_fixture():
 
 def test_render_verb_preview_marks_removed_checkpoints_and_the_blast():
     """A revert feedforward: the target feature's fully-removed checkpoints are marked (the first
-    with `▸`, the rest `✗`), the OTHER features the blast hits are listed with a badge, and the
-    summary counts ops + affected features."""
+    with `▸`, the rest `✗`), the reached feature carries its `before → after` count + role from the
+    focus subgraph, and the summary counts ops + affected features."""
     m, hist, segs = _preview_fixture()
     preview_view = {
         "verb": "revert", "target": "A", "removed": ["o0", "o1", "o2"], "added": [],
-        "affected": [{"feature_id": "A", "direction": "blast", "op_count": 3},
-                     {"feature_id": "B", "direction": "foundation", "op_count": 1}],
+        "focus": {
+            "so_what": "", "context_count": 2, "edges": [],
+            "nodes": [{"feature_id": "A", "label": "A", "role": "target", "ops_before": 3, "ops_after": 0},
+                      {"feature_id": "B", "label": "B", "role": "foundation", "ops_before": 1, "ops_after": 1}],
+        },
         "files": {"src/a.py": "--- a\n+++ b\n"},
     }
     lines = render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False)
     text = "\n".join(lines)
     assert "rewind" in text                                   # the header verb
+    assert "3→0 op" in text                                   # the target lane's morph count
+    assert "░" in text                                        # the magnitude bar ghosts the leaving ops
     assert "▸" in text and "✗" in text                        # first gone car ▸, subsequent ✗
     assert "op removed" in text                               # per-checkpoint removal note
-    assert "also affected" in text and "locked prerequisite" in text   # B badged foundation
+    assert "also affected" in text and "prerequisite, kept" in text    # B, foundation, unchanged
+    assert "1→1" in text                                      # B's before → after
+    assert "2 unchanged feature(s)" in text                   # the dim context floor
     assert "removes 3 op" in text and "1 other feature" in text        # summary
+
+
+def test_render_verb_preview_before_frame_shows_checkpoints_still_present():
+    """The `before` frame of the morph: the same removed checkpoints are drawn still present
+    (flagged for what the edit *will* do), so the user can compare against the default `after` frame
+    that ghosts them with `✗`."""
+    m, hist, segs = _preview_fixture()
+    preview_view = {
+        "verb": "revert", "target": "A", "removed": ["o0", "o1", "o2"], "added": [],
+        "focus": {"so_what": "", "context_count": 0, "edges": [],
+                  "nodes": [{"feature_id": "A", "label": "A", "role": "target", "ops_before": 3, "ops_after": 0}]},
+        "files": {},
+    }
+    after = "\n".join(render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False))
+    before = "\n".join(render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False, frame="before"))
+    assert "✗" in after and "op removed" in after             # after ghosts the removed checkpoints
+    assert "✗" not in before and "will remov" in before       # before keeps them, flags the intent
+    assert after.count("░") > before.count("░")               # the magnitude bar empties in the after frame
+    assert "showing before" in before                          # the summary names the frame
 
 
 def test_render_verb_preview_restore_shows_restored_and_partial():
@@ -399,7 +425,8 @@ def test_render_verb_preview_restore_shows_restored_and_partial():
     m, hist, segs = _preview_fixture()
     preview_view = {
         "verb": "restore", "target": "A", "removed": [], "added": ["o0", "o1"],
-        "affected": [{"feature_id": "B", "direction": "foundation", "op_count": 1}],
+        "focus": {"so_what": "", "context_count": 1, "edges": [],
+                  "nodes": [{"feature_id": "A", "label": "A", "role": "target", "ops_before": 1, "ops_after": 3}]},
         "files": {},
     }
     lines = render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False)
@@ -515,36 +542,3 @@ def test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified(
           "tips": ["0ee9a65f11aa", "5e6eaf5822bb"], "oracle_configured": False}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "oracle: none configured" in text and "lands unverified" in text
-
-
-# ── TUI overlay (Textual) ──────────────────────────────────────────────────────────────────────
-
-def test_graph_screen_opens_and_scrubs(tmp_path):
-    pytest.importorskip("textual")
-    import asyncio
-
-    from sgt.core.lens import get
-    from sgt.lens.map import build_map
-    from sgt.tui.app import GraphScreen, SgtTui
-    from tests.laws import corpus
-
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
-    get(repo)
-    build_map(repo)
-
-    async def drive():
-        app = SgtTui(str(repo))
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("g")
-            await pilot.pause()
-            assert isinstance(app.screen, GraphScreen)
-            # scrub the frontier older, then back to HEAD -- neither should raise
-            await pilot.press("left")
-            await pilot.pause()
-            await pilot.press("home")
-            await pilot.pause()
-            await pilot.press("escape")
-            await pilot.pause()
-
-    asyncio.run(drive())

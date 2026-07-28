@@ -51,7 +51,6 @@ def register(subs, parent) -> None:
     up.set_defaults(func=_cmd_unstage)
 
     rp = subs.add_parser("repair", parents=[parent])
-    rp.add_argument("--backend", default="api", choices=["api"])
     rp.add_argument("draft", nargs="?")
     rp.set_defaults(func=_cmd_repair)
 

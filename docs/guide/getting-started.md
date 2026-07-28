@@ -43,12 +43,12 @@ recorded, or has drifted ahead of it.
 
 ## Remove and bring back a symbol
 
-You name a target as `file::symbol`, an op id, or a feature id or label. `--emit` previews the
-change without writing anything.
+You name a target as `file::symbol`, an op id, or a feature id or label. On a terminal, `revert`
+and `restore` first draw the consequence — what the edit removes and which dependents it lands on —
+and wait for you to confirm before writing anything, so the preview is the default, not a flag.
 
 ```bash
-sgt revert app.py::validate_email --emit   # preview the removal
-sgt revert app.py::validate_email          # remove it and everything built on it, then commit
+sgt revert app.py::validate_email          # show the consequence, confirm, then remove it and commit
 sgt restore app.py::validate_email         # add it back, along with anything it needs
 ```
 

@@ -5,8 +5,7 @@ in place of the plain `[y/N]` prompt. It answers "so what?" -- leads with a one-
 dependents). ``enter`` applies, ``space`` toggles a dependent into the kept-set (adjust), ``esc``
 aborts.
 
-A small value-returning ``App[Decision]`` -- NOT the heavy ``SgtTui`` browser (which boots
-mining/clustering on mount and returns ``None``). Textual's idiom is ``App[T].run() -> return_value``
+A small value-returning ``App[Decision]``. Textual's idiom is ``App[T].run() -> return_value``
 set by ``App.exit(value)``. The CLI launches it lazily (so ``textual`` stays an optional extra) and
 applies the returned ``Decision`` through its existing apply path; a kept-set is exactly the CLI's
 ``--keep`` continuation-hollow frontier.
@@ -23,9 +22,26 @@ from textual.containers import Vertical, VerticalScroll
 from textual.widgets import DataTable, Label, Static
 
 from sgt.api import so_what_for
-from sgt.tui.app import frontier_counts
 from sgt.tui.color import color_for
 from sgt.tui.graph import render_verb_preview_lines
+
+
+def frontier_counts(rows: list[dict], kept: set[str]) -> dict:
+    """Classify a verb preview's ``frontier`` rows (``{op_id, bucket, toggleable}``) against the
+    user's kept-set (plan U9/U3, R4). ``blast``/``carry`` rows are toggleable -- keeping one
+    retains that op, so the revert removes the rest; ``foundation`` rows are read-only
+    prerequisites, never removed and never valid in the kept-set. Returns the live removed/kept
+    dependent counts plus which op-ids are toggleable/foundation, for the checklist header. A
+    kept-id that is not a toggleable row (a stale or foundation id) is ignored."""
+    toggleable = sorted(r["op_id"] for r in rows if r.get("toggleable"))
+    foundation = sorted(r["op_id"] for r in rows if not r.get("toggleable"))
+    kept_valid = set(kept) & set(toggleable)
+    return {
+        "toggleable": toggleable,
+        "foundation": foundation,
+        "kept": len(kept_valid),
+        "removed": len(toggleable) - len(kept_valid),
+    }
 
 
 @dataclass(frozen=True)
@@ -55,6 +71,7 @@ class ConsequenceApp(App[Decision]):
     BINDINGS = [
         Binding("enter", "apply", "Apply", priority=True),
         Binding("space", "toggle", "Keep/drop"),
+        Binding("b", "flip_frame", "Before/after", priority=True),
         Binding("escape", "abort", "Leave"),
     ]
 
@@ -69,6 +86,7 @@ class ConsequenceApp(App[Decision]):
         # Only toggleable blast rows are the checklist; forks/foundation are not user-adjustable.
         self._blast = [r for r in pview.get("fallout", []) if r.get("kind") == "blast"]
         self._kept: set[str] = set()
+        self._frame = "after"  # the morph frame the rail draws; `b` toggles to "before" to compare.
 
     def compose(self) -> ComposeResult:
         with Vertical(id="consequence-modal"):
@@ -96,7 +114,7 @@ class ConsequenceApp(App[Decision]):
             return Text.from_ansi("\n".join(summary))
         lines = render_verb_preview_lines(
             self._map_view, self._grid_view, self._segments, self._pview,
-            focus_fid=self._focus_fid, color=True,
+            focus_fid=self._focus_fid, color=True, frame=self._frame,
         )
         return Text.from_ansi("\n".join(lines))
 
@@ -106,9 +124,11 @@ class ConsequenceApp(App[Decision]):
     def _hint(self) -> str:
         # "space keep" only makes sense when there's a toggleable dependent to keep.
         keep = "   ·   [b]space[/b] keep" if self._blast else ""
+        # The before/after toggle only reads on a code rail (revert/restore), not a metadata summary.
+        compare = "" if self._pview.get("summary") is not None else "   ·   [b]b[/b] before/after"
         carry = self._pview.get("carry_count", 0)
         tail = f"   ·   {carry} auto-repoint" if carry else ""
-        return f"[b]enter[/b] apply{keep}   ·   [b]esc[/b] leave{tail}"
+        return f"[b]enter[/b] apply{keep}{compare}   ·   [b]esc[/b] leave{tail}"
 
     def _fill(self) -> None:
         table = self.query_one("#fallout-table", DataTable)
@@ -140,6 +160,14 @@ class ConsequenceApp(App[Decision]):
         self._fill()
         table.move_cursor(row=row)
         self._refresh_so_what()
+
+    def action_flip_frame(self) -> None:
+        # Swap the rail between the morph's before/after frames (no effect on a metadata summary,
+        # which has no code rail to reframe).
+        if self._pview.get("summary") is not None:
+            return
+        self._frame = "before" if self._frame == "after" else "after"
+        self.query_one("#rail-body", Static).update(self._rail_text())
 
     def action_apply(self) -> None:
         self.exit(Decision(True, frozenset(self._kept)))

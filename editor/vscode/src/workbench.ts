@@ -104,6 +104,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div id="rail"></div>
     <button id="offscreenAbove" class="offscreen-pill offscreen-pill-top" hidden></button>
     <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
+    <div id="previewContext" class="preview-context-pill" hidden></div>
     <div id="inspector"></div>
   </div>
   <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
@@ -209,6 +210,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case "openPlanDiff":
         await vscode.commands.executeCommand("sgt.showPlanDiff", msg.target);
+        return;
+      case "resumePlan":
+        await vscode.commands.executeCommand("sgt.resumePlan", msg.sessionId);
         return;
       default:
         return;
