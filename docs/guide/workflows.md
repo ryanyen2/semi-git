@@ -32,6 +32,13 @@ changing how you write code day to day.
 `sgt undo` only moves forward. Instead of rewinding history, it records a new change that undoes
 the last one, so you never lose the record of what actually happened.
 
+A save also answers "where did that work go": it prints the feature(s) the new edits landed in,
+by name, with a typeable handle. That moment is when you remember what the work was, so it is
+also when you can name it — `sgt save -m "..." --as "rate limiting"` names the save's feature on
+the spot (a permanent, user-authored label that wins over any auto-generated one). A save that
+scatters across three or more features gets a warning, since that usually means the grouping and
+your intent have drifted apart (`sgt feature regroup move` re-files work).
+
 ## 2. Remove one thing from a big, tangled edit
 
 This is the main reason to use `sgt` instead of plain git.
@@ -49,9 +56,10 @@ would land them.
 
 ```
 $ sgt revert cache.py::get_cached
-✓ [revert] cache.py::get_cached
-    removed 1 op(s): a776620b9b56
-    affected: cache.py::get_cached
+ ▸ rewind  cache.py::get_cached
+
+ removes 1 edit(s) across 1 symbol(s) · 1 file(s): cache.py
+  ✓ revert applied — 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)
 ```
 
 After that command, `get_cached` is gone from `cache.py`. `set_cached`, the other function in the
@@ -60,10 +68,17 @@ same file, is untouched. `rate_limit.py` and `retry.py` are byte for byte what t
 
 ```
 $ sgt restore cache.py::get_cached
-✓ [restore] cache.py::get_cached
-    added 1 op(s): a776620b9b56
-    affected: cache.py::get_cached
+ ▸ restore  cache.py::get_cached
+
+ restores 1 edit(s) across 1 symbol(s) · 1 file(s): cache.py
+  ✓ restore applied — 0 edit(s) removed, 1 added. (`sgt undo` reverses this.)
 ```
+
+If the symbol already has a *different* live version (you reverted, kept working, and now want the
+old one back), `restore` does not silently do nothing and does not fork: it explains that only one
+version of a symbol can be live, names both versions by the save each came from, and prints the
+two ways forward — swap (`sgt revert <live>` then `sgt restore <ghost>`) or reconcile
+(`sgt resolve <symbol>`, which combines them through the merge-op flow).
 
 The target here was a `file::symbol` name. It can also be an op id, a feature, or an agent
 session:

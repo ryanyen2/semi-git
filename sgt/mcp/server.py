@@ -300,7 +300,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
     "sgt_plan_intake": (
         "Decompose a plan (an agent's or human's stated intent before doing the work) into "
         "predicted hollow ops -- one per step, off-chain, never touching the ideal algebra. "
-        "Grounds `predicted_feature` in the repo's own feature tree (`sgt map`) when one exists.",
+        "Grounds `predicted_feature` in the repo's own feature tree (`sgt log --tree`) when one exists.",
         _schema(
             {"plan_text": {"type": "string"},
              "session_id": {"type": "string", "description": "explicit id (optional; defaults to a fresh one)"},

@@ -36,7 +36,7 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool) -> int:
 
     fork = next((f for f in forks_view(repo)["forks"] if f["symbol"] == symbol), None)
     if fork is None:
-        msg = f"no open fork for {symbol!r} — run `sgt forks` to list the open forks"
+        msg = f"no open fork for {symbol!r} — run `sgt advanced forks` to list the open forks"
         return _emit_json({"ok": False, "error": msg}) if as_json else _err(msg)
     tip_a, tip_b = fork["tips"]
 

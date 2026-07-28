@@ -31,7 +31,8 @@ sgt init                    # read your existing git history into the op store u
 
 # edit files with your editor or agent, the same as always
 
-sgt save -m "add email validation"   # read your edits into ops and commit a record of them
+sgt save -m "add email validation"   # record your edits; sgt names the feature(s) they landed in
+sgt log                              # what you did: one row per save, feature chips per row
 sgt log --summary                    # files, symbols, features, coverage, and any drift
 sgt log --tree                       # the feature tree
 sgt advanced blame app.py            # which feature owns each symbol in this file

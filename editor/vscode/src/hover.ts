@@ -53,7 +53,7 @@ export class SymbolHoverProvider implements vscode.HoverProvider {
     }
     md.appendMarkdown(
       `[Preview Revert](command:sgt.previewRevert?${enc(span.feature_id)}) · ` +
-        `[Open Workbench](command:sgt.openWorkbench)`
+        `[Open Workbench](command:sgt.revealInWorkbench?${enc(span.feature_id)})`
     );
     const range = new vscode.Range(span.start_line - 1, 0, span.end_line - 1, 0);
     return new vscode.Hover(md, range);

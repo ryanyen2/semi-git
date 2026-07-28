@@ -161,7 +161,7 @@ class Labeler:
             print(f"⚠ an LLM labeling call was rejected ({type(exc).__name__}); those features use "
                   "terse fallback names. If the whole graph is terse, the key is stale — fix "
                   "OPENAI_API_KEY (or ANTHROPIC_AUTH_TOKEN for a Claude model), then "
-                  "`sgt map --refresh`.", file=sys.stderr)
+                  "`sgt log --refresh`.", file=sys.stderr)
 
     @property
     def client(self):

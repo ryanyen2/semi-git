@@ -34,6 +34,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   private view: vscode.WebviewView | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly previewCache = new Map<string, unknown>();
+  private pendingReveal: string | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext, private store: Store) {
     this.disposables.push(
@@ -105,6 +106,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <button id="offscreenAbove" class="offscreen-pill offscreen-pill-top" hidden></button>
     <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
     <div id="previewContext" class="preview-context-pill" hidden></div>
+    <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
     <div id="inspector"></div>
   </div>
   <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
@@ -112,6 +114,23 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 <script nonce="${nonce}" src="${jsUri}"></script>
 </body>
 </html>`;
+  }
+
+  // Reveal a feature in the workbench from the editor (the hover "Open Workbench" link, or a cursor):
+  // focus the panel and post a message the webview handles by selecting + spotlighting + scrolling to
+  // that feature's lane. The webview stashes a reveal that arrives before its lane exists, so we
+  // deliver eagerly here and again on the next "ready" (covers a cold first open of the view).
+  async revealFeature(featureId: string): Promise<void> {
+    this.pendingReveal = featureId;
+    await vscode.commands.executeCommand("sgtWorkbench.focus");
+    this.deliverReveal();
+  }
+
+  private deliverReveal(): void {
+    if (this.pendingReveal != null && this.view) {
+      void this.view.webview.postMessage({ type: "revealFeature", featureId: this.pendingReveal });
+      this.pendingReveal = null;
+    }
   }
 
   private async pushState(): Promise<void> {
@@ -161,7 +180,8 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   private async onMessage(msg: any): Promise<void> {
     switch (msg.type) {
       case "ready":
-        void this.pushState();
+        await this.pushState();
+        this.deliverReveal(); // deliver a reveal requested before the webview first came up
         return;
       case "previewVerb":
         await this.preview(msg.verb, msg.args, msg.seq);

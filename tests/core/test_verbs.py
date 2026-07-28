@@ -74,6 +74,36 @@ def test_restore_is_reverts_inverse_on_a_tip(tmp_path):
     assert get(repo).op_ids == original
 
 
+def test_restore_resolves_a_superseded_ghost_and_validation_gates_reentry(tmp_path):
+    """The revert -> save -> restore triangle: after reverting v2 and committing a sibling v3,
+    restoring v2 by the id the revert printed is *refused as a fork* while v3 is live (one live
+    version per symbol), and *succeeds* once v3 is reverted -- the swap. Pins that plan_restore
+    resolves a ghost against the whole store (the fork-reduced HEAD ideal parks both siblings,
+    so the old source-only resolution could never see v2 again), while `Ideal.from_ops`
+    validation still decides what may re-enter."""
+    from sgt.store.gitbind import GitBinding
+
+    repo = _foo_chain(tmp_path / "repo", 2)
+    get(repo)
+    ops = Store(repo).all_ops()
+    v2 = _op_with(ops, "a.py::foo", b"return 2")
+
+    verbs.revert(repo, v2.id)  # foo back to v1
+    (repo / "a.py").write_text("def foo():\n    return 33\n", encoding="utf-8")
+    GitBinding(repo).commit_all("foo v3, a sibling of the reverted v2")
+    get(repo)  # mine v3
+    v3 = _op_with(Store(repo).all_ops(), "a.py::foo", b"return 33")
+
+    blocked = verbs.plan_restore(repo, v2.id)
+    assert not blocked.ok and blocked.forked  # sibling live -> refusal, not a silent no-op
+
+    verbs.revert(repo, v3.id)  # the swap's first half
+    swapped = verbs.restore(repo, v2.id)
+    assert swapped.ok and v2.id in swapped.added
+    materialized = code(get(repo), Store(repo).all_ops())
+    assert materialized["a.py"] == b"def foo():\n    return 2\n"
+
+
 def test_cherry_pick_of_an_independent_op_splices_cleanly(tmp_path):
     """cherry-pick `↓X` from a branch whose X shares the base but adds an independent symbol
     splices into the other branch's ideal without forking."""

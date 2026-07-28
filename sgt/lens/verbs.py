@@ -173,7 +173,7 @@ def _open_authored(repo: str | Path, feature_id: str, *, label: str, seed_member
 def plan_merge(repo: str | Path, survivor_id: str, absorbed_id: str) -> MergePreview:
     result = _require_tree(repo)
     if result is None:
-        return MergePreview(False, survivor_id, absorbed_id, message="no feature tree; run `sgt map`")
+        return MergePreview(False, survivor_id, absorbed_id, message="no feature tree; run `sgt log --refresh`")
     nodes = result["nodes"]
     survivor, absorbed = _leaf(nodes, survivor_id), _leaf(nodes, absorbed_id)
     if survivor_id == absorbed_id:
@@ -249,7 +249,7 @@ def _resolve_op_ref(op_leaf: dict[str, str], ref: str) -> str | None:
 def plan_move(repo: str | Path, op_refs: list[str], target_id: str) -> MovePreview:
     result = _require_tree(repo)
     if result is None:
-        return MovePreview(False, message="no feature tree; run `sgt map`")
+        return MovePreview(False, message="no feature tree; run `sgt log --refresh`")
     nodes = result["nodes"]
     if _leaf(nodes, target_id) is None:
         return MovePreview(False, target_id=target_id, message=f"{target_id!r} is not a leaf feature")
@@ -326,7 +326,7 @@ def apply_move(repo: str | Path, preview: MovePreview) -> dict:
 def plan_rename(repo: str | Path, feature_id: str, new_label: str) -> RenamePreview:
     result = _require_tree(repo)
     if result is None:
-        return RenamePreview(False, feature_id, message="no feature tree; run `sgt map`")
+        return RenamePreview(False, feature_id, message="no feature tree; run `sgt log --refresh`")
     node = _leaf(result["nodes"], feature_id) or result["nodes"].get(feature_id)
     if node is None:
         return RenamePreview(False, feature_id, message=f"feature {feature_id!r} not found")
@@ -396,7 +396,7 @@ def plan_split(repo: str | Path, feature_id: str) -> SplitPreview:
     repo = Path(repo)
     result = _require_tree(repo)
     if result is None:
-        return SplitPreview(False, feature_id, message="no feature tree; run `sgt map`")
+        return SplitPreview(False, feature_id, message="no feature tree; run `sgt log --refresh`")
     node = _leaf(result["nodes"], feature_id)
     if node is None:
         return SplitPreview(False, feature_id, message=f"{feature_id!r} is not a leaf feature")
@@ -522,7 +522,7 @@ def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     resolved = resolve_feature(repo, ref)
     if resolved is None:
         return core_verbs._preview("revert", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                                    message=f"feature {ref!r} not found; run `sgt map`")
+                                    message=f"feature {ref!r} not found; run `sgt log --refresh`")
     op_ids, feature_id, label = resolved
     if not op_ids:
         return core_verbs._preview("revert", feature_id, ideal.op_ids, ideal.op_ids, ops,
@@ -553,7 +553,7 @@ def plan_revert_lane_to_commit(
     resolved = resolve_feature(repo, ref)
     if resolved is None:
         return core_verbs._preview("revert", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                                    message=f"feature {ref!r} not found; run `sgt map`")
+                                    message=f"feature {ref!r} not found; run `sgt log --refresh`")
     op_ids, feature_id, label = resolved
     target = f"{feature_id}@{commit_index}"
 
@@ -589,7 +589,7 @@ def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     resolved = resolve_feature(repo, ref)
     if resolved is None:
         return core_verbs._preview("restore", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                                    message=f"feature {ref!r} not found; run `sgt map`")
+                                    message=f"feature {ref!r} not found; run `sgt log --refresh`")
     op_ids, feature_id, label = resolved
     if not op_ids:
         return core_verbs._preview("restore", feature_id, ideal.op_ids, ideal.op_ids, ops,

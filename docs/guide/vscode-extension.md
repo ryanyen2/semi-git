@@ -57,7 +57,9 @@ You, or your AI coding agent, write and save code exactly as before. Semi-git ne
 files. As you open a file, every line gets a thin colored stripe in the left margin and a faint
 tint in the background. Each color is a different feature, a piece of functionality semi-git has
 automatically grouped that line into, for example "user login" or "PDF export". Hover over any
-line to see that feature's name.
+line to see that feature's name; the hover's **Open Workbench** link jumps to the graph with that
+feature selected and spotlit, so code → graph is one click (the command palette form is
+**semi-git: Reveal in Workbench**).
 
 ### 3. Check what is new
 
@@ -172,15 +174,21 @@ tree and timeline on one side, and an inspector on the other. It reads one combi
   current build and test status.
 
 Hovering a row or a connecting line dims everything else and highlights what you are looking at
-and what it depends on. Color always means which feature something belongs to. Status is shown
-with a symbol or an outline, never with a different color. Clicking a feature opens the inspector
+and what it depends on; the time-axis ticks where that feature was actually worked on brighten
+with it, so a lane answers *when* as well as *what*. The Rail view shows one row per save, newest
+first, with up to three colored chips naming the feature(s) that save touched — hovering a save
+lights every feature lane it reached. Color always means which feature something belongs to.
+Status is shown with a symbol or an outline, never with a different color. Clicking a feature opens the inspector
 with its label, the reason it was grouped that way, its size, action buttons (Rename, Merge into,
 Split, Move ops, Revert), and a code panel showing that feature's files as they look at the point
 you have selected. That panel is read-only and never checks out those files for real.
 
 Hovering Split or Revert runs a live preview of that exact action and highlights every feature it
 would affect. For Revert, this can cover more than the one feature you named, because it shows the
-real, complete effect of the change rather than a guess. Merge into and Move ops let you pick a
+real, complete effect of the change rather than a guess. A Restore that can't legally apply —
+because a different version of the same symbol is live — doesn't fail silently: the preview
+explains the one-live-version rule and offers the two ways forward (swap the versions, or
+reconcile them with `sgt resolve`). Merge into and Move ops let you pick a
 target feature. Hovering a candidate previews the merge or move against it, and clicking confirms
 and applies it. Every preview is read-only. Only a click on Split or Revert, or a confirmed Merge
 or Move target, actually changes anything.
@@ -204,7 +212,10 @@ against a repo `sgt` is tracking.
 - **Switch** records your current state first, so nothing is lost, then checks out the branch you
   pick or type, and reads its history back in.
 - **Save** records your working tree and, if there are new edits, commits them. It never destroys
-  anything, so it runs immediately with no confirmation needed.
+  anything, so it runs immediately with no confirmation needed. The toast that follows names the
+  feature(s) the save's work landed in — and when a save minted a brand-new, unnamed feature, it
+  offers a **Name it…** button so you can label the work the moment you still remember what it
+  was. (On the command line the same moment is `sgt save --as "<label>"`.)
 - **Undo** removes the last recorded change and restores what came before it, as a new forward
   commit, since history in `sgt` is never rewritten, only added to.
 - **Sync** fetches a remote branch and merges its op set into yours, flagging any fork on a symbol

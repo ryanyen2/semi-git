@@ -71,7 +71,7 @@ _ROUTING = {
     "rename": "feature", "select": "feature", "why": "feature",
     "merge": "regroup", "split": "regroup", "move": "regroup",
     "state": "advanced", "oracle": "advanced", "fsck": "advanced",
-    "reindex": "advanced", "history": "advanced",
+    "reindex": "advanced", "history": "advanced", "ops": "advanced",
     "compose": "advanced", "fold": "advanced", "preview": "advanced",
     "forks": "advanced", "after": "advanced",
     "tiers": "advanced", "migrate": "advanced",
@@ -199,14 +199,14 @@ def _help() -> int:
     print(
         "sgt — semantic operation-ideal version control\n\n"
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
-        '  sgt save [-m "<msg>"]       mine the working tree + commit a witness (auto-matches plan steps)\n'
-        "  sgt log [--json]            the lane×commit grid — the one inspection surface:\n"
-        "                              --tree (feature tree) · --rail (episode rail) · --summary\n"
-        "                              (status scalars) · --ops (raw op DAG) · --rebuild (recluster)\n"
+        '  sgt save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature(s) they landed in\n'
+        "  sgt log [--json]            what you did, newest first — the one inspection surface:\n"
+        "                              --map (feature lanes over time) · --tree (feature tree) ·\n"
+        "                              --summary (what needs attention) · --refresh (reflect new edits)\n"
         "  sgt undo                    invert the last mutating operation (the unified op log)\n"
-        "  sgt revert <sel>            remove a selection and everything built on it (I \\ upset X)\n"
-        "  sgt restore <sel>           re-add a selection and its prerequisites (I ∪ downset X)\n"
-        "  sgt resolve <symbol>        guided same-symbol fork resolution (merge-op → fulfill → land)\n"
+        "  sgt revert <sel>            remove a selection and everything built on it\n"
+        "  sgt restore <sel>           bring a selection back, along with what it needs\n"
+        "  sgt resolve <symbol>        guided fork resolution when two versions of one symbol compete\n"
         "\n"
         "  navigation + inspection:\n"
         "  sgt switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n"
@@ -222,7 +222,7 @@ def _help() -> int:
         "  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n"
         "                              rename, select, why\n"
         "  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n"
-        "                              reindex, state, oracle, after, fold, preview, tiers,\n"
+        "                              ops, reindex, state, oracle, after, fold, preview, tiers,\n"
         "                              identity, migrate, history, compose, forks, review-queue,\n"
         "                              unstage, repair, merge-op, split-op, transplant\n"
         "\n"

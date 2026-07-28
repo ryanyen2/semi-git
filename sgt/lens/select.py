@@ -79,7 +79,7 @@ def _resolve_selection(repo: str | Path, refs) -> tuple[frozenset[str], tuple[st
     for ref in refs:
         resolved = resolve_feature(repo, ref)
         if resolved is None:
-            return frozenset(), (), f"feature {ref!r} not found; run `sgt map`"
+            return frozenset(), (), f"feature {ref!r} not found; run `sgt log --refresh`"
         op_ids, feature_id, _label = resolved
         direct |= op_ids
         feature_ids.append(feature_id)
@@ -397,7 +397,7 @@ def why(repo: str | Path, op_ref: str, for_feature: str | None = None) -> WhyRes
 
     tree_result = tree.load(repo)
     if tree_result is None:
-        return WhyResult(ok=False, message="no feature tree; run `sgt map`", op_id=op_id)
+        return WhyResult(ok=False, message="no feature tree; run `sgt log --refresh`", op_id=op_id)
     nodes, op_leaf = tree_result["nodes"], tree_result["op_leaf"]
     own_feature = op_leaf.get(op_id)
 

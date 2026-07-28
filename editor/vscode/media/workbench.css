@@ -165,6 +165,29 @@ body {
   font-size: 12px;
 }
 
+/* Per-save feature chips: each touched feature's label in its own identity hue (set as a fill
+   attribute), dim "·" separators + a dim "+N" overflow. The hue is identity, never a status channel. */
+.rail-chip {
+  font-size: 11px;
+  font-weight: 600;
+}
+.rail-chip-sep,
+.rail-chip-more {
+  fill: var(--dim);
+  font-size: 11px;
+}
+
+/* Save<->feature cross-highlight: hovering a save-row lights the lane columns (spines + dots) of the
+   features it touched. Same dim/light grammar the lanes use -- brighten, don't recolor. */
+.rail-spine.rail-lit {
+  opacity: 1;
+  stroke-width: 3px;
+}
+.rail-dot.rail-lit {
+  stroke: var(--fg);
+  stroke-width: 1.5px;
+}
+
 /* Oracle status: a colored dot carries the verdict, the label stays quiet text. */
 .oracle-chip {
   display: inline-flex;
@@ -704,6 +727,39 @@ svg.railsvg {
   display: none;
 }
 
+/* Blocked-restore overlay: a competing live version refuses the restore. A quiet centered card that
+   states the refusal and its two remedies (swap / reconcile) as plain text -- hover-scoped. */
+.preview-refusal-pill {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: min(90%, 420px);
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--blast);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.preview-refusal-pill[hidden] {
+  display: none;
+}
+
+.refusal-head {
+  color: var(--blast);
+  margin-bottom: 4px;
+}
+
+.refusal-remedy {
+  color: var(--dim);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
 #rail.arming .glane {
   cursor: crosshair;
 }
@@ -733,6 +789,15 @@ svg.railsvg {
 
 .axis-tick.end {
   text-anchor: end;
+}
+
+/* Lane<->time cross-highlight: hovering a lane brightens the axis gridlines/ticks within its active
+   commit span, so "which feature" also reads as "when". Subtle brightening, no new hue. */
+.axis-gridline.lit {
+  stroke-opacity: 0.75;
+}
+.axis-tick.lit {
+  fill: var(--fg);
 }
 
 .axis-title {
@@ -1307,12 +1372,6 @@ svg.railsvg {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-}
-
-.checkpoint-meta {
-  flex: none;
-  font-size: 11px;
-  color: var(--dim);
 }
 
 .checkpoint-rewind {

@@ -225,7 +225,7 @@ def test_render_overview_lists_checkpoint_chips_not_a_count_and_drops_the_f_tag(
     assert "✦" not in lane                                   # no opaque ✦N count in the overview
     assert any(ch in lane for ch in "▁▂▃▄▅▆▇█·")              # a density sparkline, not digit cars
     assert not any("@0" in ln or "@1" in ln for ln in lines)  # no wrapping chapter line
-    assert any("op-density" in ln for ln in lines)           # legend explains the sparkline
+    assert any("edit density" in ln for ln in lines)         # legend explains the sparkline
     # no segments -> no chips, no count
     plain = render_graph_lines(m, _grid((fid, 0)), color=False)
     plain_lane = next(ln for ln in plain if "aaaaaaaa" in ln)
@@ -390,14 +390,13 @@ def test_render_verb_preview_marks_removed_checkpoints_and_the_blast():
     lines = render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False)
     text = "\n".join(lines)
     assert "rewind" in text                                   # the header verb
-    assert "3→0 op" in text                                   # the target lane's morph count
+    assert "3→0 edits" in text                                # the target lane's morph count
     assert "░" in text                                        # the magnitude bar ghosts the leaving ops
     assert "▸" in text and "✗" in text                        # first gone car ▸, subsequent ✗
-    assert "op removed" in text                               # per-checkpoint removal note
+    assert "· removed" in text                                # per-checkpoint removal note
     assert "also affected" in text and "prerequisite, kept" in text    # B, foundation, unchanged
-    assert "1→1" in text                                      # B's before → after
-    assert "2 unchanged feature(s)" in text                   # the dim context floor
-    assert "removes 3 op" in text and "1 other feature" in text        # summary
+    assert "2 other feature(s) unchanged" in text             # the dim context floor
+    assert "removes 3 edit(s)" in text and "src/a.py" in text          # summary names the files
 
 
 def test_render_verb_preview_before_frame_shows_checkpoints_still_present():
@@ -413,8 +412,8 @@ def test_render_verb_preview_before_frame_shows_checkpoints_still_present():
     }
     after = "\n".join(render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False))
     before = "\n".join(render_verb_preview_lines(m, hist, segs, preview_view, focus_fid="A", color=False, frame="before"))
-    assert "✗" in after and "op removed" in after             # after ghosts the removed checkpoints
-    assert "✗" not in before and "will remov" in before       # before keeps them, flags the intent
+    assert "✗" in after and "· removed" in after              # after ghosts the removed checkpoints
+    assert "✗" not in before and "will be removed" in before  # before keeps them, flags the intent
     assert after.count("░") > before.count("░")               # the magnitude bar empties in the after frame
     assert "showing before" in before                          # the summary names the frame
 
@@ -434,7 +433,7 @@ def test_render_verb_preview_restore_shows_restored_and_partial():
     assert "restore" in text
     assert "restored" in text                                 # seg0 (o0) fully re-added
     assert "◐" in text                                        # seg1 (o1 of o1,o2) partly re-added
-    assert "restores 2 op" in text
+    assert "restores 2 edit(s)" in text
 
 
 def test_render_collab_preview_clean_land_shows_ops_and_the_oracle_gate():

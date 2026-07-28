@@ -9,6 +9,7 @@ import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
 import { BlameView, EmitView, ProposalChecklistEntry } from "./types";
+import { WorkbenchProvider } from "./workbench";
 
 async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
   if (provided) {
@@ -125,7 +126,8 @@ export function registerCommands(
   preview: PreviewProvider,
   refreshBlame: () => void,
   planDiff: PlanDiffProvider,
-  root: string
+  root: string,
+  workbench: WorkbenchProvider
 ): void {
   const reg = (id: string, fn: (...a: any[]) => any) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
@@ -136,6 +138,37 @@ export function registerCommands(
   });
   reg("sgt.toggleBlame", () => toggle("blame.enabled"));
   reg("sgt.openWorkbench", () => vscode.commands.executeCommand("sgtWorkbench.focus"));
+
+  // Reveal a symbol's owning feature in the workbench graph. Called with a feature id from the
+  // symbol hover's "Open Workbench" link, or with no argument from the editor context menu / palette
+  // -- in which case the feature is resolved from the blame span under the cursor (same path as
+  // sgt.revertSymbol). The workbench selects + spotlights + scrolls to that feature's lane.
+  reg("sgt.revealInWorkbench", async (featureId?: string) => {
+    let feature = featureId;
+    if (!feature) {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showWarningMessage("Open a file and put the cursor on a symbol to reveal its feature.");
+        return;
+      }
+      const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
+      let blame: BlameView;
+      try {
+        blame = await store.blame(rel);
+      } catch (e: any) {
+        vscode.window.showErrorMessage(e.message);
+        return;
+      }
+      const line = editor.selection.active.line + 1; // blame spans are 1-based inclusive
+      const span = blame.spans.find((s) => s.start_line <= line && line <= s.end_line);
+      if (!span) {
+        vscode.window.showWarningMessage("No mined symbol under the cursor.");
+        return;
+      }
+      feature = span.feature_id;
+    }
+    await workbench.revealFeature(feature);
+  });
 
   reg("sgt.previewRevert", async (id?: string) => {
     const feature = await pickFeature(store, id);

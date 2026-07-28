@@ -890,7 +890,7 @@ def resolve_apply_preview_view(repo, symbol: str) -> dict:
         for hid in rec["hollow_ids"]
     )
     if fork is None:
-        error = f"no open fork for {symbol!r} — run `sgt forks` to list the open forks"
+        error = f"no open fork for {symbol!r} — run `sgt advanced forks` to list the open forks"
     elif not has_draft:
         error = (f"no drafted reconciliation — run `sgt resolve {symbol}` first, then edit the "
                  f"file to merge both versions")
