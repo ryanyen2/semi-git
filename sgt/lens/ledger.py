@@ -23,6 +23,7 @@ merges/splits without auto-applying is U7.
 
 from __future__ import annotations
 
+import hashlib
 import math
 
 import igraph as ig
@@ -39,6 +40,17 @@ TOP_K = 50
 # 3): the geometric midpoint of the clusterer's own search bounds, so the local move resolves at
 # the same scale a full recluster's binary search centres on.
 _GAMMA_MIDPOINT = math.exp((math.log(tree.GAMMA_LO) + math.log(tree.GAMMA_HI)) / 2)
+
+
+def _new_lane_id(symbol: str) -> str:
+    """The id a new-lane fallback (cascade step 4) mints for a genuinely-new symbol. Content-
+    addressed on the symbol -- NOT `uuid4` -- so the ledger's own guarantee holds: two saves of
+    identical content produce byte-identical assignment (the module docstring's core invariant). A
+    random id violates it -- the same symbol saved twice would seed two different lanes, and every
+    rebuild in between would see a fresh competing assign-pin, the churn `_apply_assign_pins` then
+    oscillates over. The `af-` prefix keeps it distinguishable from a clustered `f-` lane; the
+    `m<sha256>` shape mirrors `tree._content_birth_id`'s member-hash form."""
+    return f"af-m{hashlib.sha256(symbol.encode('utf-8')).hexdigest()}"
 
 
 def local_move_assign(
@@ -259,7 +271,7 @@ def assign_at_save(repo, ideal, ops) -> dict | None:
             # *non-empty* authored label override the clustered proposal). So the register starts
             # empty -- the rebuild names the lane, and a later `rename` overrides that.
             provisional = symbol.split("::", 1)[0]
-            feat = authored.create([symbol], "", witness=head)
+            feat = replace(authored.create([symbol], "", witness=head), id=_new_lane_id(symbol))
             af[feat.id] = feat
             assign[symbol] = feat.id
             nodes[feat.id] = {

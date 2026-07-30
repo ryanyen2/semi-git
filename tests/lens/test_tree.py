@@ -621,6 +621,74 @@ def test_assign_pin_with_scattered_members_resolves_to_one_leaf(tmp_path):
     assert result["op_leaf"] == {"opA": "af-x", "opB": "N2"}    # op_leaf remapped for the renamed leaf
 
 
+def test_competing_pins_on_one_leaf_converge_to_a_fixpoint(tmp_path):
+    # Regression (the `af-` id oscillation): several members of ONE leaf, each pinned to a DIFFERENT
+    # feature id -- what accretes when every save mints a fresh single-symbol assign pin. The old
+    # selection folded `leaf != fid` into the winner test, so whichever pin's id happened to equal
+    # the leaf's *current* id self-skipped and a weaker pin won; since the prior pass had renamed the
+    # leaf to some pin's id, a different pin self-skipped each pass -> the leaf's id flipped every
+    # rebuild (a deterministic 2-cycle). The winner must instead be a pure function of the pins
+    # (strongest, tie -> smallest fid), so it holds across rebuilds regardless of the current id.
+    from sgt.lens.pins import Pins
+
+    pins = Pins(assign={"m1": "af-b", "m2": "af-c", "m3": "af-a"})  # three competing 1-symbol pins
+
+    def one_pass(leaf_id):
+        result = {
+            "roots": [leaf_id], "op_leaf": {},
+            "nodes": {leaf_id: _leaf(leaf_id, None, ["m1", "m2", "m3"], "pkg")},
+        }
+        tree._apply_assign_pins(result, pins)
+        return next(nid for nid, nd in result["nodes"].items() if not nd["children"])
+
+    # Whatever id the leaf currently carries -- including one of the competing pin ids -- it resolves
+    # to the single strongest/smallest pin (af-a) and STAYS there next pass. No self-skip, no flip.
+    assert one_pass("af-a") == "af-a"   # smallest fid wins ...
+    assert one_pass("af-b") == "af-a"   # ... independent of the starting id (this used to flip)
+    assert one_pass("af-c") == "af-a"
+    assert one_pass("af-a") == "af-a"   # re-applying the fixpoint is a no-op
+
+
+def test_prune_empty_leaves_removes_member_less_leaves_and_cascades():
+    # A member-less leaf is not a feature (0 ops on every surface); it is the phantom that made
+    # map_view (all leaves) disagree with grid_view (op-bearing lanes only). Pruning must remove it,
+    # detach it from its parent, and cascade: an internal node left childless becomes empty and goes.
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b"], "size": 2,
+               "dir": "pkg", "children": ["N1", "N2"], "split_reason": None},
+        "N1": _leaf("N1", "N0", ["a", "b"], "pkg"),   # real feature
+        "N2": {"id": "N2", "parent": "N0", "depth": 1, "members": [], "size": 0, "dir": "",
+               "children": ["N3"], "split_reason": None},  # internal, all children empty -> cascades
+        "N3": _leaf("N3", "N2", [], ""),               # phantom empty leaf
+    }
+    roots = ["N0"]
+
+    tree._prune_empty_leaves(nodes, roots)
+
+    assert set(nodes) == {"N0", "N1"}          # phantom leaf + its now-childless parent both gone
+    assert nodes["N0"]["children"] == ["N1"]   # detached from the parent's child list
+    assert roots == ["N0"]
+
+
+def test_prune_empty_leaves_keeps_a_lone_empty_root():
+    # Degenerate no-member build: keep one empty root so downstream never faces an empty forest.
+    nodes = {"N0": {"id": "N0", "parent": None, "depth": 0, "members": [], "size": 0, "dir": "",
+                    "children": [], "split_reason": None}}
+    roots = ["N0"]
+    tree._prune_empty_leaves(nodes, roots)
+    assert set(nodes) == {"N0"} and roots == ["N0"]
+
+
+def test_build_emits_no_empty_leaves(tmp_path):
+    # End-to-end: a real build never persists a member-less leaf, so `map_view`'s leaf roster matches
+    # `grid_view`'s op-bearing lanes (the 17-vs-16 mismatch was one phantom empty leaf).
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+    result = tree.build(repo, ops, ideal)
+    empty = [nid for nid, nd in result["nodes"].items() if not nd["children"] and not nd["members"]]
+    assert empty == []
+
+
 def test_regroup_flat_root_groups_by_package_leaves_singletons_flat_and_is_idempotent():
     def leaf(dir_, m):
         return {"members": [m], "size": 1, "dir": dir_, "depth": 1, "children": [],

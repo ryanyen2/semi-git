@@ -237,3 +237,28 @@ def test_dual_claims_detects_a_symbol_live_in_two_features():
     b = authored.create(["s.py::shared", "s.py::b_only"], "Lane B")
     claims = ledger.dual_claims({a.id: a, b.id: b})
     assert claims == [("s.py::shared", sorted([a.id, b.id]))]
+
+
+def test_new_lane_id_is_content_addressed_not_random():
+    """A new-lane fallback id is a pure function of the symbol -- NOT `uuid4`. This is the root of the
+    ledger's own guarantee (module docstring): identical content -> byte-identical assignment. A
+    random id broke it -- the same disconnected symbol saved twice seeded two different lanes, and
+    every rebuild in between saw a fresh competing assign pin, the churn `_apply_assign_pins`
+    oscillated over."""
+    assert ledger._new_lane_id("island.py::omega") == ledger._new_lane_id("island.py::omega")
+    assert ledger._new_lane_id("a.py::f") != ledger._new_lane_id("b.py::f")
+    assert ledger._new_lane_id("island.py::omega").startswith("af-m")
+
+
+def test_new_lane_id_is_stable_across_two_independent_identical_saves(tmp_path):
+    """End-to-end: two independent repos with byte-identical history seed the SAME `af-` lane id for
+    the same disconnected symbol. Previously the `uuid4` in `authored.create` made every save mint a
+    different lane -- the source of the id churn -- so this asserts the fix at the wiring level, not
+    just the helper."""
+    def seed(root):
+        _build_and_map(root)
+        (root / "island.py").write_text("def omega():\n    return 42\n", encoding="utf-8")
+        ideal = get(root)
+        return ledger.assign_at_save(root, ideal, Store(root).all_ops())["assigned"]["island.py::omega"]
+
+    assert seed(tmp_path / "clone_a") == seed(tmp_path / "clone_b")

@@ -1040,13 +1040,22 @@ def map_view(repo) -> dict:
     # feature over a leaf's symbols, that leaf shows the authored label + `af-` id, not the cluster's.
     # Guarded on presence so a repo with no authored features projects byte-identically to before.
     from sgt.lens.authored import load_authored
+    from sgt.lens.label import _fallback_label
     from sgt.lens.tree import _authored_leaf_claims
     authored_claims = _authored_leaf_claims(nodes, load_authored(repo))
 
     def _emit(nid: str, nd: dict) -> dict:
+        # A node id is a content hash (`f-`/`af-`), never a name -- it must never reach a surface as
+        # a label. A properly built tree labels every node (`tree.label_tree`), but a tree persisted
+        # without that pass (or a node minted after it) can arrive here label-less or with the id
+        # copied in; falling back to `nid` then printed the raw hash on the graph/grid ("unreadable").
+        # Derive the same deterministic, offline name the labeler's own fallback uses instead.
+        label = nd.get("label") or ""
+        if not label or label == nid:
+            label = _fallback_label(nd.get("members", [])).label
         row = {
             "id": nid,
-            "label": nd.get("label", nid),
+            "label": label,
             "kind": "feature" if not canonical_children(nid) else "subsystem",
             "parent": nd["parent"],
             "children": sorted(canonical_children(nid)),

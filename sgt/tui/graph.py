@@ -641,11 +641,20 @@ def render_graph_lines(
         def col_of(ci: int) -> int:
             return int(round(max(0, min(max_ci, ci)) / max_ci * (width - 1)))
 
+        col_step = max(1, int(round((width - 1) / max_ci)))  # one commit's column span
+
         placed: list[tuple[int, int, dict]] = []
         cursor = 0
-        for c in cars:
+        for i, c in enumerate(cars):
             start = max(col_of(c["first_index"]), cursor)
-            w = max(3, col_of(c["last_index"]) - start + 1)  # floor: bracket-digit-bracket
+            # Gap-fill tiling: fill through the END of this car's last commit column (col_step wide),
+            # so a single-commit chapter is a full column, not a bracket-digit-bracket sliver; the last
+            # car fills to the strip edge, and no car runs into the next (capped at its start, less a
+            # gap). Distant chapters still leave a dim track between them. Mirrors the VS Code renderCars.
+            right_end = width if c["last_index"] >= max_ci else col_of(c["last_index"]) + col_step
+            if i + 1 < len(cars):
+                right_end = min(right_end, col_of(cars[i + 1]["first_index"]) - 1)
+            w = max(3, right_end - start)  # floor: bracket-digit-bracket
             if start + w > width:
                 start = max(cursor, width - w)
             if start + w > width:
