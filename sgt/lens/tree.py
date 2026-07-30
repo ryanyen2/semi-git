@@ -417,6 +417,36 @@ def _register(nodes: dict, node: dict, parent: str | None, counter: list[int]) -
     return nid
 
 
+def _prune_empty_leaves(nodes: dict, roots: list[str]) -> None:
+    """Drop every leaf that carries no members. An empty leaf is not a feature -- it can hold no op,
+    so it shows `0 ops` on every surface and, because `grid_view` omits an op-less lane while
+    `map_view` emits all tree leaves, it is exactly the phantom that made the two rosters disagree
+    (17 vs 16). It also accretes: `_splice` copies an unchanged subtree verbatim, so once one exists
+    every later build carries it forward. Removing it here -- at the single point all construction
+    paths (`_splice`, `_resplit_real`, `_dirty_subdivide`) funnel through, `_register`'s output, and
+    BEFORE any feature id is minted for it -- fixes it at the source rather than hiding it downstream.
+    Cascades: an internal node left childless becomes an empty leaf and is pruned in turn. A lone
+    empty root is kept so the forest is never wholly empty (a degenerate no-member build)."""
+    root_set = set(roots)
+    changed = True
+    while changed:
+        changed = False
+        for nid in list(nodes):
+            nd = nodes.get(nid)
+            if nd is None or nd["children"] or nd["members"]:
+                continue
+            if nid in root_set and len(nodes) == 1:
+                continue  # keep a lone empty root so downstream never faces an empty forest
+            del nodes[nid]
+            parent = nd["parent"]
+            if parent is not None and parent in nodes:
+                nodes[parent]["children"] = [c for c in nodes[parent]["children"] if c != nid]
+            if nid in root_set:
+                roots.remove(nid)
+                root_set.discard(nid)
+            changed = True
+
+
 def _leaf_ids(nodes: dict, nid: str) -> list[str]:
     nd = nodes[nid]
     if not nd["children"]:
@@ -616,6 +646,8 @@ def build(
     counter = [0]
     root_id = _register(nodes, root, None, counter)
     roots = [root_id]
+    _prune_empty_leaves(nodes, roots)  # a member-less leaf is not a feature -- drop it before any
+    # feature id is minted for it, so the phantom never reaches identity/op-assignment or the tree.
 
     cannot_link_moves = enforce_cannot_link(nodes, pins, real_adj)
 
@@ -857,9 +889,17 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
     for fid in sorted(by_fid):
         counts = by_fid[fid]
         leaf = min(counts, key=lambda l: (-counts[l], l))
-        if leaf != fid and counts[leaf] > strength.get(leaf, 0):
+        if counts[leaf] > strength.get(leaf, 0):
             amap[leaf] = fid
             strength[leaf] = counts[leaf]
+    # Drop self-renames (a leaf already carrying its winning pin's id) only AFTER the winner is
+    # chosen, so each leaf's winner is a pure function of (counts, sorted fid) -- independent of the
+    # leaf's *current* id. Folding `leaf != fid` into the selection instead let a pin self-skip
+    # whenever its id happened to equal the current leaf, handing that leaf to a weaker pin; since
+    # the prior rebuild had renamed the leaf to some pin's id, a different pin self-skipped each
+    # pass -> a deterministic 2-cycle (the `af-` id oscillation). Choosing first, filtering second,
+    # converges to a fixpoint: the strongest (tie -> smallest) pin always wins and holds.
+    amap = {leaf: fid for leaf, fid in amap.items() if leaf != fid}
     if amap:
         _apply_id_map(result, amap)
 

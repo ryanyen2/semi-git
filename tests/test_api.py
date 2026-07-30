@@ -227,6 +227,40 @@ def _shared_feature_dag(tmp_path):
     return repo, leaf, real_op
 
 
+def test_map_view_never_emits_a_node_id_as_its_label(tmp_path):
+    """A node id is a content hash (`f-`/`af-`), not a name. A tree persisted without a label pass
+    (or a node minted after it) can arrive label-less or with the id copied into `label`; `map_view`
+    must derive a readable name from the node's members instead of leaking the raw hash to the graph
+    / grid, which is what made the workbench show `f-<hash>` rows ("unreadable")."""
+    from sgt.lens import tree
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    build_map(repo)
+    res = tree.load(repo)
+    real_op = next(iter(res["op_leaf"]))
+
+    def node(nid, parent, children, label, members=()):
+        return {"id": nid, "parent": parent, "children": list(children), "depth": 0,
+                "members": list(members), "size": max(1, len(members)), "dir": "",
+                "label": label, "why": "", "split_reason": None}
+
+    blank, idlab = "f-blanklabel", "f-idislabel"
+    res["nodes"] = {
+        "R": node("R", None, [blank, idlab], "root"),
+        blank: node(blank, "R", [], "", members=["svc/auth.py::login", "svc/auth.py::logout"]),
+        idlab: node(idlab, "R", [], idlab, members=["net/wire.py::encode"]),  # label copied from id
+    }
+    res["roots"] = ["R"]
+    res["op_leaf"] = {real_op: blank}
+    tree.save(repo, res)
+
+    by_id = {n["id"]: n for n in map_view(repo)["nodes"]}
+    assert by_id[blank]["label"] not in ("", blank)  # empty label -> derived name, not blank/hash
+    assert "login" in by_id[blank]["label"]          # derived from the leading member symbols
+    assert by_id[idlab]["label"] != idlab            # id-copied-into-label -> derived name instead
+
+
 def test_map_view_renders_a_shared_feature_under_its_one_canonical_parent(tmp_path):
     """The tree is a DAG: an authored feature can be spliced under more than one subsystem, so its
     id is listed in several parents' `children` while carrying a single canonical `parent`. `map_view`

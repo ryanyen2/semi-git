@@ -555,13 +555,18 @@ def plan_revert_lane_to_commit(
         return core_verbs._preview("revert", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
                                     message=f"feature {ref!r} not found; run `sgt log --refresh`")
     op_ids, feature_id, label = resolved
-    target = f"{feature_id}@{commit_index}"
+    # `@c<N>` (commit-index) notation, deliberately distinct from the `@<seg_index>` checkpoint
+    # notation the graph/log show -- `revert --to` truncates at a *global commit* boundary, not a
+    # per-feature checkpoint, and the two number-spaces must not be misread for each other.
+    target = f"{feature_id}@c{commit_index}"
 
     ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
     seed = {oid for oid in op_ids if oid in ideal.op_ids and ci.get(oid, -1) > commit_index}
     if not seed:
+        live = sorted({ci[oid] for oid in op_ids if oid in ideal.op_ids and oid in ci})
+        where = f" (its ops are at commit {', '.join(map(str, live))})" if live else ""
         return core_verbs._preview("revert", target, ideal.op_ids, ideal.op_ids, ops,
-                                    message=f"{label!r} has no ops after commit {commit_index}; no change")
+                                    message=f"{label!r} has no ops after commit {commit_index}; no change{where}")
 
     removal = set(order.upset_in_many(seed, ideal.op_ids, ops, declared))
     for keep_ref in keep:  # a kept lane's ops survive even where the up-set would sweep them

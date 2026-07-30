@@ -259,6 +259,27 @@ def test_render_car_widths_reflect_op_count_and_tier_brackets():
     assert "(" in lane and ")" in lane   # thematic car
 
 
+def test_gap_fill_widens_a_single_commit_car_beyond_the_sliver_floor():
+    """Gap-fill tiling: a single-commit chapter fills its whole commit column instead of the old
+    bracket-digit-bracket sliver, so on a wide/sparse strip its rendered car is wider than the 3-col
+    floor. This is what makes room for the inline label in the pixel renderer (VS Code renderCars),
+    which mirrors this geometry. Regression for the 'blocks are unreadable slivers' report."""
+    import re
+
+    fid = "f-cccccccccc"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    # 8 commits across the 42-col strip -> each commit column is ~6 cols wide (col_step > 1), so the
+    # gap-fill widening is observable (the dense _grid's 200 commits would compress col_step back to 1).
+    grid = {"commits": [{"index": i} for i in range(8)], "commit_count": 8,
+            "cells": [{"feature_id": fid, "commit_index": 0, "op_ids": ["o0"], "op_count": 1,
+                       "kinds": {"add": 1}, "fidelity": "full"}]}
+    segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed")]  # a single-commit car (first_index == last_index)
+    lines = render_graph_lines(m, grid, segs, color=False, timeline=True)
+    lane = next(ln for ln in lines if fid[2:10] in ln and "✦1" in ln)
+    car = re.search(r"\[[^\]]*\]", lane.split("✦")[0])  # the co-changed car's bracketed region
+    assert car and len(car.group(0)) > 3  # wider than the old sliver ("[0]" == 3 chars)
+
+
 def test_render_links_hidden_by_default_and_shown_with_show_links():
     m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])],
          "edges": [{"a": "A", "b": "B", "weight": 5.0}]}

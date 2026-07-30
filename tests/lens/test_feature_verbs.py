@@ -277,7 +277,8 @@ def test_plan_revert_lane_to_commit_truncates_only_post_commit_ops(tmp_path):
 
     preview = verbs.plan_revert_lane_to_commit(repo, lane, cut)
     assert preview.ok and preview.verb == "revert"
-    assert preview.target == f"{lane}@{cut}"
+    # commit-index notation `@c<N>`, distinct from the checkpoint `@<seg_index>` the graph shows
+    assert preview.target == f"{lane}@c{cut}"
 
     seed = {op for op, ci in spans[lane] if ci > cut}
     assert seed  # the cut actually leaves post-commit ops to remove
@@ -305,6 +306,10 @@ def test_plan_revert_lane_to_commit_is_a_no_op_past_the_last_commit(tmp_path):
     assert preview.removed == frozenset()
     assert preview.after_ids == preview.before_ids == ideal.op_ids
     assert "no change" in preview.message
+    # the empty-seed message names the commit indices the lane *does* have ops at, so the user
+    # knows which N to pass instead of guessing (Problem 4: "the number that user can revert back")
+    assert "its ops are at commit" in preview.message
+    assert str(last) in preview.message
 
 
 def test_plan_revert_lane_to_commit_refuses_an_unresolvable_ref(tmp_path):

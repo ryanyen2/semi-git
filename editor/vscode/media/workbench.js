@@ -889,7 +889,7 @@ function episodeRailLayout(epView) {
   // lanes than fit. A resize re-runs render() via the ResizeObserver, so it reflows continuously.
   // The bottom axis + frontier scrubber still read real commit-time (recovered cross-feature
   // alignment lives in the episode rail); a car past the scrubbed frontier just dims in place.
-  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 46, gutterPad: 8, cellGap: 0.5, indent: 14 };
+  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 34, gutterPad: 8, cellGap: 0.5, indent: 14 };
   let graphView = null; // { geom, handleEl, frontierEl, veilEl } -- set each render for the scrubber
 
   function ganttGeom() {
@@ -952,13 +952,21 @@ function episodeRailLayout(epView) {
     // The "big event": the fattest chapter in this lane. It gets a stronger fill and first claim on
     // an inline label, so the lane's most consequential edit reads at a glance.
     const laneMaxOps = Math.max(1, ...cars.map((c) => c.opCount));
+    // Gap-fill tiling: a car fills from its first commit through the END of its last commit's column
+    // (one colStep wide), so a single-commit chapter occupies a whole column instead of a sliver --
+    // wide enough to carry its label inline. It never runs into the next car (capped at that car's
+    // start, less a gap); the final car fills to the plot edge. Distant chapters still leave a dim gap
+    // between them, so "when the feature went quiet" stays readable.
+    const colStep = geom.plotW / Math.max(1, geom.maxCommit);
     let cursor = geom.plotX0;
     let lastRight = geom.plotX0;
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
       const isBig = cars.length > 1 && car.opCount === laneMaxOps;
       let x = Math.max(geom.xOf(car.firstIndex), cursor); // anchored in time, never behind the last car
-      let w = Math.max(GANTT.minCarW, geom.xOf(car.lastIndex) - x);
+      let rightEnd = car.lastIndex >= geom.maxCommit ? plotR : geom.xOf(car.lastIndex) + colStep;
+      if (i + 1 < cars.length) rightEnd = Math.min(rightEnd, geom.xOf(cars[i + 1].firstIndex) - GANTT.carGap);
+      let w = Math.max(GANTT.minCarW, rightEnd - x);
       if (x + w > plotR) { x = Math.max(cursor, plotR - w); } // keep it on-screen
       if (x + w > plotR) { w = Math.max(GANTT.minCarW, plotR - x); }
       const selected = car.checkpoint === state.selectedCheckpoint;
