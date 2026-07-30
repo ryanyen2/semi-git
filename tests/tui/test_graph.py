@@ -208,11 +208,11 @@ def test_render_lines_carry_header_and_labels():
     assert "A" in text and "B" in text  # labels rendered
 
 
-def test_render_overview_lists_checkpoint_chips_not_a_count_and_drops_the_f_tag():
-    """The default (`timeline=False`) surface is a compact per-feature overview: a bare-hex handle
-    (no `f-` tag), an op-density sparkline, and the checkpoints spelled out as chips -- NOT the
-    opaque `✦N` count and NOT the positioned car rail (no `@n` digits, no wrapping chapter line)."""
-    fid = "f-aaaaaaaaaa"  # digit-free id; labels below are digit-free so only a rail/count would add digits
+def test_render_map_lists_positioned_checkpoint_chips_and_drops_the_f_tag():
+    """The map surface (formerly split into overview + `--timeline`): a bare-hex handle (no `f-`
+    tag), an edit-density bar positioned on the shared commit-time axis, and the checkpoints spelled
+    out as `@n slug` chips -- the `@n` is the revert handle. NOT the opaque `✦N` count."""
+    fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
     segs = [_seg(fid, 0, ["o0"], 0, 0, label="scaffold"),
@@ -221,63 +221,44 @@ def test_render_overview_lists_checkpoint_chips_not_a_count_and_drops_the_f_tag(
     lane = next(ln for ln in lines if "aaaaaaaa" in ln)
     assert fid[:10] not in lane                              # the `f-` tag is gone from the handle
     assert "aaaaaaaa" in lane                                # bare-hex copy token
-    assert "scaffold" in lane and "refine" in lane           # checkpoints listed by name, not counted
-    assert "✦" not in lane                                   # no opaque ✦N count in the overview
-    assert any(ch in lane for ch in "▁▂▃▄▅▆▇█·")              # a density sparkline, not digit cars
-    assert not any("@0" in ln or "@1" in ln for ln in lines)  # no wrapping chapter line
-    assert any("edit density" in ln for ln in lines)         # legend explains the sparkline
-    # no segments -> no chips, no count
+    assert "scaffold" in lane and "refine" in lane           # checkpoints listed by name
+    assert "@0" in lane and "@1" in lane                     # ...led by their @n revert handle
+    assert "✦" not in lane                                   # no opaque ✦N count
+    assert any(ch in lane for ch in "▁▂▃▄▅▆▇█·")              # a positioned density bar
+    assert any("edit density" in ln for ln in lines)         # legend explains the bar
+    assert any("c0" in ln for ln in lines)                   # shared commit-time ruler above the lanes
+    # no segments -> no chips
     plain = render_graph_lines(m, _grid((fid, 0)), color=False)
     plain_lane = next(ln for ln in plain if "aaaaaaaa" in ln)
-    assert "✦" not in plain_lane
+    assert "✦" not in plain_lane and "@0" not in plain_lane
 
 
-def test_render_timeline_draws_the_car_rail_with_digits_and_chapter_line():
-    """`timeline=True` preserves the shared-commit-time rail: each checkpoint is a bracketed car
-    carrying its `@n` digit in `seg_index` order, with a spelled-out chapter line beneath the lane."""
-    fid = "f-aaaaaaaaaa"
-    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
-    hist = _grid((fid, 0), (fid, 100), (fid, 199))
-    segs = [_seg(fid, 0, ["o0"], 0, 0), _seg(fid, 1, ["o1", "o2"], 100, 199)]
-    lines = render_graph_lines(m, hist, segs, color=False, timeline=True)
-    lane = next(ln for ln in lines if fid[2:10] in ln and "✦2" in ln)  # handle is bare hex (no `f-`)
-    strip = lane.split("✦")[0]
-    assert "0" in strip and "1" in strip              # both cars' @n digits drawn
-    assert strip.index("0") < strip.index("1")        # @0 sits left of @1 (seg_index order)
-    assert any("@0" in ln for ln in lines)            # the chapter line spells the checkpoints out
+def test_render_car_draws_tier_brackets():
+    """`_render_car` (the shared checkpoint glyph, still used by the feedforward preview) brackets a
+    car by its tier: `[ ]` co-changed/coupled, `( )` thematic."""
+    from sgt.tui.graph import _render_car
+
+    co = {"seg_index": 0, "tier": "co-changed", "sub_bins": [(0, 1)], "is_future": False}
+    th = {"seg_index": 1, "tier": "thematic", "sub_bins": [(1, 5)], "is_future": False}
+    assert _render_car(co, 6, "#abcdef", color=False).startswith("[")
+    assert _render_car(th, 6, "#abcdef", color=False).startswith("(")
 
 
-def test_render_car_widths_reflect_op_count_and_tier_brackets():
-    fid = "f-bbbbbbbbbb"
-    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
-    hist = _grid(*[(fid, i) for i in range(6)])
-    segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed"),
-            _seg(fid, 1, ["o1", "o2", "o3", "o4", "o5"], 1, 5, tier="thematic")]
-    lines = render_graph_lines(m, hist, segs, color=False, timeline=True)
-    lane = next(ln for ln in lines if fid[2:10] in ln)  # handle is bare hex (no `f-`)
-    assert "[" in lane and "]" in lane   # co-changed car
-    assert "(" in lane and ")" in lane   # thematic car
-
-
-def test_gap_fill_widens_a_single_commit_car_beyond_the_sliver_floor():
-    """Gap-fill tiling: a single-commit chapter fills its whole commit column instead of the old
-    bracket-digit-bracket sliver, so on a wide/sparse strip its rendered car is wider than the 3-col
-    floor. This is what makes room for the inline label in the pixel renderer (VS Code renderCars),
-    which mirrors this geometry. Regression for the 'blocks are unreadable slivers' report."""
-    import re
-
+def test_time_bar_gap_fills_a_single_commit_checkpoint_across_its_column():
+    """A single-commit checkpoint on a wide/sparse strip fills its whole commit column with density
+    glyphs (gap-fill tiling), not one bright pixel bleeding into dead space -- so it reads as a solid
+    block, not a sliver. Regression for the 'blocks are unreadable slivers' report."""
     fid = "f-cccccccccc"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
-    # 8 commits across the 42-col strip -> each commit column is ~6 cols wide (col_step > 1), so the
-    # gap-fill widening is observable (the dense _grid's 200 commits would compress col_step back to 1).
+    # 8 commits across the 38-col strip -> each commit column is several cols wide (col_step > 1), so
+    # the gap-fill widening is observable (a dense 200-commit grid would compress col_step back to 1).
     grid = {"commits": [{"index": i} for i in range(8)], "commit_count": 8,
             "cells": [{"feature_id": fid, "commit_index": 0, "op_ids": ["o0"], "op_count": 1,
                        "kinds": {"add": 1}, "fidelity": "full"}]}
     segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed")]  # a single-commit car (first_index == last_index)
-    lines = render_graph_lines(m, grid, segs, color=False, timeline=True)
-    lane = next(ln for ln in lines if fid[2:10] in ln and "✦1" in ln)
-    car = re.search(r"\[[^\]]*\]", lane.split("✦")[0])  # the co-changed car's bracketed region
-    assert car and len(car.group(0)) > 3  # wider than the old sliver ("[0]" == 3 chars)
+    lines = render_graph_lines(m, grid, segs, color=False)
+    lane = next(ln for ln in lines if "cccccccc" in ln)
+    assert "███" in lane  # the single checkpoint's density block spans several columns, not one
 
 
 def test_render_links_hidden_by_default_and_shown_with_show_links():
@@ -366,20 +347,21 @@ def test_min_unique_prefixes_grow_until_the_prefix_is_unique():
     assert all(out[i] <= min(len(i), 10) for i in ids)
 
 
-def test_overview_sparkline_is_segmented_by_checkpoint():
-    """The default overview density bar draws one region per checkpoint (car), joined by a `│`
-    rewind boundary -- so a feature with N checkpoints shows N-1 separators inside its bar."""
+def test_map_density_bar_positions_checkpoints_by_commit_time():
+    """The map density bar positions each checkpoint at its commit column, so two checkpoints far
+    apart in commit-time read as two density regions separated by a dim `·` quiet span -- time is the
+    boundary, not a `│` separator (which the merged view dropped)."""
     fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
     segs = [_seg(fid, 0, ["o0"], 0, 0), _seg(fid, 1, ["o1", "o2"], 100, 199)]
     lines = render_graph_lines(m, hist, segs, color=False)
     lane = next(ln for ln in lines if fid[2:10] in ln)  # handle is bare hex (no `f-`)
-    assert "│" in lane                             # a rewind boundary between the two checkpoints
-    # one checkpoint -> no separator inside the bar (only the two-car lane gets a `│`)
-    one = render_graph_lines(m, _grid((fid, 0)), [_seg(fid, 0, ["o0"], 0, 0)], color=False)
-    one_lane = next(ln for ln in one if fid[2:10] in ln)
-    assert "│" not in one_lane
+    pre = lane.split("  @")[0]                      # handle + label + density bar, before the @n chips
+    assert "│" not in pre                           # no rewind-boundary separator anymore
+    assert "█" in pre and "·" in pre                # a positioned density bar with quiet spans
+    first, last = pre.index("█"), pre.rindex("█")
+    assert "·" in pre[first:last]                   # a quiet span sits between the two checkpoints
 
 
 # ── feedforward verb-preview graph ───────────────────────────────────────────────────────────────

@@ -828,83 +828,35 @@ def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsy
     assert none["ok"] and none["hollow_ids"] == []
 
 
-# -- consequence pane gate (interactive confirm step replacing `[y/N]`) --------------------------
+# -- inline revert confirm gate (feedforward graph + `[y/N]` in the normal log flow) -------------
 #
-# On an interactive tty a bare `sgt revert <ref>` shows the consequence focus pane instead of the
-# `[y/N]` prompt; these pin the CLI<->pane contract. The pane itself is tested in
-# `tests/tui/test_consequence.py`; here `run_consequence` is monkeypatched so no TUI actually
-# launches (which would also block the suite), and both isattys are forced so the gate is entered
-# deterministically regardless of how pytest was invoked.
+# A bare `sgt revert <ref>` on an interactive tty draws the feedforward inline (no modal pane) and
+# gates on `[y/N]`. Both isattys are forced so the gate is entered deterministically regardless of
+# how pytest was invoked, and `input` is monkeypatched so no real prompt blocks the suite.
 
 def _force_tty(monkeypatch, stdin=True, stdout=True):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: stdin)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: stdout)
 
 
-def test_revert_on_a_tty_applies_when_the_pane_returns_apply(tmp_path, monkeypatch, capsys):
-    pytest.importorskip("textual")
-    from sgt.tui import consequence
-
+def test_revert_on_a_tty_applies_when_the_user_confirms(tmp_path, monkeypatch, capsys):
     _seed(tmp_path, 2)
     _force_tty(monkeypatch)
-    monkeypatch.setattr(consequence, "run_consequence",
-                        lambda *a, **k: consequence.Decision(True, frozenset()))
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
 
     assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
     assert "applied" in capsys.readouterr().out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"  # reverted
 
 
-def test_revert_on_a_tty_changes_nothing_when_the_pane_aborts(tmp_path, monkeypatch, capsys):
-    pytest.importorskip("textual")
-    from sgt.tui import consequence
-
+def test_revert_on_a_tty_changes_nothing_when_the_user_declines(tmp_path, monkeypatch, capsys):
     _seed(tmp_path, 2)
     _force_tty(monkeypatch)
-    monkeypatch.setattr(consequence, "run_consequence",
-                        lambda *a, **k: consequence.Decision(False))
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
 
     assert _in(tmp_path, ["revert", "a.py::foo"]) == 1
     assert "skipped" in capsys.readouterr().out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
-
-
-def test_pane_kept_set_routes_through_the_keep_dependents_path(tmp_path, monkeypatch):
-    """A non-empty kept-set from the pane is exactly the existing `--keep` continuation-hollow
-    path -- `_apply_decision` must route there (not a plain `verbs.apply`) with that frontier."""
-    pytest.importorskip("textual")
-    from sgt.core.store import Store
-    from sgt.tui import consequence
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("helper")
-    (tmp_path / "b.py").write_text(
-        "from a import helper\n\ndef user():\n    return helper()\n", encoding="utf-8")
-    gb.commit_all("user")
-    assert _in(tmp_path, ["init", "."]) == 0
-
-    ops = Store(tmp_path).all_ops()
-    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
-    user_op = next(o for o in ops if "b.py::user" in o.footprint)
-
-    _force_tty(monkeypatch)
-    monkeypatch.setattr(consequence, "run_consequence",
-                        lambda *a, **k: consequence.Decision(True, frozenset({user_op.id})))
-
-    captured = {}
-    from sgt.cli import ideal_edit
-    real = ideal_edit._revert_keep_dependents
-
-    def spy(repo, ref_tokens, intent, do_repair, as_json, keep=None):
-        captured["ref_tokens"], captured["keep"] = ref_tokens, keep
-        return real(repo, ref_tokens, intent, do_repair, as_json, keep=keep)
-
-    monkeypatch.setattr(ideal_edit, "_revert_keep_dependents", spy)
-
-    assert _in(tmp_path, ["revert", helper_op.id]) == 0
-    assert captured["ref_tokens"] == [helper_op.id]
-    assert captured["keep"] == frozenset({user_op.id})
 
 
 def test_revert_without_tty_or_yes_still_refuses_with_exit_2(tmp_path, monkeypatch, capsys):

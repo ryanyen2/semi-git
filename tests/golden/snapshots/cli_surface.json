@@ -175,7 +175,7 @@
         "log"
       ],
       "exit": 0,
-      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n\u001b[1m 4 save(s)  \u00b7  1 feature(s)   (newest on top)\u001b[0m\n\u001b[2m each row = one save; chips name the feature(s) it touched, \u25cf its main one\u001b[0m\n\n \u001b[38;2;182;143;231m\u25cf\u001b[0m  \u001b[2mb558b8b\u001b[0m  edit non-parseable config                     \u001b[38;2;182;143;231mbaz qux\u001b[0m\n \u001b[38;2;182;143;231m\u25cf\u001b[0m  \u001b[2md1a2bc5\u001b[0m  tangled: add baz to b.py and edit unrelated   \u001b[38;2;182;143;231mbaz qux\u001b[0m\n \u001b[38;2;182;143;231m\u25cf\u001b[0m  \u001b[2m00cc584\u001b[0m  move bar from a.py to b.py                    \u001b[38;2;182;143;231mbaz qux\u001b[0m\n \u001b[38;2;182;143;231m\u25cf\u001b[0m  \u001b[2mb511794\u001b[0m  add foo, qux, config, binary                  \u001b[38;2;182;143;231mbaz qux\u001b[0m\n\n\u001b[2m next:  sgt log --map  (the feature map)   \u00b7   sgt log --focus 23f7fcfe  (one feature's checkpoints)   \u00b7   sgt revert 23f7fcfe  (remove that feature)\u001b[0m\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n\u001b[1m 4 save(s)  \u00b7  1 feature(s)  \u00b7  1 recurring   (newest on top)\u001b[0m\n\u001b[2m each row = one save (cN = its commit position); \u25cf = feature touched here (bold \u25cf = the save's main one), \u2502 = a feature carried across\u001b[0m\n\n \u001b[1m\u001b[38;2;182;143;231m\u25cf\u001b[0m\u001b[0m  \u001b[2mc6\u001b[0m \u001b[2mb558b8b\u001b[0m  edit non-parseable config                     \u001b[38;2;182;143;231mbaz qux\u001b[0m\n \u001b[1m\u001b[38;2;182;143;231m\u25cf\u001b[0m\u001b[0m  \u001b[2mc4\u001b[0m \u001b[2md1a2bc5\u001b[0m  tangled: add baz to b.py and edit unrelated\u2026  \u001b[38;2;182;143;231mbaz qux\u001b[0m\n \u001b[1m\u001b[38;2;182;143;231m\u25cf\u001b[0m\u001b[0m  \u001b[2mc3\u001b[0m \u001b[2m00cc584\u001b[0m  move bar from a.py to b.py                    \u001b[38;2;182;143;231mbaz qux\u001b[0m\n \u001b[1m\u001b[38;2;182;143;231m\u25cf\u001b[0m\u001b[0m  \u001b[2mc0\u001b[0m \u001b[2mb511794\u001b[0m  add foo, qux, config, binary                  \u001b[38;2;182;143;231mbaz qux\u001b[0m\n\n\u001b[2m next:  sgt log --map  (the feature map)   \u00b7   sgt log --focus 23f7fcfe  (one feature's checkpoints)   \u00b7   sgt revert 23f7fcfe  (remove that feature)\u001b[0m\n"
     }
   },
   "map": {
@@ -401,7 +401,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": " \u25b8 restore  baz qux  23f7fcfe  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  13\u219214 edits\n      sgt restore c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary     \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u00b7 1/14 edits restored\n\n restores 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 restore applied \u2014 0 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n"
+      "out": " \u25b8 restore  baz qux  23f7fcfe  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  13\u219214 edits\n      sgt restore c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u00b7 1/14 edits restored\n\n restores 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 restore applied \u2014 0 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n"
     }
   },
   "revert": {
@@ -422,7 +422,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": " \u25b8 rewind  baz qux  23f7fcfe  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  14\u219213 edits\n      sgt revert c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary     \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/14 edits removed\n\n removes 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n"
+      "out": " \u25b8 rewind  baz qux  23f7fcfe  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  14\u219213 edits\n      sgt revert c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/14 edits removed\n\n removes 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n"
     }
   },
   "revert_emit": {

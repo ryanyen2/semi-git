@@ -108,12 +108,12 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
     merged into `view` unconditionally in both branches, before either the JSON or plain-text
     emission call -- so it's visible on both output paths, not JSON only.
 
-    Feedforward (KTD): a plain-text (non-`--json`) apply first *draws* where the edit lands -- the
-    target feature's checkpoints with the removed/restored slice marked, plus the other features
-    the dependency blast hits (`render_verb_preview_lines`) -- then gates on `[y/N]`. `--yes` skips
-    the prompt; a non-tty stdin without `--yes` prints the preview and refuses to apply (exit 2),
-    mirroring the did-you-mean guard. `--json` is unchanged (applies immediately -- the machine
-    contract VS Code/TUI depend on)."""
+    Feedforward (KTD): a plain-text (non-`--json`) apply first *draws* where the edit lands inline
+    in the normal `sgt log` flow -- the target feature's checkpoints with the removed/restored slice
+    marked, plus the other features the dependency blast hits (`render_verb_preview_lines`) -- then
+    gates on `[y/N]`. `--yes` skips the prompt; a non-tty stdin without `--yes` prints the preview
+    and refuses to apply (exit 2), mirroring the did-you-mean guard. `--json` is unchanged (applies
+    immediately -- the machine contract VS Code/TUI depend on)."""
     from sgt.core import verbs
 
     if emit:
@@ -124,29 +124,18 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             view = {**view, **extra}
         return _emit_json(view) if as_json else _print_verb_view(view)
 
-    # Plain-text apply: the confirm step. On an interactive tty this *is* the consequence focus
-    # pane (a zoomed region of `sgt log`: what breaks, adjust with space, apply with enter); with
-    # `--yes`, a non-tty, or textual absent it degrades to the feedforward-graph + `[y/N]` prompt.
+    # Plain-text apply: the confirm step draws the feedforward inline -- the same before/after
+    # `sgt log` region the edit lands in (`render_verb_preview_lines`) -- in the normal terminal
+    # flow, then gates on `[y/N]`. `--yes` skips the prompt; a non-tty stdin without `--yes` prints
+    # the preview and refuses (exit 2), mirroring the did-you-mean guard.
     if preview.ok and not as_json:
         import sys
 
         from sgt.api import _project_verb_preview, grid_view, map_view, segments_view
-
-        from ._common import maybe_confirm
+        from sgt.tui.graph import render_verb_preview_lines
 
         pview = _project_verb_preview(repo, preview)
         mv, gv, sv = map_view(repo), grid_view(repo), segments_view(repo)
-
-        if not yes:
-            decision = maybe_confirm(pview, mv, gv, sv, focus_fid=focus_fid)
-            if decision is not None:  # interactive tty + textual: the pane is the confirm step
-                if not decision.apply:
-                    print("  skipped — nothing changed.")
-                    return 1
-                return _apply_decision(repo, preview, decision.kept, as_json)
-
-        # Degrade path (--yes, non-tty, or no textual): draw the feedforward, gate on [y/N].
-        from sgt.tui.graph import render_verb_preview_lines
 
         color = sys.stdout.isatty()
         for line in render_verb_preview_lines(mv, gv, sv, pview, focus_fid=focus_fid, color=color):
@@ -178,21 +167,6 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
     if extra:
         view = {**view, **extra}
     return _emit_json(view) if as_json else _print_verb_view(view)
-
-
-def _apply_decision(repo: str, preview, kept: frozenset[str], as_json: bool) -> int:
-    """Apply a consequence-pane Decision. A kept-set on a `revert` is exactly the existing
-    `--keep <ids>` continuation-hollow path -- each kept dependent stays live as a draft instead
-    of cascading out with the up-set; everything else is the plain exact edit through
-    `verbs.apply`. Empty kept-set = a bare apply (identical to the old `[y/N]` yes path)."""
-    from sgt.core import verbs
-
-    if kept and preview.verb == "revert":
-        return _revert_keep_dependents(repo, [preview.target], None, False, as_json, keep=kept)
-    verbs.apply(repo, preview)
-    print(f"  ✓ {preview.verb} applied — {len(preview.removed)} edit(s) removed, "
-          f"{len(preview.added)} added. (`sgt undo` reverses this.)")
-    return 0
 
 
 def _revert_lane_to_commit(

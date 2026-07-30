@@ -105,13 +105,32 @@ def test_a_feature_s_episodes_share_one_lane():
     assert lanes == {0} and out["lane_count"] == 1  # one feature -> one column, both episodes on it
 
 
-def test_non_overlapping_feature_spans_reuse_a_lane_overlapping_ones_do_not():
-    # F1 at commits 0-1, F2 at 2-3: spans don't overlap in rows -> share lane 0.
+def test_recurring_features_each_get_a_dedicated_lane():
+    # F1 touched at commits 0-1, F2 at 2-3: each recurs (>=2 saves), so each gets its OWN lane --
+    # recurring features never share, so their lines stay individually traceable.
     out = _rail([(i, f"s{i}", f"c{i}") for i in range(4)],
                 [("a", "add", "F1", 0), ("b", "add", "F1", 1), ("c", "add", "F2", 2), ("d", "add", "F2", 3)])
-    assert out["lane_count"] == 1  # interval coloring reuses the single lane
+    assert out["lane_count"] == 2
+    assert out["lane_of"]["F1"] != out["lane_of"]["F2"]
+    assert sorted(out["recurring"]) == ["F1", "F2"]
 
-    # F1 at 0 and 3, F2 at 1-2: F2's span sits INSIDE F1's -> they overlap -> two lanes.
-    out2 = _rail([(i, f"s{i}", f"c{i}") for i in range(4)],
-                 [("a", "add", "F1", 0), ("b", "add", "F2", 1), ("c", "add", "F2", 2), ("d", "add", "F1", 3)])
-    assert out2["lane_count"] == 2
+
+def test_one_off_features_pack_into_a_shared_lane():
+    # Each feature dominates exactly one save (touched once) -> one-offs -> pack into the pool lane.
+    out = _rail([(i, f"s{i}", f"c{i}") for i in range(3)],
+                [("a", "add", "F1", 0), ("b", "add", "F2", 1), ("c", "add", "F3", 2)])
+    assert out["lane_count"] == 1
+    assert {out["lane_of"][f] for f in ("F1", "F2", "F3")} == {0}
+    assert out["recurring"] == []
+
+
+def test_a_recurring_feature_connects_across_a_save_it_did_not_dominate():
+    # commit 1: F2 dominates (2 ops) but F1 is also touched (1 op); F1 dominates commits 0 and 2.
+    # F1 touched all three saves, so its span covers the F2-dominated middle save -> its line stays
+    # connected straight through it (the "Conflict Resolution should be connected" fix).
+    out = _rail([(0, "s0", "c0"), (1, "s1", "c1"), (2, "s2", "c2")],
+                [("a", "add", "F1", 0), ("b", "add", "F1", 2), ("c", "add", "F1", 2),
+                 ("d", "add", "F2", 1), ("e", "add", "F2", 1), ("f", "extend", "F1", 1)])
+    assert out["feature_touched"]["F1"] == [0, 1, 2]  # rows: commit2->0, commit1->1, commit0->2
+    assert out["feature_span"]["F1"] == [0, 2]
+    assert out["recurring"] == ["F1"]  # F2 touched only commit 1 -> one-off

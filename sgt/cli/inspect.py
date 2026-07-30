@@ -40,8 +40,6 @@ def register(subs, parent) -> None:
                     help="refresh with a full from-scratch recluster")
     lp.add_argument("--focus", default=None, metavar="FEATURE",
                     help="one feature, full width, one line per checkpoint (implies --map)")
-    lp.add_argument("--timeline", action="store_true",
-                    help="map: the commit-time car rail (default is the compact per-feature overview)")
     lp.add_argument("--links", action="store_true",
                     help="map: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
@@ -83,8 +81,9 @@ def register(subs, parent) -> None:
 def _cmd_log(args) -> int:
     """`sgt log` is the daily inspection surface (KTD9). Bare `sgt log` answers "what did I do":
     the episode rail, newest save on top. `--map` is the spatial overview (one lane per feature,
-    density over time); `--tree`/`--summary` are its sibling projections. `--focus`/`--timeline`/
-    `--links`/`--at` are map refinements, so any of them implies `--map`. `--json` returns the
+    edit-density positioned on a shared commit-time axis); `--tree`/`--summary` are its sibling
+    projections. `--focus`/`--links`/`--at` are map refinements, so any of them implies `--map`.
+    `--json` returns the
     canonical view for the mode: `grid_view` (default and `--map` — the rail is a time-major
     rotation of the same cells), the feature tree (`--tree`), or the status scalars (`--summary`)."""
     if args.ops:  # compat alias; the listed home is `sgt advanced ops`
@@ -93,12 +92,11 @@ def _cmd_log(args) -> int:
         return _log_tree(".", args.as_json, args.refresh, args.rebuild)
     if args.summary:
         return _status(".", args.as_json, full=args.full)
-    map_mode = (args.map or args.timeline or args.links or args.focus is not None
-                or args.at is not None)
+    map_mode = (args.map or args.links or args.focus is not None or args.at is not None)
     if map_mode:
         return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
                          refresh=args.refresh, rebuild=args.rebuild, focus=args.focus,
-                         links=args.links, timeline=args.timeline)
+                         links=args.links)
     return _log_rail(".", as_json=args.as_json, color=not args.no_color,
                      refresh=args.refresh, rebuild=args.rebuild)
 
@@ -243,7 +241,7 @@ def _reindex(repo: str, as_json: bool = False) -> int:
 
 def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, color: bool = True,
               refresh: bool = False, rebuild: bool = False, focus: str | None = None,
-              links: bool = False, timeline: bool = False) -> int:
+              links: bool = False) -> int:
     """`sgt log` (the default grid, KTD9): the lane×commit timeline. `--json` returns the canonical
     `grid_view`; the text render reuses the feature-timeline machinery (`render_graph_lines`) over
     the last-built map. A pure cached read by default (fast, glanceable); `--refresh` re-mines and
@@ -258,7 +256,6 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
         return _emit_json(gv)
     for line in render_graph_lines(
         mv, gv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
-        timeline=timeline,
     ):
         print(line)
     return 0
