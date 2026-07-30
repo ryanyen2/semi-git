@@ -175,6 +175,16 @@ def plan_merge(repo: str | Path, survivor_id: str, absorbed_id: str) -> MergePre
     if result is None:
         return MergePreview(False, survivor_id, absorbed_id, message="no feature tree; run `sgt log --refresh`")
     nodes = result["nodes"]
+    # Accept the abbreviated handle every surface prints, same as `rename`/`revert`: canonicalize
+    # each ref through `resolve_feature` (id-prefix / `f-` prefix / exact label) when exact-key misses.
+    for _attr, _ref in (("survivor_id", survivor_id), ("absorbed_id", absorbed_id)):
+        if _leaf(nodes, _ref) is None:
+            _resolved = resolve_feature(repo, _ref)
+            if _resolved is not None:
+                if _attr == "survivor_id":
+                    survivor_id = _resolved[1]
+                else:
+                    absorbed_id = _resolved[1]
     survivor, absorbed = _leaf(nodes, survivor_id), _leaf(nodes, absorbed_id)
     if survivor_id == absorbed_id:
         return MergePreview(False, survivor_id, absorbed_id, message="cannot merge a feature into itself")
@@ -328,6 +338,14 @@ def plan_rename(repo: str | Path, feature_id: str, new_label: str) -> RenamePrev
     if result is None:
         return RenamePreview(False, feature_id, message="no feature tree; run `sgt log --refresh`")
     node = _leaf(result["nodes"], feature_id) or result["nodes"].get(feature_id)
+    if node is None:
+        # Fall back to the same matcher `sgt revert` uses (id-prefix, `f-`-prefix, or exact label),
+        # so the short handle the graph/tree/save-hint prints resolves here too -- it is a full id
+        # only under exact-key lookup, which every display abbreviates.
+        resolved = resolve_feature(repo, feature_id)
+        if resolved is not None:
+            feature_id = resolved[1]
+            node = result["nodes"].get(feature_id)
     if node is None:
         return RenamePreview(False, feature_id, message=f"feature {feature_id!r} not found")
     return RenamePreview(True, feature_id, old_label=node.get("label", ""), new_label=new_label)

@@ -528,6 +528,24 @@ def test_rename_survives_a_build_map_recluster(tmp_path):
     assert reclustered["nodes"][fid]["label"] == "Renamed Across Reclusters"
 
 
+def test_rename_resolves_the_short_id_prefix_the_ui_prints(tmp_path):
+    """The tree/map/save-hint print an abbreviated feature id (e.g. `1a2131ff`), and `sgt revert`
+    resolves it via `resolve_feature`'s prefix match. `plan_rename` must accept the same handle --
+    otherwise the very id the tool prints reads as 'not found' under rename's exact-key lookup."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    result = lensmap.build_map(repo)
+    fid = next(iter(result["nodes"]))
+    assert fid.startswith("f-")
+    short = fid[len("f-"):][:8]  # the bare hex the graph prints
+
+    preview = verbs.plan_rename(repo, short, "Named By Short Handle")
+    assert preview.ok, preview.message
+    assert preview.feature_id == fid  # canonicalized back to the full id
+    verbs.apply_rename(repo, preview)
+    assert lensmap.build_map(repo)["nodes"][fid]["label"] == "Named By Short Handle"
+
+
 # -- U7: authored feature overlays (clustering demoted to a seed) ------------------------------
 
 
