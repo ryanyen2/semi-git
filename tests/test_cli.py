@@ -73,6 +73,27 @@ def test_init_and_log_roundtrip(tmp_path, capsys):
     assert "op(s)" in out and "a.py::foo" in out
 
 
+def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
+    # The rail (bare `sgt log`) and the map (`--map`) both build `states` from forks_view/
+    # rewrite_view and read grid_view ghosts. A clean repo has no forks/drafts/plans -> no banner,
+    # but the projections must still wire through without error and render the tree.
+    _seed(tmp_path, 3)
+    capsys.readouterr()
+    assert _in(tmp_path, ["log"]) == 0
+    assert "save(s)" in capsys.readouterr().out
+    assert _in(tmp_path, ["log", "--map"]) == 0
+    assert "feature(s)" in capsys.readouterr().out
+
+
+def test_log_focus_unknown_group_falls_through_to_the_map(tmp_path, capsys):
+    # An unresolvable --focus arg names no group -> resolve_focus_group None -> the single-lane map
+    # path, which reports the missing lane rather than crashing or hanging on the vertical view.
+    _seed(tmp_path, 2)
+    capsys.readouterr()
+    assert _in(tmp_path, ["log", "--focus", "nope-no-such"]) == 0
+    assert capsys.readouterr().out.strip()  # renders something, doesn't crash
+
+
 def test_log_json_is_machine_readable(tmp_path, capsys):
     _seed(tmp_path, 1)
     assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
