@@ -22,14 +22,20 @@ def register(subs, parent) -> None:
     p.add_argument("symbol")
     p.add_argument("--apply", action="store_true",
                    help="fulfill the drafted reconciliation from the edited tree and land it")
+    p.add_argument("--override", help="land with a manual oracle verdict (pass|fail) when no "
+                                      "test runner is configured; the error names this")
+    p.add_argument("--reason")
+    p.add_argument("--by")
     p.set_defaults(func=_cmd_resolve)
 
 
 def _cmd_resolve(args) -> int:
-    return _resolve(".", args.symbol, args.apply, args.as_json)
+    return _resolve(".", args.symbol, args.apply, args.as_json,
+                    override=args.override, reason=args.reason, by=args.by)
 
 
-def _resolve(repo: str, symbol: str, apply: bool, as_json: bool) -> int:
+def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
+             *, override: str | None = None, reason: str | None = None, by: str | None = None) -> int:
     from sgt.api import forks_view
     from sgt.core import rewrite
     from sgt.core.store import Store
@@ -80,10 +86,14 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool) -> int:
         return _emit_json({"ok": False, "error": msg}) if as_json else _err(msg)
     from sgt.core import oracle
 
+    # A manual `--override pass` lets the guided verb land when no oracle is configured (the common
+    # case; the land gate's own error names this remedy). Otherwise run the configured tests here.
+    override_tuple = (override, reason or "", by) if override else None
     try:
         candidate = rewrite.fulfill(repo, draft_id, from_tree=True)
-        oracle.run(repo, ideal=candidate)  # the "run the tests" step of the guided flow, on the fresh candidate
-        sha = rewrite.land(repo, message=f"resolve fork: {symbol}")
+        if override_tuple is None:
+            oracle.run(repo, ideal=candidate)  # the "run the tests" step of the guided flow, on the fresh candidate
+        sha = rewrite.land(repo, message=f"resolve fork: {symbol}", override=override_tuple)
     except rewrite.RewriteError as e:
         return _emit_json({"ok": False, "error": str(e)}) if as_json else _err(str(e))
     if as_json:

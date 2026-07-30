@@ -171,6 +171,36 @@ def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
     }
 
 
+def test_resolve_cli_lands_a_fork_with_a_manual_override_when_no_oracle_is_configured(tmp_path):
+    """The guided `sgt resolve <sym> --apply` must be completable on the common path where no test
+    runner is configured. The land gate's own refusal names "land with an override", so the verb
+    forwards `--override pass` to `land()` (and skips the pointless pre-land `oracle.run` that would
+    otherwise reset the verdict to pending). Regression: before the override forwarding, an
+    unconfigured oracle left the guided verb with no way to close a fork it had drafted."""
+    from sgt.api import forks_view
+    from sgt.cli.resolve import _resolve
+
+    a, b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
+    _push(a)
+    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
+    report = sync.sync(b, remote="origin", branch="main")
+    assert len(report.forks) == 1
+    symbol = report.forks[0][0]  # main.py::foo
+    assert forks_view(b)["open"] == 1
+
+    # draft the reconciliation, then hand-merge both sides into the working tree
+    assert _resolve(str(b), symbol, apply=False, as_json=False) == 0
+    (b / "main.py").write_text(
+        "def foo():\n    return 999 + 42\n\n\ndef bar():\n    return 2\n", encoding="utf-8"
+    )
+
+    rc = _resolve(str(b), symbol, apply=True, as_json=False,
+                  override="pass", reason="both diffs reconciled by hand", by="reviewer")
+    assert rc == 0
+    assert forks_view(b)["open"] == 0  # the fork is closed
+
+
 def test_sync_dedups_an_op_independently_mined_on_both_clones(tmp_path):
     """The identification law at sync time: the same symbol added identically on both clones
     mines to one op id on each side; the union must not double it, and must keep both sides'
