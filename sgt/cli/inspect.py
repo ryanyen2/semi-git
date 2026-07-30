@@ -39,7 +39,8 @@ def register(subs, parent) -> None:
     lp.add_argument("--rebuild", action="store_true",
                     help="refresh with a full from-scratch recluster")
     lp.add_argument("--focus", default=None, metavar="FEATURE",
-                    help="one feature, full width, one line per checkpoint (implies --map)")
+                    help="zoom in: one feature (its checkpoints), or a subsystem/theme name "
+                         "(its features as a vertical commit-tree). Implies --map")
     lp.add_argument("--links", action="store_true",
                     help="map: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
@@ -247,15 +248,29 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     the last-built map. A pure cached read by default (fast, glanceable); `--refresh` re-mines and
     rebuilds features + checkpoints first (see `_map_for_view`); `--rebuild` refreshes with a full
     from-scratch recluster."""
-    from sgt.api import grid_view, segments_view
-    from sgt.tui.graph import render_graph_lines
+    from sgt import state
+    from sgt.api import forks_view, grid_view, rewrite_view, segments_view
+    from sgt.tui.graph import render_graph_lines, render_rail_lines, resolve_focus_group
 
     mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)  # the canonical cell join; the text render and --json now read one shape
     if as_json:
         return _emit_json(gv)
+    states = {"forks": forks_view(repo)["forks"], "rewrites": rewrite_view(repo)}
+    # `--focus <subsystem|theme>` is a category zoom: render the vertical commit-tree scoped to the
+    # group's features. A single-feature `--focus` names no group, so it falls through to the map's
+    # own per-checkpoint focus detail below.
+    if focus is not None:
+        themes = state.load_json(repo, "intent_themes", default={})
+        group = resolve_focus_group(focus, mv, gv, themes)
+        if group is not None:
+            for line in render_rail_lines(mv, gv, color=color, only_features=group["feature_ids"],
+                                          group_label=group["label"], states=states):
+                print(line)
+            return 0
     for line in render_graph_lines(
         mv, gv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
+        states=states,
     ):
         print(line)
     return 0
@@ -266,14 +281,15 @@ def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: 
     """`sgt log --rail` (the episode rail / vertical git-log): "what I did, in order." `--json`
     returns `grid_view` (the rail is a time-major rotation of the same cells); the text render
     reuses `render_rail_lines`."""
-    from sgt.api import grid_view
+    from sgt.api import forks_view, grid_view, rewrite_view
     from sgt.tui.graph import render_rail_lines
 
     mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)
     if as_json:
         return _emit_json(gv)
-    for line in render_rail_lines(mv, gv, color=color):
+    states = {"forks": forks_view(repo)["forks"], "rewrites": rewrite_view(repo)}
+    for line in render_rail_lines(mv, gv, color=color, states=states):
         print(line)
     return 0
 

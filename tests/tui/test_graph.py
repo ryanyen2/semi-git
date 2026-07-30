@@ -13,10 +13,13 @@ import pytest
 
 from sgt.tui.graph import (
     _min_unique_prefixes,
+    _state_banner,
     graph_layout,
     render_collab_preview_lines,
     render_graph_lines,
+    render_rail_lines,
     render_verb_preview_lines,
+    resolve_focus_group,
     segment_layout,
 )
 
@@ -544,3 +547,122 @@ def test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified(
           "tips": ["0ee9a65f11aa", "5e6eaf5822bb"], "oracle_configured": False}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "oracle: none configured" in text and "lands unverified" in text
+
+
+# ── group focus + state markers (--focus <subsystem|theme>, fork/merge banner) ───────────────────
+
+
+def _sub_map():
+    """A map_view with two subsystems over feature leaves -- the shape resolve_focus_group walks."""
+    return {"nodes": [
+        {"id": "N1", "kind": "subsystem", "label": "Comms", "children": ["fa", "fb"]},
+        {"id": "fa", "kind": "feature", "label": "Wire Codec", "members": ["s1"]},
+        {"id": "fb", "kind": "feature", "label": "Remote Bus", "members": ["s2"]},
+        {"id": "N2", "kind": "subsystem", "label": "State", "children": ["fc"]},
+        {"id": "fc", "kind": "feature", "label": "RGA", "members": ["s3"]},
+    ]}
+
+
+def test_resolve_focus_group_subsystem_by_id_prefix_returns_its_feature_leaves():
+    g = resolve_focus_group("N1", _sub_map(), {"commits": [], "cells": []})
+    assert g == {"label": "Comms", "kind": "subsystem", "feature_ids": {"fa", "fb"}}
+
+
+def test_resolve_focus_group_subsystem_by_label_is_case_insensitive():
+    g = resolve_focus_group("comms", _sub_map(), {"commits": [], "cells": []})
+    assert g["kind"] == "subsystem" and g["feature_ids"] == {"fa", "fb"}
+
+
+def test_resolve_focus_group_theme_joins_its_commits_to_the_touched_features():
+    grid = {"commits": [{"sha": "shaX", "index": 5}, {"sha": "shaY", "index": 9}],
+            "cells": [{"feature_id": "fa", "commit_index": 5},
+                      {"feature_id": "fc", "commit_index": 9}]}
+    themes = {"t1": {"label": "Realtime", "atom_shas": ["shaX"]}}
+    g = resolve_focus_group("realtime", _sub_map(), grid, themes)
+    assert g == {"label": "Realtime", "kind": "theme", "feature_ids": {"fa"}}
+
+
+def test_resolve_focus_group_returns_none_for_a_single_feature_so_caller_uses_the_map_path():
+    # A feature id/unknown ref names no group -> None, so the CLI falls through to the single-lane
+    # render_graph_lines(focus=...) detail path rather than the vertical group view.
+    assert resolve_focus_group("fa", _sub_map(), {"commits": [], "cells": []}) is None
+    assert resolve_focus_group("nope", _sub_map(), {"commits": [], "cells": []}) is None
+
+
+def _rail_grid():
+    def cell(f, c, oid):
+        return {"feature_id": f, "commit_index": c, "op_ids": [oid], "op_count": 1,
+                "kinds": {"add": 1}, "fidelity": "full"}
+    return {"commits": [{"index": 0, "sha": "s0", "subject": "add wire"},
+                        {"index": 1, "sha": "s1", "subject": "add bus"},
+                        {"index": 2, "sha": "s2", "subject": "add rga"}],
+            "cells": [cell("fa", 0, "o0"), cell("fb", 1, "o1"), cell("fc", 2, "o2")]}
+
+
+def test_render_rail_only_features_scopes_the_vertical_tree_to_the_group():
+    m = {"nodes": [{"id": "fa", "label": "Wire"}, {"id": "fb", "label": "Bus"}, {"id": "fc", "label": "RGA"}]}
+    text = "\n".join(render_rail_lines(m, _rail_grid(), color=False,
+                                       only_features={"fa", "fb"}, group_label="Comms"))
+    assert "focus: Comms" in text and "2 feature(s)" in text
+    assert "add wire" in text and "add bus" in text
+    assert "add rga" not in text  # fc's save is outside the group -> filtered out
+
+
+def test_state_banner_renders_forks_with_symbol_and_remedy():
+    states = {"forks": [{"symbol": "room.py::apply", "tips": ["a1b2c3d4e5", "f6a7b8c9d0"],
+                         "remedy": "sgt merge-op a1b2c3d4 f6a7b8c9"}], "rewrites": {"drafts": []}}
+    text = "\n".join(_state_banner(states, color=False))
+    assert "1 open fork(s)" in text and "room.py::apply" in text
+    assert "sgt merge-op a1b2c3d4 f6a7b8c9" in text
+
+
+def test_state_banner_renders_merge_op_drafts_with_repair_remedy():
+    states = {"forks": [], "rewrites": {"drafts": [
+        {"verb": "merge-op", "target": "room.py::apply", "draft_id": "rw-abcdef123456"}]}}
+    text = "\n".join(_state_banner(states, color=False))
+    assert "1 pending merge-op draft(s)" in text and "room.py::apply" in text
+    assert "sgt repair rw-abcdef123" in text  # draft_id capped at 12 chars
+
+
+def test_state_banner_is_empty_for_no_state_and_ignores_non_merge_op_drafts():
+    assert _state_banner(None, color=False) == []
+    assert _state_banner({}, color=False) == []
+    # a non-merge-op draft (a plain edit) is not a fork resolution -> not surfaced as one
+    states = {"forks": [], "rewrites": {"drafts": [{"verb": "edit", "target": "x", "draft_id": "d1"}]}}
+    assert _state_banner(states, color=False) == []
+
+
+def test_render_rail_places_a_plan_ghost_row_on_its_feature_lane():
+    m = {"nodes": [{"id": "fa", "label": "Wire"}, {"id": "fb", "label": "Bus"}, {"id": "fc", "label": "RGA"}]}
+    grid = _rail_grid()
+    grid["ghosts"] = [{"feature_id": "fa", "title": "wire up presence", "known_feature": True}]
+    text = "\n".join(render_rail_lines(m, grid, color=False))
+    assert "◇" in text and "plan" in text and "wire up presence" in text
+
+
+def test_render_rail_drops_a_ghost_with_no_lane_to_the_unplaced_gutter():
+    m = {"nodes": [{"id": "fa", "label": "Wire"}]}
+    grid = _rail_grid()
+    grid["ghosts"] = [{"feature_id": "fz", "title": "future work", "known_feature": False}]
+    text = "\n".join(render_rail_lines(m, grid, color=False))
+    assert "planned (no lane yet)" in text and "future work" in text
+
+
+def test_render_graph_shows_a_plan_ghost_chip_at_the_feature_lane_tip():
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    grid = _grid(("A", 0), ("A", 1))
+    grid["ghosts"] = [{"feature_id": "A", "title": "add caching", "known_feature": True}]
+    text = "\n".join(render_graph_lines(m, grid, color=False))
+    assert "◇ planned: add caching" in text
+
+
+def test_render_rail_group_focus_hides_out_of_group_plan_ghosts():
+    # In a group focus the rail shows only that group's plan steps -- a ghost for a feature outside
+    # `only_features` is not this group's concern and must not leak into its "no lane yet" gutter.
+    m = {"nodes": [{"id": "fa", "label": "Wire"}, {"id": "fb", "label": "Bus"}, {"id": "fc", "label": "RGA"}]}
+    grid = _rail_grid()
+    grid["ghosts"] = [{"feature_id": "fa", "title": "in group step", "known_feature": True},
+                      {"feature_id": "fc", "title": "out of group step", "known_feature": True}]
+    text = "\n".join(render_rail_lines(m, grid, color=False, only_features={"fa", "fb"}, group_label="Comms"))
+    assert "in group step" in text
+    assert "out of group step" not in text

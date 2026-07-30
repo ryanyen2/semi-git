@@ -383,14 +383,20 @@ def episode_rail_layout(ep_view: dict) -> dict:
             lane_bot[lane] = bot
         lane_of[fid] = base + lane
 
-    lane_feature = {L: fid for fid, L in lane_of.items()}
+    # A pooled lane can hold several one-off features over disjoint row-spans, so a lane maps to a
+    # LIST of (top, bot, fid) intervals -- not one feature. A cell resolves which feature occupies the
+    # lane at a given row by interval membership; collapsing to one fid per lane drops the dots of
+    # every pooled feature but the last (a save with no node on its own dominant lane).
+    lane_intervals: dict = {}
+    for fid, L in lane_of.items():
+        lane_intervals.setdefault(L, []).append((span[fid][0], span[fid][1], fid))
     rows = [
         {"index": e["index"], "row": row_of[e["index"]], "feature": e["dominant_feature"],
          "lane": lane_of.get(e["dominant_feature"], 0), "subject": e["subject"],
          "op_count": e["op_count"], "sha": e["sha"], "features": e["features"]}
         for e in ordered
     ]
-    return {"rows": rows, "lane_of": lane_of, "lane_feature": lane_feature,
+    return {"rows": rows, "lane_of": lane_of, "lane_intervals": lane_intervals,
             "feature_touched": {f: sorted(rs) for f, rs in touched.items()},
             "feature_span": span, "recurring": sorted(str(f) for f in recurring),
             "lane_count": max(1, base + len(lane_bot)), "row_count": len(ordered)}
@@ -420,8 +426,104 @@ def _shade(hex_str: str, intensity: float, s: str) -> str:
 _DIM = "\x1b[2m"
 _BOLD = "\x1b[1m"
 _RESET = "\x1b[0m"
+_RED = "\x1b[31m"
+_AMBER = "\x1b[33m"
 
 _TIER_BRACKETS = {"co-changed": ("[", "]"), "coupled": ("[", "]"), "thematic": ("(", ")")}
+
+# Shared "state" glyphs across BOTH graphs (the map and the rail), so a fork/merge/plan reads the
+# same everywhere: a plan step with no code yet, a fork (divergent edits to one symbol), and a
+# pending merge-op draft that would close one. Isolated here so a terminal that renders one poorly
+# is a one-line swap.
+_GHOST = "◇"
+_FORK = "⋔"
+_MERGE = "⋈"
+
+
+def _sgr(code: str, s: str, *, color: bool) -> str:
+    return f"{code}{s}{_RESET}" if color else s
+
+
+def _state_banner(states: dict | None, *, color: bool) -> list[str]:
+    """Footer lines shared by both graphs: open forks (⋔ — divergent edits to one symbol) and
+    pending merge-op drafts (⋈) that would close one. `states` is `{"forks": [...], "rewrites":
+    {...}}` as the CLI builds from `forks_view`/`rewrite_view`; None/empty renders nothing, so the
+    default (stateless) call sites and their golden snapshots stay byte-identical.
+
+    Forks/drafts are symbol-scoped and their tips are excluded from every verb-visible ideal
+    (`order.reduce_to_ideal`), so there is no reliable lane cell to paint -- the banner is the
+    honest surface (it carries the symbol + the exact remedy), not a fabricated lane position."""
+    if not states:
+        return []
+    out: list[str] = []
+    forks = states.get("forks") or []
+    if forks:
+        out.append(_sgr(_RED, f" {_FORK} {len(forks)} open fork(s) — divergent edits to one symbol:",
+                        color=color))
+        for f in forks:
+            tips = f.get("tips") or []
+            remedy = f.get("remedy") or ("sgt merge-op " + " ".join(t[:8] for t in tips))
+            out.append(_dim(f"     {f.get('symbol', '?')}  →  {remedy}", color=color))
+    drafts = [d for d in (states.get("rewrites") or {}).get("drafts", []) if d.get("verb") == "merge-op"]
+    if drafts:
+        out.append(_sgr(_AMBER, f" {_MERGE} {len(drafts)} pending merge-op draft(s):", color=color))
+        for d in drafts:
+            did = (d.get("draft_id") or "")[:12]
+            out.append(_dim(f"     {d.get('target', '?')}  →  sgt repair {did}", color=color))
+    return out
+
+
+def _leaf_features_under(node_id: str, by_id: dict) -> set[str]:
+    """Every feature-leaf id reachable under `node_id` (a subsystem node) via `children`. A leaf is
+    a node with no children; the same tree walk `graph_layout.leaves_under` does, module-level so
+    the group resolver can reuse it without building a layout."""
+    out, stack = set(), [node_id]
+    while stack:
+        node = by_id.get(stack.pop())
+        if not node:
+            continue
+        children = node.get("children") or []
+        if children:
+            stack.extend(children)
+        elif node.get("members"):  # a childless node with no members is a clustering artifact
+            out.add(node["id"])
+    return out
+
+
+def resolve_focus_group(ref: str, map_view: dict, grid_view: dict, themes: dict | None = None):
+    """Resolve `--focus`'s argument to a GROUP of features -- a subsystem (its feature leaves) or a
+    theme (the features its commits touched) -- for the vertical category view. Returns
+    `{"label", "kind", "feature_ids"}` or None when `ref` names no group, in which case the caller
+    falls through to the single-lane `render_graph_lines(focus=...)` path.
+
+    A subsystem is matched by unique id-prefix or exact (case-insensitive) label against the
+    `kind=="subsystem"` nodes; a theme by exact label against `themes` (the committed
+    `.sgt/intent/themes.json`, `{theme_id: {label, atom_shas, ...}}`). The theme→feature join goes
+    through `grid_view`: a theme's `atom_shas` -> commit indices -> the features whose cells sit on
+    those commits. `themes` defaults empty so a repo with no built themes still resolves subsystems."""
+    by_id = {n["id"]: n for n in map_view.get("nodes", [])}
+    want = (ref or "").strip().lower()
+
+    subs = [n for n in map_view.get("nodes", []) if n.get("kind") == "subsystem"]
+    hits = [n for n in subs if ref and n["id"].startswith(ref)]
+    if len(hits) != 1:
+        hits = [n for n in subs if n.get("label", "").strip().lower() == want]
+    if len(hits) == 1:
+        feats = _leaf_features_under(hits[0]["id"], by_id)
+        if feats:
+            return {"label": hits[0].get("label", hits[0]["id"]), "kind": "subsystem",
+                    "feature_ids": feats}
+
+    themes = themes or {}
+    thits = [t for t in themes.values() if t.get("label", "").strip().lower() == want]
+    if len(thits) == 1:
+        shas = set(thits[0].get("atom_shas", []))
+        idx_of = {c["sha"]: c["index"] for c in grid_view.get("commits", [])}
+        want_idx = {idx_of[s] for s in shas if s in idx_of}
+        feats = {c["feature_id"] for c in grid_view.get("cells", []) if c["commit_index"] in want_idx}
+        if feats:
+            return {"label": thits[0]["label"], "kind": "theme", "feature_ids": feats}
+    return None
 
 
 def _resolve_focus(focus: str, layout: dict, labels: dict) -> str | None:
@@ -585,6 +687,7 @@ def render_graph_lines(
     color: bool = True,
     bar_width: int = 38,
     show_links: bool = False,
+    states: dict | None = None,
 ) -> list[str]:
     """Render the feature map as terminal lines (ANSI truecolor when `color`): one row per lane,
     each drawing its checkpoints' `▁▂▃▄▅▆▇█` edit-density *positioned on the SHARED commit-time axis*
@@ -604,6 +707,19 @@ def render_graph_lines(
     fr = float("inf") if frontier is None else frontier
     layout = segment_layout(map_view, grid_view, segments, collapsed=collapsed, frontier=frontier)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
+
+    # Plan ghosts (pending steps with no code yet): a ◇ chip at its predicted lane's tip, or -- when
+    # the predicted feature has no visible lane -- an "unplaced" pseudo-row after the lanes. Read
+    # straight off `grid_view.ghosts` (the only place a prediction reaches the grid), so no new input.
+    feature_to_lane = {leaf: l["id"] for l in layout["lanes"] for leaf in l["leaves"]}
+    ghost_by_lane: dict[str, list[str]] = {}
+    unplaced_ghosts: list[dict] = []
+    for g in grid_view.get("ghosts", []):
+        lane_id = feature_to_lane.get(g["feature_id"])
+        if lane_id is not None:
+            ghost_by_lane.setdefault(lane_id, []).append(g.get("title", ""))
+        else:
+            unplaced_ghosts.append(g)
 
     def paint(hex_str: str, s: str) -> str:
         return _paint(hex_str, s, color=color)
@@ -783,18 +899,32 @@ def render_graph_lines(
             label = raw.ljust(title_w)  # no truncation
             bar = time_bar(l["cars"], hexc, bar_width)
             # Checkpoints spelled out as `@n label`: the `@n` is the `sgt revert` handle, the label
-            # its human name. Shown for every lane -- the named rewind targets are the point of the view.
-            chips = [f"@{c['seg_index']} {c['label']}" for c in l["cars"]]
+            # its human name. Only the last 3 (most recent) are named -- the rest fold into a `+N
+            # earlier` head -- and each label is ellipsized so a busy lane can't run off the edge; the
+            # density bar still shows every checkpoint's position, so nothing is lost, just unlabelled.
+            cars = l["cars"]
+            recent = cars[-3:]
+            chips = [f"@{c['seg_index']} {_ellipsize(c['label'], 24)}" for c in recent]
+            hidden = len(cars) - len(recent)
+            if hidden > 0:
+                chips.insert(0, f"+{hidden} earlier")
             trailer = ("  " + dim("  ·  ".join(chips))) if chips else ""
+            planned = ghost_by_lane.get(fid)
+            if planned:
+                trailer += "  " + dim("  ".join(f"{_GHOST} planned: {_ellipsize(t, 24)}"
+                                                for t in planned))
             row_s = (f"   {marker}{paint(hexc, glyph)} {handle} "
                      f"{bold(label) if is_sel else label} {bar}{trailer}")
             row_s += links_note(fid)
             lines.append(row_s)
+    for g in unplaced_ghosts:
+        lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), 40)}"))
     lines.append("")
 
     # Legend: the view explains its own encoding.
     lines.append(dim(" ▁▂▃▄▅▆▇█ = edit density (taller = busier), positioned by save-time (c0…cN above)"
                      "   ·   dim · = a quiet span   ·   trailing @n chips = the checkpoints (rewind by @n)"))
+    lines.extend(_state_banner(states, color=color))
     return lines
 
 
@@ -1153,6 +1283,9 @@ def render_rail_lines(
     color: bool = True,
     label_width: int = 44,
     max_rows: int = 40,
+    only_features: set | None = None,
+    group_label: str | None = None,
+    states: dict | None = None,
 ) -> list[str]:
     """Render the episode rail as a vertical git-log (Stage C): newest episode on top. Recurring
     features (touched by >=2 saves) each get a dedicated lane so their saves read as one unbroken
@@ -1162,13 +1295,25 @@ def render_rail_lines(
     save's dominant one). Capped at `max_rows` (newest first); a footer notes how many older episodes
     were folded (the lazy nod for a long history)."""
     ep = episodes(map_view, grid_view)
+    # Category focus (`--focus <subsystem|theme>`): keep only saves that touched a feature in the
+    # group, restrict each kept save's feature set to the group, and re-pick its dominant feature --
+    # so the rail's lanes are purely the group's features, laid out by `episode_rail_layout` as usual.
+    if only_features is not None:
+        only = set(only_features)
+        filtered = []
+        for e in ep["episodes"]:
+            feats = {f: n for f, n in (e.get("features") or {}).items() if f in only}
+            if not feats:
+                continue
+            dom = max(feats, key=lambda f: (feats[f], f))
+            filtered.append({**e, "features": feats, "dominant_feature": dom})
+        ep = {"episodes": filtered, "groups": []}
     layout = episode_rail_layout(ep)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
     rows = layout["rows"]
     lane_count = layout["lane_count"]
-    lane_feature = layout["lane_feature"]
+    lane_intervals = layout["lane_intervals"]
     feature_touched = {f: set(rs) for f, rs in layout["feature_touched"].items()}
-    feature_span = layout["feature_span"]
     n_recurring = len(layout["recurring"])
 
     def paint(hex_str: str, s: str) -> str:
@@ -1184,21 +1329,24 @@ def render_rail_lines(
         """One rail cell. ● where the lane's feature touched this save (bold = the save's dominant
         feature, its main work); │ where the feature is carried across a save it didn't touch (the
         connector that keeps a recurring feature one traceable line); blank where the lane is idle."""
-        fid = lane_feature.get(lane)
+        fid = next((f for top, bot, f in lane_intervals.get(lane, ()) if top <= r_idx <= bot), None)
         if fid is None:
             return " "
         hexc = color_for(fid or "")
         if r_idx in feature_touched.get(fid, ()):  # noqa: SIM118 -- membership, not iteration
             dot = paint(hexc, "●")
             return bold(dot) if is_dom else dot
-        top, bot = feature_span.get(fid, (r_idx, r_idx))
-        return paint(hexc, "│") if top <= r_idx <= bot else " "
+        return paint(hexc, "│")
 
     lines: list[str] = []
     n_ep = len(rows)
     n_feat = len({r["feature"] for r in rows if r["feature"] is not None})
     recur_note = f"  ·  {n_recurring} recurring" if n_recurring else ""
-    lines.append(bold(f" {n_ep} save(s)  ·  {n_feat} feature(s){recur_note}   (newest on top)"))
+    if group_label:
+        lines.append(bold(f" focus: {group_label}  ·  {n_feat} feature(s)  ·  {n_ep} save(s)"
+                          f"   (newest on top)"))
+    else:
+        lines.append(bold(f" {n_ep} save(s)  ·  {n_feat} feature(s){recur_note}   (newest on top)"))
     lines.append(dim(" each row = one save (cN = its commit position); ● = feature touched here "
                      "(bold ● = the save's main one), │ = a feature carried across"))
     lines.append("")
@@ -1217,7 +1365,25 @@ def render_rail_lines(
         return dim(" · ").join(parts) if parts else dim("(unattributed)")
 
     shown = rows[:max_rows]
+    # Plan ghosts (pending steps, no code yet): a ◇ row above the newest save on its predicted
+    # lane; a prediction whose feature has no rail lane (it dominates no save) drops to an
+    # "unplaced" gutter after the rail. Read straight off `grid_view.ghosts` -- no new input.
+    all_ghosts = grid_view.get("ghosts", [])
+    if only_features is not None:  # a group focus shows only that group's plan steps, not every plan's
+        all_ghosts = [g for g in all_ghosts if g["feature_id"] in only_features]
+    placed_ghosts = [g for g in all_ghosts if g["feature_id"] in layout["lane_of"]]
+    unplaced_ghosts = [g for g in all_ghosts if g["feature_id"] not in layout["lane_of"]]
     pos_w = max((len(f"c{r['index']}") for r in shown), default=2)
+    if placed_ghosts:
+        pos_w = max(pos_w, len("plan"))
+    for g in placed_ghosts:
+        lane = layout["lane_of"][g["feature_id"]]
+        fid = g["feature_id"]
+        hexc = color_for(fid or "")
+        rail = " ".join(dim(paint(hexc, _GHOST)) if L == lane else " " for L in range(lane_count))
+        pos = dim("plan".rjust(pos_w))
+        subj = _ellipsize(g.get("title", "") or "planned", label_width).ljust(label_width)
+        lines.append(f" {rail}  {pos} {' ' * 7}  {dim(subj)}  {_paint(hexc, labels.get(fid, fid), color=color)}")
     for r in shown:
         rail = " ".join(cell(L, r["row"], L == r["lane"]) for L in range(lane_count))
         pos = dim(f"c{r['index']}".rjust(pos_w))
@@ -1229,9 +1395,12 @@ def render_rail_lines(
     if n_ep > len(shown):
         lines.append("")
         lines.append(dim(f" {n_ep - len(shown)} older save(s) folded (newest {len(shown)} shown)"))
+    for g in unplaced_ghosts:
+        lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), label_width)}"))
     lines.append("")
     example = next((r["feature"] for r in shown if r["feature"]), None)
     handle = (example[2:10] if example and example.startswith("f-") else (example or "<feature>")[:8])
     lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt log --focus {handle}  "
                      f"(one feature's checkpoints)   ·   sgt revert {handle}  (remove that feature)"))
+    lines.extend(_state_banner(states, color=color))
     return lines

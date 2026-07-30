@@ -134,3 +134,20 @@ def test_a_recurring_feature_connects_across_a_save_it_did_not_dominate():
     assert out["feature_touched"]["F1"] == [0, 1, 2]  # rows: commit2->0, commit1->1, commit0->2
     assert out["feature_span"]["F1"] == [0, 2]
     assert out["recurring"] == ["F1"]  # F2 touched only commit 1 -> one-off
+
+
+def _feature_at(layout, lane, row):
+    """Resolve which feature occupies `lane` at `row` by interval membership -- the same lookup the
+    renderer's `cell()` does over `lane_intervals`."""
+    return next((f for top, bot, f in layout["lane_intervals"].get(lane, ()) if top <= row <= bot), None)
+
+
+def test_pooled_lane_resolves_each_feature_on_its_own_dominant_row():
+    # F1 dominates commit 0, F2 dominates commit 1 -> both one-offs pooled into the same lane. Each
+    # save's dominant feature must resolve on its OWN row: collapsing a pooled lane to one feature
+    # dropped every pooled feature's node but the last, so a save had no dot on its dominant lane.
+    out = _rail([(0, "s0", "c0"), (1, "s1", "c1")],
+                [("a", "add", "F1", 0), ("b", "add", "F2", 1)])
+    assert {out["lane_of"][f] for f in ("F1", "F2")} == {0}  # pooled onto one lane
+    for r in out["rows"]:
+        assert _feature_at(out, r["lane"], r["row"]) == r["feature"]  # its own node, not the pool's last
