@@ -271,17 +271,28 @@ def assign_at_save(repo, ideal, ops) -> dict | None:
             # *non-empty* authored label override the clustered proposal). So the register starts
             # empty -- the rebuild names the lane, and a later `rename` overrides that.
             provisional = symbol.split("::", 1)[0]
-            feat = replace(authored.create([symbol], "", witness=head), id=_new_lane_id(symbol))
-            af[feat.id] = feat
-            assign[symbol] = feat.id
-            nodes[feat.id] = {
-                "id": feat.id, "parent": None, "depth": 0,
-                "members": [symbol], "size": 1, "dir": cluster._dominant_dir([symbol]),
-                "children": [], "split_reason": None, "label": provisional, "why": "",
-            }
-            previous.setdefault("roots", []).append(feat.id)
-            assigned[symbol] = feat.id
-            new_lanes.append(feat.id)
+            lane_id = _new_lane_id(symbol)
+            existing = af.get(lane_id)
+            if existing is not None:
+                # Re-entry: the symbol was minted before (then deleted while its register record
+                # survived), and the content-addressed id collides by design. Reuse the record --
+                # mirroring the attach path's `if aid not in af` guard above -- because recreating
+                # it would reset the CRDT clock and silently drop the label and any members added
+                # since; sync would then see a rewrite, not a mergeable update.
+                if symbol not in existing.live_members():
+                    af[lane_id] = authored.add_member(existing, symbol)
+            else:
+                af[lane_id] = replace(authored.create([symbol], "", witness=head), id=lane_id)
+            assign[symbol] = lane_id
+            if lane_id not in nodes:
+                nodes[lane_id] = {
+                    "id": lane_id, "parent": None, "depth": 0,
+                    "members": [symbol], "size": 1, "dir": cluster._dominant_dir([symbol]),
+                    "children": [], "split_reason": None, "label": provisional, "why": "",
+                }
+                previous.setdefault("roots", []).append(lane_id)
+            assigned[symbol] = lane_id
+            new_lanes.append(lane_id)
 
     verbs._save_pins(repo, pins, assign=assign)  # stamps the introducing witness correctly (D6)
     authored.save_authored(repo, af)

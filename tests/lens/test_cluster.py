@@ -193,7 +193,9 @@ def test_augment_with_prior_places_one_size_zero_anchor_per_reused_leaf():
     """Structural guard (plan §3.1, Risks row "leidenalg changes node_sizes=0 behavior"): one anchor
     per previous leaf with >= 2 survivors, edge weight ω = alpha x mean positive induced weight to
     each survivor, node_size 0 (no CPM size penalty), a lone survivor gets no anchor, and alpha<=0
-    returns the graph unaugmented."""
+    returns the graph unaugmented. The node_sizes=0 semantics this construction relies on were
+    verified against leidenalg 0.12.0 (the pinned version at time of writing) -- if an upgrade
+    changes them, the lemma/phase-transition tests in this file fail loudly."""
     members = ["m0", "m1", "m2", "m3", "m4"]
     induced = {frozenset(("m0", "m1")): 2.0, frozenset(("m1", "m2")): 4.0}
     prior = {"m0": "L1", "m1": "L1", "m2": "L1", "m3": "L2", "m4": "L3"}  # L2/L3 lone -> no anchor
@@ -261,3 +263,37 @@ def _augmented_value(P, anchor_ids, aug_edges, size_of, gamma, placement):
         else:
             aug_part[choice].append(anchor)
     return _cpm_objective(aug_part, aug_edges, size_of, gamma)
+
+
+def test_augment_with_prior_leaf_norm_divides_omega_by_surviving_count():
+    """norm="leaf": each anchor edge carries omega / |L intersect M|, so every previous leaf's
+    total break-price is ~constant regardless of size (plan §3.1's alternate normalization, swept
+    in §5). Same fixture as the "member" test above -- only the edge weight changes."""
+    members = ["m0", "m1", "m2", "m3", "m4"]
+    induced = {frozenset(("m0", "m1")): 2.0, frozenset(("m1", "m2")): 4.0}
+    prior = {"m0": "L1", "m1": "L1", "m2": "L1", "m3": "L2", "m4": "L3"}
+    omega = 0.5 * (2.0 + 4.0) / 2
+
+    _nodes, aug_edges, _sizes, anchor_ids = cluster._augment_with_prior(
+        members, induced, prior, 0.5, norm="leaf")
+    anchor = anchor_ids[0]
+    expected = omega / 3  # L1 has three survivors
+    assert {m: aug_edges[frozenset((anchor, m))] for m in ("m0", "m1", "m2")} == {
+        "m0": expected, "m1": expected, "m2": expected}
+
+
+def test_warm_start_seeds_a_priorless_member_into_its_own_singleton_community():
+    """The realistic incremental shape: some members carry a previous leaf, some are genuinely
+    new. Each new member must seed its OWN fresh warm-start community -- never a previous leaf's
+    -- so the prior cannot bias placement of code Leiden has not seen before; the anchor seeds
+    into its leaf's community."""
+    members = ["m0", "m1", "m2", "m3"]
+    induced = {frozenset(("m0", "m1")): 2.0, frozenset(("m2", "m3")): 2.0}
+    prior = {"m0": "L1", "m1": "L1"}  # m2/m3 genuinely new -- absent from the prior
+    _g, aug_nodes, node_sizes, init, n_real = cluster._leiden_graph_prior(members, induced, prior, 0.5)
+    assert n_real == 4
+    assert init[0] == init[1]                    # L1's members share one seeded community
+    assert init[2] != init[3]                    # each new member is its own singleton
+    assert init[2] != init[0] and init[3] != init[0]
+    assert aug_nodes[4] == "__prioranchor__::L1" and init[4] == init[0]  # anchor joins its leaf
+    assert node_sizes == [1, 1, 1, 1, 0]

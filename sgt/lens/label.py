@@ -3,7 +3,7 @@ from its members, cached by member-hash so a cluster whose membership is unchang
 ("dirty nodes only"). Promoted from `experiments/patch_clustering/label.py` (empirically validated
 cost/quality on this repo's own history, see [[experiments-patch-clustering-findings]]), with two
 changes: the client comes from `sgt.config.get_client` instead of ad hoc `.env` parsing (plan D6),
-and every label has a deterministic offline fallback (`_fallback_label`) so the tree never depends
+and every label has a deterministic offline fallback (`fallback_label`) so the tree never depends
 on network/API availability to exist -- only to be *named well*.
 
 Cache entries are tagged `"source": "llm"` or `"source": "fallback"`. A cache hit only short-
@@ -119,7 +119,7 @@ _DOC_EXT = (".md", ".rst", ".txt", ".toml", ".yaml", ".yml", ".cfg", ".ini", ".j
             ".lock", ".html", ".css")
 
 
-def _fallback_label(members: list[str]) -> FeatureLabel:
+def fallback_label(members: list[str]) -> FeatureLabel:
     """Deterministic, offline, free, and *readable* -- and it names the cluster's *kind*, not just
     its first files, so a docs cluster doesn't masquerade as a code feature:
       - real code symbols present  -> the leading symbol names ("get_client get_model load_env")
@@ -234,7 +234,7 @@ class Labeler:
             out, source = self._request(prompt), "llm"
         except Exception as e:
             self._note_failure(e)
-            out, source = _fallback_label(members), "fallback"
+            out, source = fallback_label(members), "fallback"
         self.cache[key] = {**out.model_dump(), "source": source}
         return out
 
@@ -332,7 +332,7 @@ class Labeler:
                 out = batch_out[local_i]
                 source = "llm"
                 if out is None:
-                    out, source = _fallback_label(members), "fallback"
+                    out, source = fallback_label(members), "fallback"
                 entry = {**out.model_dump(), "source": source}
                 if weights is not None:  # leaf: anchor the drift budget at this generation
                     entry["gen_members"] = sorted(members)

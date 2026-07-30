@@ -119,3 +119,36 @@ def test_run_end_to_end_against_a_real_repo_reports_all_sections(tmp_path):
     assert report["cohesion"]["n_leaves_scored"] >= 0
     assert 0.0 <= report["cross_feature_edge_mass"] <= 1.0
     assert report["greene_stability"]["continuation_rate"] == 1.0  # no history moved since build_map
+
+
+def test_plurality_agreement_is_one_for_identical_cuts_and_none_when_disjoint():
+    old = {"L1": ["a", "b"], "L2": ["c"]}
+    assert harness.plurality_agreement(old, {"N1": ["a", "b"], "N2": ["c"]}) == 1.0
+    assert harness.plurality_agreement(old, {"N1": ["z"]}) is None
+
+
+def test_plurality_agreement_charges_a_shattered_leaf_by_its_plurality():
+    """L1's four members split 2/2 across two new leaves: the plurality new-leaf keeps 2 of 4."""
+    old = {"L1": ["a", "b", "c", "d"]}
+    new = {"N1": ["a", "b"], "N2": ["c", "d"]}
+    assert harness.plurality_agreement(old, new) == 0.5
+
+
+def test_variation_of_information_zero_iff_identical_and_one_bit_for_an_even_split():
+    """Hand-computed anchors for the Meilă VI: identical partitions -> 0.0 exactly; one cluster
+    split evenly in two -> H(new|old) + H(old|new) = 1 bit exactly (both sides exact in binary
+    float, so equality is safe)."""
+    old = {"L1": ["a", "b", "c", "d"]}
+    assert harness.variation_of_information(old, {"N1": ["a", "b", "c", "d"]}) == 0.0
+    assert harness.variation_of_information(old, {"N1": ["a", "b"], "N2": ["c", "d"]}) == 1.0
+
+
+def test_spurious_churn_counts_a_death_whose_members_reappear_as_a_birth():
+    """A death whose member set Jaccard-matches a born leaf >= theta is a rename the identity
+    layer dropped -- the churn number the temporal prior is meant to suppress."""
+    prev = {"OLD": frozenset({"a", "b", "c"})}
+    cur = {"NEW": frozenset({"a", "b", "c"})}
+    events = [{"event": "death", "feature_id": "OLD"}, {"event": "birth", "feature_id": "NEW"}]
+    assert harness.spurious_churn(events, prev, cur) == 1
+    assert harness.spurious_churn([{"event": "death", "feature_id": "OLD"}], prev,
+                                  {"N": frozenset({"z"})}) == 0

@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from sgt import state
 from sgt.config import get_client, get_model
 from sgt.core.op import is_content_bearing
-from sgt.intent.segment import Run, feature_runs, segment_runs
+from sgt.intent.segment import Run, feature_runs, resolve_feature_spec, segment_runs
 
 EFFORT = "low"
 MAX_RUNS = 60  # keeps the per-feature prompt bounded on a long-lived feature; a feature with more
@@ -188,6 +188,16 @@ class SegmentThemer:
         for i, (_label, runs) in enumerate(items):
             frozen, window = _split_window(runs, prior_records[i])
             split[i] = (frozen, window)
+            rec = prior_records[i]
+            # An unchanged, llm-sourced tail is spliced through verbatim: re-deriving it would
+            # demote a single-run (or over-`MAX_RUNS`) window to the deterministic fallback --
+            # label churn on a pure no-op rebuild. Gated on source == "llm" so a fallback-sourced
+            # tail still re-enters the live window and gets the retry-on-fallback policy (the
+            # same gate the cache-hit path enforces below).
+            if (rec and window and rec[-1].get("source") == "llm"
+                    and {r.commit_sha for r in window} == set(rec[-1].get("commit_shas", []))):
+                results[i] = frozen + rec[-1:]
+                continue
             if len(window) <= 1 or len(window) > MAX_RUNS:
                 results[i] = frozen + self._fallback(window)
                 continue
@@ -257,17 +267,8 @@ def _resolve_recut(spec: str | None, nodes: dict) -> set[str]:
     id *prefix* (`f-`-prefixed or the bare hex the graph prints), else a case-insensitive feature
     label -- the same resolution `resolve_checkpoint` uses. An unresolved/ambiguous spec re-cuts
     nothing (the incremental tail path stays in effect); `None` re-cuts nothing."""
-    if not spec:
-        return set()
-    leaves = {nid for nid, nd in nodes.items() if not nd.get("children")}
-    if spec in leaves:
-        return {spec}
-    hits = [nid for nid in leaves if nid.startswith(spec) or nid.startswith("f-" + spec)]
-    if len(hits) == 1:
-        return set(hits)
-    want = spec.strip().lower()
-    labels = [nid for nid in leaves if nodes[nid].get("label", "").strip().lower() == want]
-    return set(labels) if len(labels) == 1 else set()
+    fid = resolve_feature_spec(spec, nodes) if spec else None
+    return {fid} if fid else set()
 
 
 def build_segments(repo: str | Path, recut: str | None = None) -> dict[str, list[dict]]:

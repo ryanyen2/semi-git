@@ -209,7 +209,7 @@ def _label_churn(prev_labels: dict[str, str], cur_labels: dict[str, str]) -> dic
     return {"common": len(common), "renamed": renamed}
 
 
-def replay(repo: str | Path, window: int = 30) -> dict:
+def replay(repo: str | Path, window: int = 30, alpha: float = 0.0) -> dict:
     """Phase 0 replay protocol (plan §4): reconstruct the op store at each commit of a contiguous
     tail window (the last `window` commits) and run the *production* incremental `tree.build` at
     each, feeding the previous commit's result as `previous` -- the exact path `sgt map` takes
@@ -222,8 +222,11 @@ def replay(repo: str | Path, window: int = 30) -> dict:
     production incremental path" means one commit at a time, so each transition is a real
     small-edit incremental splice. A sparse sample (points thousands of ops apart) would make every
     step a near-total recluster and measure the sampling gap, not incremental stability. The
-    window's first commit is cold-seeded (`previous=None`, a full resplit -- the natural seed); the
-    measured transitions are all the adjacent steps after it.
+    window's first commit is cold-seeded with an explicit empty `previous` (a full resplit -- the
+    natural seed; `previous=None` would make `build` load the repo's *current* persisted tree and
+    contaminate every replayed number with future information); the measured transitions are all
+    the adjacent steps after it. `alpha` is threaded to `build` as `stability_alpha` -- the default
+    0.0 IS the documented prior-free baseline; the α sweep passes other values (`--alpha`).
 
     Faithful *and* read-only: the incremental path reads the fused-graph snapshot of the previous
     build (`tree._load_fused_snapshot`, normally the on-disk cache keyed by tree fingerprint). Here
@@ -245,7 +248,7 @@ def replay(repo: str | Path, window: int = 30) -> dict:
     all_ops = opindex.index_ops(repo)
     shas = [sha for sha, _parent, _subj in gb.history()]  # oldest-first
     if len(shas) < 2:
-        return {"repo": str(repo), "alpha": getattr(cluster, "STABILITY_ALPHA", 0.0), "points": [],
+        return {"repo": str(repo), "alpha": alpha, "points": [],
                 "note": "fewer than 2 commits -- nothing to replay"}
     points = shas[-window:]
 
@@ -254,7 +257,8 @@ def replay(repo: str | Path, window: int = 30) -> dict:
     tree._load_fused_snapshot = lambda _repo, fingerprint: snap_store.get(fingerprint)
     labeler = _mock_labeler(repo)
 
-    prev_result: dict | None = None
+    prev_result: dict = {"nodes": {}}  # explicit empty previous = build's first-build path; None
+    # would load the repo's current persisted tree and contaminate the seed with future information
     prev_leaves: dict = {}
     prev_labels: dict[str, str] = {}
     steps: list[dict] = []
@@ -265,7 +269,8 @@ def replay(repo: str | Path, window: int = 30) -> dict:
             ideal_s = ideal_for_ref(repo, sha)
 
             t0 = perf_counter()
-            result = tree.build(repo, ops_s, ideal_s, previous=prev_result, refresh_caches=False, head=sha)
+            result = tree.build(repo, ops_s, ideal_s, previous=prev_result, stability_alpha=alpha,
+                                refresh_caches=False, head=sha)
             t_build = perf_counter()
             cur_leaves = tree._leaf_members(result["nodes"])
             cur_labels = _measure_labels(result, ops_s, labeler)  # graded reuse; does not mutate result
@@ -283,7 +288,7 @@ def replay(repo: str | Path, window: int = 30) -> dict:
                 "llm_calls": labeler.calls,
                 "wall_clock_s": {"build": round(t_build - t0, 3), "label": round(t_label - t_build, 3)},
             }
-            if prev_result is not None:
+            if steps:  # transition metrics start at the second point; the seed has no prior cut
                 events = result["identity_events"]
                 step["events_by_type"] = {
                     kind: sum(1 for e in events if e["event"] == kind)
@@ -300,7 +305,7 @@ def replay(repo: str | Path, window: int = 30) -> dict:
     finally:
         tree._load_fused_snapshot = orig_load
 
-    return {"repo": str(repo), "alpha": getattr(cluster, "STABILITY_ALPHA", 0.0), "n_points": len(points), "points": steps}
+    return {"repo": str(repo), "alpha": alpha, "n_points": len(points), "points": steps}
 
 
 def _measure_labels(result: dict, ops: list, labeler) -> dict[str, str]:
@@ -344,9 +349,14 @@ def run(repo: str | Path) -> dict:
 def main(argv: list[str]) -> int:
     if "--replay" in argv:
         rest = [a for a in argv if a != "--replay"]
+        alpha = 0.0
+        if "--alpha" in rest:
+            i = rest.index("--alpha")
+            alpha = float(rest[i + 1])
+            del rest[i:i + 2]
         repos = [Path(a) for a in rest] or [Path.cwd()]
         for repo in repos:
-            print(json.dumps(replay(repo), indent=2, sort_keys=True))
+            print(json.dumps(replay(repo, alpha=alpha), indent=2, sort_keys=True))
         return 0
     repos = [Path(a) for a in argv] or [Path.cwd()]
     for repo in repos:

@@ -127,15 +127,15 @@ def test_label_super_names_a_subsystem_from_child_labels(tmp_path, monkeypatch):
     assert labeler.calls == 1
 
 
-def test_fallback_label_is_deterministic_and_derived_from_dominant_dir():
+def testfallback_label_is_deterministic_and_derived_from_dominant_dir():
     members = ["sgt/core/op.py::Op", "sgt/core/ideal.py::Ideal"]
-    first = label_mod._fallback_label(members)
-    second = label_mod._fallback_label(members)
+    first = label_mod.fallback_label(members)
+    second = label_mod.fallback_label(members)
     assert first == second
     assert "sgt/core" in first.rationale
 
 
-def test_fallback_label_never_leaks_residue_ids_or_null_bytes():
+def testfallback_label_never_leaks_residue_ids_or_null_bytes():
     """The offline path is the common case when no key is configured, so it must be *readable*: a
     cluster of pure fold artifacts (residue/anchor, embedded NULs from byte-native addressing) must
     never surface as a raw `__residue__::\\x00HEAD\\x00` id -- it reads as `(structural)` glue,
@@ -143,19 +143,19 @@ def test_fallback_label_never_leaks_residue_ids_or_null_bytes():
     members = ["sgt/intent/__init__.py::__residue__::\x00HEAD\x00",
                "sgt/intent/resolve.py::__residue__::Candidate",
                "sgt/intent/x.py::__anchor__::a"]
-    lbl = label_mod._fallback_label(members).label
+    lbl = label_mod.fallback_label(members).label
     assert "__residue__" not in lbl and "__anchor__" not in lbl and "\x00" not in lbl
     assert "structural" in lbl and "sgt/intent" in lbl
 
 
-def test_fallback_label_names_kind_not_first_file():
+def testfallback_label_names_kind_not_first_file():
     # a whole-file doc/config cluster reads as its KIND, not the first filename (the "why is
     # README.md a feature" fix) -- a 91-file docs group shouldn't masquerade as one code feature
-    lbl = label_mod._fallback_label(
+    lbl = label_mod.fallback_label(
         ["docs/guide/getting-started.md", "docs/guide/workflows.md", "docs/guide/x.md"]).label
     assert lbl.startswith("docs & config") and "getting-started" not in lbl
     # real symbols win over any residue members mixed in, and over doc files
-    assert label_mod._fallback_label(
+    assert label_mod.fallback_label(
         ["a.py::__anchor__::z", "a.py::foo", "a.py::bar", "README.md"]).label == "bar foo"
 
 

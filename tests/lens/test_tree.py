@@ -793,3 +793,27 @@ def test_label_tree_offline_fallback_is_deterministic(tmp_path, monkeypatch):
 
     assert all(lbl for lbl in labels_of(a).values())  # every node named, no crash offline
     assert labels_of(a) == labels_of(b)  # deterministic fallback
+
+
+def test_internal_dirty_leaves_fires_at_the_max_of_floor_and_fraction_threshold():
+    """The Phase C trigger's exact boundary: sum |dw| over a leaf's internal pairs must reach
+    max(abs_floor, frac x sum w_old). Below either bar -> clean; at the bar -> dirty (>= is
+    inclusive); a cross-leaf pair never counts toward any leaf's internal delta. Fixture weights
+    are exact binary floats so the boundary comparisons are not at the mercy of rounding."""
+    leaf_of = {"a": "L", "b": "L", "c": "M", "d": "M"}
+    pair = frozenset(("a", "b"))
+    # floor-dominated (old_internal 0.25 -> frac term 0.0625): delta 0.375 < 0.5 floor -> clean
+    assert tree._internal_dirty_leaves(leaf_of, {pair: 0.25}, {pair: 0.625},
+                                       frac=0.25, abs_floor=0.5) == set()
+    # delta 0.5 == floor -> dirty
+    assert tree._internal_dirty_leaves(leaf_of, {pair: 0.25}, {pair: 0.75},
+                                       frac=0.25, abs_floor=0.5) == {"L"}
+    # fraction-dominated (old_internal 8.0 -> threshold 2.0): delta 1.5 -> clean, 2.0 -> dirty
+    assert tree._internal_dirty_leaves(leaf_of, {pair: 8.0}, {pair: 6.5},
+                                       frac=0.25, abs_floor=0.5) == set()
+    assert tree._internal_dirty_leaves(leaf_of, {pair: 8.0}, {pair: 6.0},
+                                       frac=0.25, abs_floor=0.5) == {"L"}
+    # a cross-leaf edge changing (a-c spans L and M) dirties no one via the INTERNAL trigger
+    cross = frozenset(("a", "c"))
+    assert tree._internal_dirty_leaves(leaf_of, {cross: 0.0}, {cross: 9.0},
+                                       frac=0.25, abs_floor=0.5) == set()
