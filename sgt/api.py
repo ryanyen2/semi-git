@@ -1040,7 +1040,7 @@ def map_view(repo) -> dict:
     # feature over a leaf's symbols, that leaf shows the authored label + `af-` id, not the cluster's.
     # Guarded on presence so a repo with no authored features projects byte-identically to before.
     from sgt.lens.authored import load_authored
-    from sgt.lens.label import _fallback_label
+    from sgt.lens.label import fallback_label
     from sgt.lens.tree import _authored_leaf_claims
     authored_claims = _authored_leaf_claims(nodes, load_authored(repo))
 
@@ -1052,7 +1052,7 @@ def map_view(repo) -> dict:
         # Derive the same deterministic, offline name the labeler's own fallback uses instead.
         label = nd.get("label") or ""
         if not label or label == nid:
-            label = _fallback_label(nd.get("members", [])).label
+            label = fallback_label(nd.get("members", [])).label
         row = {
             "id": nid,
             "label": label,

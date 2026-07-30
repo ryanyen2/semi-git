@@ -242,3 +242,76 @@ def test_build_segments_no_client_writes_deterministic(tmp_path, monkeypatch):
     out = theme_segment.build_segments(tmp_path)
     assert "F-A" in out
     assert all(r["source"] == "fallback" for r in out["F-A"])
+
+
+def test_no_change_rebuild_preserves_an_llm_single_run_tail_chapter(tmp_path, monkeypatch):
+    """Idempotence: a second build with zero new commits must leave the persisted record
+    byte-identical. The incremental tail re-cut previously re-derived the window, and a
+    single-run window skips the LLM -- demoting the tail chapter's LLM label to the raw
+    commit subject ("fallback") on a pure no-op rebuild."""
+    runs, by_id = _four_commit_feature(tmp_path)
+    shas = [r.commit_sha for r in runs]
+    record = [
+        {"commit_shas": shas[:3], "label": "Scaffold The Thing", "rationale": "r", "source": "llm"},
+        {"commit_shas": shas[3:], "label": "Polish The Thing", "rationale": "r", "source": "llm"},
+    ]
+    themer = _themer_with(monkeypatch, tmp_path, RuntimeError("no network"))
+    recs = themer.segment_feature("F-A", runs, by_id, lambda s: None, record=record)
+    assert recs == record
+
+
+def test_no_change_rebuild_preserves_an_llm_multi_run_tail_chapter(tmp_path, monkeypatch):
+    """Same idempotence for a multi-run tail: an unchanged window must splice the persisted
+    chapter through verbatim rather than re-deriving it (an offline rebuild demotes it to
+    fallback; an online one re-pays an LLM call for a cut it already has)."""
+    runs, by_id = _four_commit_feature(tmp_path)
+    shas = [r.commit_sha for r in runs]
+    record = [
+        {"commit_shas": shas[:2], "label": "Scaffold The Thing", "rationale": "r", "source": "llm"},
+        {"commit_shas": shas[2:], "label": "Polish The Thing", "rationale": "r", "source": "llm"},
+    ]
+    themer = _themer_with(monkeypatch, tmp_path, RuntimeError("no network"))
+    recs = themer.segment_feature("F-A", runs, by_id, lambda s: None, record=record)
+    assert recs == record
+
+
+def test_fallback_sourced_tail_chapter_still_gets_the_llm_retry(tmp_path, monkeypatch):
+    """The verbatim splice is gated on source == "llm": an unchanged but fallback-sourced tail
+    (a record persisted offline) must still re-enter the live window so a now-available client
+    upgrades it -- the module's retry-on-fallback policy, same gate as the cache-hit path."""
+    runs, by_id = _four_commit_feature(tmp_path)
+    shas = [r.commit_sha for r in runs]
+    shas8 = [s[:8] for s in shas]
+    record = [
+        {"commit_shas": shas[:2], "label": "Scaffold The Thing", "rationale": "r", "source": "llm"},
+        {"commit_shas": shas[2:], "label": "feat(x): step 2", "rationale": "one commit", "source": "fallback"},
+    ]
+    plan = SegmentPlan(segments=[
+        SegmentGroup(label="Polish", rationale="p", commit_shas=[shas8[2], shas8[3]]),
+    ])
+    themer = _themer_with(monkeypatch, tmp_path, plan)
+    recs = themer.segment_feature("F-A", runs, by_id, lambda s: None, record=record)
+    assert recs[0] == record[0]                          # frozen prefix untouched
+    assert all(r["source"] == "llm" for r in recs[1:])   # tail was retried, not spliced
+    assert [r["label"] for r in recs[1:]] == ["Polish"]
+
+
+def test_resolve_recut_resolution_branches():
+    """`--recut <spec>` resolution: exact leaf id, unique id prefix (bare hex or `f-`-prefixed),
+    case-insensitive unique label; ambiguity or no match silently resolves to nothing (the
+    incremental path stays in effect); non-leaf nodes are never recut targets."""
+    nodes = {
+        "f-abc111": _leaf([], "x") | {"label": "Login Flow"},
+        "f-abd222": _leaf([], "x") | {"label": "Search"},
+        "f-xyz333": _leaf([], "x") | {"label": "search"},
+        "n-parent": _leaf([], "x") | {"label": "Parent", "children": ["f-abc111"]},
+    }
+    resolve = theme_segment._resolve_recut
+    assert resolve(None, nodes) == set()
+    assert resolve("f-abc111", nodes) == {"f-abc111"}   # exact id
+    assert resolve("abc", nodes) == {"f-abc111"}        # unique bare-hex prefix
+    assert resolve("ab", nodes) == set()                # ambiguous prefix -> nothing
+    assert resolve("login flow", nodes) == {"f-abc111"} # case-insensitive label
+    assert resolve("search", nodes) == set()            # ambiguous label -> nothing
+    assert resolve("nope", nodes) == set()              # no match
+    assert resolve("n-parent", nodes) == set()          # a non-leaf is never a recut target

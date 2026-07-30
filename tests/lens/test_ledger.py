@@ -262,3 +262,28 @@ def test_new_lane_id_is_stable_across_two_independent_identical_saves(tmp_path):
         return ledger.assign_at_save(root, ideal, Store(root).all_ops())["assigned"]["island.py::omega"]
 
     assert seed(tmp_path / "clone_a") == seed(tmp_path / "clone_b")
+
+
+def test_new_lane_fallback_reuses_a_surviving_authored_record(tmp_path):
+    """Re-entry of a previously-minted symbol (deleted, then re-added while still disconnected):
+    the content-addressed id collides with the surviving register record BY DESIGN, so the mint
+    must reuse that record -- mirroring the attach path's `if aid not in af` guard. Overwriting
+    instead resets the CRDT clock and silently drops the label and every member added since (a
+    peer's `sgt move`, a `rename`), and sync then sees a rewrite, not a mergeable update."""
+    from dataclasses import replace
+
+    _build_and_map(tmp_path)
+    symbol = "island.py::omega"
+    lane_id = ledger._new_lane_id(symbol)
+    prior = replace(authored.create(["island.py::extra"], "My Lane"), id=lane_id)
+    authored.save_authored(tmp_path, {lane_id: prior})
+
+    (tmp_path / "island.py").write_text("def omega():\n    return 42\n", encoding="utf-8")
+    ideal = get(tmp_path)
+    out = ledger.assign_at_save(tmp_path, ideal, Store(tmp_path).all_ops())
+
+    assert out["assigned"][symbol] == lane_id
+    af = authored.load_authored(tmp_path)
+    assert af[lane_id].label == "My Lane"                    # survived the re-mint
+    assert "island.py::extra" in af[lane_id].live_members()  # previously-added member survived
+    assert symbol in af[lane_id].live_members()              # the re-entering symbol was added

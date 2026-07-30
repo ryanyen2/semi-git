@@ -372,19 +372,7 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
     op_leaf = tree_result["op_leaf"]
     nodes = tree_result["nodes"]
 
-    feature_id = feat_part if feat_part in nodes else None
-    if feature_id is None and feat_part:  # a unique feature-id *prefix* -- `f-`-prefixed or the bare hex the graph prints
-        prefix_hits = [nid for nid in nodes
-                       if (nid.startswith(feat_part) or nid.startswith("f-" + feat_part))
-                       and not nodes[nid]["children"]]
-        if len(prefix_hits) == 1:
-            feature_id = prefix_hits[0]
-    if feature_id is None:  # else a case-insensitive label match against leaf features
-        want_feat = feat_part.strip().lower()
-        matches = [nid for nid, nd in nodes.items()
-                   if not nd["children"] and nd.get("label", "").strip().lower() == want_feat]
-        if len(matches) == 1:
-            feature_id = matches[0]
+    feature_id = resolve_feature_spec(feat_part, nodes)
     if feature_id is None:
         return None
 
@@ -406,6 +394,25 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
         return None
     idx, seg = hits[0]
     return seg.op_ids, f"{label}@{idx}: {seg.label}"
+
+
+def resolve_feature_spec(spec: str, nodes: dict) -> str | None:
+    """Resolve a user-typed feature spec against `nodes`' leaf features: an exact leaf id, else a
+    unique id *prefix* (`f-`-prefixed or the bare hex the graph prints), else a unique
+    case-insensitive label match. `None` on no match or ambiguity -- the callers
+    (`resolve_checkpoint`, `sgt intent build --recut`) treat ambiguity as unresolved rather than
+    guessing. The ONE resolution algorithm both share, so a fix here cannot diverge between them."""
+    if not spec:
+        return None
+    leaves = {nid for nid, nd in nodes.items() if not nd.get("children")}
+    if spec in leaves:
+        return spec
+    hits = [nid for nid in leaves if nid.startswith(spec) or nid.startswith("f-" + spec)]
+    if len(hits) == 1:
+        return hits[0]
+    want = spec.strip().lower()
+    matches = [nid for nid in leaves if nodes[nid].get("label", "").strip().lower() == want]
+    return matches[0] if len(matches) == 1 else None
 
 
 def overlay_persisted(runs: list[Run], record: list[dict] | None) -> list[Segment]:

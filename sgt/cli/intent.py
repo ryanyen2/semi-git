@@ -23,7 +23,7 @@ from ._common import _emit_json, _fail_json
 
 _USAGE = ("usage: sgt intent list [--json] | "
           "sgt intent show <feature@n | theme-id | commit-sha> [--json] | "
-          "sgt intent build [--json] | "
+          "sgt intent build [--recut <feature>] [--json] | "
           "sgt intent relabel <feature@n> \"<intent>\" [--json] | "
           "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--json]\n"
           "  (rewind a single checkpoint with `sgt revert <feature>@<n>`)")
