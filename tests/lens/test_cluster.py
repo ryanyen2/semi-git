@@ -58,11 +58,11 @@ def test_hub_symbol_stripped_from_cochange_but_not_structural(tmp_path):
 
     # foo+shared were mined as one tangled op (foo calls shared) -- would be a cochange edge,
     # except shared is hub-stripped before pairs are formed.
-    assert frozenset({"a.py::foo", "hub.py::shared"}) not in cochange
+    assert ("a.py::foo", "hub.py::shared") not in cochange
     assert not cochange  # no other pair ever shares an op's footprint in this fixture
 
     # Hub-stripping only affects the co-change signal; the structural (calls) edge survives.
-    assert frozenset({"a.py::foo", "hub.py::shared"}) in structural
+    assert ("a.py::foo", "hub.py::shared") in structural
 
 
 def test_scope_edges_group_symbols_by_conventional_commit_scope():
@@ -81,7 +81,7 @@ def test_scope_edges_group_symbols_by_conventional_commit_scope():
 
     edges = cluster.scope_edges([op1, op2], subjects, nodes, hubs=set())
 
-    assert edges == {frozenset({"a.py::foo", "b.py::bar"}): 10.0}
+    assert edges == {("a.py::foo", "b.py::bar"): 10.0}
 
 
 def test_commit_edges_bind_symbols_sharing_a_provenance_sha():
@@ -94,7 +94,7 @@ def test_commit_edges_bind_symbols_sharing_a_provenance_sha():
 
     edges = cluster.commit_edges([op1, op2, op3], nodes, hubs=set())
 
-    assert edges == {frozenset({"a.py::foo", "b.py::bar"}): 1.0}  # scale/(size-1) = 1/1
+    assert edges == {("a.py::foo", "b.py::bar"): 1.0}  # scale/(size-1) = 1/1
 
 
 def test_commit_edges_exclude_hubs_and_mega_commits():
@@ -111,10 +111,10 @@ def test_path_edges_bind_symbols_in_the_same_file_and_respect_hubs_and_cap():
     # an entity and its file's residue live in one file -> a cohesion edge; a different file is disjoint.
     nodes = {"a.py::foo", "a.py::__residue__::foo", "b.py::bar"}
     edges = cluster.path_edges(nodes, hubs=set(), scale=1.0)
-    assert edges == {frozenset({"a.py::foo", "a.py::__residue__::foo"}): 1.0}
+    assert edges == {("a.py::__residue__::foo", "a.py::foo"): 1.0}
 
     three = {"a.py::x", "a.py::y", "a.py::z"}
-    assert cluster.path_edges(three, hubs={"a.py::z"}, scale=1.0) == {frozenset({"a.py::x", "a.py::y"}): 1.0}
+    assert cluster.path_edges(three, hubs={"a.py::z"}, scale=1.0) == {("a.py::x", "a.py::y"): 1.0}
     assert cluster.path_edges(three, hubs=set(), max_file=2) == {}  # 3-symbol file > cap
 
 
@@ -128,29 +128,29 @@ def test_hub_normalize_preserves_total_weight_and_demotes_high_degree_pairs():
     # "hub" touches three others; "solo" touches one other -- hub_normalize should shrink the
     # hub's edges relative to solo's, while the total weight is preserved.
     structural = {
-        frozenset({"hub", "a"}): 1.0,
-        frozenset({"hub", "b"}): 1.0,
-        frozenset({"hub", "c"}): 1.0,
-        frozenset({"solo", "d"}): 1.0,
+        ("a", "hub"): 1.0,
+        ("b", "hub"): 1.0,
+        ("c", "hub"): 1.0,
+        ("d", "solo"): 1.0,
     }
     normalized = cluster.hub_normalize(structural)
 
     total_before = sum(structural.values())
     total_after = sum(normalized.values())
     assert abs(total_before - total_after) < 1e-9
-    assert normalized[frozenset({"solo", "d"})] > normalized[frozenset({"hub", "a"})]
+    assert normalized[("d", "solo")] > normalized[("a", "hub")]
 
 
 def test_fuse_sums_overlapping_and_disjoint_keys():
-    a = {frozenset({"x", "y"}): 1.0}
-    b = {frozenset({"x", "y"}): 2.0, frozenset({"y", "z"}): 3.0}
+    a = {("x", "y"): 1.0}
+    b = {("x", "y"): 2.0, ("y", "z"): 3.0}
     fused = cluster._fuse(a, b)
-    assert fused == {frozenset({"x", "y"}): 3.0, frozenset({"y", "z"}): 3.0}
+    assert fused == {("x", "y"): 3.0, ("y", "z"): 3.0}
 
 
 def test_leiden_splits_two_disjoint_dense_pairs_into_two_communities():
     nodes = ["a", "b", "c", "d"]
-    weights = {frozenset({"a", "b"}): 5.0, frozenset({"c", "d"}): 5.0}
+    weights = {("a", "b"): 5.0, ("c", "d"): 5.0}
     parts = cluster._leiden(nodes, weights, gamma=0.1)
     membership = {n: i for i, part in enumerate(parts) for n in part}
     assert membership["a"] == membership["b"]
@@ -197,7 +197,7 @@ def test_augment_with_prior_places_one_size_zero_anchor_per_reused_leaf():
     verified against leidenalg 0.12.0 (the pinned version at time of writing) -- if an upgrade
     changes them, the lemma/phase-transition tests in this file fail loudly."""
     members = ["m0", "m1", "m2", "m3", "m4"]
-    induced = {frozenset(("m0", "m1")): 2.0, frozenset(("m1", "m2")): 4.0}
+    induced = {("m0", "m1"): 2.0, ("m1", "m2"): 4.0}
     prior = {"m0": "L1", "m1": "L1", "m2": "L1", "m3": "L2", "m4": "L3"}  # L2/L3 lone -> no anchor
     omega = 0.5 * (2.0 + 4.0) / 2  # alpha x mean positive induced weight
 
@@ -208,9 +208,9 @@ def test_augment_with_prior_places_one_size_zero_anchor_per_reused_leaf():
     anchor = anchor_ids[0]
     assert size_of[anchor] == 0  # zero-size => no CPM size penalty (the size-neutrality construction)
     assert all(size_of[m] == 1 for m in members)
-    assert {m: aug_edges[frozenset((anchor, m))] for m in ("m0", "m1", "m2")} == {
+    assert {m: aug_edges[cluster.edge_key(anchor, m)] for m in ("m0", "m1", "m2")} == {
         "m0": omega, "m1": omega, "m2": omega}
-    assert frozenset((anchor, "m3")) not in aug_edges  # anchor only bridges its own leaf's survivors
+    assert cluster.edge_key(anchor, "m3") not in aug_edges  # anchor only bridges its own leaf's survivors
 
     # alpha <= 0 => omega 0 => the graph is returned exactly as given, no anchors.
     n2, e2, s2, a2 = cluster._augment_with_prior(members, induced, prior, 0.0)
@@ -226,9 +226,9 @@ def test_augmented_cpm_optimum_equals_cpm_plus_omega_plurality():
     plurality community is the optimum rather than assuming it."""
     members = ["m0", "m1", "m2", "m3", "m4", "m5"]
     induced = {
-        frozenset(("m0", "m1")): 3.0, frozenset(("m1", "m2")): 2.0,
-        frozenset(("m3", "m4")): 4.0, frozenset(("m4", "m5")): 1.0,
-        frozenset(("m0", "m3")): 0.5,
+        ("m0", "m1"): 3.0, ("m1", "m2"): 2.0,
+        ("m3", "m4"): 4.0, ("m4", "m5"): 1.0,
+        ("m0", "m3"): 0.5,
     }
     prior = {"m0": "L1", "m1": "L1", "m2": "L1", "m3": "L2", "m4": "L2", "m5": "L3"}
     alpha, gamma = 0.5, 0.3
@@ -270,7 +270,7 @@ def test_augment_with_prior_leaf_norm_divides_omega_by_surviving_count():
     total break-price is ~constant regardless of size (plan §3.1's alternate normalization, swept
     in §5). Same fixture as the "member" test above -- only the edge weight changes."""
     members = ["m0", "m1", "m2", "m3", "m4"]
-    induced = {frozenset(("m0", "m1")): 2.0, frozenset(("m1", "m2")): 4.0}
+    induced = {("m0", "m1"): 2.0, ("m1", "m2"): 4.0}
     prior = {"m0": "L1", "m1": "L1", "m2": "L1", "m3": "L2", "m4": "L3"}
     omega = 0.5 * (2.0 + 4.0) / 2
 
@@ -278,7 +278,7 @@ def test_augment_with_prior_leaf_norm_divides_omega_by_surviving_count():
         members, induced, prior, 0.5, norm="leaf")
     anchor = anchor_ids[0]
     expected = omega / 3  # L1 has three survivors
-    assert {m: aug_edges[frozenset((anchor, m))] for m in ("m0", "m1", "m2")} == {
+    assert {m: aug_edges[cluster.edge_key(anchor, m)] for m in ("m0", "m1", "m2")} == {
         "m0": expected, "m1": expected, "m2": expected}
 
 
@@ -288,7 +288,7 @@ def test_warm_start_seeds_a_priorless_member_into_its_own_singleton_community():
     -- so the prior cannot bias placement of code Leiden has not seen before; the anchor seeds
     into its leaf's community."""
     members = ["m0", "m1", "m2", "m3"]
-    induced = {frozenset(("m0", "m1")): 2.0, frozenset(("m2", "m3")): 2.0}
+    induced = {("m0", "m1"): 2.0, ("m2", "m3"): 2.0}
     prior = {"m0": "L1", "m1": "L1"}  # m2/m3 genuinely new -- absent from the prior
     _g, aug_nodes, node_sizes, init, n_real = cluster._leiden_graph_prior(members, induced, prior, 0.5)
     assert n_real == 4

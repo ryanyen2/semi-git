@@ -50,6 +50,10 @@ TARGET_ARITY = (5, 9)  # desired child count per split (plan D2)
 GAMMA_LO = 1e-4
 GAMMA_HI = 1.0
 MAX_SEARCH_ITER = 20
+PLATEAU_LOG_WIDTH = 0.1  # the gamma search stops early on a repeated partition only once the log-
+# bracket is this narrow (all remaining probes within a ~1.1x gamma factor) -- a repeat while the
+# bracket is still wide just means the search hasn't reached the transition yet, not that the curve
+# is flat (a 2-clique graph repeats its one-blob partition for several probes before splitting).
 THETA = 0.5         # Greene member-overlap threshold for feature identity across runs (plan D5)
 MIN_EDGE_SIGNAL = 0.1  # a leaf-pair cross-edge below this weight is noise, not a real coupling --
 # used only to detect a *gain*/*loss* of significant coupling between two previous leaves
@@ -62,14 +66,21 @@ ABS_FLOOR = 0.5  # absolute floor for the internal-dirty trigger, so a small lea
 # 1.0). Threshold = max(ABS_FLOOR, INTERNAL_DIRTY_FRAC × old internal mass). PROVISIONAL: swept.
 
 
-def _induced(fused: dict, member_set: set[str]) -> dict:
-    return {pair: w for pair, w in fused.items() if all(x in member_set for x in pair)}
+def _induced(adj: dict, member_set: set[str]) -> dict:
+    """The subgraph induced on `member_set`, read off the adjacency index rather than by scanning
+    every fused edge: O(Σ degree over `member_set`) instead of O(|all edges|), which is what makes
+    a deep recursion of small-subtree splits cheap -- each level only ever touches its own edges."""
+    out: dict[tuple[str, str], float] = {}
+    for m in sorted(member_set):  # sorted => the output's edge order never depends on set hash order
+        for o, w in adj.get(m, ()):
+            if m < o and o in member_set:
+                out[(m, o)] = w
+    return out
 
 
 def _adjacency(fused: dict) -> dict[str, list[tuple[str, float]]]:
     adj: dict[str, list[tuple[str, float]]] = defaultdict(list)
-    for pair, w in fused.items():
-        a, b = tuple(pair)
+    for (a, b), w in fused.items():
         adj[a].append((b, w))
         adj[b].append((a, w))
     return adj
@@ -101,7 +112,7 @@ class SplitResult:
 
 
 def _split_once(
-    members: list[str], fused: dict, adj: dict, min_lane: int = MIN_LANE,
+    members: list[str], adj: dict, min_lane: int = MIN_LANE,
     target: tuple[int, int] = TARGET_ARITY, lo: float = GAMMA_LO, hi: float = GAMMA_HI,
     max_iter: int = MAX_SEARCH_ITER, prior_leaf_of: dict[str, str] | None = None,
     alpha: float = 0.0, norm: str = cluster.ANCHOR_NORM,
@@ -112,10 +123,19 @@ def _split_once(
     gamma); too many means too fine -- search coarser (lower gamma). Keeps the closest-to-target
     result seen across the search as a fallback when no gamma in range lands exactly in range.
 
+    The search stops early when a probe returns the identical partition as the probe before it
+    AND the bracket has already narrowed below `PLATEAU_LOG_WIDTH`: the bisection has collapsed
+    onto a flat stretch of the count-vs-gamma curve (typically the graph's own connected-component
+    floor, which no gamma can go below), and every further probe re-optimizes the same answer at
+    full Leiden cost -- on this repo's root graph 13 of 20 probes were byte-identical repeats.
+    Repeats never improve `best_gap` (strict `<`), so stopping reproduces the exhaustive search's
+    result whenever the plateau persists; the width guard keeps an early wide-bracket repeat (a
+    search still marching toward its transition) exploring as before.
+
     When `alpha > 0` and a `prior_leaf_of` map is given, the induced graph is augmented with the
     Phase B temporal prior (`cluster._leiden_graph_prior`) so the search resists gratuitously
     shattering a previous leaf; `alpha == 0` (the default) is the exact pre-prior path."""
-    induced = _induced(fused, set(members))
+    induced = _induced(adj, set(members))
     sorted_members = sorted(members)
     use_prior = bool(alpha > 0 and prior_leaf_of)
     if use_prior:  # augmented graph built once; only `gamma` changes across the search
@@ -128,6 +148,7 @@ def _split_once(
     best_big: list[list[str]] | None = None
     best_small: list[list[str]] = []
     best_gap = None
+    prev_parts: list[list[str]] | None = None
 
     for _ in range(max_iter):
         mid_log = (lo_log + hi_log) / 2
@@ -136,6 +157,9 @@ def _split_once(
             _leiden_partition_prior(g, aug_nodes, node_sizes, init, n_real, gamma)
             if use_prior else _leiden_partition(g, sorted_members, gamma)
         )
+        if parts == prev_parts and hi_log - lo_log < PLATEAU_LOG_WIDTH:
+            break  # plateau: same partition inside a collapsed bracket -- see docstring
+        prev_parts = parts
         big = sorted((p for p in parts if len(p) >= min_lane), key=lambda p: -len(p))
         small = [p for p in parts if len(p) < min_lane]
         count = len(big)
@@ -157,7 +181,7 @@ def _split_once(
 
 
 def _subdivide(
-    members: list[str], fused: dict, adj: dict, depth: int, max_depth: int,
+    members: list[str], adj: dict, depth: int, max_depth: int,
     min_lane: int = MIN_LANE, max_leaf: int = MAX_LEAF,
     prior_leaf_of: dict[str, str] | None = None, alpha: float = 0.0,
     norm: str = cluster.ANCHOR_NORM,
@@ -175,14 +199,14 @@ def _subdivide(
         node["split_reason"] = "max_leaf"
         return node
 
-    result = _split_once(members, fused, adj, min_lane=min_lane,
+    result = _split_once(members, adj, min_lane=min_lane,
                          prior_leaf_of=prior_leaf_of, alpha=alpha, norm=norm)
     if result.groups is None:
         node["split_reason"] = result.reason
         return node
 
     node["children"] = [
-        _subdivide(sorted(g), fused, adj, depth + 1, max_depth, min_lane, max_leaf,
+        _subdivide(sorted(g), adj, depth + 1, max_depth, min_lane, max_leaf,
                    prior_leaf_of, alpha, norm)
         for g in result.groups
     ]
@@ -207,7 +231,7 @@ def _resplit_real(
     vertex isn't in it, so it simply gets no anchor (a documented simplification -- pins are rare)."""
     contracted_nodes, contracted_fused, expansion = apply_must_link(real_members, real_fused, pins)
     contracted_adj = _adjacency(contracted_fused)
-    node = _subdivide(contracted_nodes, contracted_fused, contracted_adj, depth, max_depth,
+    node = _subdivide(contracted_nodes, contracted_adj, depth, max_depth,
                       min_lane, max_leaf, prior_leaf_of, alpha, norm)
     _expand_members(node, expansion)
     return node
@@ -225,17 +249,18 @@ def _splice(previous_nodes: dict, nid: str, depth: int) -> dict:
     }
 
 
-def _leaf_cross_edges(leaf_of: dict[str, str], fused: dict[frozenset, float]) -> dict[frozenset[str], float]:
+def _leaf_cross_edges(
+    leaf_of: dict[str, str], fused: dict[tuple[str, str], float],
+) -> dict[tuple[str, str], float]:
     """Roll `fused`'s symbol-pair edges up to leaf-pair totals, for whichever symbols `leaf_of`
     covers (cross-leaf pairs only). Used both sides of Phase 2's cross-edge dirtying diff -- once
     against the cached previous fused graph, once against the current one, same `leaf_of`."""
-    totals: dict[frozenset[str], float] = defaultdict(float)
-    for pair, w in fused.items():
-        a, b = tuple(pair)
+    totals: dict[tuple[str, str], float] = defaultdict(float)
+    for (a, b), w in fused.items():
         la, lb = leaf_of.get(a), leaf_of.get(b)
         if la is None or lb is None or la == lb:
             continue
-        totals[frozenset((la, lb))] += w
+        totals[(la, lb) if la < lb else (lb, la)] += w
     return dict(totals)
 
 
@@ -269,7 +294,7 @@ def _internal_dirty_leaves(
     delta: dict[str, float] = defaultdict(float)         # Σ |Δw| over pairs internal to each leaf
     old_internal: dict[str, float] = defaultdict(float)  # Σ w_old over pairs internal to each leaf
     for pair in old_fused.keys() | new_fused.keys():
-        a, b = tuple(pair)
+        a, b = pair
         la, lb = old_leaf_of.get(a), old_leaf_of.get(b)
         if la is None or la != lb:  # only pairs internal to one previous leaf
             continue
@@ -283,7 +308,7 @@ def _internal_dirty_leaves(
 
 
 def _dirty_subdivide(
-    members: list[str], real_fused: dict, real_adj: dict, depth: int, max_depth: int,
+    members: list[str], real_adj: dict, depth: int, max_depth: int,
     previous_nodes: dict, prev_id: str | None, dirty_leaves: set[str], pins: Pins,
     min_lane: int = MIN_LANE, max_leaf: int = MAX_LEAF,
     prior_leaf_of: dict[str, str] | None = None, alpha: float = 0.0,
@@ -310,8 +335,11 @@ def _dirty_subdivide(
             return _splice(previous_nodes, prev_id, depth)
 
     if prev_node is None or not prev_node["children"]:
-        return _resplit_real(sorted(members), real_fused, pins, depth, max_depth, min_lane, max_leaf,
-                             prior_leaf_of, alpha, norm)
+        # Hand the resplit only this subtree's own induced edges (read off the adjacency index),
+        # not the whole fused graph -- `apply_must_link` scans every edge it is given, and a full
+        # scan per resplit subtree was the warm build's single largest cost.
+        return _resplit_real(sorted(members), _induced(real_adj, cur), pins, depth, max_depth,
+                             min_lane, max_leaf, prior_leaf_of, alpha, norm)
 
     prev_children_ids = prev_node["children"]
     assigned: dict[str, set[str]] = {
@@ -328,7 +356,7 @@ def _dirty_subdivide(
 
     children = [
         _dirty_subdivide(
-            sorted(assigned[cid]), real_fused, real_adj, depth + 1, max_depth,
+            sorted(assigned[cid]), real_adj, depth + 1, max_depth,
             previous_nodes, cid, dirty_leaves, pins, min_lane, max_leaf,
             prior_leaf_of, alpha, norm,
         )
@@ -353,13 +381,14 @@ def _load_fused_snapshot(repo: Path, fingerprint: str) -> dict | None:
     snap = state.load_json(repo, "fused_snapshot")
     if snap is None or snap.get("fingerprint") != fingerprint:
         return None
-    return {frozenset((a, b)): w for a, b, w in snap["fused"]}
+    return {(a, b): w for a, b, w in snap["fused"]}  # entries persisted sorted -- key is canonical
 
 
-def _save_fused_snapshot(repo: Path, fingerprint: str, fused: dict[frozenset, float]) -> None:
+def _save_fused_snapshot(repo: Path, fingerprint: str, fused: dict[tuple[str, str], float]) -> None:
     state.save_json(repo, "fused_snapshot", {
         "fingerprint": fingerprint,
-        "fused": [[*sorted(pair), w] for pair, w in fused.items()],
+        "fused": [[a, b, w] for (a, b), w in fused.items()],  # keys already sorted; same on-disk
+        # shape as the frozenset-keyed writer this replaced, so existing snapshots stay readable
     })
 
 
@@ -491,24 +520,42 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
     leaf-assigned symbol (fully dead, or off-chain) gets no entry -- this is the hook U13's blame
     (`sym -> max-op-in-I -> feature`) and feature verbs (`merge` unions "op-sets") consume."""
     member_leaf = leaf_member_index(nodes)
+    # Footprint symbols repeat across thousands of ops; resolve each symbol's vote once (memoized)
+    # and count votes in a plain dict -- a Counter per op was this function's dominant cost.
+    resolved: dict[str, str | None] = {}
     op_leaf: dict[str, str] = {}
     for op in ops:
-        votes = Counter(
-            leaf for sym in op.footprint
-            if (leaf := _member_leaf_for(sym, member_leaf)) is not None
-        )
+        if len(op.footprint) == 1:  # the overwhelmingly common op shape: no vote to tally
+            (sym,) = op.footprint
+            try:
+                leaf = resolved[sym]
+            except KeyError:
+                leaf = resolved[sym] = _member_leaf_for(sym, member_leaf)
+            if leaf is not None:
+                op_leaf[op.id] = leaf
+            continue
+        votes: dict[str, int] = {}
+        for sym in op.footprint:
+            try:
+                leaf = resolved[sym]
+            except KeyError:
+                leaf = resolved[sym] = _member_leaf_for(sym, member_leaf)
+            if leaf is not None:
+                votes[leaf] = votes.get(leaf, 0) + 1
         if not votes:
             continue
-        top_count = votes.most_common(1)[0][1]
-        winner = min(leaf for leaf, count in votes.items() if count == top_count)
-        op_leaf[op.id] = winner
+        if len(votes) == 1:
+            op_leaf[op.id] = next(iter(votes))
+            continue
+        top_count = max(votes.values())
+        op_leaf[op.id] = min(leaf for leaf, count in votes.items() if count == top_count)
     return op_leaf
 
 
 def fused_graph_with_hubs(
     repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
     head: str | None = None,
-) -> tuple[list[str], dict[frozenset, float], set[str]]:
+) -> tuple[list[str], dict[tuple[str, str], float], set[str]]:
     """`fused_graph`, additionally returning the hub-suppressed symbol set `cluster.signals`
     computed. The save-time ledger's local move (`sgt.lens.ledger.assign_at_save`) needs both the
     fused graph *and* `hubs` from ONE `cluster.signals` call -- a second `signals`/`fused_graph`
@@ -533,7 +580,7 @@ def fused_graph_with_hubs(
 def fused_graph(
     repo: Path, ops: list[Op], ideal, *, refresh_structural_cache: bool = True,
     head: str | None = None,
-) -> tuple[list[str], dict[frozenset, float]]:
+) -> tuple[list[str], dict[tuple[str, str], float]]:
     """The fused (structural ⊕ co-change ⊕ scope ⊕ co-commit ⊕ path) coupling graph over every
     alive symbol -- shared by `build` (the full recursive tree) and `sgt.lens.verbs.plan_split` (a
     one-off split of a single feature's induced subgraph), so both start from the identical signal.
@@ -552,20 +599,19 @@ def fused_graph(
     return nodes, fused
 
 
-def feature_edges(nodes: dict, fused: dict[frozenset, float]) -> list[dict]:
+def feature_edges(nodes: dict, fused: dict[tuple[str, str], float]) -> list[dict]:
     """Roll the fused symbol-pair coupling graph up to leaf-feature pairs: for every `fused` edge
     whose two symbols land in different leaves, add its weight to that leaf pair's total. Used by
     `sgt.api.map_view` to expose cross-feature structural dependency edges (the same signal
     `plan_split` already reads, at feature-pair rather than symbol-pair granularity)."""
     member_leaf = leaf_member_index(nodes)
-    totals: dict[frozenset[str], float] = defaultdict(float)
-    for pair, w in fused.items():
-        a, b = tuple(pair)
+    totals: dict[tuple[str, str], float] = defaultdict(float)
+    for (a, b), w in fused.items():
         leaf_a, leaf_b = member_leaf.get(a), member_leaf.get(b)
         if leaf_a is None or leaf_b is None or leaf_a == leaf_b:
             continue
-        totals[frozenset((leaf_a, leaf_b))] += w
-    edges = [{"a": min(pair), "b": max(pair), "weight": w} for pair, w in totals.items()]
+        totals[(leaf_a, leaf_b) if leaf_a < leaf_b else (leaf_b, leaf_a)] += w
+    edges = [{"a": pair[0], "b": pair[1], "weight": w} for pair, w in totals.items()]
     edges.sort(key=lambda e: (-e["weight"], e["a"], e["b"]))
     return edges
 
@@ -714,7 +760,7 @@ def _build_root(
     )
     prev_root_id = previous["roots"][0] if previous.get("roots") else None
     return _dirty_subdivide(
-        all_nodes, fused, real_adj, 0, max_depth, previous_nodes, prev_root_id, dirty_leaves, pins,
+        all_nodes, real_adj, 0, max_depth, previous_nodes, prev_root_id, dirty_leaves, pins,
         prior_leaf_of=prior_leaf_of, alpha=alpha,
     )
 

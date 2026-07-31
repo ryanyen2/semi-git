@@ -49,7 +49,7 @@ def test_cohesion_omits_leaves_with_no_scored_commit_weight():
 
 def test_cross_feature_mass_zero_when_every_edge_stays_within_one_leaf():
     nodes = {"F1": {"children": [], "members": ["a.py::foo", "a.py::bar"]}}
-    fused = {frozenset(("a.py::foo", "a.py::bar")): 5.0}
+    fused = {("a.py::bar", "a.py::foo"): 5.0}
     assert harness.cross_feature_mass(nodes, fused) == 0.0
 
 
@@ -58,7 +58,7 @@ def test_cross_feature_mass_one_when_every_edge_crosses():
         "F1": {"children": [], "members": ["a.py::foo"]},
         "F2": {"children": [], "members": ["b.py::baz"]},
     }
-    fused = {frozenset(("a.py::foo", "b.py::baz")): 3.0}
+    fused = {("a.py::foo", "b.py::baz"): 3.0}
     assert harness.cross_feature_mass(nodes, fused) == 1.0
 
 

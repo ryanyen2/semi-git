@@ -66,6 +66,14 @@ ANCHOR_NORM = "member"  # anchor edge-weight normalization (plan §3.1). "member
 # break-price is ≈ω regardless of size. "member" is the shipping default.
 
 
+def edge_key(a: str, b: str) -> tuple[str, str]:
+    """The canonical key for an undirected symbol-pair edge: the sorted 2-tuple. Every edge map in
+    this module and `tree` is keyed this way -- a tuple is ~3x cheaper to build and hash than the
+    frozenset it replaced, and the hot producers (`combinations` over a sorted member list) emit
+    pairs already in canonical order, paying nothing at all."""
+    return (a, b) if a <= b else (b, a)
+
+
 def alive_nodes(ideal: Ideal, ops: list[Op]) -> set[str]:
     """Every content-bearing symbol with a live (non-`BOTTOM`) tip at `ideal`'s frontier -- the
     clustering graph's node universe. Mirrors `Ideal.covered_paths`'s liveness test, at symbol
@@ -107,17 +115,22 @@ def commit_scope(subject: str) -> str | None:
 def scope_edges(
     ops: list[Op], subjects: dict[str, str], nodes: set[str], hubs: set[str],
     scale: float = 10.0, max_scope: int = 80,
-) -> dict[frozenset, float]:
+) -> dict[tuple[str, str], float]:
     """Intent signal: symbols changed under the same declared scope, even in *different* ops --
     the density plain co-change lacks on a young repo. Weight is down-scaled by scope size so a
     broad scope contributes weak all-to-all glue, not a blob."""
     scope_syms: dict[str, set[str]] = defaultdict(set)
+    scope_of: dict[str, str | None] = {}  # per-sha parse memo: ops share provenance SHAs, so the
+    # regex runs once per commit rather than once per op
     for op in ops:
         scope = None
         for sha in op.provenance:
             subject = subjects.get(sha)
             if subject:
-                scope = commit_scope(subject)
+                if sha in scope_of:
+                    scope = scope_of[sha]
+                else:
+                    scope = scope_of[sha] = commit_scope(subject)
                 break
         if not scope:
             continue
@@ -125,20 +138,20 @@ def scope_edges(
             if sym in nodes and sym not in hubs:
                 scope_syms[scope].add(sym)
 
-    edges: dict[frozenset, float] = defaultdict(float)
+    edges: dict[tuple[str, str], float] = defaultdict(float)
     for members_set in scope_syms.values():
         members = sorted(members_set)
         if not (2 <= len(members) <= max_scope):
             continue
         w = scale / (len(members) - 1)
         for a, b in combinations(members, 2):
-            edges[frozenset((a, b))] += w
+            edges[(a, b)] += w  # combinations of a sorted list => (a, b) is already canonical
     return dict(edges)
 
 
 def commit_edges(
     ops: list[Op], nodes: set[str], hubs: set[str], scale: float = 1.0, max_commit: int = MAX_COMMIT,
-) -> dict[frozenset, float]:
+) -> dict[tuple[str, str], float]:
     """Co-commit (episode) signal: symbols advanced in the *same commit*, even when U2's def-use
     untangling split that commit into several single-symbol ops. This recovers the "I changed
     these together" grouping that per-op co-change loses to untangling -- on this repo 4850/4879
@@ -155,20 +168,20 @@ def commit_edges(
         for sha in op.provenance:
             commit_syms[sha].update(alive)
 
-    edges: dict[frozenset, float] = defaultdict(float)
+    edges: dict[tuple[str, str], float] = defaultdict(float)
     for members_set in commit_syms.values():
         members = sorted(members_set)
         if not (2 <= len(members) <= max_commit):
             continue
         w = scale / (len(members) - 1)
         for a, b in combinations(members, 2):
-            edges[frozenset((a, b))] += w
+            edges[(a, b)] += w
     return dict(edges)
 
 
 def path_edges(
     nodes: set[str], hubs: set[str], scale: float = PATH_SCALE, max_file: int = MAX_FILE,
-) -> dict[frozenset, float]:
+) -> dict[tuple[str, str], float]:
     """File-cohesion signal: symbols that live in the *same file*. On this miner 87% of alive
     symbols are `residue` (structurally isolated) and 72% get no co-change/co-commit/structural
     edge at all -- yet a file is a coherent unit a developer edits as a whole (a residue segment
@@ -183,18 +196,18 @@ def path_edges(
             continue
         file_syms[sym.split("::", 1)[0]].add(sym)
 
-    edges: dict[frozenset, float] = defaultdict(float)
+    edges: dict[tuple[str, str], float] = defaultdict(float)
     for members_set in file_syms.values():
         members = sorted(members_set)
         if not (2 <= len(members) <= max_file):
             continue
         w = scale / (len(members) - 1)
         for a, b in combinations(members, 2):
-            edges[frozenset((a, b))] += w
+            edges[(a, b)] += w
     return dict(edges)
 
 
-def hub_normalize(structural: dict[frozenset, float]) -> dict[frozenset, float]:
+def hub_normalize(structural: dict[tuple[str, str], float]) -> dict[tuple[str, str], float]:
     """Suppress structural hubs so a god-class / universal-import bus stops fusing unrelated
     features into one blob. Scales each edge by ``1/sqrt(deg(a)*deg(b))`` (bibliometric-style hub
     suppression) so a link to a universal hub counts for little while a focused feature-internal
@@ -202,12 +215,11 @@ def hub_normalize(structural: dict[frozenset, float]) -> dict[frozenset, float]:
     hubs rather than stripping their edges, which measurably held coverage better on this repo's
     own history (see the promoted-from experiment's findings)."""
     deg: dict[str, float] = defaultdict(float)
-    for pair, w in structural.items():
-        a, b = tuple(pair)
+    for (a, b), w in structural.items():
         deg[a] += w
         deg[b] += w
     raw = {
-        pair: w / (deg[tuple(pair)[0]] * deg[tuple(pair)[1]]) ** 0.5
+        pair: w / (deg[pair[0]] * deg[pair[1]]) ** 0.5
         for pair, w in structural.items()
     }
     total = sum(structural.values())
@@ -216,22 +228,21 @@ def hub_normalize(structural: dict[frozenset, float]) -> dict[frozenset, float]:
 
 
 def _fuse(*weight_maps: dict) -> dict:
-    out: dict[frozenset, float] = defaultdict(float)
+    out: dict[tuple[str, str], float] = defaultdict(float)
     for d in weight_maps:
         for k, v in d.items():
             out[k] += v
     return dict(out)
 
 
-def _leiden_graph(nodes: list[str], weights: dict[frozenset, float]) -> ig.Graph:
+def _leiden_graph(nodes: list[str], weights: dict[tuple[str, str], float]) -> ig.Graph:
     """Build the weighted igraph a CPM partition runs over. Split out from `_leiden` so a caller
     sweeping the same graph across several resolutions (`tree._split_once`'s gamma binary search,
     up to `MAX_SEARCH_ITER` probes) builds it once instead of rebuilding a byte-identical `ig.Graph`
     per probe -- only `resolution_parameter` changes between them, never the nodes or edges."""
     idx = {n: i for i, n in enumerate(nodes)}
     edges, ews = [], []
-    for pair, w in weights.items():
-        a, b = tuple(pair)
+    for (a, b), w in weights.items():
         if a in idx and b in idx and w > 0:
             edges.append((idx[a], idx[b]))
             ews.append(w)
@@ -252,14 +263,14 @@ def _leiden_partition(g: ig.Graph, nodes: list[str], gamma: float) -> list[list[
     return [[nodes[i] for i in comm] for comm in part]
 
 
-def _leiden(nodes: list[str], weights: dict[frozenset, float], gamma: float) -> list[list[str]]:
+def _leiden(nodes: list[str], weights: dict[tuple[str, str], float], gamma: float) -> list[list[str]]:
     return _leiden_partition(_leiden_graph(nodes, weights), nodes, gamma)
 
 
 def _augment_with_prior(
-    members: list[str], induced: dict[frozenset, float], prior_leaf_of: dict[str, str],
+    members: list[str], induced: dict[tuple[str, str], float], prior_leaf_of: dict[str, str],
     alpha: float, norm: str = ANCHOR_NORM,
-) -> tuple[list[str], dict[frozenset, float], list[int], list[str]]:
+) -> tuple[list[str], dict[tuple[str, str], float], list[int], list[str]]:
     """Augment the induced graph G[members] with the Phase B temporal prior (plan §3.1): one zero-
     size anchor vertex per previous leaf L that still has >= 2 surviving members here, with an edge
     (a_L, i) of weight ω to each surviving member i of L. Anchors carry no CPM size penalty and no
@@ -289,7 +300,7 @@ def _augment_with_prior(
         anchor = f"__prioranchor__::{leaf}"
         w = omega if norm == "member" else omega / len(surviving)
         for m in surviving:
-            aug_edges[frozenset((anchor, m))] = w
+            aug_edges[edge_key(anchor, m)] = w
         aug_nodes.append(anchor)
         node_sizes.append(0)
         anchor_ids.append(anchor)
@@ -297,7 +308,7 @@ def _augment_with_prior(
 
 
 def _leiden_graph_prior(
-    members: list[str], induced: dict[frozenset, float], prior_leaf_of: dict[str, str],
+    members: list[str], induced: dict[tuple[str, str], float], prior_leaf_of: dict[str, str],
     alpha: float, norm: str = ANCHOR_NORM,
 ) -> tuple[ig.Graph, list[str], list[int], list[int], int]:
     """Build the prior-augmented CPM graph (built once per split; only gamma varies across the
@@ -370,7 +381,7 @@ def _structural_edges_at(
 def signals(
     repo: Path, ops: list[Op], ideal: Ideal, *, refresh_cache: bool = True,
     head: str | None = None,
-) -> tuple[set[str], set[str], dict[frozenset, float], dict[frozenset, float]]:
+) -> tuple[set[str], set[str], dict[tuple[str, str], float], dict[tuple[str, str], float]]:
     """The clustering graph's raw ingredients: ``(nodes, hubs, cochange, structural)``. `ops`
     should be the *full* mined history (`Store.all_ops()`), not just `ideal`'s own op-set --
     co-change is a historical fact even about symbols whose current chain tip came from a later
@@ -387,26 +398,30 @@ def signals(
     gb = GitBinding(repo)
     nodes = alive_nodes(ideal, ops)
 
-    op_freq: Counter = Counter()
-    for op in ops:
-        op_freq.update(set(op.footprint) & nodes)
+    op_freq: dict[str, int] = {}  # footprint keys are already unique per op -- a plain counting
+    for op in ops:                # loop beats Counter + a per-op set intersection on 18k+ ops
+        for sym in op.footprint:
+            if sym in nodes:
+                op_freq[sym] = op_freq.get(sym, 0) + 1
     hub_cut = max(2, int(HUB_OP_FRAC * len(ops))) if ops else 2
     hubs = {sym for sym, freq in op_freq.items() if freq >= hub_cut}
 
-    cochange: dict[frozenset, float] = defaultdict(float)
+    cochange: dict[tuple[str, str], float] = defaultdict(float)
     for op in ops:
+        if len(op.footprint) < 2:
+            continue  # the overwhelmingly common single-symbol op has no pair to contribute
         alive = [s for s in op.footprint if s in nodes and s not in hubs]
         if 2 <= len(alive) <= MAX_FOOTPRINT:
             w = 1.0 / (len(alive) - 1)
             for a, b in combinations(sorted(alive), 2):
-                cochange[frozenset((a, b))] += w
+                cochange[(a, b)] += w
 
-    structural: dict[frozenset, float] = defaultdict(float)
+    structural: dict[tuple[str, str], float] = defaultdict(float)
     if head is None:
         head = gb.head()
     if head is not None:
         for edge in _structural_edges_at(repo, gb, head, refresh_cache=refresh_cache):
             if edge.src in nodes and edge.dst in nodes and edge.src != edge.dst:
-                structural[frozenset((edge.src, edge.dst))] += 1.0
+                structural[edge_key(edge.src, edge.dst)] += 1.0
 
     return nodes, hubs, dict(cochange), dict(structural)

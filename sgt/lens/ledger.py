@@ -64,7 +64,7 @@ def local_move_assign(
 ) -> dict[str, str | None]:
     """Assign each genuinely-new symbol a lane by a bounded Leiden local move (KTD3, cascade step
     3). `member_leaf` is the current symbol->lane index (owned symbols); `fused` the clustering
-    coupling graph (`cluster` signals, keyed by `frozenset({a, b}) -> weight`); `hubs` the
+    coupling graph (`cluster` signals, keyed by the sorted pair `(a, b) -> weight`); `hubs` the
     hub-suppressed symbols. Returns `{symbol: lane_id | None}` -- `None` for a symbol with no owned,
     non-hub neighbour at all (the caller's new-lane fallback, step 4).
 
@@ -87,7 +87,7 @@ def local_move_assign(
         gamma = _GAMMA_MIDPOINT
 
     boundary = sorted(set(new_symbols) | set(neighbours))
-    induced = tree._induced(fused, set(boundary))
+    induced = tree._induced(adj, set(boundary))
 
     # Seed the partition: each owned neighbour is FIXED at its lane's index; each new symbol starts
     # in its own free singleton community. Because a fixed node can never move, its final community
@@ -109,8 +109,7 @@ def local_move_assign(
 
     idx = {n: i for i, n in enumerate(boundary)}
     edges, weights = [], []
-    for pair, w in induced.items():
-        a, b = tuple(pair)
+    for (a, b), w in induced.items():
         if a in idx and b in idx and w > 0:
             edges.append((idx[a], idx[b]))
             weights.append(w)

@@ -21,7 +21,7 @@ def _clique_graph(num_cliques: int, clique_size: int, weight: float = 50.0):
         clique = [f"g{c}_n{i}" for i in range(clique_size)]
         members.extend(clique)
         for a, b in combinations(clique, 2):
-            fused[frozenset((a, b))] = weight
+            fused[(a, b)] = weight  # combinations of an ordered clique => canonical sorted pair
     return members, fused
 
 
@@ -29,7 +29,7 @@ def test_split_once_finds_target_arity_on_seven_disjoint_cliques():
     members, fused = _clique_graph(num_cliques=7, clique_size=5)
     adj = tree._adjacency(fused)
 
-    result = tree._split_once(members, fused, adj)
+    result = tree._split_once(members, adj)
 
     assert result.reason is None
     assert len(result.groups) == 7
@@ -41,7 +41,7 @@ def test_split_once_reports_closest_arity_when_target_unreachable():
     members, fused = _clique_graph(num_cliques=3, clique_size=5)
     adj = tree._adjacency(fused)
 
-    result = tree._split_once(members, fused, adj)
+    result = tree._split_once(members, adj)
 
     assert result.groups is not None
     assert len(result.groups) == 3
@@ -52,7 +52,7 @@ def test_split_once_refuses_a_single_cohesive_clique():
     members, fused = _clique_graph(num_cliques=1, clique_size=10)
     adj = tree._adjacency(fused)
 
-    result = tree._split_once(members, fused, adj)
+    result = tree._split_once(members, adj)
 
     assert result.groups is None
     assert result.reason == "stop_split"
@@ -66,8 +66,8 @@ def test_alpha_zero_prior_is_byte_identical_to_the_prior_free_split():
     adj = tree._adjacency(fused)
     prior = {m: "L0" for m in members}  # a nontrivial prior that must have no effect at alpha=0
 
-    prior_free = tree._split_once(members, fused, adj)
-    with_prior_alpha0 = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=0.0)
+    prior_free = tree._split_once(members, adj)
+    with_prior_alpha0 = tree._split_once(members, adj, prior_leaf_of=prior, alpha=0.0)
 
     assert with_prior_alpha0.groups == prior_free.groups
     assert with_prior_alpha0.reason == prior_free.reason
@@ -85,7 +85,7 @@ def test_prior_strength_drives_a_monotone_split_to_hold_phase_transition():
 
     counts = []
     for alpha in (0.0, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0):
-        r = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=alpha)
+        r = tree._split_once(members, adj, prior_leaf_of=prior, alpha=alpha)
         counts.append(0 if r.groups is None else len(r.groups))
 
     assert counts[0] == 6                                  # α=0: the data optimum, fully shattered
@@ -100,8 +100,8 @@ def test_prior_guided_split_is_deterministic():
     adj = tree._adjacency(fused)
     prior = {m: f"L{i // 5}" for i, m in enumerate(members)}  # each clique its own previous leaf
 
-    a = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=0.25)
-    b = tree._split_once(members, fused, adj, prior_leaf_of=prior, alpha=0.25)
+    a = tree._split_once(members, adj, prior_leaf_of=prior, alpha=0.25)
+    b = tree._split_once(members, adj, prior_leaf_of=prior, alpha=0.25)
 
     assert a.groups == b.groups and a.reason == b.reason
 
@@ -118,7 +118,7 @@ def test_attach_orphans_folds_sub_min_cluster_into_most_coupled_sibling():
 
 
 def test_subdivide_stops_at_max_leaf_without_attempting_a_split():
-    node = tree._subdivide(["a", "b"], fused={}, adj={}, depth=0, max_depth=4, max_leaf=24)
+    node = tree._subdivide(["a", "b"], adj={}, depth=0, max_depth=4, max_leaf=24)
     assert node["children"] == []
     assert node["split_reason"] == "max_leaf"
 
@@ -126,7 +126,7 @@ def test_subdivide_stops_at_max_leaf_without_attempting_a_split():
 def test_subdivide_stops_at_max_depth_regardless_of_size():
     members, fused = _clique_graph(num_cliques=7, clique_size=5)
     adj = tree._adjacency(fused)
-    node = tree._subdivide(members, fused, adj, depth=3, max_depth=4, max_leaf=1)
+    node = tree._subdivide(members, adj, depth=3, max_depth=4, max_leaf=1)
     assert node["children"] == []
     assert node["split_reason"] == "max_depth"
 
@@ -134,7 +134,7 @@ def test_subdivide_stops_at_max_depth_regardless_of_size():
 def test_subdivide_recurses_into_children_below_max_depth():
     members, fused = _clique_graph(num_cliques=7, clique_size=5)
     adj = tree._adjacency(fused)
-    node = tree._subdivide(members, fused, adj, depth=0, max_depth=4, max_leaf=1, min_lane=1)
+    node = tree._subdivide(members, adj, depth=0, max_depth=4, max_leaf=1, min_lane=1)
     assert len(node["children"]) == 7
     assert node["split_reason"] is None
     for child in node["children"]:
@@ -151,9 +151,9 @@ def test_feature_edges_rolls_symbol_pairs_up_to_leaf_pairs_and_sums_weight():
         "F2": {"children": [], "members": ["b.py::baz"]},
     }
     fused = {
-        frozenset(("a.py::foo", "a.py::bar")): 5.0,  # intra-F1 -- must not appear as an edge
-        frozenset(("a.py::foo", "b.py::baz")): 3.0,  # cross F1<->F2
-        frozenset(("a.py::bar", "b.py::baz")): 2.0,  # cross F1<->F2, same pair, sums with above
+        ("a.py::bar", "a.py::foo"): 5.0,  # intra-F1 -- must not appear as an edge
+        ("a.py::foo", "b.py::baz"): 3.0,  # cross F1<->F2
+        ("a.py::bar", "b.py::baz"): 2.0,  # cross F1<->F2, same pair, sums with above
     }
     edges = tree.feature_edges(nodes, fused)
     assert edges == [{"a": "F1", "b": "F2", "weight": 5.0}]
@@ -161,7 +161,7 @@ def test_feature_edges_rolls_symbol_pairs_up_to_leaf_pairs_and_sums_weight():
 
 def test_feature_edges_ignores_pairs_touching_a_symbol_outside_any_leaf():
     nodes = {"F1": {"children": [], "members": ["a.py::foo"]}}
-    fused = {frozenset(("a.py::foo", "dead.py::gone")): 9.0}
+    fused = {("a.py::foo", "dead.py::gone"): 9.0}
     assert tree.feature_edges(nodes, fused) == []
 
 
@@ -172,9 +172,9 @@ def test_feature_edges_sorted_descending_by_weight_then_by_id():
         "F3": {"children": [], "members": ["c.py::z"]},
     }
     fused = {
-        frozenset(("a.py::x", "b.py::y")): 1.0,
-        frozenset(("a.py::x", "c.py::z")): 4.0,
-        frozenset(("b.py::y", "c.py::z")): 4.0,
+        ("a.py::x", "b.py::y"): 1.0,
+        ("a.py::x", "c.py::z"): 4.0,
+        ("b.py::y", "c.py::z"): 4.0,
     }
     edges = tree.feature_edges(nodes, fused)
     assert edges == [
@@ -801,7 +801,7 @@ def test_internal_dirty_leaves_fires_at_the_max_of_floor_and_fraction_threshold(
     inclusive); a cross-leaf pair never counts toward any leaf's internal delta. Fixture weights
     are exact binary floats so the boundary comparisons are not at the mercy of rounding."""
     leaf_of = {"a": "L", "b": "L", "c": "M", "d": "M"}
-    pair = frozenset(("a", "b"))
+    pair = ("a", "b")
     # floor-dominated (old_internal 0.25 -> frac term 0.0625): delta 0.375 < 0.5 floor -> clean
     assert tree._internal_dirty_leaves(leaf_of, {pair: 0.25}, {pair: 0.625},
                                        frac=0.25, abs_floor=0.5) == set()
@@ -814,6 +814,6 @@ def test_internal_dirty_leaves_fires_at_the_max_of_floor_and_fraction_threshold(
     assert tree._internal_dirty_leaves(leaf_of, {pair: 8.0}, {pair: 6.0},
                                        frac=0.25, abs_floor=0.5) == {"L"}
     # a cross-leaf edge changing (a-c spans L and M) dirties no one via the INTERNAL trigger
-    cross = frozenset(("a", "c"))
+    cross = ("a", "c")
     assert tree._internal_dirty_leaves(leaf_of, {cross: 0.0}, {cross: 9.0},
                                        frac=0.25, abs_floor=0.5) == set()

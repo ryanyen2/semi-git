@@ -167,8 +167,8 @@ def find_contradictions(pins: Pins) -> list[Contradiction]:
 
 
 def apply_must_link(
-    nodes: list[str], fused: dict[frozenset, float], pins: Pins,
-) -> tuple[list[str], dict[frozenset, float], dict[str, frozenset[str]]]:
+    nodes: list[str], fused: dict[tuple[str, str], float], pins: Pins,
+) -> tuple[list[str], dict[tuple[str, str], float], dict[str, frozenset[str]]]:
     """Contract every must-link group present in `nodes` into one synthetic vertex before
     clustering. Returns ``(contracted_nodes, contracted_edges, expansion)`` where `expansion` maps
     each synthetic id back to its real members (`_expand_members` reverses this on a built tree)."""
@@ -187,15 +187,14 @@ def apply_must_link(
             contraction[m] = synthetic
 
     new_nodes = sorted({contraction.get(n, n) for n in nodes})
-    new_edges: dict[frozenset, float] = defaultdict(float)
-    for pair, w in fused.items():
-        a, b = tuple(pair)
+    new_edges: dict[tuple[str, str], float] = defaultdict(float)
+    for (a, b), w in fused.items():
         if a not in node_set or b not in node_set:
             continue
         ca, cb = contraction.get(a, a), contraction.get(b, b)
         if ca == cb:
             continue  # inner edge of a contracted group -- dropped, not double counted
-        new_edges[frozenset((ca, cb))] += w
+        new_edges[(ca, cb) if ca < cb else (cb, ca)] += w
 
     return new_nodes, dict(new_edges), expansion
 
