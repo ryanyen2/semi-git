@@ -13,6 +13,7 @@ from pathlib import Path
 
 from hypothesis import HealthCheck, given, settings, strategies as st
 
+from sgt.core import order
 from sgt.core import session as session_mod
 from sgt.core import verbs
 from sgt.core.fold import code
@@ -102,6 +103,42 @@ def test_restore_resolves_a_superseded_ghost_and_validation_gates_reentry(tmp_pa
     assert swapped.ok and v2.id in swapped.added
     materialized = code(get(repo), Store(repo).all_ops())
     assert materialized["a.py"] == b"def foo():\n    return 2\n"
+
+
+def test_restore_by_symbol_resolves_a_ghost_with_no_live_frontier_tip(tmp_path):
+    """F2: `restore <file::symbol>` when the symbol has no live frontier tip in the reduced source
+    ideal (here a genuine birth-fork from a merge -- `reduce_to_ideal` drops both births, so
+    `resolve_target`'s live-frontier path can't see it) must still bring the symbol back over the
+    whole store, not fall through to the NL rung's "set OPENAI_API_KEY". `_validated` keeps the
+    result legal. README flagship inverse."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "base.py").write_text("x = 1\n", encoding="utf-8")
+    gb.commit_all("base, no foo yet")
+    main = gb.symbolic_ref().rsplit("/", 1)[-1]
+    gb._git("checkout", "-q", "-b", "feature")
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feature adds foo")
+    gb._git("checkout", "-q", main)
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("main adds foo")
+    gb._git("merge", "-q", "--no-edit", "-X", "ours", "feature")
+    get(repo)
+
+    ops = Store(repo).all_ops()
+    # Precondition (the F2 root cause): the birth-fork leaves a.py::foo with no live frontier tip,
+    # so plain symbol resolution (verbs.py:72) errs and the pre-fix `::` guard refused to widen.
+    assert "a.py::foo" not in order.frontier(get(repo).op_ids, ops)
+
+    preview = verbs.plan_restore(repo, "a.py::foo")
+    assert preview.ok and preview.added  # widened to the whole store; a ghost tip resolved
+
+    verbs.restore(repo, "a.py::foo")  # apply
+    materialized = code(get(repo), Store(repo).all_ops())
+    # Byte-correct: the symbol is back, as one of its two committed versions (never a fork).
+    assert materialized["a.py"] in (b"def foo():\n    return 1\n", b"def foo():\n    return 2\n")
 
 
 def test_cherry_pick_of_an_independent_op_splices_cleanly(tmp_path):

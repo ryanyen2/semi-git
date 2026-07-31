@@ -658,6 +658,19 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
         raise DirtyWorkingTreeError(
             f"put() would overwrite uncommitted changes: {sorted(conflicts)}"
         )
+    # Delta-scoped guard (Phase 0, 0.1): the fold rewrites *every* covered path, but this edit only
+    # touches the symbols in `before_ideal Δ after_ideal`. A path outside that delta whose on-disk
+    # bytes differ from what the ideal materializes is committed drift the fold would silently roll
+    # back -- a local merge/cherry-pick the miner mis-attributed (F7/F9), or a foreign edit. Refuse
+    # and name it rather than overwrite it; `_dirty_conflicts` cannot catch this because the drift
+    # is committed (on-disk == HEAD), not an uncommitted change.
+    delta_files = _delta_paths(current_ideal(repo).op_ids ^ ideal.op_ids, all_ops)
+    drift = _outside_delta_drift(repo, materialized, delta_files)
+    if drift:
+        raise DirtyWorkingTreeError(
+            "put() would roll back files outside this edit's scope, whose committed content "
+            f"differs from sgt's recorded ideal: {sorted(drift)}"
+        )
     _write_working_tree(repo, materialized, all_ops)
     # Committed in-tree recovery record of *this* commit's ideal (C5): written before the commit
     # so the blob at the witness SHA describes that SHA's own ideal, recoverable after a
@@ -772,6 +785,38 @@ def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes])
         if on_disk != committed and materialized.get(path) != on_disk:
             conflicts.add(path)
     return conflicts
+
+
+def _delta_paths(delta_op_ids: frozenset[str], all_ops: list) -> set[str]:
+    """The working-tree paths the ops in `delta_op_ids` touch -- the scope a materializing edit is
+    allowed to rewrite (0.1). `before_ideal Δ after_ideal` is exactly the ops whose presence
+    changed, so their footprint paths are the only ones the fold should alter; a path outside this
+    set is produced identically by both ideals, so any on-disk difference there is drift, not this
+    edit's doing."""
+    paths: set[str] = set()
+    for op in all_ops:
+        if op.id in delta_op_ids:
+            paths.update(sym.split("::", 1)[0] for sym in op.footprint)
+    return paths
+
+
+def _outside_delta_drift(repo: Path, materialized: dict[str, bytes], delta_files: set[str]) -> set[str]:
+    """Paths `put()` would rewrite that lie OUTSIDE this edit's op-delta yet whose on-disk bytes
+    differ from what the ideal materializes (0.1). For such a path both the outgoing and incoming
+    ideal produce the same bytes, so a difference is committed drift the fold would silently roll
+    back (F7/F9) -- refused, never overwritten. Only paths the fold actually writes are considered
+    (`materialized` keys); `.sgt/` and symlinks are skipped exactly as `_dirty_conflicts` skips
+    them. Deletes of unmanaged drift stay covered by `_write_working_tree`'s reproducibility
+    backstop, so they are not re-checked here."""
+    drift: set[str] = set()
+    for path, data in materialized.items():
+        if path in delta_files or path.startswith(".sgt/") or _writes_through_symlink(repo, path):
+            continue
+        full = repo / path
+        on_disk = full.read_bytes() if full.is_file() else None
+        if data != on_disk:
+            drift.add(path)
+    return drift
 
 
 def _tracked_paths(repo: Path) -> list[str]:

@@ -101,6 +101,287 @@ def test_record_ideal_appends_an_ideal_edit_event_that_undo_inverts(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# undo hardening (Phase 0, 0.2): applied-flag + F3 snapshot-drop guard
+# ---------------------------------------------------------------------------
+
+
+def _seed_two_symbols(root: Path):
+    """Two committed symbols in one file, materialized + recorded -- the baseline for the undo
+    hardening scenarios below (a revert to undo, plus room for a raw commit between)."""
+    from sgt.core import lens
+
+    gb, _ = init_store(root)
+    (root / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("add foo and bar")
+    ideal = lens.get(root)
+    lens.record_ideal(root, ideal, lens.put(root, ideal, message="sgt: init"))
+    return gb
+
+
+def test_undo_refuses_to_drop_work_committed_after_the_journal_entry(tmp_path):
+    """Phase-0 0.2(c) / F3: `revert` -> a raw `git commit` -> `undo`. Undo restores an absolute
+    snapshot, so re-materializing the pre-revert ideal would silently clobber the raw commit's work
+    (`baz`), which was mined *after* the journal entry. Undo must DETECT that its snapshot restore
+    drops ops absent at journal time and refuse rather than destroy them."""
+    from sgt.core import lens, verbs
+    from sgt.core.fold import code
+
+    repo = tmp_path / "repo"
+    gb = _seed_two_symbols(repo)
+
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)  # journals the pre-revert ideal
+
+    # a raw git commit between revert and undo -- intervening work sgt absorbs on next contact
+    (repo / "a.py").write_text(
+        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
+    )
+    gb.commit_all("RAW: add baz (no sgt)")
+    lens.get(repo)  # absorb the raw commit
+
+    outcome = oplog.undo(repo)
+    assert outcome.status == "refused"
+    assert "baz" in outcome.message  # names the work it would have destroyed
+    assert b"def baz" in code(get(repo), Store(repo).all_ops())["a.py"]  # baz still present
+    # refused, not popped: the entry survives for a later `undo(force=True)`.
+    assert oplog.tail(repo) is not None
+
+
+def test_undo_force_drops_intervening_work_when_asked(tmp_path):
+    """The escape hatch for 0.2(c): `force=True` proceeds with the snapshot restore even though it
+    drops post-journal work -- the caller has been told and opted in."""
+    from sgt.core import lens, verbs
+    from sgt.core.fold import code
+
+    repo = tmp_path / "repo"
+    gb = _seed_two_symbols(repo)
+    original = get(repo).op_ids
+
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)
+    (repo / "a.py").write_text(
+        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
+    )
+    gb.commit_all("RAW: add baz (no sgt)")
+    lens.get(repo)
+
+    outcome = oplog.undo(repo, force=True)
+    assert outcome.status == "ideal_edit"
+    assert get(repo).op_ids == original  # pre-revert ideal restored; baz dropped as opted in
+    assert b"def baz" not in code(get(repo), Store(repo).all_ops())["a.py"]
+
+
+def test_record_ideal_marks_its_journal_entry_applied(tmp_path):
+    """Phase-0 0.2(a): a completed edit's journal entry is stamped `applied` so `undo` trusts it.
+    `record_ideal` runs after the materialize commit lands, so the entry it pushes is applied."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)
+
+    tail = oplog.tail(repo)
+    assert tail["kind"] == "ideal_edit"
+    assert tail["applied"] is True
+
+
+def test_undo_skips_an_unapplied_journal_entry(tmp_path):
+    """Phase-0 0.2(a): a crashed verb can leave a journal entry whose edit never landed (marked
+    `applied=False`). `undo` must skip such a bogus entry -- discarding it and inverting the real
+    edit beneath -- rather than executing it and clobbering protected state."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    original = get(repo).op_ids
+
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)  # a real, applied ideal_edit
+    assert bar.id not in get(repo).op_ids
+
+    # inject a bogus, never-applied entry on top (as a crashed verb would leave behind)
+    key = oplog._ref_key(Path(repo))
+    table = oplog.load(repo)
+    table[key].append({"kind": "ideal_edit", "ideal": sorted(original), "witness": None, "applied": False})
+    oplog.save(repo, table)
+
+    outcome = oplog.undo(repo)  # discards the bogus tail, inverts the real revert beneath
+    assert outcome.status == "ideal_edit"
+    assert get(repo).op_ids == original  # bar restored by undoing the real revert
+
+
+def test_record_ideal_leaves_an_unapplied_entry_if_the_edit_does_not_land(tmp_path, monkeypatch):
+    """Phase-0 0.2(a): the entry is stamped `applied` only *after* the ideal table + witness advance
+    succeed. A crash between the journal push and those writes leaves `applied=False`, which
+    `undo` then skips rather than executing as a bogus edit."""
+    from sgt.core import lens
+
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    ideal = get(repo)
+    smaller = list(ideal.op_ids)[:-1]
+
+    boom = {"n": 0}
+    real_save = lens._save_ideal_table
+
+    def failing_save(r, table):
+        boom["n"] += 1
+        if boom["n"] == 1:  # fail the table write inside record_ideal, after the journal push
+            raise RuntimeError("simulated crash mid-record_ideal")
+        return real_save(r, table)
+
+    monkeypatch.setattr(lens, "_save_ideal_table", failing_save)
+    from sgt.core.ideal import Ideal
+
+    try:
+        lens.record_ideal(repo, Ideal.from_ops(frozenset(smaller), Store(repo).all_ops()), gb_head(repo))
+    except RuntimeError:
+        pass
+    monkeypatch.undo()
+
+    tail = oplog.tail(repo)
+    assert tail["kind"] == "ideal_edit"
+    assert tail["applied"] is False  # the crashed edit's entry is not trusted
+
+
+def gb_head(repo) -> str:
+    from sgt.store.gitbind import GitBinding
+
+    return GitBinding(Path(repo)).head()
+
+
+# ---------------------------------------------------------------------------
+# Phase-0 0.2: undo hardening (F3 intervening-work drop; F6 applied-flag)
+# ---------------------------------------------------------------------------
+
+
+def _seed_two_symbols(repo):
+    """A repo with foo+bar committed and materialized -- the base for the undo-hardening cases."""
+    from sgt.core import lens
+
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("add foo and bar")
+    ideal = lens.get(repo)
+    sha = lens.put(repo, ideal, message="sgt: materialize")
+    lens.record_ideal(repo, ideal, sha)
+    return gb
+
+
+def test_undo_refuses_to_drop_work_committed_after_the_journal_entry(tmp_path):
+    """F3 (0.2c): `revert` -> raw `git commit` -> `undo`. The undo's absolute-snapshot restore of the
+    pre-revert ideal would silently clobber the intervening manual commit (an op mined *after* the
+    journal entry). Undo must detect that casualty and refuse rather than destroy it -- the manual
+    commit's content stays on disk, and the reverted op is NOT re-added."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    gb = _seed_two_symbols(repo)
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)  # journals the pre-revert ideal
+    assert b"def bar" not in (repo / "a.py").read_bytes()
+
+    # a raw manual commit between the revert and the undo -- work sgt only mines on next contact.
+    (repo / "a.py").write_text(
+        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
+    )
+    gb.commit_all("RAW: add baz (no sgt)")
+    lens.get(repo)  # absorb the manual commit into the current ideal
+
+    outcome = oplog.undo(repo)
+    assert outcome.status == "refused"
+    assert "baz" in outcome.message
+    assert b"def baz" in (repo / "a.py").read_bytes()   # the intervening work was NOT clobbered
+    assert b"def bar" not in (repo / "a.py").read_bytes()  # and the revert was NOT undone
+
+
+def test_undo_force_drops_intervening_work_deliberately(tmp_path):
+    """The escape hatch: `undo(force=True)` proceeds despite the F3 casualty -- the user has been
+    told and chose to drop the intervening commit. This is what a `sgt undo --force` wires to."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    gb = _seed_two_symbols(repo)
+    original = lens.get(repo).op_ids
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)
+    (repo / "a.py").write_text(
+        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
+    )
+    gb.commit_all("RAW: add baz")
+    lens.get(repo)
+
+    outcome = oplog.undo(repo, force=True)
+    assert outcome.status == "ideal_edit"
+    assert b"def bar" in (repo / "a.py").read_bytes()  # the revert was undone (bar restored)
+    assert original <= get(repo).op_ids  # the pre-revert ops are all back
+
+
+def test_undo_skips_an_unapplied_journal_entry(tmp_path):
+    """F6/0.2a: a journal entry from an edit that never landed (`applied=False`) is bogus -- undo
+    must discard it and reverse the real edit beneath it, not execute the crashed one."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    original = get(repo).op_ids
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)  # a genuine, applied ideal_edit entry
+
+    # a bogus unapplied entry pushed on top, as a crashed verb would leave (see the record_ideal
+    # crash-window test below).
+    key = oplog._ref_key(Path(repo))
+    table = oplog.load(repo)
+    table[key].append({"kind": "ideal_edit", "ideal": [], "witness": None, "applied": False})
+    oplog.save(repo, table)
+
+    outcome = oplog.undo(repo)
+    assert outcome.status == "ideal_edit"          # the bogus entry was skipped, the revert undone
+    assert get(repo).op_ids == original            # bar is back -- the real edit was reversed
+    # the bogus entry is gone; the applied one it skipped was consumed too.
+    assert not oplog.load(repo).get(key)
+
+
+def test_record_ideal_marks_its_journal_entry_applied_only_after_the_edit_lands(tmp_path):
+    """0.2a: `record_ideal` writes its `ideal_edit` entry `applied=False`, then flips it to True only
+    after the ideal-table + witness advance succeed. A crash between the two leaves `applied=False`,
+    which `oplog.undo` discards. A clean revert therefore leaves an `applied=True` tail; a simulated
+    crash leaves `applied=False`."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)
+    assert oplog.tail(repo).get("applied") is True  # a completed edit is marked applied
+
+    # simulate a crash during the next record_ideal, after the journal push but before the table
+    # write completes: the entry must be left unapplied.
+    ideal = lens.current_ideal(repo)
+    import sgt.core.lens as lens_mod
+    boom = lens_mod._save_ideal_table
+
+    def explode(r, t):
+        raise RuntimeError("simulated crash mid record_ideal")
+
+    lens_mod._save_ideal_table = explode
+    try:
+        with pytest.raises(RuntimeError):
+            lens.record_ideal(repo, ideal, gb_head(repo))
+    finally:
+        lens_mod._save_ideal_table = boom
+
+    assert oplog.tail(repo).get("applied") is False  # the crashed entry is left unapplied
+
+
+def gb_head(repo):
+    from sgt.store.gitbind import GitBinding
+
+    return GitBinding(Path(repo)).head()
+
+
+# ---------------------------------------------------------------------------
 # feature-reorg kind (the previously-un-journaled gap)
 # ---------------------------------------------------------------------------
 

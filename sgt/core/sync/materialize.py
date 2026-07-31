@@ -108,6 +108,14 @@ def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
     ]
 
 
+def save_fork_records(repo: Path, forks: tuple[tuple[str, str, str], ...]) -> None:
+    """Persist the committed `.sgt/forks.json` body (C4) for `forks` -- the single writer shared by
+    sync's flush (below) and `land`'s fork refusal (F23). `land` computes forks on the fly and used
+    to refuse *without* persisting, so `sgt forks`/`resolve` (which read this file) saw nothing land
+    was talking about; routing land's refusal through this same writer closes that dead end."""
+    state.save_json(repo, "forks", _fork_records(forks))
+
+
 def stage_candidate(
     repo: Path, gb: GitBinding, ing: Ingested, res: Resolution
 ) -> dict[str, bytes]:
@@ -148,7 +156,7 @@ def flush_reconciled_metadata(
             # `merge_feature` can't reconcile surfaces as a conflict, never a silent resolve
         tree.save(repo, res.tree_result)
         state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
-        state.save_json(repo, "forks", _fork_records(res.forks))  # durable, shared fork state (C4)
+        save_fork_records(repo, res.forks)  # durable, shared fork state (C4) -- shared writer w/ land
         _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
         _union_proposals(repo, gb, theirs_sha)  # committed review objects travel too (C10)
         _union_reviews(repo, gb, theirs_sha)  # trust-queue acks travel too (U31/S7)

@@ -135,7 +135,19 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     from sgt.core.lens import (
         DirtyWorkingTreeError, current_ideal, get, put, record_ideal,
     )
-    from sgt.store.gitbind import GitError
+    from sgt.store.gitbind import GitBinding, GitError
+
+    # 0.9/F26: an in-progress git merge/cherry-pick/revert leaves conflict-marker bytes in the tree
+    # and a *_HEAD pseudo-ref set. Refuse *before* mining (`get`) so those markers never become ops
+    # and the paused operation is never finalized blind. The pseudo-refs resolve iff the op is live.
+    gb = GitBinding(repo)
+    for pseudo, verb in (("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert")):
+        if gb.rev_parse(pseudo) is not None:
+            return _fail_json(
+                f"in-progress git {verb} -- finish or abort the git {verb} first "
+                f"(git {verb} --continue / git {verb} --abort); sgt save won't commit conflict markers",
+                as_json,
+            )
 
     ideal = get(repo)  # mine the working tree (R9)
 

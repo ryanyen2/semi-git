@@ -75,12 +75,15 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     base = ing.base_ideal_ids
     # The subtraction needs each side's *full* ideal against `base`. Ours always is (it's
     # `current_ideal`, so `base - ours` is a genuine ours-side revert). Theirs' revert shows as an op
-    # *absent* from its ideal only when U7 recovered a full ideal (`trailers`/`ideal-record`). A
-    # `mined` recovery is theirs' *divergent* set (theirs kept `base` and added on top; a revert
-    # there rode in as a BOTTOM op via the union, not as an absence), and `none` is unknown -- so for
-    # those we do not infer a theirs-side revert, leaving today's union semantics for theirs.
+    # *absent* from its ideal only when U7 recovered a full ideal (`log`/`trailers`/`ideal-record`).
+    # `log` is a teammate's landed+pushed ideal carried by the D1 land-log -- a full ideal exactly
+    # like the trailers/record paths, so a revert they landed must subtract too (F25: omitting it let
+    # the reverted op silently resurrect from our side). A `mined` recovery is theirs' *divergent*
+    # set (theirs kept `base` and added on top; a revert there rode in as a BOTTOM op via the union,
+    # not as an absence), and `none` is unknown -- so for those we do not infer a theirs-side revert,
+    # leaving today's union semantics for theirs.
     removed_seed = set(base - ours)
-    if ing.theirs_recovery in ("trailers", "ideal-record"):
+    if ing.theirs_recovery in ("log", "trailers", "ideal-record"):
         removed_seed |= base - theirs
     removals = set(order.upset_in_many(removed_seed, union_ids, ing.all_ops, usable_declared))
 
