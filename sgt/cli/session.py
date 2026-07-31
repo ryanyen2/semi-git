@@ -135,10 +135,22 @@ def _land(repo, session_mod, name, as_json) -> int:
 
 def _gc(repo, session_mod, force, as_json) -> int:
     reaped = session_mod.gc(repo, force=force)
+    # Dead sessions gc left in place because reaping would destroy work (0.4/F19): name what would
+    # be lost so the user can `--force` deliberately rather than see a silent "nothing to reap".
+    kept = (
+        [(s.name, session_mod.pending_work(s)) for s in session_mod.stale_sessions(repo)]
+        if not force else []
+    )
+    kept = [(name, reasons) for name, reasons in kept if reasons]
     if as_json:
-        return _emit_json({"reaped": list(reaped)})
+        return _emit_json({
+            "reaped": list(reaped),
+            "kept": [{"session": name, "would_lose": list(reasons)} for name, reasons in kept],
+        })
     if not reaped:
         print("nothing to reap")
     for name in reaped:
         print(f"reaped session {name!r}")
+    for name, reasons in kept:
+        print(f"kept dead session {name!r}: {', '.join(reasons)} — reap anyway with `sgt session gc --force`")
     return 0

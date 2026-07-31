@@ -718,23 +718,36 @@ def record_ideal(
     # consistent (R5/R6). No `Store.add` runs inside, so the lock never nests.
     with locked_section(repo):
         itable = _load_ideal_table(repo)
+        entry = None
         if journal and key in itable:
             # The journal is the unified operation log (U8/KTD6): this push is one `ideal_edit`
             # event carrying the prior ideal (+ witness). Tagged `kind` so `oplog.undo` dispatches
             # it. Kept inline (not `oplog.append`) because we already hold `locked_section` and
             # the flock is non-reentrant -- the same read-modify-write that closes the
-            # double-journal-entry window (R5/R6).
+            # double-journal-entry window (R5/R6). `applied` stays False until the table+witness
+            # advance below lands: a crash in between leaves the entry unapplied, which `oplog.undo`
+            # discards rather than executing as a phantom edit (0.2a/F6). `result` is the post-edit
+            # op-set, so `undo` can tell work mined *after* this entry -- which its snapshot restore
+            # would silently drop -- from the ops this edit itself produced (0.2c/F3).
             jtable = _load_ideal_journal(repo)
             prev_witness = _load_witnesses(repo).get(key)
-            jtable.setdefault(key, []).append(
-                {"kind": "ideal_edit", "ideal": sorted(itable[key]), "witness": prev_witness}
-            )
+            entry = {
+                "kind": "ideal_edit",
+                "ideal": sorted(itable[key]),
+                "witness": prev_witness,
+                "result": sorted(ideal.op_ids),
+                "applied": False,
+            }
+            jtable.setdefault(key, []).append(entry)
             _save_ideal_journal(repo, jtable)
         itable[key] = sorted(ideal.op_ids)
         _save_ideal_table(repo, itable)
         wtable = _load_witnesses(repo)
         wtable[key] = witness_sha
         _save_witnesses(repo, wtable)
+        if entry is not None:
+            entry["applied"] = True  # the edit landed -- the entry is now trustworthy for undo
+            _save_ideal_journal(repo, jtable)
 
 
 @dataclass(frozen=True)

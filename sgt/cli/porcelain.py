@@ -77,7 +77,11 @@ def register(subs, parent) -> None:
     sv.add_argument("--confirm-op", action="append", dest="confirm_op", default=[])
     sv.set_defaults(func=_cmd_save)
 
-    subs.add_parser("undo", parents=[parent]).set_defaults(func=_cmd_undo)
+    uv = subs.add_parser("undo", parents=[parent])
+    uv.add_argument("--force", action="store_true",
+                    help="drop work committed after the edit being undone (0.2c) -- undo normally "
+                         "refuses when its snapshot restore would clobber an intervening raw commit")
+    uv.set_defaults(func=_cmd_undo)
 
 
 def _cmd_switch(args) -> int:
@@ -91,7 +95,7 @@ def _cmd_save(args) -> int:
 
 
 def _cmd_undo(args) -> int:
-    return _undo(".", args.as_json)
+    return _undo(".", args.as_json, force=args.force)
 
 
 def _switch(repo: str, branch: str, as_json: bool) -> int:
@@ -405,18 +409,19 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
     return 0
 
 
-def _undo(repo: str, as_json: bool) -> int:
+def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
     """`sgt undo` (D3, R7): invert the last mutating operation. Walks the *unified* operation log
     (U8/KTD6) reverse-chronologically -- popping the tail event and applying its inverse, whatever
     its kind: an ideal edit re-materializes its prior ideal, a feature reorg restores its snapshot,
     a shared-out `land`/`propose` is refused. History is append-only, so an undo is a forward edit,
-    never a ref rewind."""
+    never a ref rewind. `force` overrides the F3 guard that refuses an undo whose snapshot restore
+    would clobber work committed after the edit (0.2c)."""
     from sgt.core import oplog
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.store.gitbind import GitError
 
     try:
-        outcome = oplog.undo(repo)
+        outcome = oplog.undo(repo, force=force)
     except (DirtyWorkingTreeError, GitError, ValueError) as e:
         return _fail_json(str(e), as_json)
 
