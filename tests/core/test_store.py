@@ -8,7 +8,7 @@ import threading
 
 import pytest
 
-from sgt.core.op import Attribution, make_op
+from sgt.core.op import MINER_VERSION, Attribution, make_op
 from sgt.core.store import FsckReport, Store, StoreError, _serialize, fsck
 
 
@@ -477,7 +477,7 @@ def test_fsck_flags_mixed_miner_versions(tmp_path):
     fsck lists the versions and flips `ok`. A single-version store reports nothing (mixed=())."""
     store = Store(tmp_path)
     store.init()
-    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))  # current (v3)
+    store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))  # current MINER_VERSION
     from dataclasses import replace as _replace
     from sgt.core.store import _serialize
     # A leftover op minted by a *prior* miner version (v2), the mid-migration hazard fsck must flag.
@@ -490,7 +490,7 @@ def test_fsck_flags_mixed_miner_versions(tmp_path):
 
     report = fsck(tmp_path)
     assert not report.ok
-    assert set(report.mixed_versions) == {"2", "3"}
+    assert set(report.mixed_versions) == {"2", MINER_VERSION}
 
 
 def test_all_ops_warm_memo_sees_writes_between_calls(tmp_path):

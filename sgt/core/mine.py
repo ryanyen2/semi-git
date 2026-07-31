@@ -421,6 +421,21 @@ def _mine_one(
     bottom = BOTTOM if is_pending else salted_bottom(sha)
 
     diffs = gb.diff_name_and_text(parent, sha)
+    # Merge-aware mining (1.3, F7): a merge commit diffed against its FIRST parent alone re-attributes
+    # the second parent's whole cumulative delta as one op whose before_version is the merge base --
+    # which forks with that branch's own first chain step whenever the branch touched a symbol >=2
+    # times, so `fork_free` drops the chain and the merged content silently rolls back. Both branches'
+    # commits are mined in their own right and content-addressing unions them, so a merge only needs
+    # to mint the paths it resolved differently from *both* parents (the true conflict/evil hunks):
+    # keep only those, still diffed against the first parent so each chains onto that tip. Skipped for
+    # the transient dirty pass (synthetic tree, `is_pending`) and root commits (`parent is None`).
+    if not is_pending and parent is not None:
+        other_parents = [p for p in gb.parents(sha) if p != parent]
+        if other_parents:
+            differs_from_all_sides = {fc.path for fc in diffs}
+            for op2 in other_parents:
+                differs_from_all_sides &= {fc.path for fc in gb.diff_name_and_text(op2, sha)}
+            diffs = [fc for fc in diffs if fc.path in differs_from_all_sides]
     # Batched blob reads (one `git cat-file --batch` process for every changed file's new
     # content, one more for the old side) instead of a `blob_bytes` subprocess per file --
     # a commit touching dozens of files no longer spawns dozens of git processes to mine.

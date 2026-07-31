@@ -557,6 +557,41 @@ def test_put_refuses_to_roll_back_committed_drift_outside_the_edit_delta(tmp_pat
     assert (repo / "b.py").read_bytes() == b"def bar():\n    return 2\n"  # never rolled back
 
 
+def test_clean_merge_does_not_fork_a_twice_edited_branch_symbol(tmp_path):
+    """1.3 (F7 root cause): mining a merge commit against its FIRST PARENT ONLY re-attributes the
+    second parent's whole cumulative delta as one op whose before_version is the merge-base version.
+    When the merged-in branch edited a symbol >=2 times, that cumulative op collides with the
+    branch's own first step on `(symbol, base_version)` -> a spurious fork -> `fork_free` drops the
+    whole chain -> the merged content silently rolls back to the base. Merge-aware mining skips the
+    paths the merge took wholesale from a parent (already mined on that branch), so no cumulative op
+    is minted and the merged symbol survives. This is F7's *root cause*, upstream of the Phase-0
+    put-refusal guard that only catches the resulting drift."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("base: foo v1")
+    main = gb.symbolic_ref().rsplit("/", 1)[-1]
+
+    # feature edits foo TWICE -> two chained ops v1->v2->v3
+    gb._git("checkout", "-q", "-b", "feature")
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("feature: foo v2")
+    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("feature: foo v3")
+
+    # main diverges on an unrelated file, so `git merge feature` is a real two-parent (non-ff)
+    # merge; foo was only touched on feature, so it auto-merges cleanly (no conflict).
+    gb._git("checkout", "-q", main)
+    (repo / "unrelated.py").write_text("def other():\n    return 0\n", encoding="utf-8")
+    gb.commit_all("main: unrelated work")
+    gb._git("merge", "-q", "--no-edit", "feature")
+    assert (repo / "a.py").read_bytes() == b"def foo():\n    return 3\n"  # git's own merge result
+
+    ideal = get(repo)
+    materialized = code(ideal, Store(repo).all_ops())
+    assert materialized["a.py"] == b"def foo():\n    return 3\n"  # NOT rolled back to the base v1
+
+
 def test_put_does_not_false_refuse_an_in_sync_unrelated_file(tmp_path):
     """The 0.1 guard is delta-scoped: on an in-sync repo an unrelated file's on-disk bytes already
     equal what the ideal materializes, so a one-symbol revert never trips the drift guard for it.

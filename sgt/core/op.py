@@ -37,7 +37,7 @@ def is_bottom(version: str | None) -> bool:
     return version is not None and (version == BOTTOM or version.startswith(BOTTOM + "@"))
 
 
-MINER_VERSION = "3"  # R12: bump on any change to mining/untangling/identity logic. Part of
+MINER_VERSION = "4"  # R12: bump on any change to mining/untangling/identity logic. Part of
 # every op's content address, so an algorithm upgrade opens a new identity space rather than
 # silently colliding with -- or silently reusing -- ops minted under the old rules.
 # v2 (2026-07-08, kernel byte-fidelity audit): byte-native entity/residue addressing (was
@@ -47,6 +47,10 @@ MINER_VERSION = "3"  # R12: bump on any change to mining/untangling/identity log
 # detected purely from git history) and representation-flip bridging (parseable<->whole-file
 # transitions close the losing side with BOTTOM ops and re-birth the winning side by chaining
 # onto them) -- kills the ~20% closure loss the U22.5 pseudo-fork caused. See FINDINGS.md.
+# v4 (2026-07-31, 1.3/F7): merge-aware mining -- a merge commit mines only the paths it resolved
+# differently from *every* parent (the conflict/evil hunks), not the whole first-parent cumulative
+# diff, so the second parent's own chain is no longer re-minted as one forking op. See the workflow
+# hardening plan (docs/plans/2026-07-31-001).
 
 # symbol id -> (before_version, after_version); before_version is None for a fresh add.
 # A "version" is a content-addressed string (the symbol's content hash, or a git blob OID for

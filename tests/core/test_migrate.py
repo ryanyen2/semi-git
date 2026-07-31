@@ -26,7 +26,7 @@ import pytest
 from sgt import state
 from sgt.core import lens, migrate, order, sync
 from sgt.core.fold import code
-from sgt.core.op import BOTTOM, compute_id, is_bottom, make_op
+from sgt.core.op import BOTTOM, MINER_VERSION, compute_id, is_bottom, make_op
 from sgt.core.store import Store, _serialize, fsck
 from sgt.store.gitbind import GitBinding, init_store
 
@@ -116,7 +116,7 @@ def test_apply_recovers_closure_and_leaves_a_clean_v3_store(tmp_path):
     assert report.changed and not report.orphaned
 
     all_ops = Store(repo).all_ops()
-    assert all_ops and all(o.miner_version == "3" for o in all_ops)  # store is pure v3
+    assert all_ops and all(o.miner_version == MINER_VERSION for o in all_ops)  # store is pure current-version
 
     f = fsck(repo)
     assert f.ok and not f.mixed_versions and not f.invalid_ideals  # clean, no mixed-version backstop
@@ -164,7 +164,7 @@ def test_crash_mid_apply_resumes_to_the_same_result(tmp_path, monkeypatch):
 
     # The manifest survives and the store is transiently mixed -- fsck's backstop names it.
     assert state.load_json(crash, "migration_manifest", default=None) is not None
-    assert set(fsck(crash).mixed_versions) == {"2", "3"} and not fsck(crash).ok
+    assert set(fsck(crash).mixed_versions) == {"2", MINER_VERSION} and not fsck(crash).ok
 
     monkeypatch.undo()  # restore _prune_pre_v3
     resumed = migrate.migrate_ops_v3(crash, dry_run=False)  # resume from the manifest

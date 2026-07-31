@@ -405,6 +405,16 @@ class GitBinding:
         out = proc.stdout.strip()
         return out if proc.returncode == 0 and out else None
 
+    def parents(self, sha: str) -> list[str]:
+        """The parent SHAs of `sha` in git's own order (first parent first) -- empty for a root
+        commit. `len(parents) >= 2` marks a merge, which the miner treats specially (1.3, F7):
+        mining a merge against its first parent alone re-attributes the second parent's whole
+        cumulative delta as one op, so `_mine_one` restricts a merge to the paths it resolved
+        differently from *both* sides and lets each branch's own commits carry the rest."""
+        proc = self._git("rev-list", "--parents", "-n", "1", sha, check=False)
+        out = proc.stdout.split()
+        return out[1:] if proc.returncode == 0 and len(out) > 1 else []
+
     def is_ancestor(self, a: str, b: str) -> bool:
         """True iff commit `a` is an ancestor of `b` (or `a == b`) -- `git merge-base
         --is-ancestor`, exit 0 for yes, 1 for no. The causal-ordering primitive U21's pin
