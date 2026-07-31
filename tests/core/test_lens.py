@@ -265,6 +265,60 @@ def test_second_get_with_no_new_commits_does_not_rewrite_ideal_and_witness(tmp_p
     assert mtime_after == mtime_before, "get() rewrote ideal_table/witness with no new state"
 
 
+def _git(repo, *args):
+    import subprocess
+
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_revert_survives_a_history_rewrite(tmp_path):
+    """1.1 (F11/F20): after reverting an op, rewriting git history so the reverted op's content is
+    re-mined under a *new* commit sha (a rebase) must not silently resurrect it. Before 1.1, `_sync`
+    trusted the persisted table as a base and only *unioned* freshly-mined provenance onto it, so
+    the re-mined op came back. Now the ideal is derived as `reduce(provenance-in-ancestry −
+    exclusions)`, and the revert is a positive exclusion that survives the sha rewrite."""
+    import json
+
+    from sgt.core import verbs
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    (repo / "a.py").write_text(
+        "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8"
+    )
+    gb.commit_all("add bar")
+    (repo / ".sgt").mkdir(exist_ok=True)
+    (repo / ".sgt" / "oracle.json").write_text(
+        json.dumps({"tiers": [{"name": "c", "command": "python -m py_compile a.py"}]}),
+        encoding="utf-8",
+    )
+    get(repo)  # seed
+
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)
+    assert bar.id not in get(repo).op_ids  # revert took effect
+    assert b"def bar" not in (repo / "a.py").read_bytes()
+
+    # Rewrite history: reword the root commit and replay the rest onto it, changing every downstream
+    # sha (a rebase) -- `bar`'s introducing commit is re-mined under a new sha, content-identical.
+    branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+    root = _git(repo, "rev-list", "--max-parents=0", "HEAD")
+    _git(repo, "checkout", "--detach", root)
+    _git(repo, "commit", "--amend", "-m", "add foo (reworded)")
+    c0p = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "rebase", "--onto", c0p, root, branch)
+    _git(repo, "checkout", branch)
+
+    after = get(repo)
+    assert bar.id not in after.op_ids, "reverted op resurrected by the history rewrite"
+    assert b"def bar" not in (repo / "a.py").read_bytes()
+    assert any("a.py::foo" in o.footprint and o.id in after.op_ids for o in Store(repo).all_ops())
+
+
 def test_backfill_state_round_trips(tmp_path):
     """`_save_backfill_state`/`_load_backfill_state` are pure passthrough plumbing over
     `.sgt/local/backfill.json` -- a later unit reads/writes the genesis-backfill frontier through
