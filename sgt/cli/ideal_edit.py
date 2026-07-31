@@ -11,6 +11,19 @@ from ._common import _emit_json, _fail, _fail_json
 from .rewrite import _print_draft, _print_repair_result
 
 
+def _dirty_refusal(exc, as_json: bool) -> int:
+    """Render a `DirtyWorkingTreeError` from a materializing verb as a clean refusal, not a raw
+    traceback with a half-written `.sgt` (F4/F5). The guard's message already names the offending
+    files; append the *actual*, executable remedy -- absorb the edits with `sgt save`, or commit /
+    `git restore` them, then re-run. (`sgt` never overwrites uncommitted work; there is no `sgt put`
+    verb, and `log --refresh` does not clear a dirty tree.)"""
+    msg = str(exc)
+    if "overwrite uncommitted changes" in msg:
+        msg += (" -- record them with `sgt save`, or commit / `git restore` those files, then "
+                "re-run (sgt won't overwrite uncommitted work)")
+    return _fail_json(msg, as_json)
+
+
 def register(subs, parent) -> None:
     r = subs.add_parser("revert", parents=[parent])
     # `--emit` (machine dry-run: VS Code/MCP) and `--yes` (non-tty apply) stay functional but hidden
@@ -115,6 +128,7 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
     and refuses to apply (exit 2), mirroring the did-you-mean guard. `--json` is unchanged (applies
     immediately -- the machine contract VS Code/TUI depend on)."""
     from sgt.core import verbs
+    from sgt.core.lens import DirtyWorkingTreeError
 
     if emit:
         from sgt.api import _project_verb_preview
@@ -151,13 +165,19 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             if reply not in ("y", "yes"):
                 print("  skipped — nothing changed.")
                 return 1
-        verbs.apply(repo, preview)
+        try:
+            verbs.apply(repo, preview)
+        except DirtyWorkingTreeError as e:
+            return _dirty_refusal(e, as_json)
         print(f"  ✓ {preview.verb} applied — {len(preview.removed)} edit(s) removed, "
               f"{len(preview.added)} added. (`sgt undo` reverses this.)")
         return 0
 
     if preview.ok:
-        verbs.apply(repo, preview)
+        try:
+            verbs.apply(repo, preview)
+        except DirtyWorkingTreeError as e:
+            return _dirty_refusal(e, as_json)
     view = {
         "ok": preview.ok, "verb": preview.verb, "target": preview.target,
         "removed": sorted(preview.removed), "added": sorted(preview.added),
@@ -506,9 +526,13 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
 
     if yes:
         from sgt.core import verbs
+        from sgt.core.lens import DirtyWorkingTreeError
 
         _, top_preview = survivors[0]
-        verbs.apply(repo, top_preview)
+        try:
+            verbs.apply(repo, top_preview)
+        except DirtyWorkingTreeError as e:
+            return _dirty_refusal(e, as_json)
         view = {
             "ok": True, "verb": cmd, "target": top_preview.target,
             "removed": sorted(top_preview.removed), "added": sorted(top_preview.added),

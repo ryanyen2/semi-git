@@ -172,6 +172,33 @@ def test_save_commits_a_witness_for_a_dirty_tree(tmp_path, capsys):
     assert current_ideal(repo).op_ids == after_ids
 
 
+def test_save_refuses_during_an_in_progress_merge(tmp_path, capsys):
+    """F26 safety (0.9): `sgt save` with MERGE_HEAD present must refuse rather than commit the
+    conflict-marker bytes and finalize the merge blind."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    gb.commit_all("base")
+    base = gb.symbolic_ref().rsplit("/", 1)[-1]
+    gb._git("checkout", "-q", "-b", "other")
+    (tmp_path / "a.py").write_text("x = 2\n", encoding="utf-8")
+    gb.commit_all("other: x=2")
+    gb._git("checkout", "-q", base)
+    (tmp_path / "a.py").write_text("x = 3\n", encoding="utf-8")
+    gb.commit_all("main: x=3")
+    gb._git("merge", "other", check=False)  # conflicts -> leaves MERGE_HEAD, uncommitted
+    assert gb.rev_parse("MERGE_HEAD") is not None
+    head_before = gb.head()
+
+    with _in(tmp_path):
+        rc = cli.main(["save"])
+
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "merge" in out.lower()
+    assert gb.head() == head_before  # nothing committed
+    assert gb.rev_parse("MERGE_HEAD") is not None  # merge still in progress
+
+
 def test_save_with_no_active_plan_omits_the_plan_key(tmp_path, capsys):
     """The plan-matching fold (U12) is invisible when no plan session is active: a plain dirty save
     carries no `plan` key, so `save`'s common-case JSON shape is byte-unchanged."""

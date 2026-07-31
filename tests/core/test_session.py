@@ -179,6 +179,58 @@ def test_gc_leaves_a_live_session_alone_unless_forced(tmp_path):
     assert session_mod.list_sessions(tmp_path) == ()
 
 
+def _kill_pid_of(tmp_path, name):
+    """Point a session's owning pid at a process that has already exited, so `is_alive` reads it
+    as dead -- the crashed-agent state `gc` triages against."""
+    import subprocess
+    import sys
+    from dataclasses import replace
+
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    sessions = session_mod._load(tmp_path)
+    sessions[name] = replace(sessions[name], owner_pid=dead.pid)
+    session_mod._save(tmp_path, sessions)
+
+
+def test_gc_refuses_to_reap_a_dead_session_with_uncommitted_work(tmp_path):
+    """F19 safety (0.4): liveness=getppid can wrongly mark a live agent's session dead, so `gc`
+    must not destroy a scratch tree that still holds uncommitted edits -- only `--force` reaps it."""
+    from pathlib import Path
+
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    (Path(session.scratch) / "wip.py").write_text("def wip():\n    return 0\n", encoding="utf-8")
+    _kill_pid_of(tmp_path, "s1")
+
+    assert session_mod.pending_work(session_mod._require(tmp_path, "s1")) == ("uncommitted changes",)
+
+    assert session_mod.gc(tmp_path) == ()  # dirty -> refused
+    assert [s.name for s in session_mod.list_sessions(tmp_path)] == ["s1"]
+    assert Path(session.scratch).exists()
+
+    assert session_mod.gc(tmp_path, force=True) == ("s1",)
+    assert not Path(session.scratch).exists()
+
+
+def test_gc_refuses_to_reap_a_dead_session_with_unlanded_commits(tmp_path):
+    """F19 safety (0.4): a committed-but-not-yet-landed scratch tree is also work worth keeping."""
+    from pathlib import Path
+
+    _seed_repo(tmp_path)
+    session = session_mod.start(tmp_path, "s1")
+    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
+    _kill_pid_of(tmp_path, "s1")
+
+    assert "unlanded commits" in session_mod.pending_work(session_mod._require(tmp_path, "s1"))
+
+    assert session_mod.gc(tmp_path) == ()  # unlanded -> refused
+    assert Path(session.scratch).exists()
+
+    assert session_mod.gc(tmp_path, force=True) == ("s1",)
+    assert not Path(session.scratch).exists()
+
+
 def test_stale_sessions_reports_without_reaping(tmp_path):
     import subprocess
     import sys

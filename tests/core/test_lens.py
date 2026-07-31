@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from sgt.core.fold import code
+from sgt.core.ideal import Ideal
 import sgt.core.lens as lens_mod
 from sgt.core.lens import (
     DirtyWorkingTreeError,
@@ -459,6 +460,66 @@ def test_put_refuses_to_clobber_an_unabsorbed_dirty_edit(tmp_path):
         put(repo, baseline)  # would overwrite the uncommitted foo == 2 with foo == 1
 
     assert (repo / "a.py").read_bytes() == b"def foo():\n    return 2\n"  # tree left untouched
+
+
+def test_put_refuses_to_roll_back_committed_drift_outside_the_edit_delta(tmp_path):
+    """Phase-0 0.1 (F7/F9): a one-symbol edit's fold rewrites *every* covered path, so a file whose
+    committed on-disk bytes drifted from sgt's recorded ideal (a merge/cherry-pick the miner
+    mis-attributed) is silently rolled back to the stale ideal's content. The delta-scoped guard
+    refuses when a path OUTSIDE the `before Δ after` op-delta would be rewritten, and names it. The
+    drift here is committed (on-disk == HEAD), so `_dirty_conflicts` structurally cannot catch it --
+    only the delta guard does."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (repo / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo and bar")
+    (repo / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")  # bar gains a modify op
+    gb.commit_all("modify bar")
+    full = get(repo)
+    store = Store(repo)
+
+    # Pin the recorded ideal to EXCLUDE bar's modify op: now `code(current_ideal)` for b.py is the
+    # stale `return 1`, while b.py on disk (and at HEAD) is the committed `return 2`. This is the
+    # committed drift F7 leaves after a mis-mined merge -- reconstructed here at the unit boundary.
+    def _is_bar_modify(op):
+        fp = op.footprint.get("b.py::bar")
+        return fp is not None and fp[0] is not None
+
+    bar_modify = next(oid for oid in full.op_ids if _is_bar_modify(store.get(oid)))
+    foo_add = next(oid for oid in full.op_ids if "a.py::foo" in store.get(oid).footprint)
+    pinned = full.op_ids - {bar_modify}
+    table = _load_ideal_table(repo)
+    table[_ref_key(gb)] = sorted(pinned)
+    _save_ideal_table(repo, table)
+
+    # Now edit only a.py's scope (drop foo). b.py is OUTSIDE this delta, and its on-disk bytes
+    # differ from what the (pinned, stale) ideal materializes -> put must refuse rather than roll
+    # b.py back to `return 1`.
+    edited = Ideal.from_ops(pinned - {foo_add}, store.all_ops())
+    with pytest.raises(DirtyWorkingTreeError) as exc:
+        put(repo, edited)
+    assert "b.py" in str(exc.value)
+    assert (repo / "b.py").read_bytes() == b"def bar():\n    return 2\n"  # never rolled back
+
+
+def test_put_does_not_false_refuse_an_in_sync_unrelated_file(tmp_path):
+    """The 0.1 guard is delta-scoped: on an in-sync repo an unrelated file's on-disk bytes already
+    equal what the ideal materializes, so a one-symbol revert never trips the drift guard for it.
+    Guards against over-refusal breaking every normal materializing verb."""
+    from sgt.core import verbs
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (repo / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo and bar")
+    ideal = get(repo)
+    put(repo, ideal)  # in sync: disk == code(current_ideal) everywhere
+
+    verbs.revert(repo, "a.py::foo")  # a one-file edit; must not refuse over the in-sync b.py
+
+    assert (repo / "b.py").read_bytes() == b"def bar():\n    return 1\n"  # unrelated file untouched
 
 
 def test_persisted_ideal_survives_re_get_without_resurrecting_excluded_ops(tmp_path):

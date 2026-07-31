@@ -236,6 +236,41 @@ def test_revert_bare_hex_handle_reverts_the_feature_not_the_founding_op(tmp_path
     assert current_ideal(repo).op_ids == before - frozenset(out["removed"])
 
 
+def test_revert_on_a_dirty_unrelated_file_refuses_cleanly_not_a_traceback(tmp_path, capsys):
+    """F4/F5 (Phase 0.3): a materializing verb blocked by an unrelated dirty tracked file must
+    refuse cleanly at the CLI boundary -- an exit code and the file list + a truthful, executable
+    remedy -- never a raw `DirtyWorkingTreeError` traceback with a half-written `.sgt`."""
+    import json as _json
+
+    from sgt.core import order, verbs
+    from sgt.core.lens import current_ideal, get
+    from sgt.core.store import Store
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (repo / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("init")
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("foo v2")
+    get(repo)
+    tip = order.frontier(current_ideal(repo).op_ids, Store(repo).all_ops())["a.py::foo"]
+
+    # Dirty an *unrelated* tracked file with bytes the revert's fold would overwrite.
+    (repo / "b.py").write_text("def bar():\n    return 999  # local WIP\n", encoding="utf-8")
+
+    before = current_ideal(repo).op_ids
+    rc = _in(repo, ["revert", tip, "--json"])  # no traceback escapes
+    assert rc == 1
+    out = _json.loads(capsys.readouterr().out)
+    assert out["ok"] is False
+    assert "b.py" in out["error"]          # names the offending file
+    assert "sgt put" not in out["error"]   # no nonexistent verb
+    assert "sgt save" in out["error"]      # the actual, executable remedy
+    assert current_ideal(repo).op_ids == before  # refused -- nothing applied
+
+
 def test_revert_handle_shaped_miss_exits_2_without_the_llm(tmp_path, capsys, monkeypatch):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)

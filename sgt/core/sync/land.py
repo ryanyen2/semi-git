@@ -224,6 +224,11 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
         gb.restore_worktree_to(snapshot)  # a land that does not land leaves no trace (R7)
         _restore_local_caches(repo, local_before)  # ...and rewind the gitignored local caches too
         state.save_json(repo, "land_pending", {})  # normal (non-crash) exit -- clear the journal
+        if forks:  # F23: a fork refusal *does* leave one trace, after the rollback -- the committed
+            # `.sgt/forks.json` sync's materialize writes, so `sgt forks`/`resolve` see the forks land
+            # is refusing on (the "run merge-op / but forks says none" dead end). Written last so the
+            # worktree restore above doesn't clobber it; the red-gate/contention paths stay trace-free.
+            _materialize.save_fork_records(repo, forks)
         extra = {} if res is None else dict(
             pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
             identity_events=tuple(res.tree_result.get("identity_events", [])),

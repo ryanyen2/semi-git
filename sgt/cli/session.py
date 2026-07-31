@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail, _fail_json
 
 _USAGE = ("usage: sgt session start <name> [--base <branch>] [--task <text>] | "
           "sgt session status [<name>] [--watch] [--json] | "
@@ -111,9 +111,16 @@ def _status(repo, session_mod, name, watch, as_json) -> int:
 
 def _land(repo, session_mod, name, as_json) -> int:
     from sgt.api import land_view
+    from sgt.core.lens import DirtyWorkingTreeError
 
     try:
         report = session_mod.land(repo, name)
+    except DirtyWorkingTreeError as e:
+        # A materializing land onto a dirty target worktree is refused cleanly, never a traceback
+        # (F4/F5): the guard names the files; the remedy is to absorb or commit/discard them first.
+        msg = (f"session land refused: {e} -- record those changes with `sgt save`, or commit / "
+               "`git restore` them, then re-run")
+        return _fail_json(msg, as_json)
     except session_mod.SessionError as e:
         return _fail(str(e)) if not as_json else _emit_json({"error": str(e)})
     view = land_view(report)

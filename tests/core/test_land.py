@@ -551,6 +551,31 @@ def test_land_other_branch_updates_only_that_branch_and_restores_session_tree(tm
     assert "refs/heads/release" not in state.load_json(repo, "ideal_journal", default={})  # no undo entry
 
 
+def test_land_fork_refusal_persists_the_fork_records(tmp_path):
+    """F23: `land` computes forks on the fly and used to refuse "run `sgt merge-op`" *without*
+    persisting them, while `forks`/`resolve` read committed `.sgt/forks.json` (written only by
+    sync's materialize) -- so `sgt forks` reported none, a dead end. A fork-blocked land now routes
+    through the same shared writer, so `forks_view` shows exactly what land refused on."""
+    from sgt.api import forks_view
+
+    bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
+    tip = GitBinding(bare).rev_parse("refs/heads/main")
+
+    wt_a = tmp_path / "a"  # A reworks foo and lands it, advancing the shared branch
+    _add_worktree(bare, wt_a, tip)
+    _stage_local_op(wt_a, "foo", _BASE.replace("return 1", "return 111"))
+    assert sync.land(wt_a, branch="main").landed
+
+    wt_b = tmp_path / "b"  # B, still on the old tip, reworks foo differently -> a same-symbol fork
+    _add_worktree(bare, wt_b, tip)
+    _stage_local_op(wt_b, "foo", _BASE.replace("return 1", "return 222"))
+    report = sync.land(wt_b, branch="main")
+
+    assert not report.landed and report.forks              # land refused on a genuine fork
+    assert (wt_b / ".sgt" / "forks.json").is_file()         # ...and now leaves the fork on disk (F23)
+    assert forks_view(wt_b)["open"] == len(report.forks)    # `sgt forks` sees what land refused on
+
+
 # -- concurrency (the SYNC-2 core) -------------------------------------------------------------
 
 @pytest.mark.xfail(

@@ -155,16 +155,25 @@ def plan_restore(repo: str | Path, target: str) -> VerbPreview:
     source = lens.ideal_for_ref(repo, "HEAD")  # the full provenance ideal still holds reverted ops
     op_id, err = resolve_target(source, ops, target)
     source_ids = source.op_ids
-    if err and "::" not in target:
+    if err:
         # The reduced source parks a superseded/forked version (both competing tips are dropped by
-        # `reduce_to_ideal`), so the ghost op a `revert` printed can never resolve there. Fall back
-        # to an exact-or-unique-prefix match over the whole store: the downset is the ghost's own
-        # chain, and `_validated` still refuses any re-entry that would fork the ideal -- so this
-        # widens *resolution*, never legality. (`::` symbol targets keep the live-frontier path.)
+        # `reduce_to_ideal`), so the ghost op a `revert` printed -- and a symbol whose whole chain
+        # forked or is ungrounded there -- can never resolve against it. Fall back to the whole
+        # store: the downset is the ghost's own chain, and `_validated` still refuses any re-entry
+        # that would fork the ideal, so this widens *resolution*, never legality.
         ids = {op.id for op in ops}
-        matches = sorted(oid for oid in ids if oid.startswith(target))
-        if len(matches) == 1:
-            op_id, err, source_ids = matches[0], "", frozenset(ids)
+        if "::" in target:
+            # A non-live symbol still has its ghost ops in the store even when it has no live
+            # frontier tip in the reduced source. Resolve it to the newest ghost tip (same
+            # out-of-ideal ghost set `cli/ideal_edit._live_and_ghosts` lists, newest last) and
+            # restore that version over the whole store -- README's `restore <file::symbol>`.
+            ghosts = sorted(op.id for op in ops if target in op.footprint and op.id not in ideal.op_ids)
+            if ghosts:
+                op_id, err, source_ids = ghosts[-1], "", frozenset(ids)
+        else:
+            matches = sorted(oid for oid in ids if oid.startswith(target))
+            if len(matches) == 1:
+                op_id, err, source_ids = matches[0], "", frozenset(ids)
     if err:
         return _preview("restore", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
     after = ideal.op_ids | order.downset_in(op_id, source_ids, ops, declared)

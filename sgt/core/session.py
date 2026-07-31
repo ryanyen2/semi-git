@@ -213,15 +213,40 @@ def land(repo, name: str):
     return report
 
 
+def pending_work(session: Session) -> tuple[str, ...]:
+    """Human-readable reasons a session's scratch tree still holds work worth keeping:
+    `"uncommitted changes"` (dirty source outside `.sgt/`) and/or `"unlanded commits"` (the scratch
+    branch has advanced past what's reachable from `target_branch`). Empty when the scratch is clean
+    and fully landed (safe to reap) or already gone. This is `gc`'s real safety net: liveness alone
+    (F19: `owner_pid` is `getppid()`) can wrongly read a live agent's session as dead."""
+    if not os.path.isdir(session.scratch):
+        return ()
+    gb = GitBinding(session.scratch)
+    reasons = []
+    if gb.has_dirty_source():
+        reasons.append("uncommitted changes")
+    head = gb.head()
+    if head is not None and not gb.is_ancestor(head, f"refs/heads/{session.target_branch}"):
+        reasons.append("unlanded commits")
+    return tuple(reasons)
+
+
 def gc(repo, force: bool = False) -> tuple[str, ...]:
     """Reap sessions whose recorded pid is no longer alive (a crashed agent's abandoned scratch
     tree) -- `force` reaps every session regardless of liveness. Age alone can't distinguish a
-    crash from a long-running agent mid-edit, so liveness is the only signal (D5's pitfall)."""
+    crash from a long-running agent mid-edit, so liveness is the only signal (D5's pitfall).
+
+    Without `force`, a dead session whose scratch tree still holds uncommitted changes or unlanded
+    commits is left in place (0.4/F19 safety): `pending_work` names what would be lost, and the
+    caller should surface it. `force` is the explicit "yes, discard it" override that reaps
+    regardless -- including live and dirty sessions."""
     sessions = _load(repo)
     targets = list(sessions.values()) if force else [s for s in sessions.values() if not is_alive(s.owner_pid)]
     gb = GitBinding(repo)
     reaped = []
     for s in targets:
+        if not force and pending_work(s):
+            continue  # would destroy uncommitted/unlanded work -- refuse without --force
         try:
             gb.worktree_remove(s.scratch, force=True)
         except GitError:

@@ -136,7 +136,9 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
 
     try:
         report = sync_mod.land(repo, branch=branch)
-    except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
+    except DirtyWorkingTreeError:
+        return _dirty_fail(repo, as_json)
+    except (GitError, ValueError, MinerVersionMismatch) as e:
         return _fail_json(str(e), as_json)
 
     from sgt.api import land_view
@@ -161,6 +163,70 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
     return 1
 
 
+def _dirty_fail(repo: str, as_json: bool) -> int:
+    """A refusal, not a traceback (F-audit 0.3): a `DirtyWorkingTreeError` at the CLI boundary
+    becomes the uncommitted-file list plus the *actual* remedy (`git commit`), not the internal
+    "`sgt put` or commit first" message (no such verb) with no files. Read-only: names what git
+    itself sees dirty, which is exactly the clean-tree precondition sync/land refused on."""
+    import subprocess
+
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True, check=False
+    )
+    files = [line[3:] for line in proc.stdout.splitlines() if line[3:].strip()]
+    listing = "".join(f"\n      {f}" for f in files)
+    msg = (
+        "working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), "
+        "then re-run" + listing
+    )
+    return _fail_json(msg, as_json)
+
+
+def _closure_casualties(repo: str, before_ids, forks) -> list[dict]:
+    """Ops that left the local ideal when the merge folded in (F12): a teammate's revert can
+    closure-remove YOUR fresh dependent work, and today sync says only "✓ merged". Diff the
+    recorded ideal before/after the merge (a pure read) and name each casualty with its symbols, so
+    the caller can offer a `sgt restore` hint. Fork tips are excluded -- their remedy is `merge-op`,
+    surfaced separately -- so a restore hint never points at the wrong resolution."""
+    from sgt.core import lens
+    from sgt.core.store import Store
+
+    fork_tips = {tip for _sym, a, b in forks for tip in (a, b)}
+    removed = (before_ids - lens.current_ideal(repo).op_ids) - fork_tips
+    if not removed:
+        return []
+    store = Store(repo)
+    rows = []
+    for oid in removed:
+        op = store.get(oid)
+        rows.append({"op": oid, "symbols": sorted(op.footprint) if op is not None else []})
+    return sorted(rows, key=lambda r: (r["symbols"], r["op"]))
+
+
+def _print_casualties(rows: list[dict]) -> None:
+    if not rows:
+        return
+    print(f"    ⚠ {len(rows)} op(s) left your tree in this merge (a teammate's revert can closure-"
+          "remove work built on it):")
+    for r in rows:
+        label = ", ".join(r["symbols"]) or "(no symbol)"
+        print(f"      {label} — bring it back: sgt restore {r['op'][:8]}")
+
+
+def _open_fork_reminder(repo: str) -> None:
+    """Repeat the open-fork warning on *every* sync while a fork is open (F12), not only the sync
+    that first surfaced it -- an up-to-date sync would otherwise stay silent about a fork the user
+    still hasn't resolved. Reads the durable committed `.sgt/forks.json` via `forks_view`."""
+    from sgt.api import forks_view
+
+    view = forks_view(repo)
+    if not view["open"]:
+        return
+    print(f"    ⚠ {view['open']} open fork(s) still awaiting resolution:")
+    for rec in view["forks"]:
+        print(f"      {rec['symbol']} ({rec['file']}): {rec['remedy']}")
+
+
 def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
     import sys
 
@@ -180,29 +246,41 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
 
         try:
             pview = sync_preview_view(repo, remote, branch)
-        except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
+        except DirtyWorkingTreeError:
+            return _dirty_fail(repo, as_json)
+        except (GitError, ValueError, MinerVersionMismatch) as e:
             return _fail_json(str(e), as_json)
         if pview.get("up_to_date"):
             print(f"✓ sync {pview['remote']}/{pview['target']}: already up to date")
+            _open_fork_reminder(repo)
             return 0
         if not confirm_collab(pview, f"sync {pview['remote']}/{pview['target']}?"):
             print("  aborted — nothing synced.")
             return 1
 
+    from sgt.core import lens
+
+    before_ids = lens.current_ideal(repo).op_ids  # F12: capture the pre-merge ideal to diff casualties
     try:
         report = sync_mod.sync(repo, remote=remote, branch=branch)
-    except (DirtyWorkingTreeError, GitError, ValueError, MinerVersionMismatch) as e:
+    except DirtyWorkingTreeError:
+        return _dirty_fail(repo, as_json)
+    except (GitError, ValueError, MinerVersionMismatch) as e:
         return _fail_json(str(e), as_json)
 
     from sgt.api import sync_view
 
     view = sync_view(report)
     up_to_date = report.message == "already up to date"
+    casualties = [] if up_to_date else _closure_casualties(repo, before_ids, report.forks)
     if as_json:
-        return _emit_json({"ok": report.merge_sha is not None or up_to_date, **view})
+        return _emit_json(
+            {"ok": report.merge_sha is not None or up_to_date, **view, "removed_ops": casualties}
+        )
 
     if up_to_date:
         print(f"✓ sync {report.remote}/{report.branch}: already up to date")
+        _open_fork_reminder(repo)
         return 0
 
     # A merge landed (the fork-free part at least). Report it, then loudly surface any open fork --
@@ -212,14 +290,16 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
     print(f"{icon} sync {report.remote}/{report.branch}: merged {report.merge_sha[:12]}")
     if report.ops_added:
         print(f"    +{report.ops_added} op(s)")
+    _print_casualties(casualties)  # F12: name the ops the merge/closure removed from the local tree
     # R12 loudness: a degraded base or a lost-provenance tip fell back to weaker semantics -- never
     # silent. `merged` above may read as clean, so name the recovery path that was refused.
     if report.base_recovery == "none":
         print("    ⚠ base recovery: none — no witnessed merge-base; used union semantics "
               "(cannot delete work one side removed)")
     if report.theirs_recovery == "none":
-        print("    ⚠ theirs' tip has sgt ops but no witnessed trailers/record — re-mine on their "
-              "side (`sgt log`) or restore the `Sgt-Op:` trailers, then sync again")
+        print("    ⚠ their tip carries sgt ops but no witnessed provenance (trailers/record) — used "
+              "union semantics; have them re-commit through sgt so the `Sgt-Op:` trailers are "
+              "stamped, push, then sync again")
     if report.forks:
         print(f"    ⚠ {len(report.forks)} OPEN FORK(S) — forked symbol(s) sit at the common ancestor "
               f"until resolved:")

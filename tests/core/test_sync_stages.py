@@ -371,6 +371,30 @@ def test_u8_fork_tips_survive_base_subtraction(tmp_path):
     assert res.merged_ideal.op_ids == frozenset({a0.id})  # both tips parked at the ancestor
 
 
+def test_u8_log_recovered_theirs_revert_travels_no_resurrection(tmp_path):
+    """F25: a teammate who *landed* a revert and pushed ships their full ideal via the D1 land-log,
+    so U7 recovers theirs' tip as `"log"`. That is a full ideal exactly like `trailers`/`ideal-record`,
+    so the three-way subtraction must honor a revert absent from it -- else the reverted op is re-added
+    from our own side (silent resurrection). Drives `theirs_recovery="log"` (the helper defaults
+    `"trailers"`) and asserts the revert does not come back. Regression guard for `resolve.py:83`."""
+    a0 = make_op({"foo": (None, "v1")}, {"foo": b"1"})
+    baz = make_op({"baz": (None, "b1")}, {"baz": b"9"})  # base carried baz; theirs landed its revert
+    all_ops = [a0, baz]
+
+    ing = _resolve_ingested(
+        tmp_path, all_ops,
+        ours_ids={a0.id, baz.id},   # we still carry baz
+        theirs_ids={a0.id},         # theirs' log-recovered full ideal dropped baz (they reverted it)
+        base_ids={a0.id, baz.id},   # baz was in the recovered merge-base
+        theirs_recovery="log",
+    )
+    res = resolve(tmp_path, ing)
+
+    assert not res.forks
+    assert baz.id not in res.merged_ideal.op_ids  # the landed+pushed revert traveled -- no resurrection
+    assert res.merged_ideal.op_ids == frozenset({a0.id})
+
+
 def test_u8_empty_base_reproduces_the_plain_union(tmp_path):
     """Scenario 5: `base == ∅` (base_recovery "none") makes `removed_seed` empty, so no removals --
     the merged ideal is exactly today's grounded, fork-free union over the same ops."""
