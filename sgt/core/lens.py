@@ -76,6 +76,55 @@ def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
     state.save_json(repo, "ideal_table", table)
 
 
+@dataclass(frozen=True)
+class ExclusionORSet:
+    """The ops an explicit edit (revert/pin, U8) removed from a ref's ideal, as an OR-Set (1.1):
+    each exclusion `add` carries a globally-unique tag, a re-include (restore/cherry-pick, or the
+    undo of a revert) tombstones the tags it locally observes, and the *live* exclusion set is every
+    op-id with at least one non-tombstoned tag. This is the *positive* record that makes a revert
+    durable: `ideal(ref) = reduce(provenance-in-ancestry − exclusions.live())`, so a later git
+    history rewrite that re-mines the same content under a new sha (rebase/cherry-pick) can no
+    longer resurrect a reverted op through provenance -- the exclusion subtracts it regardless
+    (F11/F20). Mirrors `DeclaredORSet`; per-ref, local (never travels -- that is 1.2/Phase 4)."""
+
+    adds: frozenset[tuple[str, str]] = frozenset()  # (op_id, tag)
+    tombstones: frozenset[str] = frozenset()  # tombstoned tags
+
+    def live(self) -> frozenset[str]:
+        """Every op-id that still has an un-tombstoned exclusion tag -- what the ideal subtracts."""
+        dead = self.tombstones
+        return frozenset(oid for (oid, tag) in self.adds if tag not in dead)
+
+    def head(self) -> str:
+        """A stable content fingerprint of the live exclusion set, for change detection."""
+        return hashlib.sha256(",".join(sorted(self.live())).encode()).hexdigest()[:16]
+
+
+def _exclusion_from_body(body: dict | None) -> ExclusionORSet:
+    if body is None:
+        return ExclusionORSet()
+    return ExclusionORSet(
+        adds=frozenset((oid, tag) for oid, tag in body.get("adds", [])),
+        tombstones=frozenset(body.get("tombstones", [])),
+    )
+
+
+def _load_exclusions(repo: Path) -> dict[str, ExclusionORSet]:
+    """The per-ref exclusion OR-Sets: `{ref_key: ExclusionORSet}`. Absent file loads as `{}`."""
+    raw = state.load_json(repo, "exclusions", default={})
+    return {key: _exclusion_from_body(body) for key, body in raw.items()}
+
+
+def _save_exclusions(repo: Path, table: dict[str, ExclusionORSet]) -> None:
+    state.save_json(repo, "exclusions", {
+        key: {
+            "adds": sorted([oid, tag] for oid, tag in orset.adds),
+            "tombstones": sorted(orset.tombstones),
+        }
+        for key, orset in table.items()
+    })
+
+
 def _load_backfill_state(repo: Path) -> dict[str, dict]:
     """The persisted per-ref genesis-backfill frontier: `{ref_key: {"genesis_frontier": ...,
     "reached_genesis": ...}}`. Local, never travels -- like `_load_witnesses`, an absent file
@@ -520,21 +569,47 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
         else:
             opindex.apply_delta(repo, stored_ops)
 
-    # Seed the persisted ideal from a provenance scan the first time this ref is tracked;
-    # thereafter the stored set is authoritative (it can encode explicit exclusions -- U8's
-    # revert/pin -- that a scan of git ancestry can't).
+    # Seed the persisted ideal from a provenance scan the first time this ref is tracked; thereafter
+    # the stored set is the base the sync builds on -- it carries committed ops that carry no
+    # provenance yet (`put` commits via `Sgt-Op:` trailers and advances the witness without re-mining
+    # them, so their provenance stays empty until a later cold mine), which a raw provenance scan
+    # would drop.
+    all_ops = opindex.index_ops(repo)
     ideal_table = _load_ideal_table(repo)
     already_seeded = key in ideal_table
     base_ids = set(ideal_table[key]) if already_seeded else _committed_ids_by_provenance(gb, store)
 
-    # The durable ideal gains only newly-committed ops; the dirty overlay is never persisted, so a
-    # discarded working-tree edit (e.g. `git checkout -- .`) simply stops appearing on the next
-    # `get()` rather than lingering in the table. Reduce to a valid ideal *before* persisting
-    # (U22.5): real history mined cold contains add/delete/re-add forks and predecessors squashed
-    # out of this ref, so the raw union is not directly constructible -- persisting it unreduced
-    # would leave an invalid `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
-    all_ops = opindex.index_ops(repo)
-    committed_ids = set(order.reduce_to_ideal(base_ids | new_committed_ids, all_ops))
+    # `exclusions` is the per-ref, append-only OR-Set of ops an explicit edit (revert/pin, U8)
+    # removed -- a *positive* record subtracted from the ideal (1.1). It is what makes a revert
+    # durable across a git history rewrite: a rebase/cherry-pick that re-mines the same content under
+    # a new sha re-adds the op via `new_committed_ids`, but the exclusion subtracts it right back out,
+    # so it can no longer silently resurrect (F11/F20). Before, the union-only reconciliation had no
+    # way to represent "excluded though back in history" and the op came back.
+    exclusions_table = _load_exclusions(repo)
+    if already_seeded and key not in exclusions_table:
+        # Migrate an existing repo whose reverts were recorded only as *absences* in the base set
+        # into explicit exclusions, so the switch to exclusion-subtracted ideals does not resurrect a
+        # pre-existing revert on the first history rewrite. A genuine revert is an op that would
+        # *survive* reduction from pure history (`_committed_ids_by_provenance`) yet is absent from
+        # the base set -- so `reduce(provenance) − base` isolates reverts from reduction-drops (fork
+        # tips, ungrounded ops), which must stay out of the exclusion set or excluding one fork tip
+        # would silently un-fork the other. `new_committed_ids` (ops legitimately mined *into* the
+        # ideal this sync, e.g. a foreign hotfix) are excluded from the seed too. Runs once per ref.
+        implied = _committed_ids_by_provenance(gb, store) - base_ids - new_committed_ids
+        if implied:
+            exclusions_table[key] = ExclusionORSet(
+                adds=frozenset((oid, uuid.uuid4().hex) for oid in implied)
+            )
+            _save_exclusions(repo, exclusions_table)
+    exclusions = exclusions_table.get(key, ExclusionORSet())
+
+    # The durable ideal gains newly-committed ops and loses excluded ones; the dirty overlay is never
+    # persisted, so a discarded working-tree edit (e.g. `git checkout -- .`) simply stops appearing
+    # on the next `get()`. Reduce to a valid ideal *before* persisting (U22.5): real history mined
+    # cold contains add/delete/re-add forks and predecessors squashed out of this ref, so the raw
+    # union is not directly constructible -- persisting it unreduced would leave an invalid
+    # `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
+    committed_ids = set(order.reduce_to_ideal((base_ids | new_committed_ids) - exclusions.live(), all_ops))
 
     # (4) Checkpoint: the witness, the ideal table, and the backfill state must each land
     # atomically whenever any of them changed (R5, widened to a triple by this unit) -- a crash
@@ -740,6 +815,22 @@ def record_ideal(
             }
             jtable.setdefault(key, []).append(entry)
             _save_ideal_journal(repo, jtable)
+        # Translate this edit's delta into the exclusion OR-Set (1.1) -- the positive record the
+        # provenance-derived ideal subtracts. An op this edit *removed* (revert/pin, or the undo of a
+        # restore) is excluded with a fresh tag; an op it *re-included* (restore/cherry-pick, or the
+        # undo of a revert) has its observed exclusion tags tombstoned so it re-enters. Reads the
+        # pre-overwrite `itable[key]` as the prior ideal, so the first edit on an un-seeded ref (no
+        # prior entry) records nothing -- it *is* the seed, and has removed nothing.
+        before = set(itable.get(key, []))
+        after = set(ideal.op_ids)
+        removed, added = before - after, after - before
+        if removed or added:
+            extable = _load_exclusions(repo)
+            orset = extable.get(key, ExclusionORSet())
+            new_adds = frozenset((oid, uuid.uuid4().hex) for oid in removed)
+            tomb = frozenset(tag for (oid, tag) in orset.adds if oid in added)
+            extable[key] = ExclusionORSet(orset.adds | new_adds, orset.tombstones | tomb)
+            _save_exclusions(repo, extable)
         itable[key] = sorted(ideal.op_ids)
         _save_ideal_table(repo, itable)
         wtable = _load_witnesses(repo)
