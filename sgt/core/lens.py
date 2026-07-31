@@ -296,6 +296,31 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     return set(order.reduce_to_ideal(included, all_ops))
 
 
+def _record_parked_forks(repo: Path, parked: list[tuple[str, str, str]]) -> None:
+    """1.4: union the forks this rebuild parked into the one shared `.sgt/forks.json` store so
+    `sgt forks`/`resolve` surface them. Additive -- it never clears a record `land`'s refusal (F23)
+    or a teammate's `sync` flush wrote; a fork leaves the store only when its resolution drops it
+    from the rebuild and a replacing writer rewrites, or `resolve` removes it (the CRDT-tombstone
+    lifecycle is Phase 4). Routes through the single `save_fork_records` writer (never a bespoke
+    `save_json`) and writes only when the union gains something, so a re-`get()` over the same fork
+    touches no mtime (R5). Its own lock guards the read-modify-write against a concurrent `sync`
+    flush; `_ensure_fidelity`'s own lock is the precedent -- `locked_section` is non-reentrant (U23),
+    so this must run *outside* the checkpoint section. `materialize` imports `lens` at module load,
+    so the reverse import is lazy to avoid a cycle."""
+    if not parked:
+        return
+    from sgt.core.sync import materialize
+
+    with locked_section(repo):
+        existing = {
+            (r["symbol"], r["tips"][0], r["tips"][1])
+            for r in state.load_json(repo, "forks", default=[])
+        }
+        merged = existing | set(parked)
+        if merged != existing:
+            materialize.save_fork_records(repo, tuple(sorted(merged)))
+
+
 def _fidelity_fp(committed_ids) -> str:
     """A stable fingerprint of a ref's committed ideal -- the key the fidelity marks are cached
     against, so a stale entry is detected whenever the ideal moved (a new commit, a fork surfaced,
@@ -609,7 +634,8 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # cold contains add/delete/re-add forks and predecessors squashed out of this ref, so the raw
     # union is not directly constructible -- persisting it unreduced would leave an invalid
     # `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
-    committed_ids = set(order.reduce_to_ideal((base_ids | new_committed_ids) - exclusions.live(), all_ops))
+    seed = (base_ids | new_committed_ids) - exclusions.live()
+    committed_ids = set(order.reduce_to_ideal(seed, all_ops))
 
     # (4) Checkpoint: the witness, the ideal table, and the backfill state must each land
     # atomically whenever any of them changed (R5, widened to a triple by this unit) -- a crash
@@ -644,6 +670,15 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # fingerprint no-op unless the ideal moved. Outside the section above -- `_ensure_fidelity`
     # takes its own lock and `locked_section` is non-reentrant (U23).
     _ensure_fidelity(repo, gb, key, committed_ids, all_ops)
+
+    # 1.4 (F7/F8): `reduce_to_ideal` parked every genuine same-symbol fork at its common ancestor by
+    # dropping both tips -- `fork_free` did so *silently*, so `sgt forks`/`resolve` saw nothing to
+    # reconcile. Surface them in the one shared fork store, exactly as sync/land do -- never silently
+    # exclude. A fork can appear (a conflicting merge) while the *ideal set* stays put (the symbol
+    # parks back at a version already in the ideal), so this hangs off the witness-moved full-run
+    # path, not `ideal_changed`. `_record_parked_forks` no-ops the write unless the store's union
+    # actually gains something, so a re-`get()` over the same fork touches no mtime.
+    _record_parked_forks(repo, order.parked_forks(seed, all_ops))
 
     # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
     # dirty edit that forks committed state is dropped by the same reduction rather than crashing.

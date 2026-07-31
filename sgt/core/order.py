@@ -218,6 +218,17 @@ def forks(ops: list[Op], ideal_ids) -> list[tuple[str, str, str]]:
     return found
 
 
+def parked_forks(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> list[tuple[str, str, str]]:
+    """The `(symbol, op_a, op_b)` fork triples `reduce_to_ideal` silently drops: `fork_free` grounds
+    `ideal_ids` first, then removes both tips of every same-`(symbol, before)` collision among the
+    *grounded* ops. Reporting forks on the grounded set (not the raw `ideal_ids`) is the point --
+    it keeps a mere reduction-drop (an ungrounded op that only *looks* like it collides with a live
+    one) from surfacing as an open fork; only a divergence both of whose tips are grounded is real.
+    The collecting counterpart of the drop `fork_free` performs, so `lens._sync`'s rebuild can record
+    what it parked in the shared fork store (1.4) instead of excluding it in silence."""
+    return forks(ops, _grounded(ideal_ids, ops, declared))
+
+
 def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
     """The largest fork-free subset of `ideal_ids`: drop every forked symbol's *two* tips together
     with their up-sets. Neither tip can be included without deciding which side wins, so nothing

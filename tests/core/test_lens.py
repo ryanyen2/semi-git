@@ -710,6 +710,48 @@ def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
     assert current_ideal(repo).op_ids == ideal.op_ids
 
 
+def test_local_rebuild_records_a_genuine_fork_in_the_shared_store(tmp_path):
+    """1.4 (F7/F8 residual): merge-aware mining (1.3) stops a *clean* merge from forking, but a merge
+    that genuinely *conflicts* on one symbol still lands both divergent tips in committed history -- a
+    real fork. `fork_free` parks the symbol at the common ancestor by dropping both tips, and used to
+    do so *silently* (`order.py`), so `sgt forks`/`resolve` saw nothing to reconcile. The local
+    rebuild must now record what it parked in the one shared fork store, exactly as sync/land do --
+    park AND report, never silently exclude."""
+    from sgt import state
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("base: foo v1")
+    get(repo)  # mine the base
+    main = gb.symbolic_ref().rsplit("/", 1)[-1]
+
+    # feature and main each edit foo from the SAME base version -> a real conflict on merge
+    gb._git("checkout", "-q", "-b", "feature")
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("feature: foo v2")
+
+    gb._git("checkout", "-q", main)
+    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("main: foo v3")
+
+    # a conflicting merge; resolve to main's side and complete the two-parent merge commit by hand.
+    gb._git("merge", "--no-edit", "feature", check=False)  # exits non-zero: conflict
+    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
+    gb._git("add", "a.py")
+    gb._git("commit", "--no-edit")
+
+    ideal = get(repo)  # cold rebuild encounters the genuine fork
+    all_ops = Store(repo).all_ops()
+    assert is_valid_ideal(all_ops, ideal.op_ids)  # parked -> still a valid ideal, never a crash
+    # the symbol parked at its common ancestor: both divergent tips dropped, so foo reads v1.
+    assert code(ideal, all_ops)["a.py"] == b"def foo():\n    return 1\n"
+
+    # ...and the parked fork is surfaced in the one shared store, not silently excluded.
+    records = state.load_json(repo, "forks", default=[])
+    assert any(r["symbol"] == "a.py::foo" for r in records)
+
+
 # -- U2: mining-fidelity marks (which commits reduce_to_ideal could not fully reconstruct) -----
 
 def test_fidelity_marks_the_commits_of_a_reduction_drop(tmp_path):
