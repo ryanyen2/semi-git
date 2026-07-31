@@ -249,6 +249,27 @@ def test_confirmed_match_never_resurfaces_as_drift(tmp_path):
     assert result.matches == () and result.drift_op_ids == ()
 
 
+def test_confirm_match_reflects_a_local_rationale_record(tmp_path):
+    """Intent-ledger M1 planned path: confirming a match transcribes it into a local rationale
+    record -- reason from the fulfilled step, the matched op as subject, actor human, inferred
+    (unconfirmed). The evidence turn only exists if the plan came through `intake`; a directly
+    seeded session has none, and the record is still valid (its reason came from the step)."""
+    from sgt.intent import rationale as rationale_mod
+
+    store = Store(tmp_path)
+    steps = _seed_session(tmp_path, "s1", set(), [("add the login guard", ["a.py::foo"])])
+    op = store.add(_op({"a.py::foo": "v1"}))
+
+    match_mod.confirm_match(tmp_path, "s1", [steps[0]["hollow_id"]], [op.id])
+
+    recs = rationale_mod.for_op(tmp_path, op.id)
+    assert len(recs) == 1
+    assert recs[0]["reason"] == "add the login guard"
+    assert recs[0]["actor"] == "human"
+    assert recs[0]["confirmed"] is False
+    assert recs[0]["subject"][0]["op"] == op.id
+
+
 # -- structured provenance stamping (plan U22, D7) ---------------------------------------------
 
 def test_confirm_match_stamps_the_session_onto_the_matched_ops_provenance(tmp_path):

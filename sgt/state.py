@@ -161,6 +161,18 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "repair_cache": _Artifact(("local", "repair_cache.json"), committed=False, sort_keys=False, newline=False),
     "plan_sessions": _Artifact(("local", "plan_sessions.json"), committed=False),
     "plan_matches": _Artifact(("local", "plan_matches.json"), committed=False),
+    # local, gitignored raw conversation-turn capture (`sgt.intent.turns`, intent-ledger M1):
+    # {turn-id: record} keyed on the same plan-id/session-name/sha provenance keys `intent_prompts`
+    # uses, but multi-turn, ordered, and kept-not-pruned -- the evidence layer reflection reasons
+    # over to derive shareable rationale. Never travels (raw conversation stays on its machine), so
+    # unlike `intent_prompts` it needs no merge; content-addressed, so re-capture is a no-op.
+    "intent_turns": _Artifact(("local", "turns.json"), committed=False),
+    # local, gitignored derived rationale records (`sgt.intent.rationale`, intent-ledger M1):
+    # {rationale-id: record} -- reflection's answer to "why do these ops exist", transcribed from a
+    # confirmed plan match over `intent_turns` evidence. Local in M1 (proves the bet with no sync
+    # surface); the committed, CRDT-merged, liveness-joined team tier is M2, gated on the state-model
+    # rework (2026-07-31-001 Phase 1.2). Content-addressed + append-only, so re-reflection is a no-op.
+    "intent_rationale": _Artifact(("local", "rationale.json"), committed=False),
     # local, gitignored record of scratch-tree sessions (`sgt session start`, U30/D5): name ->
     # branch/scratch path/target branch/base op-ids/owning pid/start time. Per-clone, never
     # travels -- a session's scratch tree is a `git worktree` of *this* clone's object store.

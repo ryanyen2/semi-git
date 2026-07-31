@@ -177,6 +177,18 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
             cascade = ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
         except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
             pass
+        # Zero-burden intent capture (intent-ledger M1): the `-m` message is the user's own words
+        # about what this work was -- harvested as a turn keyed by the witness commit sha (a key
+        # `_atom_prompt` already joins by, reachable from the new ops' provenance), never a new
+        # prompt we asked them to type. Only a user-supplied message counts; the "sgt save" default
+        # placeholder is not intent. Guarded like the cascade: capture must never fail a save.
+        if message:
+            try:
+                from sgt.intent.turns import record_turn
+                record_turn(repo, key=sha, key_kind="sha", actor="human", channel="cli",
+                            text=message)
+            except Exception:  # noqa: BLE001
+                pass
     elif not resolve_plan:
         msg = "nothing to save -- no uncommitted ops"
         if as_json:

@@ -25,7 +25,8 @@ _USAGE = ("usage: sgt intent list [--json] | "
           "sgt intent show <feature@n | theme-id | commit-sha> [--json] | "
           "sgt intent build [--recut <feature>] [--json] | "
           "sgt intent relabel <feature@n> \"<intent>\" [--json] | "
-          "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--json]\n"
+          "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--json] | "
+          "sgt intent open [--json] | sgt intent done <id> [--json]\n"
           "  (rewind a single checkpoint with `sgt revert <feature>@<n>`)")
 
 
@@ -56,7 +57,7 @@ def _intent(
 ) -> int:
     from sgt.core.lens import get
 
-    if sub not in ("list", "show", "build", "revert", "relabel"):
+    if sub not in ("list", "show", "build", "revert", "relabel", "open", "done"):
         print(_USAGE)
         return 2
     get(repo)  # mine-on-contact so the overlay reflects current reality (R9)
@@ -64,14 +65,58 @@ def _intent(
         return _list(repo, as_json)
     if sub == "build":
         return _build(repo, as_json, recut)
+    if sub == "open":  # the intent-ledger unfulfilled-intent surface (M1), not the overlay
+        return _open(repo, as_json)
     if target is None:
         print(_USAGE)
         return 2
+    if sub == "done":
+        return _done(repo, target, as_json)
     if sub == "relabel":
         return _relabel(repo, target, " ".join(rest or []), as_json)
     if sub == "revert":
         return _revert(repo, target, subset, emit, as_json, yes)
     return _show(repo, target, as_json)
+
+
+def _open(repo: str, as_json: bool) -> int:
+    """`sgt intent open`: the unfulfilled intents -- plan steps that were stated but never landed
+    (their sessions closed with the step still pending). Surfaced so work you meant to do but didn't
+    resurfaces, rather than vanishing with its hollow op."""
+    from sgt.intent.rationale import open_intents
+
+    opens = open_intents(repo)
+    if as_json:
+        return _emit_json({"open": [
+            {"id": r["id"], "reason": r["reason"], "predicted_fp": r["predicted_fp"], "ts": r["ts"]}
+            for r in opens
+        ]})
+    if not opens:
+        print("no open intents -- everything stated has landed (or nothing was captured)")
+        return 0
+    print(f"{len(opens)} open intent(s) -- stated but not yet landed:")
+    for r in opens:
+        print(f"  [{r['id'][:12]}] {r['reason'] or '(unknown)'}")
+    print("\n  retire one with `sgt intent done <id>`")
+    return 0
+
+
+def _done(repo: str, target: str, as_json: bool) -> int:
+    """`sgt intent done <id>`: retire an open intent by hand -- the escape hatch for one that was
+    actually finished (differently than predicted, so no op ever matched it) or no longer wanted.
+    `<id>` may be the short prefix `sgt intent open` prints."""
+    from sgt.intent.rationale import open_intents, retire_open
+
+    matches = [r for r in open_intents(repo) if r["id"] == target or r["id"].startswith(target)]
+    if len(matches) != 1:
+        which = "no" if not matches else "ambiguous"
+        return _fail_json(f"{which} open intent {target!r} (see `sgt intent open`)", as_json)
+
+    retire_open(repo, matches[0]["id"])
+    if as_json:
+        return _emit_json({"ok": True, "retired": matches[0]["id"]})
+    print(f"✓ retired open intent {matches[0]['id'][:12]}")
+    return 0
 
 
 def _tier_badge(tier: str) -> str:

@@ -78,4 +78,18 @@ def _why(repo: str, op_ref: str, for_feature: str | None, as_json: bool) -> int:
         for hop in view["chain"]:
             arrow = f" --{hop['via']}--> " if hop["via"] else ""
             print(f"  {arrow}{hop['op_id']}")
+
+    # Intent-ledger M1: the recorded "why" -- the user's own reasoning, reflected from what the
+    # workflow captured. An honest "no recorded reason" beats inventing one.
+    rationale = view.get("rationale", [])
+    if rationale:
+        print("  why (recorded):")
+        for r in rationale:
+            badge = "confirmed" if r["confirmed"] else "inferred"
+            if r["superseded"]:
+                badge += ", overturned"
+            ev = f" [{r['evidence']} turn(s)]" if r["evidence"] else ""
+            print(f"    - {r['reason'] or '(unknown)'}  ({r['actor']}, {badge}){ev}")
+    else:
+        print("  why (recorded): no recorded reason")
     return 0
