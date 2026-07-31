@@ -427,7 +427,7 @@ def plan_split(repo: str | Path, feature_id: str) -> SplitPreview:
     _, fused = tree.fused_graph(repo, ops, ideal)
     adj = tree._adjacency(fused)
 
-    result_split = tree._split_once(node["members"], fused, adj, min_lane=1, target=(2, 2))
+    result_split = tree._split_once(node["members"], adj, min_lane=1, target=(2, 2))
     if result_split.groups is None:
         return SplitPreview(False, feature_id, reason=result_split.reason,
                             message=f"cannot split {feature_id!r}: {result_split.reason}")

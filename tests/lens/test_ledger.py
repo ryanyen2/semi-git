@@ -19,7 +19,8 @@ from sgt.lens import map as lensmap
 from sgt.lens.pins import load_pins
 from sgt.store.gitbind import init_store
 
-_FS = frozenset
+def _FS(pair):  # canonical (sorted-tuple) edge key -- see cluster.edge_key
+    return tuple(sorted(pair))
 
 
 def _owned():

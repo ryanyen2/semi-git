@@ -74,7 +74,7 @@ def cohesion(nodes: dict, ops: list, node_set: set[str], hubs: set[str]) -> dict
     return {leaf: internal.get(leaf, 0.0) / t for leaf, t in total.items() if t > 0}
 
 
-def cross_feature_mass(nodes: dict, fused: dict[frozenset, float]) -> float | None:
+def cross_feature_mass(nodes: dict, fused: dict[tuple[str, str], float]) -> float | None:
     """Fraction of the fused graph's total edge weight that crosses a leaf boundary. `None` when
     the fused graph carries no weight at all (an empty/degenerate repo) -- there is no mass to
     divide."""

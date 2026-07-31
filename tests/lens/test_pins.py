@@ -59,7 +59,7 @@ def test_find_contradictions_cannot_link_within_must_link_group_transitively():
 
 def test_apply_must_link_contracts_group_into_one_synthetic_vertex():
     nodes = ["a", "b", "c"]
-    fused = {frozenset({"a", "c"}): 1.0, frozenset({"b", "c"}): 2.0}
+    fused = {("a", "c"): 1.0, ("b", "c"): 2.0}
     p = pins_mod.Pins(must_link=frozenset({("a", "b")}))
 
     new_nodes, new_edges, expansion = pins_mod.apply_must_link(nodes, fused, p)
@@ -68,12 +68,12 @@ def test_apply_must_link_contracts_group_into_one_synthetic_vertex():
     synthetic = next(n for n in new_nodes if n != "c")
     assert expansion[synthetic] == frozenset({"a", "b"})
     # both a-c and b-c edges land on the synthetic vertex, summed
-    assert new_edges[frozenset({synthetic, "c"})] == 3.0
+    assert new_edges[tuple(sorted((synthetic, "c")))] == 3.0
 
 
 def test_apply_must_link_ignores_group_members_not_in_this_node_set():
     nodes = ["a", "c"]  # "b" (a's must-link partner) isn't in this graph at all
-    fused = {frozenset({"a", "c"}): 1.0}
+    fused = {("a", "c"): 1.0}
     p = pins_mod.Pins(must_link=frozenset({("a", "b")}))
 
     new_nodes, new_edges, expansion = pins_mod.apply_must_link(nodes, fused, p)
