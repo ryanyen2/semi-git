@@ -142,6 +142,17 @@ def _restore(repo: str | Path, snap: dict) -> None:
 # -- undo (reverse-chronological, one kind at a time) ---------------------------------------------
 
 
+def _casualty_symbols(repo: str | Path, op_ids: frozenset[str]) -> str:
+    """The symbols an `undo` snapshot restore would drop, for the F3 refusal message (0.2c). Maps
+    the intervening op ids to their footprint symbols; falls back to the short op ids if an op is no
+    longer in the store."""
+    from sgt.core.store import Store
+
+    by_id = {op.id: op for op in Store(repo).all_ops()}
+    symbols = sorted({sym for oid in op_ids if oid in by_id for sym in by_id[oid].footprint})
+    return ", ".join(symbols) if symbols else ", ".join(sorted(o[:8] for o in op_ids))
+
+
 @dataclass(frozen=True)
 class UndoOutcome:
     """What one `undo` did. `status` selects the report: `empty` (nothing to undo), `ideal_edit`
@@ -154,19 +165,35 @@ class UndoOutcome:
     kind: str | None = None
 
 
-def undo(repo: str | Path) -> UndoOutcome:
+def undo(repo: str | Path, force: bool = False) -> UndoOutcome:
     """Pop the current ref's tail event and apply its inverse (KTD6). Reverse-chronological: each
     call reverses exactly one event. A shared-out `land`/`propose` is *refused* (and left in place,
     so the provenance record survives -- there is no way past it without a rebase). Absorbs current
-    reality first (R9)."""
+    reality first (R9).
+
+    Two Phase-0 guards protect against the snapshot inverse destroying work (0.2):
+      * an `ideal_edit` entry a crashed verb left unapplied (`applied=False`, F6) is *discarded*
+        (its edit never landed, so re-materializing its phantom prior ideal would clobber protected
+        state) and the real edit beneath it is inverted instead;
+      * re-materializing a prior ideal silently drops any op mined into the tree *after* the entry
+        was recorded -- a raw commit between the edit and this undo (F3). Undo detects that casualty
+        and *refuses* rather than destroy it, unless `force=True`."""
     from sgt.core import lens
 
     repo = Path(repo)
     lens.get(repo)  # mine-on-contact: absorb any dirty tree / foreign commit first (R9)
     key = _ref_key(repo)
-    event = tail(repo, ref_key=key)
-    if event is None:
-        return UndoOutcome("empty", "nothing to undo -- no recorded ideal edits")
+
+    # Discard any unapplied `ideal_edit` entries a crashed verb left on top (0.2a/F6) before
+    # reaching the newest genuine event to reverse.
+    while True:
+        event = tail(repo, ref_key=key)
+        if event is None:
+            return UndoOutcome("empty", "nothing to undo -- no recorded ideal edits")
+        if event.get("kind") == "ideal_edit" and event.get("applied") is False:
+            _drop_event(repo, key, event)
+            continue
+        break
 
     kind = event["kind"]
     if kind in ("land", "propose"):
@@ -176,6 +203,20 @@ def undo(repo: str | Path) -> UndoOutcome:
             f"undo only reverses local, not-yet-shared operations",
             kind=kind,
         )
+
+    # F3 guard (0.2c): the ideal_edit inverse re-materializes an absolute snapshot of the prior
+    # ideal, dropping any op present now but absent from the edit's own `result` -- i.e. work mined
+    # after this entry was recorded. Name it and refuse rather than clobber it, unless forced.
+    if kind == "ideal_edit" and not force and "result" in event:
+        current = lens.current_ideal(repo)
+        intervening = current.op_ids - set(event["result"])
+        if intervening:
+            return UndoOutcome(
+                "refused",
+                f"undo would drop work committed after this edit was recorded: "
+                f"{_casualty_symbols(repo, intervening)} -- re-run with force to drop it anyway",
+                kind=kind,
+            )
 
     outcome = apply_inverse(repo, event)
     # Applied cleanly -- now drop exactly the event we inverted, in a separate lock-held

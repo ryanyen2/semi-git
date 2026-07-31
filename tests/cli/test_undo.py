@@ -109,3 +109,30 @@ def test_four_undos_walk_back_through_save_revert_rename_edit(tmp_path, capsys):
     capsys.readouterr()
     assert _in(repo, ["undo"]) == 0
     assert "nothing to undo" in capsys.readouterr().out
+
+
+def test_undo_refuses_when_it_would_clobber_a_raw_commit_and_force_overrides(tmp_path, capsys):
+    """0.2c/F3 through the CLI: after a revert, a raw `git commit` lands work sgt mines on next
+    contact. Plain `sgt undo` would restore the pre-revert snapshot and silently drop that work, so
+    it refuses (nonzero, naming the casualty); `sgt undo --force` is the opt-in that proceeds."""
+    repo = tmp_path / "repo"
+    gb = _seed(repo)
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)  # one applied ideal_edit event to undo
+
+    # a raw commit between the revert and the undo -- intervening work absent from the edit's result
+    (repo / "a.py").write_text(
+        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
+    )
+    gb.commit_all("RAW: add baz (no sgt)")
+    lens.get(repo)  # absorb it into the current ideal
+
+    capsys.readouterr()
+    assert _in(repo, ["undo"]) != 0  # refused
+    assert "baz" in capsys.readouterr().out  # names the work it would have destroyed
+    assert b"def baz" in (repo / "a.py").read_bytes()  # not clobbered
+    assert b"def bar" not in (repo / "a.py").read_bytes()  # revert not undone
+
+    assert _in(repo, ["undo", "--force"]) == 0  # opt in to dropping baz
+    assert b"def bar" in (repo / "a.py").read_bytes()  # revert undone
+    assert b"def baz" not in (repo / "a.py").read_bytes()  # baz dropped as forced
