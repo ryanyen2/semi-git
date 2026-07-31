@@ -231,12 +231,26 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
     _save_sessions(repo, table)
 
     from sgt.intent.prompts import record_prompt
+    from sgt.intent.turns import record_turn
 
     record_prompt(repo, session_id, plan_text)
+    record_turn(repo, key=session_id, key_kind="plan", actor="human", channel="cli",
+                text=plan_text, ts=now)
     return PlanSession(
         session_id=session_id, plan_text=plan_text, created_ts=now, last_activity_ts=now,
         status="active", baseline_op_ids=baseline_op_ids, steps=tuple(steps),
     )
+
+
+def _reflect_open_intents(repo: str | Path, session_id: str) -> None:
+    """Guarded bridge to the intent ledger (M1): record a closing session's still-pending steps as
+    open intents before their hollows are deleted. Deriving intent is always subordinate to the plan
+    machinery, so any failure here is swallowed rather than breaking a close."""
+    try:
+        from sgt.intent.rationale import reflect_open_intents
+        reflect_open_intents(repo, session_id)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def abandon(repo: str | Path, session_id: str) -> bool:
@@ -247,6 +261,7 @@ def abandon(repo: str | Path, session_id: str) -> bool:
     record = table.get(session_id)
     if record is None:
         return False
+    _reflect_open_intents(repo, session_id)  # record unfulfilled steps before their hollows vanish
     store = Store(repo)
     for step in record["steps"]:
         if step["status"] == "pending":
@@ -270,6 +285,7 @@ def mark_done(repo: str | Path, session_id: str) -> bool:
     record = table.get(session_id)
     if record is None:
         return False
+    _reflect_open_intents(repo, session_id)  # record unfulfilled steps before their hollows vanish
     store = Store(repo)
     for step in record["steps"]:
         if step["status"] == "pending":

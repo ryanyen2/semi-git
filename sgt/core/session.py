@@ -142,8 +142,11 @@ def start(repo, name: str, base: str | None = None, task: str | None = None) -> 
 
     if task:
         from sgt.intent.prompts import record_prompt
+        from sgt.intent.turns import record_turn
 
         record_prompt(repo, name, task)
+        record_turn(repo, key=name, key_kind="session", actor="human", channel="cli",
+                    text=task, ts=session.started_at)
 
     return session
 

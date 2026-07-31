@@ -172,6 +172,53 @@ def test_save_commits_a_witness_for_a_dirty_tree(tmp_path, capsys):
     assert current_ideal(repo).op_ids == after_ids
 
 
+def test_save_with_a_message_harvests_it_as_a_turn(tmp_path):
+    """Zero-burden intent capture (intent-ledger M1): a user-supplied `-m` message is recorded as a
+    turn keyed by the witness commit sha -- the user's own words about the work, taken from their
+    existing workflow, never a new prompt we asked them to type."""
+    from sgt.intent import turns
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save", "-m", "add quux helper"]) == 0
+
+    captured = [t for t in turns.load_turns(repo).values() if t["text"] == "add quux helper"]
+    assert len(captured) == 1
+    assert captured[0]["key_kind"] == "sha"
+    assert captured[0]["actor"] == "human"
+
+
+def test_save_without_a_message_harvests_no_turn(tmp_path):
+    """The `sgt save` default placeholder is not intent, so a save with no `-m` records no turn --
+    capture is faithful to what the user actually wrote, never a synthesized string."""
+    from sgt.intent import turns
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save"]) == 0
+
+    assert turns.load_turns(repo) == {}
+
+
+def test_save_message_also_feeds_the_segment_labeler(tmp_path):
+    """Goal-1 label feed (M1): a `-m` message is written into the committed `intent_prompts`
+    sidecar keyed by the witness sha, which `theme_segment.build_segments` reads -- so the feature
+    is named in the user's own words, with no new labeling code."""
+    from sgt.intent import prompts
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save", "-m", "extract the quux helper"]) == 0
+
+    assert "extract the quux helper" in prompts.load_prompts(repo).values()
+
+
 def test_save_refuses_during_an_in_progress_merge(tmp_path, capsys):
     """F26 safety (0.9): `sgt save` with MERGE_HEAD present must refuse rather than commit the
     conflict-marker bytes and finalize the merge blind."""

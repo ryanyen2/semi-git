@@ -308,6 +308,16 @@ def confirm_match(repo: str | Path, session_id: str, hollow_ids: list[str], op_i
 
     _stamp_session(store, session_id, op_ids)  # D7: the fulfilling session onto the op's provenance
 
+    # Intent-ledger M1 (planned path): the alignment just computed -- these ops fulfilled these
+    # steps -- is exactly what reflection transcribes into a local rationale record, keyed to the
+    # plan's intake evidence. Guarded so a reflection hiccup never fails a confirm (capture/derive
+    # is always subordinate to the op algebra).
+    try:
+        from sgt.intent.rationale import reflect_planned_match
+        reflect_planned_match(repo, session_id, list(op_ids))
+    except Exception:  # noqa: BLE001 -- deriving rationale must never break plan-matching
+        pass
+
 
 def _stamp_session(store: Store, session_id: str, op_ids) -> None:
     """Stamp `session=session_id` onto the structured attribution of each op's provenance SHAs

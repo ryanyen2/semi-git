@@ -280,10 +280,25 @@ def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
     from sgt.lens.select import why
 
     result = why(repo, op_ref, for_feature)
+    # Intent-ledger M1: append the recorded "why" -- the rationale reflection derived from the
+    # user's own words -- beside the structural attribution. Empty when nothing was captured/derived
+    # for this op, which `sgt why` renders as an honest "no recorded reason" rather than a guess.
+    rationale = []
+    if result.op_id:
+        from sgt.intent.rationale import for_op
+        rationale = [
+            {
+                "reason": r["reason"], "actor": r["actor"], "confirmed": r["confirmed"],
+                "open": r.get("open", False), "superseded": r.get("superseded", False),
+                "evidence": len(r.get("evidence", [])),
+            }
+            for r in for_op(repo, result.op_id)
+        ]
     return {
         "ok": result.ok, "message": result.message, "op_id": result.op_id,
         "feature_id": result.feature_id, "for_feature": result.for_feature,
         "votes": list(result.votes), "chain": list(result.chain),
+        "rationale": rationale,
     }
 
 

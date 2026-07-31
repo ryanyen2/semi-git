@@ -271,6 +271,22 @@ def _resolve_recut(spec: str | None, nodes: dict) -> set[str]:
     return {fid} if fid else set()
 
 
+def label_prompt_for(repo: str | Path, sha: str) -> str | None:
+    """The text the segment labeler shows for a commit: its recorded prompt (the committed
+    `intent_prompts` sidecar), falling back to the locally-harvested `save -m` turn keyed by that
+    sha (intent-ledger M1, `sgt.intent.turns`). So the user's own words name the feature even when
+    only a plain save captured them -- goal 1's payoff, read-only and local (nothing is written or
+    committed here, so a `build` never dirties the tree)."""
+    from sgt.intent.prompts import prompt_for
+    from sgt.intent.turns import turns_for
+
+    recorded = prompt_for(repo, sha)
+    if recorded:
+        return recorded
+    hits = turns_for(repo, sha, key_kind="sha")
+    return hits[-1]["text"] if hits else None
+
+
 def build_segments(repo: str | Path, recut: str | None = None) -> dict[str, list[dict]]:
     """The segmentation write path (mirrors `theme.build_themes` and `map.build_map`): cut+name
     every feature's runs (rung 2, `SegmentThemer`) and persist to committed
@@ -288,7 +304,6 @@ def build_segments(repo: str | Path, recut: str | None = None) -> dict[str, list
     Rebuilt on demand (`sgt intent build`). Content-hash caching keeps a re-build cheap -- an
     unchanged tail window hits the cache; only a feature with new commits costs a live call."""
     from sgt.core.store import Store
-    from sgt.intent.prompts import prompt_for as _prompt_for
     from sgt.lens.tree import load as load_tree
 
     repo = Path(repo)
@@ -299,7 +314,7 @@ def build_segments(repo: str | Path, recut: str | None = None) -> dict[str, list
     runs_by_feature = feature_runs(repo, op_leaf)
 
     def prompt_for(sha: str):
-        return _prompt_for(repo, sha)
+        return label_prompt_for(repo, sha)
 
     themer = SegmentThemer(repo)
     fids = sorted(runs_by_feature)
