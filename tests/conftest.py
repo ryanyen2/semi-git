@@ -44,18 +44,16 @@ def _clone(remote: Path, dest: Path) -> Path:
 
 
 def _push(repo: Path, branch: str = "main") -> None:
-    # Phase 1.2: publish this clone's local mirror onto `refs/sgt/state` first, so table mutations
-    # made through raw `GitBinding.commit_all` (pins/declared edges seeded directly in tests, never
-    # through a verb that publishes) are rebuilt into the ref before it travels. Then push the shared
-    # state ref BEFORE the branch -- a branch commit's `Sgt-Op:` trailers name ops that live only in
-    # `refs/sgt/state`, so the ref must be durable first. Best-effort push here; the CLI's `sgt push`
-    # enforces this as a hard ordering in Step 6.
-    _state_ref.publish_from_local(GitBinding(repo), repo)
-    subprocess.run(
-        ["git", "-C", str(repo), "push", "-q", "origin",
-         f"{_state_ref.STATE_REF}:{_state_ref.STATE_REF}"],
-        check=False, capture_output=True,
-    )
+    # Phase 1.2: publish this clone's local mirror onto `refs/sgt/state` and push it BEFORE the
+    # branch, reconciling a non-fast-forward against a teammate's concurrent publish as a CRDT merge
+    # -- exactly what the CLI's `sgt push` does via `publish_and_push`. This rebuilds the ref from
+    # local first (so table mutations made through raw `GitBinding.commit_all` -- pins/declared edges
+    # seeded directly in tests, never through a verb that publishes -- travel), and a branch commit's
+    # `Sgt-Op:` trailers name ops that live only on the ref, so the ref must be durable first. A plain
+    # best-effort push here silently drops a *merged* state tree on non-ff (each clone's state-ref
+    # history is independent), which breaks cross-clone convergence (LAW-U); reconciling is the
+    # faithful production behavior.
+    _state_ref.publish_and_push(GitBinding(repo), repo, "origin")
     subprocess.run(
         ["git", "-C", str(repo), "push", "-q", "origin", branch], check=True, capture_output=True
     )
