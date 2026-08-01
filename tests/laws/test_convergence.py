@@ -29,7 +29,6 @@ fixtures so provenance (commit shas, folded into the op file) is itself determin
 from __future__ import annotations
 
 import random
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -42,31 +41,16 @@ from sgt.core.store import Store
 from sgt.lens import tree
 from sgt.lens.pins import Pins, load_pins, save_pins
 from sgt.store.gitbind import GitBinding, parse_op_ids
+from tests.conftest import _clone, _init_bare, _push
 from tests.laws import corpus
 
 
 # --- N-replica rig (generalizes tests/core/test_sync.py's two-clone helpers) -------------------
-
-
-def _init_bare(root: Path) -> Path:
-    remote = root / "remote.git"
-    remote.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True, capture_output=True
-    )
-    return remote
-
-
-def _clone(remote: Path, dest: Path) -> Path:
-    subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
-    GitBinding(dest).init()  # repo-scope identity, matches every other fixture in this suite
-    return dest
-
-
-def _push(repo: Path, branch: str = "main") -> None:
-    subprocess.run(
-        ["git", "-C", str(repo), "push", "-q", "origin", branch], check=True, capture_output=True
-    )
+# The git-plumbing primitives (`_init_bare`/`_clone`/`_push`) are the shared, state-ref-aware
+# fixtures from `tests/conftest.py` (Phase 1.2 Step 3): `_push` publishes + pushes `refs/sgt/state`
+# alongside the branch and `_clone` fetches + materializes it, so the op store and committed tables --
+# which now live on the ref, off the branch tree -- actually travel between these replicas. The
+# higher-level `_replicas`/`_edit_and_commit` stay local (their shapes are suite-specific).
 
 
 def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:

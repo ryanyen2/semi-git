@@ -27,6 +27,7 @@ from . import fetch as _fetch
 from . import ingest as _ingest
 from . import materialize as _materialize
 from . import resolve as _resolve
+from . import state_ref as _state_ref
 from .ingest import MinerVersionMismatch  # re-exported: the CLI catches it distinctly (C6)
 from .land import LandPlan, LandReport, land, plan_land  # SYNC-2: the CAS-gated shared-branch advance (U23)
 from .land import _restore_local_caches, _snapshot_local_caches  # reused by plan_sync's no-trace rollback
@@ -52,7 +53,7 @@ class SyncReport:
     declared_cycles: tuple[tuple[str, str], ...] = ()
     identity_events: tuple[dict, ...] = field(default_factory=tuple)
     # U7/R12: how the merge-base ideal was recovered for three-way resolve, and how theirs' tip was
-    # -- `log` | `trailers` | `ideal-record` | `mined` | `none`. `base_recovery == "none"` means the
+    # -- `log` | `trailers` | `mined` | `none`. `base_recovery == "none"` means the
     # base degraded to ∅ (union semantics); `theirs_recovery == "none"` is the tip footgun (ops but
     # no witnessed provenance). Either warrants a loud warning -- an unwitnessed claim was refused.
     base_recovery: str = "none"
@@ -95,7 +96,14 @@ def plan_sync(repo: str | Path, remote: str | None = None, branch: str | None = 
 
     local_before = _snapshot_local_caches(repo)
     try:
-        ing = _ingest.ingest(repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch)
+        # Phase 1.2: theirs' ops and tables are read from the fetched `refs/sgt/state` tip
+        # (`theirs_state_sha`) when transport supplied one; `None` falls back to theirs' branch tree
+        # (pre-1.2 / fresh remote). See `ingest` for why the trailer/log ideal recovery still keys off
+        # `theirs_sha` (trailers live in the commit message, untouched by the move).
+        ing = _ingest.ingest(
+            repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch,
+            theirs_state_sha=fetched.theirs_state_sha,
+        )
         res = _resolve.resolve(repo, ing)
         return SyncPlan(
             remote=fetched.remote, branch=fetched.branch, ops_added=ing.ops_added,
@@ -118,7 +126,12 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
             fetched_sha=fetched.theirs_sha, message="already up to date",
         )
 
-    ing = _ingest.ingest(repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch)
+    # Phase 1.2: theirs' ops/tables come from the fetched `refs/sgt/state` tip (`theirs_state_sha`);
+    # `None` falls back to theirs' branch tree (pre-1.2 / fresh remote). See `plan_sync`.
+    ing = _ingest.ingest(
+        repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch,
+        theirs_state_sha=fetched.theirs_state_sha,
+    )
     res = _resolve.resolve(repo, ing)
 
     # Divergence-as-state (D5/C4): a fork no longer aborts. `materialize` always runs -- it lands
@@ -126,8 +139,15 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
     # committed state. `merged` means a *clean* merge with no open fork; a fork makes it False
     # (attention needed) though the fork-free work still landed and the fork is now shared.
     merge_sha = _materialize.materialize(
-        repo, gb, fetched.remote, fetched.branch, fetched.theirs_sha, ing, res
+        repo, gb, fetched.remote, fetched.branch, fetched.theirs_sha, ing, res,
+        theirs_state_sha=fetched.theirs_state_sha,
     )
+
+    # Phase 1.2: publish the reconciled local mirror onto `refs/sgt/state` at sync's transaction
+    # boundary. The merge above unioned theirs' ops/tables into our on-disk mirror; this rebuilds
+    # the state-ref tree from it and advances the ref (off theirs' fetched tip -> a fast-forward
+    # push later). Raises `StateRefError` on a lost CAS -- the ref is correctness-bearing.
+    _state_ref.publish_from_local(gb, repo)
 
     if res.forks:
         remedies = "; ".join(f"sgt merge-op {a[:8]} {b[:8]}" for _sym, a, b in res.forks)

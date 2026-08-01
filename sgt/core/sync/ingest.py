@@ -56,7 +56,7 @@ class Ingested:
     mined_ops: list[Op]  # theirs' foreign commits mined on contact (C3), for `materialize` too
     ops_added: int
     # U7/R12: the merge-base's recovered *full* ideal (for U8's three-way subtraction) and how it
-    # was recovered -- `log` | `trailers` | `ideal-record` | `mined` | `none`. `none` (no merge-base,
+    # was recovered -- `log` | `trailers` | `mined` | `none`. `none` (no merge-base,
     # or a base sgt can't witness) means the base degrades to ∅ and resolve keeps today's union
     # semantics. `log` (D1) is the append-only land log's record for that sha -- checked first, since
     # it survives squashes and never goes stale the way an inherited `.sgt/ideal.json` can.
@@ -75,6 +75,12 @@ class Ingested:
     # other post-U15 additions so a direct `Ingested(...)` construction (tests) needn't supply them.
     ours_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
     theirs_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
+    # Shared exclusion OR-Sets (Phase 1.2 §E): the per-ref-key {adds, tombstones} record of the ops an
+    # explicit revert/pin removed, unioned by tag in `resolve` so a teammate's revert survives our sync
+    # (F20). Defaulted like the other post-U15 additions so a direct `Ingested(...)` (tests) needn't
+    # supply them.
+    ours_exclusions: dict[str, lens.ExclusionORSet] = field(default_factory=dict)
+    theirs_exclusions: dict[str, lens.ExclusionORSet] = field(default_factory=dict)
 
 
 def _pins_at(gb: GitBinding, sha: str) -> Pins:
@@ -104,14 +110,22 @@ def ingest(
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             continue  # a corrupt op blob in theirs' tree degrades to a read-side skip (R1)
 
-    # Recover theirs' ideal, and mine foreign commits when there's no sgt record to read (C3/C5).
-    theirs_ideal_ids, mined_ops, theirs_recovery = _theirs_ideal(repo, gb, theirs_sha, ours_sha, branch)
+    # The set of op-ids we can actually fold: our store plus theirs' ops carried on the fetched
+    # state ref. `_witnessed` uses it for the presence half of its check, now that the op store no
+    # longer lives in the branch tree (Phase 1.2) -- an ideal naming an op we don't hold can't be
+    # trusted regardless of what a trailer/record claims.
+    present_ids = frozenset({op.id for op in ours_ops} | {op.id for op in theirs_ops})
+
+    # Recover theirs' ideal, and mine foreign commits when there's no witnessed record to read (C3).
+    theirs_ideal_ids, mined_ops, theirs_recovery = _theirs_ideal(
+        repo, gb, theirs_sha, ours_sha, state_sha, present_ids, branch
+    )
 
     # Recover the *merge-base's* full ideal for U8's three-way subtraction (R12). Distinct from
     # theirs' divergent contribution above: used as a base, the divergent set would mass-delete, so
     # a base must be a *full* ideal or ∅. Same witness discipline as the tip.
     base_sha = gb.merge_base(ours_sha, theirs_sha)
-    base_ideal_ids, base_recovery = recover_base(repo, gb, base_sha, branch)
+    base_ideal_ids, base_recovery = recover_base(repo, gb, base_sha, branch, present_ids=present_ids)
 
     # Miner-version handshake (C6): a precondition, before any union is built. Theirs' op files
     # (mined by whatever sgt version committed them) are the only ones that can carry a foreign
@@ -143,6 +157,8 @@ def ingest(
         theirs_prompts=intent_prompts.prompts_at(gb, state_sha),
         ours_authored=authored.load_authored(repo),
         theirs_authored=authored.authored_at(gb, state_sha),
+        ours_exclusions=lens.load_exclusions(repo),
+        theirs_exclusions=lens.exclusions_at(gb, state_sha),
         ours_tree=tree.load(repo),
         ours_ideal=lens.current_ideal(repo),
         theirs_ideal_ids=theirs_ideal_ids,
@@ -156,29 +172,35 @@ def ingest(
     )
 
 
-def _witnessed(gb: GitBinding, sha: str, ids: frozenset[str]) -> bool:
-    """True iff every op-id in `ids` is present as a ``.sgt/ops/<id>`` blob in `sha`'s tree (R12).
-    A recovered ideal is trusted only when the commit claiming it actually carries every op it
-    names, so a *forged* trailer (an id the tree never produced) or a stale record whose ops were
-    squashed away is rejected -- a recovered ideal is full-and-witnessed or unusable, never partial.
+def _witnessed(ids: frozenset[str], present_ids: frozenset[str], attributed_ids: frozenset[str]) -> bool:
+    """True iff a recovered ideal is trustworthy, under the two post-Phase-1.2 checks that together
+    replace the old per-commit tree-blob presence check (R12):
+
+    * **present** -- every op it names is an op we actually hold, as a blob in the local store or in
+      theirs' fetched `refs/sgt/state` tree, so the ideal can be folded. The op store no longer lives
+      in the branch tree, so this is now a per-*store* fact, not a per-commit one.
+    * **attributed within this lineage** -- every op it names was stamped by a `Sgt-Op:` trailer on
+      some commit reachable from the claiming sha (`_attributed_ids`). This restores the per-commit
+      integrity the tree-blob check gave: a *forged* trailer/record naming a store-present op that no
+      commit in this history ever produced, or a stale record whose ops were squashed out of this
+      lineage, is rejected -- full-and-witnessed or unusable, never partial.
+
     The empty ideal is vacuously witnessed."""
     if not ids:
         return True
-    present = {p.rsplit("/", 1)[-1] for p in gb.list_tree(sha, ".sgt/ops/")}
-    return ids <= present
+    return ids <= present_ids and ids <= attributed_ids
 
 
-def _tip_witnesses_ideal(gb: GitBinding, sha: str) -> bool:
-    """True iff commit `sha` actually wrote `.sgt/ideal.json` (its blob differs from the first
-    parent's, or is newly added). Distinguishes a squash-merge -- whose tree carries a real
-    witness's ideal record forward, so the record describes `sha`'s own code -- from a plain-git
-    commit that merely inherited a *stale* record from an earlier witness without touching it."""
-    cur = gb.blob_oid(sha, state.rel("ideal"))
-    if cur is None:
-        return False
-    parent = gb.parent_of(sha)
-    prev = gb.blob_oid(parent, state.rel("ideal")) if parent is not None else None
-    return cur != prev
+def _attributed_ids(gb: GitBinding, sha: str) -> frozenset[str]:
+    """Every op-id stamped by a `Sgt-Op:` trailer on any commit reachable from `sha` (one `git log`
+    over its full history, `op_ids_by_commit`). A recovered ideal must be a subset of this to be
+    *attributed to this lineage* -- the per-commit integrity half of `_witnessed`. `Sgt-Op:` trailers
+    live in the commit message, untouched by the Phase-1.2 move of the op store off the branch tree,
+    so this is exactly as reliable after the move as the tree-blob check was before it."""
+    attributed: set[str] = set()
+    for op_ids in gb.op_ids_by_commit(sha).values():
+        attributed |= op_ids
+    return frozenset(attributed)
 
 
 def _check_miner_versions(ours_ops: list[Op], theirs_ops: list[Op]) -> None:
@@ -209,52 +231,50 @@ def _check_miner_versions(ours_ops: list[Op], theirs_ops: list[Op]) -> None:
 
 
 def _theirs_ideal(
-    repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str, branch: str | None = None
+    repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str, state_sha: str,
+    present_ids: frozenset[str], branch: str | None = None
 ) -> tuple[frozenset[str], list[Op], str]:
     """Theirs' committed ideal, recovered by the most authoritative *witnessed* record available
     and, when none exists, by mining theirs' foreign commits (C3, the "adoption ⊂ sync, one code
     path" the remote side dropped). Returns `(ideal_ids, mined_ops, method)`; `mined_ops` is
     non-empty only on the mine path, so a squash-merged sgt branch reads its fine-grained ops from
     `.sgt/ops/` blobs rather than re-mining the coarse squash (§2.1 path-dependence). Every claimed
-    source is witness-checked (R12): a trailer or record naming an op the tip's tree never produced
-    is *not* trusted and falls through."""
+    source is witness-checked (R12): a trailer or log record naming ops we don't hold, or that no
+    commit in theirs' lineage stamped, is *not* trusted and falls through (see `_witnessed`)."""
+    attributed = _attributed_ids(gb, theirs_sha)
     if branch is not None:
         logged_ids = _log.ideal_for_sha(gb, branch, theirs_sha)
-        if logged_ids is not None and _witnessed(gb, theirs_sha, logged_ids):
+        if logged_ids is not None and _witnessed(logged_ids, present_ids, attributed):
             return logged_ids, [], "log"  # D1: the land log's own record for this sha
 
     trailer_ids = frozenset(parse_op_ids(gb.commit_message(theirs_sha)))
-    if trailer_ids and _witnessed(gb, theirs_sha, trailer_ids):
-        return trailer_ids, [], "trailers"  # sgt-native tip, trailers witnessed by its own tree
+    if trailer_ids and _witnessed(trailer_ids, present_ids, attributed):
+        return trailer_ids, [], "trailers"  # sgt-native tip, trailers witnessed by store + lineage
 
-    # No trustworthy trailers (GitHub squash-merges destroy them by default; forged trailers name
-    # ops the tree lacks). Recover from the committed in-tree `.sgt/ideal.json` (C5) when theirs'
-    # tip is a *witness* of it -- the tip commit actually wrote that ideal (a squash carries the
-    # branch's witness tree forward), and every op it names is present as a blob. A stale record
-    # inherited by a later foreign commit (a plain-git hotfix that never touched `.sgt/ideal.json`)
-    # does not describe that commit's code, so it is *not* trusted -- it falls through.
-    if _tip_witnesses_ideal(gb, theirs_sha):
-        recovered = state.load_blob_json(gb, theirs_sha, "ideal")
-        if recovered is not None and _witnessed(gb, theirs_sha, frozenset(recovered)):
-            return frozenset(recovered), [], "ideal-record"
-
-    # No witnessed record. Mine theirs' divergent commits as if sgt had tracked theirs' branch all
-    # along (adoption ⊂ sync, C3/AE8): LAW-0 makes these byte-identical to the ops theirs' own
-    # `sgt init`/`put` would mint, so a normal sgt branch's fine `.sgt/ops` blobs are *reproduced*
-    # by the mine and dedup. Theirs' divergent ops alone form its ideal contribution -- the shared
-    # base below `merge_base` already rides in `ours_ideal`, so the union covers it.
+    # No trustworthy trailers or log record (GitHub squash-merges destroy the trailers by default;
+    # forged trailers name ops no commit stamped). The in-tree `.sgt/ideal.json` recovery rung (C5)
+    # is gone with Phase 1.2 -- the op store and that record no longer live in the branch tree, so a
+    # server-side squash (where sgt never ran to push the log ref) recovers by mining below, coarser
+    # but reproducible (LAW-0), rather than from a tree-resident record that would reintroduce F10.
+    #
+    # Mine theirs' divergent commits as if sgt had tracked theirs' branch all along (adoption ⊂ sync,
+    # C3/AE8): LAW-0 makes these byte-identical to the ops theirs' own `sgt init`/`put` would mint,
+    # so a normal sgt branch's fine `.sgt/ops` blobs (now carried on theirs' state ref at `state_sha`)
+    # are *reproduced* by the mine and dedup. Theirs' divergent ops alone form its ideal contribution
+    # -- the shared base below `merge_base` already rides in `ours_ideal`, so the union covers it.
     base = gb.merge_base(ours_sha, theirs_sha)
     mined, _last_sha = mine(repo, since=base, target=theirs_sha)
     mined_ids = frozenset(op.id for op in mined)
 
-    # Footgun (scenario 5): the tip carries *new* fine `.sgt/ops` blobs that the mine did NOT
+    # Footgun (scenario 5): theirs' state carries *new* fine `.sgt/ops` blobs that the mine did NOT
     # reproduce -- a squash that collapsed an sgt branch into one commit (mining yields *coarse* ops
     # that fork the fine blobs, §2.1), or a raw fixture that wrote op blobs with no matching source.
     # Those orphan blobs mean the mine can't be trusted, so degrade to ∅ with a remedy rather than
-    # mis-mining. Blobs an earlier `put`/`init` in theirs' own history witnessed are reproduced by
-    # the mine (not orphan), and blobs ours already has are merely inherited (a plain-git hotfix on
-    # top of an sgt branch, C3) -- both fall through to the trusted mine above.
-    theirs_blob_ids = {p.rsplit("/", 1)[-1] for p in gb.list_tree(theirs_sha, ".sgt/ops/")}
+    # mis-mining. Read theirs' blob ids from `state_sha` (where the op store now lives, off the branch
+    # tree). Blobs an earlier `put`/`init` in theirs' own history witnessed are reproduced by the mine
+    # (not orphan), and blobs ours already has are merely inherited (a plain-git hotfix on top of an
+    # sgt branch, C3) -- both fall through to the trusted mine above.
+    theirs_blob_ids = {p.rsplit("/", 1)[-1] for p in gb.list_tree(state_sha, ".sgt/ops/")}
     orphan = theirs_blob_ids - {op.id for op in Store(repo).all_ops()} - mined_ids
     if orphan:
         return frozenset(), [], "none"
@@ -262,7 +282,8 @@ def _theirs_ideal(
 
 
 def recover_base(
-    repo: Path, gb: GitBinding, base_sha: str | None, branch: str | None = None
+    repo: Path, gb: GitBinding, base_sha: str | None, branch: str | None = None,
+    *, present_ids: frozenset[str] | None = None,
 ) -> tuple[frozenset[str], str]:
     """The merge-base's *full* committed ideal for U8's three-way subtraction (R12), recovered
     under the same witness discipline as a tip and returning `(ideal_ids, method)`:
@@ -271,30 +292,30 @@ def recover_base(
       over a ∅ base reproduces today's plain union exactly, so pre-sgt/degraded history costs
       nothing new -- resolve just keeps union semantics.
     * the D1 land log's own record for `base_sha`, witnessed -> `(ids, "log")` -- checked first,
-      since it survives squashes and can't go stale the way an inherited `.sgt/ideal.json` can.
+      since it survives squashes.
     * witnessed trailers -> `(ids, "trailers")`.
-    * a committed `.sgt/ideal.json` the base commit *witnessed* (wrote, every op present) ->
-      `(ids, "ideal-record")` -- an inherited stale record is rejected, exactly as for a tip.
     * otherwise a full-range mine of the base -> `(ids, "mined")`. Unlike `_theirs_ideal`'s
       divergent (`merge_base..theirs`) mine, this mines the base's whole history so the result is a
-      full ideal, not a contribution.
-    """
+      full ideal, not a contribution. The in-tree `.sgt/ideal.json` rung is gone with Phase 1.2 (see
+      `_theirs_ideal`); a base with no witnessed log/trailer record now mines directly.
+
+    `present_ids` is the set of op-ids we hold (local store ∪ theirs' fetched state ref); it defaults
+    to the local store alone for a direct call, which is sufficient for a base (a base is an ancestor
+    of ours, so every base op is already in our store)."""
     if base_sha is None:
         return frozenset(), "none"
 
+    present = present_ids if present_ids is not None else frozenset(op.id for op in Store(repo).all_ops())
+    attributed = _attributed_ids(gb, base_sha)
+
     if branch is not None:
         logged_ids = _log.ideal_for_sha(gb, branch, base_sha)
-        if logged_ids is not None and _witnessed(gb, base_sha, logged_ids):
+        if logged_ids is not None and _witnessed(logged_ids, present, attributed):
             return logged_ids, "log"
 
     trailer_ids = frozenset(parse_op_ids(gb.commit_message(base_sha)))
-    if trailer_ids and _witnessed(gb, base_sha, trailer_ids):
+    if trailer_ids and _witnessed(trailer_ids, present, attributed):
         return trailer_ids, "trailers"
-
-    if _tip_witnesses_ideal(gb, base_sha):
-        recovered = state.load_blob_json(gb, base_sha, "ideal")
-        if recovered is not None and _witnessed(gb, base_sha, frozenset(recovered)):
-            return frozenset(recovered), "ideal-record"
 
     mined, _last_sha = mine(repo, target=base_sha)  # full range (since=None) -> the base's whole ideal
     return frozenset(op.id for op in mined), "mined"

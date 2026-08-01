@@ -609,14 +609,14 @@
         "--json"
       ],
       "exit": 1,
-      "out": "{\n  \"ok\": false,\n  \"error\": \"working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\\n      .sgt/\"\n}\n"
+      "out": "{\n  \"ok\": false,\n  \"error\": \"working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\\n      a.py\"\n}\n"
     },
     "text": {
       "argv": [
         "sync"
       ],
       "exit": 1,
-      "out": "\u2717 working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\n      .sgt/\n"
+      "out": "\u2717 working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\n      a.py\n"
     }
   },
   "transplant": {

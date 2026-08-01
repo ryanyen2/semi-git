@@ -740,7 +740,13 @@ class GitBinding:
 
     def commit_all(self, message: str, node_id: str | None = None, trailers: str | None = None) -> str:
         """Stage everything and commit, embedding the node-id trailer when given, plus any
-        additional pre-formatted trailer block (e.g. `Sgt-Op:` lines, U6's witness commits)."""
+        additional pre-formatted trailer block (e.g. `Sgt-Op:` lines, U6's witness commits).
+
+        `--allow-empty`: since Phase 1.2 moved sgt's `.sgt/` state onto `refs/sgt/state` (off the
+        branch tree, gitignored), a witness commit's payload is its `Sgt-Op:` trailers -- not a tree
+        delta. When the fold reproduces already-committed source (e.g. an ideal edit that leaves the
+        materialized bytes unchanged), there is nothing to stage, but the commit must still advance
+        HEAD to carry the current ideal's trailers. An empty tree delta is therefore legitimate."""
         self.stage_all()
         parts = [message]
         if node_id is not None:
@@ -748,7 +754,7 @@ class GitBinding:
         if trailers:
             parts.append(trailers)
         full = "\n\n".join(parts)
-        self._git("commit", "-q", "-m", full)
+        self._git("commit", "-q", "--allow-empty", "-m", full)
         head = self.head()
         if head is None:
             raise GitError("commit succeeded but HEAD is unresolved")
@@ -838,6 +844,33 @@ class GitBinding:
 
     def fetch(self, remote: str, branch: str) -> None:
         self._git("fetch", remote, branch)
+
+    # -- index surgery (Phase 1.2 `sgt migrate state-ref`) ------------------
+    def tracked_paths(self, *pathspecs: str) -> list[str]:
+        """Repo-relative paths currently tracked in the index under `pathspecs` (default: all).
+        The migration uses this to find the `.sgt/**` files a pre-1.2 repo still tracks so it can
+        untrack exactly those and no more."""
+        proc = self._git("ls-files", "-z", "--", *pathspecs, check=False)
+        if proc.returncode != 0:
+            return []
+        return [p for p in proc.stdout.split("\x00") if p]
+
+    def rm_cached(self, paths: list[str]) -> None:
+        """Remove `paths` from the index but keep the working-tree files (`git rm --cached`). With
+        `.sgt/.gitignore` in place this is what actually untracks the moved state -- gitignore alone
+        never drops an already-tracked file. `--ignore-unmatch` makes a re-run over an
+        already-untracked set a no-op (idempotent resume)."""
+        if paths:
+            self._git("rm", "-r", "--cached", "-q", "--ignore-unmatch", "--", *paths)
+
+    def commit_staged(self, message: str) -> str | None:
+        """Commit exactly what is staged in the index (no `git add`, no `--allow-empty`), returning
+        the new HEAD -- or None when nothing is staged, so an idempotent re-run creates no empty
+        commit. Used for the single intentional migration commit that records the untracking."""
+        if self._git("diff", "--cached", "--quiet", check=False).returncode == 0:
+            return None  # nothing staged
+        self._git("commit", "-q", "-m", message)
+        return self.head()
 
     def fetch_ref(self, remote: str, refspec: str) -> bool:
         """Best-effort `git fetch <remote> <refspec>` for an arbitrary ref (D1's land log lives

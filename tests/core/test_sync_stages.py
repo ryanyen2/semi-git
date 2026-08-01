@@ -183,9 +183,12 @@ def test_u7_base_recovery_rejects_a_stale_inherited_record_and_mines(tmp_path):
     assert {"main.py::foo", "main.py::bar"} <= syms  # still a full ideal, recovered by mining
 
 
-def test_u7_squash_tip_recovers_via_witnessed_record(tmp_path):
-    """Scenario 3: a squash-merge destroys theirs' tip trailers but the committed `.sgt/ideal.json`
-    survives and the tip witnesses it -- recovered via the record (existing C5 behavior preserved)."""
+def test_u7_squash_tip_recovers_via_mining(tmp_path):
+    """Scenario 3 (Phase 1.2 / behavior change I.1): a server-side squash-merge destroys theirs' tip
+    trailers, and the in-tree `.sgt/ideal.json` recovery rung (C5) is gone with the op store's move
+    off the branch tree -- so a squash where sgt never ran to push the log ref recovers by *mining*
+    the divergent range (coarser, but LAW-0 reproducible), never from a tree-resident ideal record
+    that would reintroduce F10. The recovery ladder is now log -> trailers -> mine."""
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")
     lens.init(a)
@@ -201,8 +204,8 @@ def test_u7_squash_tip_recovers_via_witnessed_record(tmp_path):
                     check=True, capture_output=True)
 
     report = sync.sync(b, remote="origin", branch="main")
-    assert report.theirs_recovery == "ideal-record"
-    assert "def baz" in (b / "main.py").read_text(encoding="utf-8")  # fine ideal, not a coarse re-mine
+    assert report.theirs_recovery == "mined"
+    assert "def baz" in (b / "main.py").read_text(encoding="utf-8")  # mining reproduces the edit
 
 
 def test_u7_disjoint_base_recovers_none_and_warns(tmp_path):
@@ -373,7 +376,7 @@ def test_u8_fork_tips_survive_base_subtraction(tmp_path):
 
 def test_u8_log_recovered_theirs_revert_travels_no_resurrection(tmp_path):
     """F25: a teammate who *landed* a revert and pushed ships their full ideal via the D1 land-log,
-    so U7 recovers theirs' tip as `"log"`. That is a full ideal exactly like `trailers`/`ideal-record`,
+    so U7 recovers theirs' tip as `"log"`. That is a full ideal exactly like `trailers`,
     so the three-way subtraction must honor a revert absent from it -- else the reverted op is re-added
     from our own side (silent resurrection). Drives `theirs_recovery="log"` (the helper defaults
     `"trailers"`) and asserts the revert does not come back. Regression guard for `resolve.py:83`."""

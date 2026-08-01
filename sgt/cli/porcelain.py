@@ -189,12 +189,12 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     if not nothing_new:
         # Fold the save-time ownership cascade in (U6/R1/R2): assign every genuinely-new symbol a
         # durable lane (assign pin + authored CRDT) and patch the persisted tree's `op_leaf` so the
-        # new op is visible on the grid immediately. This runs *before* `put` commits, so `put`'s
-        # `commit_all` (`git add -A`) sweeps the cascade's committed `.sgt` writes (pins/authored/
-        # tree) into the witness commit. Committing first and cascading after (the old order) left
-        # those tables modified/untracked, and the next `switch`/`sync`/`land` aborted on a dirty
-        # tree (F1). Running first also stamps the introducing witness as the *parent* commit -- the
-        # causal anchor D6 (`verbs._save_pins`) documents -- rather than this verb's own commit.
+        # new op is visible on the grid immediately. This runs *before* `put` so the introducing
+        # witness is stamped as the cascade's *parent* commit -- the causal anchor D6
+        # (`verbs._save_pins`) documents -- rather than this verb's own commit. (Phase 1.2 made the
+        # F1 invariant structural: pins/authored/tree are now gitignored and travel on
+        # `refs/sgt/state`, which `put` publishes at its boundary, so `commit_all`'s `git add -A` no
+        # longer sees them at all -- they can't dirty the tree regardless of ordering.)
         # Guarded: a lane-assignment hiccup must never fail the save. Local import keeps the path light.
         from sgt.core.store import Store
         from sgt.lens import ledger

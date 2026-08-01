@@ -6,7 +6,8 @@ import pytest
 
 from sgt import state
 from sgt.core.sync import state_ref
-from sgt.store.gitbind import init_store
+from sgt.store.gitbind import GitBinding, init_store
+from tests.conftest import _clone, _init_bare
 
 
 def _seed_local(repo):
@@ -131,3 +132,61 @@ def test_publish_raises_when_the_ref_cannot_advance(tmp_path, monkeypatch):
     monkeypatch.setattr(gb, "update_ref_cas", lambda *a, **k: False)
     with pytest.raises(state_ref.StateRefError):
         state_ref.publish_from_local(gb, tmp_path)
+
+
+# -- publish_and_push: transport with the §D push-ordering / CRDT-reconcile invariant --------------
+
+def _seed_ops(repo, ops: dict[str, bytes]) -> None:
+    d = repo / ".sgt" / "ops"
+    d.mkdir(parents=True, exist_ok=True)
+    for name, content in ops.items():
+        (d / name).write_bytes(content)
+
+
+def test_publish_and_push_fast_forwards_a_fresh_remote(tmp_path):
+    """The clean case: no contention, so the local mirror publishes and pushes fast-forward, and a
+    fresh clone reads the ops back off the shared ref."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    _seed_ops(a, {"op-a1": b'{"id":"op-a1"}\n'})
+
+    tip = state_ref.publish_and_push(GitBinding(a), a, "origin")
+    assert tip == GitBinding(a).rev_parse(state_ref.STATE_REF)
+
+    c = _clone(remote, tmp_path / "c")  # `_clone` fetches + materializes the state ref
+    assert ".sgt/ops/op-a1" in state_ref.read_tree(GitBinding(c))
+
+
+def test_publish_and_push_reconciles_a_non_ff_remote(tmp_path):
+    """Contention: `b`'s local ref is behind the remote (a teammate advanced it), so the push is
+    rejected non-ff. `publish_and_push` must fetch the remote tip, CRDT-merge it, and re-push a
+    fast-forward -- so every side's ops survive the union on the remote."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    _seed_ops(a, {"op-a1": b"a1"})
+    state_ref.publish_and_push(GitBinding(a), a, "origin")
+
+    b = _clone(remote, tmp_path / "b")  # b's local state ref pins to a's tip
+    _seed_ops(a, {"op-a2": b"a2"})
+    state_ref.publish_and_push(GitBinding(a), a, "origin")  # remote moves behind b's back
+
+    _seed_ops(b, {"op-b1": b"b1"})
+    state_ref.publish_and_push(GitBinding(b), b, "origin")  # must reconcile, not clobber
+
+    c = _clone(remote, tmp_path / "c")
+    tree = state_ref.read_tree(GitBinding(c))
+    assert {".sgt/ops/op-a1", ".sgt/ops/op-a2", ".sgt/ops/op-b1"} <= set(tree)
+
+
+def test_publish_and_push_raises_when_the_push_can_never_succeed(tmp_path, monkeypatch):
+    """An unrecoverable push (the network is down, say -- the ref push keeps failing and there is
+    nothing to reconcile against) exhausts the retries and raises, so the caller aborts the branch
+    push rather than leaving its trailers dangling."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    _seed_ops(a, {"op-a1": b"a1"})
+    gb = GitBinding(a)
+    monkeypatch.setattr(gb, "push_ref", lambda *args, **kwargs: False)
+
+    with pytest.raises(state_ref.StateRefError):
+        state_ref.publish_and_push(gb, a, "origin", retries=2)

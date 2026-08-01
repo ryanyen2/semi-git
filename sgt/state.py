@@ -126,13 +126,16 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
-    # local, gitignored per-ref exclusion OR-Set (1.1): {ref_key: {"adds": [[op_id, tag], ...],
-    # "tombstones": [tag, ...]}}. The *positive* record of the ops an explicit edit (revert/pin, U8)
-    # removed -- the source of truth `ideal(ref) = reduce(provenance-in-ancestry − exclusions)`
-    # derives from. Demotes `ideal_table` to a cache: a reverted op stays gone across a git history
-    # rewrite (rebase/cherry-pick re-mines the same content under a new sha) because the exclusion,
-    # not the mere absence from a trusted table, is what subtracts it (F11/F20).
-    "exclusions": _Artifact(("local", "exclusions.json"), committed=False),
+    # committed, ref-carried per-ref exclusion OR-Set (1.1, promoted to shared in 1.2 §E):
+    # {ref_key: {"adds": [[op_id, tag], ...], "tombstones": [tag, ...]}}. The *positive* record of
+    # the ops an explicit edit (revert/pin, U8) removed -- the source of truth
+    # `ideal(ref) = reduce(provenance-in-ancestry − exclusions)` derives from. Demotes `ideal_table`
+    # to a cache: a reverted op stays gone across a git history rewrite (rebase/cherry-pick re-mines
+    # the same content under a new sha) because the exclusion, not the mere absence from a trusted
+    # table, is what subtracts it (F11/F20). Shared so the revert survives a *fresh clone's* cold
+    # bootstrap (F20): the op is still in git history, so the clone's mine re-adds it by provenance
+    # unless the exclusion travels on `refs/sgt/state`. Merges per-ref-key as an OR-Set on sync.
+    "exclusions": _Artifact(("exclusions.json",), committed=True),
     # local, gitignored clustering/merge suggestion queue (U7): {id: record}, add-only until a
     # suggestion is accepted (via `sgt feature merge`/`split`/`move`) or dismissed. Local, not a
     # committed G-Set: suggestions are advisory and *dismissable* (a committed G-Set would need

@@ -295,6 +295,32 @@ def test_sync_revert_of_a_base_op_removes_the_dependents_that_rode_its_upset(tmp
     assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")
 
 
+def test_revert_travels_to_a_fresh_clone_and_does_not_resurrect(tmp_path):
+    """Phase 1.2 §E (shared exclusion CRDT): a revert must survive a *fresh clone's* cold bootstrap.
+    A adds baz then reverts it and pushes; a brand-new clone C then bootstraps from the shared state
+    ref + branch history. The reverted op is still in git history, so C's cold mine re-adds it via
+    provenance -- the exclusion OR-Set is the only record that it was reverted, and it must travel on
+    `refs/sgt/state` for C to subtract it. Before exclusions travelled, C's exclusion table was empty
+    and baz silently resurrected in C's ideal (F20), diverging from A -- a later fold would even
+    write its bytes back."""
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    _edit_and_commit(a, "main.py", _WITH_BAZ, "A: init with baz")
+    _push(a)
+
+    baz_op = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
+    verbs.revert(a, baz_op.id)  # A reverts baz on its own clone
+    _push(a)
+    assert baz_op.id not in lens.current_ideal(a).op_ids
+
+    c = _clone(remote, tmp_path / "c")  # a brand-new teammate, no local state to inherit the revert
+    lens.get(c)  # cold bootstrap: mine branch history + read the shared state ref
+    # The exclusion travelled on the ref, so C subtracts baz rather than resurrecting it by provenance.
+    assert baz_op.id not in lens.current_ideal(c).op_ids
+    assert "def baz" not in (c / "main.py").read_text(encoding="utf-8")
+
+
 # -- plan_sync: the side-effect-free dry run behind the `sgt sync` feedforward pane ------------
 
 def _committed_state(repo: Path) -> dict[str, bytes]:
@@ -440,3 +466,57 @@ def test_sync_cli_json_never_confirms(tmp_path, monkeypatch):
 
     monkeypatch.setattr(_common, "maybe_confirm", boom)
     assert _sync(str(b), "origin", "main", as_json=True) == 0
+
+
+def _bare_head(remote: Path, branch: str = "main") -> str | None:
+    import subprocess
+    proc = subprocess.run(
+        ["git", "-C", str(remote), "rev-parse", branch], capture_output=True, text=True, check=False
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def test_push_aborts_the_branch_when_state_ref_cannot_publish(tmp_path, monkeypatch):
+    """Push-ordering invariant (§D, Step 6): a branch commit's `Sgt-Op:` trailers name ops that live
+    only on `refs/sgt/state`, so if that ref cannot be published to the remote, `sgt push` must NOT
+    push the branch -- else the branch references ops that aren't durable. Simulate an unrecoverable
+    state push and assert the remote branch does not move."""
+    from sgt.cli.sync import _push
+    from sgt.core.sync import state_ref
+
+    remote = tmp_path / "remote.git"
+    a, _b = _two_clones(tmp_path, _BASE)
+    _edit_and_commit(a, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "bump foo")
+    remote_before = _bare_head(remote)
+
+    def _boom(*args, **kwargs):
+        raise state_ref.StateRefError("simulated unrecoverable state push")
+
+    monkeypatch.setattr(state_ref, "publish_and_push", _boom)
+
+    assert _push(str(a), "origin", "main", as_json=False) != 0
+    assert _bare_head(remote) == remote_before  # the branch push never ran
+
+
+def test_pre_1_2_remote_without_state_ref_falls_back_to_mining(tmp_path):
+    """Backward-compat bootstrap (§D): a remote predating Phase 1.2 has no `refs/sgt/state`. A fresh
+    clone can't fetch it, but the branch history still carries every `Sgt-Op:` trailer, so `lens.get`
+    reconstructs the ideal by mining from branch history -- never an error, just cold mining."""
+    import subprocess
+
+    from sgt.core.sync import state_ref
+
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
+    lens.init(a)
+    _edit_and_commit(a, "main.py", _BASE, "init")
+    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
+    # Push ONLY the branch -- simulate a pre-1.2 remote that never learned about refs/sgt/state.
+    subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "main"], check=True, capture_output=True)
+    a_ideal = lens.get(a)
+
+    b = _clone(remote, tmp_path / "b")  # the remote has no state ref, so `_clone` fetches nothing
+    assert state_ref.read_sha(GitBinding(b)) is None  # the bootstrap precondition holds
+    b_ideal = lens.get(b)  # must mine from branch history rather than error
+
+    assert b_ideal.op_ids == a_ideal.op_ids  # cold mining re-derives the same content-addressed ideal

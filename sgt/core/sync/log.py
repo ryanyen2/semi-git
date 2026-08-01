@@ -11,7 +11,7 @@ The log only records `land` -- the authoritative shared-branch advance. A local 
 advances only the local branch and carries its own `Sgt-Op:` trailers, so it needs no entry; any
 merge-base on a shared branch was itself a landed commit and is therefore already in the log. This
 module is best-effort throughout: a failure to append or read never blocks `land` or `sync`, it
-just means base recovery falls through to the existing trailers/ideal-record/mine ladder.
+just means base recovery falls through to the existing trailers/mine ladder.
 """
 
 from __future__ import annotations
