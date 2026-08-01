@@ -189,8 +189,10 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
     """Decompose `plan_text` (LLM first, fallback second) and mint one hollow op per step,
     off-chain. `session_id` defaults to a fresh `uuid4` hex; an explicit id is accepted so tests
     are deterministic. `claude_session_id`, when the drafting agent can read its own
-    `$CLAUDE_CODE_BRIDGE_SESSION_ID`, is stored so a stalled plan can be resumed directly with
-    `claude --resume <id>` (else the resume affordance falls back to Claude Code's session picker)."""
+    `$CLAUDE_CODE_SESSION_ID` (the per-session UUID -- the same key the `UserPromptSubmit` hook
+    turns carry and the id `claude --resume` accepts), is stored so a stalled plan can be resumed
+    directly with `claude --resume <id>` (else the resume affordance falls back to Claude Code's
+    session picker)."""
     repo = Path(repo)
     store = Store(repo)
     session_id = session_id or uuid.uuid4().hex
@@ -285,7 +287,9 @@ def mark_done(repo: str | Path, session_id: str) -> bool:
     record = table.get(session_id)
     if record is None:
         return False
-    _reflect_open_intents(repo, session_id)  # record unfulfilled steps before their hollows vanish
+    # No open-intent reflection here, unlike `abandon`: mark_done asserts the work IS finished
+    # (just differently than predicted), so its pending steps are not unfulfilled intents --
+    # minting them as open would fill `sgt intent open`/recall with already-landed noise.
     store = Store(repo)
     for step in record["steps"]:
         if step["status"] == "pending":

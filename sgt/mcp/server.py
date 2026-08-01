@@ -165,10 +165,15 @@ def tool_plan_intake(repo_path: str, args: dict) -> dict:
     get(repo_path)
     session = plan_mod.intake(repo_path, plan_text, session_id=session_id,
                               claude_session_id=claude_session_id)
+    # `predicted_footprint` is echoed so the agent can SEE prediction quality: an all-empty
+    # column means checkpoint's footprint-overlap will never match these steps (testbed
+    # 2026-07-31: an intake whose predictions all came back [] silently guaranteed zero matches
+    # downstream, and the agent had no way to notice).
     return {
         "session_id": session.session_id, "status": session.status, "step_count": len(session.steps),
         "steps": [
-            {"title": s["title"], "predicted_feature": s["predicted_feature"], "rationale": s["rationale"]}
+            {"title": s["title"], "predicted_feature": s["predicted_feature"],
+             "predicted_footprint": s["predicted_footprint"], "rationale": s["rationale"]}
             for s in session.steps
         ],
     }
@@ -184,6 +189,21 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
     from sgt.loop.match import confirm_match
 
     get(repo_path)
+    # Intent-ledger M1: an optional `note` -- the user's latest instruction/correction, relayed at
+    # checkpoint time. Alignment-timing evidence (channel `note`, agent paraphrase), never the
+    # authoritative user voice (that's the verbatim `UserPromptSubmit` hook). Guarded: capture
+    # must never break a checkpoint.
+    note = (args.get("note") or "").strip()
+    if note:
+        try:
+            from sgt.intent.turns import record_turn
+            from sgt.loop import plan as _plan
+            sid = args.get("session_id") or next(iter(sorted(_plan.active_sessions(repo_path))), None)
+            if sid:
+                record_turn(repo_path, key=sid, key_kind="plan", actor="agent", channel="note",
+                            text=note)
+        except Exception:  # noqa: BLE001
+            pass
     confirm = args.get("confirm")
     if confirm:
         sessions = plan_mod.active_sessions(repo_path)
@@ -201,6 +221,17 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
     # full=True: the agent needs span-carrying match detail to act on a group, regardless of the
     # new compact default (Part D).
     return plan_view(repo_path, full=True)["checkpoint"]
+
+
+def tool_recall(repo_path: str, args: dict) -> dict:
+    """Agent recall (intent-ledger M1, design §4.4): the recorded "why" for the symbols an agent
+    is about to touch + stated-but-unlanded intents. Local-tier read; no mining needed beyond
+    contact so stale stores still answer."""
+    from sgt.core.lens import get as _get
+    from sgt.intent.rationale import recall
+
+    _get(repo_path)
+    return recall(repo_path, list(args.get("symbols") or []))
 
 
 def tool_drift(repo_path: str, args: dict) -> dict:
@@ -304,7 +335,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema(
             {"plan_text": {"type": "string"},
              "session_id": {"type": "string", "description": "explicit id (optional; defaults to a fresh one)"},
-             "claude_session_id": {"type": "string", "description": "your Claude Code session id (read $CLAUDE_CODE_BRIDGE_SESSION_ID via Bash if available); stored so an interrupted plan can be resumed directly with `claude --resume`"}},
+             "claude_session_id": {"type": "string", "description": "your Claude Code session id (read $CLAUDE_CODE_SESSION_ID via Bash -- the per-session UUID; do NOT use $CLAUDE_CODE_BRIDGE_SESSION_ID, which can carry a parent session's id in nested runs); stored so an interrupted plan can be resumed directly with `claude --resume <uuid>` and so hook-captured prompts join to this plan's commits"}},
             ["plan_text"],
         ),
         tool_plan_intake,
@@ -322,10 +353,20 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
                      "op_ids": {"type": "array", "items": {"type": "string"}}},
                     ["hollow_ids", "op_ids"],
                 ),
-            }},
+            },
+             "session_id": {"type": "string", "description": "which plan session a `note` belongs to (optional; defaults to the single active one)"},
+             "note": {"type": "string", "description": "the user's latest instruction/correction in this conversation, verbatim -- recorded as intent evidence so `sgt why` can answer later"}},
             [],
         ),
         tool_checkpoint,
+    ),
+    "sgt_recall": (
+        "Before editing, recall why the code you are about to touch is the way it is: recorded "
+        "rationale (from past plans/conversations) overlapping the given symbols, plus intents "
+        "that were stated but never landed. Read-only, local, cheap -- call it at plan time.",
+        _schema({"symbols": {"type": "array", "items": {"type": "string"},
+                             "description": "symbols you plan to touch, as `repo/relative/path.py::name` (bare `file.py::name` also matches -- symbol names are joined exactly, file paths by suffix; empty = all recorded rationale)"}}, []),
+        tool_recall,
     ),
     "sgt_drift": (
         "Every op not predicted by any active plan session. Compact by default: {count, op_ids, "
