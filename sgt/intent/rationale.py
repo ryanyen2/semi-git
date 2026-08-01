@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 
 from sgt import state
-from sgt.intent.turns import turns_for
+from sgt.intent.turns import capture_lock, turns_for
 
 _ARTIFACT = "intent_rationale"
 REFLECTOR_VERSION = "1"
@@ -51,11 +51,16 @@ def _fp_digest(footprint) -> str:
     return hashlib.sha256(json.dumps(sorted(footprint), ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
 
 
-def _rationale_id(subject_ops: list[str], reason: str | None, actor: str) -> str:
+def _rationale_id(subject_ops: list[str], reason: str | None, actor: str,
+                  relations: list[dict] | None = None) -> str:
     """Content address over a record's identifying fields, so re-reflecting the same alignment is a
     no-op. `evidence`/`ts`/`confirmed` are excluded: the same (subject, reason, actor) is the same
-    claim regardless of when it was derived or which turns happened to be cited."""
-    payload = json.dumps([sorted(subject_ops), reason, actor], ensure_ascii=False)
+    claim regardless of when it was derived or which turns happened to be cited. Relations ARE
+    identity: "supersedes X" and "supersedes Y" are different claims -- without them, every
+    `retire_open`'s closing record (`subject=[]`, reason "marked done") collides onto one id and
+    retiring a second open intent silently no-ops (testbed 2026-07-31)."""
+    rels = sorted((r.get("type", ""), r.get("target", "")) for r in (relations or []))
+    payload = json.dumps([sorted(subject_ops), reason, actor, rels], ensure_ascii=False)
     return "r-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -72,18 +77,19 @@ def record_rationale(repo: str | Path, *, subject: list[dict], reason: str | Non
     relations = relations or []
     if not subject_ops and not open and not relations:
         return None  # nothing to say: no ops, not an open intent, not a closing/supersession
-    store = load_rationale(repo)
-    rid = _rationale_id(subject_ops, reason, actor)
-    if rid in store:
-        return rid
-    store[rid] = {
-        "id": rid, "subject": subject, "predicted_fp": predicted_fp, "open": open,
-        "reason": reason, "actor": actor, "confirmed": confirmed,
-        "evidence": list(evidence), "relations": list(relations),
-        "ts": time.time() if ts is None else ts,
-        "recorded_by": recorded_by, "reflector_version": REFLECTOR_VERSION,
-    }
-    state.save_json_if_changed(repo, _ARTIFACT, store)
+    with capture_lock(repo):
+        store = load_rationale(repo)
+        rid = _rationale_id(subject_ops, reason, actor, relations)
+        if rid in store:
+            return rid
+        store[rid] = {
+            "id": rid, "subject": subject, "predicted_fp": predicted_fp, "open": open,
+            "reason": reason, "actor": actor, "confirmed": confirmed,
+            "evidence": list(evidence), "relations": list(relations),
+            "ts": time.time() if ts is None else ts,
+            "recorded_by": recorded_by, "reflector_version": REFLECTOR_VERSION,
+        }
+        state.save_json_if_changed(repo, _ARTIFACT, store)
     return rid
 
 
@@ -130,11 +136,14 @@ def reflect_planned_match(repo: str | Path, session_id: str, op_ids: list[str]) 
 
 
 def reflect_open_intents(repo: str | Path, session_id: str) -> list[str]:
-    """When a plan session closes (`mark_done`/`abandon`) with steps still unfulfilled, record each
-    still-pending step as an `open` intent -- rather than letting its hollow op be deleted silently.
-    These resurface via `sgt intent open` and (M2) recall, and retire when a later op fulfills them
-    or a human runs `sgt intent done`. A no-op for an unknown session. Called *before* the pending
-    hollows are unlinked, so the step's prediction is still readable."""
+    """When a plan session is *walked away from* (`abandon`, incl. the staleness sweep) with steps
+    still pending, record each as an `open` intent -- rather than letting its hollow op be deleted
+    silently. Deliberately NOT called from `mark_done`: that verb asserts the work is finished
+    (done differently than predicted), so its pending steps are not unfulfilled intents, and
+    minting them would fill the open surface with already-landed noise (testbed 2026-07-31: every
+    such record was a false open). These resurface via `sgt intent open` and recall, and retire
+    when a human runs `sgt intent done`. A no-op for an unknown session. Called *before* the
+    pending hollows are unlinked, so the step's prediction is still readable."""
     sessions = state.load_json(repo, "plan_sessions", default={})
     record = sessions.get(session_id)
     if record is None:
@@ -144,7 +153,9 @@ def reflect_open_intents(repo: str | Path, session_id: str) -> list[str]:
     for step in record.get("steps", []):
         if step.get("status") != "pending":
             continue
-        reason = (step.get("rationale") or step.get("title") or "").strip() or None
+        # Title first: it IS the stated intent ("Document theme usage"); the step's rationale is
+        # planner prose *about* the step and reads oddly as an intent on the open surface.
+        reason = (step.get("title") or step.get("rationale") or "").strip() or None
         predicted = step.get("predicted_footprint") or []
         rid = record_rationale(
             repo, subject=[], reason=reason, actor="human", evidence=evidence,
@@ -161,8 +172,73 @@ def retire_open(repo: str | Path, rid: str, reason: str = "marked done") -> str 
     (append-only); only its standing changes."""
     if rid not in {r["id"] for r in open_intents(repo)}:
         return None
-    return record_rationale(repo, subject=[], reason=reason, actor="user", evidence=[],
-                            open=False, relations=[{"type": "supersedes", "target": rid}])
+    # actor "human", same vocabulary as turns/reflection (never "user"); `recorded_by` carries
+    # the writer distinction.
+    return record_rationale(repo, subject=[], reason=reason, actor="human", evidence=[],
+                            open=False, relations=[{"type": "supersedes", "target": rid}],
+                            recorded_by="user")
+
+
+def edit_rationale(repo: str | Path, rid_prefix: str, reason: str) -> str | None:
+    """Human correction (`sgt intent edit <id> "<reason>"`): supersede a record with a confirmed
+    one carrying the user's own reason, same subject. The optional lever -- capture never depends
+    on it. `None` when the prefix matches no record or several (never guess)."""
+    store = load_rationale(repo)
+    hits = [r for r in store.values() if r["id"].startswith(rid_prefix)]
+    if len(hits) != 1 or not reason.strip():
+        return None
+    old = hits[0]
+    return record_rationale(
+        repo, subject=old["subject"], reason=reason.strip(), actor="human",
+        evidence=old.get("evidence", []), confirmed=True, open=old.get("open", False),
+        predicted_fp=old.get("predicted_fp"),
+        relations=[{"type": "supersedes", "target": old["id"]}], recorded_by="user")
+
+
+def _symbol_matches(query: str, mined: str) -> bool:
+    """Lenient join between the symbol an agent *names* and the symbol the miner *stores*
+    (`repo/relative/path.py::name`). Agents reliably know the file basename and the symbol name,
+    not the repo-relative prefix (testbed 2026-07-31: a recall for `__main__.py::add` silently
+    missed `tinytask/__main__.py::add`). Symbol names must match exactly; the file part matches
+    when equal or when either is a path-suffix of the other."""
+    if query == mined:
+        return True
+    qf, _, qn = query.partition("::")
+    mf, _, mn = mined.partition("::")
+    if qn != mn:
+        return False
+    return mf.endswith("/" + qf) or qf.endswith("/" + mf)
+
+
+def recall(repo: str | Path, symbols: list[str]) -> dict:
+    """The agent-recall read (design §4.4, local tier): live rationale whose subject ops touch
+    `symbols`, plus every open intent -- "before you edit here, this is why it is the way it is,
+    and this was stated but never landed." Pure read over local stores; empty stores mean empty
+    lists, never an error."""
+    from sgt.core.store import Store
+
+    recs = list(load_rationale(repo).values())
+    dead = _superseded_ids(recs)
+    store = Store(repo)
+    wanted = list(dict.fromkeys(symbols))
+    matched = []
+    for r in recs:
+        if r["id"] in dead or r.get("open") or not r.get("reason"):
+            continue
+        ops = [s["op"] for s in r.get("subject", [])]
+        touched = set()
+        for op_id in ops:
+            op = store.get(op_id)
+            if op is not None:
+                touched.update(op.footprint)
+        overlap = sorted(m for m in touched if any(_symbol_matches(q, m) for q in wanted))
+        if overlap or not wanted:
+            matched.append({"reason": r["reason"], "actor": r["actor"],
+                            "confirmed": r["confirmed"], "symbols": overlap,
+                            "evidence": len(r.get("evidence", []))})
+    matched.sort(key=lambda m: -len(m["symbols"]))
+    opens = [{"id": r["id"], "reason": r["reason"]} for r in open_intents(repo)]
+    return {"rationale": matched, "open_intents": opens}
 
 
 def _superseded_ids(records: list[dict]) -> set[str]:

@@ -28,14 +28,33 @@ content-addressed `Op`.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from sgt import state
 
 _ARTIFACT = "intent_turns"
+
+
+@contextmanager
+def capture_lock(repo: str | Path):
+    """Serialize a read-modify-write on the local intent stores (turns, rationale) against
+    concurrent capture -- two Claude Code windows prompting the same repo at once must not lose
+    turns to a load/save race. A dedicated lock file, deliberately NOT the store's
+    `.sgt/local/lock`: capture runs inside verbs that may already hold the store flock, and
+    flock is non-reentrant (see `sgt.core.store.locked_section`)."""
+    p = Path(repo) / ".sgt" / "local" / "intent.lock"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", encoding="utf-8") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def load_turns(repo: str | Path) -> dict[str, dict]:
@@ -61,17 +80,18 @@ def record_turn(repo: str | Path, *, key: str, key_kind: str, actor: str, channe
     this key, so it orders captures within a key and stays stable under idempotent re-capture."""
     if not key or not text:
         return None
-    turns = load_turns(repo)
-    tid = _turn_id(key_kind, key, actor, channel, text)
-    if tid in turns:
-        return tid
-    seq = sum(1 for t in turns.values() if t["key"] == key and t["key_kind"] == key_kind)
-    turns[tid] = {
-        "id": tid, "key": key, "key_kind": key_kind, "seq": seq,
-        "actor": actor, "channel": channel, "text": text,
-        "ts": time.time() if ts is None else ts,
-    }
-    state.save_json_if_changed(repo, _ARTIFACT, turns)
+    with capture_lock(repo):
+        turns = load_turns(repo)
+        tid = _turn_id(key_kind, key, actor, channel, text)
+        if tid in turns:
+            return tid
+        seq = sum(1 for t in turns.values() if t["key"] == key and t["key_kind"] == key_kind)
+        turns[tid] = {
+            "id": tid, "key": key, "key_kind": key_kind, "seq": seq,
+            "actor": actor, "channel": channel, "text": text,
+            "ts": time.time() if ts is None else ts,
+        }
+        state.save_json_if_changed(repo, _ARTIFACT, turns)
     return tid
 
 

@@ -57,7 +57,9 @@ def _intent(
 ) -> int:
     from sgt.core.lens import get
 
-    if sub not in ("list", "show", "build", "revert", "relabel", "open", "done"):
+    if sub == "record":  # the hook entry point: capture only, no mining -- must stay fast
+        return _record(repo, as_json)
+    if sub not in ("list", "show", "build", "revert", "relabel", "open", "done", "edit"):
         print(_USAGE)
         return 2
     get(repo)  # mine-on-contact so the overlay reflects current reality (R9)
@@ -72,6 +74,8 @@ def _intent(
         return 2
     if sub == "done":
         return _done(repo, target, as_json)
+    if sub == "edit":
+        return _edit(repo, target, " ".join(rest or []), as_json)
     if sub == "relabel":
         return _relabel(repo, target, " ".join(rest or []), as_json)
     if sub == "revert":
@@ -98,6 +102,47 @@ def _open(repo: str, as_json: bool) -> int:
     for r in opens:
         print(f"  [{r['id'][:12]}] {r['reason'] or '(unknown)'}")
     print("\n  retire one with `sgt intent done <id>`")
+    return 0
+
+
+def _record(repo: str, as_json: bool) -> int:
+    """`sgt intent record`: the zero-burden capture entry a Claude Code `UserPromptSubmit` hook
+    pipes into. Reads the hook's JSON payload from stdin (`{"session_id": ..., "prompt": ...}`)
+    and stores the user's prompt verbatim as a local chat-keyed turn. Silent and fast by design:
+    it runs on every prompt, so no mining, no output on success, exit 0 even on empty input --
+    a capture hiccup must never disturb the user's conversation."""
+    import json as _json
+    import sys
+    from pathlib import Path
+
+    try:
+        # Only capture into a repo that already opted in (`sgt init`): the hook fires wherever
+        # Claude Code runs, and materializing `.sgt/` into an arbitrary cwd is pollution, not
+        # capture (testbed 2026-07-31: the hook minted `/tmp/.sgt` on a stray fire).
+        if (Path(repo) / ".sgt").is_dir():
+            payload = _json.loads(sys.stdin.read() or "{}")
+            chat, text = payload.get("session_id"), (payload.get("prompt") or "").strip()
+            if chat and text:
+                from sgt.intent.turns import record_turn
+                record_turn(repo, key=chat, key_kind="chat", actor="human", channel="hook", text=text)
+    except Exception:  # noqa: BLE001 -- never break the hook chain
+        pass
+    if as_json:
+        return _emit_json({"ok": True})
+    return 0
+
+
+def _edit(repo: str, target: str, reason: str, as_json: bool) -> int:
+    """`sgt intent edit <id> "<reason>"`: correct/confirm a recorded rationale in your own words.
+    Optional -- capture never depends on it; this is the lever for when the inferred why is wrong."""
+    from sgt.intent.rationale import edit_rationale
+
+    rid = edit_rationale(repo, target, reason)
+    if rid is None:
+        return _fail_json(f"no unique rationale {target!r} (or empty reason)", as_json)
+    if as_json:
+        return _emit_json({"ok": True, "id": rid})
+    print(f"✓ recorded your correction ({rid[:12]}, confirmed)")
     return 0
 
 
@@ -230,7 +275,14 @@ def _show(repo: str, target: str, as_json: bool) -> int:
         print(f"  feature span: {', '.join(result['feature_span']) or '(none)'}")
         print(f"  {len(result['op_ids'])} op(s)")
         if result["prompt"]:
-            print(f"  prompt: {result['prompt']}")
+            # Multi-line prompts (plan intake text) keep the block's indentation.
+            print(f"  prompt: {result['prompt']}".replace("\n", "\n          "))
+        for reason in result.get("rationale", []):
+            print(f"  why: {reason}")
+        if result.get("session_ids"):
+            print(f"  session: {', '.join(result['session_ids'])}")
+        for sid in result.get("claude_session_ids", []):
+            print(f"  chat: claude --resume {sid}")
     return 0
 
 

@@ -294,6 +294,20 @@ def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
             }
             for r in for_op(repo, result.op_id)
         ]
+    if result.ok and "::" in op_ref:
+        # A symbol question ("why is `add` the way it is?") is about the symbol's whole recorded
+        # history, not just the single op the ref resolved to (usually the latest): earlier ops on
+        # the same symbol carry rationale too (testbed 2026-07-31: the priority reasoning was
+        # invisible from `feature why <sym>` once the due-date op became the resolution target).
+        from sgt.intent.rationale import recall
+        seen = {r["reason"] for r in rationale}
+        for hit in recall(repo, [op_ref])["rationale"]:
+            if hit["reason"] not in seen:
+                seen.add(hit["reason"])
+                rationale.append({
+                    "reason": hit["reason"], "actor": hit["actor"], "confirmed": hit["confirmed"],
+                    "open": False, "superseded": False, "evidence": hit["evidence"],
+                })
     return {
         "ok": result.ok, "message": result.message, "op_id": result.op_id,
         "feature_id": result.feature_id, "for_feature": result.for_feature,
@@ -1884,6 +1898,7 @@ def _atom_prompt(repo, atom) -> str | None:
     the same three key kinds `Attribution` carries. `None` when nothing was ever recorded; the
     commit subject (already present on every atom) is the fallback human label, never this."""
     from sgt.intent.prompts import prompt_for
+    from sgt.intent.turns import turns_for
 
     direct = prompt_for(repo, atom.commit_sha)
     if direct is not None:
@@ -1896,6 +1911,27 @@ def _atom_prompt(repo, atom) -> str | None:
         found = prompt_for(repo, session_id)
         if found is not None:
             return found
+    # Same three keys against the local turn store (intent-ledger M1): words harvested from the
+    # workflow (`save -m`, hook turns) that never entered the committed sidecar still reach every
+    # surface this join feeds -- the labeler, `intent show`, the editor.
+    for key in (atom.commit_sha, *sorted(atom.plan_ids), *sorted(atom.session_ids)):
+        hits = turns_for(repo, key)
+        if hits:
+            return hits[0]["text"]
+    # Chat-keyed hook turns: reachable via the plan's stored claude_session_id (plan U12) --
+    # the join that lets a verbatim `UserPromptSubmit` capture answer for the commit it produced.
+    # Plan ids AND session ids: `confirm_match` stamps the plan-session id into the attribution's
+    # `session` field (match.py `_stamp`), so the planned path's key arrives here as a session id;
+    # membership in `plan_sessions` filters out genuine `sgt session` names.
+    keys = sorted(set(atom.plan_ids) | set(atom.session_ids))
+    if keys:
+        from sgt import state as _state
+        plan_sessions = _state.load_json(repo, "plan_sessions", default={})
+        for p in keys:
+            chat = (plan_sessions.get(p) or {}).get("claude_session_id")
+            hits = turns_for(repo, chat, key_kind="chat") if chat else []
+            if hits:
+                return hits[0]["text"]
     return None
 
 
@@ -1925,11 +1961,38 @@ def intent_view(repo) -> dict:
     atoms = group.atoms(repo)
     atoms_by_sha = {a.commit_sha: a for a in atoms}
 
+    # Intent-ledger M1 provenance joins, resolved once: which chat session a plan came from
+    # (`claude --resume` affordance, plan U12) and the live recorded reason for each op. Both are
+    # local-tier reads; absent stores just mean empty enrichment, never an error.
+    plan_sessions = state.load_json(repo, "plan_sessions", default={})
+    from sgt.intent.rationale import load_rationale
+    _recs = list(load_rationale(repo).values())
+    _dead = {rel["target"] for r in _recs for rel in r.get("relations", [])
+             if rel.get("type") == "supersedes"}
+    reasons_by_op: dict[str, set[str]] = {}
+    for r in sorted(_recs, key=lambda r: r["ts"]):
+        if r["id"] in _dead or not r.get("reason"):
+            continue
+        for s in r.get("subject", []):
+            reasons_by_op.setdefault(s["op"], set()).add(r["reason"])
+
     atoms_out = []
     for atom in atoms:
         span = group.feature_span(atom.op_ids, op_leaf)
         commit_shas = frozenset() if atom.commit_sha == group.UNWITNESSED else frozenset({atom.commit_sha})
         tier = group.tier(atom.op_ids, commit_shas, all_ops, declared, op_leaf)
+        # Plural on purpose: one commit's ops can come from several plans/chats (a save landing
+        # work from two agent conversations, an op re-witnessed across merges) -- nothing in the
+        # ledger is 1:1, so the projection must not collapse it either. Plan ids AND session ids:
+        # `confirm_match` stamps the plan-session id into the attribution's `session` field, so
+        # the planned path's key arrives as a session id (plan_sessions membership filters the
+        # genuine `sgt session` names out).
+        claude_sids = sorted({
+            plan_sessions[p]["claude_session_id"]
+            for p in (set(atom.plan_ids) | set(atom.session_ids))
+            if p in plan_sessions and plan_sessions[p].get("claude_session_id")
+        })
+        rationale = sorted(set().union(*(reasons_by_op.get(o, set()) for o in atom.op_ids)))
         atoms_out.append({
             "commit_sha": atom.commit_sha,
             "subject": atom.subject,
@@ -1937,6 +2000,10 @@ def intent_view(repo) -> dict:
             "feature_span": sorted(span),
             "tier": tier,
             "prompt": _atom_prompt(repo, atom),
+            "session_ids": sorted(atom.session_ids),
+            "plan_ids": sorted(atom.plan_ids),
+            "claude_session_ids": claude_sids,
+            "rationale": rationale,
         })
     atoms_out.sort(key=lambda a: (a["commit_sha"] == group.UNWITNESSED, a["commit_sha"]))
 

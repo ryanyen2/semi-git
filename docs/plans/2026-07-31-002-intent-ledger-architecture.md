@@ -263,6 +263,18 @@ Two paths, different difficulty:
 
 ### 4.4 Retrieval: rationale over the existing graphs, with liveness
 
+**Reframed during M1 (user directive, 2026-07-31): integrate, don't annex.** The ledger is
+not a new surface beside the overlay — it upgrades the surfaces that exist. Concretely
+(shipped): `_atom_prompt`'s three-key join now falls back to the local turn store, so
+harvested words reach *every* consumer of `intent_view` — the checkpoint labeler, `sgt
+intent show`, and the VSCode extension — with no new verb; each atom now also carries
+`session_ids`/`plan_ids`, its `claude_session_id` (so the editor can offer
+`claude --resume` on a commit: "which chat did this come from"), and the live `rationale`
+for its ops. The editor's codelens/commit-detail views get all of this from the same
+`intent_view` contract they already read. `sgt why`'s rationale section stays, but as one
+consumer among several, not the feature's home. The clustering/label alignment itself is
+the same pipeline as before — better inputs, not a parallel construction.
+
 No new index: feature → member ops → subject joins over `op_leaf` + the anchor rule.
 
 **Liveness join (D2 — the second critical fix).** "Current why" is *not* just the
@@ -354,11 +366,17 @@ reflection trigger for reverts.
 
 ## 6. Milestones (three, each gated)
 
-- **M1 — validate the bet, entirely local.** Zero-burden turn capture (§4.1: plan intake +
-  session task **[s1, shipped]**, save-message harvest **[s2, shipped]**, then the
-  `UserPromptSubmit` hook + reframed checkpoint note **[s3]**), keep-everything + planned-path
-  reflection to *local-tier* rationale + `sgt why` rationale section + theme_segment label
-  feed + `sgt intent done/open` (+ optional `intent edit` correction).
+- **M1 — validate the bet, entirely local. [SHIPPED 2026-07-31, all slices]** Zero-burden
+  turn capture (plan intake + session task, save-message harvest, `UserPromptSubmit` hook —
+  auto-installed into `.claude/settings.local.json` at `sgt init`, `sgt intent record` as
+  the hook sink — and the reframed checkpoint `note` on `sgt_checkpoint`); planned-path
+  reflection at `confirm_match`; `sgt why` + `intent show` rationale/provenance;
+  `intent_view` atoms enriched (prompt join incl. chat-keyed turns, plural
+  `claude_session_ids`, `session_ids`/`plan_ids`, live `rationale`) — the integrate-don't-
+  annex surface the editor reads; label feed via `label_prompt_for`; `sgt intent
+  open/done/edit`; **`sgt_recall` MCP tool shipped early against the local tier** (M2's read
+  half needed no committed artifact). Kernel constraint recorded: `merge_attribution`
+  min-collapses per-(op,sha) attribution to one plan — multiplicity is preserved per-op.
   **Gate:** measured plan-match alignment precision on sampled real sessions (the P2
   number v2 never asked for), and a label-quality judgment against current
   diff-derived labels. If precision is poor, stop here — nothing has been shared, and
