@@ -69,7 +69,10 @@ def _plan(repo: str, rest: list[str], as_json: bool, full: bool = False,
         ok = plan_mod.mark_done(repo, opts[0])
         if as_json:
             return _emit_json({"ok": ok})
-        return 0 if ok else _fail(f"no such session: {opts[0]}")
+        if not ok:
+            return _fail(f"no such session: {opts[0]}")
+        print(f"✓ plan session {opts[0]} closed (completed)")
+        return 0
 
     if sub == "abandon":
         if not opts:
@@ -80,7 +83,11 @@ def _plan(repo: str, rest: list[str], as_json: bool, full: bool = False,
         ok = plan_mod.abandon(repo, opts[0])
         if as_json:
             return _emit_json({"ok": ok})
-        return 0 if ok else _fail(f"no such session: {opts[0]}")
+        if not ok:
+            return _fail(f"no such session: {opts[0]}")
+        print(f"✓ abandoned plan session {opts[0]} -- its unfinished steps are recorded as "
+              "open intents (sgt intent open)")
+        return 0
 
     from sgt.api import plan_view
 
