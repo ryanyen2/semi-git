@@ -29,6 +29,7 @@ from sgt.core.fold import code
 from sgt.core.op import BOTTOM, MINER_VERSION, compute_id, is_bottom, make_op
 from sgt.core.store import Store, _serialize, fsck
 from sgt.store.gitbind import GitBinding, init_store
+from tests.conftest import _clone, _init_bare, _push
 
 
 def _downgrade_to_v2(repo: Path) -> None:
@@ -178,23 +179,6 @@ def test_crash_mid_apply_resumes_to_the_same_result(tmp_path, monkeypatch):
 
 
 # -- scenario 4: refused across miner versions, both directions ---------------------------------
-
-
-def _init_bare(root: Path) -> Path:
-    remote = root / "remote.git"
-    remote.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True, capture_output=True)
-    return remote
-
-
-def _clone(remote: Path, dest: Path) -> Path:
-    subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
-    GitBinding(dest).init()
-    return dest
-
-
-def _push(repo: Path) -> None:
-    subprocess.run(["git", "-C", str(repo), "push", "-q", "origin", "main"], check=True, capture_output=True)
 
 
 def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> None:

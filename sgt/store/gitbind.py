@@ -927,6 +927,68 @@ class GitBinding:
         args += ["-m", full]
         return self._git(*args).stdout.strip()
 
+    def _git_stdin(
+        self, *args: str, stdin: bytes, check: bool = True, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess:
+        """`_git` for a command fed raw bytes on stdin (`hash-object --stdin`, `update-index
+        --index-info`). No text mode: stdin/stdout stay bytes so a binary blob round-trips
+        byte-for-byte and never trips a UTF-8 decode. Callers decode the (ASCII) stdout themselves."""
+        proc = subprocess.run(
+            ["git", "-C", str(self.repo), *args],
+            input=stdin,
+            capture_output=True,
+            env={**os.environ, **env} if env is not None else None,
+        )
+        if check and proc.returncode != 0:
+            raise GitError(
+                f"git {' '.join(args)} failed ({proc.returncode}): "
+                f"{proc.stderr.decode('utf-8', 'replace').strip()}"
+            )
+        return proc
+
+    def write_tree_from_blobs(self, entries: dict[str, bytes]) -> str:
+        """A git tree object id built from an in-memory `{repo-relative-path: content}` mapping,
+        without touching the working tree or the real index -- the write half of `refs/sgt/state`
+        (plan 1.2), as `working_tree_snapshot` is the write half for the working directory. Each
+        blob is written with `hash-object -w`, the whole set staged into a scratch `GIT_INDEX_FILE`
+        in one `update-index --index-info`, then serialized with `write-tree` (which builds the
+        nested tree objects for `.sgt/ops/<id>`-style paths automatically). An empty mapping yields
+        git's empty-tree oid. The scratch index lives in the *real* git dir (`--absolute-git-dir`,
+        correct under a linked worktree) and is removed after, exactly like `working_tree_snapshot`."""
+        git_dir = Path(self._git("rev-parse", "--absolute-git-dir").stdout.strip())
+        fd, scratch_path = tempfile.mkstemp(dir=str(git_dir), prefix=".sgt-scratch-index-")
+        os.close(fd)
+        os.unlink(scratch_path)  # git errors on an existing-but-empty index; `update-index` creates it
+        env = {"GIT_INDEX_FILE": scratch_path}
+        try:
+            lines = []
+            for path in sorted(entries):
+                oid = self._git_stdin("hash-object", "-w", "--stdin", stdin=entries[path]).stdout.decode().strip()
+                lines.append(f"100644 {oid}\t{path}")
+            if lines:
+                self._git_stdin("update-index", "--index-info", stdin=("\n".join(lines) + "\n").encode(), env=env)
+            return self._git("write-tree", env=env).stdout.strip()
+        finally:
+            try:
+                os.unlink(scratch_path)
+            except OSError:
+                pass
+
+    def read_tree_blobs(self, tree_ish: str, prefix: str = "") -> dict[str, bytes]:
+        """Every path under `prefix` (all paths when empty) at `tree_ish`, mapped to raw bytes --
+        the bytes-preserving, prefix-scoped counterpart to `tree_at` (which text-decodes and drops
+        binary). The read half of `refs/sgt/state` materialization (plan 1.2). Missing tree-ish or
+        empty prefix match yields `{}`."""
+        args = ["ls-tree", "-r", "--name-only", tree_ish]
+        if prefix:
+            args += ["--", prefix]
+        proc = self._git(*args, check=False)
+        if proc.returncode != 0:
+            return {}
+        paths = [line for line in proc.stdout.splitlines() if line]
+        blobs = self.blob_bytes_many([(tree_ish, p) for p in paths])
+        return {p: b for p, b in zip(paths, blobs) if b is not None}
+
     def update_ref_cas(self, ref: str, new: str, old: str | None) -> bool:
         """Compare-and-swap the branch record (plan U23, C9/LAW-G): `git update-ref <ref> <new>
         <old>` atomically moves `ref` to `new` only if it still points at `old` -- the 40-zero oid

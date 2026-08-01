@@ -13,34 +13,13 @@ fits a bare-remote-plus-two-working-clones shape) but follow the same hermetic d
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from sgt.core import lens, sync, verbs
 from sgt.core.store import Store
 from sgt.lens.pins import Pins, load_pins, save_pins
 from sgt.store.gitbind import GitBinding
-
-
-def _init_bare(root: Path) -> Path:
-    remote = root / "remote.git"
-    remote.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True, capture_output=True
-    )
-    return remote
-
-
-def _clone(remote: Path, dest: Path) -> Path:
-    subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
-    GitBinding(dest).init()  # repo-scope identity, matches every other fixture in this suite
-    return dest
-
-
-def _push(repo: Path, branch: str = "main") -> None:
-    subprocess.run(
-        ["git", "-C", str(repo), "push", "-q", "origin", branch], check=True, capture_output=True
-    )
+from tests.conftest import _clone, _init_bare, _push
 
 
 def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:

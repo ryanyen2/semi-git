@@ -1,6 +1,7 @@
 """U1 tests: git binding — init, commit mapping, trailer identity, orphan detection."""
 
 from sgt.store.gitbind import (
+    EMPTY_TREE,
     GitBinding,
     _CatFileBatch,
     format_trailer,
@@ -253,3 +254,53 @@ def test_batch_reads_do_not_alias_across_chdir_with_relative_repo(tmp_path, monk
     assert GitBinding(".").blob_bytes("HEAD", "f.txt") == b"beta\n"
     monkeypatch.chdir(repo_a)  # back again: repo A's process, not a stale B handle
     assert GitBinding(".").blob_bytes("HEAD", "f.txt") == b"alpha\n"
+
+
+# -- refs/sgt/state tree primitives (plan 1.2) --------------------------------------------------
+
+
+def test_write_tree_from_blobs_round_trips_through_read(tmp_path):
+    """A `{path: bytes}` mapping builds a tree whose blobs read back byte-for-byte, including
+    nested paths and binary content -- and without staging anything into the real index."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "src.txt").write_text("untouched\n", encoding="utf-8")
+    gb.commit_all("feat: a real commit")
+
+    entries = {
+        ".sgt/ops/abc123": b'{"id": "abc123"}\n',
+        ".sgt/pins/pins.json": b'{"schema": 1, "data": {}}\n',
+        ".sgt/forks.json": bytes([0x00, 0x01, 0x02, 0xFF]),  # binary-safe
+    }
+    tree = gb.write_tree_from_blobs(entries)
+
+    assert gb.read_tree_blobs(tree) == entries
+    assert gb.read_tree_blobs(tree, prefix=".sgt/ops/") == {".sgt/ops/abc123": entries[".sgt/ops/abc123"]}
+    # the real index/working tree are untouched: only the source commit's file is tracked.
+    assert not gb.has_dirty_source()
+
+
+def test_write_tree_from_blobs_empty_is_the_empty_tree(tmp_path):
+    gb, _ = init_store(tmp_path)
+    assert gb.write_tree_from_blobs({}) == EMPTY_TREE
+    assert gb.read_tree_blobs(EMPTY_TREE) == {}
+
+
+def test_state_tree_advances_a_ref_by_cas(tmp_path):
+    """The state ref is advanced the way `log.append` advances its log ref: build a tree, commit it
+    off the current tip, CAS the ref. A stale `old` loses the CAS without moving the ref."""
+    gb, _ = init_store(tmp_path)
+    ref = "refs/sgt/state"
+
+    t1 = gb.write_tree_from_blobs({".sgt/ideal.json": b"[1]\n"})
+    c1 = gb.commit_tree(t1, [], "sgt state")
+    assert gb.update_ref_cas(ref, c1, None)  # create-if-absent
+    assert gb.rev_parse(ref) == c1
+
+    t2 = gb.write_tree_from_blobs({".sgt/ideal.json": b"[1, 2]\n"})
+    c2 = gb.commit_tree(t2, [c1], "sgt state")
+    assert gb.update_ref_cas(ref, c2, c1)  # tip still c1 -> wins
+    assert gb.read_tree_blobs(c2) == {".sgt/ideal.json": b"[1, 2]\n"}
+
+    # a CAS against a stale old value is refused, ref stays at c2.
+    assert not gb.update_ref_cas(ref, c1, c1)
+    assert gb.rev_parse(ref) == c2
