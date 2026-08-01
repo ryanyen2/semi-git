@@ -204,11 +204,13 @@ def test_save_without_a_message_harvests_no_turn(tmp_path):
     assert turns.load_turns(repo) == {}
 
 
-def test_save_message_also_feeds_the_segment_labeler(tmp_path):
-    """Goal-1 label feed (M1): a `-m` message is written into the committed `intent_prompts`
-    sidecar keyed by the witness sha, which `theme_segment.build_segments` reads -- so the feature
-    is named in the user's own words, with no new labeling code."""
-    from sgt.intent import prompts
+def test_save_message_feeds_the_segment_labeler_via_the_local_turn(tmp_path):
+    """Goal-1 label feed (M1), kept local: the `-m` message is harvested as a turn keyed by the
+    witness sha, and the segment labeler's `label_prompt_for` resolves it from there -- so the
+    feature is named in the user's own words with no committed-sidecar write (a save must not dirty
+    `.sgt/`) and no new labeling code."""
+    from sgt.intent import turns
+    from sgt.intent.theme_segment import label_prompt_for
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -216,7 +218,8 @@ def test_save_message_also_feeds_the_segment_labeler(tmp_path):
     with _in(repo):
         assert cli.main(["save", "-m", "extract the quux helper"]) == 0
 
-    assert "extract the quux helper" in prompts.load_prompts(repo).values()
+    turn = next(t for t in turns.load_turns(repo).values() if t["text"] == "extract the quux helper")
+    assert label_prompt_for(repo, turn["key"]) == "extract the quux helper"
 
 
 def test_save_refuses_during_an_in_progress_merge(tmp_path, capsys):

@@ -48,7 +48,8 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
     assert names == {"sgt_init", "sgt_log", "sgt_grid", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
                       "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
-                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done"}
+                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done",
+                      "sgt_recall"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):

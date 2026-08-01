@@ -29,7 +29,8 @@ def test_shape_emits_themes_and_atoms_with_documented_keys_sorted(tmp_path, monk
         "feature_span", "tier",
     }
     (a,) = v["atoms"]
-    assert set(a) == {"commit_sha", "subject", "op_ids", "feature_span", "tier", "prompt"}
+    assert set(a) == {"commit_sha", "subject", "op_ids", "feature_span", "tier", "prompt",
+                      "session_ids", "plan_ids", "claude_session_ids", "rationale"}
     assert v["atoms"] == sorted(v["atoms"], key=lambda x: x["commit_sha"])
     assert v["themes"] == sorted(v["themes"], key=lambda x: x["theme_id"])
 
@@ -195,3 +196,74 @@ def test_stale_shas_reports_a_member_sha_that_no_longer_resolves(tmp_path, monke
     assert vanished_sha in t["atom_shas"]  # atom_shas stays the persisted list, unfiltered
     real_atom_op_ids = frozenset(intent_view(tmp_path)["atoms"][0]["op_ids"])
     assert frozenset(t["op_ids"]) == real_atom_op_ids  # op_ids still excludes the vanished sha
+
+
+def test_atom_joins_local_turns_rationale_and_chat_provenance(tmp_path):
+    """Intent-ledger M1 integration: the words and provenance the ledger captures flow into the
+    EXISTING atom projection -- a sha-keyed local turn reaches `prompt` via `_atom_prompt`'s
+    fallback, a live rationale covering the atom's ops lands in `rationale`, and a plan session's
+    `claude_session_id` rides along so a UI can offer `claude --resume` on the commit."""
+    from sgt import state
+    from sgt.core.op import Attribution
+    from sgt.core.store import Store
+    from sgt.intent import rationale as rationale_mod
+    from sgt.intent import turns
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("fix(auth): add foo and bar")
+    get(tmp_path)
+
+    (atom,) = intent_view(tmp_path)["atoms"]
+    sha = atom["commit_sha"]
+    op_a, op_b = atom["op_ids"][0], atom["op_ids"][1]
+
+    turns.record_turn(tmp_path, key=sha, key_kind="sha", actor="human", channel="cli",
+                      text="lock down the auth entrypoint", ts=1.0)
+    rationale_mod.record_rationale(
+        tmp_path, subject=[{"op": op_a, "sha": sha, "fp": "f"}],
+        reason="the old guard leaked sessions", actor="human", evidence=[], ts=2.0)
+    # One commit fed by TWO plans (two chats), one op each: both must surface -- no 1:1 collapse
+    # at the projection. (Within a single (op, sha) the kernel itself keeps one plan --
+    # `merge_attribution`'s per-sha min-merge, a convergence law -- so per-op multiplicity is the
+    # level the ledger can and must preserve.)
+    Store(tmp_path).attribute(op_a, (Attribution(sha=sha, plan="p1"),))
+    Store(tmp_path).attribute(op_b, (Attribution(sha=sha, plan="p2"),))
+    state.save_json(tmp_path, "plan_sessions", {
+        "p1": {"claude_session_id": "cs-42", "steps": []},
+        "p2": {"claude_session_id": "cs-77", "steps": []},
+    })
+
+    (a,) = intent_view(tmp_path)["atoms"]
+    assert a["prompt"] == "lock down the auth entrypoint"       # turns fallback in _atom_prompt
+    assert a["rationale"] == ["the old guard leaked sessions"]  # live rationale joined by op
+    assert a["claude_session_ids"] == ["cs-42", "cs-77"]        # every contributing chat, not one
+    assert a["plan_ids"] == ["p1", "p2"]
+
+
+def test_chat_provenance_joins_through_the_session_field_confirm_match_stamps(tmp_path):
+    """`confirm_match` stamps the plan-session id into the attribution's *session* field (not
+    `plan`), so the planned path's chat provenance arrives at the projection as a session id --
+    the join must read both (testbed 2026-07-31: reading `plan_ids` alone meant no `chat:` line
+    ever rendered for exactly the plan-matched commits the feature was built for)."""
+    from sgt import state
+    from sgt.core.op import Attribution
+    from sgt.core.store import Store
+    from sgt.intent import turns
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feat: add foo")
+    get(tmp_path)
+
+    (atom,) = intent_view(tmp_path)["atoms"]
+    sha, op_id = atom["commit_sha"], atom["op_ids"][0]
+    Store(tmp_path).attribute(op_id, (Attribution(sha=sha, session="plan-s1"),))
+    state.save_json(tmp_path, "plan_sessions", {"plan-s1": {"claude_session_id": "cs-9", "steps": []}})
+    turns.record_turn(tmp_path, key="cs-9", key_kind="chat", actor="human", channel="hook",
+                      text="add foo please", ts=1.0)
+
+    (a,) = intent_view(tmp_path)["atoms"]
+    assert a["claude_session_ids"] == ["cs-9"]   # session-field key resolved via plan_sessions
+    assert a["prompt"] == "add foo please"       # chat-keyed hook turn reached the prompt join

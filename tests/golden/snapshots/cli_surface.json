@@ -159,7 +159,7 @@
       "."
     ],
     "exit": 0,
-    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n"
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n"
   },
   "log": {
     "json": {
@@ -609,14 +609,14 @@
         "--json"
       ],
       "exit": 1,
-      "out": "{\n  \"ok\": false,\n  \"error\": \"sgt sync requires a clean working tree -- `sgt put` or commit first\"\n}\n"
+      "out": "{\n  \"ok\": false,\n  \"error\": \"working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\\n      .sgt/\"\n}\n"
     },
     "text": {
       "argv": [
         "sync"
       ],
       "exit": 1,
-      "out": "\u2717 sgt sync requires a clean working tree -- `sgt put` or commit first\n"
+      "out": "\u2717 working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\n      .sgt/\n"
     }
   },
   "transplant": {

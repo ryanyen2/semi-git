@@ -389,3 +389,80 @@ def test_intent_relabel_overrides_checkpoint_and_marks_user_source(tmp_path, mon
 def test_intent_relabel_rejects_a_non_checkpoint_target(tmp_path):
     _seed(tmp_path)
     assert _in(tmp_path, ["intent", "relabel", "not-a-checkpoint", "label"]) == 1
+
+
+def test_intent_open_lists_unfulfilled_and_done_retires_it(tmp_path, capsys):
+    """The intent-ledger unfulfilled surface (M1): `sgt intent open` lists a stated-but-unlanded
+    intent; `sgt intent done <id-prefix>` retires it and it leaves the surface."""
+    from sgt.intent import rationale
+
+    _seed(tmp_path)
+    rid = rationale.record_rationale(tmp_path, subject=[], reason="add rate limiting",
+                                     actor="human", evidence=[], open=True, ts=1.0)
+
+    assert _in(tmp_path, ["intent", "open", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["open"]) == 1 and payload["open"][0]["reason"] == "add rate limiting"
+
+    assert _in(tmp_path, ["intent", "done", rid[:12]]) == 0
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["intent", "open", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["open"] == []
+
+
+def test_intent_done_rejects_an_unknown_id(tmp_path):
+    _seed(tmp_path)
+    assert _in(tmp_path, ["intent", "done", "r-nope"]) == 1
+
+
+def test_intent_record_captures_a_chat_turn_from_hook_stdin(tmp_path, monkeypatch):
+    """`sgt intent record` is the `UserPromptSubmit` hook sink: the payload's prompt lands
+    verbatim as a chat-keyed turn, and the command stays silent (exit 0)."""
+    import io
+
+    from sgt.intent.turns import turns_for
+
+    _seed(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"session_id": "cs-9", "prompt": "make auth stateless"}'))
+    assert _in(tmp_path, ["intent", "record"]) == 0
+    hits = turns_for(tmp_path, "cs-9", key_kind="chat")
+    assert len(hits) == 1 and hits[0]["text"] == "make auth stateless"
+
+
+def test_intent_record_is_a_no_op_outside_an_sgt_repo(tmp_path, monkeypatch):
+    """The hook fires wherever Claude Code runs; without a prior `sgt init` (no `.sgt/`) the sink
+    must exit 0 AND write nothing -- materializing `.sgt/` into an arbitrary cwd is pollution
+    (testbed 2026-07-31: a stray fire minted `/tmp/.sgt`)."""
+    import io
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.setattr("sys.stdin", io.StringIO('{"session_id": "cs-9", "prompt": "hello"}'))
+    assert _in(tmp_path, ["intent", "record"]) == 0
+    assert not (tmp_path / ".sgt").exists()
+
+
+def test_prompt_hook_installs_with_an_absolute_sgt_path(tmp_path, monkeypatch):
+    """The hook command must carry the running `sgt`'s absolute path: hooks execute in whatever
+    shell Claude Code has, and a bare `sgt` silently no-ops when the venv is not on that PATH
+    (testbed 2026-07-31). Under pytest argv[0] is not `sgt`, so the resolver falls back to
+    `shutil.which` -- pinned here to a fake binary for hermeticity."""
+    import shutil
+
+    from sgt.cli.init import _install_prompt_hook
+
+    fake = tmp_path / "bin" / "sgt"
+    fake.parent.mkdir()
+    fake.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda name: str(fake))
+
+    assert _install_prompt_hook(str(tmp_path)) is True
+    settings = json.loads((tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    (entry,) = settings["hooks"]["UserPromptSubmit"]
+    (hook,) = entry["hooks"]
+    assert hook["command"] == f'"{fake.resolve()}" intent record'
+
+    assert _install_prompt_hook(str(tmp_path)) is True  # idempotent: no duplicate entry
+    settings = json.loads((tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert len(settings["hooks"]["UserPromptSubmit"]) == 1
