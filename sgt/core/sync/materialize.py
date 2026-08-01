@@ -53,12 +53,14 @@ def _surface_dual_claims(repo: Path, ing: Ingested, res: Resolution) -> None:
         pass
 
 
-def _union_claims(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
+def _union_claims(repo: Path, gb: GitBinding, state_sha: str) -> None:
     """G-Set union of theirs' committed claims (D8): copy any `.sgt/claims/` file we don't already
     have, byte-for-byte. Claim files are immutable and keyed by `(ideal_key, runner_fp)`, so a
-    file-level presence check is the whole merge -- no re-encode, no field union, no conflict."""
-    for path in gb.list_tree(theirs_sha, ".sgt/claims/"):
-        raw = gb.blob_bytes(theirs_sha, path)
+    file-level presence check is the whole merge -- no re-encode, no field union, no conflict.
+    Phase 1.2: read from the fetched `refs/sgt/state` tip (`state_sha`), which carries these files;
+    it falls back to theirs' branch sha during the transition (see `ingest`)."""
+    for path in gb.list_tree(state_sha, ".sgt/claims/"):
+        raw = gb.blob_bytes(state_sha, path)
         if raw is None:
             continue
         local = repo / path
@@ -67,13 +69,14 @@ def _union_claims(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
         _write_atomic(local, raw)  # torn copy would be skipped forever by the exists() guard (R5)
 
 
-def _union_proposals(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
+def _union_proposals(repo: Path, gb: GitBinding, state_sha: str) -> None:
     """G-Set union of theirs' committed proposals (C10): copy any `.sgt/proposals/` file we don't
     already have, byte-for-byte. Proposals are immutable review objects content-addressed by base+Δ,
     so -- exactly like claims (`_union_claims`) -- a file-level presence check is the whole merge: no
-    field union, no conflict. A teammate's proposal therefore arrives verbatim on the next sync."""
-    for path in gb.list_tree(theirs_sha, ".sgt/proposals/"):
-        raw = gb.blob_bytes(theirs_sha, path)
+    field union, no conflict. A teammate's proposal therefore arrives verbatim on the next sync.
+    Phase 1.2: read from the fetched `refs/sgt/state` tip (`state_sha`); see `_union_claims`."""
+    for path in gb.list_tree(state_sha, ".sgt/proposals/"):
+        raw = gb.blob_bytes(state_sha, path)
         if raw is None:
             continue
         local = repo / path
@@ -82,13 +85,14 @@ def _union_proposals(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
         _write_atomic(local, raw)  # torn copy would be skipped forever by the exists() guard (R5)
 
 
-def _union_reviews(repo: Path, gb: GitBinding, theirs_sha: str) -> None:
+def _union_reviews(repo: Path, gb: GitBinding, state_sha: str) -> None:
     """G-Set union of theirs' committed review records (plan U31, S7): copy any `.sgt/reviews/`
     file we don't already have, byte-for-byte. Review records are immutable and content-addressed
     by their reviewed op-set, exactly like claims/proposals -- a file-level presence check is the
-    whole merge, so a teammate's ack arrives verbatim on the next sync."""
-    for path in gb.list_tree(theirs_sha, ".sgt/reviews/"):
-        raw = gb.blob_bytes(theirs_sha, path)
+    whole merge, so a teammate's ack arrives verbatim on the next sync.
+    Phase 1.2: read from the fetched `refs/sgt/state` tip (`state_sha`); see `_union_claims`."""
+    for path in gb.list_tree(state_sha, ".sgt/reviews/"):
+        raw = gb.blob_bytes(state_sha, path)
         if raw is None:
             continue
         local = repo / path
@@ -137,7 +141,8 @@ def stage_candidate(
 
 
 def flush_reconciled_metadata(
-    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
+    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution,
+    *, theirs_state_sha: str | None = None,
 ) -> None:
     """Write the reconciled metadata -- the artifacts the review found a red `land` leaking
     (pins, declared OR-Set, tree, durable fork record, in-tree ideal recovery) plus the
@@ -146,6 +151,9 @@ def flush_reconciled_metadata(
     commit, so a refused land never persists it; sync calls it unconditionally right after
     `stage_candidate`. Op adds happened in `stage_candidate` (before this section) -- `Store.add`'s
     own lock must not nest inside `locked_section` (self-deadlock; see its contract)."""
+    # Phase 1.2: the content-addressed G-Set unions read from the fetched `refs/sgt/state` tip when
+    # transport supplies one, falling back to theirs' branch sha during the transition (see `ingest`).
+    state_sha = theirs_state_sha if theirs_state_sha is not None else theirs_sha
     with locked_section(repo):
         save_pins(repo, res.unioned_pins)
         lens.save_declared_orset(repo, res.declared_orset)  # unioned declared-edge OR-Set (C1/D6)
@@ -157,14 +165,15 @@ def flush_reconciled_metadata(
         tree.save(repo, res.tree_result)
         state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
         save_fork_records(repo, res.forks)  # durable, shared fork state (C4) -- shared writer w/ land
-        _union_claims(repo, gb, theirs_sha)  # published-verdict G-Set travels with the merge (D8)
-        _union_proposals(repo, gb, theirs_sha)  # committed review objects travel too (C10)
-        _union_reviews(repo, gb, theirs_sha)  # trust-queue acks travel too (U31/S7)
+        _union_claims(repo, gb, state_sha)  # published-verdict G-Set travels with the merge (D8)
+        _union_proposals(repo, gb, state_sha)  # committed review objects travel too (C10)
+        _union_reviews(repo, gb, state_sha)  # trust-queue acks travel too (U31/S7)
         state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery (C5)
 
 
 def persist_reconciled(
-    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution
+    repo: Path, gb: GitBinding, theirs_sha: str, ing: Ingested, res: Resolution,
+    *, theirs_state_sha: str | None = None,
 ) -> None:
     """Persist the whole reconciled union -- ops, folded source, and all reconciled metadata --
     without staging or committing. Sync's `materialize` uses this verbatim (then runs a 2-parent
@@ -173,7 +182,7 @@ def persist_reconciled(
     reuses the exact reconciled-tree construction sync already tests, with no behavior change to
     sync itself."""
     stage_candidate(repo, gb, ing, res)
-    flush_reconciled_metadata(repo, gb, theirs_sha, ing, res)
+    flush_reconciled_metadata(repo, gb, theirs_sha, ing, res, theirs_state_sha=theirs_state_sha)
 
 
 def materialize(
@@ -184,8 +193,10 @@ def materialize(
     theirs_sha: str,
     ing: Ingested,
     res: Resolution,
+    *,
+    theirs_state_sha: str | None = None,
 ) -> str:
-    persist_reconciled(repo, gb, theirs_sha, ing, res)
+    persist_reconciled(repo, gb, theirs_sha, ing, res, theirs_state_sha=theirs_state_sha)
     trailers = format_op_trailers(sorted(res.merged_ideal.op_ids))
     merge_sha = gb.complete_merge(f"sgt sync: merge {remote}/{branch}", theirs_sha, trailers=trailers)
     lens.record_ideal(repo, res.merged_ideal, merge_sha)

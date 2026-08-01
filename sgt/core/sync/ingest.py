@@ -83,12 +83,20 @@ def _pins_at(gb: GitBinding, sha: str) -> Pins:
 
 
 def ingest(
-    repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str, *, branch: str | None = None
+    repo: Path, gb: GitBinding, theirs_sha: str, ours_sha: str, *, branch: str | None = None,
+    theirs_state_sha: str | None = None,
 ) -> Ingested:
+    # Phase 1.2: theirs' committed *tables*, op blobs, and content-addressed file-sets are read from
+    # the fetched `refs/sgt/state` tip when transport supplies one. A `None` here means either the
+    # transition (the ref isn't published yet) or a pre-1.2 / absent-ref teammate; both fall back to
+    # theirs' branch tree, which still carries that state -- so this read is byte-identical until
+    # Step 6 wires the fetch. The trailer/log ideal recovery below deliberately stays on `theirs_sha`:
+    # `Sgt-Op:` trailers live in the commit *message*, untouched by the move.
+    state_sha = theirs_state_sha if theirs_state_sha is not None else theirs_sha
     ours_ops = Store(repo).all_ops()
     theirs_ops: list[Op] = []
-    for path in gb.list_tree(theirs_sha, ".sgt/ops/"):
-        raw = gb.blob_bytes(theirs_sha, path)
+    for path in gb.list_tree(state_sha, ".sgt/ops/"):
+        raw = gb.blob_bytes(state_sha, path)
         if raw is None:
             continue
         try:
@@ -128,13 +136,13 @@ def ingest(
 
     return Ingested(
         ours_pins=load_pins(repo),
-        theirs_pins=_pins_at(gb, theirs_sha),
+        theirs_pins=_pins_at(gb, state_sha),
         ours_declared_orset=lens.load_declared_orset(repo),
-        theirs_declared_orset=lens.declared_orset_at(gb, theirs_sha),
+        theirs_declared_orset=lens.declared_orset_at(gb, state_sha),
         ours_prompts=intent_prompts.load_prompts(repo),
-        theirs_prompts=intent_prompts.prompts_at(gb, theirs_sha),
+        theirs_prompts=intent_prompts.prompts_at(gb, state_sha),
         ours_authored=authored.load_authored(repo),
-        theirs_authored=authored.authored_at(gb, theirs_sha),
+        theirs_authored=authored.authored_at(gb, state_sha),
         ours_tree=tree.load(repo),
         ours_ideal=lens.current_ideal(repo),
         theirs_ideal_ids=theirs_ideal_ids,
