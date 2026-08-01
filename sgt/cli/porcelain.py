@@ -121,6 +121,28 @@ def _switch(repo: str, branch: str, as_json: bool) -> int:
     return 0
 
 
+def _snapshot_cascade_tables(repo: str) -> dict[str, bytes | None]:
+    """Raw bytes of the committed `.sgt` tables the save cascade (`ledger.assign_at_save`) writes --
+    pins/authored/tree -- or `None` where a file is absent. Captured before the cascade so a `put`
+    that refuses afterward (or a cascade that errors mid-write) can restore them: a save that does
+    not finish must not leave `.sgt` dirty either (F1, on the error path)."""
+    from sgt import state
+    return {name: (state.path(repo, name).read_bytes() if state.path(repo, name).is_file() else None)
+            for name in ("pins", "authored_features", "tree")}
+
+
+def _restore_cascade_tables(repo: str, snapshot: dict[str, bytes | None]) -> None:
+    """Undo the cascade's writes to their pre-cascade bytes, deleting any file the cascade created,
+    so an aborted save leaves no committed-table dirt behind."""
+    from sgt import state
+    for name, raw in snapshot.items():
+        p = state.path(repo, name)
+        if raw is None:
+            p.unlink(missing_ok=True)
+        else:
+            p.write_bytes(raw)
+
+
 def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
           confirm_hollow: list[str] = (), confirm_op: list[str] = (),
           as_label: str | None = None) -> int:
@@ -165,22 +187,33 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     saved, sha, n = False, None, len(ideal.op_ids)
     cascade = None
     if not nothing_new:
+        # Fold the save-time ownership cascade in (U6/R1/R2): assign every genuinely-new symbol a
+        # durable lane (assign pin + authored CRDT) and patch the persisted tree's `op_leaf` so the
+        # new op is visible on the grid immediately. This runs *before* `put` commits, so `put`'s
+        # `commit_all` (`git add -A`) sweeps the cascade's committed `.sgt` writes (pins/authored/
+        # tree) into the witness commit. Committing first and cascading after (the old order) left
+        # those tables modified/untracked, and the next `switch`/`sync`/`land` aborted on a dirty
+        # tree (F1). Running first also stamps the introducing witness as the *parent* commit -- the
+        # causal anchor D6 (`verbs._save_pins`) documents -- rather than this verb's own commit.
+        # Guarded: a lane-assignment hiccup must never fail the save. Local import keeps the path light.
+        from sgt.core.store import Store
+        from sgt.lens import ledger
+        pre = _snapshot_cascade_tables(repo)
+        try:
+            cascade = ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
+        except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
+            _restore_cascade_tables(repo, pre)  # never commit a half-applied cascade
+            cascade = None
         try:
             sha = put(repo, ideal, message=message or "sgt save")
         except (DirtyWorkingTreeError, GitError, ValueError) as e:
+            # `put` refused (an uncommitted conflict or out-of-scope drift): roll the cascade's
+            # writes back so an aborted save leaves the `.sgt` tables exactly as it found them, not
+            # dirty -- the same F1 invariant, on the error path.
+            _restore_cascade_tables(repo, pre)
             return _fail_json(str(e), as_json)
         record_ideal(repo, ideal, sha)
         saved = True
-        # Fold the save-time ownership cascade in (U6/R1/R2): assign every genuinely-new symbol a
-        # durable lane (assign pin + authored CRDT) and patch the persisted tree's `op_leaf` so the
-        # new op is visible on the grid immediately. Guarded: the ideal is already committed, so a
-        # lane-assignment hiccup must never fail the save. Local import keeps the hot path light.
-        try:
-            from sgt.core.store import Store
-            from sgt.lens import ledger
-            cascade = ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
-        except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
-            pass
         # Zero-burden intent capture (intent-ledger M1): the `-m` message is the user's own words
         # about what this work was -- harvested as a turn keyed by the witness commit sha (a key
         # `_atom_prompt` already joins by, reachable from the new ops' provenance), never a new

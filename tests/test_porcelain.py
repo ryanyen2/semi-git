@@ -172,6 +172,33 @@ def test_save_commits_a_witness_for_a_dirty_tree(tmp_path, capsys):
     assert current_ideal(repo).op_ids == after_ids
 
 
+def test_save_leaves_the_tree_clean_for_the_next_verb(tmp_path):
+    """F1 (workflow-hardening 2026-07-31-001): the save-time ownership cascade (`assign_at_save`)
+    must be folded *into* the witness commit, not written after it. When a save introduces a brand-
+    new symbol the cascade writes the committed `.sgt` tables (pins/authored/tree); running it after
+    `put` already committed leaves them modified/untracked, so the very next `switch`/`sync`/`land`
+    aborts on a dirty tree. Reproduce by saving a new symbol (forcing a lane mint) and asserting the
+    tree is clean afterward -- exactly the precondition those verbs require."""
+    from sgt.lens import tree
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("base foo")
+    ideal = get(tmp_path)
+    # The cascade only fires once a feature tree exists (the first build owns the initial
+    # clustering); build it so this save actually exercises the lane-mint write path.
+    tree.save(tmp_path, tree.build(tmp_path, Store(tmp_path).all_ops(), ideal))
+
+    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    with _in(tmp_path):
+        assert cli.main(["save", "-m", "add bar"]) == 0
+
+    status = gb._git("status", "--porcelain").stdout
+    dirty = [ln for ln in status.splitlines() if ".sgt/" in ln and "/local/" not in ln]
+    assert dirty == [], f"save left committed .sgt metadata dirty: {dirty!r}"
+    assert gb.is_clean(), f"save left the tree dirty; next verb would refuse:\n{status}"
+
+
 def test_save_with_a_message_harvests_it_as_a_turn(tmp_path):
     """Zero-burden intent capture (intent-ledger M1): a user-supplied `-m` message is recorded as a
     turn keyed by the witness commit sha -- the user's own words about the work, taken from their
