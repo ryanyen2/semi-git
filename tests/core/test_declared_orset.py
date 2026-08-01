@@ -9,7 +9,6 @@ with `order`/`sync` is pinned.
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from sgt.core import lens, sync
@@ -23,6 +22,8 @@ from sgt.core.lens import (
 )
 from sgt.core.store import Store
 from sgt.store.gitbind import GitBinding
+
+from tests.conftest import _clone, _init_bare, _push
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -90,22 +91,19 @@ _BASE = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
 
 
 def _two_clones(tmp_path: Path) -> tuple[Path, Path]:
-    remote = tmp_path / "remote.git"
-    remote.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], check=True, capture_output=True)
-    a = tmp_path / "a"
-    subprocess.run(["git", "clone", "-q", str(remote), str(a)], check=True, capture_output=True)
-    GitBinding(a).init()
+    # Phase 1.2: the declared OR-Set moved off the branch tree onto `refs/sgt/state`, so the shared
+    # conftest helpers (which publish + push + fetch that ref) are the transport -- a raw `git push`
+    # would leave the edge stranded in a's local mirror. This is exactly why the fixtures were hoisted.
+    remote = _init_bare(tmp_path)
+    a = _clone(remote, tmp_path / "a")
     lens.init(a)
     (a / "main.py").write_text(_BASE, encoding="utf-8")
     GitBinding(a).commit_all("init")
     ideal = lens.get(a)
     put_sha = lens.put(a, ideal, message="sgt: init")
     lens.record_ideal(a, ideal, put_sha)
-    subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "main"], check=True, capture_output=True)
-    b = tmp_path / "b"
-    subprocess.run(["git", "clone", "-q", str(remote), str(b)], check=True, capture_output=True)
-    GitBinding(b).init()
+    _push(a)
+    b = _clone(remote, tmp_path / "b")
     lens.get(b)
     return a, b
 
@@ -119,7 +117,7 @@ def test_declared_edge_travels_through_sync(tmp_path):
 
     declare_after(a, *edge)
     GitBinding(a).commit_all("a: declare order edge")
-    subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "main"], check=True, capture_output=True)
+    _push(a)  # publishes the declared-edge OR-Set onto refs/sgt/state, then pushes the branch
 
     assert edge not in _load_declared(b)  # not yet
     sync.sync(b, remote="origin", branch="main")

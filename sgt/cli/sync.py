@@ -83,6 +83,22 @@ def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
         msg = "no branch to push -- HEAD has no upstream and isn't on a named branch"
         return _fail_json(msg, as_json)
 
+    # Phase 1.2 push ordering (§D): the branch commits' `Sgt-Op:` trailers name ops that live only in
+    # `refs/sgt/state`, so publish this clone's local mirror onto that ref and push it to success
+    # FIRST -- the ref must be durable before the branch references it. If it cannot be published
+    # (contention it can't reconcile), ABORT the whole push: never publish a branch whose ops aren't
+    # durable on the remote. `publish_and_push` reconciles a non-ff rejection as a CRDT merge, so this
+    # only aborts on a genuinely unrecoverable failure.
+    from pathlib import Path
+
+    from sgt.core.sync import state_ref as _state_ref
+
+    try:
+        _state_ref.publish_and_push(gb, Path(repo), remote)
+    except _state_ref.StateRefError as e:
+        msg = f"could not publish sgt state to {remote} -- branch NOT pushed (its ops would be dangling): {e}"
+        return _fail_json(msg, as_json)
+
     try:
         sha = gb.push(remote, branch)
     except PushRejected as e:

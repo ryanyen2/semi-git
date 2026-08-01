@@ -3,6 +3,9 @@
 - `ops-v3` (plan U10/R15): cross the op store from miner v2 to v3 (U9's rebirth/flip identity) --
   re-key every op and every op-id-bearing artifact under one resumable manifest, recovering the
   ~20% closure the v2 rebirth pseudo-fork dropped.
+- `state-ref` (Phase 1.2 §F): move a pre-1.2 repo's committed `.sgt/**` state off the branch tree
+  onto `refs/sgt/state` -- one migration commit that `git rm --cached`s the moved paths, killing F1
+  (saves no longer dirty the tree) and F10 (no metadata merge conflicts).
 
 Prints the change it *would* make so a human reviews the one destructive step before writing;
 `--apply` performs it, and a second `--apply` is a no-op."""
@@ -11,7 +14,7 @@ from __future__ import annotations
 
 from ._common import _emit_json, _fail
 
-_KNOWN = ("ops-v3",)
+_KNOWN = ("ops-v3", "state-ref")
 
 
 def register(subs, parent) -> None:
@@ -24,6 +27,8 @@ def register(subs, parent) -> None:
 def _cmd_migrate(args) -> int:
     if args.what == "ops-v3":
         return _migrate_ops_v3(".", args.apply, args.as_json)
+    if args.what == "state-ref":
+        return _migrate_state_ref(".", args.apply, args.as_json)
     return _fail(f"unknown migration {args.what!r}; supported: {', '.join(_KNOWN)}")
 
 
@@ -58,4 +63,32 @@ def _migrate_ops_v3(repo: str, apply: bool, as_json: bool) -> int:
         print(f"  {report.claims_orphaned} claim(s) orphaned by the re-key (re-publish to re-attach)")
     for oid in report.orphaned:
         print(f"  orphan (no v3 counterpart): {oid}")
+    return 0
+
+
+def _migrate_state_ref(repo: str, apply: bool, as_json: bool) -> int:
+    from sgt.core.migrate import migrate_to_state_ref
+
+    report = migrate_to_state_ref(repo, dry_run=not apply)
+    view = {
+        "mode": "applied" if report.changed else "dry-run",
+        "already_migrated": report.already_migrated,
+        "untracked": list(report.untracked),
+        "exclusions_promoted": report.exclusions_promoted,
+        "state_sha": report.state_sha,
+    }
+    if as_json:
+        return _emit_json(view)
+
+    if report.already_migrated:
+        print("✓ committed state already lives on refs/sgt/state -- nothing to migrate")
+        return 0
+    header = "applied" if report.changed else "dry-run (re-run with --apply to write)"
+    print(f"state-ref migration [{header}]: {len(report.untracked)} path(s) to move off the branch tree")
+    if report.exclusions_promoted:
+        print("  exclusion log promoted local -> shared (.sgt/local/exclusions.json -> .sgt/exclusions.json)")
+    for p in report.untracked:
+        print(f"  {'untracked' if report.changed else 'would untrack'}: {p}")
+    if report.changed:
+        print(f"  seeded refs/sgt/state at {report.state_sha}")
     return 0

@@ -99,6 +99,13 @@ class ExclusionORSet:
         """A stable content fingerprint of the live exclusion set, for change detection."""
         return hashlib.sha256(",".join(sorted(self.live())).encode()).hexdigest()[:16]
 
+    def union(self, other: ExclusionORSet) -> ExclusionORSet:
+        """Merge two clones' OR-Sets by tag (Phase 1.2 §E), exactly like `DeclaredORSet.union`: a
+        concurrent revert (an add carrying a tag the other side never saw) survives, and a restore
+        (a tombstone) travels. Never merges by bare op-id -- that is what makes the shared exclusion
+        log a CRDT rather than a lossy last-writer-wins set."""
+        return ExclusionORSet(self.adds | other.adds, self.tombstones | other.tombstones)
+
 
 def _exclusion_from_body(body: dict | None) -> ExclusionORSet:
     if body is None:
@@ -109,13 +116,22 @@ def _exclusion_from_body(body: dict | None) -> ExclusionORSet:
     )
 
 
-def _load_exclusions(repo: Path) -> dict[str, ExclusionORSet]:
+def load_exclusions(repo: Path) -> dict[str, ExclusionORSet]:
     """The per-ref exclusion OR-Sets: `{ref_key: ExclusionORSet}`. Absent file loads as `{}`."""
     raw = state.load_json(repo, "exclusions", default={})
     return {key: _exclusion_from_body(body) for key, body in raw.items()}
 
 
-def _save_exclusions(repo: Path, table: dict[str, ExclusionORSet]) -> None:
+def exclusions_at(gb: GitBinding, sha: str) -> dict[str, ExclusionORSet]:
+    """A teammate's per-ref exclusion OR-Sets as committed on `refs/sgt/state` at `sha` -- the
+    historical-blob read `resolve` unions by tag (Phase 1.2 §E). Absent blob yields `{}`."""
+    raw = state.load_blob_json(gb, sha, "exclusions")
+    if raw is None:
+        return {}
+    return {key: _exclusion_from_body(body) for key, body in raw.items()}
+
+
+def save_exclusions(repo: Path, table: dict[str, ExclusionORSet]) -> None:
     state.save_json(repo, "exclusions", {
         key: {
             "adds": sorted([oid, tag] for oid, tag in orset.adds),
@@ -123,6 +139,18 @@ def _save_exclusions(repo: Path, table: dict[str, ExclusionORSet]) -> None:
         }
         for key, orset in table.items()
     })
+
+
+def merge_exclusions(
+    ours: dict[str, ExclusionORSet], theirs: dict[str, ExclusionORSet]
+) -> dict[str, ExclusionORSet]:
+    """Per-ref-key union of two exclusion tables (Phase 1.2 §E): each key's OR-Set unions by tag, so
+    a key only one side carries is kept verbatim. Detached-HEAD sha-keys union as harmless clone-local
+    noise -- there is nothing to reconcile between two clones' distinct detached shas."""
+    merged = dict(ours)
+    for key, orset in theirs.items():
+        merged[key] = merged[key].union(orset) if key in merged else orset
+    return merged
 
 
 def _load_backfill_state(repo: Path) -> dict[str, dict]:
@@ -610,7 +638,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # a new sha re-adds the op via `new_committed_ids`, but the exclusion subtracts it right back out,
     # so it can no longer silently resurrect (F11/F20). Before, the union-only reconciliation had no
     # way to represent "excluded though back in history" and the op came back.
-    exclusions_table = _load_exclusions(repo)
+    exclusions_table = load_exclusions(repo)
     if already_seeded and key not in exclusions_table:
         # Migrate an existing repo whose reverts were recorded only as *absences* in the base set
         # into explicit exclusions, so the switch to exclusion-subtracted ideals does not resurrect a
@@ -625,7 +653,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
             exclusions_table[key] = ExclusionORSet(
                 adds=frozenset((oid, uuid.uuid4().hex) for oid in implied)
             )
-            _save_exclusions(repo, exclusions_table)
+            save_exclusions(repo, exclusions_table)
     exclusions = exclusions_table.get(key, ExclusionORSet())
 
     # The durable ideal gains newly-committed ops and loses excluded ones; the dirty overlay is never
@@ -782,29 +810,38 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
             f"differs from sgt's recorded ideal: {sorted(drift)}"
         )
     _write_working_tree(repo, materialized, all_ops)
-    # Committed in-tree recovery record of *this* commit's ideal (C5): written before the commit
-    # so the blob at the witness SHA describes that SHA's own ideal, recoverable after a
-    # squash/rebase strips the trailers below. The local per-ref table stays authoritative for the
-    # current ref; this is the historical record `sync` reads from a teammate's arbitrary SHA.
-    state.save_json(repo, "ideal", sorted(ideal.op_ids))
-    return gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
+    # Phase 1.2: the op store and its tables no longer live in the branch tree, so the in-tree
+    # `.sgt/ideal.json` recovery record (C5) is gone -- `sync`'s recovery ladder is log -> trailers
+    # -> mine (the witness SHA still carries `Sgt-Op:` trailers, and a squash sgt never ran on
+    # re-mines, coarser but LAW-0 reproducible). The local per-ref `ideal_table` cache stays
+    # authoritative for the current ref.
+    sha = gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
+    # Publish the committed state (ops + tables) onto `refs/sgt/state` at `put`'s transaction
+    # boundary, off the branch tree. Lazy import: the sync package pulls in lens, so a module-level
+    # import would cycle; by call time every module is loaded.
+    from sgt.core.sync import state_ref as _state_ref
+    _state_ref.publish_from_local(gb, repo)
+    return sha
 
 
 def commit_materialized(repo: str | Path, ideal: Ideal, message: str) -> str:
     """Commit an `ideal` whose `code(I)` bytes are *already* on the working tree -- the rewrite
     staging path (U6). Unlike `put`, this neither re-mines the deliberately-dirty staged tree nor
-    re-materializes: the staged bytes `stage` wrote are authoritative, so it only records the
-    in-tree ideal recovery blob (C5) and commits with the op trailers. The caller (`rewrite.land`)
-    owns the staleness check that guarantees the tree still equals the staged candidate, so the
-    commit can never capture a mixture."""
+    re-materializes: the staged bytes `stage` wrote are authoritative, so it just commits with the
+    op trailers. The caller (`rewrite.land`) owns the staleness check that guarantees the tree still
+    equals the staged candidate, so the commit can never capture a mixture. (Phase 1.2 removed the
+    in-tree `.sgt/ideal.json` recovery write here too; see `put`.)"""
     repo = Path(repo)
     gb = GitBinding(repo)
-    state.save_json(repo, "ideal", sorted(ideal.op_ids))
-    return gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
+    sha = gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
+    from sgt.core.sync import state_ref as _state_ref  # lazy: avoid the sync<->lens import cycle
+    _state_ref.publish_from_local(gb, repo)
+    return sha
 
 
 def record_ideal(
-    repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True, ref_key: str | None = None
+    repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True,
+    ref_key: str | None = None, record_exclusions: bool = True,
 ) -> None:
     """Persist an explicitly-edited `ideal` as the current ref's authoritative committed set and
     advance the ref's witness to `witness_sha` -- the durability an ideal-edit verb (U8's
@@ -859,13 +896,19 @@ def record_ideal(
         before = set(itable.get(key, []))
         after = set(ideal.op_ids)
         removed, added = before - after, after - before
-        if removed or added:
-            extable = _load_exclusions(repo)
+        # `record_exclusions=False` suppresses this translation for sync/land (Phase 1.2 §E): there,
+        # the authoritative exclusion OR-Set is the per-key union `resolve` already computed from both
+        # clones and `flush_reconciled_metadata` persisted. Re-deriving adds/tombstones from the merged
+        # ideal's delta here would mint *fresh* tags for the same removals, so the two sides' OR-Sets
+        # would never converge (each carries its own tag for the same reverted op). Local edit verbs
+        # (revert/restore/undo) keep it on -- they *are* the source of the exclusion record.
+        if record_exclusions and (removed or added):
+            extable = load_exclusions(repo)
             orset = extable.get(key, ExclusionORSet())
             new_adds = frozenset((oid, uuid.uuid4().hex) for oid in removed)
             tomb = frozenset(tag for (oid, tag) in orset.adds if oid in added)
             extable[key] = ExclusionORSet(orset.adds | new_adds, orset.tombstones | tomb)
-            _save_exclusions(repo, extable)
+            save_exclusions(repo, extable)
         itable[key] = sorted(ideal.op_ids)
         _save_ideal_table(repo, itable)
         wtable = _load_witnesses(repo)

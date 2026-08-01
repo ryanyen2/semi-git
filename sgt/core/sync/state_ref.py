@@ -34,6 +34,11 @@ from sgt.store.gitbind import GitBinding
 
 STATE_REF = "refs/sgt/state"
 
+# A scratch ref the sync fetch force-updates to the *remote's* state tip, so a fetch can hand
+# `ingest` theirs' state sha without touching our authoritative local `STATE_REF` (keeping the
+# dry-run `plan_sync` trace-free and our own publish history intact).
+FETCH_STATE_REF = "refs/sgt/remote-state"
+
 _PUBLISH_RETRIES = 5
 
 
@@ -45,8 +50,9 @@ class StateRefError(Exception):
 # artifact in `state._ARTIFACTS` EXCEPT the three that must stay tracked in the branch tree:
 # `oracle_config` + `identity_constraints` (genuinely team-editable config) and `tiers`
 # (correctness-critical -- read as-of each mined commit, LAW-0). `exclusions` is promoted from
-# local to shared and joins this list in Phase 1.2 Step 7 (it alters `resolve` semantics, so it
-# lands last). `ideal` still travels here during the transition; Step 4 stops writing it (the in-tree
+# local to shared here (Phase 1.2 Step 7): it travels on the ref and merges per-ref-key as an
+# OR-Set in `resolve`, so a revert survives a teammate's sync and a fresh clone's cold bootstrap
+# (F20). `ideal` still travels here during the transition; Step 4 stops writing it (the in-tree
 # C5 recovery record is deleted) and it then simply stops being on disk to carry.
 _TRAVELING_TABLES: tuple[str, ...] = (
     "pins",
@@ -55,6 +61,7 @@ _TRAVELING_TABLES: tuple[str, ...] = (
     "forks",
     "authored_features",
     "declared_orset",
+    "exclusions",
     "intent_prompts",
     "intent_themes",
     "intent_segments",
@@ -178,3 +185,67 @@ def _union_content_addressed(
         if _is_content_addressed(rel_path):
             merged.setdefault(rel_path, raw)
     return merged
+
+
+# -- transport: publish + push with the ordering invariant (§D, Step 6) ----------------------------
+
+def _reconcile_remote_into_ref(gb: GitBinding, repo: Path, local_tip: str | None, remote_sha: str) -> bool:
+    """Fold the remote state tip into our local ref as a CRDT 2-parent merge, so the next push is a
+    fast-forward. The content-addressed op/claim/proposal/review blobs union conflict-free (a shared
+    path is byte-identical -- it *is* its content address); the mutable derived tables prefer *ours*
+    (the just-synced, already-merged local copy is the more-reconciled side) and we fold in any table
+    only the remote carries. Any content-addressed blob only the remote had is also written onto the
+    local `.sgt/` mirror so it stays a faithful superset of the ref. Returns whether the CAS advanced
+    our local `STATE_REF` (False = a concurrent local publisher moved it; the caller re-loops).
+
+    This is deliberately not a field-level table merge: the derived tables self-heal on the next
+    sync/mine, and the one table that genuinely needs a field-level CRDT -- the shared exclusion
+    OR-Set -- lands in Step 7."""
+    ours = _local_blobs(repo)
+    theirs = read_tree(gb, remote_sha)
+
+    merged = dict(ours)
+    for rel_path, raw in theirs.items():
+        merged.setdefault(rel_path, raw)  # ours wins on any shared path; fold in theirs-only paths
+        if _is_content_addressed(rel_path) and rel_path not in ours:
+            _write_atomic(repo / rel_path, raw)  # land theirs-only op/claim/... onto the local mirror
+
+    new_tree = gb.write_tree_from_blobs(merged)
+    parents = [p for p in (local_tip, remote_sha) if p is not None]
+    commit = gb.commit_tree(new_tree, parents, "sgt state (merge)")
+    return gb.update_ref_cas(STATE_REF, commit, local_tip)
+
+
+def publish_and_push(gb: GitBinding, repo: Path, remote: str, retries: int = _PUBLISH_RETRIES) -> str:
+    """Publish this clone's local mirror onto `refs/sgt/state` and push it to `remote`, reconciling
+    on contention -- the correctness-bearing half of the Phase 1.2 push-ordering invariant (§D).
+
+    A branch commit's `Sgt-Op:` trailers name ops that live only on this ref, so the ref must be
+    durable on the remote *before* the branch references it. The caller therefore runs this FIRST and
+    pushes the branch only if it returns; if it raises `StateRefError`, the caller must ABORT the
+    branch push (never publish a branch whose ops aren't durable).
+
+    On a non-fast-forward rejection (a teammate advanced the remote ref since our last fetch), fetch
+    the remote tip, fold it into our local ref as a CRDT 2-parent merge (`_reconcile_remote_into_ref`),
+    and re-push -- the merge descends from the remote tip, so the retry is a fast-forward. The state
+    ref is a CRDT, so every retry auto-merges with no human conflict. Returns the pushed state sha;
+    raises `StateRefError` if it cannot succeed within `retries`."""
+    publish_from_local(gb, repo)  # local durable first (raises StateRefError on its own CAS loss)
+    for _ in range(retries):
+        if gb.push_ref(remote, f"{STATE_REF}:{STATE_REF}"):
+            tip = gb.rev_parse(STATE_REF)
+            if tip is None:
+                raise StateRefError(f"pushed {STATE_REF} to {remote} but the local ref is unresolved")
+            return tip
+        # Push failed: either the remote moved (non-ff) or a transient error. Fetch the remote tip
+        # and reconcile; a fetch that reveals we already contain it means the failure was transient.
+        if not gb.fetch_ref(remote, f"+{STATE_REF}:{FETCH_STATE_REF}"):
+            continue  # couldn't even fetch the remote tip -- transient; retry the push
+        remote_sha = gb.rev_parse(FETCH_STATE_REF)
+        local_tip = gb.rev_parse(STATE_REF)
+        if remote_sha is None or remote_sha == local_tip or (
+            local_tip is not None and gb.is_ancestor(remote_sha, local_tip)
+        ):
+            continue  # our tip already contains the remote -- retry the push (transient failure)
+        _reconcile_remote_into_ref(gb, repo, local_tip, remote_sha)
+    raise StateRefError(f"could not publish {STATE_REF} to {remote} after {retries} attempts")

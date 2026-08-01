@@ -18,6 +18,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from sgt.core.sync import state_ref as _state_ref
 from sgt.store.gitbind import GitBinding
 
 
@@ -33,10 +34,28 @@ def _init_bare(root: Path) -> Path:
 def _clone(remote: Path, dest: Path) -> Path:
     subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
     GitBinding(dest).init()  # repo-scope identity, matches every two-clone fixture
+    # Phase 1.2: `git clone` copies refs/heads + refs/tags but never refs/sgt/*, so pull the shared
+    # state ref (if the remote has one) and materialize it into the fresh clone's local mirror --
+    # the fresh-clone bootstrap. Best-effort: a pre-1.2 remote has no such ref and this no-ops.
+    gb = GitBinding(dest)
+    if gb.fetch_ref("origin", f"+{_state_ref.STATE_REF}:{_state_ref.STATE_REF}"):
+        _state_ref.materialize_into_local(gb, dest)
     return dest
 
 
 def _push(repo: Path, branch: str = "main") -> None:
+    # Phase 1.2: publish this clone's local mirror onto `refs/sgt/state` first, so table mutations
+    # made through raw `GitBinding.commit_all` (pins/declared edges seeded directly in tests, never
+    # through a verb that publishes) are rebuilt into the ref before it travels. Then push the shared
+    # state ref BEFORE the branch -- a branch commit's `Sgt-Op:` trailers name ops that live only in
+    # `refs/sgt/state`, so the ref must be durable first. Best-effort push here; the CLI's `sgt push`
+    # enforces this as a hard ordering in Step 6.
+    _state_ref.publish_from_local(GitBinding(repo), repo)
+    subprocess.run(
+        ["git", "-C", str(repo), "push", "-q", "origin",
+         f"{_state_ref.STATE_REF}:{_state_ref.STATE_REF}"],
+        check=False, capture_output=True,
+    )
     subprocess.run(
         ["git", "-C", str(repo), "push", "-q", "origin", branch], check=True, capture_output=True
     )

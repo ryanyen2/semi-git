@@ -520,3 +520,106 @@ def _changed_artifacts_preview(repo: Path, plan: _Plan) -> tuple[list[str], int]
         changed.append("proposals")
 
     return changed, dropped
+
+
+# -- `sgt migrate state-ref` (Phase 1.2 §F): move committed state off the branch tree ---------------
+
+# Committed `.sgt/**` paths that STAY tracked in the branch tree and must never be untracked by this
+# migration: the team-editable config and the correctness-critical `tiers.json`/`.sgtignore` that
+# `tiers.load_tiers_at` reads as-of each mined commit (LAW-0). Everything else committed under
+# `.sgt/` travels on `refs/sgt/state` and gets untracked here. Mirrors `state_ref._TRAVELING_TABLES`
+# by exclusion: the stay-set is small and closed, the travel-set is "all the rest".
+_STATE_REF_STAY: frozenset[str] = frozenset({
+    ".sgt/tiers.json",
+    ".sgt/oracle.json",
+    ".sgt/identity_constraints.json",
+    ".sgt/.sgtignore",
+})
+
+# The pre-Step-7 on-disk home of the exclusion log, before §E promoted it from local to shared.
+_OLD_EXCLUSIONS_REL = (".sgt", "local", "exclusions.json")
+
+
+@dataclass(frozen=True)
+class StateRefReport:
+    """The result of a dry-run or applied `state-ref` migration. `untracked` are the `.sgt/**` paths
+    that were (dry-run: would be) removed from the index onto `refs/sgt/state`; `exclusions_promoted`
+    records whether the local `.sgt/local/exclusions.json` was relocated to the shared, ref-carried
+    `.sgt/exclusions.json`; `already_migrated` is True when there was nothing tracked to move."""
+
+    dry_run: bool
+    changed: bool
+    already_migrated: bool
+    untracked: tuple[str, ...]
+    exclusions_promoted: bool
+    state_sha: str | None
+
+
+def _moved_tracked_paths(gb: GitBinding) -> list[str]:
+    """The `.sgt/**` paths currently tracked in the index that this migration untracks: every tracked
+    path under `.sgt/` except the stay-set and the self-ignoring `.gitignore`. Sorted for a stable
+    report and a deterministic migration commit."""
+    return sorted(
+        p for p in gb.tracked_paths(".sgt")
+        if p not in _STATE_REF_STAY and p != ".sgt/.gitignore"
+    )
+
+
+def migrate_to_state_ref(repo: str | Path, *, dry_run: bool = True) -> StateRefReport:
+    """Move a pre-1.2 repo's committed `.sgt/**` state off the branch tree onto `refs/sgt/state`
+    (Phase 1.2 §F). This is the one irreversible tree change of Phase 1.2, isolated to a single
+    migration commit that `git rm --cached`s the moved paths -- which, with `.sgt/.gitignore` in
+    place, is what actually untracks them (gitignore alone never drops an already-tracked file) and
+    what makes future merges of that state conflict-free (F10).
+
+    Idempotent and crash-resumable without a manifest, because every step is individually idempotent:
+    relocating the exclusion log is guarded on the old file's presence, the gitignore write is a
+    fixed body, `publish_from_local` is a CAS no-op when the ref already carries the tree, and
+    `rm_cached` uses `--ignore-unmatch` (so a re-run over the now-untracked set does nothing) with the
+    commit skipped when nothing is staged. A repo with no tracked `.sgt/**` state to move is reported
+    `already_migrated` -- a fresh 1.2 clone (gitignored from birth, ref seeded by its first verb) and
+    a re-run both land here. Un-migrated teammates keep working via the §D bootstrap fallback (their
+    fetch finds no ref and cold-mines from branch history) until they run this."""
+    from sgt.core.store import _SGT_GITIGNORE
+    from sgt.core.sync import state_ref
+
+    repo = Path(repo)
+    gb = GitBinding(repo)
+
+    moved = _moved_tracked_paths(gb)
+    old_excl = repo.joinpath(*_OLD_EXCLUSIONS_REL)
+    new_excl = state.path(repo, "exclusions")
+    promote = old_excl.is_file() and not new_excl.is_file()
+
+    if not moved and not promote:
+        return StateRefReport(
+            dry_run=dry_run, changed=False, already_migrated=True,
+            untracked=(), exclusions_promoted=False, state_sha=state_ref.read_sha(gb),
+        )
+
+    if dry_run:
+        return StateRefReport(
+            dry_run=True, changed=False, already_migrated=False,
+            untracked=tuple(moved), exclusions_promoted=promote, state_sha=state_ref.read_sha(gb),
+        )
+
+    # 1. Promote the exclusion log local -> shared so `publish_from_local` carries it onto the ref.
+    if promote:
+        _write_atomic(new_excl, old_excl.read_bytes())
+        old_excl.unlink()
+
+    # 2. Ensure the canonical `.sgt/.gitignore` is in place: without it, `git rm --cached` below would
+    #    leave the working files eligible for re-staging by the next blanket `git add -A`.
+    _write_atomic(repo / ".sgt" / ".gitignore", _SGT_GITIGNORE)
+
+    # 3. Seed/advance the ref from the current on-disk mirror (op union + tables + promoted excl).
+    state_sha = state_ref.publish_from_local(gb, repo)
+
+    # 4. Untrack the moved paths and record it as the single intentional migration commit.
+    gb.rm_cached(moved)
+    gb.commit_staged("sgt: migrate committed state onto refs/sgt/state (Phase 1.2)")
+
+    return StateRefReport(
+        dry_run=False, changed=True, already_migrated=False,
+        untracked=tuple(moved), exclusions_promoted=promote, state_sha=state_sha,
+    )

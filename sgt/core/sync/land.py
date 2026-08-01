@@ -47,6 +47,7 @@ from . import ingest as _ingest
 from . import log as _log
 from . import materialize as _materialize
 from . import resolve as _resolve
+from . import state_ref as _state_ref
 
 __all__ = ["LandReport", "land", "LandPlan", "plan_land"]
 
@@ -163,6 +164,36 @@ def _restore_local_caches(repo: Path, before: dict[str, bytes]) -> None:
             state._atomic_write_text(local / name, data.decode("utf-8"))  # land removed it -> restore
 
 
+# Phase 1.2: the reconciled metadata tables (pins/tree/declared/authored/intent/forks) moved off the
+# branch tree onto `refs/sgt/state` and are now gitignored, so `restore_worktree_to` -- which only
+# rewinds git-*tracked* state -- no longer rolls back a non-landing land's `flush_reconciled_metadata`
+# writes the way it used to when they were tracked. These two helpers give that mutable-table surface
+# its own snapshot/restore (mirroring `_snapshot_local_caches`), so an R7 non-landing exit again
+# leaves the whole `.sgt` surface byte-identical. The content-addressed stores (ops/claims/proposals/
+# reviews) stay exempt: they are monotone and append-only, re-added identically on the retry.
+def _snapshot_traveling_tables(repo: Path) -> dict[str, bytes]:
+    """Byte snapshot of the gitignored traveling tables as they sit before the land touches them."""
+    snap: dict[str, bytes] = {}
+    for name in _state_ref._TRAVELING_TABLES:
+        p = state.path(repo, name)
+        if p.is_file():
+            snap[name] = p.read_bytes()
+    return snap
+
+
+def _restore_traveling_tables(repo: Path, before: dict[str, bytes]) -> None:
+    """Roll the traveling tables back to `before` (R7): rewrite any the land changed, delete any it
+    newly created, re-create any it removed -- the git-untracked analogue of `restore_worktree_to`."""
+    for name in _state_ref._TRAVELING_TABLES:
+        p = state.path(repo, name)
+        exists = p.is_file()
+        if name in before:
+            if not exists or p.read_bytes() != before[name]:
+                state._atomic_write_text(p, before[name].decode("utf-8"))  # churned/removed -> rewind
+        elif exists:
+            p.unlink()  # appeared during the land -> remove it
+
+
 def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandReport:
     repo = Path(repo)
     gb = GitBinding(repo)
@@ -171,6 +202,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     # Baseline the gitignored local caches now -- `_recover_pending_land` already rewound any crashed
     # prior land, so this is the true pre-land state every non-landing exit rolls back to (R7).
     local_before = _snapshot_local_caches(repo)
+    tables_before = _snapshot_traveling_tables(repo)  # the moved gitignored tables (Phase 1.2)
     lens.get(repo)  # mine-on-contact: absorb local reality first (R9)
     if not gb.is_clean():
         raise lens.DirtyWorkingTreeError(
@@ -181,6 +213,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     # anything (not even the monotone op adds). Pre-checked here so this path leaves no trace at all.
     if load_oracle_config(repo) is None:
         _restore_local_caches(repo, local_before)  # refuse with zero trace -- even the get() caches
+        _restore_traveling_tables(repo, tables_before)  # ...and the moved gitignored tables (Phase 1.2)
         return LandReport(branch=branch or "?", landed=False, blocked_reason=_NO_ORACLE)
 
     if branch is None:
@@ -223,6 +256,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     def _blocked(reason: str, attempt: int, res=None, forks=()) -> LandReport:
         gb.restore_worktree_to(snapshot)  # a land that does not land leaves no trace (R7)
         _restore_local_caches(repo, local_before)  # ...and rewind the gitignored local caches too
+        _restore_traveling_tables(repo, tables_before)  # ...and the moved gitignored tables (Phase 1.2)
         state.save_json(repo, "land_pending", {})  # normal (non-crash) exit -- clear the journal
         if forks:  # F23: a fork refusal *does* leave one trace, after the rollback -- the committed
             # `.sgt/forks.json` sync's materialize writes, so `sgt forks`/`resolve` see the forks land
@@ -277,8 +311,17 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
             state.save_json(repo, "land_pending", {})
             # Persist the durable ideal table/witness for the *target* branch only after the CAS,
             # journaling the edit (for `sgt undo`) only when landing the checked-out ref.
-            lens.record_ideal(repo, res.merged_ideal, new, ref_key=ref, journal=checked_out)
+            # `record_exclusions=False` (§E): `flush_reconciled_metadata` above already persisted the
+            # merged exclusion OR-Set; re-minting tags from this ideal's delta would break convergence.
+            lens.record_ideal(repo, res.merged_ideal, new, ref_key=ref, journal=checked_out,
+                              record_exclusions=False)
             _log.append(gb, branch, new, res.merged_ideal.op_ids)  # D1: best-effort, never raises
+            # Phase 1.2 push ordering (§D): publish the landed state (ops + reconciled tables) onto
+            # `refs/sgt/state` so the branch tip's `Sgt-Op:` trailers reference ops that are durable
+            # off the branch tree. Runs on BOTH paths, before the shared-out worktree restore below --
+            # the landed op-set is what a teammate reads back either way. `land` advances a *local*
+            # shared ref (no remote push), so this is `publish_from_local`, not `publish_and_push`.
+            _state_ref.publish_from_local(gb, repo)
             if not checked_out:
                 gb.restore_worktree_to(snapshot)  # advanced only the shared ref; restore our tree
                 # A shared-out land (mirrors the `journal=checked_out` guard above): record it in the

@@ -163,12 +163,16 @@ def flush_reconciled_metadata(
             _surface_dual_claims(repo, ing, res)  # U6 overlap check: a cross-clone dual-claim
             # `merge_feature` can't reconcile surfaces as a conflict, never a silent resolve
         tree.save(repo, res.tree_result)
+        if res.exclusions:  # merged exclusion OR-Set (§E) -- guarded so a no-exclusion merge stays
+            lens.save_exclusions(repo, res.exclusions)  # byte-identical to pre-1.2 on that table
         state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
         save_fork_records(repo, res.forks)  # durable, shared fork state (C4) -- shared writer w/ land
         _union_claims(repo, gb, state_sha)  # published-verdict G-Set travels with the merge (D8)
         _union_proposals(repo, gb, state_sha)  # committed review objects travel too (C10)
         _union_reviews(repo, gb, state_sha)  # trust-queue acks travel too (U31/S7)
-        state.save_json(repo, "ideal", sorted(res.merged_ideal.op_ids))  # in-tree recovery (C5)
+        # Phase 1.2: the in-tree `.sgt/ideal.json` recovery write (C5) is gone -- the op store and its
+        # tables travel on `refs/sgt/state`, off the branch tree, so a merge no longer records that
+        # blob (recovery ladder is log -> trailers -> mine; see `ingest._theirs_ideal`).
 
 
 def persist_reconciled(
@@ -199,5 +203,8 @@ def materialize(
     persist_reconciled(repo, gb, theirs_sha, ing, res, theirs_state_sha=theirs_state_sha)
     trailers = format_op_trailers(sorted(res.merged_ideal.op_ids))
     merge_sha = gb.complete_merge(f"sgt sync: merge {remote}/{branch}", theirs_sha, trailers=trailers)
-    lens.record_ideal(repo, res.merged_ideal, merge_sha)
+    # `record_exclusions=False` (§E): the merged exclusion OR-Set persisted by `flush_reconciled_metadata`
+    # is authoritative; re-deriving it from this merged ideal's delta would mint fresh tags and break
+    # cross-clone OR-Set convergence.
+    lens.record_ideal(repo, res.merged_ideal, merge_sha, record_exclusions=False)
     return merge_sha

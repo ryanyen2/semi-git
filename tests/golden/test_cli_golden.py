@@ -142,7 +142,12 @@ def capture_cli_surface(root: str) -> dict:
     views["oracle_run_no_config"] = _both(fresh(), ["advanced", "oracle", "run"])
     views["fulfill_no_draft"] = _both(fresh(), ["advanced", "fulfill", "no-such-draft", "--from-tree"])
     views["commit_nothing_staged"] = _both(fresh(), ["advanced", "commit"])
-    views["sync_refuses_dirty_tree"] = _both(fresh(), ["sync"])  # untracked .sgt/ -> clean-tree guard
+    # A genuinely dirty tree: since Phase 1.2 gitignores `.sgt/`, a fresh repo's tree is clean and
+    # `sync` would sail past the guard into a real fetch -- so dirty a *tracked* source file to
+    # exercise the clean-tree refusal the view is named for.
+    dirty_sync = fresh()
+    (dirty_sync / "a.py").write_text("def foo():\n    return 999\n", encoding="utf-8")
+    views["sync_refuses_dirty_tree"] = _both(dirty_sync, ["sync"])  # dirty tracked file -> clean-tree guard
 
     # -- mutating verbs (text + --json each on its own fresh fixture) ---------------------------
     # `--yes` skips the feedforward confirm gate so the mutation actually applies (a non-tty capture

@@ -220,8 +220,22 @@ def _publish(repo, propose, pid, remote, as_json) -> int:
     rendered = propose.render_github(view)
     branch = rendered["branch"]
 
+    # Phase 1.2 push ordering (§D): the PR branch commit's `Sgt-Op:` trailers name ops that live only
+    # on `refs/sgt/state`, so publish + push that ref to success before publishing the branch -- and
+    # abort if it can't, so the PR never references ops that aren't durable on the remote.
+    from pathlib import Path
+
+    from sgt.core.sync import state_ref as _state_ref
+
+    gb = GitBinding(repo)
     try:
-        GitBinding(repo).push_head_as(remote, branch)
+        _state_ref.publish_and_push(gb, Path(repo), remote)
+    except _state_ref.StateRefError as e:
+        msg = f"could not publish sgt state to {remote} -- PR branch NOT pushed (its ops would be dangling): {e}"
+        return _fail_json(msg, as_json)
+
+    try:
+        gb.push_head_as(remote, branch)
     except GitError as e:
         return _fail_json(str(e), as_json)
 

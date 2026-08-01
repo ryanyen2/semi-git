@@ -44,6 +44,31 @@ _LOCAL_DIR = "local"
 _HOLLOW_DIR = "local/hollow"
 _LOCK_FILE = "lock"
 
+# `.sgt/.gitignore` body (Phase 1.2). Patterns are relative to `.sgt/`. Keeps the op store and the
+# committed tables untracked -- they travel on `refs/sgt/state` now. Mirrors
+# `state_ref._TRAVELING_TABLES` + `_CONTENT_ADDRESSED_PREFIXES`; `.sgt/local/` ignores itself via its
+# own `.gitignore`. The file lists `.gitignore` itself so it stays untracked too (see
+# `Store._ensure_gitignore` for why that matters for `git checkout`).
+_SGT_GITIGNORE = b"""\
+# Managed by sgt (Phase 1.2): the op store + committed tables travel on refs/sgt/state,
+# off the branch tree. Keeping them untracked fixes F1 (saves no longer dirty the tree)
+# and F10 (no metadata merge conflicts). Do not add tiers.json / oracle.json /
+# identity_constraints.json / .sgtignore here -- those stay tracked in the branch tree.
+.gitignore
+ops/
+claims/
+proposals/
+reviews/
+pins/
+tree/
+authored/
+intent/
+ideal.json
+forks.json
+declared_edges.json
+exclusions.json
+"""
+
 
 class StoreError(Exception):
     """The store detected corruption or an attempt to write something that isn't a valid Op."""
@@ -174,12 +199,31 @@ class Store:
         self.ops_dir.mkdir(parents=True, exist_ok=True)
         self.hollow_dir.mkdir(parents=True, exist_ok=True)
         self._ensure_local()
+        self._ensure_gitignore()
 
     def _ensure_local(self) -> None:
         """`.sgt/local/` exists and ignores itself (never committed)."""
         gitignore = self.local_dir / ".gitignore"
         if not gitignore.exists():
             _write_atomic(gitignore, b"*\n")
+
+    def _ensure_gitignore(self) -> None:
+        """`.sgt/.gitignore` keeps the op store and the committed tables *untracked* -- Phase 1.2's
+        structural F1 fix. Those artifacts now travel on `refs/sgt/state`, off the branch tree
+        (killing F1's dirty-tree-after-save and F10's merge conflicts), so `commit_all`'s blanket
+        `git add -A` must no longer see them. The file lists `.gitignore` itself, so it too stays
+        UNTRACKED: were it committed on one branch but not another, `git checkout` between them would
+        abort with "untracked working tree file would be overwritten" (the switch bug). Every clone
+        regenerates it locally via `Store.init` before any `.sgt/` content exists, so tracking it
+        buys nothing. The listed set mirrors `state_ref._TRAVELING_TABLES` +
+        `_CONTENT_ADDRESSED_PREFIXES`; team-editable / correctness-critical config stays TRACKED and
+        is deliberately absent here: `oracle.json`, `identity_constraints.json`, `tiers.json`,
+        `.sgtignore` (the last read as-of each mined commit for LAW-0). Only written when absent, so
+        it never churns the tree on a re-init."""
+        gitignore = self.sgt_dir / ".gitignore"
+        if gitignore.exists():
+            return
+        _write_atomic(gitignore, _SGT_GITIGNORE)
 
     @contextlib.contextmanager
     def _locked(self):

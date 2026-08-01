@@ -16,6 +16,7 @@ from sgt.core import lens
 from sgt.store.gitbind import GitBinding, GitError
 
 from . import log as _log
+from . import state_ref as _state_ref
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,11 @@ class Fetched:
     theirs_sha: str
     ours_sha: str
     up_to_date: bool
+    # Phase 1.2: the fetched `refs/sgt/state` tip -- theirs' committed ops/tables live here off the
+    # branch tree. `None` when the remote has no such ref (a pre-1.2 remote / fresh clone), which
+    # signals `ingest` to fall back to reading theirs' branch tree (still carrying that state during
+    # the transition; the permanent bootstrap when the ref never existed).
+    theirs_state_sha: str | None = None
 
 
 def fetch(repo: Path, gb: GitBinding, remote: str | None, branch: str | None) -> Fetched:
@@ -53,10 +59,26 @@ def fetch(repo: Path, gb: GitBinding, remote: str | None, branch: str | None) ->
     log_ref = _log.log_ref(branch)
     gb.fetch_ref(remote, f"{log_ref}:{log_ref}")
 
+    # Phase 1.2: fetch the repo-global `refs/sgt/state` into a *scratch* ref (force-updated each
+    # fetch), leaving our authoritative local `refs/sgt/state` untouched -- so even the dry-run
+    # `plan_sync` leaves no trace on it (R7), and our own publish history is never clobbered. A remote
+    # without the ref (pre-1.2 / fresh) yields nothing, so `theirs_state_sha` stays `None` and
+    # `ingest` falls back to theirs' branch tree (still carrying that state during the transition).
+    #
+    # We deliberately do NOT `materialize_into_local` here: `ingest` reads theirs' ops and tables
+    # straight from the ref tree at `theirs_state_sha`, while reading *ours* from the on-disk mirror.
+    # Materializing theirs' tables in would overwrite our live local tables (ideal/tree/pins/...) and
+    # collapse the two sides `ingest` must reconcile. Theirs' ops land on disk the normal way, through
+    # `materialize`'s `Store.add`. (The fresh-clone bootstrap in `_clone` *does* materialize -- there
+    # is no live local state there to clobber.)
+    got_state = gb.fetch_ref(remote, f"+{_state_ref.STATE_REF}:{_state_ref.FETCH_STATE_REF}")
+    theirs_state_sha = gb.rev_parse(_state_ref.FETCH_STATE_REF) if got_state else None
+
     return Fetched(
         remote=remote,
         branch=branch,
         theirs_sha=theirs_sha,
         ours_sha=ours_sha,
         up_to_date=theirs_sha in set(gb.commit_shas(ours_sha)),
+        theirs_state_sha=theirs_state_sha,
     )
