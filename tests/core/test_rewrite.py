@@ -10,6 +10,7 @@ async, non-blocking materialization gate that ordinary ideal-edit verbs (U8) use
 from __future__ import annotations
 
 import json
+import sys
 
 from sgt.config import load_identity_constraints
 from sgt.core import identity, mine, oracle, order, rewrite
@@ -834,10 +835,17 @@ def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(t
 # -- U4: `sgt edit <selection>` -- in-place change (KTD5, R5) -----------------------------------
 
 def _configure_oracle(repo, tiers):
-    """Same shell-tier oracle config the repair-loop tests use (`tests/repair/test_loop.py`)."""
-    payload = {"tiers": [{"name": name, "command": command} for name, command in tiers]}
+    """Same shell-tier oracle config the repair-loop tests use (`tests/repair/test_loop.py`).
+    A leading `python ` token is rewritten to this interpreter's absolute path: bare `python`
+    is not guaranteed on PATH (a venv-only environment exposes only `.venv/bin/python`), and a
+    missing interpreter makes the oracle command exit non-zero -- a spurious 'fail' verdict."""
+    payload = {"tiers": [{"name": name, "command": _with_suite_python(command)} for name, command in tiers]}
     (repo / ".sgt").mkdir(exist_ok=True)
     (repo / ".sgt" / "oracle.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _with_suite_python(command: str) -> str:
+    return f"{sys.executable} {command[len('python '):]}" if command.startswith("python ") else command
 
 
 class _CountingBackend:

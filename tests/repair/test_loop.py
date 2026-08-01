@@ -13,6 +13,7 @@ fix can't touch (see FINDINGS.md).
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from sgt.core import mine, order, rewrite
@@ -26,9 +27,16 @@ from sgt.store.gitbind import init_store
 
 
 def _configure_oracle(repo: Path, tiers: list[tuple[str, str]]) -> None:
-    payload = {"tiers": [{"name": name, "command": command} for name, command in tiers]}
+    # A leading `python ` token is rewritten to this interpreter's absolute path: bare `python`
+    # is not guaranteed on PATH (a venv-only environment exposes only `.venv/bin/python`), and a
+    # missing interpreter makes the oracle command exit non-zero -- a spurious 'fail' verdict.
+    payload = {"tiers": [{"name": name, "command": _with_suite_python(command)} for name, command in tiers]}
     (repo / ".sgt").mkdir(exist_ok=True)
     (repo / ".sgt" / "oracle.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _with_suite_python(command: str) -> str:
+    return f"{sys.executable} {command[len('python '):]}" if command.startswith("python ") else command
 
 
 def _fixture(repo: Path):
