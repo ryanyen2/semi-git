@@ -538,7 +538,44 @@ def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
               f"{clip(view['unmanaged'])}")
     if not view["drift"]["any"] and not view["forks"]["open"]:
         print("  ✓ in sync")
+    _print_residual(repo, full)
     return 0
+
+
+def _fmt_age(seconds: float) -> str:
+    """A coarse human age for the residual list -- days / hours / minutes, never a raw timestamp."""
+    if seconds >= 86400:
+        return f"{int(seconds // 86400)}d ago"
+    if seconds >= 3600:
+        return f"{int(seconds // 3600)}h ago"
+    if seconds >= 60:
+        return f"{int(seconds // 60)}m ago"
+    return "just now"
+
+
+def _print_residual(repo: str, full: bool) -> None:
+    """The residual (intent-ledger P1): things you *stated* but that never landed -- plan steps
+    whose sessions closed with the step still pending (`open_intents`, each carrying a
+    `predicted_fp`). Folded into `sgt log --summary` as "what needs attention" so unfinished
+    intentions resurface here rather than needing a separate queue to groom. Only plan-derived opens
+    surface: a chat utterance that failed to align is an alignment miss, not stated-but-never-landed,
+    so it stays out of this list (it is the P2 review band, not a to-do). Nothing prints when the
+    residual is empty."""
+    import time
+
+    from sgt.intent.rationale import open_intents
+
+    opens = open_intents(repo)
+    if not opens:
+        return
+    now = time.time()
+    head = opens if full else opens[:5]
+    print(f"  ⚠ {len(opens)} stated but never landed (what needs attention):")
+    for r in head:
+        age = _fmt_age(max(0.0, now - r.get("ts", now)))
+        print(f"      · {r['reason'] or '(unknown)'}  ({age})")
+    if not full and len(opens) > 5:
+        print(f"      (+{len(opens) - 5} more — --full lists them)")
 
 
 def _history(repo: str, as_json: bool = False, full: bool = False,

@@ -494,6 +494,44 @@ def test_plan_abandon(tmp_path, capsys, monkeypatch):
     assert _in(tmp_path, ["plan", "abandon", "no-such-session"]) == 1
 
 
+def test_log_summary_surfaces_the_residual_of_open_intents(tmp_path, capsys, monkeypatch):
+    """`sgt log --summary` folds in the residual (intent-ledger P1): a plan step stated but never
+    landed (its session abandoned with the step pending) resurfaces here as "what needs attention",
+    so an unfinished intention isn't lost -- and without a separate open/done queue to groom."""
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)
+    _in(tmp_path, ["plan", "intake", "1. wire the retry backoff", "--json"])
+    session_id = json.loads(capsys.readouterr().out)["session_id"]
+    _in(tmp_path, ["plan", "abandon", session_id])
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["log", "--summary"]) == 0
+    out = capsys.readouterr().out
+    assert "never landed" in out
+    assert "wire the retry backoff" in out
+
+
+def test_log_summary_omits_the_residual_when_nothing_is_open(tmp_path, capsys):
+    """No open intents -> no residual noise in the summary (the section prints only when there is
+    something to attend to, like every other warning in `_status`)."""
+    _seed(tmp_path, 1)
+    capsys.readouterr()
+    assert _in(tmp_path, ["log", "--summary"]) == 0
+    assert "never landed" not in capsys.readouterr().out
+
+
+def test_fmt_age_is_coarse():
+    """The residual age is a coarse day/hour/minute string, never a raw timestamp."""
+    from sgt.cli.inspect import _fmt_age
+
+    assert _fmt_age(0) == "just now"
+    assert _fmt_age(120) == "2m ago"
+    assert _fmt_age(7200) == "2h ago"
+    assert _fmt_age(2 * 86400) == "2d ago"
+
+
 def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1"):
     """A one-step active plan session predicting `a.py::foo`, its baseline being the current op set.
     Returns the session's single hollow id."""
