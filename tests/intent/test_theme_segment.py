@@ -43,6 +43,27 @@ def _four_commit_feature(tmp_path):
     return runs, by_id
 
 
+def test_segments_view_carries_a_chapters_captured_words(tmp_path):
+    """A chapter's captured words (intent-ledger P1 zoom) reach `segments_view` -- the read the TUI
+    and the VSCode extension draw -- joined from the committed prompt sidecar and sha-keyed `save -m`
+    turns, so the user's own words become addressable per checkpoint ('the history answers in my own
+    words'). A chapter whose commits captured nothing carries an empty list, never a guess."""
+    from sgt.api import segments_view
+    from sgt.intent import turns
+
+    _four_commit_feature(tmp_path)
+    segs = segments_view(tmp_path)
+    assert segs, "the four-commit feature should produce at least one chapter"
+    sha = segs[0]["commit_shas"][0]
+    turns.record_turn(tmp_path, key=sha, key_kind="sha", actor="human", channel="cli",
+                      text="make step one guard the invariant")
+
+    chapter = next(s for s in segments_view(tmp_path) if sha in s["commit_shas"])
+    assert "make step one guard the invariant" in chapter["words"]
+    # every chapter carries a words list (empty where nothing was captured), never a missing key
+    assert all(isinstance(s["words"], list) for s in segments_view(tmp_path))
+
+
 def _themer_with(monkeypatch, tmp_path, plan_or_exc):
     themer = SegmentThemer(tmp_path)
 

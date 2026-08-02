@@ -2085,6 +2085,33 @@ def intent_view(repo) -> dict:
     return {"themes": themes_out, "atoms": atoms_out, "segments": segments_out}
 
 
+def _commit_words_join(repo):
+    """A cheap `sha -> captured words` lookup for the per-chapter zoom, built once (the two stores
+    loaded a single time, not reloaded per commit as a naive `label_prompt_for` loop would). Same
+    two rung-0 sources `sgt.intent.theme_segment.label_prompt_for` reads: the committed prompt
+    sidecar first, then the highest-seq sha-keyed `save -m` turn. Chat-keyed words are deliberately
+    excluded -- they arrive with the P2 alignment rung, not this pure-projection stage."""
+    from sgt.intent.prompts import load_prompts
+    from sgt.intent.turns import load_turns
+
+    prompts = load_prompts(repo)
+    sha_turn: dict[str, tuple[int, str]] = {}
+    for t in load_turns(repo).values():
+        if t.get("key_kind") == "sha":
+            cur = sha_turn.get(t["key"])
+            if cur is None or t["seq"] >= cur[0]:  # last save -m under this sha wins (hits[-1])
+                sha_turn[t["key"]] = (t["seq"], t["text"])
+
+    def words_for(sha: str) -> str | None:
+        recorded = prompts.get(sha)
+        if recorded:
+            return recorded
+        hit = sha_turn.get(sha)
+        return hit[1] if hit else None
+
+    return words_for
+
+
 def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     """The feature-scoped intent segments (the "checkpoints" a user rewinds to): every feature's
     ops cut into contiguous, labeled chapters (`sgt.intent.segment`), each addressable as
@@ -2101,6 +2128,7 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     persisted = state.load_json(repo, "intent_segments", default={})
     label_pins = state.load_json(repo, "intent_segment_pins", default={})
     runs_by_feature = seg_mod.feature_runs(repo, op_leaf)
+    words_for = _commit_words_join(repo)
 
     out: list[dict] = []
     for feature_id in sorted(runs_by_feature):
@@ -2109,6 +2137,15 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
         feature_label = nodes.get(feature_id, {}).get("label", feature_id)
         for s in segs:
             commit_shas = frozenset(s.commit_shas)
+            # Per-chapter captured words (intent-ledger P1 zoom): the user's own words for each
+            # commit this chapter covers, so the TUI/editor zoom answers "in my own words" -- the
+            # data `intent_view` already holds per atom, made addressable per chapter. Deduped,
+            # chapter order preserved.
+            words: list[str] = []
+            for sha in s.commit_shas:
+                w = words_for(sha)
+                if w and w not in words:
+                    words.append(w)
             # A segment's ops all belong to ONE feature by construction (feature-scoped cut), so
             # `feature_span` is always a single feature -- `group.tier` would degenerate to its
             # single-feature branch anyway. Compute that branch directly (no `components_in` walk):
@@ -2125,6 +2162,7 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
                 "op_ids": sorted(s.op_ids),
                 "op_count": s.op_count,
                 "commit_shas": list(s.commit_shas),
+                "words": words,
                 "first_index": s.first_index,
                 "last_index": s.last_index,
                 "novelty": round(s.novelty, 3),
