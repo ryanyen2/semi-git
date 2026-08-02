@@ -280,6 +280,15 @@ def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
     from sgt.lens.select import why
 
     result = why(repo, op_ref, for_feature)
+    # A commit sha is not an op-id (`why` resolves ops/symbols; a sha maps to a whole atom, not one
+    # op), so when op resolution fails and no `--for` feature was asked, try resolving the ref as a
+    # commit and answer "the aligned words for this commit" -- the contract's third `why` selector
+    # (plan §3.4). Op resolution is tried first so every existing `why <op>`/`<symbol>` call is
+    # byte-unchanged; only a ref that is *not* an op falls through here.
+    if not result.ok and for_feature is None:
+        commit = _commit_why(repo, op_ref)
+        if commit is not None:
+            return commit
     # Intent-ledger M1: append the recorded "why" -- the rationale reflection derived from the
     # user's own words -- beside the structural attribution. Empty when nothing was captured/derived
     # for this op, which `sgt why` renders as an honest "no recorded reason" rather than a guess.
@@ -309,9 +318,54 @@ def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
                     "open": False, "superseded": False, "evidence": hit["evidence"],
                 })
     return {
+        "kind": "op",
         "ok": result.ok, "message": result.message, "op_id": result.op_id,
         "feature_id": result.feature_id, "for_feature": result.for_feature,
         "votes": list(result.votes), "chain": list(result.chain),
+        "rationale": rationale,
+    }
+
+
+def _commit_why(repo, ref: str) -> dict | None:
+    """Resolve `ref` as a commit sha (full or a unique prefix over the intent atoms) and answer with
+    that commit's aligned words -- the `sgt why <sha>` selector. `None` when `ref` matches no commit
+    or is an ambiguous prefix, so the caller falls back to the op-scoped `why`'s own error. Reuses
+    `intent_view`'s canonical per-atom projection (words, sessions, resume handles) rather than
+    re-deriving the joins, and layers the same actor/confirmed/evidence-badged rationale the
+    op-scoped path renders, so `sgt why` reads consistently whether asked about an op or a commit."""
+    from sgt.intent import group
+
+    atoms = intent_view(repo)["atoms"]
+    cand = sorted({
+        a["commit_sha"] for a in atoms
+        if a["commit_sha"] != group.UNWITNESSED
+        and (a["commit_sha"] == ref or a["commit_sha"].startswith(ref))
+    })
+    if len(cand) != 1:
+        return None  # 0 = not a commit; >1 = ambiguous prefix -- a longer ref disambiguates
+    sha = cand[0]
+    atom = next(a for a in atoms if a["commit_sha"] == sha)
+
+    from sgt.intent.rationale import for_op
+    rationale: list[dict] = []
+    seen: set[str] = set()
+    for op_id in atom["op_ids"]:
+        for r in for_op(repo, op_id):
+            reason = r.get("reason")
+            if r.get("superseded") or not reason or reason in seen:
+                continue
+            seen.add(reason)
+            rationale.append({
+                "reason": reason, "actor": r["actor"], "confirmed": r["confirmed"],
+                "open": r.get("open", False), "superseded": False,
+                "evidence": len(r.get("evidence", [])),
+            })
+    return {
+        "kind": "commit", "ok": True, "message": "", "sha": sha,
+        "subject": atom["subject"], "op_count": len(atom["op_ids"]),
+        "words": atom["prompt"], "feature_span": atom["feature_span"],
+        "claude_session_ids": atom["claude_session_ids"],
+        "session_ids": atom["session_ids"], "plan_ids": atom["plan_ids"],
         "rationale": rationale,
     }
 

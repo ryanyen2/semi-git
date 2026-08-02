@@ -264,4 +264,50 @@ def test_why_view_aggregates_symbol_rationale_across_ops(tmp_path):
 
     view = why_view(tmp_path, "a.py::foo")
     assert view["ok"]
+    assert view["kind"] == "op"
     assert "v1 guards the invariant" in [r["reason"] for r in view["rationale"]]
+
+
+def test_why_view_resolves_a_commit_sha_to_its_aligned_words(tmp_path):
+    """`sgt why <sha>` (intent-ledger P1): a commit sha isn't an op-id -- it maps to a whole atom --
+    so `why_view` answers with the commit's captured words rather than forcing the ref through the
+    op-scoped resolver. A unique sha prefix resolves the same commit."""
+    from sgt.api import intent_view, why_view
+    from sgt.core.lens import get
+    from sgt.intent import turns
+    from sgt.store.gitbind import init_store as _init
+
+    gb, _ = _init(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(tmp_path)
+
+    atom = next(a for a in intent_view(tmp_path)["atoms"] if a["subject"] == "add foo")
+    sha = atom["commit_sha"]
+    turns.record_turn(tmp_path, key=sha, key_kind="sha", actor="human", channel="cli",
+                      text="make foo return the invariant")
+
+    view = why_view(tmp_path, sha)
+    assert view["kind"] == "commit"
+    assert view["sha"] == sha
+    assert view["subject"] == "add foo"
+    assert view["words"] == "make foo return the invariant"
+    assert view["op_count"] >= 1
+    assert why_view(tmp_path, sha[:8])["sha"] == sha  # a unique prefix resolves it too
+
+
+def test_why_view_unknown_ref_falls_back_to_the_op_scoped_error(tmp_path):
+    """A ref that is neither a live op/symbol nor a known commit falls through to the op-scoped
+    `why`'s own honest failure -- the commit branch never masks it, and never guesses a commit."""
+    from sgt.api import why_view
+    from sgt.core.lens import get
+    from sgt.store.gitbind import init_store as _init
+
+    gb, _ = _init(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(tmp_path)
+
+    view = why_view(tmp_path, "ffffffffffffffffffffffffffffffffffffffff")
+    assert view["kind"] == "op"
+    assert view["ok"] is False
