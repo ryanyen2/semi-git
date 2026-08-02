@@ -68,6 +68,11 @@ def _why(repo: str, op_ref: str, for_feature: str | None, as_json: bool) -> int:
     if not view["ok"]:
         return _fail(view["message"])
 
+    # A commit sha resolves to the whole commit's aligned words (`sgt why <sha>`), not one op's
+    # attribution -- a distinct read with its own render.
+    if view.get("kind") == "commit":
+        return _render_commit_why(view)
+
     if for_feature is None:
         print(f"{view['op_id']}: attributed to {view['feature_id'] or '(none)'}")
         for vote in view["votes"]:
@@ -79,17 +84,35 @@ def _why(repo: str, op_ref: str, for_feature: str | None, as_json: bool) -> int:
             arrow = f" --{hop['via']}--> " if hop["via"] else ""
             print(f"  {arrow}{hop['op_id']}")
 
-    # Intent-ledger M1: the recorded "why" -- the user's own reasoning, reflected from what the
-    # workflow captured. An honest "no recorded reason" beats inventing one.
-    rationale = view.get("rationale", [])
+    _print_rationale(view.get("rationale", []))
+    return 0
+
+
+def _render_commit_why(view: dict) -> int:
+    """`sgt why <sha>`: the aligned words for one commit -- its subject, the user's captured words,
+    the `claude --resume` handle(s) for the chat it came from, and any recorded reasons. A pure
+    read; the words are only ever those truly keyed to this commit, so it cannot misattribute."""
+    print(f"{view['sha'][:8]}: {view['subject'] or '(no subject)'}  ·  {view['op_count']} op(s)")
+    words = view.get("words")
+    print(f'  words: "{words}"' if words else "  words: (none captured)")
+    for sid in view.get("claude_session_ids", []):
+        print(f"  resume: claude --resume {sid}")
+    _print_rationale(view.get("rationale", []))
+    return 0
+
+
+def _print_rationale(rationale: list[dict]) -> None:
+    """The recorded "why" section shared by the op- and commit-scoped `why` renders (intent-ledger
+    M1): the user's own reasoning reflected from what the workflow captured, each badged
+    inferred/confirmed (and `overturned` when superseded). An honest "no recorded reason" beats
+    inventing one."""
     if rationale:
         print("  why (recorded):")
         for r in rationale:
             badge = "confirmed" if r["confirmed"] else "inferred"
-            if r["superseded"]:
+            if r.get("superseded"):
                 badge += ", overturned"
             ev = f" [{r['evidence']} turn(s)]" if r["evidence"] else ""
             print(f"    - {r['reason'] or '(unknown)'}  ({r['actor']}, {badge}){ev}")
     else:
         print("  why (recorded): no recorded reason")
-    return 0
