@@ -231,6 +231,58 @@ def test_save_without_a_message_harvests_no_turn(tmp_path):
     assert turns.load_turns(repo) == {}
 
 
+def test_save_echo_reports_no_words_captured_without_a_message(tmp_path, capsys):
+    """Save-echo legibility (intent-ledger P1): a bare save (no `-m`, no plan step) says so
+    explicitly rather than staying silent or -- the failure the design forbids -- printing the
+    temporally-nearest unrelated turn as if it were this save's words. The trust loop depends on the
+    echo never bluffing."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save"]) == 0
+    out = capsys.readouterr().out
+    assert "no words captured" in out
+
+
+def test_save_echo_does_not_duplicate_the_message_line(tmp_path, capsys):
+    """When `-m` is given the header already echoes it in quotes; the dedicated words line is only
+    for the no-`-m` cases, so a `-m` save must NOT also print a `· ...` line or the 'no words
+    captured' empty state."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save", "-m", "add quux helper"]) == 0
+    out = capsys.readouterr().out
+    assert '"add quux helper"' in out          # header echoes the message
+    assert "no words captured" not in out       # ...and doesn't also claim none
+    assert "· add quux helper" not in out       # ...nor duplicate it on a second line
+
+
+def test_save_json_carries_the_captured_words(tmp_path, capsys):
+    """The captured words are structured in `--json` so the editor / VSCode surface reads them from
+    the same save output the terminal renders -- the integrate-don't-annex contract."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save", "-m", "add quux helper", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["words"] == "add quux helper"
+
+
+def test_echo_words_prefers_message_then_plan_then_none():
+    """`_echo_words` priority, in isolation: the `-m` message wins; with no message it falls to the
+    stated intent of an auto-confirmed plan step; with neither it returns None (the caller renders
+    the explicit empty state). It never reaches for chat turns -- those are the P2 rung."""
+    from sgt.cli.porcelain import _echo_words
+
+    assert _echo_words("unused", "typed words", None) == "typed words"
+    assert _echo_words("unused", None, None) is None
+    assert _echo_words("unused", None, {"auto_confirmed": []}) is None
+
+
 def test_save_message_feeds_the_segment_labeler_via_the_local_turn(tmp_path):
     """Goal-1 label feed (M1), kept local: the `-m` message is harvested as a turn keyed by the
     witness sha, and the segment labeler's `label_prompt_for` resolves it from there -- so the
