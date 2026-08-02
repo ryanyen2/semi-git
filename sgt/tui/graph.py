@@ -258,6 +258,7 @@ def segment_layout(
                     "last_index": seg["last_index"],
                     "sub_bins": sorted(bins.items()),
                     "is_future": seg["first_index"] > fr,
+                    "words": seg.get("words", []),  # captured words for this chapter (zoom render)
                 })
         cars.sort(key=lambda c: (c["first_index"], c["feature_id"], c["seg_index"]))
         lanes.append({**l, "cars": cars})
@@ -856,6 +857,15 @@ def render_graph_lines(
                 example_slug = slug
             lines.append(f"   {head}  {handle}@{car['seg_index']}  {dim(':' + slug)}  {car['label']}"
                          f"{future}")
+            # The chapter in the user's own words (intent-ledger P1 zoom): the words captured for the
+            # commits this chapter covers, so "the history answers in my own words" is literally on
+            # screen. Up to three, ellipsized; `sgt feature why <sha>` shows the full text + the
+            # `claude --resume` handle. Silent when nothing was captured (never a guessed reason).
+            words = car.get("words", [])
+            for w in words[:3]:
+                lines.append("       " + dim(f"“{_ellipsize(w, 66)}”"))
+            if len(words) > 3:
+                lines.append("       " + dim(f"… +{len(words) - 3} more"))
         lines.append("")
         slug_hint = example_slug or "<slug>"
         lines.append(dim(f" operate:  sgt revert {handle}:{slug_hint}  (one checkpoint, by name)   ·   "
