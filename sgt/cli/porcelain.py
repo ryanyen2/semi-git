@@ -242,7 +242,8 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
         print('  --as names the feature a save lands in; nothing was saved, so nothing to name.')
 
     plan = _fold_plan_matches(repo)
-    return _render_save(as_json, saved, sha, n, plan, resolve_plan,
+    words = _echo_words(repo, message, plan) if saved else None
+    return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,
                         message=message, features=features, renamed=renamed)
 
 
@@ -391,13 +392,41 @@ def _apply_save_label(repo: str, features: list[dict], label: str) -> dict:
     return {"ok": True, "feature_id": target["feature_id"], "label": label}
 
 
+def _echo_words(repo: str, message: str | None, plan: dict | None) -> str | None:
+    """The words captured for THIS save, from rung-0 (key-contained) sources only -- never a guessed
+    nearest turn. Priority: the `-m` message the user just typed, else the stated intent of any plan
+    step this save auto-confirmed (harvested at plan intake, joined into `plan_matches` by
+    `confirm_match`). `None` when neither exists, so the caller renders an explicit "no words
+    captured" rather than inventing one -- the save echo is the trust loop and must never bluff
+    (a confidently-wrong words line at the highest-frequency surface teaches distrust faster than
+    silence). Chat-session words are deliberately absent here: they arrive with the P2 alignment
+    rung, not this pure-projection stage."""
+    if message and message.strip():
+        return message.strip()
+    if plan:
+        from sgt.loop.match import recorded_matches
+        matches = recorded_matches(repo)
+        seen: list[str] = []
+        for e in plan.get("auto_confirmed", []):
+            for oid in e["op_ids"]:
+                intent = (matches.get(oid) or {}).get("intent")
+                if intent and intent not in seen:
+                    seen.append(intent)
+        if seen:
+            return "; ".join(seen)
+    return None
+
+
 def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                  plan: dict | None, resolve_plan: bool, *, message: str | None = None,
-                 features: list[dict] = (), renamed: dict | None = None) -> int:
+                 features: list[dict] = (), renamed: dict | None = None,
+                 words: str | None = None) -> int:
     if as_json:
         out: dict = {"ok": True, "saved": saved}
         if saved:
             out["commit"], out["ops"] = sha, n
+        if words:  # the captured words, structured for the editor/VSCode surface
+            out["words"] = words
         if features:
             out["features"] = list(features)
         if renamed is not None:
@@ -409,6 +438,14 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
     if saved:
         title = f' "{message}"' if message else ""
         print(f"✓ save {sha[:7]}{title}")
+        # Capture legibility (intent-ledger P1): when the header didn't already echo an `-m`
+        # message, show what capture actually holds for this save -- the plan step's words, or an
+        # explicit empty state. Never the temporally-nearest turn: the echo shows only words truly
+        # keyed to this save, so it cannot misattribute.
+        if not message:
+            import textwrap
+            print(f'  · {textwrap.shorten(words, width=72, placeholder="…")}' if words
+                  else "  · no words captured")
         for f in features:
             syms = ", ".join(f["symbols"][:3]) + (f" +{len(f['symbols']) - 3} more"
                                                   if len(f["symbols"]) > 3 else "")
