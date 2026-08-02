@@ -268,6 +268,65 @@ def test_why_view_aggregates_symbol_rationale_across_ops(tmp_path):
     assert "v1 guards the invariant" in [r["reason"] for r in view["rationale"]]
 
 
+def test_auto_retire_ages_out_a_stale_open_intent(tmp_path):
+    """Age-retire (intent-ledger P1): an open intent no one has acted on in over `max_age_days` is
+    no longer 'what needs attention' -- it is superseded automatically, keeping the residual
+    drainable without an open/done queue to groom."""
+    rid = rationale.record_rationale(tmp_path, subject=[], reason="wire the backoff", actor="human",
+                                     evidence=[], open=True, predicted_symbols=[], ts=100.0)
+    assert rid in {r["id"] for r in rationale.open_intents(tmp_path)}
+    retired = rationale.auto_retire_open(tmp_path, now=100.0 + 40 * 86400)
+    assert rid in retired
+    assert rid not in {r["id"] for r in rationale.open_intents(tmp_path)}  # left the open surface
+    assert rid in rationale.load_rationale(tmp_path)  # history is kept; only its standing changed
+
+
+def test_auto_retire_keeps_a_fresh_open_intent(tmp_path):
+    """A recent open intent is left alone -- age-retire only fires past the threshold, and with no
+    predicted symbols there is nothing to overlap-retire against."""
+    rid = rationale.record_rationale(tmp_path, subject=[], reason="still pending", actor="human",
+                                     evidence=[], open=True, predicted_symbols=[], ts=100.0)
+    assert rationale.auto_retire_open(tmp_path, now=100.0 + 3 * 86400) == []
+    assert rid in {r["id"] for r in rationale.open_intents(tmp_path)}
+
+
+def test_auto_retire_overlap_retires_when_predicted_symbols_landed(tmp_path):
+    """Overlap-retire: when every predicted symbol of a stated-but-never-landed intent is now live
+    in the ideal, the work landed (in a plan or out), so the intent is fulfilled and retired -- even
+    though it never went through `confirm_match`."""
+    from sgt.core.lens import get
+    from sgt.store.gitbind import init_store as _init
+
+    gb, _ = _init(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(tmp_path)  # a.py::foo is now live in the ideal
+
+    rid = rationale.record_rationale(tmp_path, subject=[], reason="build foo", actor="human",
+                                     evidence=[], open=True, predicted_symbols=["a.py::foo"], ts=100.0)
+    retired = rationale.auto_retire_open(tmp_path, now=100.0)  # fresh (not aged) -> overlap only
+    assert rid in retired
+
+
+def test_auto_retire_overlap_needs_full_coverage(tmp_path):
+    """A partial footprint match is too weak a signal to silently close a stated intent: overlap
+    retires only when *every* predicted symbol is live, so a half-landed step stays on the residual
+    (residual honesty is worth an occasional un-retired item over a wrong-retired one)."""
+    from sgt.core.lens import get
+    from sgt.store.gitbind import init_store as _init
+
+    gb, _ = _init(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(tmp_path)
+
+    rid = rationale.record_rationale(tmp_path, subject=[], reason="build foo and bar", actor="human",
+                                     evidence=[], open=True,
+                                     predicted_symbols=["a.py::foo", "a.py::bar"], ts=100.0)
+    assert rationale.auto_retire_open(tmp_path, now=100.0) == []  # a.py::bar never landed
+    assert rid in {r["id"] for r in rationale.open_intents(tmp_path)}
+
+
 def test_why_view_resolves_a_commit_sha_to_its_aligned_words(tmp_path):
     """`sgt why <sha>` (intent-ledger P1): a commit sha isn't an op-id -- it maps to a whole atom --
     so `why_view` answers with the commit's captured words rather than forcing the ref through the
