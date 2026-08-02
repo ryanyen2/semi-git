@@ -88,12 +88,13 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
     s = segs[0]
     assert set(s) == {
         "feature_id", "feature_label", "seg_index", "checkpoint", "intent", "rationale",
-        "op_ids", "op_count", "commit_shas", "first_index", "last_index", "novelty", "tier",
-        "source",
+        "op_ids", "op_count", "commit_shas", "words", "first_index", "last_index", "novelty",
+        "tier", "source",
     }
     assert s["checkpoint"] == "F-A@0"
     assert s["feature_label"] == "Foo Feature"
     assert s["op_count"] == len(s["op_ids"]) > 0
+    assert isinstance(s["words"], list)  # per-chapter captured words (intent-ledger P1 zoom)
 
 
 def test_cross_feature_theme_reports_both_features_with_correct_tier(tmp_path, monkeypatch):
