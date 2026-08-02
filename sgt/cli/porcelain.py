@@ -242,6 +242,16 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
         print('  --as names the feature a save lands in; nothing was saved, so nothing to name.')
 
     plan = _fold_plan_matches(repo)
+    # Drain the residual (intent-ledger P1): a save is when new work lands, so this is the beat to
+    # retire any stated-but-never-landed intent the save (or its plan confirmations) fulfilled, and
+    # to age out stale ones -- so `sgt log --summary`'s "what needs attention" stays honest without
+    # an open/done queue to groom. Guarded like every intent side-effect: it must never fail a save.
+    if saved:
+        try:
+            from sgt.intent.rationale import auto_retire_open
+            auto_retire_open(repo)
+        except Exception:  # noqa: BLE001 -- draining the residual is subordinate to the save
+            pass
     words = _echo_words(repo, message, plan) if saved else None
     return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,
                         message=message, features=features, renamed=renamed)

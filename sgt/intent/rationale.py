@@ -66,13 +66,19 @@ def _rationale_id(subject_ops: list[str], reason: str | None, actor: str,
 
 def record_rationale(repo: str | Path, *, subject: list[dict], reason: str | None, actor: str,
                      evidence: list[str], confirmed: bool = False, open: bool = False,
-                     predicted_fp: str | None = None, relations: list[dict] | None = None,
+                     predicted_fp: str | None = None, predicted_symbols: list[str] | None = None,
+                     relations: list[dict] | None = None,
                      ts: float | None = None, recorded_by: str = "reflector") -> str | None:
     """Write one rationale record. `subject` is a list of `{op, sha, fp}` anchors (empty for an
     `open` unfulfilled-intent record). Idempotent by (subject ops, reason, actor); returns the id
     (fresh or existing), or `None` when there is nothing to say (no subject and not an open record).
     Does not overwrite an existing id -- a correction supersedes via a new record, never a mutation
-    (append-only, so a future committed-tier merge stays a conflict-free union)."""
+    (append-only, so a future committed-tier merge stays a conflict-free union).
+
+    `predicted_symbols` (open records only) stores the step's predicted footprint *symbols*, not
+    just the `predicted_fp` digest -- overlap-retire (`auto_retire_open`) needs the symbols to test
+    coverage against what later landed; a digest can only be equality-checked, so an open record
+    without this field can be aged out but never overlap-retired."""
     subject_ops = [s["op"] for s in subject]
     relations = relations or []
     if not subject_ops and not open and not relations:
@@ -83,7 +89,8 @@ def record_rationale(repo: str | Path, *, subject: list[dict], reason: str | Non
         if rid in store:
             return rid
         store[rid] = {
-            "id": rid, "subject": subject, "predicted_fp": predicted_fp, "open": open,
+            "id": rid, "subject": subject, "predicted_fp": predicted_fp,
+            "predicted_symbols": list(predicted_symbols or []), "open": open,
             "reason": reason, "actor": actor, "confirmed": confirmed,
             "evidence": list(evidence), "relations": list(relations),
             "ts": time.time() if ts is None else ts,
@@ -159,24 +166,91 @@ def reflect_open_intents(repo: str | Path, session_id: str) -> list[str]:
         predicted = step.get("predicted_footprint") or []
         rid = record_rationale(
             repo, subject=[], reason=reason, actor="human", evidence=evidence,
-            open=True, predicted_fp=_fp_digest(predicted) if predicted else None)
+            open=True, predicted_fp=_fp_digest(predicted) if predicted else None,
+            predicted_symbols=list(predicted))
         if rid:
             out.append(rid)
     return out
 
 
-def retire_open(repo: str | Path, rid: str, reason: str = "marked done") -> str | None:
-    """Retire an open intent (`sgt intent done`): write a closing record that supersedes it, so it
-    leaves the open surface. `None` if `rid` is not a *live* open intent (unknown, not open, or
-    already retired) -- so a second retire is a no-op. The open record is kept as history
-    (append-only); only its standing changes."""
+def retire_open(repo: str | Path, rid: str, reason: str = "marked done",
+                recorded_by: str = "user") -> str | None:
+    """Retire an open intent: write a closing record that supersedes it, so it leaves the open
+    surface. `None` if `rid` is not a *live* open intent (unknown, not open, or already retired) --
+    so a second retire is a no-op. The open record is kept as history (append-only); only its
+    standing changes. `recorded_by` distinguishes a human close (`sgt intent done`, the default
+    "user") from an automatic drain (`auto_retire_open`, "reflector")."""
     if rid not in {r["id"] for r in open_intents(repo)}:
         return None
     # actor "human", same vocabulary as turns/reflection (never "user"); `recorded_by` carries
     # the writer distinction.
     return record_rationale(repo, subject=[], reason=reason, actor="human", evidence=[],
                             open=False, relations=[{"type": "supersedes", "target": rid}],
-                            recorded_by="user")
+                            recorded_by=recorded_by)
+
+
+def _live_footprint_symbols(repo: str | Path) -> set[str]:
+    """The symbols live at the current ideal's frontier -- the "what exists now" overlap-retire
+    tests a stated-but-never-landed intent's predicted symbols against. A symbol is live when its
+    frontier tip's after-version is not `BOTTOM` (the same liveness test `covered_paths` and the
+    selection verbs use). Empty (never an error) on an unmined/empty repo."""
+    from sgt.core import lens, opindex, order
+    from sgt.core.op import is_bottom
+
+    ops = opindex.index_ops(repo)
+    ideal = lens.current_ideal(repo)
+    by_id = {op.id: op for op in ops}
+    return {
+        sym for sym, tip in order.frontier(ideal.op_ids, ops).items()
+        if tip in by_id and not is_bottom(by_id[tip].footprint[sym][1])
+    }
+
+
+def auto_retire_open(repo: str | Path, *, max_age_days: float = 30.0,
+                     now: float | None = None) -> list[str]:
+    """Drain the residual automatically, so an open intent never lingers unactionable and there is
+    no open/done queue to groom (intent-ledger P1, design §3.4). Two mechanisms, run at the save
+    beat (where new work lands), each writing a superseding record so the open leaves the "needs
+    attention" surface while its history is kept:
+
+    - **overlap-retire (fulfilled):** every one of the intent's predicted symbols is now live in the
+      ideal, so the thing it stated exists -- later work landed it, inside a plan or out. Requires
+      *full* coverage deliberately: a partial match is too weak a signal to silently close a stated
+      intent, and the residual honesty (§3.4) is worth an occasional un-retired item over a
+      wrong-retired one. The residual risk is a step that *modifies* a pre-existing symbol: its
+      symbol was already live, so overlap can't see the specific change, and the intent may retire a
+      beat early -- an accepted heuristic cost (the record is kept; a human can still read it).
+      Symbol matching is the path-suffix-lenient `_symbol_matches` (the planner names
+      `storage.py::add`, the miner stores `pkg/storage.py::add`). An intent with no
+      `predicted_symbols` (an older record, or a fallback decomposition that predicted nothing)
+      cannot be judged this way and is left to age.
+    - **age-retire (stale):** an open intent older than `max_age_days` is retired unambiguously --
+      a stated intention no one has acted on in a month is not "what needs attention" anymore.
+
+    Returns the retired ids. A pure no-op (no reads beyond the store) when nothing is open."""
+    import time
+
+    now = time.time() if now is None else now
+    opens = open_intents(repo)
+    if not opens:
+        return []
+    live = _live_footprint_symbols(repo)
+    retired: list[str] = []
+    for r in opens:
+        preds = r.get("predicted_symbols") or []
+        fulfilled = bool(preds) and bool(live) and all(
+            any(_symbol_matches(p, m) for m in live) for p in preds
+        )
+        aged = (now - r.get("ts", now)) > max_age_days * 86400
+        if fulfilled:
+            if retire_open(repo, r["id"], reason="landed (footprint overlap)",
+                           recorded_by="reflector"):
+                retired.append(r["id"])
+        elif aged:
+            if retire_open(repo, r["id"], reason="aged out (stale intent)",
+                           recorded_by="reflector"):
+                retired.append(r["id"])
+    return retired
 
 
 def edit_rationale(repo: str | Path, rid_prefix: str, reason: str) -> str | None:
