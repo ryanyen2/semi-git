@@ -1,10 +1,20 @@
 # Intent ledger v3: ops-anchored rationale from conversation evidence (2026-07-31)
 
-Status: proposed, design-level. v1 (conversation-first capture) and v2 (ops-anchored
-reflection, pre-review) are in git history at this path. v3 incorporates a four-lens
-review pass (adversarial / coherence / feasibility / scope — record in §8). Literature
-grounding: `allinone.md` (six-query sweep, 2026-07-31). Code grounding: `main` @ d1b57a2;
-all anchors below were verified against the tree by the feasibility review.
+Status: proposed, design-level — **partially superseded (2026-08-02)** by
+`2026-08-01-001-the-alignment-pipeline.md` v2: that doc replaces §6's M1/M2/M3 milestone
+structure, dissolves M3(a) into a staged alignment pipeline (not a fallback ladder), kills the
+"intent ledger" noun and the `sgt intent` management surface (dispositions in its §4), and
+extends the §4.2 record schema (numeric `confidence`, `signals`, `aligner_version`;
+re-scoring supersedes rather than reusing a content-address — the id excludes score fields, so
+identity-reuse would silently no-op). §4.1 capture, §4.2's anchors/liveness design, and
+`sgt_recall` (kept, now with an explicit confidence-floor contract) survive as built. One
+prediction landed since writing: the Phase-1.3 `MINER_VERSION` bump happened (3→4, `9c40ded`),
+exercising exactly the sha+fp rebind rule §4.2-D1 mandated. v1 (conversation-first capture) and
+v2 (ops-anchored reflection, pre-review) are in git history at this path. v3 incorporates a
+four-lens review pass (adversarial / coherence / feasibility / scope — record in §8). Literature
+grounding: `allinone.md` (six-query sweep, 2026-07-31) — superseded in depth by the 2026-08-02
+three-track literature pass internalized in the alignment-pipeline doc §7. Code grounding:
+`main` @ d1b57a2; all anchors below were verified against the tree by the feasibility review.
 
 **v2 → v3 in one paragraph.** The review found two missing designs and one oversized
 surface. Missing: (a) rationale anchored to op ids that are *scheduled* to churn —
@@ -296,8 +306,11 @@ reflection trigger for reverts.
   recorded reason (5 ops)".
 - **`sgt intent open`**: open-intent records with predicted footprints; `sgt intent done`
   retires.
-- **MCP `sgt_recall`** (beside `sgt_plan_intake`, `server.py:235`): input = planned
-  footprint / features. Walk: the features themselves + one hop over `feature_edges`
+- **MCP `sgt_recall`** (beside `sgt_plan_intake`, `server.py:235`) — *2026-08-02: kept through
+  the alignment-pipeline consolidation, with one contract addition: it serves confirmed/key-
+  contained records and align-region edges above a confidence floor only, so mid-confidence
+  inferred alignments never reach an agent as constraint testimony (alignment-pipeline doc §3.4)*:
+  input = planned footprint / features. Walk: the features themselves + one hop over `feature_edges`
   (the existing *fused* rollup, `tree.py:602` — accepted v1 tradeoff: path/co-commit
   glue admits some irrelevant neighbors; a structural-only rollup is a later
   optimization, feasibility F4 decision made explicit) + op `requires` chains. Output:
@@ -364,7 +377,13 @@ reflection trigger for reverts.
 | Unfulfilled work resurfacing | `open: true` records; overlap-retire; `sgt intent done` | Occasional nagging about finished work |
 | Teammate receives rationale they can't rebuild | Stated model: testimony, not projection; badges + `recorded_by` always shown | Humans anchor on reason text; badges mitigate, don't cure (§8-P2) |
 
-## 6. Milestones (three, each gated)
+## 6. Milestones (three, each gated) — **superseded by the alignment-pipeline doc §5 (P1–P5)**
+
+> 2026-08-02: M1's data survives (its surface dies per that doc's §4 kill list); M2 is split —
+> committed-tier promotion keeps the Phase-1.2 gate (now that doc's P5), while recall shipped in
+> M1 and stays; M3(a) dissolves into the staged pipeline's adjudication stage (P4, gated only on
+> its own misattribution evaluation — decoupled from sharing); M3(b) becomes Learn-point 1 (P3).
+> Kept below unedited as the historical record the gates were defined against.
 
 - **M1 — validate the bet, entirely local. [SHIPPED 2026-07-31, all slices]** Zero-burden
   turn capture (plan intake + session task, save-message harvest, `UserPromptSubmit` hook —
