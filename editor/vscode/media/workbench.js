@@ -265,6 +265,7 @@ function computeSegmentLayout(map, grid, segments, opts) {
           firstIndex: seg.first_index, lastIndex: seg.last_index,
           subBins: [...bins.entries()].sort((a, b) => a[0] - b[0]),
           isFuture: seg.first_index > frontier,
+          words: seg.words || [],  // the chapter's captured words (intent-ledger P1 zoom)
         });
       }
     }
@@ -978,6 +979,10 @@ function episodeRailLayout(epView) {
       // `<title>` child of the rect (not attrs.title) to actually show on hover.
       const tip = `${car.label}\n${car.tier}` +
         (car.source === "fallback" ? "" : ` · ${car.source}`) +
+        // The chapter in the user's own words on hover (intent-ledger P1): the words captured for
+        // its commits, up to two. `sgt feature why <sha>` carries the full text + resume handle.
+        ((car.words && car.words.length)
+          ? "\n" + car.words.slice(0, 2).map((w) => `“${w}”`).join("\n") : "") +
         `\nRewind: sgt revert ${car.checkpoint}`;
       wrap.appendChild(mk("rect", {
         x, y: barY, width: w, height: GANTT.barH, rx: 3,

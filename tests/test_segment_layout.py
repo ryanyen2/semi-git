@@ -59,12 +59,12 @@ def _grid(*specs):
 
 
 def _seg(feature_id, seg_index, op_ids, first_index, last_index,
-         label=None, tier="co-changed", source="fallback"):
+         label=None, tier="co-changed", source="fallback", words=None):
     return {"feature_id": feature_id, "seg_index": seg_index,
             "checkpoint": f"{feature_id}@{seg_index}", "intent": label or f"seg {seg_index}",
             "rationale": "", "op_ids": list(op_ids), "op_count": len(op_ids),
             "commit_shas": [], "first_index": first_index, "last_index": last_index,
-            "novelty": 0.0, "tier": tier, "source": source}
+            "novelty": 0.0, "tier": tier, "source": source, "words": words or []}
 
 
 def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
@@ -77,6 +77,16 @@ def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
     assert [c["label"] for c in cars] == ["first", "second"]
     assert cars[0]["checkpoint"] == "A@0" and cars[0]["opCount"] == 2
     assert cars[0]["tier"] == "co-changed" and cars[0]["source"] == "fallback"
+
+
+def test_cars_carry_captured_words():
+    """The VSCode chunk-car carries a chapter's captured words (intent-ledger P1), parallel to the
+    terminal layout, so the extension can surface 'the history in my own words' on hover."""
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _grid(("A", 0))
+    segs = [_seg("A", 0, ["o0"], 0, 0, words=["remove all completed tasks"])]
+    car = _run(m, hist, segs)["laneById"]["A"]["cars"][0]
+    assert car["words"] == ["remove all completed tasks"]
 
 
 def test_sub_bins_group_a_cars_ops_by_commit_index():
