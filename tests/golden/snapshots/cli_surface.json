@@ -474,7 +474,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"saved\": true,\n  \"commit\": \"<witness-sha>\",\n  \"ops\": 33\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"saved\": true,\n  \"commit\": \"<witness-sha>\",\n  \"ops\": 33,\n  \"words\": \"add new_file\"\n}\n"
     },
     "text": {
       "argv": [
