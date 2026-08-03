@@ -15,6 +15,7 @@ import {
   IntentView,
   MapNode,
   MapView,
+  NowView,
   PlanView,
   ProposalView,
   SavePreviewView,
@@ -43,6 +44,8 @@ export class Store {
   private sessionsCache: SessionsView | undefined;
   private intentCache: IntentView | undefined;
   private intentInFlight: Promise<IntentView> | undefined;
+  private nowCache: NowView | undefined;
+  private nowInFlight: Promise<NowView> | undefined;
   private proposalCache = new Map<string, ProposalView>();
   private foldCache = new Map<string, FoldView>(); // bounded LRU of recent frontier folds (see foldAt)
   // Bumped once per invalidate(). Every coalesced fetch captures it before shelling out and
@@ -247,6 +250,28 @@ export class Store {
     return this.intentInFlight;
   }
 
+  // The state-of-actions view (`sgt.api.now_view`), cached and invalidated off the same
+  // `.sgt/**/*.json` watcher as the rest -- the activity feed and save preview both write under
+  // `.sgt/`, so an agent edit (via the PostToolUse hook) or a save refreshes the Now tree live.
+  // Shares the in-flight promise so the several tree sections don't each fire their own `sgt now`.
+  async nowView(force = false): Promise<NowView> {
+    if (this.nowCache && !force) return this.nowCache;
+    if (!this.nowInFlight || force) {
+      const gen = this.generation;
+      const p: Promise<NowView> = this.sgt
+        .nowView()
+        .then((v) => {
+          if (gen === this.generation) this.nowCache = v;
+          return v;
+        })
+        .finally(() => {
+          if (this.nowInFlight === p) this.nowInFlight = undefined;
+        });
+      this.nowInFlight = p;
+    }
+    return this.nowInFlight;
+  }
+
   async sessionsView(force = false): Promise<SessionsView> {
     if (!this.sessionsCache || force) {
       this.sessionsCache = await this.sgt.sessionsView();
@@ -313,6 +338,8 @@ export class Store {
     this.sessionsCache = undefined;
     this.intentCache = undefined;
     this.intentInFlight = undefined;
+    this.nowCache = undefined;
+    this.nowInFlight = undefined;
     this.proposalCache.clear();
     this.foldCache.clear();
     this._onDidChange.fire();
