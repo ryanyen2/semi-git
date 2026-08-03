@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import os
 
+import pytest
+
 from sgt.cli import main
 from sgt.core.lens import current_ideal, get
 from sgt.lens import map as lensmap
@@ -282,3 +284,43 @@ def test_revert_handle_shaped_miss_exits_2_without_the_llm(tmp_path, capsys, mon
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] is False and out["candidates"] == []
     assert current_ideal(repo).op_ids == before          # nothing applied
+
+
+# -- revert by NL resolves against the intent ledger's reasons *before* the LLM (M3, plan U8) -------
+# A prose target with no OPENAI_API_KEY used to error ("could not resolve ... set OPENAI_API_KEY").
+# Now it first matches the phrase against the ledger's captured reasons (M1's topic tokenizer) and
+# reverts that record's subject op-set deterministically -- the LLM rung is only a last resort.
+
+
+def test_revert_by_nl_resolves_via_the_intent_ledger_without_the_llm(tmp_path, capsys, monkeypatch):
+    from sgt.intent import rationale
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    _no_llm(monkeypatch)  # if the ledger rung works, the LLM rung is never reached
+
+    op_id = sorted(current_ideal(repo).op_ids)[-1]  # a real, revertible op in the ideal
+    rationale.record_rationale(
+        repo, subject=rationale._subject_for(repo, [op_id]),
+        reason="added the retry backoff loop", actor="human", evidence=[])
+
+    before = current_ideal(repo).op_ids
+    rc = _in(repo, ["revert", "drop the retry backoff", "--json"])  # prose, no numbered/hex/symbol match
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] and op_id in out["removed"]           # resolved to the ledgered op and reverted it
+    assert current_ideal(repo).op_ids < before
+
+
+def test_revert_by_nl_with_no_ledger_match_still_reaches_the_llm_rung(tmp_path, capsys, monkeypatch):
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    from sgt.cli import ideal_edit
+
+    def _sentinel(*a, **k):
+        raise AssertionError("REACHED_LLM_RUNG")
+
+    monkeypatch.setattr(ideal_edit, "_resolve_via_intent", _sentinel)
+    # No rationale recorded -> nothing for the ledger rung to match -> it must fall through to the LLM.
+    with pytest.raises(AssertionError, match="REACHED_LLM_RUNG"):
+        _in(repo, ["revert", "some unrelated phrase nobody captured", "--json"])

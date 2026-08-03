@@ -219,9 +219,10 @@ def _kernel_edit_verb(
     `sgt.core.verbs.apply` path as a single-op revert/restore, since both produce the same
     `VerbPreview` shape.
 
-    Once every deterministic rung above is exhausted (single-op plan refused and `resolve_feature`
-    found no feature either), the target falls to the NL rung (`_resolve_via_intent`, plan
-    U8/U13's fallback ladder's last step)."""
+    Once every symbol/feature rung above is exhausted (single-op plan refused and `resolve_feature`
+    found no feature either), the target falls to two NL rungs in order: first the deterministic
+    ledger rung (`_resolve_via_ledger` -- match the phrase against captured intent reasons, offline),
+    then the LLM rung (`_resolve_via_intent`, plan U8/U13's fallback ladder's last step)."""
     from sgt.core import verbs
     from sgt.core.lens import get
 
@@ -291,6 +292,9 @@ def _kernel_edit_verb(
                 focus_fid = resolved_feature[1]
                 preview = plan_feature(repo, target)
             else:
+                ledgered = _resolve_via_ledger(repo, cmd, target, emit, as_json, yes)
+                if ledgered is not None:
+                    return ledgered
                 return _resolve_via_intent(repo, cmd, target, as_json, yes)
 
     if cmd == "restore" and preview.ok and not preview.added and "::" in target:
@@ -480,6 +484,56 @@ def _plan_for(verb: str, repo: str, ref: str, kind: str = ""):
         plan_feature = lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
         return plan_feature(repo, ref)
     return plan_single(repo, ref)
+
+
+def _resolve_via_ledger(repo: str, cmd: str, target: str, emit: bool, as_json: bool, yes: bool) -> int | None:
+    """The deterministic NL rung, tried *before* the LLM (plan U8): match the prose `target` against
+    the intent ledger's captured `reason` texts (M1's topic tokenizer, typo-tolerant) and revert the
+    best-matching record's subject op-set -- so "drop the retry logic" resolves offline once the
+    ledger holds a reason mentioning retry, no `OPENAI_API_KEY` needed.
+
+    Revert-only: a reason indexes the op-set that *landed* it, which is what `revert` removes; there
+    is no op-set counterpart for `restore` (the same reason the `@`/`:` checkpoint branch is
+    revert-only). Returns an exit code when it resolved and emitted, or `None` to fall through to the
+    LLM rung -- for `restore`, an empty target phrase, no ledgered reason overlapping the phrase, an
+    ambiguous tie between records, or a matched record whose op-set no longer re-plans cleanly."""
+    if cmd != "revert":
+        return None
+    from sgt.core import verbs
+    from sgt.intent import align, rationale
+
+    phrase = set(align._content_words(target))
+    if not phrase:
+        return None
+    recs = list(rationale.load_rationale(repo).values())
+    dead = rationale._superseded_ids(recs)
+    scored: list[tuple[int, float, dict]] = []
+    for r in recs:  # the live, landed reasons -- mirror recall's filter (skip superseded/open/reasonless)
+        if r["id"] in dead or r.get("open") or not r.get("reason"):
+            continue
+        score = align.topic_overlap(phrase, align._content_words(r["reason"]))
+        if score:
+            scored.append((score, r["ts"], r))
+    if not scored:
+        return None
+    scored.sort(key=lambda sr: (-sr[0], -sr[1]))  # strongest overlap, then most recent
+    best = scored[0][0]
+    if len([s for s in scored if s[0] == best]) > 1:
+        return None  # a tie is genuinely ambiguous -- let the LLM rung disambiguate rather than guess
+    rec = scored[0][2]
+    op_ids = frozenset(s["op"] for s in rec.get("subject", []))
+    if not op_ids:
+        return None  # an open/unlanded intent has no op-set to revert
+    preview = verbs.plan_revert_op_set(repo, target, op_ids)
+    if not preview.ok or not preview.removed:
+        return None  # already reverted, or not in the ideal -- fall through rather than a no-op "success"
+
+    from sgt.lens.tree import load as load_tree
+
+    op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
+    focus_fid = next((op_leaf[o] for o in op_ids if o in op_leaf), None)
+    return _emit_verb_result(repo, preview, emit, as_json,
+                             extra={"resolved_from": rec["reason"]}, yes=yes, focus_fid=focus_fid)
 
 
 def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bool) -> int:

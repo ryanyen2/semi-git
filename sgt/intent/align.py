@@ -548,6 +548,19 @@ def _topic_matches(words: set[str], op_tokens: frozenset[str]) -> bool:
     return False
 
 
+def topic_overlap(words: set[str], other: frozenset[str]) -> int:
+    """How many of `words` match some token in `other`, exactly or by typo-close difflib ratio -- the
+    graded form of `_topic_matches`. Used to rank one text's content words against another's (e.g. a
+    revert phrase against the intent ledger's captured reasons)."""
+    n = 0
+    for w in words:
+        if w in other or any(
+            difflib.SequenceMatcher(None, w, t).ratio() >= _TOPIC_CLOSE_RATIO for t in other
+        ):
+            n += 1
+    return n
+
+
 @dataclass(frozen=True)
 class CandidateOp:
     """The minimal view of an op stage D blocks over: its id, its footprint symbol ids, and its mint

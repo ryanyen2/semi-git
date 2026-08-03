@@ -42,6 +42,18 @@ def test_intake_falls_back_to_paragraph_split_without_a_numbered_list(tmp_path, 
     assert len(session.steps) == 2
 
 
+def test_intake_splits_a_bulleted_list_without_a_client(tmp_path, monkeypatch):
+    # a realistic newline-only plan is bulleted, not numbered; it must not collapse to one step.
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    plan_text = "- Add the greeting method\n- Extract formatting into a helper\n* Wire it into the CLI\n"
+
+    session = plan_mod.intake(tmp_path, plan_text, session_id="s1")
+
+    assert [s["title"] for s in session.steps] == [
+        "Add the greeting method", "Extract formatting into a helper", "Wire it into the CLI",
+    ]
+
+
 # -- hollow lifecycle (R18: off-chain, never a phantom fork) ----------------------------------------
 
 def test_intake_mints_a_hollow_per_step_off_chain(tmp_path, monkeypatch):

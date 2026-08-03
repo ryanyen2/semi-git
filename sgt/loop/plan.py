@@ -141,17 +141,20 @@ def _llm_decompose(repo: Path, plan_text: str) -> PlanDecomposition | None:
         return None
 
 
-_NUMBERED_RE = re.compile(r"^\s*\d+[.)]\s+")
+# a list item: numbered (`1.`/`1)`) or bulleted (`-`/`*`/`•`), the marker followed by whitespace so
+# a horizontal rule (`---`) or inline emphasis (`*bold*`) is not mistaken for one.
+_LIST_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+")
 
 
 def _fallback_decompose(plan_text: str) -> PlanDecomposition:
-    """Deterministic, offline, free: one step per numbered-list line, or per blank-line-separated
-    paragraph when there's no numbered list. Predicted footprint/feature are always empty --
-    there's nothing to guess them from without an LLM."""
+    """Deterministic, offline, free: one step per list line (numbered or bulleted), or per
+    blank-line-separated paragraph when there's no list. Predicted footprint/feature are always
+    empty -- there's nothing to guess them from without an LLM."""
     lines = plan_text.splitlines()
-    numbered = [_NUMBERED_RE.sub("", line).strip() for line in lines if _NUMBERED_RE.match(line)]
-    if numbered:
-        titles = numbered
+    listed = [_LIST_RE.sub("", line).strip() for line in lines if _LIST_RE.match(line)]
+    listed = [t for t in listed if t]
+    if listed:
+        titles = listed
     else:
         titles = [p.strip().replace("\n", " ") for p in re.split(r"\n\s*\n", plan_text) if p.strip()]
     if not titles and plan_text.strip():
