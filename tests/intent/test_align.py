@@ -528,3 +528,56 @@ def test_align_symbol_anchor_still_aligns_at_the_same_posterior():
              + [Candidate(f"n{i}", _NOISE_PATTERN) for i in range(32)])
     scored = {s.op_id: s for s in align_candidates(cands)}
     assert scored["m0"].region == ALIGN
+
+
+# --- topic: a second aboutness signal for vague/typo prose (Milestone 1) ---------------------
+#
+# Real prompts are vague ("make the search better", "fix the serch thing") and never name a symbol.
+# `symbol` (exact qualname match) can't fire on prose, so vague-but-topical asks had no aboutness
+# anchor. `topic` matches a prompt's *content words* against a change's derived tokens (file
+# basename + identifier subwords), typo-tolerant -- giving those asks a real anchor. It joins
+# `symbol` in `_ABOUTNESS`, so a topic-anchored pair may ALIGN while contentless co-occurrence
+# ({temporal,requires}) still caps at REVIEW.
+_TOPIC_ANCHORED = frozenset({"topic", "temporal"})
+
+
+def test_content_words_keeps_topical_tokens_drops_fillers_and_shorts():
+    from sgt.intent.align import _content_words
+    w = _content_words("make the search better, fix the bug")
+    assert "search" in w          # a real topic word survives
+    assert "make" not in w        # dev-filler stopword dropped
+    assert "better" not in w      # dev-filler stopword dropped
+    assert "bug" not in w         # too short (< 4) -- contentless, correctly no anchor
+    assert "the" not in w         # too short
+
+
+def test_topic_generator_fires_on_a_bare_content_word_with_a_typo():
+    # "keword" is a typo of the identifier subword "keyword" in `search.py::find_by_keyword`.
+    # (topic anchors on the identifier, not the file basename -- so a filename typo would NOT fire.)
+    ep = Episode(turns=[0], symbols=set(), words={"keword"}, start_ts=0.0, end_ts=0.0)
+    ops = [CandidateOp("o1", frozenset({"bm/search.py::find_by_keyword"}))]
+    cands = {c.op_id: c for c in align.generate_candidates(ep, ops)}
+    assert "topic" in cands["o1"].generators
+
+
+def test_topic_generator_ignores_the_file_basename():
+    # A bare filename mention ("search") is NOT a topic anchor: the basename is shared by every
+    # symbol in the file, so it would blast the whole file. Only identifier subwords anchor.
+    ep = Episode(turns=[0], symbols=set(), words={"search"}, start_ts=0.0, end_ts=0.0)
+    ops = [CandidateOp("o1", frozenset({"bm/search.py::find_by_keyword"}))]
+    assert align.generate_candidates(ep, ops) == []
+
+
+def test_topic_generator_silent_when_no_content_word_overlaps():
+    # A contentless prompt earns no topic anchor and (no temporal here) surfaces nothing.
+    ep = Episode(turns=[0], symbols=set(), words={"faster"}, start_ts=0.0, end_ts=0.0)
+    ops = [CandidateOp("o1", frozenset({"bm/search.py::find_by_keyword"}))]
+    assert align.generate_candidates(ep, ops) == []
+
+
+def test_align_topic_anchor_is_a_valid_aboutness_anchor():
+    # topic joins symbol in _ABOUTNESS: a topic-anchored would-be ALIGN is allowed through the gate.
+    cands = ([Candidate(f"m{i}", _TOPIC_ANCHORED) for i in range(8)]
+             + [Candidate(f"n{i}", _NOISE_PATTERN) for i in range(32)])
+    scored = {s.op_id: s for s in align_candidates(cands)}
+    assert scored["m0"].region == ALIGN

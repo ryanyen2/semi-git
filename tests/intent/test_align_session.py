@@ -87,6 +87,18 @@ def test_non_human_chat_turns_are_not_aligned(tmp_path):
     assert kept == []
 
 
+def test_episodes_carry_prose_content_words(tmp_path):
+    """Stage C's episodes carry the prompt's content words (Milestone 1: the topic anchor), so a
+    vague/typo'd ask that names no symbol can still match a change by aboutness."""
+    init_store(tmp_path)
+    turns.record_turn(tmp_path, key="s1", key_kind="chat", actor="human", channel="hook",
+                      text="the search feels off, make it better", ts=1.0)
+    episodes, _ = align_session._episodes_for_session(tmp_path, "s1")
+    assert len(episodes) == 1
+    assert "search" in episodes[0].words   # a real topic word is captured
+    assert "make" not in episodes[0].words  # dev-filler stopword is not
+
+
 # -- the orchestrator end to end ------------------------------------------------------------------
 
 
@@ -113,7 +125,9 @@ def test_clean_single_concern_writes_one_align_record(tmp_path):
     assert r["actor"] == "human" and r["confirmed"] is False
     assert r["aligner_version"] == "1"
     assert 0.75 <= r["confidence"] <= 1.0  # ALIGN region, by construction
-    assert {s["name"] for s in r["signals"]} == {"symbol", "temporal"}
+    # `topic` also fires: the prose "fetch_page"/"fetcher.py" tokenizes to fetch/page/fetcher,
+    # which match the op's derived tokens -- a second aboutness anchor alongside the exact `symbol`.
+    assert {s["name"] for s in r["signals"]} == {"symbol", "temporal", "topic"}
     assert r["recorded_by"] == "aligner"
 
 

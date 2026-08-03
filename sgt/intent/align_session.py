@@ -97,7 +97,8 @@ def _episodes_from_records(records: list[dict]) -> tuple[list[align.Episode], li
         resolved = align.resolve_references(text)
         seg_turns.append(align.SegTurn(
             symbols=resolved.symbols, ts=float(rec["ts"]),
-            is_repair=(typed.kind == align.TURN_CORRECTION)))
+            is_repair=(typed.kind == align.TURN_CORRECTION),
+            words=tuple(align._content_words(text))))
         kept.append(rec)
     return align.segment_episodes(seg_turns), kept
 

@@ -26,9 +26,10 @@ features here hit 92% on the analogous query-reformulation task (Huang, CIKM'09)
 
 from __future__ import annotations
 
+import difflib
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Bumps when the A--F stage logic changes shape enough that older records' scores are no longer
 # comparable -- stamped onto every alignment record (`aligner_version`) so a re-score can tell which
@@ -379,16 +380,19 @@ class Episode:
     symbols: set[str]
     start_ts: float
     end_ts: float
+    words: set[str] = field(default_factory=set)  # content words (topic anchor), union of the turns'
 
 
 @dataclass
 class SegTurn:
     """One turn as stage C sees it: its resolved reference symbols (from stage B), its timestamp,
-    and whether stage A typed it a repair (a repair re-attaches, it never opens a new episode)."""
+    and whether stage A typed it a repair (a repair re-attaches, it never opens a new episode).
+    `words` are the turn's content words (stage D's `topic` generator matches them against ops)."""
 
     symbols: tuple[str, ...]
     ts: float
     is_repair: bool = False
+    words: tuple[str, ...] = ()
 
 
 def _overlap_coefficient(a: set[str], b: set[str]) -> float:
@@ -410,11 +414,13 @@ def segment_episodes(turns: list[SegTurn]) -> list[Episode]:
     episodes: list[Episode] = []
 
     def _open(i: int, t: SegTurn) -> None:
-        episodes.append(Episode(turns=[i], symbols=set(t.symbols), start_ts=t.ts, end_ts=t.ts))
+        episodes.append(Episode(turns=[i], symbols=set(t.symbols), start_ts=t.ts, end_ts=t.ts,
+                                words=set(t.words)))
 
     def _attach(e: Episode, i: int, t: SegTurn) -> None:
         e.turns.append(i)
         e.symbols |= set(t.symbols)
+        e.words |= set(t.words)
         e.end_ts = t.ts
 
     def _best_overlap(syms: set[str]):
@@ -474,6 +480,73 @@ from sgt.intent.rationale import _symbol_matches
 
 _TEMPORAL_PAD_S = _CONTINUITY_HORIZON_S  # slack around an episode's span for temporally-adjacent ops
 
+# --- topic generator: aboutness for vague/typo prose -----------------------------------------
+#
+# `symbol` fires only on an exact qualname mention, which real prompts never contain ("make the
+# search better", not "add find_by_keyword to search.py"). `topic` is the softer aboutness signal:
+# a prompt's content words matched against a change's identifier subwords (what it is *named* --
+# NOT the file basename, which a whole file shares), tolerant of typos via `difflib` close-match.
+# It joins `symbol` in `_ABOUTNESS` so a
+# topic-anchored pair is *eligible* to ALIGN -- the scorer still decides whether it actually does,
+# so a coincidental common word earns low FS weight and stays in REVIEW, not a false ALIGN.
+
+_TOPIC_MIN_LEN = 4  # tokens shorter than this carry no topic signal ("bug", "the", "fix")
+_TOPIC_CLOSE_RATIO = 0.85  # difflib ratio for a typo to count as a match ("keword" ~ "keyword")
+# Dev-filler words that survive the length floor but denote no code entity -- dropped from both
+# sides so they never anchor. Deliberately conservative: only clearly non-topical prose/verbs.
+_TOPIC_STOP = frozenset({
+    "make", "fix", "add", "update", "change", "changed", "better", "thing", "things", "stuff",
+    "code", "work", "works", "working", "need", "want", "please", "should", "could", "would",
+    "this", "that", "these", "those", "with", "your", "just", "some", "then", "here", "there",
+    "when", "what", "have", "been", "also", "like", "really", "actually", "kinda", "yeah",
+    "okay", "great", "thanks", "good", "into", "from", "about", "more", "less", "very", "still",
+    "feels", "feel", "seems", "look", "looks", "does", "doing", "done", "them", "they",
+})
+
+
+def _topic_tokens(raw: str) -> frozenset[str]:
+    """Split `raw` into lowercased alpha tokens, breaking camelCase and any non-alpha (so `_`, `.`,
+    `/`, `::` all separate), then keep the ones long enough and not dev-filler. Shared by both
+    sides -- the prompt's prose and an op's footprint symbols -- so they tokenize identically."""
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", raw)  # camelCase boundary -> space
+    toks = re.findall(r"[A-Za-z]+", spaced)
+    return frozenset(t.lower() for t in toks
+                     if len(t) >= _TOPIC_MIN_LEN and t.lower() not in _TOPIC_STOP)
+
+
+def _content_words(text: str) -> frozenset[str]:
+    """The content words of a prompt turn (its `topic` firing set): normalize (lowercase/strip) then
+    tokenize. Contentless asks ("fix the bug") reduce to the empty set -- no topic anchor."""
+    return _topic_tokens(_normalize(text))
+
+
+def _op_tokens(symbols: frozenset[str]) -> frozenset[str]:
+    """An op's topic vocabulary, from the *identifier* (qualname) subwords of its footprint symbol
+    ids (`bm/search.py::find_by_keyword` -> find/keyword). The file-path segment is deliberately
+    dropped: a basename ("search") is shared by every symbol in the file, so anchoring on it would
+    blast a whole file's ops from one vague mention -- the identifier is what a change is *named*,
+    and that is the discriminating topical evidence. The miner's pseudo-symbols (`__residue__`,
+    `__anchor__`, the `\\x00HEAD\\x00` sentinel) carry no human topic, so they're stripped first."""
+    quals: list[str] = []
+    for s in symbols:
+        for marker in ("__residue__", "__anchor__"):
+            s = s.replace(marker, "")
+        s = s.replace("\x00HEAD\x00", "").replace("\x00", "")
+        quals.extend(s.split("::")[1:])  # drop the file-path segment; keep the qualname(s) only
+    return _topic_tokens(" ".join(quals))
+
+
+def _topic_matches(words: set[str], op_tokens: frozenset[str]) -> bool:
+    """Does any prompt content word match an op token, exactly or by typo-close difflib ratio?"""
+    if not words or not op_tokens:
+        return False
+    for w in words:
+        if w in op_tokens:
+            return True
+        if any(difflib.SequenceMatcher(None, w, t).ratio() >= _TOPIC_CLOSE_RATIO for t in op_tokens):
+            return True
+    return False
+
 
 @dataclass(frozen=True)
 class CandidateOp:
@@ -505,10 +578,13 @@ def generate_candidates(episode: Episode, ops: list[CandidateOp], *,
     fires -- precision is E/F's job, not this stage's."""
     gens: dict[str, set[str]] = {}
     ep_syms = set(episode.symbols)
+    ep_words = set(episode.words)
     lo, hi = episode.start_ts - temporal_pad_s, episode.end_ts + temporal_pad_s
     for op in ops:
         if ep_syms and any(_symbol_matches(q, m) for q in ep_syms for m in op.symbols):
             gens.setdefault(op.id, set()).add("symbol")
+        if ep_words and _topic_matches(ep_words, _op_tokens(op.symbols)):
+            gens.setdefault(op.id, set()).add("topic")
         if op.ts is not None and lo <= op.ts <= hi:
             gens.setdefault(op.id, set()).add("temporal")
     # requires-hop: expand from the directly-surfaced seed set (one hop, both directions handled by
@@ -681,6 +757,11 @@ def decide(p: float, *, align_bar: float = _COLD_ALIGN_BAR,
     return REVIEW
 
 
+# The aboutness signals: generators that constitute evidence the user's words *referred to* the op
+# (not merely co-occurred with it). At least one must fire for a pair to ALIGN (see the gate below).
+_ABOUTNESS = frozenset({"symbol", "topic"})
+
+
 def align_candidates(candidates: list[Candidate], *, concern_count: int = 1,
                      rel: Reliabilities | None = None, align_bar: float = _COLD_ALIGN_BAR,
                      no_align_bar: float = _COLD_NO_ALIGN_BAR) -> list[ScoredCandidate]:
@@ -694,12 +775,13 @@ def align_candidates(candidates: list[Candidate], *, concern_count: int = 1,
         s = score_pair(c.generators, rel, concern_count=concern_count)
         p = posterior(c.generators, rel, concern_count=concern_count)
         region = decide(p, align_bar=align_bar, no_align_bar=no_align_bar)
-        # A symbol anchor is NECESSARY for ALIGN: the user's words must have named a symbol the op
-        # touched. Temporal/requires corroboration alone can score arbitrarily high once EM labels
-        # `requires` discriminating (a requires-hop off a temporal-only seed in a dense fresh repo),
-        # but a symbol-less episode pointed at nothing -- writing an edge would fabricate intent. It
-        # caps at REVIEW (feeds G's queue) rather than ALIGN (writes an edge).
-        if region == ALIGN and "symbol" not in c.generators:
+        # An aboutness anchor is NECESSARY for ALIGN: the user's words must have referred to the op,
+        # by an exact symbol mention (`symbol`) or a topical content-word match (`topic`).
+        # Temporal/requires corroboration alone can score arbitrarily high once EM labels `requires`
+        # discriminating (a requires-hop off a temporal-only seed in a dense fresh repo), but an
+        # episode that referred to nothing pointed at nothing -- writing an edge would fabricate
+        # intent. Such a pair caps at REVIEW (feeds the review pile / G's queue) rather than ALIGN.
+        if region == ALIGN and not (c.generators & _ABOUTNESS):
             region = REVIEW
         out.append(ScoredCandidate(op_id=c.op_id, score=s, posterior=p, region=region))
     return out
