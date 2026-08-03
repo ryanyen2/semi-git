@@ -16,6 +16,7 @@ import {
   FulfillResult,
   GridView,
   HistoryView,
+  IntentView,
   LandCandidateResult,
   LandReport,
   MapView,
@@ -258,6 +259,13 @@ export class Sgt {
 
   forksView(): Promise<ForksView> {
     return this.json<ForksView>(["advanced", "forks", "--json"]);
+  }
+
+  // The intent overlay's one canonical projection (`sgt.api.intent_view`): per-commit atoms with
+  // their `feature_span` and live intent-ledger `rationale`. A read, mine-on-contact only. The
+  // hover joins an atom's rationale to a feature by `feature_span` membership.
+  intentView(): Promise<IntentView> {
+    return this.json<IntentView>(["intent", "list", "--json"]);
   }
 
   forkDetail(symbol: string): Promise<ForkDetailView> {

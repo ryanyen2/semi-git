@@ -283,6 +283,45 @@ def test_echo_words_prefers_message_then_plan_then_none():
     assert _echo_words("unused", None, {"auto_confirmed": []}) is None
 
 
+def test_aligned_why_surfaces_a_live_ledgered_reason_and_dedupes_the_words(tmp_path):
+    """The save's aligned *why* (M4): the ledger's landed reasons for the saved ops, minus any reason
+    identical to the words already echoed (so the line adds signal, never repeats the words line)."""
+    from sgt.cli.porcelain import _aligned_why
+    from sgt.intent import rationale
+
+    rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
+                               reason="wanted retry backoff on the fetcher", actor="human", evidence=[])
+    rationale.record_rationale(tmp_path, subject=[{"op": "o2", "sha": None, "fp": "f"}],
+                               reason="add quux helper", actor="human", evidence=[])  # == words -> dropped
+
+    why = _aligned_why(str(tmp_path), frozenset({"o1", "o2"}), words="add quux helper")
+    assert why == "wanted retry backoff on the fetcher"
+
+
+def test_aligned_why_ignores_other_ops_and_open_intents(tmp_path):
+    """Only reasons for ops in *this* save count; open (never-landed) intents have no landed op and
+    are skipped -- so a save whose ops the ledger says nothing about yields None (the common case)."""
+    from sgt.cli.porcelain import _aligned_why
+    from sgt.intent import rationale
+
+    rationale.record_rationale(tmp_path, subject=[{"op": "other", "sha": None, "fp": "f"}],
+                               reason="unrelated change", actor="human", evidence=[])
+    rationale.record_rationale(tmp_path, subject=[], reason="stated but never landed",
+                               actor="human", evidence=[], open=True)
+    assert _aligned_why(str(tmp_path), frozenset({"o1"}), words=None) is None
+
+
+def test_render_save_prints_and_json_carries_the_why_aligned_line(tmp_path, capsys):
+    """The why line is distinct from the words line on both output paths."""
+    from sgt.cli.porcelain import _render_save
+
+    assert _render_save(False, True, "abc1234def", 1, None, False, why="wanted retry backoff") == 0
+    assert "why (aligned): wanted retry backoff" in capsys.readouterr().out
+
+    assert _render_save(True, True, "abc1234def", 1, None, False, why="wanted retry backoff") == 0
+    assert json.loads(capsys.readouterr().out)["why"] == "wanted retry backoff"
+
+
 def test_save_message_feeds_the_segment_labeler_via_the_local_turn(tmp_path):
     """Goal-1 label feed (M1), kept local: the `-m` message is harvested as a turn keyed by the
     witness sha, and the segment labeler's `label_prompt_for` resolves it from there -- so the

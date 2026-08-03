@@ -466,9 +466,20 @@ export interface IntentSegment {
   source: "llm" | "fallback";
 }
 
+// One commit-keyed `IntentAtom` from `sgt.api.intent_view` (only the fields the hover reads are
+// typed; the projection carries more -- prompt, session ids, tier). `feature_span` is the set of
+// feature ids the atom's ops land in; `rationale` is the live intent-ledger reason(s) for those
+// ops -- the "why" the hover joins to a feature.
+export interface IntentAtom {
+  commit_sha: string;
+  subject: string;
+  feature_span: string[];
+  rationale: string[];
+}
+
 export interface IntentView {
   themes: unknown[];
-  atoms: unknown[];
+  atoms: IntentAtom[];
   segments: IntentSegment[];
 }
 
