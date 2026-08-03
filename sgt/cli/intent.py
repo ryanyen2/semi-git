@@ -60,6 +60,8 @@ def _intent(
 
     if sub == "record":  # the hook entry point: capture only, no mining -- must stay fast
         return _record(repo, as_json)
+    if sub == "activity":  # the PostToolUse hook entry point: append one tool event, no mining
+        return _activity(repo, as_json)
     if sub not in ("list", "show", "build", "revert", "relabel", "open", "done", "edit", "review"):
         print(_USAGE)
         return 2
@@ -178,6 +180,33 @@ def _record(repo: str, as_json: bool) -> int:
             if chat and text:
                 from sgt.intent.turns import record_turn
                 record_turn(repo, key=chat, key_kind="chat", actor="human", channel="hook", text=text)
+    except Exception:  # noqa: BLE001 -- never break the hook chain
+        pass
+    if as_json:
+        return _emit_json({"ok": True})
+    return 0
+
+
+def _activity(repo: str, as_json: bool) -> int:
+    """`sgt intent activity`: the zero-burden entry a Claude Code `PostToolUse` hook pipes into on
+    every Edit/Write. Reads the hook's JSON payload from stdin (`{"tool_name", "tool_input":
+    {"file_path"}, "session_id"}`) and appends one row to the local activity feed. Like `_record`
+    it is silent and fast -- no mining, exit 0 even on empty input -- so a capture hiccup never
+    disturbs the agent's turn."""
+    import json as _json
+    import sys
+    from pathlib import Path
+
+    try:
+        # Same opt-in guard as `_record`: only feed a repo that ran `sgt init`, never mint `.sgt/`
+        # into whatever cwd the hook happened to fire in.
+        if (Path(repo) / ".sgt").is_dir():
+            payload = _json.loads(sys.stdin.read() or "{}")
+            tool = payload.get("tool_name") or ""
+            file = (payload.get("tool_input") or {}).get("file_path")
+            if tool:
+                from sgt.intent.activity import record_activity
+                record_activity(repo, tool=tool, file=file, session_id=payload.get("session_id"))
     except Exception:  # noqa: BLE001 -- never break the hook chain
         pass
     if as_json:

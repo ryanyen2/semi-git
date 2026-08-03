@@ -26,12 +26,17 @@ def _cmd_init(args) -> int:
     except (ValueError, GitError) as ex:
         return _emit_json({"error": str(ex)}) if args.as_json else _fail(str(ex))
     hooked = _install_prompt_hook(args.path)
+    activity_hooked = _install_activity_hook(args.path)
     if args.as_json:
-        return _emit_json({"ok": True, "path": args.path, "horizon": args.horizon, "hook": hooked})
+        return _emit_json({"ok": True, "path": args.path, "horizon": args.horizon,
+                           "hook": hooked, "activity_hook": activity_hooked})
     print(f"✓ initialized sgt kernel in {args.path} (.sgt/ + git)")
     if hooked:
         print("✓ installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts "
               "become local intent evidence; remove the UserPromptSubmit entry to opt out")
+    if activity_hooked:
+        print("✓ installed Claude Code edit hook -- each Edit/Write becomes a live activity event "
+              "`sgt now` surfaces; remove the PostToolUse entry to opt out")
     return 0
 
 
@@ -63,6 +68,41 @@ def _install_prompt_hook(path: str) -> bool:
             exe = Path(found) if found else None
         cmd = f'"{exe.resolve()}" intent record' if exe else "sgt intent record"
         entries.append({"hooks": [{"type": "command", "command": cmd}]})
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+        return True
+    except Exception:  # noqa: BLE001 -- capture setup must never fail an init
+        return False
+
+
+def _install_activity_hook(path: str) -> bool:
+    """The live-activity companion to `_install_prompt_hook`: merge a `PostToolUse` hook into the
+    repo's `.claude/settings.local.json` so every Edit/Write/MultiEdit Claude Code runs is appended
+    to the local activity feed via `sgt intent activity` -- the "what the agent is doing right now"
+    signal `sgt now` surfaces. `matcher` is a pipe-separated regex over tool names (Claude Code's
+    PostToolUse schema), the one structural difference from the prompt hook (which is not tool-
+    scoped). Same absolute-path resolution, idempotency (substring check on `intent activity`), and
+    best-effort contract; preserves any existing hooks. Returns whether the hook is (now) installed."""
+    import json
+    import shutil
+    import sys
+    from pathlib import Path
+
+    try:
+        p = Path(path) / ".claude" / "settings.local.json"
+        settings = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+        hooks = settings.setdefault("hooks", {})
+        entries = hooks.setdefault("PostToolUse", [])
+        if any("intent activity" in (h.get("command") or "")
+               for e in entries for h in e.get("hooks", [])):
+            return True  # already installed
+        exe = Path(sys.argv[0])
+        if exe.name != "sgt":  # e.g. invoked via pytest or `python -m`
+            found = shutil.which("sgt")
+            exe = Path(found) if found else None
+        cmd = f'"{exe.resolve()}" intent activity' if exe else "sgt intent activity"
+        entries.append({"matcher": "Edit|Write|MultiEdit",
+                        "hooks": [{"type": "command", "command": cmd}]})
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
         return True

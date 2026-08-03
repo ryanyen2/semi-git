@@ -118,7 +118,8 @@ def capture_cli_surface(root: str) -> dict:
     # `sgt log --summary`/`--tree`, `blame` demoted under `advanced`; state/history/fsck stay rare
     # under `advanced` (U2/KTD2). `checkpoint`/`drift` folded into `save` (U12).
     for key, argv in (
-        ("log", ["log"]), ("state", ["advanced", "state"]), ("status", ["log", "--summary"]),
+        ("log", ["log"]), ("now", ["now"]), ("state", ["advanced", "state"]),
+        ("status", ["log", "--summary"]),
         ("map", ["log", "--tree"]), ("history", ["advanced", "history"]),
         ("fsck", ["advanced", "fsck"]),
     ):
