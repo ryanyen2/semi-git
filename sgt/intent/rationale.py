@@ -68,12 +68,21 @@ def record_rationale(repo: str | Path, *, subject: list[dict], reason: str | Non
                      evidence: list[str], confirmed: bool = False, open: bool = False,
                      predicted_fp: str | None = None, predicted_symbols: list[str] | None = None,
                      relations: list[dict] | None = None,
+                     confidence: float | None = None, signals: list[dict] | None = None,
+                     aligner_version: str | None = None,
                      ts: float | None = None, recorded_by: str = "reflector") -> str | None:
     """Write one rationale record. `subject` is a list of `{op, sha, fp}` anchors (empty for an
     `open` unfulfilled-intent record). Idempotent by (subject ops, reason, actor); returns the id
     (fresh or existing), or `None` when there is nothing to say (no subject and not an open record).
     Does not overwrite an existing id -- a correction supersedes via a new record, never a mutation
     (append-only, so a future committed-tier merge stays a conflict-free union).
+
+    `confidence`/`signals`/`aligner_version` are the alignment-pipeline score extension (design
+    §3.2): a calibrated weight, the signals that fired (`[{name, value}]`), and the pipeline version
+    that produced them. They are deliberately NOT part of `_rationale_id` -- the same claim re-scored
+    is the same claim -- so a re-score of an existing record no-ops. The aligner therefore re-scores
+    by writing a fresh record with a `supersedes` relation (relations ARE identity), never a
+    mutation. `confirmed` stays orthogonal: the human-endorsement pin, not a confidence threshold.
 
     `predicted_symbols` (open records only) stores the step's predicted footprint *symbols*, not
     just the `predicted_fp` digest -- overlap-retire (`auto_retire_open`) needs the symbols to test
@@ -93,6 +102,8 @@ def record_rationale(repo: str | Path, *, subject: list[dict], reason: str | Non
             "predicted_symbols": list(predicted_symbols or []), "open": open,
             "reason": reason, "actor": actor, "confirmed": confirmed,
             "evidence": list(evidence), "relations": list(relations),
+            "confidence": confidence, "signals": list(signals or []),
+            "aligner_version": aligner_version,
             "ts": time.time() if ts is None else ts,
             "recorded_by": recorded_by, "reflector_version": REFLECTOR_VERSION,
         }
