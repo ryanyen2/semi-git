@@ -490,6 +490,35 @@ def test_intent_record_is_a_no_op_outside_an_sgt_repo(tmp_path, monkeypatch):
     assert not (tmp_path / ".sgt").exists()
 
 
+def test_intent_activity_appends_a_tool_event_from_hook_stdin(tmp_path, monkeypatch):
+    """`sgt intent activity` is the `PostToolUse` hook sink: the payload's tool + edited file land
+    as one row in the local activity feed, and the command stays silent (exit 0)."""
+    import io
+
+    from sgt.intent.activity import load_activity
+
+    _seed(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO(
+        '{"session_id": "cs-9", "tool_name": "Edit", "tool_input": {"file_path": "a.py"}}'))
+    assert _in(tmp_path, ["intent", "activity"]) == 0
+    feed = load_activity(tmp_path)
+    assert len(feed) == 1
+    assert feed[0]["tool"] == "Edit" and feed[0]["file"] == "a.py" and feed[0]["session_id"] == "cs-9"
+
+
+def test_intent_activity_is_a_no_op_outside_an_sgt_repo(tmp_path, monkeypatch):
+    """Like `record`, the PostToolUse hook fires wherever Claude Code runs; without a prior
+    `sgt init` (no `.sgt/`) the sink exits 0 AND writes nothing."""
+    import io
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.setattr("sys.stdin", io.StringIO(
+        '{"tool_name": "Write", "tool_input": {"file_path": "a.py"}}'))
+    assert _in(tmp_path, ["intent", "activity"]) == 0
+    assert not (tmp_path / ".sgt").exists()
+
+
 def test_prompt_hook_installs_with_an_absolute_sgt_path(tmp_path, monkeypatch):
     """The hook command must carry the running `sgt`'s absolute path: hooks execute in whatever
     shell Claude Code has, and a bare `sgt` silently no-ops when the venv is not on that PATH
@@ -513,3 +542,30 @@ def test_prompt_hook_installs_with_an_absolute_sgt_path(tmp_path, monkeypatch):
     assert _install_prompt_hook(str(tmp_path)) is True  # idempotent: no duplicate entry
     settings = json.loads((tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
     assert len(settings["hooks"]["UserPromptSubmit"]) == 1
+
+
+def test_activity_hook_installs_a_posttooluse_matcher_and_preserves_the_prompt_hook(tmp_path, monkeypatch):
+    """The PostToolUse edit hook installs alongside the prompt hook (both live in the same
+    settings): it carries the Edit|Write|MultiEdit matcher and the absolute-path `intent activity`
+    command, is idempotent, and never clobbers an existing UserPromptSubmit entry."""
+    import shutil
+
+    from sgt.cli.init import _install_activity_hook, _install_prompt_hook
+
+    fake = tmp_path / "bin" / "sgt"
+    fake.parent.mkdir()
+    fake.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda name: str(fake))
+
+    assert _install_prompt_hook(str(tmp_path)) is True
+    assert _install_activity_hook(str(tmp_path)) is True
+    settings = json.loads((tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    (entry,) = settings["hooks"]["PostToolUse"]
+    assert entry["matcher"] == "Edit|Write|MultiEdit"
+    (hook,) = entry["hooks"]
+    assert hook["command"] == f'"{fake.resolve()}" intent activity'
+    assert len(settings["hooks"]["UserPromptSubmit"]) == 1  # prompt hook preserved
+
+    assert _install_activity_hook(str(tmp_path)) is True  # idempotent: no duplicate entry
+    settings = json.loads((tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    assert len(settings["hooks"]["PostToolUse"]) == 1

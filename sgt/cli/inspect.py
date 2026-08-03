@@ -56,6 +56,8 @@ def register(subs, parent) -> None:
     cp = subs.add_parser("compose", parents=[parent])
     _add_view_flags(cp)
     cp.set_defaults(func=_cmd_compose)
+    nw = subs.add_parser("now", parents=[parent])
+    nw.set_defaults(func=_cmd_now)
     pf = subs.add_parser("fsck", parents=[parent])
     pf.add_argument("--tree", action="store_true",
                     help="compare code(current_ideal) against the HEAD tree (R2)")
@@ -118,6 +120,10 @@ def _cmd_history(args) -> int:
 
 def _cmd_compose(args) -> int:
     return _compose(".", args.as_json, args.full)
+
+
+def _cmd_now(args) -> int:
+    return _now(".", args.as_json)
 
 
 def _cmd_fold(args) -> int:
@@ -630,6 +636,42 @@ def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
         print(f"  {len(view['sessions']['sessions'])} active session(s)")
     if view["proposals"]:
         print(f"  {len(view['proposals'])} open proposal(s)")
+    return 0
+
+
+def _now(repo: str, as_json: bool = False) -> int:
+    """`sgt now [--json]`: the state-of-actions surface (`api.now_view`) -- what's in flight, what
+    needs you, what was recently done, and the single recommended next action. The daily "where am
+    I, what next" orient. Mine-on-contact first so the in-flight preview reflects the working tree
+    (R9); `--json` returns the canonical view."""
+    from sgt.api import now_view
+    from sgt.core.lens import get
+
+    get(repo)
+    view = now_view(repo)
+    if as_json:
+        return _emit_json(view)
+
+    inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
+    if inflight["total_op_count"]:
+        extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
+        print(f"in flight   {inflight['total_op_count']} op(s) across "
+              f"{len(inflight['affected'])} feature(s){extra}")
+    parts = []
+    if needs["forks"]:
+        parts.append(f"{len(needs['forks'])} open fork(s)")
+    if needs["stalled_plans"]:
+        parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
+    if needs["reviews"]:
+        parts.append(f"{len(needs['reviews'])} review(s)")
+    if parts:
+        print("needs you   " + " · ".join(parts))
+    if view["recently_done"]:
+        print("recently done")
+        for c in view["recently_done"]:
+            print(f"    {c['sha'][:8]}  {c['subject']}")
+    cmd = f"   ({action['command']})" if action["command"] else ""
+    print(f"→ next      {action['label']}{cmd}")
     return 0
 
 

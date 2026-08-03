@@ -54,8 +54,10 @@ _VERBS = {
     # modes, no longer verbs; blame/edit/commit/fulfill demoted under `advanced`)
     "save", "log", "undo", "revert", "restore", "resolve",
     # navigation + inspection (daily). `intent` stays top-level: its subcommands (list/show/build)
-    # don't map to a `log` mode and it was deliberately re-promoted (c4f9966/KTD8).
-    "switch", "diff", "intent",
+    # don't map to a `log` mode and it was deliberately re-promoted (c4f9966/KTD8). `now` is the
+    # state-of-actions orient (what's in flight / needs you / next), a fast assembler distinct from
+    # `log`'s history grid.
+    "switch", "diff", "intent", "now",
     # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
     "plan",
     # groupings
@@ -200,6 +202,7 @@ def _help() -> int:
         "sgt — semantic operation-ideal version control\n\n"
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
         '  sgt save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature(s) they landed in\n'
+        "  sgt now [--json]            where am I, what next — in flight / needs you / recently done\n"
         "  sgt log [--json]            what you did, newest first — the one inspection surface:\n"
         "                              --map (feature lanes over time) · --tree (feature tree) ·\n"
         "                              --summary (what needs attention) · --refresh (reflect new edits)\n"
