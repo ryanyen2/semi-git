@@ -608,6 +608,66 @@ def _bold(s: str, *, color: bool) -> str:
     return f"{_BOLD}{s}{_RESET}" if color else s
 
 
+def _chips(r: dict, labels: dict, *, color: bool, chip_width: int = 22, budget: int = 60) -> str:
+    """A save's feature attribution: each touched feature's label in its own hue, main feature first
+    then densest-first. Each label is ellipsized to `chip_width` and the run is capped at `budget`
+    visible columns, features past it collapsing into a dim `+N` -- without this cap a save touching
+    many features overruns the terminal and wraps (the Phase-4 wrapping fix). Shared by the lane rail
+    and the lane-less save list so both bound identically."""
+    feats = r.get("features") or {}
+    order_ = sorted(feats, key=lambda f: (f != r["feature"], -feats[f], f))
+    parts: list[str] = []
+    used = 0
+    for f in order_:
+        label = _ellipsize(labels.get(f, f or "(unattributed)"), chip_width)
+        w = len(label) + (3 if parts else 0)  # 3 = visible width of the " · " separator
+        if parts and used + w > budget:
+            break
+        parts.append(_paint(color_for(f or ""), label, color=color))
+        used += w
+    extra = len(order_) - len(parts)
+    if extra > 0:
+        parts.append(_dim(f"+{extra}", color=color))
+    return _dim(" · ", color=color).join(parts) if parts else _dim("(unattributed)", color=color)
+
+
+def render_save_list_lines(
+    map_view: dict,
+    grid_view: dict,
+    *,
+    selected: str | None = None,
+    color: bool = True,
+    label_width: int = 48,
+    max_rows: int = 40,
+) -> list[str]:
+    """The default `sgt log` (Phase 4): a lane-less "what I did, in order" -- one row per save,
+    newest on top, `cN  sha  subject  features`. Drops `render_rail_lines`' recurring-feature lane
+    column (the `" ".join(cell(...))` art that overruns the terminal past ~20 lanes and wraps),
+    keeping the same episode rows and width-bounded feature chips. The lane rail stays available
+    under `sgt log --rail` for readers who want the recurring-feature threads."""
+    ep = episodes(map_view, grid_view)
+    layout = episode_rail_layout(ep)
+    labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
+    rows = layout["rows"]
+
+    n_ep = len(rows)
+    n_feat = len({r["feature"] for r in rows if r["feature"] is not None})
+    lines = [_bold(f" {n_ep} save(s)  ·  {n_feat} feature(s)   (newest on top)", color=color), ""]
+    shown = rows[:max_rows]
+    pos_w = max((len(f"c{r['index']}") for r in shown), default=2)
+    for r in shown:
+        pos = _dim(f"c{r['index']}".rjust(pos_w), color=color)
+        sha = _dim((r["sha"] or "")[:7], color=color)
+        subj = _ellipsize((r["subject"] or "").replace("\n", " "), label_width).ljust(label_width)
+        subj_s = _bold(subj, color=color) if r["feature"] == selected else subj
+        lines.append(f" {pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
+    if n_ep > len(shown):
+        lines.append("")
+        lines.append(_dim(f" {n_ep - len(shown)} older save(s) folded (newest {len(shown)} shown)",
+                          color=color))
+    return lines
+
+
 def _render_car(car: dict, width: int, hexc: str, *, color: bool, is_big: bool = False) -> str:
     """One checkpoint "car": tier brackets around a `@n` digit and a density-shaded body. Module
     level so both the timeline rail (`render_graph_lines`) and the feedforward preview
@@ -1361,19 +1421,6 @@ def render_rail_lines(
                      "(bold ● = the save's main one), │ = a feature carried across"))
     lines.append("")
 
-    def chips(r: dict) -> str:
-        """The save's feature attribution: each touched feature's full label in its own hue, main
-        feature first, densest-first after that -- the save -> feature mapping, on every row."""
-        feats = r.get("features") or {}
-        order_ = sorted(feats, key=lambda f: (f != r["feature"], -feats[f], f))
-        shown_f = order_[:3]
-        parts = [_paint(color_for(f or ""), labels.get(f, f or "(unattributed)"), color=color)
-                 for f in shown_f]
-        extra = len(order_) - len(shown_f)
-        if extra > 0:
-            parts.append(dim(f"+{extra}"))
-        return dim(" · ").join(parts) if parts else dim("(unattributed)")
-
     shown = rows[:max_rows]
     # Plan ghosts (pending steps, no code yet): a ◇ row above the newest save on its predicted
     # lane; a prediction whose feature has no rail lane (it dominates no save) drops to an
@@ -1400,7 +1447,7 @@ def render_rail_lines(
         sha = dim((r["sha"] or "")[:7])
         subj = _ellipsize((r["subject"] or "").replace("\n", " "), label_width).ljust(label_width)
         subj_s = bold(subj) if r["feature"] == selected else subj
-        lines.append(f" {rail}  {pos} {sha}  {subj_s}  {chips(r)}")
+        lines.append(f" {rail}  {pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
 
     if n_ep > len(shown):
         lines.append("")
