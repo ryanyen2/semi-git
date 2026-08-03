@@ -26,7 +26,8 @@ _USAGE = ("usage: sgt intent list [--json] | "
           "sgt intent build [--recut <feature>] [--json] | "
           "sgt intent relabel <feature@n> \"<intent>\" [--json] | "
           "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--json] | "
-          "sgt intent open [--json] | sgt intent done <id> [--json]\n"
+          "sgt intent open [--json] | sgt intent done <id> [--json] | "
+          "sgt intent review [confirm|reject <id>] [--json]\n"
           "  (rewind a single checkpoint with `sgt revert <feature>@<n>`)")
 
 
@@ -59,7 +60,7 @@ def _intent(
 
     if sub == "record":  # the hook entry point: capture only, no mining -- must stay fast
         return _record(repo, as_json)
-    if sub not in ("list", "show", "build", "revert", "relabel", "open", "done", "edit"):
+    if sub not in ("list", "show", "build", "revert", "relabel", "open", "done", "edit", "review"):
         print(_USAGE)
         return 2
     get(repo)  # mine-on-contact so the overlay reflects current reality (R9)
@@ -69,6 +70,8 @@ def _intent(
         return _build(repo, as_json, recut)
     if sub == "open":  # the intent-ledger unfulfilled-intent surface (M1), not the overlay
         return _open(repo, as_json)
+    if sub == "review":  # the alignment review queue: pending pairs, confirm/reject to decide
+        return _review(repo, target, rest, as_json)
     if target is None:
         print(_USAGE)
         return 2
@@ -102,6 +105,56 @@ def _open(repo: str, as_json: bool) -> int:
     for r in opens:
         print(f"  [{r['id'][:12]}] {r['reason'] or '(unknown)'}")
     print("\n  retire one with `sgt intent done <id>`")
+    return 0
+
+
+def _review(repo: str, action: str | None, rest: list[str] | None, as_json: bool) -> int:
+    """`sgt intent review`: the alignment review queue -- (op, episode) pairs the aligner scored but
+    could not confidently ALIGN, held for a human call rather than guessed into the ledger. No action
+    lists the pending pile; `confirm <id>` promotes one into the ledger (human-endorsed), `reject
+    <id>` drops it. Both decisions are tombstoned, so a later re-align never re-surfaces them."""
+    from sgt.intent import review
+
+    if action in ("confirm", "reject"):
+        rid = (rest or [None])[0]
+        if not rid:
+            return _fail_json(f"usage: sgt intent review {action} <id>", as_json)
+        # Accept the short 12-char id the list prints, resolving it to the full id.
+        full = next((k for k in review.load_review(repo) if k.startswith(rid)), rid)
+        if action == "confirm":
+            promoted = review.confirm_review(repo, full)
+            if promoted is None:
+                return _fail_json(f"no pending review {rid!r} to confirm", as_json)
+            if as_json:
+                return _emit_json({"confirmed": full, "rationale": promoted})
+            print(f"confirmed {rid} -> ledger rationale {promoted[:14]} (recorded as your intent)")
+            return 0
+        if not review.reject_review(repo, full):
+            return _fail_json(f"no pending review {rid!r} to reject", as_json)
+        if as_json:
+            return _emit_json({"rejected": full})
+        print(f"rejected {rid} -- dropped from the queue")
+        return 0
+    if action is not None:
+        return _fail_json(f"unknown review action {action!r} (use confirm|reject <id>)", as_json)
+
+    pending = review.pending_reviews(repo)
+    if as_json:
+        return _emit_json({"pending": [
+            {"id": r["id"], "reason": r["reason"], "posterior": r["posterior"],
+             "signals": [s["name"] for s in r["signals"]],
+             "subject": [s["op"] for s in r["subject"]], "ts": r["ts"]}
+            for r in pending
+        ]})
+    if not pending:
+        print("no pending reviews -- the aligner is confident about everything it has seen")
+        return 0
+    print(f"{len(pending)} pair(s) awaiting review (aligner unsure -- your call):")
+    for r in pending:
+        gens = ", ".join(s["name"] for s in r["signals"]) or "(none)"
+        print(f"  [{r['id'][:12]}] p={r['posterior']:.2f} via {gens}")
+        print(f"      why: {r['reason'] or '(unknown)'}")
+    print("\n  confirm one with `sgt intent review confirm <id>`, drop with `... reject <id>`")
     return 0
 
 

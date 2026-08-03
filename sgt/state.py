@@ -183,6 +183,12 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # surface); the committed, CRDT-merged, liveness-joined team tier is M2, gated on the state-model
     # rework (2026-07-31-001 Phase 1.2). Content-addressed + append-only, so re-reflection is a no-op.
     "intent_rationale": _Artifact(("local", "rationale.json"), committed=False),
+    # local, gitignored alignment review queue (`sgt.intent.review`, alignment-pipeline §3.2-F):
+    # {review-id: record} -- REVIEW-region (op, episode) pairs the aligner could not confidently
+    # ALIGN, held for human adjudication (`sgt intent review`). Kept OUT of intent_rationale so an
+    # unconfirmed guess never leaks into recall()/for_op() (which don't filter by confirmed); a
+    # `--confirm` promotes one into intent_rationale, a `--reject` drops it. Local, never synced.
+    "intent_review": _Artifact(("local", "review.json"), committed=False),
     # local, gitignored record of scratch-tree sessions (`sgt session start`, U30/D5): name ->
     # branch/scratch path/target branch/base op-ids/owning pid/start time. Per-clone, never
     # travels -- a session's scratch tree is a `git worktree` of *this* clone's object store.
