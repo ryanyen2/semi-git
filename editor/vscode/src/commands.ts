@@ -8,7 +8,7 @@ import { ForkResolutionPanel } from "./forkResolution";
 import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
-import { BlameView, EmitView, ProposalChecklistEntry } from "./types";
+import { BlameView, EmitView, NextAction, ProposalChecklistEntry } from "./types";
 import { WorkbenchProvider } from "./workbench";
 
 async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
@@ -275,6 +275,26 @@ export function registerCommands(
     // do NOT append a `-p` prompt -- the user continues the restored conversation by typing.
     const term = vscode.window.createTerminal({ name: "sgt resume" });
     term.sendText(cmd, true);
+    term.show();
+  });
+
+  // The "Now" tree's next-action row. A fork routes to its resolution wizard; anything else with a
+  // recommended command runs it in a terminal (a `claude --resume`, `sgt save`, `sgt intent review`
+  // -- all interactive or worth watching, so a terminal, not a silent shell-out). `clean` (no
+  // command) is a no-op; the row is informational.
+  reg("sgt.runNextAction", (action?: NextAction) => {
+    if (!action) {
+      return;
+    }
+    if (action.kind === "resolve_fork" && action.target) {
+      void vscode.commands.executeCommand("sgt.resolveFork", action.target);
+      return;
+    }
+    if (!action.command) {
+      return;
+    }
+    const term = vscode.window.createTerminal({ name: "sgt next" });
+    term.sendText(action.command, true);
     term.show();
   });
 

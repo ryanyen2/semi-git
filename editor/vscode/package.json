@@ -64,6 +64,7 @@
     },
     "views": {
       "semi-git": [
+        { "id": "sgtNow", "name": "Now", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
         { "id": "sgtFeatures", "name": "Features", "icon": "media/sgt-icon.svg" },
         { "id": "sgtForks", "name": "Forks", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
         { "id": "sgtChanges", "name": "Changes", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
@@ -87,6 +88,7 @@
     ],
     "commands": [
       { "command": "sgt.refresh", "title": "Refresh", "category": "semi-git", "icon": "$(refresh)" },
+      { "command": "sgt.runNextAction", "title": "Run Next Action", "category": "semi-git" },
       { "command": "sgt.toggleBlame", "title": "Toggle Feature Blame", "category": "semi-git" },
       { "command": "sgt.openWorkbench", "title": "Open Composition Workbench", "category": "semi-git", "icon": "$(type-hierarchy)" },
       { "command": "sgt.revealInWorkbench", "title": "Reveal Feature in Workbench", "category": "semi-git" },
@@ -112,6 +114,7 @@
     ],
     "menus": {
       "view/title": [
+        { "command": "sgt.refresh", "when": "view == sgtNow", "group": "navigation" },
         { "command": "sgt.refresh", "when": "view == sgtFeatures", "group": "navigation" },
         { "command": "sgt.refresh", "when": "view == sgtForks", "group": "navigation" },
         { "command": "sgt.refresh", "when": "view == sgtChanges", "group": "navigation" },

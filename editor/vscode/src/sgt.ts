@@ -22,6 +22,7 @@ import {
   MapView,
   MergeResult,
   MoveResult,
+  NowView,
   PlanView,
   ProposalReviewView,
   ProposalView,
@@ -266,6 +267,13 @@ export class Sgt {
   // hover joins an atom's rationale to a feature by `feature_span` membership.
   intentView(): Promise<IntentView> {
     return this.json<IntentView>(["intent", "list", "--json"]);
+  }
+
+  // The state-of-actions surface (`sgt.api.now_view`): in-flight / needs-you / recently-done /
+  // next-action, one thin assembler the Now tree reads. Mine-on-contact (the in-flight preview
+  // reflects the working tree), like the `sgt now` porcelain.
+  nowView(): Promise<NowView> {
+    return this.json<NowView>(["now", "--json"]);
   }
 
   forkDetail(symbol: string): Promise<ForkDetailView> {

@@ -666,3 +666,51 @@ export interface PublishResult {
   gh_output?: string;
   error?: string;
 }
+
+// `sgt now --json` (`sgt.api.now_view`): the "state of actions" the Now tree renders -- what's in
+// flight, what needs me, what was recently done, and the single next action. A thin assembler that
+// deliberately avoids the heavy intent_view; rationale/feature_span stay a drill-down.
+export interface NowInFlightRow {
+  feature_id: string;
+  op_count: number;
+  op_ids: string[];
+}
+
+export interface NowReview {
+  id: string;
+  subject: string;
+  reason: string;
+}
+
+export interface NowStalledPlan {
+  session_id: string;
+  claude_session_id: string | null;
+  pending_count: number;
+  remaining_titles: string[];
+}
+
+export interface NowActivity {
+  seq: number;
+  tool: string;
+  file: string | null;
+  session_id: string | null;
+  ts: number;
+}
+
+// The single "do this next" recommendation as a structured action (not a rendered string): each
+// surface phrases it in its own idiom. `command` is a copy-pasteable shell line, or null (clean,
+// or a fork with no recorded remedy).
+export interface NextAction {
+  kind: "resolve_fork" | "resume_plan" | "save" | "review" | "clean";
+  command: string | null;
+  target: string | null;
+  label: string;
+}
+
+export interface NowView {
+  in_flight: { affected: NowInFlightRow[]; new_work_count: number; total_op_count: number };
+  needs_you: { forks: ForkRecord[]; reviews: NowReview[]; stalled_plans: NowStalledPlan[] };
+  recently_done: HistoryCommit[];
+  context: { turns: { text: string; actor: string; ts: number }[]; activity: NowActivity[] };
+  next_action: NextAction;
+}

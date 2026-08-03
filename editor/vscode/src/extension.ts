@@ -19,6 +19,7 @@ import { ChangesTreeProvider } from "./tree/changesTree";
 import { CompositionsTreeProvider } from "./tree/compositionsTree";
 import { FeaturesTreeProvider } from "./tree/featuresTree";
 import { ForksTreeProvider } from "./tree/forksTree";
+import { NowTreeProvider } from "./tree/nowTree";
 import { WorkbenchProvider } from "./workbench";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -88,17 +89,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  const nowTree = new NowTreeProvider(store);
   const featuresTree = new FeaturesTreeProvider(store);
   const forksTree = new ForksTreeProvider(store);
   const changesTree = new ChangesTreeProvider(store);
   const compositionsTree = new CompositionsTreeProvider(store);
-  context.subscriptions.push(featuresTree, forksTree, changesTree, compositionsTree);
+  context.subscriptions.push(nowTree, featuresTree, forksTree, changesTree, compositionsTree);
 
+  const nowView = vscode.window.createTreeView("sgtNow", { treeDataProvider: nowTree });
   const featuresView = vscode.window.createTreeView("sgtFeatures", { treeDataProvider: featuresTree });
   const forksView = vscode.window.createTreeView("sgtForks", { treeDataProvider: forksTree });
   const changesView = vscode.window.createTreeView("sgtChanges", { treeDataProvider: changesTree });
   const compositionsView = vscode.window.createTreeView("sgtCompositions", { treeDataProvider: compositionsTree });
-  context.subscriptions.push(featuresView, forksView, changesView, compositionsView);
+  context.subscriptions.push(nowView, featuresView, forksView, changesView, compositionsView);
 
   const refreshForksBadge = async () => {
     try {
