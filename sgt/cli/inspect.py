@@ -25,7 +25,7 @@ def register(subs, parent) -> None:
     lmode.add_argument("--tree", action="store_true",
                        help="the feature tree, no time axis")
     lmode.add_argument("--rail", action="store_true",
-                       help=_dep.SUPPRESS)  # the default view; kept as a compat alias
+                       help="the recurring-feature lane rail (one vertical line per feature)")
     lmode.add_argument("--summary", action="store_true",
                        help="files/symbols/features, coverage, oracle, anything needing attention")
     lmode.add_argument("--ops", action="store_true",
@@ -82,13 +82,14 @@ def register(subs, parent) -> None:
 
 
 def _cmd_log(args) -> int:
-    """`sgt log` is the daily inspection surface (KTD9). Bare `sgt log` answers "what did I do":
-    the episode rail, newest save on top. `--map` is the spatial overview (one lane per feature,
-    edit-density positioned on a shared commit-time axis); `--tree`/`--summary` are its sibling
-    projections. `--focus`/`--links`/`--at` are map refinements, so any of them implies `--map`.
-    `--json` returns the
-    canonical view for the mode: `grid_view` (default and `--map` — the rail is a time-major
-    rotation of the same cells), the feature tree (`--tree`), or the status scalars (`--summary`)."""
+    """`sgt log` is the daily inspection surface (KTD9). Bare `sgt log` answers "where am I + what
+    did I do": a compact state block (from `now_view`) atop a lane-less per-save list. `--rail` is
+    the opt-in recurring-feature lane rail (the former default). `--map` is the spatial overview
+    (one lane per feature, edit-density on a shared commit-time axis); `--tree`/`--summary` are its
+    sibling projections. `--focus`/`--links`/`--at` are map refinements, so any of them implies
+    `--map`. `--json` returns the canonical view for the mode: `grid_view` (default, `--map` and
+    `--rail` — all rotations of the same cells), the feature tree (`--tree`), or the status scalars
+    (`--summary`)."""
     if args.ops:  # compat alias; the listed home is `sgt advanced ops`
         return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
     if args.tree:
@@ -100,8 +101,11 @@ def _cmd_log(args) -> int:
         return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
                          refresh=args.refresh, rebuild=args.rebuild, focus=args.focus,
                          links=args.links)
-    return _log_rail(".", as_json=args.as_json, color=not args.no_color,
-                     refresh=args.refresh, rebuild=args.rebuild)
+    if args.rail:
+        return _log_rail(".", as_json=args.as_json, color=not args.no_color,
+                         refresh=args.refresh, rebuild=args.rebuild)
+    return _log_default(".", as_json=args.as_json, color=not args.no_color,
+                        refresh=args.refresh, rebuild=args.rebuild)
 
 
 def _cmd_ops(args) -> int:
@@ -298,6 +302,55 @@ def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: 
     for line in render_rail_lines(mv, gv, color=color, states=states):
         print(line)
     return 0
+
+
+def _log_default(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False,
+                 rebuild: bool = False) -> int:
+    """Bare `sgt log` (Phase 4 default): a compact state block (from `now_view` -- what's in flight,
+    what needs you, the single next action) atop a lane-less per-save list ("where am I + what I
+    did"), the legible replacement for the recurring-feature lane wall (now `sgt log --rail`).
+    `--json` still returns the canonical `grid_view` (R21/C11), byte-identical to the other modes'."""
+    from sgt.api import grid_view
+    from sgt.tui.graph import render_save_list_lines
+
+    mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
+    gv = grid_view(repo)
+    if as_json:
+        return _emit_json(gv)
+    for line in _state_block_lines(repo):
+        print(line)
+    for line in render_save_list_lines(mv, gv, color=color):
+        print(line)
+    return 0
+
+
+def _state_block_lines(repo: str) -> list[str]:
+    """The compact state header bare `sgt log` prints above its save list: in-flight + needs-you +
+    the one recommended next action, read from `api.now_view` (which mines the working tree on
+    contact so in-flight is live, R9). Recently-done is omitted -- the save list below already is
+    that. Plain text (no ANSI), like `sgt now`; the leading space aligns it under the list rows."""
+    from sgt.api import now_view
+
+    view = now_view(repo)
+    inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
+    lines: list[str] = []
+    if inflight["total_op_count"]:
+        extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
+        lines.append(f" in flight   {inflight['total_op_count']} op(s) across "
+                     f"{len(inflight['affected'])} feature(s){extra}")
+    parts = []
+    if needs["forks"]:
+        parts.append(f"{len(needs['forks'])} open fork(s)")
+    if needs["stalled_plans"]:
+        parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
+    if needs["reviews"]:
+        parts.append(f"{len(needs['reviews'])} review(s)")
+    if parts:
+        lines.append(" needs you   " + " · ".join(parts))
+    cmd = f"   ({action['command']})" if action["command"] else ""
+    lines.append(f" → next      {action['label']}{cmd}")
+    lines.append("")
+    return lines
 
 
 def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: bool = False) -> int:

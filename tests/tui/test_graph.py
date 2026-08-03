@@ -18,6 +18,7 @@ from sgt.tui.graph import (
     render_collab_preview_lines,
     render_graph_lines,
     render_rail_lines,
+    render_save_list_lines,
     render_verb_preview_lines,
     resolve_focus_group,
     segment_layout,
@@ -682,6 +683,49 @@ def test_render_graph_shows_a_plan_ghost_chip_at_the_feature_lane_tip():
     grid["ghosts"] = [{"feature_id": "A", "title": "add caching", "known_feature": True}]
     text = "\n".join(render_graph_lines(m, grid, color=False))
     assert "◇ planned: add caching" in text
+
+
+def _wide_grid(n):
+    """A single save touched by `n` features -- the many-chips case that overran the terminal."""
+    return {"commits": [{"index": 0, "sha": "sha0000", "subject": "big save"}],
+            "cells": [{"feature_id": f"f{i}", "commit_index": 0, "op_ids": [f"o{i}"],
+                       "op_count": 1, "kinds": {"add": 1}, "fidelity": "full"} for i in range(n)]}
+
+
+def _wide_map(n):
+    return {"nodes": [{"id": f"f{i}", "label": f"feature-{i}-" + "z" * 40} for i in range(n)]}
+
+
+def test_render_save_list_has_no_lane_column_and_lists_saves_newest_first():
+    m = {"nodes": [{"id": "fa", "label": "Wire"}, {"id": "fb", "label": "Bus"},
+                   {"id": "fc", "label": "RGA"}]}
+    lines = render_save_list_lines(m, _rail_grid(), color=False)
+    text = "\n".join(lines)
+    assert "3 save(s)" in text and "newest on top" in text
+    # the lane art the wall was made of is gone
+    assert "●" not in text and "│" not in text
+    # every save is listed with its commit position, sha, subject and feature chip
+    assert "c2" in text and "add rga" in text and "RGA" in text
+    assert "c0" in text and "add wire" in text and "Wire" in text
+    # newest (c2) renders above oldest (c0)
+    body = [l for l in lines if " sha" in l or "add " in l]
+    assert body.index(next(l for l in body if "add rga" in l)) < \
+           body.index(next(l for l in body if "add wire" in l))
+
+
+def test_render_save_list_bounds_chips_so_a_wide_save_does_not_wrap():
+    lines = render_save_list_lines(_wide_map(6), _wide_grid(6), color=False)
+    row = next(l for l in lines if "big save" in l)
+    assert "…" in row          # a long label was ellipsized to a bounded chip
+    assert "+" in row           # features past the width budget collapsed into a +N counter
+    assert len(row) <= 130      # bounded -- no terminal-overrunning row
+
+
+def test_render_rail_also_bounds_wide_chips():
+    """The wrapping fix applies to the opt-in lane rail too (shared `_chips` budget)."""
+    lines = render_rail_lines(_wide_map(6), _wide_grid(6), color=False)
+    row = next(l for l in lines if "big save" in l)
+    assert "…" in row and "+" in row
 
 
 def test_render_rail_group_focus_hides_out_of_group_plan_ghosts():
