@@ -2184,6 +2184,85 @@ def segments_view(repo) -> list[dict]:
     return _segments_out(repo, op_leaf, tree_result)
 
 
+def _next_action(in_flight: dict, needs_you: dict) -> dict:
+    """The single "do this next" recommendation as a STRUCTURED action (not a rendered string, so
+    each surface phrases it in its own idiom), from a fixed priority ladder: an open fork blocks
+    everything (its two tips are excluded from every ideal), a stalled plan is a resumable thread,
+    then dirty work to save, then guesses to review, else clean. Shape:
+    `{kind, command, target, label}` -- `command` is a copy-pasteable shell line (or `None` when
+    there's nothing to run, e.g. `clean`, or a fork with no recorded remedy)."""
+    forks = needs_you["forks"]
+    if forks:
+        f = forks[0]
+        return {"kind": "resolve_fork", "command": f.get("remedy"), "target": f.get("symbol"),
+                "label": f"resolve fork on {f.get('symbol')}"}
+    stalled = needs_you["stalled_plans"]
+    if stalled:
+        s = stalled[0]
+        csid = s.get("claude_session_id")
+        # There is no `sgt plan resume` verb; a stalled plan is a Claude Code thread the developer
+        # left mid-build, so the resume path is Claude's own `--resume` (plan_view carries the id).
+        return {"kind": "resume_plan", "command": f"claude --resume {csid}" if csid else None,
+                "target": s["session_id"],
+                "label": f"resume stalled plan ({s['pending_count']} step(s) left)"}
+    if in_flight["total_op_count"] > 0:
+        return {"kind": "save", "command": "sgt save", "target": None,
+                "label": f"save {in_flight['total_op_count']} pending op(s)"}
+    reviews = needs_you["reviews"]
+    if reviews:
+        return {"kind": "review", "command": "sgt intent review", "target": None,
+                "label": f"review {len(reviews)} pending alignment(s)"}
+    return {"kind": "clean", "command": None, "target": None, "label": "nothing pending"}
+
+
+def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> dict:
+    """The "state of actions" surface (`sgt now`, the extension's Now tree): one THIN, FAST assembler
+    over child views answering the four questions a developer orienting mid-session has -- what's
+    *in flight*, what *needs me*, what was *recently done*, and what to do *next* -- plus a little
+    *context* (latest human turns + the live agent-action feed). On the hot path (every `sgt log`,
+    every extension refresh), so it deliberately avoids `intent_view` (which decodes op images, ~85%
+    of the store); rationale/feature_span stay a lazy drill-down.
+
+    `include_preview` gates the one mine-on-contact step (`save_preview_view` calls `get(repo)`); the
+    seam ships defaulted-on so a cheaper feed-only tick can be split off later without reshaping
+    callers. Everything else is a pure read of already-mined state."""
+    from sgt.intent import activity as activity_mod
+    from sgt.intent import turns as turns_mod
+    from sgt.intent.review import pending_reviews
+
+    in_flight = (save_preview_view(repo) if include_preview
+                 else {"affected": [], "new_work_count": 0, "total_op_count": 0})
+
+    forks = forks_view(repo)
+    reviews = pending_reviews(repo)
+    stalled = [s for s in plan_view(repo)["sessions"] if s["derived_status"] == "stalled"]
+    needs_you = {
+        "forks": forks["forks"],
+        "reviews": [{"id": r["id"], "subject": r["subject"], "reason": r["reason"]} for r in reviews],
+        "stalled_plans": [
+            {"session_id": s["session_id"], "claude_session_id": s.get("claude_session_id"),
+             "pending_count": s["pending_count"], "remaining_titles": s["remaining_titles"]}
+            for s in stalled
+        ],
+    }
+
+    recently_done = history_view(repo, limit=recent_limit)["latest_commits"]
+
+    turns_all = sorted(turns_mod.load_turns(repo).values(), key=lambda t: t["ts"], reverse=True)
+    context = {
+        "turns": [{"text": t["text"], "actor": t["actor"], "ts": t["ts"]} for t in turns_all[:recent_limit]],
+        "activity": activity_mod.recent_activity(repo, limit=recent_limit),
+    }
+
+    return {
+        "in_flight": in_flight,
+        "needs_you": needs_you,
+        "recently_done": recently_done,
+        "context": context,
+        "next_action": _next_action(in_flight, needs_you),
+    }
+
+
 def compose_view(repo, *, full: bool = False) -> dict:
     """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
     `sessions`/`trust`/`intent`/`save_preview`, the current ideal's oracle verdict, and a lightweight
