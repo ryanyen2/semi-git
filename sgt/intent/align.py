@@ -693,6 +693,13 @@ def align_candidates(candidates: list[Candidate], *, concern_count: int = 1,
     for c in candidates:
         s = score_pair(c.generators, rel, concern_count=concern_count)
         p = posterior(c.generators, rel, concern_count=concern_count)
-        out.append(ScoredCandidate(op_id=c.op_id, score=s, posterior=p,
-                                   region=decide(p, align_bar=align_bar, no_align_bar=no_align_bar)))
+        region = decide(p, align_bar=align_bar, no_align_bar=no_align_bar)
+        # A symbol anchor is NECESSARY for ALIGN: the user's words must have named a symbol the op
+        # touched. Temporal/requires corroboration alone can score arbitrarily high once EM labels
+        # `requires` discriminating (a requires-hop off a temporal-only seed in a dense fresh repo),
+        # but a symbol-less episode pointed at nothing -- writing an edge would fabricate intent. It
+        # caps at REVIEW (feeds G's queue) rather than ALIGN (writes an edge).
+        if region == ALIGN and "symbol" not in c.generators:
+            region = REVIEW
+        out.append(ScoredCandidate(op_id=c.op_id, score=s, posterior=p, region=region))
     return out

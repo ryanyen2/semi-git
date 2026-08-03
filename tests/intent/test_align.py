@@ -23,6 +23,7 @@ from sgt.intent.align import (
     ALIGN,
     NO_ALIGN,
     REVIEW,
+    _COLD_ALIGN_BAR,
     Candidate,
     CandidateOp,
     Episode,
@@ -500,3 +501,30 @@ def test_align_candidates_abstains_under_complexity_pressure():
     clean = {s.op_id: s for s in align_candidates(candidates, concern_count=1)}
     tangled = {s.op_id: s for s in align_candidates(candidates, concern_count=8)}
     assert tangled["m0"].posterior < clean["m0"].posterior
+
+
+# A linguistic anchor (the `symbol` generator: the user's words named a symbol the op touched) is
+# NECESSARY for ALIGN. Corroboration without it -- temporal co-occurrence plus a requires-hop from
+# a temporal-only seed -- can score arbitrarily high once EM labels `requires` discriminating, but a
+# symbol-less episode has nothing the user actually pointed at, so writing an edge would be a
+# fabrication. Such a candidate caps at REVIEW regardless of pool composition.
+_ANCHORLESS_MATCH = frozenset({"requires", "temporal"})  # no symbol
+_ANCHORED_MATCH = frozenset({"requires", "temporal", "symbol"})
+
+
+def test_align_requires_a_symbol_anchor_symbol_less_candidate_caps_at_review():
+    # Pool where `requires` is the minority discriminating signal (the ws2 false-positive shape):
+    # without the gate the symbol-less pattern scores ~0.84 and false-ALIGNs.
+    cands = ([Candidate(f"m{i}", _ANCHORLESS_MATCH) for i in range(8)]
+             + [Candidate(f"n{i}", _NOISE_PATTERN) for i in range(32)])
+    scored = {s.op_id: s for s in align_candidates(cands)}
+    assert scored["m0"].region == REVIEW  # would-be ALIGN downgraded: no symbol anchor
+    assert scored["m0"].posterior >= _COLD_ALIGN_BAR  # the posterior itself is unchanged
+
+
+def test_align_symbol_anchor_still_aligns_at_the_same_posterior():
+    # The identical evidence WITH a symbol anchor aligns -- the gate blocks only anchorless pairs.
+    cands = ([Candidate(f"m{i}", _ANCHORED_MATCH) for i in range(8)]
+             + [Candidate(f"n{i}", _NOISE_PATTERN) for i in range(32)])
+    scored = {s.op_id: s for s in align_candidates(cands)}
+    assert scored["m0"].region == ALIGN
