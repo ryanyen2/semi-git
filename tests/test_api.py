@@ -8,8 +8,9 @@ semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinn
 import json
 
 from sgt.api import (
-    compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, oplog_view,
-    plan_view, resolve_selection, save_preview_view, state_view, status_view, trust_view,
+    compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, now_view,
+    oplog_view, plan_view, resolve_selection, save_preview_view, state_view, status_view,
+    trust_view,
 )
 from sgt.core.lens import get
 from sgt.core.op import make_op
@@ -1038,6 +1039,108 @@ def test_plan_view_derives_building_and_stalled_from_activity_and_candidates(tmp
     view = plan_view(repo)
     assert view["checkpoint"]["matches"], "expected a checkpoint candidate for the matching work"
     assert view["sessions"][0]["derived_status"] == "building"
+
+
+def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
+    """A mined, clean repo has nothing in flight, nothing needing the user, and a `clean`
+    next-action. The four sections are always present so the surfaces can render unconditionally."""
+    repo = _mined(tmp_path, "mixed_coverage")
+    v = now_view(repo)
+    assert set(v) == {"in_flight", "needs_you", "recently_done", "context", "next_action"}
+    assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
+    assert v["needs_you"] == {"forks": [], "reviews": [], "stalled_plans": []}
+    assert v["next_action"]["kind"] == "clean"
+    assert v["next_action"]["command"] is None
+    assert v["recently_done"]  # the fixture's commits show up as recently done
+
+
+def test_now_view_dirty_tree_recommends_save(tmp_path):
+    """Uncommitted work puts ops in flight and makes `sgt save` the next action."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+
+    v = now_view(repo)
+    assert v["in_flight"]["total_op_count"] > 0
+    assert v["next_action"] == {"kind": "save", "command": "sgt save", "target": None,
+                                "label": f"save {v['in_flight']['total_op_count']} pending op(s)"}
+
+
+def test_now_view_include_preview_false_skips_the_mine(tmp_path):
+    """`include_preview=False` returns an empty in-flight block without touching the working tree,
+    so a dirty tree is NOT reported -- the seam that lets a cheap feed-tick skip the save preview."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+
+    v = now_view(repo, include_preview=False)
+    assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
+    assert v["next_action"]["kind"] == "clean"  # save rung never fires without the preview
+
+
+def test_now_view_stalled_plan_recommends_claude_resume(tmp_path):
+    """A stalled plan session outranks a clean tree: the next action is Claude's own `--resume`
+    (there is no `sgt plan resume` verb), targeting the stalled session."""
+    import time
+
+    from sgt.loop.plan import STALLED_SECONDS
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    _seed_plan_session(repo, gb, session_id="s1",
+                       last_activity_ts=time.time() - STALLED_SECONDS - 60,
+                       claude_session_id="sess-xyz")
+
+    v = now_view(repo)
+    assert len(v["needs_you"]["stalled_plans"]) == 1
+    assert v["needs_you"]["stalled_plans"][0]["session_id"] == "s1"
+    assert v["next_action"]["kind"] == "resume_plan"
+    assert v["next_action"]["command"] == "claude --resume sess-xyz"
+    assert v["next_action"]["target"] == "s1"
+
+
+def test_now_view_open_fork_outranks_everything_and_reuses_its_remedy(tmp_path):
+    """An open fork is the top rung: it blocks even a dirty tree, and the recommended command is
+    the fork record's OWN remedy (not a hardcoded verb)."""
+    from sgt import state
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")  # dirty too
+    state.save_json(repo, "forks", [
+        {"symbol": "a.py::foo", "tips": ["x", "y"], "remedy": "sgt merge-op a.py::foo"},
+    ])
+
+    v = now_view(repo)
+    assert len(v["needs_you"]["forks"]) == 1
+    assert v["next_action"] == {"kind": "resolve_fork", "command": "sgt merge-op a.py::foo",
+                                "target": "a.py::foo", "label": "resolve fork on a.py::foo"}
+
+
+def test_now_view_context_carries_recent_activity_newest_first(tmp_path):
+    """The context block surfaces the live agent-action feed, newest first -- the "what just
+    happened" signal the `PostToolUse` hook writes."""
+    from sgt.intent import activity
+
+    repo = _mined(tmp_path, "mixed_coverage")
+    activity.record_activity(repo, tool="Edit", file="a.py", ts=1.0)
+    activity.record_activity(repo, tool="Write", file="b.py", ts=2.0)
+
+    v = now_view(repo)
+    feed = v["context"]["activity"]
+    assert [e["file"] for e in feed] == ["b.py", "a.py"]
 
 
 def test_trust_view_default_reports_op_count_not_op_detail(tmp_path):
