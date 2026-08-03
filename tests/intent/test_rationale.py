@@ -69,6 +69,52 @@ def test_supersession_splits_live_from_historical(tmp_path):
     assert rationale.for_op(tmp_path, "o1")[0]["superseded"] is False  # live sorts first
 
 
+def test_alignment_score_fields_are_stored_and_read_back(tmp_path):
+    # An aligner-produced record carries calibrated score-bearing fields (schema ext v1): a
+    # confidence, the signals that fired, and the pipeline version -- alongside the boolean
+    # `confirmed` human-endorsement pin, which stays orthogonal to confidence.
+    init_store(tmp_path)
+    rationale.record_rationale(
+        tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}], reason="add the retry",
+        actor="human", evidence=["t1"], ts=1.0, confidence=0.82,
+        signals=[{"name": "symbol", "value": 1.0}, {"name": "temporal", "value": 0.3}],
+        aligner_version="1")
+    r = rationale.for_op(tmp_path, "o1")[0]
+    assert r["confidence"] == 0.82
+    assert r["signals"] == [{"name": "symbol", "value": 1.0}, {"name": "temporal", "value": 0.3}]
+    assert r["aligner_version"] == "1"
+    assert r["confirmed"] is False  # score is orthogonal to human endorsement
+
+
+def test_score_fields_are_not_part_of_identity(tmp_path):
+    # Re-scoring the same claim (same subject/reason/actor) is the SAME id -- confidence/signals do
+    # not identify a record. Without a supersedes relation the re-score therefore no-ops, which is
+    # exactly why re-scoring must supersede (next test).
+    init_store(tmp_path)
+    a = rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
+                                   reason="r", actor="human", evidence=[], confidence=0.5)
+    b = rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
+                                   reason="r", actor="human", evidence=[], confidence=0.9)
+    assert a == b
+    assert len(rationale.load_rationale(tmp_path)) == 1
+    assert rationale.load_rationale(tmp_path)[a]["confidence"] == 0.5  # first write stands
+
+
+def test_rescoring_supersedes_via_a_new_record(tmp_path):
+    # The aligner re-scores by writing a NEW record that supersedes the old one (the supersedes
+    # relation is part of identity, so it does not collide) -- never a mutation.
+    init_store(tmp_path)
+    old = rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
+                                     reason="r", actor="human", evidence=[], confidence=0.5, ts=1.0)
+    new = rationale.record_rationale(
+        tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}], reason="r", actor="human",
+        evidence=[], confidence=0.9, ts=2.0, relations=[{"type": "supersedes", "target": old}])
+    assert new != old
+    recs = rationale.for_op(tmp_path, "o1")
+    live = [r for r in recs if not r["superseded"]]
+    assert len(live) == 1 and live[0]["confidence"] == 0.9
+
+
 def test_retired_open_intent_drops_from_open_list(tmp_path):
     init_store(tmp_path)
     opened = rationale.record_rationale(tmp_path, subject=[], reason="add rate limiting",
