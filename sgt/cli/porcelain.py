@@ -236,7 +236,8 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     # The labeling moment (feedforward): the save is when the user encodes what this work *was*,
     # so show which feature(s) the new ops landed in -- by name -- and let `--as` name the
     # dominant one right here (an authored label, which permanently wins over generated ones).
-    features = _save_attribution(repo, ideal.op_ids - prev_ids, cascade) if saved else []
+    new_op_ids = ideal.op_ids - prev_ids
+    features = _save_attribution(repo, new_op_ids, cascade) if saved else []
     renamed = _apply_save_label(repo, features, as_label) if (saved and as_label) else None
     if as_label and not saved:
         print('  --as names the feature a save lands in; nothing was saved, so nothing to name.')
@@ -253,8 +254,9 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
         except Exception:  # noqa: BLE001 -- draining the residual is subordinate to the save
             pass
     words = _echo_words(repo, message, plan) if saved else None
-    return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,
-                        message=message, features=features, renamed=renamed)
+    why = _aligned_why(repo, new_op_ids, words) if saved else None  # pure read; the ledger already
+    return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,  # holds only ALIGN
+                        message=message, features=features, renamed=renamed, why=why)  # + confirmed
 
 
 def _fold_plan_matches(repo: str) -> dict | None:
@@ -427,16 +429,50 @@ def _echo_words(repo: str, message: str | None, plan: dict | None) -> str | None
     return None
 
 
+def _aligned_why(repo: str, new_op_ids: frozenset, words: str | None) -> str | None:
+    """The aligned *why* for the ops this save just landed: the reason texts the intent ledger
+    already holds for them -- an aligner ALIGN (high-posterior), a human-confirmed review, or a
+    plan-step intent. Distinct from `_echo_words` ("what you said" for this save): this is the
+    ledger's answer to "why does this code exist", surfaced at the save beat.
+
+    Honest by construction: the ledger only ever holds ALIGN + human-confirmed records (REVIEW-region
+    guesses live in the separate `intent_review` queue and never reach here), so there is no pending
+    guess to leak. Superseded and open (never-landed) records are skipped, and any reason identical
+    to the words already echoed is dropped so the line never just repeats itself. `None` when the
+    ledger has nothing landed for these ops -- the common case at save time, since the aligner runs
+    as its own pass, not on the save beat."""
+    if not new_op_ids:
+        return None
+    from sgt.intent import rationale
+
+    recs = list(rationale.load_rationale(repo).values())
+    dead = rationale._superseded_ids(recs)
+    already = words.strip().lower() if words else None
+    reasons: list[str] = []
+    for r in recs:
+        if r["id"] in dead or r.get("open") or not r.get("reason"):
+            continue
+        if not any(s["op"] in new_op_ids for s in r.get("subject", [])):
+            continue
+        reason = r["reason"].strip()
+        if reason.lower() == already or reason in reasons:
+            continue
+        reasons.append(reason)
+    return "; ".join(reasons) if reasons else None
+
+
 def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                  plan: dict | None, resolve_plan: bool, *, message: str | None = None,
                  features: list[dict] = (), renamed: dict | None = None,
-                 words: str | None = None) -> int:
+                 words: str | None = None, why: str | None = None) -> int:
     if as_json:
         out: dict = {"ok": True, "saved": saved}
         if saved:
             out["commit"], out["ops"] = sha, n
         if words:  # the captured words, structured for the editor/VSCode surface
             out["words"] = words
+        if why:  # the ledger's aligned reason for these ops (distinct from the captured words)
+            out["why"] = why
         if features:
             out["features"] = list(features)
         if renamed is not None:
@@ -456,6 +492,9 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
             import textwrap
             print(f'  · {textwrap.shorten(words, width=72, placeholder="…")}' if words
                   else "  · no words captured")
+        if why:
+            import textwrap
+            print(f'  · why (aligned): {textwrap.shorten(why, width=60, placeholder="…")}')
         for f in features:
             syms = ", ".join(f["symbols"][:3]) + (f" +{len(f['symbols']) - 3} more"
                                                   if len(f["symbols"]) > 3 else "")

@@ -12,6 +12,7 @@ import {
   ForksView,
   GridView,
   HistoryView,
+  IntentView,
   MapNode,
   MapView,
   PlanView,
@@ -40,6 +41,8 @@ export class Store {
   private forksCache: ForksView | undefined;
   private forksInFlight: Promise<ForksView> | undefined;
   private sessionsCache: SessionsView | undefined;
+  private intentCache: IntentView | undefined;
+  private intentInFlight: Promise<IntentView> | undefined;
   private proposalCache = new Map<string, ProposalView>();
   private foldCache = new Map<string, FoldView>(); // bounded LRU of recent frontier folds (see foldAt)
   // Bumped once per invalidate(). Every coalesced fetch captures it before shelling out and
@@ -222,6 +225,28 @@ export class Store {
     return this.forksInFlight;
   }
 
+  // The intent overlay (`sgt.api.intent_view`), cached like `map`/`history` and invalidated with
+  // them off the same `.sgt/**/*.json` watcher. The hover reads it to surface a feature's live
+  // intent-ledger rationale; sharing the in-flight promise keeps repeated hovers from each firing
+  // their own `sgt intent list`.
+  async intentView(force = false): Promise<IntentView> {
+    if (this.intentCache && !force) return this.intentCache;
+    if (!this.intentInFlight || force) {
+      const gen = this.generation;
+      const p: Promise<IntentView> = this.sgt
+        .intentView()
+        .then((v) => {
+          if (gen === this.generation) this.intentCache = v;
+          return v;
+        })
+        .finally(() => {
+          if (this.intentInFlight === p) this.intentInFlight = undefined;
+        });
+      this.intentInFlight = p;
+    }
+    return this.intentInFlight;
+  }
+
   async sessionsView(force = false): Promise<SessionsView> {
     if (!this.sessionsCache || force) {
       this.sessionsCache = await this.sgt.sessionsView();
@@ -286,6 +311,8 @@ export class Store {
     this.forksCache = undefined;
     this.forksInFlight = undefined;
     this.sessionsCache = undefined;
+    this.intentCache = undefined;
+    this.intentInFlight = undefined;
     this.proposalCache.clear();
     this.foldCache.clear();
     this._onDidChange.fire();

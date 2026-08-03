@@ -32,9 +32,32 @@ export class SymbolHoverProvider implements vscode.HoverProvider {
     }
     const node = map?.nodes.find((n) => n.id === span!.feature_id);
 
+    // The intent overlay's rationale for this feature: every ledger reason whose atom lands (in
+    // part) in this feature, deduped. This is the captured "why" (what the developer said), a
+    // layer above `node.why`'s structural summary -- surfaced together so the hover shows both.
+    let reasons: string[] = [];
+    try {
+      const intent = await this.store.intentView();
+      const seen = new Set<string>();
+      for (const atom of intent.atoms) {
+        if (!atom.feature_span.includes(span.feature_id)) continue;
+        for (const r of atom.rationale) {
+          if (!seen.has(r)) {
+            seen.add(r);
+            reasons.push(r);
+          }
+        }
+      }
+    } catch {
+      reasons = [];
+    }
+
     const md = new vscode.MarkdownString(undefined, true);
     md.isTrusted = true;
     md.appendMarkdown(`**${escapeMd(span.label)}** \`${span.feature_id}\`\n\n`);
+    if (reasons.length) {
+      md.appendMarkdown(reasons.map((r) => `_“${escapeMd(r)}”_`).join(" · ") + "\n\n");
+    }
     if (node) {
       if (node.why) {
         md.appendMarkdown(`${escapeMd(node.why)}\n\n`);
