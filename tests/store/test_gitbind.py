@@ -85,6 +85,24 @@ def test_history_oldest_first_with_parents(tmp_path):
     assert since_rows[0][1] == sha1  # still diffs against its true predecessor
 
 
+def test_commit_times_maps_every_sha_to_a_unix_timestamp(tmp_path):
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "f.txt").write_text("v1", encoding="utf-8")
+    sha1 = gb.commit_all("feat: v1")
+    (tmp_path / "f.txt").write_text("v2", encoding="utf-8")
+    sha2 = gb.commit_all("feat: v2")
+
+    times = gb.commit_times()
+    assert set(times) == {sha1, sha2}
+    assert all(isinstance(t, int) for t in times.values())
+    assert times[sha1] <= times[sha2]  # committer date is monotone with commit order
+
+
+def test_commit_times_empty_on_unborn_ref(tmp_path):
+    gb, _ = init_store(tmp_path)
+    assert gb.commit_times() == {}
+
+
 def test_history_backward_mirrors_history_reversed(tmp_path):
     gb, _ = init_store(tmp_path)
     shas = []

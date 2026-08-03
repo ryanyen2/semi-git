@@ -562,6 +562,23 @@ class GitBinding:
             rows.append((sha, first_parent, subject))
         return rows
 
+    def commit_times(self, target: str = "HEAD") -> dict[str, int]:
+        """``sha -> committer unix timestamp`` for every commit reachable from ``target``. One
+        ``git log`` call, no per-op cost. The committer date is when the commit was *created* --
+        for sgt that is the save beat, so it is the wall-clock "when this work landed" that the
+        alignment pipeline's temporal generator compares against a conversation turn's own
+        wall-clock. Empty on an unborn/failed ref (never raises)."""
+        proc = self._git("log", "--format=%H%x1f%ct", target, check=False)
+        if proc.returncode != 0:
+            return {}
+        out: dict[str, int] = {}
+        for line in proc.stdout.splitlines():
+            if not line:
+                continue
+            sha, _, ct = line.partition("\x1f")
+            out[sha] = int(ct)
+        return out
+
     def history_backward(self, tip: str, limit: int | None = None) -> list[tuple[str, str | None, str]]:
         """``(sha, first_parent, subject)`` newest-first from ``tip`` back toward the root --
         the mirror image of :meth:`history`, which walks the same shape oldest-first via
