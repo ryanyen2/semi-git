@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from sgt.core import opindex
-from sgt.intent import align, rationale, turns
+from sgt.intent import align, rationale, review, turns
 from sgt.store.gitbind import GitBinding
 
 
@@ -113,8 +113,9 @@ def _episodes_for_session(
 
 def align_session(repo: str | Path, *, write: bool = True) -> dict:
     """Align every captured chat session's turns to the ops that landed, writing one rationale record
-    per ALIGN-region (episode, op) pair. Returns a counts summary
-    `{sessions, episodes, candidates, aligned, reviewed}`.
+    per ALIGN-region (episode, op) pair and queuing every REVIEW-region pair for human adjudication
+    (`sgt.intent.review`, kept out of the ledger so an unconfirmed guess never leaks into recall).
+    Returns a counts summary `{sessions, episodes, candidates, aligned, reviewed}`.
 
     Reliabilities are fit once over the *global* candidate pool (all sessions) -- the cold-start
     fix -- then reused for every episode's scoring. Set `write=False` for a dry run that scores and
@@ -155,6 +156,15 @@ def align_session(repo: str | Path, *, write: bool = True) -> dict:
         for cand, sc in zip(cands, scored, strict=True):  # align_candidates preserves input order
             if sc.region == align.REVIEW:
                 summary["reviewed"] += 1
+                if not write:
+                    continue
+                subject = rationale._subject_for(repo, [sc.op_id])
+                if not subject:
+                    continue
+                signals = [{"name": g, "value": 1.0} for g in sorted(cand.generators)]
+                review.record_review(repo, subject=subject, reason=reason, evidence=evidence,
+                                     posterior=sc.posterior, signals=signals,
+                                     aligner_version=align.ALIGNER_VERSION)
             elif sc.region == align.ALIGN:
                 summary["aligned"] += 1
                 if not write:

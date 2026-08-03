@@ -92,6 +92,53 @@ def test_intent_usage_on_missing_or_unknown_sub(tmp_path, capsys):
     assert "usage: sgt intent" in capsys.readouterr().out
 
 
+# -- alignment review queue: sgt intent review -------------------------------------------------
+
+
+def _queue_one(tmp_path, reason="make search better"):
+    from sgt.intent import review
+    return review.record_review(
+        tmp_path, subject=[{"op": "o1", "sha": "s", "fp": "f"}], reason=reason, evidence=["t1"],
+        posterior=0.62, signals=[{"name": "topic", "value": 1.0}], aligner_version="1")
+
+
+def test_intent_review_list_then_confirm_promotes_to_ledger(tmp_path, capsys):
+    from sgt.intent import rationale
+    _seed(tmp_path)
+    rid = _queue_one(tmp_path)
+
+    assert _in(tmp_path, ["intent", "review", "--json"]) == 0
+    pending = json.loads(capsys.readouterr().out)["pending"]
+    assert len(pending) == 1 and pending[0]["reason"] == "make search better"
+
+    assert _in(tmp_path, ["intent", "review", "confirm", rid[:12], "--json"]) == 0
+    capsys.readouterr()
+    recs = rationale.for_op(tmp_path, "o1")
+    assert len(recs) == 1 and recs[0]["confirmed"] is True and recs[0]["recorded_by"] == "user"
+
+    assert _in(tmp_path, ["intent", "review", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["pending"] == []  # decided -> off the queue
+
+
+def test_intent_review_reject_drops_without_promoting(tmp_path, capsys):
+    from sgt.intent import rationale
+    _seed(tmp_path)
+    rid = _queue_one(tmp_path, reason="fix the thing")
+
+    assert _in(tmp_path, ["intent", "review", "reject", rid[:12], "--json"]) == 0
+    capsys.readouterr()
+    assert rationale.load_rationale(tmp_path) == {}  # nothing promoted
+
+    assert _in(tmp_path, ["intent", "review", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["pending"] == []
+
+
+def test_intent_review_confirm_unknown_id_fails(tmp_path, capsys):
+    _seed(tmp_path)
+    assert _in(tmp_path, ["intent", "review", "confirm", "rv-nope", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
 # -- U8: sgt intent revert ---------------------------------------------------------------------
 
 
