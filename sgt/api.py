@@ -615,7 +615,7 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
             sym, a, b = forks[0]
             more = f" (+{len(forks) - 1} more)" if len(forks) > 1 else ""
             return (f"Won't advance {branch} — {len(forks)} fork(s) block it{more}. "
-                    f"Resolve first: sgt merge-op {a[:8]} {b[:8]}.")
+                    f"Resolve first: sgt resolve {sym}.")
         if not projected.get("oracle_configured", True):
             return (f"Won't advance {branch} — no oracle configured; land refuses an "
                     f"unverified op-set (LAW-G).")
@@ -2194,8 +2194,13 @@ def _next_action(in_flight: dict, needs_you: dict) -> dict:
     forks = needs_you["forks"]
     if forks:
         f = forks[0]
-        return {"kind": "resolve_fork", "command": f.get("remedy"), "target": f.get("symbol"),
-                "label": f"resolve fork on {f.get('symbol')}"}
+        # Derive the high-level verb from the symbol rather than echoing the stored remedy: a
+        # forks.json committed before the remedy switch still names the old low-level `merge-op`,
+        # and this is the most prominent "what next" surface (`sgt now`).
+        sym = f.get("symbol")
+        command = f"sgt resolve {sym}" if sym else f.get("remedy")
+        return {"kind": "resolve_fork", "command": command, "target": sym,
+                "label": f"resolve fork on {sym}"}
     stalled = needs_you["stalled_plans"]
     if stalled:
         s = stalled[0]

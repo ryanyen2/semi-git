@@ -438,6 +438,7 @@ function episodeRailLayout(epView) {
   let grid = compose.grid;       // grid_view's cell table -- the layout functions' canonical join (plan U3)
   let layout = computeSegmentLayout(map, grid, segmentsOf(compose), { collapsed: state.collapsed });
   let lastRenderWidth = -1; // rail width the last render() drew at; the resize observer skips no-op width reflows
+  let lastRenderHeight = -1; // rail height the last render() drew at; the observer reflows on vertical resize too
   let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
   let previewSeq = 0;
   let pendingPreview = null;
@@ -470,6 +471,8 @@ function episodeRailLayout(epView) {
   let pendingPlayhead = null;
   let playheadResultCache = {}; // commitIndex -> {op_count, files, oracle_verdict, forked, error}
   let scrubTimer = null;
+  let scrubRaf = 0; // rAF handle coalescing pointermove scrubs to one applyFrontier/renderInspector per frame
+  let scrubPendingIdx = null; // the latest scrub commit-index awaiting that frame
 
   // Plan marks: predicted steps render as a dashed accent ring + count badge on their predicted
   // feature's node (see collectPlanMarks / renderNodeBadges). `knownPlanSteps`/`prevKnownPlanSteps`
@@ -808,6 +811,7 @@ function episodeRailLayout(epView) {
 
   function render() {
     lastRenderWidth = rail.clientWidth; // baseline the resize observer compares against (item below)
+    lastRenderHeight = rail.clientHeight; // same baseline for vertical resizes (the axis is height-pinned)
     renderTitlebar();
     // Plan-badge transition bookkeeping: a step newly seen pending gets an entering pulse; a step
     // that just matched drops its pending badge. (The rail's cross-row comet/FLIP morphs retired
@@ -1081,22 +1085,27 @@ function episodeRailLayout(epView) {
   // a straight vertical spine), lanes reused across non-overlapping spans (episodeRailLayout's
   // interval coloring). Clicking a row selects that episode's feature -- the same select path the
   // Gantt uses, so revert/preview/multi-select all work identically from here.
-  const RAIL = { rowH: 22, laneW: 16, padT: 10, dotR: 4, padL: 12, shaW: 58 };
+  const RAIL = { rowH: 22, laneW: 16, padT: 10, dotR: 4, padL: 12, shaW: 58, maxRows: 200 };
 
   function renderRail() {
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
     graphView = null; // no frontier scrubber in rail mode; drop the stale Gantt handle
     const rlayout = episodeRailLayout(rollupEpisodes(map, grid));
-    const rows = rlayout.rows;
+    // Cap the DOM to the newest RAIL.maxRows episodes: one <g> per episode (5+ nodes each) meant
+    // ~20k live nodes on a multi-thousand-commit repo, freezing the webview. Rows come newest-first,
+    // so the head is the recent history a reader wants; the tail is summarized in a footer line.
+    const allRows = rlayout.rows;
+    const rows = allRows.slice(0, RAIL.maxRows);
+    const hiddenRows = allRows.length - rows.length;
     const paneW = Math.max(rail.clientWidth || 0, 320);
     const gutterW = RAIL.padL + rlayout.laneCount * RAIL.laneW;
-    const h = RAIL.padT * 2 + rows.length * RAIL.rowH;
+    const h = RAIL.padT * 2 + rows.length * RAIL.rowH + (hiddenRows > 0 ? RAIL.rowH : 0);
     const svg = mk("svg", { width: paneW, height: Math.max(h, 40), class: "railsvg rail" });
     const yOf = (row) => RAIL.padT + row * RAIL.rowH + RAIL.rowH / 2;
     const xOf = (lane) => RAIL.padL + lane * RAIL.laneW + RAIL.laneW / 2;
 
-    if (!rows.length) {
+    if (!allRows.length) {
       const t = mk("text", { x: RAIL.padL, y: 24, class: "rail-subject", text: "No episodes yet." });
       svg.appendChild(t);
       rail.appendChild(svg);
@@ -1149,6 +1158,14 @@ function episodeRailLayout(epView) {
       g.addEventListener("mouseenter", () => lightRailFeatures(Object.keys(r.features || {})));
       g.addEventListener("mouseleave", () => lightRailFeatures(null));
       svg.appendChild(g);
+    }
+    // The capped tail: older episodes stay off the DOM but are accounted for, so a big repo doesn't
+    // look like its history stops at RAIL.maxRows.
+    if (hiddenRows > 0) {
+      svg.appendChild(mk("text", {
+        x: textX, y: RAIL.padT + rows.length * RAIL.rowH + RAIL.rowH / 2 + 4,
+        class: "rail-chip-more", text: `+${hiddenRows} older episode(s) not shown`,
+      }));
     }
     rail.appendChild(svg);
     rail.scrollTop = prevScroll;
@@ -1519,11 +1536,21 @@ function episodeRailLayout(epView) {
     const svg = rail.querySelector("svg");
     if (!svg || !graphView) return;
     const geom = graphView.geom;
-    setPlayhead(snapCommit(geom.xToCommit(svgLocalX(svg, ev.clientX)), geom));
+    // Coalesce to one setPlayhead per frame: pointermove fires far above 60fps and setPlayhead runs
+    // applyFrontier + renderInspector (a full panel rebuild) each call, so an uncoalesced drag on a
+    // large graph stutters. Stash the latest index and flush the freshest one on the next frame.
+    scrubPendingIdx = snapCommit(geom.xToCommit(svgLocalX(svg, ev.clientX)), geom);
+    if (scrubRaf) return;
+    scrubRaf = requestAnimationFrame(() => {
+      scrubRaf = 0;
+      setPlayhead(scrubPendingIdx);
+    });
   }
 
   function onScrubPointerUp() {
     playheadDragging = false;
+    // Flush any frame the last move scheduled but hasn't run, so the playhead lands where released.
+    if (scrubRaf) { cancelAnimationFrame(scrubRaf); scrubRaf = 0; setPlayhead(scrubPendingIdx); }
     applyFrontier(); // hide the scrub readout now that the drag is over
     window.removeEventListener("pointermove", onScrubPointerMove);
     window.removeEventListener("pointerup", onScrubPointerUp);
@@ -1771,7 +1798,9 @@ function episodeRailLayout(epView) {
   }
 
   function clearGhosts() {
-    rail.querySelectorAll(".glane.ghost-blast, .glane.ghost-target, .glane.ghost-foundation").forEach((el) => {
+    rail.querySelectorAll(
+      ".glane.ghost-blast, .glane.ghost-target, .glane.ghost-foundation, " +
+      ".rail-row.ghost-blast, .rail-row.ghost-target, .rail-row.ghost-foundation").forEach((el) => {
       el.classList.remove("ghost-blast", "ghost-target", "ghost-foundation");
     });
     clearOffscreenPills();
@@ -2498,8 +2527,8 @@ function episodeRailLayout(epView) {
   }
 
   function paintBlast(featureIds) {
-    rail.querySelectorAll(".glane.ghost-blast").forEach((el) => el.classList.remove("ghost-blast"));
-    rail.querySelectorAll(".glane").forEach((el) => {
+    rail.querySelectorAll(".glane.ghost-blast, .rail-row.ghost-blast").forEach((el) => el.classList.remove("ghost-blast"));
+    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
       if (featureIds.includes(el.getAttribute("data-id"))) el.classList.add("ghost-blast");
     });
     renderOffscreenPills(featureIds);
@@ -2510,7 +2539,7 @@ function episodeRailLayout(epView) {
   // undifferentiated amber blob. Off-screen pills cover every role so nothing affected hides
   // outside the scroll window.
   function paintClosure(closure) {
-    rail.querySelectorAll(".glane").forEach((el) => {
+    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
       el.classList.remove("ghost-target", "ghost-blast", "ghost-foundation");
       const id = el.getAttribute("data-id");
       if (id === closure.target) el.classList.add("ghost-target");
@@ -2625,7 +2654,7 @@ function episodeRailLayout(epView) {
   // a quote in it can't break the query.
   function findRow(id) {
     let found = null;
-    rail.querySelectorAll(".glane").forEach((el) => {
+    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
       if (el.getAttribute("data-id") === id) found = el;
     });
     return found;
@@ -2833,18 +2862,20 @@ function episodeRailLayout(epView) {
     clearPlayhead();
   });
 
-  // Continuous reflow: the workbench is a WebviewView the user resizes freely left<->right, and
-  // the axis width is derived from the pane width (measureAxis). Re-render on width change so the
-  // ops re-spread and the graph re-flows -- debounced, and gated on a real width delta so the
-  // scrollbar appearing/disappearing mid-render can't feed a render back into itself.
+  // Continuous reflow: the workbench is a WebviewView the user resizes freely both ways. The Gantt
+  // axis width comes from the pane width, and its bottom-pinned frontier scrubber comes from the
+  // pane height (ganttGeom derives h from rail.clientHeight) -- so a vertical resize must re-layout
+  // too, or the scrubber drifts off the fold. Debounced, and gated on a real delta in either axis so
+  // the scrollbar appearing/disappearing mid-render can't feed a render back into itself.
   let resizeTimer = null;
   new ResizeObserver(() => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      // The layout is width-derived, so only a width change needs a reflow. render() records the
-      // width it last drew at (lastRenderWidth), updated by every render path -- so a height-only
-      // resize (rows added, scrollbar toggling) at an unchanged width is skipped entirely.
-      if (Math.abs(rail.clientWidth - lastRenderWidth) < 4) return;
+      // render() records the width AND height it last drew at (lastRenderWidth/lastRenderHeight), so
+      // a resize changing neither (a scrollbar toggle within the 4px slop) is skipped, while a real
+      // width or height change reflows -- the height branch keeps the scrubber on-screen.
+      if (Math.abs(rail.clientWidth - lastRenderWidth) < 4 &&
+          Math.abs(rail.clientHeight - lastRenderHeight) < 4) return;
       render();
     }, 80);
   }).observe(rail);

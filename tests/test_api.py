@@ -1108,9 +1108,11 @@ def test_now_view_stalled_plan_recommends_claude_resume(tmp_path):
     assert v["next_action"]["target"] == "s1"
 
 
-def test_now_view_open_fork_outranks_everything_and_reuses_its_remedy(tmp_path):
-    """An open fork is the top rung: it blocks even a dirty tree, and the recommended command is
-    the fork record's OWN remedy (not a hardcoded verb)."""
+def test_now_view_open_fork_outranks_everything_and_recommends_resolve(tmp_path):
+    """An open fork is the top rung: it blocks even a dirty tree, and the recommended command is the
+    high-level `sgt resolve <symbol>` derived from the fork's symbol -- NOT the stored remedy, so a
+    forks.json committed before the remedy switch (here a stale low-level `merge-op`) still surfaces
+    the working command."""
     from sgt import state
 
     repo = tmp_path / "repo"
@@ -1120,12 +1122,12 @@ def test_now_view_open_fork_outranks_everything_and_reuses_its_remedy(tmp_path):
     get(repo)
     (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")  # dirty too
     state.save_json(repo, "forks", [
-        {"symbol": "a.py::foo", "tips": ["x", "y"], "remedy": "sgt merge-op a.py::foo"},
+        {"symbol": "a.py::foo", "tips": ["x", "y"], "remedy": "sgt merge-op x y"},  # stale on purpose
     ])
 
     v = now_view(repo)
     assert len(v["needs_you"]["forks"]) == 1
-    assert v["next_action"] == {"kind": "resolve_fork", "command": "sgt merge-op a.py::foo",
+    assert v["next_action"] == {"kind": "resolve_fork", "command": "sgt resolve a.py::foo",
                                 "target": "a.py::foo", "label": "resolve fork on a.py::foo"}
 
 

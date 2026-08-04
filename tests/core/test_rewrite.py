@@ -778,10 +778,10 @@ def _edit_and_commit(repo, path, content, message):
 
 
 def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(tmp_path):
-    """Verification (U6): the advertised `sgt merge-op` remedy string in committed `forks.json`
-    executes end-to-end on a two-clone fixture. A sync parks the forked symbol at the common
-    ancestor (neither tip in the ideal) and records the fork; running that remedy -> `fulfill` ->
-    `land` reconciles it, and the fork record closes."""
+    """Verification (U6): the fork recorded in committed `forks.json` reconciles end-to-end on a
+    two-clone fixture. A sync parks the forked symbol at the common ancestor (neither tip in the
+    ideal) and records the fork with a high-level `sgt resolve <symbol>` remedy; the mechanism that
+    verb wraps -- `merge_op` -> `fulfill` -> `land` -- reconciles it and the fork record closes."""
     import subprocess
 
     from sgt.core import lens, sync
@@ -807,9 +807,9 @@ def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(t
     assert len(report.forks) == 1
     records = state.load_json(b, "forks", default=[])
     assert len(records) == 1 and records[0]["symbol"] == "main.py::foo"
-    # The remedy string names the two tips; run exactly that (`sgt merge-op <tip_a> <tip_b>`).
+    # The remedy is the high-level guided verb; the tips it reconciles live in the record.
     tip_a, tip_b = records[0]["tips"]
-    assert records[0]["remedy"] == f"sgt merge-op {tip_a[:8]} {tip_b[:8]}"
+    assert records[0]["remedy"] == "sgt resolve main.py::foo"
 
     draft = rewrite.merge_op(b, tip_a, tip_b)
     assert draft.ok

@@ -207,7 +207,7 @@ def _remap_forks(old: list, mapping) -> tuple[list, int]:
         tips = rec.get("tips", [])
         if len(tips) == 2 and tips[0] in mapping and tips[1] in mapping:
             a, b = mapping[tips[0]], mapping[tips[1]]
-            new.append({"symbol": rec.get("symbol"), "tips": [a, b], "remedy": f"sgt merge-op {a[:8]} {b[:8]}"})
+            new.append({"symbol": rec.get("symbol"), "tips": [a, b], "remedy": f"sgt resolve {rec.get('symbol')}"})
         else:
             dropped += 1
     return sorted(new, key=lambda r: (r["symbol"] or "", r["tips"])), dropped

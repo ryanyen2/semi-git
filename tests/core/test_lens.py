@@ -319,6 +319,86 @@ def test_revert_survives_a_history_rewrite(tmp_path):
     assert any("a.py::foo" in o.footprint and o.id in after.op_ids for o in Store(repo).all_ops())
 
 
+def test_resync_re_derives_the_ideal_after_a_backward_history_rewrite(tmp_path):
+    """P0-B (launch): a *backward* rewrite (`git reset --hard` to an earlier commit, `branch -f`)
+    drops commits from HEAD's ancestry, but the persisted `.sgt/local/ideal.json` still names the
+    ops those commits witnessed -- so `get()` keeps returning the vanished symbols (`log`/`--map`
+    show ghosts, a later `save` can dead-end). `get()` alone does NOT self-heal here (it unions
+    freshly-mined provenance onto the persisted base). `resync` drops just this ref's derived local
+    state and re-mines, so the ideal re-derives from what HEAD actually reaches now."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("c1: foo")
+    c1 = gb.head()
+    (repo / "a.py").write_text(
+        "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8"
+    )
+    gb.commit_all("c2: bar")
+
+    seeded = get(repo)  # ideal knows both foo and bar
+    key = _ref_key(gb) or gb.head()
+    assert any("a.py::bar" in o.footprint and o.id in seeded.op_ids for o in Store(repo).all_ops())
+    before_count = len(_load_ideal_table(repo)[key])
+
+    # backward rewrite: drop c2 entirely, so bar's introducing commit leaves HEAD's ancestry
+    _git(repo, "reset", "--hard", c1)
+
+    # get() does not self-heal a backward desync -- the dropped op is still in the ideal
+    stale = get(repo)
+    assert any(
+        "a.py::bar" in o.footprint and o.id in stale.op_ids for o in Store(repo).all_ops()
+    ), "expected the pre-fix desync: bar still present before resync"
+
+    res = lens_mod.resync(repo)
+    assert res["key"] == key
+    assert res["after"] < res["before"]  # ops shrank: the dropped commit's ops fell out
+
+    healed = get(repo)
+    assert not any(
+        "a.py::bar" in o.footprint and o.id in healed.op_ids for o in Store(repo).all_ops()
+    ), "resync must re-derive the ideal from current HEAD -- bar's commit is gone"
+    assert any("a.py::foo" in o.footprint and o.id in healed.op_ids for o in Store(repo).all_ops())
+    assert len(_load_ideal_table(repo)[key]) < before_count
+    assert b"def bar" not in (repo / "a.py").read_bytes()
+
+
+def test_mine_on_contact_never_ingests_conflict_marker_bytes(tmp_path):
+    """P0-B (launch, F26 lifted into `_sync`): while a git merge/cherry-pick/revert is unresolved,
+    the working tree holds `<<<<<<<`/`=======`/`>>>>>>>` conflict markers. Those bytes must never be
+    mined into the append-only op store -- once committed they'd be a permanent phantom op. The guard
+    (`merge_in_progress` gating the dirty pass) lives in the shared mine-on-contact path, so *every*
+    read/navigation `get()` honors it, not just `save`."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("base: foo")
+    get(repo)
+    main = gb.symbolic_ref().rsplit("/", 1)[-1]
+
+    gb._git("checkout", "-q", "-b", "feature")
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("feature: foo v2")
+    gb._git("checkout", "-q", main)
+    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("main: foo v3")
+
+    # conflicting merge, left UNRESOLVED: MERGE_HEAD set, markers in the tree
+    gb._git("merge", "--no-edit", "feature", check=False)
+    assert lens_mod.merge_in_progress(gb) == "merge"
+    assert b"<<<<<<<" in (repo / "a.py").read_bytes()
+
+    get(repo)  # a read/navigation contact mid-conflict -- must skip the dirty pass
+
+    marker = b"<<<<<<<"
+    assert not any(
+        marker in img
+        for o in Store(repo).all_ops()
+        for img in getattr(o, "images", {}).values()
+        if img
+    ), "conflict-marker bytes were mined into a persistent op"
+
+
 def test_backfill_state_round_trips(tmp_path):
     """`_save_backfill_state`/`_load_backfill_state` are pure passthrough plumbing over
     `.sgt/local/backfill.json` -- a later unit reads/writes the genesis-backfill frontier through

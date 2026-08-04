@@ -126,27 +126,6 @@ def test_state_json_full_shows_frontier(tmp_path, capsys):
     assert "a.py::foo" in payload["frontier"]
 
 
-def test_reindex_json_reports_op_count(tmp_path, capsys):
-    _seed(tmp_path, 2)
-    _in(tmp_path, ["log"])  # mine, so the store isn't empty
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["advanced", "reindex", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["ok"] is True
-    assert payload["op_count"] >= 1
-
-
-def test_reindex_text_reports_op_count(tmp_path, capsys):
-    _seed(tmp_path, 2)
-    _in(tmp_path, ["log"])
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["advanced", "reindex"]) == 0
-    out = capsys.readouterr().out
-    assert "reindex" in out and "op(s) indexed" in out
-
-
 def test_log_json_limit_and_offset_flags(tmp_path, capsys):
     _seed(tmp_path, 3)  # a.py::foo v1/v2/v3, at least 3 distinct ops
     capsys.readouterr()
@@ -835,7 +814,7 @@ def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
 
     assert _VERBS == {
         "save", "log", "undo", "revert", "restore", "resolve",
-        "switch", "diff", "intent",
+        "switch", "diff", "intent", "now",  # `now` = state-of-actions orient (state block + what-next)
         "plan",  # checkpoint/drift folded into `save` (U12)
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",

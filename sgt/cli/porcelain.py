@@ -159,21 +159,22 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     (the old `sgt drift`) surface in this output; the working-tree sense of "drift" keeps its name
     in `status`/`fsck --tree`."""
     from sgt.core.lens import (
-        DirtyWorkingTreeError, current_ideal, get, put, record_ideal,
+        DirtyWorkingTreeError, current_ideal, get, merge_in_progress, put, record_ideal,
     )
     from sgt.store.gitbind import GitBinding, GitError
 
     # 0.9/F26: an in-progress git merge/cherry-pick/revert leaves conflict-marker bytes in the tree
     # and a *_HEAD pseudo-ref set. Refuse *before* mining (`get`) so those markers never become ops
-    # and the paused operation is never finalized blind. The pseudo-refs resolve iff the op is live.
+    # and the paused operation is never finalized blind. (`_sync` also skips its dirty pass while one
+    # is live, the shared safety net for revert/switch/reads; save additionally refuses, loudly.)
     gb = GitBinding(repo)
-    for pseudo, verb in (("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert")):
-        if gb.rev_parse(pseudo) is not None:
-            return _fail_json(
-                f"in-progress git {verb} -- finish or abort the git {verb} first "
-                f"(git {verb} --continue / git {verb} --abort); sgt save won't commit conflict markers",
-                as_json,
-            )
+    verb = merge_in_progress(gb)
+    if verb is not None:
+        return _fail_json(
+            f"in-progress git {verb} -- finish or abort the git {verb} first "
+            f"(git {verb} --continue / git {verb} --abort); sgt save won't commit conflict markers",
+            as_json,
+        )
 
     ideal = get(repo)  # mine the working tree (R9)
 

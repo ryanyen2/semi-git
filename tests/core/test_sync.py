@@ -104,7 +104,7 @@ def test_sync_records_a_fork_and_lands_the_forked_symbol_at_the_common_ancestor(
     report = sync.sync(b, remote="origin", branch="main")
 
     assert not report.merged  # an open fork -- attention needed
-    assert "merge-op" in report.message
+    assert "sgt resolve" in report.message
     assert len(report.forks) == 1
     symbol, _tip_a, _tip_b = report.forks[0]
     assert symbol == "main.py::foo"

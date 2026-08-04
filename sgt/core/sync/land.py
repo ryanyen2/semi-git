@@ -206,7 +206,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
     lens.get(repo)  # mine-on-contact: absorb local reality first (R9)
     if not gb.is_clean():
         raise lens.DirtyWorkingTreeError(
-            "sgt land requires a clean working tree -- `sgt put` or commit first"
+            "sgt land requires a clean working tree -- commit or stash your changes first"
         )
 
     # LAW-G with zero mutation: no oracle -> a green verdict cannot exist, so refuse before staging
@@ -281,9 +281,10 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
 
         # A genuine fork blocks the land (unlike sync, which advances the fork-free part): the shared
         # tip is a gated, single-lineage record, so a same-symbol fork must be reconciled with
-        # `sgt merge-op` before it can advance.
+        # `sgt resolve <symbol>` before it can advance.
         if res.forks:
-            return _blocked("open fork(s) -- run `sgt merge-op`", attempt, res, forks=res.forks)
+            sym = res.forks[0][0]
+            return _blocked(f"open fork(s) -- run `sgt resolve {sym}`", attempt, res, forks=res.forks)
 
         # Stage the reconciled *source* only (ops are monotone; metadata waits), so the LAW-G gate
         # runs the oracle against the real candidate tree. No metadata, no ref move yet -- a red gate
@@ -366,7 +367,7 @@ def plan_land(repo: str | Path, branch: str | None = None) -> LandPlan:
         lens.get(repo)  # mine-on-contact: preview against local reality, exactly as `land` does
         if not gb.is_clean():
             return LandPlan(branch=branch or "?", clean=False,
-                            error="working tree not clean -- `sgt put` or commit first")
+                            error="working tree not clean -- commit or stash your changes first")
 
         if branch is None:
             ref_name = gb.symbolic_ref()

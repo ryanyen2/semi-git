@@ -708,6 +708,36 @@ svg.railsvg {
   fill: var(--land);
 }
 
+/* The same revert-closure ghosts + Focus & Morph overlay, on the episode rail's rows. A rail row has
+   no gbar-track/swatch, so the role reads on its dot (a colored ring in the role's channel -- --fg
+   target, --blast losing, --land gaining) and, for the held morph, the field recedes while the
+   affected rows keep full presence. Reuses the .ghost-*/.preview-* classes the Gantt paint sets. */
+.rail.preview .rail-row {
+  opacity: 0.3;
+}
+
+.rail.preview .rail-row.preview-lit {
+  opacity: 1;
+}
+
+.rail-row.ghost-target .rail-dot,
+.rail-row.preview-target .rail-dot {
+  stroke: var(--fg);
+  stroke-width: 2px;
+}
+
+.rail-row.ghost-blast .rail-dot,
+.rail-row.preview-blast .rail-dot {
+  stroke: var(--blast);
+  stroke-width: 2px;
+}
+
+.rail-row.ghost-foundation .rail-dot,
+.rail-row.preview-foundation .rail-dot {
+  stroke: var(--land);
+  stroke-width: 2px;
+}
+
 /* Context tally, pinned bottom-right like the off-screen pills: how many features stay unchanged. */
 .preview-context-pill {
   position: absolute;

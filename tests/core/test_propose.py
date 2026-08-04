@@ -87,7 +87,7 @@ def test_create_rejects_a_delta_whose_base_union_is_not_a_valid_ideal(tmp_path):
 def test_row6_fork_based_contributor_status_reports_fork(tmp_path):
     """Row 6: a proposal created cleanly over the base goes stale as a `fork` once the base reworks a
     symbol Δ also touches (surfaced when the contributor syncs the moved base in), and `status`
-    reports the `sgt merge-op` remedy."""
+    reports the `sgt resolve` remedy."""
     a, b = _two_clones(tmp_path, _BASE)
     _branch(a, "feature")
     _edit_and_commit(a, "main.py", _BASE.replace("return 1", "return 42"), "feature: rework foo")
@@ -106,8 +106,8 @@ def test_row6_fork_based_contributor_status_reports_fork(tmp_path):
     assert st["state"] == "fork"
     assert st["base_moved"] is True
     assert st["forks"], "a same-symbol fork should be surfaced"
-    assert st["forks"][0]["remedy"].startswith("sgt merge-op ")
-    assert st["remedy"].startswith("sgt merge-op ")
+    assert st["forks"][0]["remedy"].startswith("sgt resolve ")
+    assert st["remedy"].startswith("sgt resolve ")
 
 
 def test_plan_land_predicts_a_proposals_advance_and_leaves_no_trace(tmp_path):

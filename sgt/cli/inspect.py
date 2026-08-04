@@ -62,7 +62,10 @@ def register(subs, parent) -> None:
     pf.add_argument("--tree", action="store_true",
                     help="compare code(current_ideal) against the HEAD tree (R2)")
     pf.set_defaults(func=_cmd_fsck)
-    subs.add_parser("reindex", parents=[parent]).set_defaults(func=_cmd_reindex)
+    rs = subs.add_parser("resync", parents=[parent])
+    rs.add_argument("--reseed", action="store_true",
+                    help="also discard explicit reverts (a total reset to current git history)")
+    rs.set_defaults(func=_cmd_resync)
     p = subs.add_parser("diff", parents=[parent])
     p.add_argument("a")
     p.add_argument("b")
@@ -140,10 +143,6 @@ def _cmd_fsck(args) -> int:
     return _fsck(".", args.as_json)
 
 
-def _cmd_reindex(args) -> int:
-    return _reindex(".", args.as_json)
-
-
 def _cmd_diff(args) -> int:
     return _diff(".", args.a, args.b, args.as_json)
 
@@ -198,10 +197,9 @@ def _fsck(repo: str, as_json: bool = False) -> int:
               f"or re-seed it (`sgt switch` to a live ref)")
     if report.mixed_versions:
         print(f"    mixed miner versions {', '.join(report.mixed_versions)} -- "
-              f"run `sgt migrate ops-v3` to unify the store")
+              f"run `sgt advanced migrate ops-v3` to unify the store")
     if report.op_index_stale:
-        print("    op index stale (advisory): the next read rebuilds it -- "
-              "`sgt advanced reindex` forces it now")
+        print("    op index stale (advisory): the next read rebuilds it automatically")
     for gap in report.chain_gaps:
         print(f"    chain gap (advisory): {gap} has no producing op "
               f"(off-ref predecessor -- benign unless unexpected)")
@@ -236,17 +234,27 @@ def _fsck_tree(repo: str, as_json: bool = False) -> int:
     return 0 if not drift else 1
 
 
-def _reindex(repo: str, as_json: bool = False) -> int:
-    """`sgt reindex [--json]`: force-rebuild the `sgt.core.opindex` footprint-only sidecar. Every
-    read view self-heals this automatically, so this is a maintenance verb (rebalancing latency
-    into a deliberate moment) rather than a repeat step in the daily loop."""
-    from sgt.core import opindex
+def _cmd_resync(args) -> int:
+    return _resync(".", args.reseed, args.as_json)
 
-    opindex.rebuild(repo)
-    count = len(opindex.index_ops(repo))
+
+def _resync(repo: str, reseed: bool, as_json: bool = False) -> int:
+    """`sgt advanced resync [--reseed]`: recover after a git history rewrite (reset --hard / amend /
+    branch -f) left the current ref's ideal naming ops from dropped commits. Drops just this ref's
+    derived local state and re-mines from what HEAD reaches now; `--reseed` also clears explicit
+    reverts. The append-only op store is never touched."""
+    from sgt.core.lens import resync
+
+    res = resync(repo, reseed=bool(reseed))
     if as_json:
-        return _emit_json({"ok": True, "op_count": count})
-    print(f"✓ reindex — {count} op(s) indexed")
+        return _emit_json({"ok": True, **res})
+    if res["key"] is None:
+        print("✓ resync — no commits yet, nothing to re-derive")
+        return 0
+    delta = res["after"] - res["before"]
+    change = "unchanged" if delta == 0 else (f"+{delta}" if delta > 0 else str(delta))
+    print(f"✓ resync {res['key']} — re-derived from current history: "
+          f"{res['before']} → {res['after']} op(s) ({change})")
     return 0
 
 
@@ -590,7 +598,7 @@ def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
         print(f"      {clip(view['drift']['paths'])}")
     if view.get("backstop_kept"):
         print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s) — left on disk (not "
-              f"deleted); repair the chain (`sgt fsck --tree`) to materialize them")
+              f"deleted); repair the chain (`sgt advanced fsck --tree`) to materialize them")
         print(f"      {clip(view['backstop_kept'])}")
     if view.get("unmanaged"):
         print(f"  ⚠ {len(view['unmanaged'])} unmanaged path(s) (symlinks, untouched): "

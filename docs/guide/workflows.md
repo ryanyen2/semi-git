@@ -2,7 +2,7 @@
 
 This is a tour of what `sgt` does today, one use case at a time. Each section names the commands,
 walks through a real example, and says where the feature is solid and where it still has limits.
-[`FINDINGS.md`](../../FINDINGS.md) has the full list of limits.
+The [last section](#7-what-is-fixed-and-what-still-has-limits) collects the limits in one place.
 
 Read [The model](the-semantic-tree.md) first. The short version: history is a set of symbol-level
 edits called ops. The current state of your codebase is a subset of those ops called the ideal,
@@ -20,9 +20,14 @@ This is git's daily loop, with `sgt` reading along.
 sgt init                    # once per repo: read your existing history into the op store
 # edit files with your editor or agent, the same as always
 sgt save -m "add input validation"   # read your edits into ops and commit a record of them
+sgt now                     # where am I: what's in progress, what needs you, and the one next thing
 sgt log --summary                  # files, symbols, features, coverage, and any open forks or drift
 sgt undo                    # step back: undo your last save, revert, or restore
 ```
+
+`sgt now` is the fast "orient me" view. It answers where you are in mid-task: what work is in
+flight, what is waiting on a decision from you (an open fork, an ambiguous plan match), and the one
+next thing to do. Reach for it when you sit back down; reach for `sgt log` when you want the history.
 
 `sgt switch <branch>` is the `sgt` version of `git switch`. It also rebuilds that branch's files
 from its recorded state, so the files on disk and the state `sgt` tracks always move together.
@@ -237,17 +242,19 @@ it tells you what is missing instead of applying a broken state.
 One limit worth knowing: if two features sit directly next to each other in the same file, meaning
 two functions back to back that share the whitespace between them, accepting only one of them with
 `--subset` can produce a file that is missing the separator between them. This is a known limit in
-this version, recorded in `FINDINGS.md`. Features in separate files do not have this problem.
+this version (see the last section). Features in separate files do not have this problem.
 
 ## 6. Using this with Claude Code or any MCP client
 
 `sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of running it as a
-shell command. It exposes 13 tools today, not the full command set: `sgt_init`, `sgt_log`,
+shell command. It exposes 14 tools today, not the full command set: `sgt_init`, `sgt_log`,
 `sgt_grid`, `sgt_status`, `sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`,
-`sgt_advanced_oracle_run`, `sgt_plan_intake`, `sgt_checkpoint`, `sgt_drift`, and `sgt_plan_done`.
+`sgt_advanced_oracle_run`, `sgt_plan_intake`, `sgt_checkpoint`, `sgt_recall`, `sgt_drift`, and
+`sgt_plan_done`.
 
-So an agent driving `sgt` over MCP can inspect state, run the plan → checkpoint → drift loop, and
-do symbol-level revert and restore, which covers section 1 and part of section 2 above. The
+So an agent driving `sgt` over MCP can inspect state, recall why the code it is about to touch is
+the way it is (`sgt_recall`), run the plan → checkpoint → drift loop, and do symbol-level revert and
+restore, which covers section 1 and part of section 2 above. The
 commands for working with other people, `sync`, `land`, `merge-op`, `session`, and `propose`, have
 no MCP tool yet. If a sync produces a fork, or
 you want to start a named agent session, a person has to run those commands in the terminal. This
@@ -284,7 +291,7 @@ These limits remain, either by design or because they are not built yet:
   as a plain revert.
 - Imports are ordinary text, not a symbol with its own command. Nothing warns you that a revert
   left an unused import behind, or offers to remove one.
-- `sgt log --summary` is slow on a large op store. On this project's own store of about 7,840 ops it takes
+- `sgt log --summary` is slow on a large op store. On a store of several thousand ops it can take
   around a minute, because rebuilding the full valid state is expensive and the summary currently
   does it more than once per run. This is a speed problem, not a correctness one.
 

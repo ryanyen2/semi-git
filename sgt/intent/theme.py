@@ -126,11 +126,14 @@ class IntentThemer:
             model=get_model(self._repo), input=prompt, text_format=schema,
             reasoning={"effort": EFFORT},
         )
+        out = r.output_parsed
+        if out is None:  # refusal / content-filter / length stop -> raise so the caller falls back
+            raise ValueError("empty theme parse")
         with self._lock:
             self.calls += 1
             self.tokens_in += r.usage.input_tokens
             self.tokens_out += r.usage.output_tokens
-        return r.output_parsed
+        return out
 
     def label_bundle(self, bundle: Bundle) -> ThemeLabel:
         """Name one scope bundle -- the single-bundle form of `label_bundles`, which is the one

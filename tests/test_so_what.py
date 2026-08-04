@@ -103,10 +103,10 @@ def test_a_clean_land_says_how_many_ops_advance_and_that_it_is_one_way():
     )
 
 
-def test_a_forked_land_names_the_blocker_and_the_merge_op_remedy():
+def test_a_forked_land_names_the_blocker_and_the_resolve_remedy():
     pview = _land(ops_added=0, forks=[("api::route", "0ee9a65f11", "5e6eaf5822")])
     assert so_what_for(pview) == (
-        "Won't advance main — 1 fork(s) block it. Resolve first: sgt merge-op 0ee9a65f 5e6eaf58."
+        "Won't advance main — 1 fork(s) block it. Resolve first: sgt resolve api::route."
     )
 
 
@@ -114,7 +114,7 @@ def test_multiple_forks_count_the_extras():
     pview = _land(forks=[("a::x", "aaaa1111", "bbbb2222"), ("b::y", "cccc3333", "dddd4444")])
     assert so_what_for(pview) == (
         "Won't advance main — 2 fork(s) block it (+1 more). "
-        "Resolve first: sgt merge-op aaaa1111 bbbb2222."
+        "Resolve first: sgt resolve a::x."
     )
 
 
