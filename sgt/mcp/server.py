@@ -60,8 +60,9 @@ def tool_log(repo_path: str, args: dict) -> dict:
 
     get(repo_path)  # mine-on-contact before inspecting the store
     kwargs = {"full": bool(args.get("full", False))}
-    if args.get("limit") is not None:
-        kwargs["limit"] = int(args["limit"])
+    # Default to a tight window over MCP -- an agent rarely needs 100 ops of context at once, and
+    # the payload is pure context cost. The CLI keeps its own larger default; this caps only here.
+    kwargs["limit"] = int(args["limit"]) if args.get("limit") is not None else 30
     if args.get("offset") is not None:
         kwargs["offset"] = int(args["offset"])
     return oplog_view(repo_path, **kwargs)
@@ -218,9 +219,11 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
             if session_id is None:
                 return {"error": f"no active session owns hollow(s) {hollow_ids}"}
             confirm_match(repo_path, session_id, hollow_ids, op_ids)
-    # full=True: the agent needs span-carrying match detail to act on a group, regardless of the
-    # new compact default (Part D).
-    return plan_view(repo_path, full=True)["checkpoint"]
+    # Compact by default: each candidate group keeps its `hollow_ids`/`op_ids` -- everything a
+    # follow-up `confirm` call needs -- and drops the per-op file/line span fold, the bulky part.
+    # Pass `detail=true` for the spans when the agent wants to eyeball the actual changes.
+    detail = bool(args.get("detail", False))
+    return plan_view(repo_path, full=detail)["checkpoint"]
 
 
 def tool_recall(repo_path: str, args: dict) -> dict:
@@ -275,14 +278,14 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "each op's before->after footprint, witnessing-commit provenance, and attribution, unpaged.",
         _schema(
             {"full": {"type": "boolean", "description": "the full per-op payload instead of the compact default"},
-             "limit": {"type": "integer", "description": "compact mode only: window size (default 100)"},
+             "limit": {"type": "integer", "description": "compact mode only: window size (default 30)"},
              "offset": {"type": "integer", "description": "compact mode only: window start (default 0)"}},
             [],
         ),
         tool_log,
     ),
     "sgt_grid": (
-        "The lane×commit grid: the canonical join every timeline surface renders (plan U1). "
+        "The lane×commit grid: the canonical join every timeline surface renders. "
         "Returns {commits, cells, features, ghosts, partial_commits} -- one cell per (feature, "
         "commit) that carries ops, the commit axis, active-plan ghost cells, and per-commit "
         "mining-fidelity marks. A complete projection (not paged): a grid needs every cell.",
@@ -309,15 +312,16 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_fsck,
     ),
     "sgt_revert": (
-        "Remove an op and everything built on it from the current ideal (I \\ upset X). `ref` is "
-        "an op-id, an op-id prefix, or a `file::name` symbol (resolves to its frontier tip). "
+        "Remove a symbol-level edit and everything built on top of it from the current state. "
+        "`ref` is an op-id, an op-id prefix, or a `file::name` symbol (resolves to its latest edit). "
         "Pass emit=true for a dry-run preview -- writes nothing.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
         tool_revert,
     ),
     "sgt_restore": (
-        "Re-add an op and its prerequisites to the current ideal (I union downset X) -- revert's "
-        "inverse. Pass emit=true for a dry-run preview -- writes nothing.",
+        "Bring a symbol-level edit back, along with everything it needs -- revert's inverse. "
+        "`ref` is an op-id, an op-id prefix, or a `file::name` symbol. Pass emit=true for a "
+        "dry-run preview -- writes nothing.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
         tool_restore,
     ),
@@ -344,9 +348,11 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "Preview candidate step<->op groups (footprint-overlap between pending plan steps and "
         "ops mined since each session's own baseline) plus drift op-ids. Pass `confirm` -- a "
         "list of `{hollow_ids, op_ids}` groups -- to apply exactly those groups; omit it for a "
-        "pure, read-only preview.",
+        "pure, read-only preview. Compact by default; pass detail=true for each match's file/line "
+        "spans.",
         _schema(
-            {"confirm": {
+            {"detail": {"type": "boolean", "description": "include each match's file/line spans (bulkier)"},
+             "confirm": {
                 "type": "array",
                 "items": _schema(
                     {"hollow_ids": {"type": "array", "items": {"type": "string"}},

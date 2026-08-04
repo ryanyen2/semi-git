@@ -126,11 +126,14 @@ class SegmentThemer:
             model=get_model(self._repo), input=prompt, text_format=schema,
             reasoning={"effort": EFFORT},
         )
+        out = r.output_parsed
+        if out is None:  # refusal / content-filter / length stop -> raise so the caller falls back
+            raise ValueError("empty segment parse")
         with self._lock:
             self.calls += 1
             self.tokens_in += r.usage.input_tokens
             self.tokens_out += r.usage.output_tokens
-        return r.output_parsed
+        return out
 
     def segment_feature(self, feature_label: str, runs: list[Run], by_id, prompt_for,
                         record: list[dict] | None = None) -> list[dict]:

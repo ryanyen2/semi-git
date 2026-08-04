@@ -483,15 +483,15 @@ def test_render_collab_preview_clean_land_shows_ops_and_the_oracle_gate():
     assert "advances main by 3 op" in text and "not auto-undoable" in text
 
 
-def test_render_collab_preview_fork_blocks_and_names_the_merge_op_remedy():
-    """A fork blocks the land: it's listed with the exact `sgt merge-op` remedy, the oracle is
-    reported as not reached, and the summary says it won't advance."""
+def test_render_collab_preview_fork_blocks_and_names_the_resolve_remedy():
+    """A fork blocks the land: it's listed with the high-level `sgt resolve <symbol>` remedy, the
+    oracle is reported as not reached, and the summary says it won't advance."""
     pv = {"verb": "land", "target": "main", "clean": True, "ops_added": 0,
           "forks": [["api.py::route", "0ee9a65f11aa", "5e6eaf5822bb"]],
           "oracle_configured": True, "pin_contradictions": [], "declared_cycles": []}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "1 fork(s) block the land" in text
-    assert "api.py::route" in text and "sgt merge-op 0ee9a65f 5e6eaf58" in text
+    assert "api.py::route" in text and "sgt resolve api.py::route" in text
     assert "oracle: not reached" in text
     assert "adds 0 op" not in text          # the noisy zero-op line is suppressed under a blocking fork
     assert "won't advance" in text
@@ -526,14 +526,14 @@ def test_render_collab_preview_clean_sync_brings_in_ops_with_no_forks():
 
 def test_render_collab_preview_sync_fork_surfaces_without_blocking():
     """A sync fork *surfaces* (work waits at the common ancestor) rather than blocking: the fork is
-    drawn with its `merge-op` remedy and the tail counts it, but the fold still happens."""
+    drawn with its `sgt resolve <symbol>` remedy and the tail counts it, but the fold still happens."""
     pv = {"verb": "sync", "remote": "origin", "target": "main", "ops_added": 2,
           "forks": [["api.py::route", "0ee9a65f11aa", "5e6eaf5822bb"]],
           "pin_contradictions": [], "declared_cycles": [], "base_recovery": "mined",
           "theirs_recovery": "mined"}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "1 fork(s) surface" in text and "nothing is lost" in text
-    assert "api.py::route" in text and "sgt merge-op 0ee9a65f 5e6eaf58" in text
+    assert "api.py::route" in text and "sgt resolve api.py::route" in text
     assert "folds in 2 op · 1 fork(s) surface to resolve · not auto-undoable" in text
 
 
@@ -637,12 +637,14 @@ def test_render_rail_only_features_scopes_the_vertical_tree_to_the_group():
     assert "add rga" not in text  # fc's save is outside the group -> filtered out
 
 
-def test_state_banner_renders_forks_with_symbol_and_remedy():
+def test_state_banner_renders_forks_with_symbol_and_resolve_remedy():
+    # stored remedy is left stale on purpose: the banner derives `sgt resolve <symbol>` from the
+    # symbol, so a forks.json committed before the remedy switch still shows the working command.
     states = {"forks": [{"symbol": "room.py::apply", "tips": ["a1b2c3d4e5", "f6a7b8c9d0"],
                          "remedy": "sgt merge-op a1b2c3d4 f6a7b8c9"}], "rewrites": {"drafts": []}}
     text = "\n".join(_state_banner(states, color=False))
     assert "1 open fork(s)" in text and "room.py::apply" in text
-    assert "sgt merge-op a1b2c3d4 f6a7b8c9" in text
+    assert "sgt resolve room.py::apply" in text
 
 
 def test_state_banner_renders_merge_op_drafts_with_repair_remedy():
@@ -650,7 +652,7 @@ def test_state_banner_renders_merge_op_drafts_with_repair_remedy():
         {"verb": "merge-op", "target": "room.py::apply", "draft_id": "rw-abcdef123456"}]}}
     text = "\n".join(_state_banner(states, color=False))
     assert "1 pending merge-op draft(s)" in text and "room.py::apply" in text
-    assert "sgt repair rw-abcdef123" in text  # draft_id capped at 12 chars
+    assert "sgt advanced repair rw-abcdef123" in text  # draft_id capped at 12 chars
 
 
 def test_state_banner_is_empty_for_no_state_and_ignores_non_merge_op_drafts():

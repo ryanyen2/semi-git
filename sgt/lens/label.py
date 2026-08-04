@@ -189,17 +189,23 @@ class Labeler:
         return self._client
 
     def _request(self, prompt: str) -> FeatureLabel:
-        # No `reasoning=` block: naming a cluster is one-shot structured extraction that never
-        # consumes a thinking trace, so requesting reasoning only spends thinking-token latency on
-        # every label -- the dominant cost on the `sgt map` / `sgt graph --refresh` hot path.
+        # `reasoning={"effort": "low"}`: naming a cluster is one-shot structured extraction that
+        # never needs a deep thinking trace, and this is the highest-volume LLM path (every leaf +
+        # subsystem on the `sgt map` / `sgt graph --refresh` hot path). Omitting `reasoning=` defaults
+        # a real reasoning model to "medium" -- a cost inversion here -- so we pin it low, matching
+        # every other call site (`intent.theme`, `intent.theme_segment`, `repair.resolve`).
         r = self.client.responses.parse(
             model=get_model(self._repo), input=prompt, text_format=FeatureLabel,
+            reasoning={"effort": "low"},
         )
+        out = r.output_parsed
+        if out is None:  # refusal / content-filter / length stop -> raise so `_resolve` falls back
+            raise ValueError("empty label parse")
         with self._lock:
             self.calls += 1
             self.tokens_in += r.usage.input_tokens
             self.tokens_out += r.usage.output_tokens
-        return r.output_parsed
+        return out
 
     def _request_batch(self, prompts: list[str]) -> list[FeatureLabel | None]:
         """One `responses.parse` call naming `len(prompts)` independent clusters -- each prompt
@@ -215,6 +221,7 @@ class Labeler:
         )
         r = self.client.responses.parse(
             model=get_model(self._repo), input=combined, text_format=_FeatureLabelBatch,
+            reasoning={"effort": "low"},
         )
         with self._lock:
             self.calls += 1

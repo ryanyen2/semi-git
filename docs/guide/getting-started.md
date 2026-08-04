@@ -32,6 +32,7 @@ sgt init                    # read your existing git history into the op store u
 # edit files with your editor or agent, the same as always
 
 sgt save -m "add email validation"   # record your edits; sgt names the feature(s) they landed in
+sgt now                              # where am I: what's in progress, what needs you, what's next
 sgt log                              # what you did: one row per save, feature chips per row
 sgt log --summary                    # files, symbols, features, coverage, and any drift
 sgt log --tree                       # the feature tree
@@ -72,10 +73,11 @@ propose candidates and previews each one before applying anything. See
 ## For coding agents
 
 `sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of running it as a
-shell command. It exposes 13 tools today: `sgt_init`, `sgt_log`, `sgt_grid`, `sgt_status`,
+shell command. It exposes 14 tools today: `sgt_init`, `sgt_log`, `sgt_grid`, `sgt_status`,
 `sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`, `sgt_advanced_oracle_run`,
-`sgt_plan_intake`, `sgt_checkpoint`, `sgt_drift`, and `sgt_plan_done`. An agent using MCP can
-inspect state, run the plan → checkpoint → drift loop, and do symbol-level revert and restore. The
+`sgt_plan_intake`, `sgt_checkpoint`, `sgt_recall`, `sgt_drift`, and `sgt_plan_done`. An agent using
+MCP can inspect state, recall why existing code is the way it is, run the plan → checkpoint → drift
+loop, and do symbol-level revert and restore. The
 commands for working with other people (`sync`, `land`, `merge-op`, `session`, `propose`) have no
 MCP tool yet, so those still need to run from the terminal. See [User workflows](workflows.md) for
 the full picture.

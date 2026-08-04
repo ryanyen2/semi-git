@@ -103,11 +103,12 @@ def _union_reviews(repo: Path, gb: GitBinding, state_sha: str) -> None:
 
 def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
     """The committed `.sgt/forks.json` body (C4): one record per open same-symbol fork, each with
-    its two tips and the `sgt merge-op` remedy that closes it. Sorted for a deterministic blob. The
-    excluded tips live only here -- never in any verb-visible ideal -- so a fork is shared state a
-    teammate's next sync (and `sgt status`/`sgt forks`) reads, not a lost edit."""
+    its two tips and the `sgt resolve <symbol>` remedy that closes it. Sorted for a deterministic
+    blob. The excluded tips live only here -- never in any verb-visible ideal -- so a fork is shared
+    state a teammate's next sync (and `sgt log --summary`/`sgt advanced forks`) reads, not a lost
+    edit."""
     return [
-        {"symbol": sym, "tips": [tip_a, tip_b], "remedy": f"sgt merge-op {tip_a[:8]} {tip_b[:8]}"}
+        {"symbol": sym, "tips": [tip_a, tip_b], "remedy": f"sgt resolve {sym}"}
         for sym, tip_a, tip_b in sorted(forks)
     ]
 

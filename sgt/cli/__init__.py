@@ -73,7 +73,7 @@ _ROUTING = {
     "rename": "feature", "select": "feature", "why": "feature",
     "merge": "regroup", "split": "regroup", "move": "regroup",
     "state": "advanced", "oracle": "advanced", "fsck": "advanced",
-    "reindex": "advanced", "history": "advanced", "ops": "advanced",
+    "resync": "advanced", "history": "advanced", "ops": "advanced",
     "compose": "advanced", "fold": "advanced", "preview": "advanced",
     "forks": "advanced", "after": "advanced",
     "tiers": "advanced", "migrate": "advanced",
@@ -225,9 +225,10 @@ def _help() -> int:
         "  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n"
         "                              rename, select, why\n"
         "  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n"
-        "                              ops, reindex, state, oracle, after, fold, preview, tiers,\n"
-        "                              identity, migrate, history, compose, forks, review-queue,\n"
-        "                              unstage, repair, merge-op, split-op, transplant\n"
+        "                              resync (recover after a git history rewrite), ops, state,\n"
+        "                              oracle, after, fold, preview, tiers, identity, migrate,\n"
+        "                              history, compose, forks, review-queue, unstage, repair,\n"
+        "                              merge-op, split-op, transplant\n"
         "\n"
         "  collaboration + setup:\n"
         "  sgt sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n"

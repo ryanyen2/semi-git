@@ -1,9 +1,10 @@
 """`sgt resolve <symbol>` (plan U13/R11): one guided verb for resolving a same-symbol fork.
 
 A `sync`/`land` that can't fold two divergent edits of one symbol records the fork in committed
-`.sgt/forks.json` with a `sgt merge-op <a> <b>` remedy. This wraps that remedy's three-step spine
--- `merge_op` (draft a reconciliation hollow) -> edit the tree -> `fulfill` -> `land` (oracle-gated)
--- into one verb, so a user never stitches the pieces together by hand:
+`.sgt/forks.json` with a `sgt resolve <symbol>` remedy. This is that verb: it wraps the three-step
+spine -- `merge_op` (draft a reconciliation hollow) -> edit the tree -> `fulfill` -> `land`
+(oracle-gated) -- into one command, so a user never stitches the pieces together by hand
+(`sgt advanced merge-op <a> <b>` remains the low-level escape hatch):
 
     sgt resolve <symbol>          # draft the reconciliation; then edit the file to merge both sides
     sgt resolve <symbol> --apply  # fulfill from the edited tree and land it (gated on the oracle)

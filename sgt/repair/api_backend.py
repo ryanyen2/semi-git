@@ -87,7 +87,7 @@ class ApiBackend(RepairBackend):
         return proposal
 
     def save(self) -> None:
-        state.save_json(self._repo, "repair_cache", self.cache)
+        state.save_json_if_changed(self._repo, "repair_cache", self.cache)
 
     def cost_line(self) -> str:
         est = self.tokens_in / 1e6 * 0.25 + self.tokens_out / 1e6 * 2.0  # ~ballpark $/Mtok

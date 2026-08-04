@@ -56,6 +56,21 @@ class DirtyWorkingTreeError(Exception):
 
 _CHUNK_BUDGET_SECONDS = 10.0  # KTD-3: one _sync() chunk's wall-clock ceiling on mine() work.
 
+# An in-progress git merge/cherry-pick/revert leaves conflict-marker bytes (`<<<<<<<`) in the tree
+# and a `*_HEAD` pseudo-ref set. Mining that tree would fold the markers into a permanent op, so the
+# dirty pass is skipped while one is live (`_sync`) and `save` refuses outright.
+_MERGE_PSEUDO_REFS = (("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert"))
+
+
+def merge_in_progress(gb: GitBinding) -> str | None:
+    """The name of the in-flight git operation (merge/cherry-pick/revert) whose `*_HEAD` pseudo-ref
+    is set, or None. The one guard against mining conflict-marker bytes into an op (F26), lifted here
+    from `save` so every mine-on-contact path (`revert`/`switch`/read views) shares it."""
+    for pseudo, verb in _MERGE_PSEUDO_REFS:
+        if gb.rev_parse(pseudo) is not None:
+            return verb
+    return None
+
 
 def _load_witnesses(repo: Path) -> dict[str, str]:
     return state.load_json(repo, "witness", default={})
@@ -529,7 +544,11 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # it whenever a chunk's own deadline cuts the history loop short (U1), so passing the caller's
     # true intent here -- even on a backward chunk -- is safe: it only actually runs once some
     # chunk finishes its historical work inside budget.
-    include_dirty = gb.has_dirty_source()
+    # An in-progress git merge/cherry-pick/revert is the one case we refuse to mine the working tree
+    # (F26): its conflict-marker bytes would become a permanent op. Skip the dirty pass entirely
+    # while one is live -- reads still return the committed ideal, and the resolved tree is mined on
+    # the next contact once the operation finishes. `save` refuses outright with a fix-it message.
+    include_dirty = gb.has_dirty_source() and merge_in_progress(gb) is None
 
     # (1, 2) Decide this call's one chunk (KTD-1/KTD-2). Each branch below mines a single,
     # deadline-bounded piece of history; which piece depends on where this ref's witness and
@@ -753,6 +772,44 @@ def sync_status(repo: str | Path, ref: str | None = None) -> dict:
     return {"complete": complete, "reached_genesis": reached_genesis}
 
 
+def resync(repo: str | Path, *, reseed: bool = False) -> dict:
+    """`sgt resync`: recover the current ref's ideal after a git history rewrite (`git reset --hard`,
+    `commit --amend`, `branch -f`) desynced it. A backward/divergent move leaves the persisted
+    `.sgt/local/ideal.json` still naming ops from now-dropped commits: `log`/`--map` show vanished
+    symbols and a later `save` can dead-end. The old workaround was a manual `rm .sgt/local/ideal.json`
+    (which blows away *every* ref). This drops just the current ref's derived local state -- witness,
+    ideal, backfill frontier, sync cache -- then re-mines, so the ideal is re-derived from what is
+    actually reachable from HEAD now. Explicit reverts (the exclusion set) are preserved so they stay
+    durable across the rewrite (F11/F20); `--reseed` additionally clears them for a total reset to
+    whatever git history says. The op store itself is append-only and never touched."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+    key = _ref_key(gb) or gb.head()
+    if key is None:
+        return {"key": None, "before": 0, "after": 0, "reseed": reseed}
+
+    before = len(_load_ideal_table(repo).get(key, []))
+    with locked_section(repo):
+        for load, save in (
+            (_load_witnesses, _save_witnesses),
+            (_load_ideal_table, _save_ideal_table),
+            (_load_backfill_state, _save_backfill_state),
+            (_load_sync_cache, _save_sync_cache),
+        ):
+            table = load(repo)
+            if key in table:
+                del table[key]
+                save(repo, table)
+        if reseed:
+            excl = load_exclusions(repo)
+            if key in excl:
+                del excl[key]
+                save_exclusions(repo, excl)
+
+    ideal = get(repo)  # re-derive from current git reality (first-contact seed via provenance scan)
+    return {"key": key, "before": before, "after": len(ideal.op_ids), "reseed": reseed}
+
+
 def init(repo: str | Path, horizon: str | None = None) -> Ideal:
     """`sgt init`: bind (or reuse) the repo and the kernel store, then mine -- from genesis, or
     from `horizon` onward if given (R10)."""
@@ -794,7 +851,8 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
     conflicts = _dirty_conflicts(repo, gb, materialized)
     if conflicts:
         raise DirtyWorkingTreeError(
-            f"put() would overwrite uncommitted changes: {sorted(conflicts)}"
+            f"put() would overwrite uncommitted changes: {sorted(conflicts)} "
+            f"(if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)"
         )
     # Delta-scoped guard (Phase 0, 0.1): the fold rewrites *every* covered path, but this edit only
     # touches the symbols in `before_ideal Δ after_ideal`. A path outside that delta whose on-disk

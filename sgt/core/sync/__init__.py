@@ -150,7 +150,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
     _state_ref.publish_from_local(gb, repo)
 
     if res.forks:
-        remedies = "; ".join(f"sgt merge-op {a[:8]} {b[:8]}" for _sym, a, b in res.forks)
+        remedies = "; ".join(f"sgt resolve {_sym}" for _sym, a, b in res.forks)
         message = (
             f"merged fork-free work; {len(res.forks)} open fork(s) -- the forked symbol(s) sit at "
             f"the common ancestor until resolved with: {remedies}"

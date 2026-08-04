@@ -170,7 +170,7 @@ def status(repo: str | Path, proposal_id: str) -> dict:
 
     claim_ideal = Ideal.from_ops(order.reduce_to_ideal(union_ids, all_ops), all_ops)
     forks_out = [
-        {"symbol": sym, "tips": [a, b], "remedy": f"sgt merge-op {a[:8]} {b[:8]}"}
+        {"symbol": sym, "tips": [a, b], "remedy": f"sgt resolve {sym}"}
         for sym, a, b in fork_triples
     ]
     return {

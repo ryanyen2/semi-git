@@ -24,6 +24,7 @@ chapters does this feature have, which one is live, and what can I revert."
 from __future__ import annotations
 
 import re
+import shutil
 
 from .color import color_for
 
@@ -462,15 +463,14 @@ def _state_banner(states: dict | None, *, color: bool) -> list[str]:
         out.append(_sgr(_RED, f" {_FORK} {len(forks)} open fork(s) — divergent edits to one symbol:",
                         color=color))
         for f in forks:
-            tips = f.get("tips") or []
-            remedy = f.get("remedy") or ("sgt merge-op " + " ".join(t[:8] for t in tips))
+            remedy = f"sgt resolve {f.get('symbol', '?')}"
             out.append(_dim(f"     {f.get('symbol', '?')}  →  {remedy}", color=color))
     drafts = [d for d in (states.get("rewrites") or {}).get("drafts", []) if d.get("verb") == "merge-op"]
     if drafts:
         out.append(_sgr(_AMBER, f" {_MERGE} {len(drafts)} pending merge-op draft(s):", color=color))
         for d in drafts:
             did = (d.get("draft_id") or "")[:12]
-            out.append(_dim(f"     {d.get('target', '?')}  →  sgt repair {did}", color=color))
+            out.append(_dim(f"     {d.get('target', '?')}  →  sgt advanced repair {did}", color=color))
     return out
 
 
@@ -631,6 +631,23 @@ def _chips(r: dict, labels: dict, *, color: bool, chip_width: int = 22, budget: 
     return _dim(" · ", color=color).join(parts) if parts else _dim("(unattributed)", color=color)
 
 
+# Bare stamps a launch-eve history is full of -- they say nothing about what the save did.
+_LOW_SIGNAL_SUBJECTS = {"done", "ok", "wip", "fix", "sss", "update", "stuff", "misc"}
+
+
+def _row_headline(subject: str, feature: str | None, labels: dict) -> str:
+    """The headline for a save row: its commit subject when that subject carries signal, else the
+    save's dominant-feature label (already in `labels` -- the same feature+intent data the `--map`
+    view leads with). A subject is low-signal when it's empty, <=3 chars, or a bare stamp like
+    `done`/`wip`/`sss`. Falls through to the raw subject when there's no feature label to borrow."""
+    subj = (subject or "").strip()
+    if len(subj) >= 4 and subj.lower() not in _LOW_SIGNAL_SUBJECTS:
+        return subject
+    if feature is not None:
+        return labels.get(feature) or subject
+    return subject
+
+
 def render_save_list_lines(
     map_view: dict,
     grid_view: dict,
@@ -658,7 +675,8 @@ def render_save_list_lines(
     for r in shown:
         pos = _dim(f"c{r['index']}".rjust(pos_w), color=color)
         sha = _dim((r["sha"] or "")[:7], color=color)
-        subj = _ellipsize((r["subject"] or "").replace("\n", " "), label_width).ljust(label_width)
+        head = _row_headline(r["subject"], r["feature"], labels)
+        subj = _ellipsize((head or "").replace("\n", " "), label_width).ljust(label_width)
         subj_s = _bold(subj, color=color) if r["feature"] == selected else subj
         lines.append(f" {pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
     if n_ep > len(shown):
@@ -746,9 +764,10 @@ def render_graph_lines(
     frontier: int | None = None,
     collapsed=(),
     color: bool = True,
-    bar_width: int = 38,
+    bar_width: int | None = None,
     show_links: bool = False,
     states: dict | None = None,
+    max_rows: int = 40,
 ) -> list[str]:
     """Render the feature map as terminal lines (ANSI truecolor when `color`): one row per lane,
     each drawing its checkpoints' `▁▂▃▄▅▆▇█` edit-density *positioned on the SHARED commit-time axis*
@@ -935,21 +954,33 @@ def render_graph_lines(
     lanes_by_row = {l["row"]: l for l in layout["lanes"]}
     headers_by_row = {h["row"]: h for h in layout["headers"]}
 
-    # No-truncation title column: pad every lane label to the widest *full* label so the density
-    # bars still line up, but no label is ever cut with `…`.
+    # Title column: pad every lane label to the widest label so the density bars line up, but cap the
+    # column at 32 cols and ellipsize a longer label -- one very long feature name mustn't shove the
+    # bar off-screen.
     def lane_label(l: dict) -> str:
         raw = labels.get(l["id"], l["id"])
         return f"{raw} ({len(l['leaves'])})" if l["is_meta"] else raw
 
-    title_w = max((len(lane_label(l)) for l in layout["lanes"]), default=10)
+    title_w = min(32, max((len(lane_label(l)) for l in layout["lanes"]), default=10))
     # Columns before the density bar: indent(3) + marker(1) + glyph(1) + space + handle(8) + space +
     # title + space. The ruler and the header meta both align to this so the c-ticks sit over the bar.
     bar_prefix = 3 + 1 + 1 + 1 + 8 + 1 + title_w + 1
 
+    # Terminal-fit bar width: fill the space left after the fixed prefix so rows don't hard-wrap on a
+    # narrow terminal (which would break lane alignment). Fall back to the proven 38 when the size is
+    # unavailable or absurdly small; an explicit caller/test override is honoured untouched.
+    if bar_width is None:
+        cols = shutil.get_terminal_size(fallback=(0, 0)).columns
+        bar_width = 38 if cols < 40 else max(12, cols - bar_prefix)
+
     ruler = _time_ruler(bar_prefix, bar_width, layout["commit_count"])
     if ruler:
         lines.append(dim(ruler))
+    lanes_shown = 0
+    total_lanes = len(layout["lanes"])
     for row in range(layout["row_count"]):
+        if lanes_shown >= max_rows:
+            break  # a huge history dumps thousands of lanes -- cap, like the save list does
         if row in headers_by_row:
             hd = headers_by_row[row]
             if lines and lines[-1] != "":
@@ -966,7 +997,7 @@ def render_graph_lines(
             marker = "▸" if is_sel else " "
             raw = lane_label(l)
             handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = the minimal unique prefix
-            label = raw.ljust(title_w)  # no truncation
+            label = _ellipsize(raw, title_w - 1).ljust(title_w)  # cap + ellipsize a long label
             bar = time_bar(l["cars"], hexc, bar_width)
             # Checkpoints spelled out as `@n label`: the `@n` is the `sgt revert` handle, the label
             # its human name. Only the last 3 (most recent) are named -- the rest fold into a `+N
@@ -987,6 +1018,11 @@ def render_graph_lines(
                      f"{bold(label) if is_sel else label} {bar}{trailer}")
             row_s += links_note(fid)
             lines.append(row_s)
+            lanes_shown += 1
+    if total_lanes > lanes_shown:
+        lines.append("")
+        lines.append(dim(f" …{total_lanes - lanes_shown} more feature(s) "
+                         f"({lanes_shown} of {total_lanes} shown)"))
     for g in unplaced_ghosts:
         lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), 40)}"))
     lines.append("")
@@ -1191,7 +1227,7 @@ def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> lis
                                        f"still merges; resolve these when ready (nothing is lost):",
                             color=color))
         for sym, a, b in forks[:8]:
-            remedy = _dim(f"sgt merge-op {a[:8]} {b[:8]}", color=color)
+            remedy = _dim(f"sgt resolve {sym}", color=color)
             lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
         if len(forks) > 8:
             lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
@@ -1303,7 +1339,7 @@ def render_collab_preview_lines(preview_view: dict, *, color: bool = True) -> li
         lines.append(_paint("#ffaf00", f"   ⚠ {len(forks)} fork(s) block the land -- "
                                        f"reconcile before it can advance:", color=color))
         for sym, a, b in forks[:8]:
-            remedy = _dim(f"sgt merge-op {a[:8]} {b[:8]}", color=color)
+            remedy = _dim(f"sgt resolve {sym}", color=color)
             lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
         if len(forks) > 8:
             lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
@@ -1445,7 +1481,8 @@ def render_rail_lines(
         rail = " ".join(cell(L, r["row"], L == r["lane"]) for L in range(lane_count))
         pos = dim(f"c{r['index']}".rjust(pos_w))
         sha = dim((r["sha"] or "")[:7])
-        subj = _ellipsize((r["subject"] or "").replace("\n", " "), label_width).ljust(label_width)
+        head = _row_headline(r["subject"], r["feature"], labels)
+        subj = _ellipsize((head or "").replace("\n", " "), label_width).ljust(label_width)
         subj_s = bold(subj) if r["feature"] == selected else subj
         lines.append(f" {rail}  {pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
 
