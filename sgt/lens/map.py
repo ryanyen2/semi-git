@@ -40,7 +40,11 @@ def _label_context(repo: Path, ops: list, result: dict) -> tuple[dict, dict]:
     kinds_by_leaf = {
         leaf: ", ".join(f"{k}×{n}" for k, n in c.most_common(4)) for leaf, c in kind_counts.items()
     }
-    return subjects_by_leaf, kinds_by_leaf
+    # The raw counts too, not just the frequency order: naming a feature after its dominant commit
+    # is only right when that commit actually dominates (`label.subject_label`), and "which subject
+    # is first" cannot answer that.
+    subject_counts_by_leaf = {leaf: dict(c) for leaf, c in subj_counts.items()}
+    return subjects_by_leaf, kinds_by_leaf, subject_counts_by_leaf
 
 
 def _op_touch_weights(ops: list) -> dict[str, float]:
@@ -68,10 +72,11 @@ def build_map(repo: str | Path, rebuild: bool = False) -> dict:
     ops = opindex.index_ops(repo)  # footprint/provenance only -- clustering never reads .images
     ideal = current_ideal(repo)
     result = tree.build(repo, ops, ideal, force_rebuild=rebuild, refresh_caches=True)
-    subjects_by_leaf, kinds_by_leaf = _label_context(repo, ops, result)
+    subjects_by_leaf, kinds_by_leaf, subject_counts_by_leaf = _label_context(repo, ops, result)
     labeler = tree.label_tree(
         result, repo, subjects_by_leaf=subjects_by_leaf, kinds_by_leaf=kinds_by_leaf,
         weights=_op_touch_weights(ops), relabel=rebuild,
+        subject_counts_by_leaf=subject_counts_by_leaf,
     )
     labeler.save()  # persist the member-hash label cache so an unchanged cluster never re-pays
     # the (non-deterministic) LLM call on the next build -- without this the cache is rebuilt cold

@@ -1083,7 +1083,7 @@ def label_tree(
     result: dict, repo: str | Path = ".", labeler=None,
     subjects_by_leaf: dict[str, list[str]] | None = None, pins: Pins | None = None,
     kinds_by_leaf: dict[str, str] | None = None, weights: dict[str, float] | None = None,
-    relabel: bool = False,
+    relabel: bool = False, subject_counts_by_leaf: dict[str, dict[str, int]] | None = None,
 ) -> object:
     """Label every node bottom-up (leaves from members, a single-child node reuses its child's
     label, an internal node from its children's labels), then DEDUP. Mutates `result` in place:
@@ -1105,7 +1105,7 @@ def label_tree(
     After DEDUP, any leaf whose feature id has a user-pinned label (`pins.labels`, U13's
     `rename` verb) has that label substituted verbatim -- a user rename always wins over the
     LLM/fallback label, and survives every future re-cluster as long as the id persists."""
-    from sgt.lens.label import Labeler
+    from sgt.lens.label import Labeler, subject_label
 
     if labeler is None:
         # `relabel` is `--rebuild`'s "name everything again": it bypasses both the cached LLM label
@@ -1128,6 +1128,18 @@ def label_tree(
         for nid in ready:
             nd = nodes[nid]
             if not nd["children"]:
+                # Prefer the developer's own words. When one commit subject carries most of this
+                # leaf's mass, that subject IS the feature's name -- no LLM call, no paraphrase of
+                # something they already wrote, and nothing on this path that can be slow or
+                # non-reproducible. Clusters spanning several episodes fall through to the labeler,
+                # which is the case a synthesized name is actually for.
+                own_words = subject_label(
+                    subjects_by_leaf.get(nid) or [],
+                    (subject_counts_by_leaf or {}).get(nid),
+                )
+                if own_words is not None:
+                    nd["label"], nd["why"] = own_words.label, own_words.rationale
+                    continue
                 batch.append((nid, labeler.leaf_request(
                     nid, nd["members"], weights,
                     subjects_by_leaf.get(nid), kinds_by_leaf.get(nid))))

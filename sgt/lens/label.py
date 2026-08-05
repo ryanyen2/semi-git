@@ -134,6 +134,61 @@ def _clean_symbol_name(member: str) -> str | None:
 _DOC_EXT = (".md", ".rst", ".txt", ".toml", ".yaml", ".yml", ".cfg", ".ini", ".json",
             ".lock", ".html", ".css")
 
+# How much of a cluster's op mass one commit subject must carry before that subject simply *is* the
+# feature's name. Above it, the cluster is essentially one episode and the developer already named
+# it; below it, the cluster genuinely spans several episodes and needs a synthesized name.
+SUBJECT_DOMINANCE = 0.6
+
+# Subjects that name a moment rather than a piece of work. A developer scanning `sgt log` learns
+# nothing from a feature called "wip" or "fix tests", so these fall through to the ordinary naming
+# path even when they dominate.
+_UNINFORMATIVE = {
+    "wip", "fix", "fixes", "fixup", "update", "updates", "cleanup", "clean up", "tweak",
+    "tweaks", "refactor", "misc", "stuff", "changes", "temp", "tmp", "test", "tests",
+    "fix tests", "fix test", "fix typo", "typo", "lint", "format", "formatting", "sgt save",
+    "initial commit", "wip commit", "checkpoint", "rebase", "merge",
+}
+
+
+def _strip_conventional_prefix(subject: str) -> str:
+    """`feat(cli): revert frontier` -> `revert frontier`. The type/scope prefix is metadata about
+    the commit, not a name for the work, and repeating it in every feature label crowds out the
+    words that actually distinguish one feature from another."""
+    head, sep, rest = subject.partition(":")
+    if not sep or len(head) > 24 or " " in head.strip():
+        return subject.strip()
+    kind = head.split("(", 1)[0].strip().lower()
+    if kind.isalpha() and rest.strip():
+        return rest.strip()
+    return subject.strip()
+
+
+def subject_label(subjects: list[str], counts: dict[str, int] | None = None) -> FeatureLabel | None:
+    """Name a feature with the developer's own words, or `None` when their words don't fit.
+
+    A feature is a cluster of edits, and the developer already said what those edits were -- in the
+    commit subjects and `sgt save -m` messages that produced them. Naming the cluster anything else
+    hands them back a paraphrase of something they wrote: a repo whose author wrote "Add 'done
+    <index>' command to mark a task complete" was showing the feature as "Task Command Additions".
+    So when one subject carries most of the cluster's mass (`SUBJECT_DOMINANCE`), that subject is
+    the name, verbatim apart from a conventional-commit prefix.
+
+    Returns `None` -- deferring to the LLM or the structural fallback -- when the cluster spans
+    several episodes with no dominant one (a synthesized name is genuinely the right tool there), or
+    when the dominant subject names a moment rather than a piece of work ("wip", "fix tests")."""
+    if not subjects:
+        return None
+    top = subjects[0]
+    if counts:
+        total = sum(counts.values())
+        if total <= 0 or counts.get(top, 0) / total < SUBJECT_DOMINANCE:
+            return None
+    cleaned = _strip_conventional_prefix(top)
+    if cleaned.lower().strip(" .") in _UNINFORMATIVE or len(cleaned) < 4:
+        return None
+    label = cleaned if len(cleaned) <= 60 else cleaned[:57].rstrip() + "…"
+    return FeatureLabel(label=label, rationale=f"Named from the commit that introduced it: {top!r}.")
+
 
 def fallback_label(members: list[str]) -> FeatureLabel:
     """Deterministic, offline, free, and *readable* -- and it names the cluster's *kind*, not just
