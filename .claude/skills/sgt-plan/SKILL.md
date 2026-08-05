@@ -37,10 +37,17 @@ plan.
    confirmed unless you name the group, so preview freely.
 
 4. **Done** — a session closes itself the moment its last step is confirmed. Call `sgt_plan_done`
-   with your `session_id` only for the leftover case: steps you ended up building differently than
-   predicted, which will never match. `plan_done` closes the session so it stops showing as active;
-   the record stays as completed history. (To discard a plan entirely, that is `sgt plan abandon`
-   on the CLI, not `plan_done`.)
+   with your `session_id` (and your own `claude_session_id`, so closing someone else's plan is
+   refused rather than silently honored) only for the leftover case: steps you ended up building
+   differently than predicted, which will never match. `plan_done` closes the session so it stops
+   showing as active; the record stays as completed history. (To discard a plan entirely, that is
+   `sgt plan abandon` on the CLI, not `plan_done`.)
+
+**If you were interrupted and are picking the work back up**, call `sgt_plan_intake` again with the
+same `session_id`. That is a resume, not a new plan: the original baseline and creation time are
+kept, so everything you built before the interruption stays attributed to this plan instead of
+reappearing as drift, and the steps are re-decomposed from whatever you now intend to do. Steps the
+new plan no longer has are cleaned up.
 
 Between steps 3 and 4, `sgt_drift` lists ops no active plan predicted. Drift is not a chore to
 resolve; it is a read-only diff of what happened outside your stated plan. Read it to confirm no
@@ -55,7 +62,8 @@ Several agents can have live plans at once. Each session is owned by exactly one
 - **Only confirm or close your own session.** `sgt_checkpoint`'s matching is scoped per session
   (each session only matches ops mined since its own baseline against its own steps), so confirming
   a group in your session never disturbs another agent's. Do not call `sgt_plan_done` on a session
-  you did not open.
+  you did not open. Passing your own `claude_session_id` to `sgt_plan_done` makes that a refusal
+  instead of a courtesy: a plan whose owner recorded a different id will not close.
 - Concurrent sessions all appear in the graph as separate active plans. Finishing them one by one
   is the expected shape: each agent drafts, builds, checkpoints, and closes its own.
 

@@ -205,7 +205,28 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
 
     decomposition = _llm_decompose(repo, plan_text) or _fallback_decompose(plan_text)
     _backfill_predicted_feature(repo, decomposition.steps)
-    baseline_op_ids = tuple(sorted(op.id for op in store.all_ops()))
+
+    # Re-taking a session id that already exists is a RESUME, not a fresh plan. An agent that was
+    # interrupted and restarted calls intake again with the id it owns (the skill tells it to pick a
+    # stable one), and minting a new baseline there silently reclassified everything it had already
+    # built as drift -- the work was still in the store, but no longer attributable to the plan that
+    # produced it. So the original baseline and creation time are kept, and only the steps are
+    # re-decomposed: the agent's current plan text is authoritative about what remains to do, while
+    # the baseline is a fact about when the work started and cannot be restated.
+    existing = _load_sessions(repo).get(session_id)
+    resumed = bool(existing) and existing.get("status") == "active"
+    if resumed:
+        baseline_op_ids = tuple(existing.get("baseline_op_ids") or ())
+        created_ts = float(existing.get("created_ts", now))
+        # The hollows of the superseded pending steps would otherwise linger unreferenced, matching
+        # against work forever -- the orphan the 7-day sweep was left to clean up. Same deletion
+        # `abandon` does, for the same reason: nothing points at them any more.
+        for old in existing.get("steps", []):
+            if old.get("status") == "pending":
+                (store.hollow_dir / old["hollow_id"]).unlink(missing_ok=True)
+    else:
+        baseline_op_ids = tuple(sorted(op.id for op in store.all_ops()))
+        created_ts = now
 
     steps: list[dict] = []
     for i, step in enumerate(decomposition.steps):
@@ -226,12 +247,15 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
     table = _load_sessions(repo)
     table[session_id] = {
         "plan_text": plan_text,
-        "created_ts": now,
+        "created_ts": created_ts,
         "last_activity_ts": now,
         "status": "active",
-        "claude_session_id": claude_session_id,
+        # A resume that cannot read its own Claude session id must not erase the one the original
+        # intake captured -- that id is the whole resume affordance.
+        "claude_session_id": claude_session_id or (existing or {}).get("claude_session_id"),
         "baseline_op_ids": list(baseline_op_ids),
         "steps": steps,
+        "resumed": resumed,
     }
     _save_sessions(repo, table)
 
@@ -242,7 +266,7 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
     record_turn(repo, key=session_id, key_kind="plan", actor="human", channel="cli",
                 text=plan_text, ts=now)
     return PlanSession(
-        session_id=session_id, plan_text=plan_text, created_ts=now, last_activity_ts=now,
+        session_id=session_id, plan_text=plan_text, created_ts=created_ts, last_activity_ts=now,
         status="active", baseline_op_ids=baseline_op_ids, steps=tuple(steps),
     )
 
@@ -318,7 +342,8 @@ def sweep_stale_sessions(repo: str | Path, max_age_seconds: float, now: float | 
     return stale
 
 
-def sweep_built_sessions(repo: str | Path, now: float | None = None) -> list[str]:
+def sweep_built_sessions(repo: str | Path, now: float | None = None,
+                         exclude: tuple[str, ...] | frozenset[str] = ()) -> list[str]:
     """Auto-close (`mark_done`) every *stalled* session whose pending steps are all file-covered --
     the work landed (in the predicted files) but under different names than predicted, so the
     name-exact matcher (`sgt.loop.match.compute_checkpoint`) will never confirm it and the plan
@@ -328,16 +353,23 @@ def sweep_built_sessions(repo: str | Path, now: float | None = None) -> list[str
     plan is still active the exact matcher may yet confirm the correctly-named step, so we only
     reap the walked-away-but-actually-done case. Run on the save housekeeping beat
     (`sgt.cli.porcelain._fold_plan_matches`). Reversible -- `mark_done` keeps the record for
-    `sgt revert --session`. Returns the sorted ids closed. `now` is injectable for tests."""
+    `sgt revert --session`. Returns the sorted ids closed. `now` is injectable for tests.
+
+    `exclude` holds sessions the same save just reported an *ambiguous* match for. Being told
+    "run `sgt save --resolve-plan` to settle this" and then finding the hollow gone is the one
+    outcome this sweep must never produce: the user has not walked away from a plan they were
+    invited to finish one line earlier, however long it has been quiet."""
     from sgt.loop.match import session_coverage
 
     repo = Path(repo)
     now = time.time() if now is None else now
     coverage = session_coverage(repo)
     table = _load_sessions(repo)
+    skip = frozenset(exclude)
     built = sorted(
         sid for sid, cov in coverage.items()
         if cov["fully_built"]
+        and sid not in skip
         and (rec := table.get(sid)) is not None
         and now - rec["last_activity_ts"] > STALLED_SECONDS
     )

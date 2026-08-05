@@ -255,6 +255,15 @@ def tool_plan_done(repo_path: str, args: dict) -> dict:
     session_id = (args.get("session_id") or "").strip()
     if not session_id:
         return {"error": "missing 'session_id'"}
+    # Ownership was stated in the skill ("only confirm your own") and enforced by nothing: any agent
+    # holding another's session id could close its plan out from under it, mid-build. When the
+    # caller identifies itself, a mismatch is refused instead of silently honored.
+    caller = (args.get("claude_session_id") or "").strip()
+    if caller:
+        owner = (plan_mod.active_sessions(repo_path).get(session_id) or {}).get("claude_session_id")
+        if owner and owner != caller:
+            return {"error": f"plan {session_id} belongs to another agent (session {owner}); "
+                             f"leave it alone, or omit claude_session_id to close it deliberately"}
     ok = plan_mod.mark_done(repo_path, session_id)
     return {"ok": ok} if ok else {"error": f"no such session: {session_id}"}
 
@@ -386,7 +395,9 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "remaining steps were built differently than predicted and will never match. The record is "
         "kept as completed history (its work stays attributable); use `sgt plan abandon` to delete "
         "an unwanted plan entirely.",
-        _schema({"session_id": {"type": "string"}}, ["session_id"]),
+        _schema({"session_id": {"type": "string"},
+                 "claude_session_id": {"type": "string", "description": "your own $CLAUDE_CODE_SESSION_ID; pass it so closing a plan another agent owns is refused rather than silently honored"}},
+                ["session_id"]),
         tool_plan_done,
     ),
 }
