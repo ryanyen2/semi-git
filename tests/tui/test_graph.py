@@ -279,15 +279,17 @@ def test_render_car_draws_tier_brackets():
 def test_time_bar_gap_fills_a_single_commit_checkpoint_across_its_column():
     """A single-commit checkpoint on a wide/sparse strip fills its whole commit column with density
     glyphs (gap-fill tiling), not one bright pixel bleeding into dead space -- so it reads as a solid
-    block, not a sliver. Regression for the 'blocks are unreadable slivers' report."""
+    block, not a sliver. Regression for the 'blocks are unreadable slivers' report. Placed at a RECENT
+    commit, where the power-warped axis (`_LOD_GAMMA`) gives each commit column its full granular
+    width -- the old tail is intentionally compressed, so granularity is asserted at the newest end."""
     fid = "f-cccccccccc"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
-    # 8 commits across the 38-col strip -> each commit column is several cols wide (col_step > 1), so
-    # the gap-fill widening is observable (a dense 200-commit grid would compress col_step back to 1).
+    # 8 commits across the 38-col strip; commit 6 sits near the granular (recent) end, so its single
+    # column is several cols wide and the gap-fill widening is observable.
     grid = {"commits": [{"index": i} for i in range(8)], "commit_count": 8,
-            "cells": [{"feature_id": fid, "commit_index": 0, "op_ids": ["o0"], "op_count": 1,
+            "cells": [{"feature_id": fid, "commit_index": 6, "op_ids": ["o0"], "op_count": 1,
                        "kinds": {"add": 1}, "fidelity": "full"}]}
-    segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed")]  # a single-commit car (first_index == last_index)
+    segs = [_seg(fid, 0, ["o0"], 6, 6, tier="co-changed")]  # a single-commit car (first_index == last_index)
     lines = render_graph_lines(m, grid, segs, color=False)
     lane = next(ln for ln in lines if "cccccccc" in ln)
     assert "███" in lane  # the single checkpoint's density block spans several columns, not one
@@ -355,6 +357,23 @@ def test_render_swimlane_header_present_for_expanded_subsystem():
                    _node("F1", "N0", []), _node("F2", "N0", [])], "edges": []}
     lines = render_graph_lines(m, _grid(("F1", 0), ("F2", 40)), color=False)
     assert any("▾" in ln and "feat" in ln for ln in lines)  # the subsystem swimlane header row
+
+
+def test_render_collapsed_subsystems_are_one_meta_lane_each_no_expand_headers():
+    """Map spatial LOD (Phase 3b): a collapsed subsystem renders as a single rolled-up meta-lane --
+    no per-feature rows and no `▾` swimlane expand header. This is the counterpart to the expanded
+    view above; with no `--focus` the CLI collapses every LEAF subsystem (here N0/N1 are leaves), so
+    interior subsystems stay expanded as headers while leaf clusters fold to one row each."""
+    m = {"roots": ["N0", "N1"],
+         "nodes": [_node("N0", None, ["F1", "F2"], kind="subsystem"), _node("F1", "N0", []),
+                   _node("F2", "N0", []),
+                   _node("N1", None, ["F3"], kind="subsystem"), _node("F3", "N1", [])],
+         "edges": []}
+    lines = render_graph_lines(m, _grid(("F1", 0), ("F2", 20), ("F3", 40)), color=False,
+                               collapsed=("N0", "N1"))
+    assert not any("▾" in ln for ln in lines)                 # nothing is expanded
+    # both subsystems roll up to a meta-lane and no leaf feature (F1/F2/F3) gets its own row
+    assert not any(f in ln for ln in lines for f in ("F1", "F2", "F3"))
 
 
 def test_render_frontier_note_present_when_folded():

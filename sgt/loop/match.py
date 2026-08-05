@@ -192,6 +192,19 @@ def _step_keys(footprint) -> frozenset[str]:
     return frozenset(keys)
 
 
+def _predicted_files(footprint) -> frozenset[str]:
+    """Every file a plan step's prediction names (``__plan__::`` sentinels dropped) -- the
+    *file-scope* evidence key for the looser "did the work land here at all?" question that
+    ``session_coverage`` answers, distinct from the name-exact match ``_step_keys`` drives.
+
+    ``_step_keys`` deliberately drops the file for a ``file::qualname`` entry (the entity is
+    identity, the file drifts). Coverage inverts that emphasis on purpose: entity-*name* prediction
+    is the unreliable part (an LLM guesses ``test_publish`` for what ships as
+    ``test_publish_delivers_to_all_subscribers``), while the *file* it named is usually right. So
+    coverage keeps the file and ignores the name."""
+    return frozenset(_file_of(sym) for sym in footprint if not sym.startswith("__plan__::"))
+
+
 class _UnionFind:
     def __init__(self) -> None:
         self._parent: dict[str, str] = {}
@@ -272,6 +285,62 @@ def compute_checkpoint(repo: str | Path) -> CheckpointResult:
 
     drift_op_ids = tuple(sorted(drift_candidates - matched_op_ids))
     return CheckpointResult(matches=tuple(groups), drift_op_ids=drift_op_ids)
+
+
+def session_coverage(repo: str | Path) -> dict:
+    """File-level "looks built" evidence per active session -- the read behind auto-close and the
+    "why isn't this step matched?" surface. A pending step is ``covered`` iff some op made *since
+    the plan's baseline* touches a file the step predicted. This is deliberately LOOSER than
+    ``compute_checkpoint``'s name-exact join and is never a match: it writes nothing, and its whole
+    point is to recognise work that the exact matcher can't (the entity was built under a different
+    name than predicted, so ``_step_keys`` never joined it) without ever *guessing* an op is a
+    specific step's fulfilment.
+
+    A step whose predicted file received no post-baseline op is ``uncovered`` -- the usual cause is
+    the entity landing in a different file than planned (planned ``connection.py``, built in
+    ``server.py``), which the ``reason`` names. ``fully_built`` is true when a session has pending
+    steps and every one is covered -- the auto-close trigger.
+
+    Caveat (accepted, see ``plan.sweep_built_sessions``): file-scope is coarse -- an *unrelated*
+    later edit to a predicted file also reads as covered. That looseness is the point (names drift,
+    files rarely do) and the close it drives is reversible (``mark_done`` keeps the record)."""
+    repo = Path(repo)
+    store = Store(repo)
+    from sgt.core import opindex
+
+    ops = opindex.index_ops(repo)
+    sessions = _load_sessions(repo)
+    out: dict = {}
+    for session_id, rec in sorted(sessions.items()):
+        if rec["status"] != "active":
+            continue
+        baseline = frozenset(rec["baseline_op_ids"])
+        # Files touched by real (non-ordering-only) work since the plan started; residue/anchor-only
+        # ops are excluded for the same reason drift excludes them -- they did no nameable work.
+        new_op_files: set[str] = set()
+        for op in ops:
+            if op.id in baseline or _is_ordering_only(op.footprint):
+                continue
+            new_op_files.update(_file_of(sym) for sym in op.footprint)
+
+        pending_cov = []
+        for step in (s for s in rec["steps"] if s["status"] == "pending"):
+            hollow = store.get_hollow(step["hollow_id"])
+            files = _predicted_files(hollow.footprint) if hollow else frozenset()
+            hit = sorted(files & new_op_files)
+            if hit:
+                covered, reason = True, (f"edits landed in {hit[0]} since the plan started "
+                                         "(built under a different name than predicted)")
+            elif files:
+                covered, reason = False, (f"predicted file {sorted(files)[0]} received no edits "
+                                          "since the plan started")
+            else:
+                covered, reason = False, "no predicted file to check"
+            pending_cov.append({"title": step["title"], "hollow_id": step["hollow_id"],
+                                "covered": covered, "reason": reason})
+        out[session_id] = {"pending": pending_cov,
+                           "fully_built": bool(pending_cov) and all(s["covered"] for s in pending_cov)}
+    return out
 
 
 def confirm_match(repo: str | Path, session_id: str, hollow_ids: list[str], op_ids: list[str]) -> None:

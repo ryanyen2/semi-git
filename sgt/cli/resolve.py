@@ -47,12 +47,23 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
         return _emit_json({"ok": False, "error": msg}) if as_json else _err(msg)
     tip_a, tip_b = fork["tips"]
 
+    import sys
+
     if not apply:
         draft = rewrite.merge_op(repo, tip_a, tip_b)
         if not draft.ok:
             return _emit_json({"ok": False, "error": draft.message}) if as_json else _err(draft.message)
         if as_json:
             return _emit_json({"ok": True, "draft_id": draft.draft_id, "symbol": symbol, "file": fork["file"]})
+        # Interactive tty: show a side-by-side diff of the two tips and let the user pick a side (or
+        # edit) in one step, then fall straight into the fulfill→land spine below -- no second command.
+        # A non-tty draft keeps the two-step contract (print the `--apply` hint and stop).
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            picked = _interactive_pick(repo, symbol, fork["file"])
+            if picked == "quit":
+                print(f"  draft kept — edit {fork['file']} then: sgt resolve {symbol} --apply")
+                return 0
+            return _apply_resolution(repo, symbol, as_json, override=override, reason=reason, by=by)
         print(f"✓ drafted a reconciliation of {symbol}")
         print(f"  edit {fork['file']} to merge both versions, then: sgt resolve {symbol} --apply")
         return 0
@@ -60,8 +71,6 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
     # --apply: the confirm step. On an interactive tty show the three-step remedy feedforward first
     # (fulfill your merge → run the oracle → land, closing the fork) and let the user back out;
     # --json and a non-tty apply immediately (the machine/CI contract), no new args.
-    import sys
-
     if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
         from sgt.api import resolve_apply_preview_view
 
@@ -72,8 +81,56 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
             print("  aborted — nothing resolved.")
             return 1
 
-    # find the reconciliation drafted for this symbol, fulfill it from the edited tree, and land it
-    # (rewrite.land refuses unless the oracle passes; landing closes the fork record).
+    return _apply_resolution(repo, symbol, as_json, override=override, reason=reason, by=by)
+
+
+def _interactive_pick(repo: str, symbol: str, file: str) -> str:
+    """Render the two tips side by side and prompt for a resolution. `l`/`r` write the chosen tip's
+    content for the forked file to the working tree; `e` opens `$EDITOR` on it for a manual merge;
+    `q` keeps the draft untouched. Returns the choice ("left"/"right"/"edit"/"quit")."""
+    import os
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from sgt.api import fork_detail_view
+    from sgt.tui.fork_diff import side_by_side
+
+    detail = fork_detail_view(repo, symbol)
+    tips = detail.get("tips", [])
+    if len(tips) != 2:
+        return "quit"
+    color = sys.stdout.isatty()
+    width = shutil.get_terminal_size((120, 40)).columns
+    files_a = {k: v for k, v in tips[0]["files"].items() if k == file} or tips[0]["files"]
+    files_b = {k: v for k, v in tips[1]["files"].items() if k == file} or tips[1]["files"]
+    print(f"── fork on {symbol} ──  (◀ left = tip A   ▶ right = tip B)")
+    for line in side_by_side(files_a, files_b, width=width, color=color):
+        print(line)
+    choice = (input("pick [l]eft / [r]ight / [e]dit / [q]uit: ").strip().lower() or "q")[0]
+
+    target = Path(repo) / file
+    if choice == "l":
+        target.write_text(tips[0]["files"].get(file, ""), encoding="utf-8")
+        return "left"
+    if choice == "r":
+        target.write_text(tips[1]["files"].get(file, ""), encoding="utf-8")
+        return "right"
+    if choice == "e":
+        subprocess.call([os.environ.get("EDITOR", "vi"), str(target)])
+        return "edit"
+    return "quit"
+
+
+def _apply_resolution(repo: str, symbol: str, as_json: bool, *, override: str | None = None,
+                      reason: str | None = None, by: str | None = None) -> int:
+    """The fulfill→oracle→land spine shared by `--apply` and the interactive pick: find the
+    reconciliation drafted for this symbol, fulfill it from the edited tree, and land it
+    (`rewrite.land` refuses unless the oracle passes; landing closes the fork record)."""
+    from sgt.core import oracle, rewrite
+    from sgt.core.store import Store
+
     store = Store(repo)
     draft_id = next(
         (did for did, rec in rewrite.pending_drafts(repo).items()
@@ -85,7 +142,6 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
         msg = (f"no drafted resolution for {symbol!r} yet — run `sgt resolve {symbol}` first, "
                f"edit the file to merge both versions, then re-run with --apply")
         return _emit_json({"ok": False, "error": msg}) if as_json else _err(msg)
-    from sgt.core import oracle
 
     # A manual `--override pass` lets the guided verb land when no oracle is configured (the common
     # case; the land gate's own error names this remedy). Otherwise run the configured tests here.

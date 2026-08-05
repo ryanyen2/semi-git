@@ -356,26 +356,35 @@ def episode_rail_layout(ep_view: dict) -> dict:
     ordered = sorted(episodes, key=lambda e: -e["index"])  # newest (largest commit_index) on top
     row_of = {e["index"]: r for r, e in enumerate(ordered)}
 
-    # Rail features: those that dominate >=1 save. Each one's span covers every save it TOUCHED.
+    # Rail features: those that dominate >=1 save. `touched` records every save each such feature
+    # brushed (drives the `feature_touched` output + the cosmetic `recurring` set), but a feature's
+    # LANE SPAN is the range of saves it DOMINATED, `[min, max]` -- matching workbench.js's
+    # `episodeRailLayout`. Spanning only the dominated range still bridges interior saves the feature
+    # didn't dominate (the "stays connected through a save it didn't dominate" property: those rows
+    # fall inside `[min, max]`); it just doesn't stretch the lane out to incidental brushes before the
+    # feature's first / after its last dominated save. Touched-based spans stretched to every brush,
+    # which on a long history overlap so heavily that lane pooling can't compact the rail at all.
     rail_feats = {e["dominant_feature"] for e in episodes if e["dominant_feature"] is not None}
-    touched: dict = {}  # fid -> set of rows the feature touched
+    touched: dict = {}  # fid -> set of rows the feature touched (for feature_touched / recurring)
+    dominated: dict = {}  # fid -> set of rows the feature DOMINATED (drives the lane span)
     for e in episodes:
         r = row_of[e["index"]]
         for fid in e.get("features", {}):
             if fid in rail_feats:
                 touched.setdefault(fid, set()).add(r)
-    span = {fid: [min(rs), max(rs)] for fid, rs in touched.items()}
+        if e["dominant_feature"] is not None:
+            dominated.setdefault(e["dominant_feature"], set()).add(r)
+    span = {fid: [min(rs), max(rs)] for fid, rs in dominated.items()}
     recurring = {fid for fid, rs in touched.items() if len(rs) >= 2}
 
-    # Recurring features first -- each a dedicated lane (stable order: earliest top row, then id) so
-    # its line is never shared and stays unambiguous. One-off features then pack into a shared pool
-    # (interval coloring) appended after the recurring lanes.
+    # Pool ALL features into a single shared lane pool via greedy interval-graph coloring: a lane is
+    # reused as soon as its current occupant's span ends, so the rail width collapses to the interval
+    # chromatic number (the max number of features live at any one row) instead of one lane per
+    # feature. Interval coloring guarantees no two features on a lane ever overlap, so a pooled lane's
+    # `│` connectors never collide even though several features share it over disjoint spans.
     lane_of: dict = {}
-    for fid in sorted(recurring, key=lambda f: (span[f][0], str(f))):
-        lane_of[fid] = len(lane_of)
-    base = len(lane_of)
-    lane_bot: list = []  # pool lane -> bottom row of the one-off currently occupying it
-    for fid in sorted((f for f in span if f not in recurring), key=lambda f: (span[f][0], str(f))):
+    lane_bot: list = []  # pool lane -> bottom row of the feature currently occupying it
+    for fid in sorted(span, key=lambda f: (span[f][0], str(f))):
         top, bot = span[fid]
         lane = next((L for L in range(len(lane_bot)) if lane_bot[L] < top), None)
         if lane is None:
@@ -383,7 +392,7 @@ def episode_rail_layout(ep_view: dict) -> dict:
             lane_bot.append(bot)
         else:
             lane_bot[lane] = bot
-        lane_of[fid] = base + lane
+        lane_of[fid] = lane
 
     # A pooled lane can hold several one-off features over disjoint row-spans, so a lane maps to a
     # LIST of (top, bot, fid) intervals -- not one feature. A cell resolves which feature occupies the
@@ -401,7 +410,7 @@ def episode_rail_layout(ep_view: dict) -> dict:
     return {"rows": rows, "lane_of": lane_of, "lane_intervals": lane_intervals,
             "feature_touched": {f: sorted(rs) for f, rs in touched.items()},
             "feature_span": span, "recurring": sorted(str(f) for f in recurring),
-            "lane_count": max(1, base + len(lane_bot)), "row_count": len(ordered)}
+            "lane_count": max(1, len(lane_bot)), "row_count": len(ordered)}
 
 
 # ── Terminal render ────────────────────────────────────────────────────────────────────────────
@@ -561,17 +570,33 @@ def _bucket_density(sub_bins: list, width: int) -> list[int]:
 
 _SPARK = "▁▂▃▄▅▆▇█"
 
+# Temporal LOD: the commit-time axis is power-warped so recent commits get more column width than
+# old ones (γ>1 pushes low fractions toward 0, so history near the newest end spreads out and the
+# old tail compresses). The bar and the ruler share `_col_of` so their positions can never drift.
+_LOD_GAMMA = 2.0
+
+
+def _col_of(ci: int, max_ci: int, width: int) -> int:
+    """Screen column for commit index `ci` on a `width`-wide strip, power-warped by `_LOD_GAMMA`:
+    0 (oldest) … max_ci (newest) maps to 0 … width-1, with recent commits given more room."""
+    if max_ci <= 0 or width <= 0:
+        return 0
+    t = max(0, min(max_ci, ci)) / max_ci  # 0 oldest … 1 newest
+    return int(round((t ** _LOD_GAMMA) * (width - 1)))
+
 
 def _time_ruler(prefix_w: int, bar_w: int, commit_count: int) -> str:
-    """A commit-index ruler aligned under the car strip: start/mid/end ticks (`c0 … cN`) at the same
-    columns `render_cars` maps commits onto, so a car's horizontal position reads as *when*. Blank
-    when there's no width or only one commit (nothing to place along)."""
+    """A commit-index ruler aligned under the car strip: start/mid/end ticks at evenly-spaced screen
+    columns, but each label reads the *true* commit index under the power warp (`ci = round(frac**(1/γ)
+    * max_ci)`) -- so the mid tick honestly reads ~70% through history, communicating the compression
+    of the old tail. Blank when there's no width or only one commit (nothing to place along)."""
     if bar_w <= 0 or commit_count <= 1:
         return ""
     max_ci = commit_count - 1
     buf = [" "] * bar_w
     for frac in (0.0, 0.5, 1.0):
-        tick = f"c{int(round(frac * max_ci))}"
+        ci = int(round((frac ** (1 / _LOD_GAMMA)) * max_ci))  # invert the warp so the label is honest
+        tick = f"c{ci}"
         pos = int(round(frac * (bar_w - 1)))
         if frac == 1.0:
             pos = bar_w - len(tick)          # end-anchored
@@ -842,19 +867,21 @@ def render_graph_lines(
         gmax = max(counts) if counts else 0
 
         def col_of(ci: int) -> int:
-            return int(round(max(0, min(max_ci, ci)) / max_ci * (width - 1)))
-
-        col_step = max(1, int(round((width - 1) / max_ci)))  # one commit's column span
+            return _col_of(ci, max_ci, width)
 
         placed: list[tuple[int, int, dict]] = []
         cursor = 0
         for i, c in enumerate(cars):
             start = max(col_of(c["first_index"]), cursor)
-            # Gap-fill tiling: fill through the END of this car's last commit column (col_step wide),
-            # so a single-commit checkpoint is a full column, not one pixel bleeding into dead space;
-            # the last car fills to the strip edge, and no car runs into the next. Distant checkpoints
-            # still leave a dim `·` track between them, which is what reads as "went quiet".
-            right_end = width if c["last_index"] >= max_ci else col_of(c["last_index"]) + col_step
+            # Gap-fill tiling: fill through the END of this car's last commit column, so a single-commit
+            # checkpoint is a full column, not one pixel bleeding into dead space. Under the power warp
+            # a commit's column span varies with position (old commits are narrower), so measure it
+            # locally as the distance to the next commit's column rather than a fixed step. The last car
+            # fills to the strip edge, and no car runs into the next; distant checkpoints still leave a
+            # dim `·` track between them, which is what reads as "went quiet".
+            li = c["last_index"]
+            col_span = max(1, _col_of(li + 1, max_ci, width) - col_of(li))
+            right_end = width if li >= max_ci else col_of(li) + col_span
             if i + 1 < len(cars):
                 right_end = min(right_end, col_of(cars[i + 1]["first_index"]) - 1)
             w = max(1, right_end - start)

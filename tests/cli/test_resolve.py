@@ -105,6 +105,42 @@ def test_resolve_cli_tty_abort_resolves_nothing(tmp_path, monkeypatch, capsys):
     assert forks_view(b)["open"] == 1  # still open
 
 
+def test_resolve_cli_interactive_pick_left_closes_the_fork(tmp_path, monkeypatch):
+    """On a tty, a bare `sgt resolve <symbol>` shows a side-by-side diff and lets the user pick a side
+    in one step: `l` writes tip A's content, then the flow fulfills+lands and closes the fork -- no
+    second `--apply` command."""
+    import builtins
+    import sys
+
+    b = _forked_clone(tmp_path)
+    _configure_true_oracle(b)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(builtins, "input", lambda *a, **k: "l")
+
+    # apply=False on a tty is now the whole flow: draft -> diff -> pick left -> fulfill -> land.
+    assert _resolve(str(b), "main.py::foo", apply=False, as_json=False) == 0
+    assert forks_view(b)["open"] == 0  # closed by the single interactive pick
+
+
+def test_resolve_cli_interactive_quit_keeps_the_draft_and_the_fork(tmp_path, monkeypatch):
+    """Quitting the interactive pick (`q`) leaves the draft and the fork in place -- non-blocking, and
+    the two-step `--apply` remedy is still available afterward."""
+    import builtins
+    import sys
+
+    b = _forked_clone(tmp_path)
+    _configure_true_oracle(b)
+
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(builtins, "input", lambda *a, **k: "q")
+
+    assert _resolve(str(b), "main.py::foo", apply=False, as_json=False) == 0
+    assert forks_view(b)["open"] == 1  # still open -- nothing resolved
+
+
 def test_resolve_cli_tty_confirm_closes_the_fork(tmp_path, monkeypatch):
     """A confirm on a tty runs the real guided apply and closes the fork."""
     import sys

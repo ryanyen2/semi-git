@@ -295,3 +295,64 @@ def test_stamp_drift_stamps_the_session_onto_named_ops(tmp_path):
     match_mod.stamp_drift(tmp_path, "s2", [op.id])
 
     assert store.get(op.id).attribution == (Attribution(sha="shaY", session="s2"),)
+
+
+# -- session_coverage / auto-close (file-level "looks built", not a name-exact match) --------------
+
+def test_session_coverage_flags_work_that_landed_under_a_different_name(tmp_path):
+    """The core of auto-close: a step predicts `bus.py::publish`, the real op lands
+    `bus.py::publish_to_all`. The name-exact matcher never joins them, but the work is in the
+    predicted file -- so coverage recognises it as built."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("write publish", ["bus.py::publish"])])
+    store.add(_op({"bus.py::publish_to_all": "v1"}))
+
+    assert match_mod.compute_checkpoint(tmp_path).matches == ()  # exact matcher misses (name differs)
+    cov = match_mod.session_coverage(tmp_path)["s1"]
+    assert cov["fully_built"] is True
+    assert cov["pending"][0]["covered"] is True
+
+
+def test_session_coverage_uncovered_when_predicted_file_untouched(tmp_path):
+    """The wrong-file case (planned `connection.py`, built in `server.py`): coverage stays False
+    and the reason names the predicted file that never appeared -- the "why isn't this matched?"
+    explanation."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("define Connection", ["connection.py"])])
+    store.add(_op({"server.py::Connection": "v1"}))
+
+    cov = match_mod.session_coverage(tmp_path)["s1"]
+    assert cov["fully_built"] is False
+    step = cov["pending"][0]
+    assert step["covered"] is False
+    assert "connection.py" in step["reason"]
+
+
+def test_session_coverage_ignores_pre_baseline_ops(tmp_path):
+    """Only work since the plan's baseline is evidence -- a file that already carried its op at
+    intake does not prove the (later-planned) step was built."""
+    store = Store(tmp_path)
+    pre = store.add(_op({"bus.py::old": "v1"}))
+    _seed_session(tmp_path, "s1", {pre.id}, [("write publish", ["bus.py::publish"])])
+
+    assert match_mod.session_coverage(tmp_path)["s1"]["pending"][0]["covered"] is False
+
+
+def test_sweep_built_sessions_closes_stalled_but_leaves_active(tmp_path):
+    """Auto-close reaps a walked-away-but-built plan yet never races one still being built: both
+    sessions are fully file-covered, but only the quiet (stalled) one is closed."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "stalled", set(), [("s", ["bus.py::publish"])])   # last_activity_ts = 0.0
+    _seed_session(tmp_path, "active", set(), [("s", ["crdt.py::rga"])])
+    store.add(_op({"bus.py::publish_impl": "v1"}))
+    store.add(_op({"crdt.py::rga_impl": "v1"}))
+    table = plan_mod._load_sessions(tmp_path)
+    table["active"]["last_activity_ts"] = 10_000.0  # recent as of `now` below -> protected
+    plan_mod._save_sessions(tmp_path, table)
+
+    closed = plan_mod.sweep_built_sessions(tmp_path, now=10_000.0)  # stalled quiet 10000 > STALLED_SECONDS
+
+    assert closed == ["stalled"]
+    active = plan_mod.active_sessions(tmp_path)
+    assert "stalled" not in active   # mark_done -> completed -> off the review surface
+    assert "active" in active        # still building, untouched

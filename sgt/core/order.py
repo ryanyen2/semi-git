@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
-from sgt.core.op import Op
+from sgt.core.op import Op, _symbol_kind
 
 Edge = tuple[str, str]  # (A, B) meaning A <= B: A must be in the ideal whenever B is
 Declared = frozenset[Edge]
@@ -218,6 +218,36 @@ def forks(ops: list[Op], ideal_ids) -> list[tuple[str, str, str]]:
     return found
 
 
+def resolvable_forks(
+    triples: list[tuple[str, str, str]], by_id: dict[str, Op]
+) -> list[tuple[str, str, str]]:
+    """The `forks` triples a *user* can actually act on, for surfacing (not for ideal reduction).
+    `fork_free`/`is_fork_free` must see every collision (sentinels are load-bearing for ideal
+    validity), so this filter lives here, off that path -- it never touches `forks`/`fork_free`.
+    A triple survives iff:
+
+      * the symbol is real, not one of sgt's synthetic `__anchor__`/`__residue__` pseudo-symbols
+        (`_symbol_kind`, same precedent as `sgt.intent.resolve._user_symbols`); and
+      * the two tips genuinely diverge -- their `after_version` for the forked symbol differs.
+
+    The after-divergence gate mirrors `rewrite.merge_op` (which refuses two tips that share an
+    after with "nothing to merge"): a same-after collision (a revert landing on identical bytes, or
+    an add/delete/re-add rebirth) is already neutralized by `fork_free` and has nothing to resolve,
+    so surfacing it only advertises work that doesn't exist. `by_id` maps op-id -> Op for the tips."""
+    out: list[tuple[str, str, str]] = []
+    for sym, a, b in triples:
+        if _symbol_kind(sym) in ("anchor", "residue"):
+            continue
+        op_a, op_b = by_id.get(a), by_id.get(b)
+        if op_a is None or op_b is None:
+            continue
+        fa, fb = op_a.footprint.get(sym), op_b.footprint.get(sym)
+        if fa is None or fb is None or fa[1] == fb[1]:
+            continue
+        out.append((sym, a, b))
+    return out
+
+
 def parked_forks(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> list[tuple[str, str, str]]:
     """The `(symbol, op_a, op_b)` fork triples `reduce_to_ideal` silently drops: `fork_free` grounds
     `ideal_ids` first, then removes both tips of every same-`(symbol, before)` collision among the
@@ -225,8 +255,13 @@ def parked_forks(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> 
     it keeps a mere reduction-drop (an ungrounded op that only *looks* like it collides with a live
     one) from surfacing as an open fork; only a divergence both of whose tips are grounded is real.
     The collecting counterpart of the drop `fork_free` performs, so `lens._sync`'s rebuild can record
-    what it parked in the shared fork store (1.4) instead of excluding it in silence."""
-    return forks(ops, _grounded(ideal_ids, ops, declared))
+    what it parked in the shared fork store (1.4) instead of excluding it in silence.
+
+    Filtered to *resolvable* forks (`resolvable_forks`): synthetic-symbol and same-after pseudo-forks
+    are neutralized by `fork_free` and carry no user-facing remedy, so recording them only inflates
+    the open-fork count with work that doesn't exist."""
+    by_id = {op.id: op for op in ops}
+    return resolvable_forks(forks(ops, _grounded(ideal_ids, ops, declared)), by_id)
 
 
 def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:

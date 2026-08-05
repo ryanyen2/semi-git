@@ -1114,6 +1114,8 @@ def test_now_view_open_fork_outranks_everything_and_recommends_resolve(tmp_path)
     forks.json committed before the remedy switch (here a stale low-level `merge-op`) still surfaces
     the working command."""
     from sgt import state
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1121,14 +1123,55 @@ def test_now_view_open_fork_outranks_everything_and_recommends_resolve(tmp_path)
     gb.commit_all("add foo")
     get(repo)
     (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")  # dirty too
+    # Two genuinely-divergent tips on the same `(symbol, before)` step -- a resolvable fork the read
+    # side won't filter out (`kind` differs so they are distinct ops with distinct after versions).
+    store = Store(repo)
+    tip_a = store.add(make_op({"a.py::foo": ("v0", "v1")}, {"a.py::foo": b"a"}, kind="touched"))
+    tip_b = store.add(make_op({"a.py::foo": ("v0", "v2")}, {"a.py::foo": b"b"}, kind="rebirth"))
     state.save_json(repo, "forks", [
-        {"symbol": "a.py::foo", "tips": ["x", "y"], "remedy": "sgt merge-op x y"},  # stale on purpose
+        # stale low-level remedy on purpose -- the surfaced command must derive from the symbol instead
+        {"symbol": "a.py::foo", "tips": [tip_a.id, tip_b.id], "remedy": f"sgt merge-op {tip_a.id} {tip_b.id}"},
     ])
 
     v = now_view(repo)
     assert len(v["needs_you"]["forks"]) == 1
     assert v["next_action"] == {"kind": "resolve_fork", "command": "sgt resolve a.py::foo",
                                 "target": "a.py::foo", "label": "resolve fork on a.py::foo"}
+
+
+def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
+    """A committed forks.json can carry sentinel-symbol and same-after pseudo-forks (neutralized by
+    `fork_free`, no user remedy) alongside a genuinely divergent one. Every fork read surface --
+    `forks_view`, `status_view`, `now_view` -- must filter to the resolvable, divergent fork only."""
+    from sgt import state
+    from sgt.api import forks_view, status_view
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+
+    store = Store(repo)
+
+    def _fork(symbol, after_a, after_b):
+        a = store.add(make_op({symbol: ("v0", after_a)}, {symbol: after_a.encode()}, kind="touched"))
+        b = store.add(make_op({symbol: ("v0", after_b)}, {symbol: after_b.encode()}, kind="rebirth"))
+        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"sgt merge-op {a.id} {b.id}"}
+
+    state.save_json(repo, "forks", [
+        _fork("a.py::__anchor__::m", "z1", "z2"),  # sentinel symbol -- unactionable
+        _fork("b.py::bar", "same", "same"),        # same-after pseudo-fork -- nothing to resolve
+        _fork("c.py::baz", "left", "right"),       # genuinely divergent -- the only real one
+    ])
+
+    fv = forks_view(repo)
+    assert fv["open"] == 1
+    assert [f["symbol"] for f in fv["forks"]] == ["c.py::baz"]
+    assert [f["symbol"] for f in status_view(repo)["forks"]["records"]] == ["c.py::baz"]
+    assert [f["symbol"] for f in now_view(repo)["needs_you"]["forks"]] == ["c.py::baz"]
 
 
 def test_now_view_context_carries_recent_activity_newest_first(tmp_path):

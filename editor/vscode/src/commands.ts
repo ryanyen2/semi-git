@@ -8,7 +8,7 @@ import { ForkResolutionPanel } from "./forkResolution";
 import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
-import { BlameView, EmitView, NextAction, ProposalChecklistEntry } from "./types";
+import { BlameView, EmitView, NextAction, PlanView, ProposalChecklistEntry } from "./types";
 import { WorkbenchProvider } from "./workbench";
 
 async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
@@ -290,12 +290,94 @@ export function registerCommands(
       void vscode.commands.executeCommand("sgt.resolveFork", action.target);
       return;
     }
+    // A stalled plan isn't a command to fire blindly -- the whole confusion is "what plan, and why
+    // is it stuck?" So route it to the resolution panel, which explains the stall (which steps did
+    // land, under what name, whether a conversation is even linked) before offering resume/close.
+    if (action.kind === "resume_plan" && action.target) {
+      void vscode.commands.executeCommand("sgt.resolveStalledPlan", action.target);
+      return;
+    }
     if (!action.command) {
       return;
     }
     const term = vscode.window.createTerminal({ name: "sgt next" });
     term.sendText(action.command, true);
     term.show();
+  });
+
+  // A stalled plan: work went quiet with steps still unmatched. Rather than a dead click, explain
+  // WHY -- per pending step, whether its predicted files already saw edits (built under a different
+  // name than predicted, which the name-exact matcher will never confirm) or truly got no edits,
+  // plus whether a Claude conversation is even linked for resume -- then offer the three real exits:
+  // resume the thread, mark it done (work landed, keep the record), or abandon it.
+  reg("sgt.resolveStalledPlan", async (sessionId?: string) => {
+    if (!sessionId) {
+      return;
+    }
+    let view: PlanView;
+    try {
+      view = await store.sgt.planStatus();
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    const session = view.sessions.find((s) => s.session_id === sessionId);
+    if (!session) {
+      vscode.window.showInformationMessage("That plan is no longer active -- it may already be closed.");
+      store.invalidate();
+      return;
+    }
+
+    const pending = session.steps.filter((s) => s.status === "pending");
+    const built = pending.filter((s) => s.covered);
+    const csid = session.claude_session_id;
+    const stepLines = pending.map((s) => {
+      const mark = s.covered ? "✓ built" : "✗ no edits";
+      return `${mark}  ${s.title}\n        ${s.coverage_reason ?? "no coverage signal recorded"}`;
+    });
+    const linkNote = csid
+      ? `Linked conversation: claude --resume ${csid}`
+      : "No conversation is linked to this plan -- Resume falls back to Claude Code's session picker.";
+    const detail = [
+      `${pending.length} step(s) still open; ${built.length} already landed under a different name ` +
+        `than the plan predicted, so sgt's name-exact matcher never linked them.`,
+      "",
+      ...stepLines,
+      "",
+      linkNote,
+    ].join("\n");
+
+    // Fully built -> the honest exit is "mark done" (keeps the record); nothing built -> lead with
+    // Abandon. Resume only when there's a way to relaunch the thread.
+    const markDone = built.length === pending.length ? "Mark done (recommended)" : "Mark done";
+    const buttons = csid ? ["Resume in Claude", markDone, "Abandon"] : [markDone, "Abandon"];
+    const choice = await vscode.window.showInformationMessage(
+      `Stalled plan: ${pending.length} step(s) left, ${built.length} already built`,
+      { modal: true, detail },
+      ...buttons
+    );
+    if (!choice) {
+      return;
+    }
+    if (choice === "Resume in Claude") {
+      const term = vscode.window.createTerminal({ name: "sgt resume plan" });
+      term.sendText(csid ? `claude --resume ${csid}` : "claude --resume", true);
+      term.show();
+      return;
+    }
+    try {
+      if (choice.startsWith("Mark done")) {
+        await store.sgt.planDone(sessionId);
+        vscode.window.showInformationMessage("Plan marked done -- kept as history for revert/attribution.");
+      } else {
+        await store.sgt.planAbandon(sessionId);
+        vscode.window.showInformationMessage("Plan abandoned -- its unfinished steps recorded as open intents.");
+      }
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    store.invalidate();
   });
 
   // The N-column tip diff + merge-op/fulfill/land wizard (Phase 6).

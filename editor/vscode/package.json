@@ -101,6 +101,7 @@
       { "command": "sgt.showPlanDiff", "title": "Show Plan Step Diff", "category": "semi-git" },
       { "command": "sgt.init", "title": "Initialize (sgt init)", "category": "semi-git" },
       { "command": "sgt.resolveFork", "title": "Resolve Fork", "category": "semi-git" },
+      { "command": "sgt.resolveStalledPlan", "title": "Resolve Stalled Plan", "category": "semi-git" },
       { "command": "sgt.proposeLand", "title": "Land Proposal", "category": "semi-git (advanced)" },
       { "command": "sgt.proposePublish", "title": "Publish Proposal (GitHub PR)", "category": "semi-git (advanced)" },
       { "command": "sgt.viewProposal", "title": "View Proposal", "category": "semi-git (advanced)" },

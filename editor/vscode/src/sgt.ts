@@ -180,6 +180,17 @@ export class Sgt {
     return this.json<PlanView>(["plan", "status", "--json", "--full"]);
   }
 
+  // Close a stalled plan whose work landed differently than predicted: `done` keeps the record as
+  // `completed` history (so `sgt revert --session` can still attribute the work); `abandon` records
+  // its unfinished steps as open intents and drops the record. Both leave the "needs you" surface.
+  planDone(sessionId: string): Promise<{ ok: boolean }> {
+    return this.json<{ ok: boolean }>(["plan", "done", sessionId, "--json"]);
+  }
+
+  planAbandon(sessionId: string): Promise<{ ok: boolean }> {
+    return this.json<{ ok: boolean }>(["plan", "abandon", sessionId, "--json"]);
+  }
+
   // The canonical lane×commit cell join (`grid_view`, plan U1/U3): the single projection the TUI
   // and this webview both render from, so the (op -> cell) join is computed once in `sgt.api` and
   // never re-derived per surface. `sgt log --json` == `grid_view(repo)`.

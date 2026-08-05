@@ -241,6 +241,11 @@ export interface PlanStep {
   status: "pending" | "matched";
   matched_op_ids: string[];
   files: PlanFileSpan[];
+  // Pending steps only (`sgt.api.plan_view --full`): whether the step's predicted files already saw
+  // edits since intake, and a one-line "why" -- so a stall can be explained ("built in server.py,
+  // not the predicted connection.py") without re-deriving it. Absent on matched steps.
+  covered?: boolean;
+  coverage_reason?: string;
 }
 
 export interface PlanSession {

@@ -57,6 +57,7 @@ def register(subs, parent) -> None:
     _add_view_flags(cp)
     cp.set_defaults(func=_cmd_compose)
     nw = subs.add_parser("now", parents=[parent])
+    nw.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     nw.set_defaults(func=_cmd_now)
     pf = subs.add_parser("fsck", parents=[parent])
     pf.add_argument("--tree", action="store_true",
@@ -98,7 +99,7 @@ def _cmd_log(args) -> int:
     if args.tree:
         return _log_tree(".", args.as_json, args.refresh, args.rebuild)
     if args.summary:
-        return _status(".", args.as_json, full=args.full)
+        return _status(".", args.as_json, full=args.full, color=not args.no_color)
     map_mode = (args.map or args.links or args.focus is not None or args.at is not None)
     if map_mode:
         return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
@@ -130,7 +131,7 @@ def _cmd_compose(args) -> int:
 
 
 def _cmd_now(args) -> int:
-    return _now(".", args.as_json)
+    return _now(".", args.as_json, color=not args.no_color)
 
 
 def _cmd_fold(args) -> int:
@@ -286,9 +287,23 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
                                           group_label=group["label"], states=states):
                 print(line)
             return 0
+    # Spatial LOD: with no focus the default map folds every LEAF subsystem (one whose children are
+    # all features) to a single meta-lane, so its features read as one row instead of many. Interior
+    # subsystems stay expanded as nested headers -- the map is a single-rooted tree, so collapsing
+    # every subsystem would fold the whole codebase into the root's one lane. `--focus <subsystem>`
+    # above already rerouted to the expanded rail view, so a collapsed subsystem is never the target.
+    if focus is None:
+        kind = {n["id"]: n.get("kind") for n in mv.get("nodes", [])}
+        collapsed = tuple(
+            n["id"] for n in mv.get("nodes", [])
+            if n.get("kind") == "subsystem"
+            and not any(kind.get(c) == "subsystem" for c in n.get("children") or [])
+        )
+    else:
+        collapsed = ()
     for line in render_graph_lines(
         mv, gv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
-        states=states,
+        states=states, collapsed=collapsed,
     ):
         print(line)
     return 0
@@ -325,30 +340,31 @@ def _log_default(repo: str, *, as_json: bool = False, color: bool = True, refres
     gv = grid_view(repo)
     if as_json:
         return _emit_json(gv)
-    for line in _state_block_lines(repo):
+    for line in _state_block_lines(repo, color=color):
         print(line)
     for line in render_save_list_lines(mv, gv, color=color):
         print(line)
     return 0
 
 
-def _state_block_lines(repo: str) -> list[str]:
+def _state_block_lines(repo: str, *, color: bool = False) -> list[str]:
     """The compact state header bare `sgt log` prints above its save list: in-flight + needs-you +
     the one recommended next action, read from `api.now_view` (which mines the working tree on
     contact so in-flight is live, R9). Recently-done is omitted -- the save list below already is
-    that. Plain text (no ANSI), like `sgt now`; the leading space aligns it under the list rows."""
+    that. The leading space aligns it under the list rows. Open forks get the loud red `_state_banner`
+    (⋔ + per-symbol remedy) atop the block instead of a muted count buried in `needs you` -- a fork
+    is divergence you must resolve, not a passing note (still non-blocking; save/switch never refuse)."""
     from sgt.api import now_view
+    from sgt.tui.graph import _state_banner
 
     view = now_view(repo)
     inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
-    lines: list[str] = []
+    lines: list[str] = _state_banner({"forks": needs["forks"]}, color=color)
     if inflight["total_op_count"]:
         extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
-        lines.append(f" in flight   {inflight['total_op_count']} op(s) across "
+        lines.append(f" unsaved     {inflight['total_op_count']} op(s) across "
                      f"{len(inflight['affected'])} feature(s){extra}")
     parts = []
-    if needs["forks"]:
-        parts.append(f"{len(needs['forks'])} open fork(s)")
     if needs["stalled_plans"]:
         parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
     if needs["reviews"]:
@@ -568,12 +584,14 @@ def _blame(repo: str, file: str, as_json: bool = False) -> int:
     return 0
 
 
-def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
+def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool = False) -> int:
     """`sgt log --summary` (formerly `sgt status`, plan U13/U14): file/symbol/feature counts,
     coverage, oracle status, drift. Path lists are capped at 5 (`--full` for all of them) --
-    a summary that dumps three hundred paths answers nothing."""
+    a summary that dumps three hundred paths answers nothing. Open forks lead with the loud red
+    `_state_banner` (⋔ + per-symbol remedy), not a muted `⚠` count -- divergence to resolve."""
     from sgt.api import status_view
     from sgt.core.lens import get
+    from sgt.tui.graph import _state_banner
 
     get(repo)
     view = status_view(repo)
@@ -589,9 +607,8 @@ def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
     print(f"{view['files']} file(s), {view['symbols']} symbol(s), {view['features']} feature(s), "
           f"{view['coverage_fraction'] * 100:.0f}% entity coverage")
     print(f"  oracle: {view['oracle']['status']}")
-    if view["forks"]["open"]:
-        print(f"  ⚠ {view['forks']['open']} open fork(s) — `sgt resolve <symbol>` fixes one; "
-              f"`sgt advanced forks` lists them")
+    for line in _state_banner({"forks": view["forks"]["records"]}, color=color):
+        print(line)
     if view["drift"]["any"]:
         n = len(view["drift"]["paths"])
         print(f"  ⚠ {n} file(s) on disk differ from the recorded state — `sgt save` absorbs them")
@@ -700,13 +717,15 @@ def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
     return 0
 
 
-def _now(repo: str, as_json: bool = False) -> int:
+def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
     """`sgt now [--json]`: the state-of-actions surface (`api.now_view`) -- what's in flight, what
     needs you, what was recently done, and the single recommended next action. The daily "where am
     I, what next" orient. Mine-on-contact first so the in-flight preview reflects the working tree
-    (R9); `--json` returns the canonical view."""
+    (R9); `--json` returns the canonical view. Open forks lead with the loud red `_state_banner`
+    (⋔ + per-symbol remedy) -- a fork is divergence you must resolve, not a muted count (non-blocking)."""
     from sgt.api import now_view
     from sgt.core.lens import get
+    from sgt.tui.graph import _state_banner
 
     get(repo)
     view = now_view(repo)
@@ -714,13 +733,13 @@ def _now(repo: str, as_json: bool = False) -> int:
         return _emit_json(view)
 
     inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
+    for line in _state_banner({"forks": needs["forks"]}, color=color):
+        print(line)
     if inflight["total_op_count"]:
         extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
-        print(f"in flight   {inflight['total_op_count']} op(s) across "
+        print(f"unsaved     {inflight['total_op_count']} op(s) across "
               f"{len(inflight['affected'])} feature(s){extra}")
     parts = []
-    if needs["forks"]:
-        parts.append(f"{len(needs['forks'])} open fork(s)")
     if needs["stalled_plans"]:
         parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
     if needs["reviews"]:
