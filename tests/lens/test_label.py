@@ -85,23 +85,123 @@ def test_llm_sourced_cache_hit_never_calls_client_again(tmp_path, monkeypatch):
     assert labeler.calls == 1
 
 
-def test_fallback_sourced_entry_is_retried_once_a_client_is_available(tmp_path, monkeypatch):
+def test_fallback_sourced_entry_is_retried_once_its_backoff_window_expires(tmp_path, monkeypatch):
     monkeypatch.setattr(label_mod, "get_client", _no_client)
     labeler = label_mod.Labeler(tmp_path)
     members = ["sgt/core/op.py::Op"]
-    labeler.label(members)  # no client -> cached as fallback
+    labeler.label(members)  # no client -> cached as fallback, with a retry window
+    labeler.save()
     key = label_mod._key(members)
     assert labeler.cache[key]["source"] == "fallback"
 
     fake_out = label_mod.FeatureLabel(label="Op Model", rationale="Defines the op type.")
     monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
-    labeler._client = None  # simulate a fresh Labeler picking up the now-available key
+    # A fresh Labeler with the key now available, but still inside the backoff window: it must
+    # serve the cached fallback rather than pay the call again.
+    inside = label_mod.Labeler(tmp_path)
+    assert inside.label(members).label == labeler.cache[key]["label"]
+    assert inside.calls == 0
 
-    out = labeler.label(members)
+    # Once the window has passed, the very next read earns a real label.
+    expired = label_mod.Labeler(tmp_path)
+    expired.cache[key]["retry_after"] = 0
+    out = expired.label(members)
 
     assert out == fake_out
-    assert labeler.calls == 1
-    assert labeler.cache[key]["source"] == "llm"
+    assert expired.calls == 1
+    assert expired.cache[key]["source"] == "llm"
+
+
+def test_fallback_entry_is_not_retried_on_every_read(tmp_path, monkeypatch):
+    """The read-path regression this backoff exists for: a repo with a broken credential used to
+    re-pay one failing LLM call per terse feature on every single refresh."""
+    attempts = {"n": 0}
+
+    def _counting_no_client(*args, **kwargs):
+        attempts["n"] += 1
+        raise RuntimeError("No LLM credential found: set OPENAI_API_KEY")
+
+    monkeypatch.setattr(label_mod, "get_client", _counting_no_client)
+    members = ["sgt/core/op.py::Op"]
+
+    first = label_mod.Labeler(tmp_path)
+    first.label(members)
+    first.save()
+    assert attempts["n"] == 1
+
+    for _ in range(5):  # five more "refreshes" -- none may touch the client
+        again = label_mod.Labeler(tmp_path)
+        again.label(members)
+        again.save()
+
+    assert attempts["n"] == 1
+
+
+def test_missing_credential_costs_one_attempt_for_a_whole_batch(tmp_path, monkeypatch):
+    """`label_many` must not re-fail client construction once per batch: a keyless repo with many
+    features paid that failure `ceil(features / MAX_BATCH)` times per read."""
+    attempts = {"n": 0}
+
+    def _counting_no_client(*args, **kwargs):
+        attempts["n"] += 1
+        raise RuntimeError("No LLM credential found: set OPENAI_API_KEY")
+
+    monkeypatch.setattr(label_mod, "get_client", _counting_no_client)
+    labeler = label_mod.Labeler(tmp_path)
+    entries = [
+        labeler.leaf_request(f"f-{i}", [f"pkg/mod{i}.py::sym{i}"], {})
+        for i in range(label_mod.MAX_BATCH * 3)
+    ]
+
+    outs = labeler.label_many(entries)
+
+    assert len(outs) == len(entries)
+    assert all(o is not None for o in outs)
+    assert attempts["n"] == 1
+    assert all(labeler.cache[f"f-{i}"]["source"] == "fallback" for i in range(len(entries)))
+    # Each fallback carries its own retry window and the leaf drift anchor a real label would set,
+    # so a later retry compares membership rather than treating the feature as brand new.
+    assert all(labeler.cache[f"f-{i}"]["retry_after"] > 0 for i in range(len(entries)))
+    assert labeler.cache["f-0"]["gen_members"] == ["pkg/mod0.py::sym0"]
+
+
+def test_relabel_ignores_both_the_cache_and_the_backoff(tmp_path, monkeypatch):
+    """`sgt log --rebuild` is the user's "name everything again" escape hatch, so it must not wait
+    out a backoff window nor reuse an existing LLM label."""
+    monkeypatch.setattr(label_mod, "get_client", _no_client)
+    members = ["sgt/core/op.py::Op"]
+    cold = label_mod.Labeler(tmp_path)
+    cold.label(members)
+    cold.save()
+
+    fake_out = label_mod.FeatureLabel(label="Op Model", rationale="Defines the op type.")
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
+    forced = label_mod.Labeler(tmp_path, relabel=True)
+
+    out = forced.label(members)
+
+    assert out == fake_out
+    assert forced.calls == 1
+    assert forced.cache[label_mod._key(members)]["source"] == "llm"
+
+
+def test_backoff_grows_with_consecutive_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(label_mod, "get_client", _no_client)
+    members = ["sgt/core/op.py::Op"]
+    key = label_mod._key(members)
+
+    first = label_mod.Labeler(tmp_path)
+    first.label(members)
+    first.save()
+    assert first.cache[key]["attempts"] == 1
+
+    second = label_mod.Labeler(tmp_path)
+    second.cache[key]["retry_after"] = 0  # window expired; the retry fails again
+    second.label(members)
+    second.save()
+
+    assert second.cache[key]["attempts"] == 2
+    assert second.cache[key]["retry_after"] > first.cache[key]["retry_after"]
 
 
 def test_save_and_reload_preserves_cache(tmp_path, monkeypatch):
