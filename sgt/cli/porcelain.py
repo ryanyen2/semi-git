@@ -305,7 +305,12 @@ def _fold_plan_matches(repo: str) -> dict | None:
             auto.append(entry)
         else:  # multiple steps tangled in one op cluster -> needs `save --resolve-plan`
             ambiguous.append(entry)
-    auto_closed = plan_mod.sweep_built_sessions(repo)  # after confirm: coverage reads the leftovers
+    # After confirm, so coverage reads the leftovers -- but never close a session this very save is
+    # about to tell the user to resolve. Doing so printed "run `sgt save --resolve-plan`" and
+    # deleted the hollow that command needs, so the advertised next step answered "not a known
+    # pending hollow id".
+    auto_closed = plan_mod.sweep_built_sessions(
+        repo, exclude=frozenset(e["session_id"] for e in ambiguous))
     if not result.matches and not result.drift_op_ids and not auto_closed:
         return None
     return {"auto_confirmed": auto, "ambiguous": ambiguous,

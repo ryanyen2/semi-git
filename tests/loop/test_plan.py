@@ -212,3 +212,85 @@ def test_intake_grounds_predicted_feature_in_a_real_feature_id_via_live_llm(tmp_
     for step in session.steps:
         if step["predicted_feature"] is not None:
             assert step["predicted_feature"] in real_feature_ids
+
+
+# -- resume: re-taking a session id you own ------------------------------------------------------
+
+def test_re_intake_of_an_active_session_keeps_its_baseline(tmp_path, monkeypatch):
+    """An interrupted agent restarts and calls intake again with the id it owns -- the skill tells
+    it to pick a stable one. Minting a fresh baseline there silently reclassified everything it had
+    already built as drift: the work was still in the store, but no longer attributable to the plan
+    that produced it."""
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    store = Store(tmp_path)
+    first = plan_mod.intake(tmp_path, "1. step one\n2. step two\n", session_id="mine")
+
+    # Work lands after intake -- exactly what a baseline exists to exclude.
+    store.add(make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"def foo(): pass\n"}))
+
+    resumed = plan_mod.intake(tmp_path, "1. step one\n2. step two\n", session_id="mine")
+
+    assert resumed.baseline_op_ids == first.baseline_op_ids
+    assert resumed.created_ts == first.created_ts
+    assert plan_mod._load_sessions(tmp_path)["mine"]["resumed"] is True
+
+
+def test_re_intake_does_not_leave_the_superseded_hollows_behind(tmp_path, monkeypatch):
+    """A step the resumed plan no longer has still had a hollow on disk with nothing pointing at
+    it, which kept matching against work until the 7-day sweep noticed. (A step the new plan still
+    has at the same position keeps its hollow: the id is content-addressed over a per-index plan
+    sentinel, so re-creating it is the same file, not a leak.)"""
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    store = Store(tmp_path)
+    first = plan_mod.intake(tmp_path, "1. step one\n2. step two\n", session_id="mine")
+    dropped = first.steps[1]["hollow_id"]  # the resumed plan has no second step
+
+    resumed = plan_mod.intake(tmp_path, "1. a different step\n", session_id="mine")
+
+    assert len(resumed.steps) == 1
+    assert not (store.hollow_dir / dropped).is_file()
+    assert (store.hollow_dir / resumed.steps[0]["hollow_id"]).is_file()
+
+
+def test_re_intake_keeps_a_claude_session_id_it_cannot_restate(tmp_path, monkeypatch):
+    """The captured id is the entire resume affordance; a resume that cannot read its own must not
+    erase the one the original intake recorded."""
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    plan_mod.intake(tmp_path, "1. step one\n", session_id="mine", claude_session_id="chat-1")
+
+    plan_mod.intake(tmp_path, "1. step one\n", session_id="mine")
+
+    assert plan_mod._load_sessions(tmp_path)["mine"]["claude_session_id"] == "chat-1"
+
+
+def test_a_fresh_session_id_still_takes_a_current_baseline(tmp_path, monkeypatch):
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    store = Store(tmp_path)
+    store.add(make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"def foo(): pass\n"}))
+
+    session = plan_mod.intake(tmp_path, "1. step one\n", session_id="brand-new")
+
+    assert len(session.baseline_op_ids) == 1  # the already-present op is not this plan's work
+    assert plan_mod._load_sessions(tmp_path)["brand-new"]["resumed"] is False
+
+
+def test_sweep_never_closes_a_session_the_save_just_asked_to_resolve(tmp_path, monkeypatch):
+    """`sgt save` printed "run `sgt save --resolve-plan` to settle this" and, in the same beat,
+    auto-closed the session as walked-away -- so the advertised next command answered "not a known
+    pending hollow id". The user has not walked away from a plan they were invited to finish one
+    line earlier, however long it has been quiet."""
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    store = Store(tmp_path)
+    session = plan_mod.intake(tmp_path, "1. touch foo\n", session_id="ambiguous")
+
+    # Make it look walked-away, which is what the sweep reaps.
+    table = plan_mod._load_sessions(tmp_path)
+    table["ambiguous"]["last_activity_ts"] = 0.0
+    plan_mod._save_sessions(tmp_path, table)
+
+    closed = plan_mod.sweep_built_sessions(tmp_path, exclude=frozenset({"ambiguous"}))
+
+    assert "ambiguous" not in closed
+    assert plan_mod.active_sessions(tmp_path).get("ambiguous") is not None
+    # The hollow the resolve command needs is still there.
+    assert (store.hollow_dir / session.steps[0]["hollow_id"]).is_file()

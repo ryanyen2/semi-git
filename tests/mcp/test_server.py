@@ -313,3 +313,31 @@ def test_plan_skill_and_mcp_tool_name_the_same_session_id_variable():
             assert any(w in window for w in ("do not", "don't", "never")), (
                 f"the {surface} mentions the bridge id without warning against it"
             )
+
+
+def test_plan_done_refuses_to_close_another_agents_plan(tmp_path):
+    """Ownership was stated in the skill ("only confirm your own") and enforced by nothing: any
+    agent holding another's session id could close its plan out from under it, mid-build."""
+    from sgt.loop import plan as plan_mod
+
+    repo = _seed(tmp_path, 1)
+    plan_mod.intake(repo, "1. do the thing\n", session_id="theirs", claude_session_id="chat-A")
+
+    _, refused = _call(repo, "sgt_plan_done", {"session_id": "theirs", "claude_session_id": "chat-B"})
+    assert "another agent" in refused.get("error", "")
+    assert plan_mod.active_sessions(repo).get("theirs") is not None  # still open
+
+    _, ok = _call(repo, "sgt_plan_done", {"session_id": "theirs", "claude_session_id": "chat-A"})
+    assert ok.get("ok") is True
+
+
+def test_plan_done_without_a_caller_id_still_closes(tmp_path):
+    """Identifying yourself is what buys the check; a caller that cannot (a human on the CLI, an
+    older agent) keeps the previous behavior rather than being locked out."""
+    from sgt.loop import plan as plan_mod
+
+    repo = _seed(tmp_path, 1)
+    plan_mod.intake(repo, "1. do the thing\n", session_id="theirs", claude_session_id="chat-A")
+
+    _, ok = _call(repo, "sgt_plan_done", {"session_id": "theirs"})
+    assert ok.get("ok") is True
