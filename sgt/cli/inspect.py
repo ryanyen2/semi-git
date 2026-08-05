@@ -755,6 +755,19 @@ def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
         extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
         print(f"unsaved     {inflight['total_op_count']} op(s) across "
               f"{len(inflight['affected'])} feature(s){extra}")
+    # What is happening right now. A plan being actively built, and the agent's last few edits,
+    # were both already recorded and neither was ever shown -- so "is anything running?" was a
+    # question this surface could answer and didn't.
+    for p in view.get("in_progress", []):
+        done, total = p["matched_count"], p["step_count"]
+        title = f"  {p['current_title']}" if p["current_title"] else ""
+        print(f"in progress step {done}/{total}{title}")
+    activity = (view.get("context") or {}).get("activity") or []
+    if activity:
+        last = activity[0]
+        where = f" {last['file']}" if last.get("file") else ""
+        more = f" (+{len(activity) - 1} more)" if len(activity) > 1 else ""
+        print(f"agent       {last['tool']}{where}{more}")
     parts = []
     if needs["stalled_plans"]:
         parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")

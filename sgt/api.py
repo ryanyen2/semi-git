@@ -2332,7 +2332,20 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
 
     forks = forks_view(repo)
     reviews = pending_reviews(repo)
-    stalled = [s for s in plan_view(repo)["sessions"] if s["derived_status"] == "stalled"]
+    sessions = plan_view(repo)["sessions"]
+    stalled = [s for s in sessions if s["derived_status"] == "stalled"]
+    # A plan that is actively being built appeared nowhere: only *stalled* plans reached
+    # `needs_you`, so a working agent was invisible until it had been quiet for an hour, and the
+    # question "what is happening right now" had no answer on the surface built to answer it.
+    # This is deliberately not in `needs_you` -- an agent making progress needs nothing from the
+    # developer, it just needs to be visible.
+    in_progress = [
+        {"session_id": s["session_id"], "claude_session_id": s.get("claude_session_id"),
+         "matched_count": s.get("matched_count", 0), "step_count": s.get("step_count", 0),
+         "pending_count": s["pending_count"],
+         "current_title": (s["remaining_titles"] or [None])[0]}
+        for s in sessions if s["derived_status"] == "building"
+    ]
     needs_you = {
         "forks": forks["forks"],
         "reviews": [{"id": r["id"], "subject": r["subject"], "reason": r["reason"]} for r in reviews],
@@ -2353,6 +2366,7 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
 
     return {
         "in_flight": in_flight,
+        "in_progress": in_progress,
         "needs_you": needs_you,
         "recently_done": recently_done,
         "context": context,

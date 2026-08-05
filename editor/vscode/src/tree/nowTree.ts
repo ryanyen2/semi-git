@@ -11,17 +11,21 @@ import {
   ForkRecord,
   HistoryCommit,
   NextAction,
+  NowActivity,
   NowInFlightRow,
+  NowInProgressPlan,
   NowReview,
   NowStalledPlan,
   NowView,
 } from "../types";
 
-type SectionId = "in_flight" | "needs_you" | "recently_done" | "next";
+type SectionId = "in_progress" | "in_flight" | "needs_you" | "recently_done" | "next";
 
 export type NowNode =
   | { kind: "section"; sectionId: SectionId; label: string; count: number | null }
   | { kind: "inflight"; row: NowInFlightRow }
+  | { kind: "building"; plan: NowInProgressPlan }
+  | { kind: "activity"; event: NowActivity }
   | { kind: "fork"; record: ForkRecord }
   | { kind: "review"; review: NowReview }
   | { kind: "stalled"; plan: NowStalledPlan }
@@ -101,6 +105,33 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       };
       return item;
     }
+    if (node.kind === "building") {
+      // Progress, not a demand for attention: the step the agent is on, and how far through it is.
+      const label = node.plan.current_title ?? `plan ${node.plan.session_id.slice(0, 8)}`;
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      item.description = `step ${node.plan.matched_count + 1}/${node.plan.step_count}`;
+      item.iconPath = new vscode.ThemeIcon("sync");
+      item.tooltip = `${node.plan.matched_count} of ${node.plan.step_count} step(s) confirmed; ` +
+        `${node.plan.pending_count} still pending.`;
+      item.contextValue = "sgtNowBuilding";
+      return item;
+    }
+    if (node.kind === "activity") {
+      // The live agent-action feed. The PostToolUse hook has always recorded these and the
+      // extension has always fetched them; nothing rendered them, so "what is the agent doing right
+      // now" was answerable from disk and unanswered on screen.
+      const file = node.event.file ?? "";
+      const label = file ? file.split("/").pop()! : node.event.tool;
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      item.description = file ? node.event.tool : "";
+      item.iconPath = new vscode.ThemeIcon("edit");
+      item.tooltip = file ? `${node.event.tool} ${file}` : node.event.tool;
+      item.contextValue = "sgtNowActivity";
+      if (file) {
+        item.command = { command: "sgt.jumpToLocation", title: "Open", arguments: [file, 1] };
+      }
+      return item;
+    }
     if (node.kind === "commit") {
       const item = new vscode.TreeItem(node.commit.subject, vscode.TreeItemCollapsibleState.None);
       item.description = (node.commit.sha || "").slice(0, 7);
@@ -146,7 +177,9 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
     if (!node) {
       const needsYou =
         now.needs_you.forks.length + now.needs_you.reviews.length + now.needs_you.stalled_plans.length;
+      const inProgress = (now.in_progress?.length ?? 0) + (now.context?.activity?.length ?? 0);
       const sections: NowNode[] = [
+        { kind: "section", sectionId: "in_progress", label: "In progress", count: inProgress },
         { kind: "section", sectionId: "in_flight", label: "Unsaved", count: now.in_flight.total_op_count },
         { kind: "section", sectionId: "needs_you", label: "Needs you", count: needsYou },
         { kind: "section", sectionId: "recently_done", label: "Recently done", count: now.recently_done.length },
@@ -160,6 +193,12 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
     }
 
     if (node.kind !== "section") return [];
+    if (node.sectionId === "in_progress") {
+      return [
+        ...(now.in_progress ?? []).map((plan): NowNode => ({ kind: "building", plan })),
+        ...(now.context?.activity ?? []).map((event): NowNode => ({ kind: "activity", event })),
+      ];
+    }
     if (node.sectionId === "in_flight") {
       return now.in_flight.affected.map((row) => ({ kind: "inflight", row }));
     }
