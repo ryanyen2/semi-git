@@ -63,7 +63,10 @@ _VERBS = {
     # about features: `sgt why <sha>` answers with the prompt and words that produced a commit, and
     # nothing in that reading is feature-scoped (the feature-closure form is the `--for` flag). It
     # sat under `feature why`, so the natural spelling printed the help text instead of answering.
-    "switch", "diff", "intent", "now", "status", "why",
+    # `show` is the read half of visiting a past state: sgt could always reconstruct `code(I)` at an
+    # arbitrary frontier, and only the workbench's playhead ever displayed it. Reading an old version
+    # of a file is a daily question, so it answers at the top level, like `git show <rev>:<path>`.
+    "switch", "diff", "intent", "now", "status", "why", "show",
     # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
     "plan",
     # groupings

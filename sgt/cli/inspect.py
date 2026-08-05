@@ -54,6 +54,15 @@ def register(subs, parent) -> None:
     _add_view_flags(st)
     st.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     st.set_defaults(func=_cmd_status)
+    # `sgt show <spec> [<path>]` -- the read half of "let me look at that version". The bytes were
+    # always computable (`fold_view`) and the workbench playhead already displayed them; a terminal
+    # simply had no way to ask.
+    sh = subs.add_parser("show", parents=[parent],
+                         help="print a file as it was at a past point (read-only, no checkout)")
+    sh.add_argument("at", metavar="SPEC",
+                    help="a commit index (`12`), an op set (`op:<id>,...`), or a ref")
+    sh.add_argument("path", nargs="?", help="the file to print; omit to list what existed there")
+    sh.set_defaults(func=_cmd_show)
     op = subs.add_parser("ops", parents=[parent])
     _add_view_flags(op, paged=True)
     op.set_defaults(func=_cmd_ops)
@@ -120,6 +129,10 @@ def _cmd_log(args) -> int:
                          refresh=args.refresh, rebuild=args.rebuild)
     return _log_default(".", as_json=args.as_json, color=not args.no_color,
                         refresh=args.refresh, rebuild=args.rebuild)
+
+
+def _cmd_show(args) -> int:
+    return _show(".", args.at, args.path, args.as_json)
 
 
 def _cmd_status(args) -> int:
@@ -817,6 +830,55 @@ def _fold(repo: str, at: str, as_json: bool = False) -> int:
     for path in sorted(view["files"]):
         print(f"  {path}")
     print(f"  oracle verdict: {overall_status(view['oracle_verdict'])}")
+    return 0
+
+
+def _show(repo: str, at: str, path: str | None, as_json: bool = False) -> int:
+    """`sgt show <spec> [<path>]`: print a file's content as it was at a past point, or list the
+    files that existed there.
+
+    The bytes were always computable -- `fold_view` reconstructs `code(I)` at any frontier, and the
+    workbench's playhead has been reading exactly this. There was simply no way to ask for it from a
+    terminal: `sgt fold --at` prints file *names* and never their contents, so "let me look at that
+    version" had no answer short of checking a branch out. `git show <rev>:<path>` is the shape
+    people already know, so this is that, over sgt's own frontier grammar (a commit index, an
+    op-id set, or a ref) rather than only git revisions. Read-only: nothing is checked out, and the
+    working tree is untouched."""
+    from sgt.api import fold_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so the fold reflects current reality (R9)
+    view = fold_view(repo, **_parse_at(at))
+    if view.get("forked"):
+        return _fail(f"show {at}: {view['message']}")
+    if "error" in view:
+        return _fail(view["error"])
+
+    files = view["files"]
+    if path is None:
+        if as_json:
+            return _emit_json({"at": at, "op_count": view["op_count"], "files": sorted(files)})
+        print(f"{len(files)} file(s) at {at}:")
+        for p in sorted(files):
+            print(f"  {p}")
+        print(f"  (add a path to print one: `sgt show {at} <path>`)")
+        return 0
+
+    if path not in files:
+        # Suffix-matching beats an exact-path demand here: the user is reading, and they know the
+        # file by its name far more reliably than by its full repo-relative path.
+        matches = [p for p in sorted(files) if p == path or p.endswith("/" + path)]
+        if len(matches) == 1:
+            path = matches[0]
+        elif not matches:
+            return _fail(f"{path!r} does not exist at {at} ({len(files)} file(s) do; "
+                         f"run `sgt show {at}` to list them)")
+        else:
+            return _fail(f"{path!r} is ambiguous at {at}: {', '.join(matches)}")
+
+    if as_json:
+        return _emit_json({"at": at, "path": path, "content": files[path]})
+    print(files[path], end="" if files[path].endswith("\n") else "\n")
     return 0
 
 
