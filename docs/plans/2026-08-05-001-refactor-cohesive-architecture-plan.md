@@ -194,6 +194,10 @@ Pulled forward from phase 3:
   `--emit` dry run and opens the same before/after diff that revert always did, instead of
   confirming with prose. The remaining verbs in that item (land, propose land, undo, and the
   workbench batch reverts) still confirm with text only.
+- `sgt show <spec> [<path>]`, the read half of §5 item 5. The bytes were always computable and only
+  the workbench playhead ever displayed them. `sgt peek` (materializing a frontier into an ephemeral
+  read-only worktree) is not started; the shared selection resolver it would use is still inside
+  `cli/ideal_edit.py`.
 
 Pulled forward from phase 1 (the bounded parts that need no id-spine migration):
 
