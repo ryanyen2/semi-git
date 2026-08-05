@@ -195,13 +195,29 @@ Pulled forward from phase 3:
   confirming with prose. The remaining verbs in that item (land, propose land, undo, and the
   workbench batch reverts) still confirm with text only.
 
-Test state at the end of this pass: five failures, all confirmed pre-existing against 5161871
-(`test_land_fork_refusal_persists_the_fork_records`, two `save --resolve-plan` CLI tests, and the
-`diverged_chain` / `mixed_coverage` kernel projection goldens, which fail from feature-id churn).
-The two kernel goldens were deliberately not regenerated: they are red for a real reason, and
-regenerating would record that churn as expected. The CLI surface golden was regenerated, reviewed,
-and is green.
+Pulled forward from phase 1 (the bounded parts that need no id-spine migration):
 
-Not started: phase 1 (the work-unit spine), phase 2 (the engine and canonical queries), the rest of
-phase 3 (episode-first history, ids out of default output, preview symmetry, `show`/`peek`), and
+- Resuming a plan is non-destructive. Re-taking a session id you own is how an interrupted agent
+  picks work back up, and intake minted a fresh baseline there, silently reclassifying everything
+  already built as drift. The baseline and creation time are kept, superseded hollows are cleaned
+  up rather than orphaned, and a resume that cannot restate its Claude session id no longer erases
+  the captured one. This is §3 item 5's substance, without the `sgt plan resume` verb.
+- `sgt_plan_done` enforces the ownership the skill always claimed (§3 item 6): an agent that
+  identifies itself cannot close another agent's plan.
+- A save no longer closes the plan it just told the user to resolve. Two of the three long-standing
+  test failures were this bug, not fixture rot: `sgt save` printed "run `sgt save --resolve-plan`"
+  and the same housekeeping beat deleted the hollow that command needs.
+
+Test state at the end of this pass: three failures, all pre-existing against 5161871
+(`test_land_fork_refusal_persists_the_fork_records` and the `diverged_chain` / `mixed_coverage`
+kernel projection goldens, which fail from feature-id churn). The two goldens were deliberately not
+regenerated: they are red for a real reason, and regenerating would record that churn as expected.
+The CLI surface golden was regenerated, reviewed, and is green. The two `save --resolve-plan`
+failures are gone, because they were reporting the bug fixed above rather than stale fixtures --
+worth remembering the next time a long-red test is assumed to be rot.
+
+Not started: the rest of phase 1 (the work-unit id spine itself, the aligner wired to the save beat,
+plan adoption), phase 2 (the engine and canonical queries), the rest of
+phase 3 (episode-first history, ids out of default output, the remaining preview symmetry,
+`show`/`peek`), and
 phase 4 (substrate hardening). The next increment is phase 1, whose exit test is written in §3.
