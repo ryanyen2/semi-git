@@ -103,11 +103,30 @@ def _switch(repo: str, branch: str, as_json: bool) -> int:
     """`sgt switch <branch>` (D3): materialize a named ideal -- an existing branch's committed
     tree. Mines the current ref first so nothing is lost (R9), moves HEAD to `branch` (git writes
     that branch's tree, which *is* `code(ideal)`), then mines the new ref so the op store reflects
-    it. sgt owns the write path; a raw `git switch` is what D2 refuses in favor of this."""
+    it. sgt owns the write path; a raw `git switch` is what D2 refuses in favor of this.
+
+    The argument must name a *local branch*. It used to go straight to `git checkout`, so a commit
+    sha or tag detached HEAD with no warning -- and a `sgt save` on a detached HEAD writes a commit
+    that belongs to no branch and disappears from every ideal the moment the user switches back.
+    Refusing here (rather than materializing a state sgt cannot keep) is the only honest answer:
+    sgt's history is append-only, so "go look at an old state" is a read, not a checkout."""
     from sgt.core.lens import DirtyWorkingTreeError, get
     from sgt.store.gitbind import GitBinding, GitError
 
     gb = GitBinding(repo)
+    if not gb.local_branch_exists(branch):
+        known = gb.local_branches()
+        resolved = gb.rev_parse(branch)
+        what = "a commit or tag" if resolved else "nothing in this repo"
+        listing = ", ".join(known[:8]) + ("…" if len(known) > 8 else "") if known else "(none)"
+        return _fail_json(
+            f"`{branch}` is not a local branch -- it resolves to {what}. `sgt switch` moves HEAD, "
+            f"and switching to anything but a branch detaches it, where a later `sgt save` commits "
+            f"onto no branch. Branches here: {listing}. To *look at* an older state instead, use "
+            f"`sgt log --at <commit>` or `sgt diff <ref> HEAD`; to detach deliberately, "
+            f"`sgt git checkout --force {branch}`.",
+            as_json,
+        )
     try:
         get(repo)  # absorb current reality before leaving this ref (R9)
         gb.checkout_branch(branch)  # move HEAD + materialize the branch's committed tree
