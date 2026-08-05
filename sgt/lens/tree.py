@@ -1083,6 +1083,7 @@ def label_tree(
     result: dict, repo: str | Path = ".", labeler=None,
     subjects_by_leaf: dict[str, list[str]] | None = None, pins: Pins | None = None,
     kinds_by_leaf: dict[str, str] | None = None, weights: dict[str, float] | None = None,
+    relabel: bool = False,
 ) -> object:
     """Label every node bottom-up (leaves from members, a single-child node reuses its child's
     label, an internal node from its children's labels), then DEDUP. Mutates `result` in place:
@@ -1107,7 +1108,10 @@ def label_tree(
     from sgt.lens.label import Labeler
 
     if labeler is None:
-        labeler = Labeler(repo)
+        # `relabel` is `--rebuild`'s "name everything again": it bypasses both the cached LLM label
+        # and the fallback backoff, so a user who fixed their credential has an immediate way to
+        # re-earn real names without waiting out a retry window.
+        labeler = Labeler(repo, relabel=relabel)
     if pins is None:
         pins = load_pins(repo)
     nodes = result["nodes"]

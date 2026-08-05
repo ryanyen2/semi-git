@@ -71,7 +71,7 @@ def build_map(repo: str | Path, rebuild: bool = False) -> dict:
     subjects_by_leaf, kinds_by_leaf = _label_context(repo, ops, result)
     labeler = tree.label_tree(
         result, repo, subjects_by_leaf=subjects_by_leaf, kinds_by_leaf=kinds_by_leaf,
-        weights=_op_touch_weights(ops),
+        weights=_op_touch_weights(ops), relabel=rebuild,
     )
     labeler.save()  # persist the member-hash label cache so an unchanged cluster never re-pays
     # the (non-deterministic) LLM call on the next build -- without this the cache is rebuilt cold
