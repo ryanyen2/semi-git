@@ -25,6 +25,17 @@ on undo -- the simplest robust inverse:
                        already left the local clone (mirrors the `journal=checked_out` guard,
                        `sgt/core/sync/land.py:207`), so its inverse is never applied.
 
+**`land` is undoable or not depending on where HEAD was, and that is deliberate but easy to
+misread.** A land of the *checked-out* branch journals an ordinary `ideal_edit` (via `record_ideal`
+with `journal=True`), so `sgt undo` rewinds it like any other local edit -- the shared ref moved,
+but so did this clone's HEAD, and undoing produces a normal forward edit on top. A land of a branch
+that is *not* checked out appends `kind="land"` instead, and undo refuses: this clone's tree was
+restored and the only thing that changed is a ref other people read. So "can I undo a land?" has
+one answer per case, not one answer overall -- read the two branches around
+`sgt/core/sync/land.py:317` together, and note that `kind="propose"` is accepted here defensively
+but is never actually appended (`propose land` delegates to `sync.land` and inherits its
+journaling).
+
 This is distinct from `sgt.api.oplog_view`, which projects the *content* op-DAG (the mined ops),
 not this user-action history.
 """
