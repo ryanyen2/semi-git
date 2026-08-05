@@ -269,3 +269,42 @@ def test_drift_full_carries_entries(tmp_path):
     repo = _seed(tmp_path, 2)
     _, payload = _call(repo, "sgt_drift", {"full": True})
     assert payload["entries"] == []
+
+
+# -- agent-facing docs must agree with the tool contract ------------------------------------------
+
+def _skill_text() -> str | None:
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[2] / ".claude" / "skills" / "sgt-plan" / "SKILL.md"
+    return p.read_text(encoding="utf-8") if p.is_file() else None
+
+
+def test_plan_skill_and_mcp_tool_name_the_same_session_id_variable():
+    """The `sgt-plan` skill told agents to store `$CLAUDE_CODE_BRIDGE_SESSION_ID` while the
+    `UserPromptSubmit` hook keys captured prompts by `$CLAUDE_CODE_SESSION_ID`. The two never
+    matched, so an agent that followed the skill silently lost both the prompt-to-commit join and
+    the `claude --resume` handle -- with nothing failing loudly enough to notice.
+
+    Both surfaces are prose read by an agent, so nothing but a test keeps them honest."""
+    skill = _skill_text()
+    if skill is None:
+        import pytest
+        pytest.skip("skill file not present in this checkout")
+
+    from sgt.mcp.server import TOOLS
+
+    intake_schema = TOOLS["sgt_plan_intake"][1]
+    tool_desc = intake_schema["properties"]["claude_session_id"]["description"]
+
+    assert "CLAUDE_CODE_SESSION_ID" in tool_desc
+    assert "CLAUDE_CODE_SESSION_ID" in skill, "the skill must name the id the hook actually keys by"
+    # The bridge id may only appear as an explicit warning, never as the thing to pass.
+    for surface, text in (("skill", skill), ("tool description", tool_desc)):
+        if "CLAUDE_CODE_BRIDGE_SESSION_ID" in text:
+            idx = text.index("CLAUDE_CODE_BRIDGE_SESSION_ID")
+            # Strip markdown emphasis so the check reads meaning, not formatting: the warning is
+            # equally a warning whether it is written "do not" or "do **not**".
+            window = text[max(0, idx - 200):idx].lower().replace("*", "").replace("_", "")
+            assert any(w in window for w in ("do not", "don't", "never")), (
+                f"the {surface} mentions the bridge id without warning against it"
+            )
