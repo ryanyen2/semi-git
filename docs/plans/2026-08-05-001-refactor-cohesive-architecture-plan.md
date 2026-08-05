@@ -148,3 +148,56 @@ One thing reflection did not change: the phase order. I tested an alternative th
 - Latency gates in CI on a seeded 10k-op store (generator adapted from `experiments/`): the numbers in phase 2 item 7, enforced, so the DX regression class cannot return silently.
 - Migration tests: work-unit re-key (phase 1) and blob-OID images (phase 4) both run against a copy of the sgt repo's own `.sgt` store and a synthetic adversarial store (hollow ops, parked forks, mid-migration crash resume).
 - Scenario tests: the three persona walks in part 8 become scripted end-to-end tests (testbed fixtures), because they caught more than the unit-level criteria did.
+
+---
+
+## 10. Execution log
+
+Phase 0 is complete. A latency-independent slice of phase 3 was pulled forward, and part 8's
+reasoning is why: the argument for doing the engine before presentation was that the right words
+arriving after five seconds still read as a broken tool. Phase 0's label fix cut the edit-to-surface
+loop from about 5.0s to about 1.25s on the testbed, which removes that objection for the
+presentation work that needs no engine. Nothing pulled forward depends on phase 2.
+
+Phase 0, all nine items:
+
+1. The `sgt-plan` skill now names `$CLAUDE_CODE_SESSION_ID`, the id the prompt hook actually keys
+   by, with a test that fails if the skill and the MCP tool description drift apart again.
+2. The workbench action bar dispatches through the typed `Sgt` methods. Its bare `sgt merge` /
+   `rename` / `move` / `split` argv named verbs that were re-homed under `feature`, so the CLI
+   printed its help text and exited 0 while the UI reported success.
+3. `sgt switch` refuses anything that is not a local branch instead of detaching HEAD.
+4. Fallback labels carry a retry-after backoff, and a credential that cannot be built at all
+   short-circuits the pass in-process.
+5. `sgt status` exists again, as an alias onto `log --summary`'s own handler.
+6. A repo with no git identity now says so instead of silently authoring commits as semi-git.
+7. The empty `sgt/lifecycle/` and `sgt/merge/` directories are gone. The `kind="propose"` undo
+   branch was kept and documented rather than deleted: it is correct defensive code, and the actual
+   defect was the docstring that claimed a blanket refusal.
+8. `sgt why` moved to the top level. The planned fix was a better error message, but the real defect
+   was the verb's path: `why_view` already answered for a commit sha, and `feature why` meant the
+   natural spelling printed help.
+9. The land undo asymmetry is stated in the oplog docstring and in an `undo_note` the confirm prompt
+   prints above the prompt itself.
+
+Pulled forward from phase 3:
+
+- D8 bookkeeping folding, plus the count agreement it enables. `sgt log` and `sgt log --map`
+  disagreed on the same repo (6 versus 8) because one counted episodes and the other counted every
+  commit; both now report saves, and the map discloses what it folded.
+- D5 quote-first labeling, in its dominance-gated form: a leaf whose op mass is dominated by one
+  commit takes that commit's subject as its name, with no LLM call. Clusters spanning several
+  episodes still get a synthesized name.
+- The `now` surface shows a plan that is actively being built and the live agent-action feed. Both
+  were already recorded and neither was displayed.
+
+Test state at the end of this pass: five failures, all confirmed pre-existing against 5161871
+(`test_land_fork_refusal_persists_the_fork_records`, two `save --resolve-plan` CLI tests, and the
+`diverged_chain` / `mixed_coverage` kernel projection goldens, which fail from feature-id churn).
+The two kernel goldens were deliberately not regenerated: they are red for a real reason, and
+regenerating would record that churn as expected. The CLI surface golden was regenerated, reviewed,
+and is green.
+
+Not started: phase 1 (the work-unit spine), phase 2 (the engine and canonical queries), the rest of
+phase 3 (episode-first history, ids out of default output, preview symmetry, `show`/`peek`), and
+phase 4 (substrate hardening). The next increment is phase 1, whose exit test is written in §3.
