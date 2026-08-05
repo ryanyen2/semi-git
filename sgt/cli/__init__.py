@@ -57,7 +57,13 @@ _VERBS = {
     # don't map to a `log` mode and it was deliberately re-promoted (c4f9966/KTD8). `now` is the
     # state-of-actions orient (what's in flight / needs you / next), a fast assembler distinct from
     # `log`'s history grid.
-    "switch", "diff", "intent", "now",
+    # `status` is a thin alias of `log --summary` (one handler, so they cannot drift): U14 removed
+    # the spelling, which made the first command every git user types answer with the help text.
+    # `why` is top-level because "why is this code like this" is a question about a *selector*, not
+    # about features: `sgt why <sha>` answers with the prompt and words that produced a commit, and
+    # nothing in that reading is feature-scoped (the feature-closure form is the `--for` flag). It
+    # sat under `feature why`, so the natural spelling printed the help text instead of answering.
+    "switch", "diff", "intent", "now", "status", "why",
     # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
     "plan",
     # groupings
@@ -70,7 +76,7 @@ _VERBS = {
 # The verb NAME and its args/handler are untouched -- only the parent subparser changes -- so the
 # family modules register unchanged and each verb keeps its exact behavior at its new path.
 _ROUTING = {
-    "rename": "feature", "select": "feature", "why": "feature",
+    "rename": "feature", "select": "feature",
     "merge": "regroup", "split": "regroup", "move": "regroup",
     "state": "advanced", "oracle": "advanced", "fsck": "advanced",
     "resync": "advanced", "history": "advanced", "ops": "advanced",

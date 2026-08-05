@@ -289,6 +289,18 @@ def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
         commit = _commit_why(repo, op_ref)
         if commit is not None:
             return commit
+        # All three selectors failed. `verbs._resolve`'s message names only the two *it* tried
+        # (op-id, symbol), which is right for revert/restore but under-reports here -- `why` also
+        # accepts a commit, and a user who pasted a sha deserves to be told that is what was
+        # checked, not to be corrected about op-ids they never mentioned.
+        return {
+            "kind": "op", "ok": False, "op_id": None, "feature_id": None,
+            "for_feature": None, "votes": [], "chain": [], "rationale": [],
+            "message": (
+                f"{op_ref!r} is not an op-id, a live symbol (`path.py::name`), or a commit in "
+                f"this repo's history"
+            ),
+        }
     # Intent-ledger M1: append the recorded "why" -- the rationale reflection derived from the
     # user's own words -- beside the structural attribution. Empty when nothing was captured/derived
     # for this op, which `sgt why` renders as an honest "no recorded reason" rather than a guess.
@@ -877,6 +889,25 @@ def _project_land_preview(repo, plan) -> dict:
         "oracle_configured": plan.oracle_configured,
         "advisory": plan.advisory,
     }
+    # What `sgt undo` will do *after* this land -- the one thing the "not reversible" line above
+    # doesn't answer, and the thing the user actually asks next. The shared advance itself is
+    # one-way either way; what differs is whether undo has anything local to act on. Landing the
+    # branch you are standing on journals an ordinary ideal_edit, so undo works and writes a
+    # forward correction; landing any other branch only moved a ref other people read, so undo
+    # refuses. (`sgt/core/sync/land.py:317` vs `:334`.)
+    try:
+        from sgt.store.gitbind import GitBinding
+        gb = GitBinding(repo)
+        checked_out = gb.symbolic_ref() == f"refs/heads/{plan.branch}"
+    except Exception:  # noqa: BLE001 -- an advisory line must never break a preview
+        checked_out = None
+    projected["checked_out"] = checked_out
+    projected["undo_note"] = (
+        "the shared advance is one-way; `sgt undo` afterward writes a local forward correction"
+        if checked_out else
+        "the shared advance is one-way; `sgt undo` will refuse it (it only moved a ref others read)"
+        if checked_out is False else ""
+    )
     projected["so_what"] = so_what_for(projected)
     projected["summary"] = render_collab_preview_lines(projected, color=True)
     return projected
