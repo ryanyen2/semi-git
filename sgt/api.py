@@ -1219,10 +1219,21 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
     from sgt.lens.tree import load as load_tree
     from sgt.store.gitbind import GitBinding
 
+    from sgt.store.gitbind import is_bookkeeping_message
+
     gb = GitBinding(repo)
     rows = gb.history()
     commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
-    commits = [{"sha": sha, "subject": subject, "index": i} for i, (sha, _parent, subject) in enumerate(rows)]
+    # Which commits are sgt's own mechanics rather than the developer's work. Every commit keeps its
+    # index and its place on the time axis -- the grid, the fold frontier, and every op's
+    # `commit_index` are unchanged -- but a human-facing list can now drop them instead of telling a
+    # developer that `sgt restore f-08ccdb12...` is something they did.
+    marked = gb.bookkeeping_shas()
+    commits = [
+        {"sha": sha, "subject": subject, "index": i,
+         "bookkeeping": sha in marked or is_bookkeeping_message(subject)}
+        for i, (sha, _parent, subject) in enumerate(rows)
+    ]
 
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
@@ -1253,13 +1264,20 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
         kinds[o["kind"]] = kinds.get(o["kind"], 0) + 1
         if o["feature_id"] is not None:
             features[o["feature_id"]] = features.get(o["feature_id"], 0) + 1
+    # "What did I do" is a question about the developer's work, so the window is taken over real
+    # saves and sgt's own materializations are reported as a count beside it rather than as rows.
+    # `commit_count` stays the honest total (it is the time axis's length, which every index refers
+    # to); `save_count` is the number a person would give if asked how much they had done.
     latest_first = list(reversed(commits))
+    real_first = [c for c in latest_first if not c["bookkeeping"]]
     return {
         "commit_count": len(commits),
+        "save_count": len(real_first),
+        "bookkeeping_count": len(commits) - len(real_first),
         "op_count": len(ops_out),
         "kinds": kinds,
         "features": features,
-        "latest_commits": latest_first[offset:offset + limit],
+        "latest_commits": real_first[offset:offset + limit],
     }
 
 
@@ -1376,7 +1394,13 @@ def grid_view(repo) -> dict:
         },
         "ghosts": _grid_ghosts(repo, set(features)),
         "partial_commits": sorted(partial_indices),
+        # `commit_count` is the time axis's length -- every op's `commit_index` refers to it, so it
+        # must keep counting sgt's own materialization commits. `save_count` is what a person means
+        # by "how many saves": the same axis minus sgt's plumbing. Keeping both is what stops the
+        # map's header from disagreeing with `sgt log`'s save list on the same repo.
         "commit_count": len(hv["commits"]),
+        "save_count": sum(1 for c in hv["commits"] if not c.get("bookkeeping")),
+        "bookkeeping_count": sum(1 for c in hv["commits"] if c.get("bookkeeping")),
         "op_count": sum(len(c["op_ids"]) for c in cells.values()),
         "feature_count": len(features),
     }

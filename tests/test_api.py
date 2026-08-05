@@ -904,9 +904,14 @@ def test_history_view_default_is_compact_with_latest_commits_most_recent_first(t
     compact = history_view(repo)
     full = history_view(repo, full=True)
 
-    assert set(compact) == {"commit_count", "op_count", "kinds", "features", "latest_commits"}
+    assert set(compact) == {"commit_count", "save_count", "bookkeeping_count",
+                            "op_count", "kinds", "features", "latest_commits"}
     assert compact["commit_count"] == len(full["commits"])
     assert compact["op_count"] == len(full["ops"])
+    # `linear_history` is all real work, so the two counts coincide here; the split is exercised
+    # by `test_history_view_folds_sgt_s_own_materialization_commits` below.
+    assert compact["save_count"] == compact["commit_count"]
+    assert compact["bookkeeping_count"] == 0
     assert [c["index"] for c in compact["latest_commits"]] == sorted(
         (c["index"] for c in full["commits"]), reverse=True
     )
@@ -1471,3 +1476,53 @@ def test_focus_subgraph_is_empty_when_no_feature_tree_is_built(tmp_path):
     preview = verbs._preview("revert", user_op.id, all_ids, all_ids - {user_op.id}, ops)
     focus = focus_subgraph(preview, repo, so_what="X")
     assert focus == {"so_what": "X", "nodes": [], "edges": [], "context_count": 0}
+
+
+# -- bookkeeping folding: sgt's own commits are not the developer's work ---------------------------
+
+def test_history_view_folds_sgt_s_own_materialization_commits(tmp_path):
+    """History is append-only, so a revert is itself a forward commit. Unmarked, it is
+    indistinguishable from real work, and `sgt now` reported `sgt revert <hex>` back to the
+    developer as something they had done."""
+    from sgt.core import verbs
+
+    repo = _mined(tmp_path, "linear_history")
+    before = history_view(repo)
+    op_id = sorted(get(repo).op_ids)[-1]
+
+    verbs.revert(repo, op_id)  # materializes a real commit for its own mechanics
+
+    after = history_view(repo)
+    assert after["commit_count"] == before["commit_count"] + 1  # the axis grew
+    assert after["save_count"] == before["save_count"]  # the developer did no new work
+    assert after["bookkeeping_count"] == before["bookkeeping_count"] + 1
+    subjects = [c["subject"] for c in after["latest_commits"]]
+    assert not any(s.startswith("sgt revert") for s in subjects)
+
+
+def test_bookkeeping_commits_keep_their_place_on_the_time_axis(tmp_path):
+    """Folding is display-only. Every op's `commit_index` refers to the full axis, so dropping a
+    commit from the axis (rather than from a list) would silently move every later op."""
+    from sgt.core import verbs
+
+    repo = _mined(tmp_path, "linear_history")
+    op_id = sorted(get(repo).op_ids)[-1]
+    verbs.revert(repo, op_id)
+
+    full = history_view(repo, full=True)
+    indices = [c["index"] for c in full["commits"]]
+    assert indices == list(range(len(indices)))  # contiguous: nothing was removed from the axis
+    assert any(c["bookkeeping"] for c in full["commits"])  # marked, not missing
+
+
+def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
+    """The mark must follow sgt's own mechanics only -- a save carrying the user's message is the
+    work itself, and folding it would hide exactly what the developer wants to see."""
+    from sgt.core.lens import put
+
+    repo = _mined(tmp_path, "linear_history")
+    put(repo, get(repo), message="add the thing I meant to add")
+
+    view = history_view(repo)
+    assert view["latest_commits"][0]["subject"] == "add the thing I meant to add"
+    assert view["latest_commits"][0]["bookkeeping"] is False

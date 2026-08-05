@@ -828,11 +828,17 @@ def init(repo: str | Path, horizon: str | None = None) -> Ideal:
     return _sync(repo, treat_as_root=horizon_sha)
 
 
-def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal") -> str:
+def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal",
+        *, bookkeeping: bool = False) -> str:
     """`code(I)` -> working tree -> a witness commit carrying one `Sgt-Op:` trailer per op the
     new tree embodies. Mine-before-materialize (R9): `get()` runs first so a dirty tree or a
     foreign commit is absorbed into the store, then the fold is refused (rather than silently
-    clobbering) if it would overwrite an uncommitted change with different bytes."""
+    clobbering) if it would overwrite an uncommitted change with different bytes.
+
+    `bookkeeping=True` marks the commit as sgt's own mechanics (the forward commit behind a revert,
+    restore, or undo) rather than the developer's work, so human-facing lists can fold it. It
+    changes nothing semantic: the commit still carries its full `Sgt-Op:` trailers and is mined,
+    reduced, and materialized exactly as before."""
     repo = Path(repo)
     gb = GitBinding(repo)
     # A staged rewrite candidate deliberately leaves the tree dirty (U6). `put`'s `get()` would
@@ -873,7 +879,11 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal")
     # -> mine (the witness SHA still carries `Sgt-Op:` trailers, and a squash sgt never ran on
     # re-mines, coarser but LAW-0 reproducible). The local per-ref `ideal_table` cache stays
     # authoritative for the current ref.
-    sha = gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
+    trailers = format_op_trailers(sorted(ideal.op_ids))
+    if bookkeeping:
+        from sgt.store.gitbind import format_bookkeeping_trailer
+        trailers = f"{trailers}\n{format_bookkeeping_trailer()}" if trailers else format_bookkeeping_trailer()
+    sha = gb.commit_all(message, trailers=trailers)
     # Publish the committed state (ops + tables) onto `refs/sgt/state` at `put`'s transaction
     # boundary, off the branch tree. Lazy import: the sync package pulls in lens, so a module-level
     # import would cycle; by call time every module is loaded.
@@ -998,7 +1008,7 @@ def _apply_ideal_edit_inverse(repo: str | Path, event: dict) -> UndoResult:
     all_ops = Store(repo).all_ops()
     current = current_ideal(repo)
     prev = Ideal.from_ops(frozenset(event["ideal"]), all_ops)
-    sha = put(repo, prev, message="sgt undo: restore prior ideal")
+    sha = put(repo, prev, message="sgt undo: restore prior ideal", bookkeeping=True)
     record_ideal(repo, prev, sha, journal=False)
     return UndoResult(prev, sha, removed=current.op_ids - prev.op_ids, added=prev.op_ids - current.op_ids)
 
