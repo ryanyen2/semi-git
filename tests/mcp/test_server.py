@@ -99,8 +99,13 @@ def test_grid_returns_the_canonical_lane_commit_join(tmp_path):
     build_map(repo)  # populate op_leaf so ops land in cells
     _, grid = _call(repo, "sgt_grid")
     assert set(grid) == {"commits", "cells", "features", "ghosts", "partial_commits",
-                         "commit_count", "op_count", "feature_count"}
+                         "commit_count", "save_count", "bookkeeping_count",
+                         "op_count", "feature_count"}
     assert grid["commit_count"] == 2
+    # The axis length and "how many saves" are different numbers once sgt has materialized one of
+    # its own edits; this fixture is all real work, so here they agree.
+    assert grid["save_count"] == 2
+    assert grid["bookkeeping_count"] == 0
 
     # tool_log still returns the op DAG, not the grid — the schema-stable contract (KTD9).
     _, log = _call(repo, "sgt_log")
