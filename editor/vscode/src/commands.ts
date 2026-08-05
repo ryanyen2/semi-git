@@ -120,6 +120,43 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
   }
 }
 
+/** `sgt restore` with the same feedforward `revert` gets: the resulting diff first, then a confirm
+ * carrying real numbers. Restore is revert's inverse (`I ∪ ↓X`), so there is no dependent frontier
+ * to choose among -- bringing an edit back also brings what it needs, and nothing is dropped -- but
+ * "which files does this rewrite" is exactly as unanswerable from a prose modal here as it is for
+ * revert. It also surfaces a refusal (the one-live-version rule) as the CLI's own explanation
+ * rather than as a failed mutation after the user already committed to it. */
+async function restoreWithPreview(store: Store, sel: string, preview: PreviewProvider): Promise<void> {
+  let view: EmitView;
+  try {
+    view = await store.sgt.emit(sel, "restore");
+  } catch (e: any) {
+    vscode.window.showErrorMessage(e.message);
+    return;
+  }
+  if (!view.ok) {
+    vscode.window.showWarningMessage(view.message || `Cannot restore ${sel}.`);
+    return;
+  }
+
+  // An `ok` restore that adds nothing is the "already live" case, not a change to confirm. Asking
+  // the user to approve a no-op teaches them the confirm means nothing.
+  if (view.added.length === 0) {
+    vscode.window.showInformationMessage(`${sel} is already present — nothing to restore.`);
+    return;
+  }
+
+  const changedFiles = await preview.openDiff(view);
+  const diffNote = changedFiles ? ` Changes ${changedFiles} file(s) — see the open diff.` : "";
+  const brings = view.added.length > 1 ? ` (with ${view.added.length - 1} it depends on)` : "";
+  await applyMutation(
+    store,
+    ["restore", sel],
+    `Restore ${sel}? Brings back ${view.added.length} op(s)${brings}.${diffNote} ` +
+      `Rewrites the working tree and commits.`
+  );
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   store: Store,
@@ -185,11 +222,7 @@ export function registerCommands(
   reg("sgt.restore", async (id?: string) => {
     const feature = await pickFeature(store, id);
     if (feature) {
-      await applyMutation(
-        store,
-        ["restore", feature],
-        `Restore feature ${feature}? This rewrites the working tree and commits.`
-      );
+      await restoreWithPreview(store, feature, preview);
     }
   });
 
