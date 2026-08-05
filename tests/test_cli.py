@@ -1110,3 +1110,21 @@ def test_switch_still_moves_to_a_real_branch(tmp_path, capsys):
 
     assert _in(tmp_path, ["switch", "side"]) == 0
     assert gb.symbolic_ref() == "refs/heads/side"
+
+
+def test_intent_align_is_a_dry_run_that_writes_nothing_by_default(tmp_path, capsys):
+    """The alignment pipeline has sat unwired since it was written: on a young corpus it scores
+    confidently on too little evidence, and a wrong ALIGN record becomes a wrong answer from
+    `sgt why`. Making it *look at* a repo costs nothing and is the only way to find out whether a
+    corpus is mature enough -- the judgment its author deliberately left open."""
+    _seed(tmp_path)
+    before = (tmp_path / ".sgt" / "local" / "rationale.json")
+    before_bytes = before.read_bytes() if before.is_file() else None
+
+    assert _in(tmp_path, ["intent", "align", "--json"]) == 0
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["applied"] is False
+    assert {"sessions", "episodes", "candidates", "aligned", "reviewed"} <= set(out)
+    after = before.read_bytes() if before.is_file() else None
+    assert after == before_bytes  # a dry run leaves the ledger byte-identical
