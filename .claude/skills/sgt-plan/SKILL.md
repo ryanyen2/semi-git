@@ -21,10 +21,12 @@ plan.
    (see ownership below). Decompose the task into concrete steps, one per unit of work, each named
    at the granularity you'll build it (a `file::Symbol`, or a bare `file` when a step spans a whole
    module). Intake mines the working tree first, so its baseline reflects current reality.
-   If you can read `$CLAUDE_CODE_BRIDGE_SESSION_ID` (via Bash — it is set only when Remote Control
-   is active), pass its value as `claude_session_id` too. It is stored so that if this plan stalls
-   part-way, the user can resume *this exact conversation* with one click (`claude --resume <id>`);
-   when absent, resume falls back to Claude Code's session picker, so it is genuinely optional.
+   Pass `$CLAUDE_CODE_SESSION_ID` (read it via Bash) as `claude_session_id`. This is the per-session
+   UUID, and it must be that one: the `UserPromptSubmit` hook keys every captured prompt by the same
+   id, so it is what joins the user's own words to the commits this plan produces, and it is the id
+   `claude --resume <id>` accepts if the plan stalls part-way. Do **not** pass
+   `$CLAUDE_CODE_BRIDGE_SESSION_ID` — it can carry a parent session's id in nested runs, so storing
+   it silently breaks both the join and the resume link while appearing to work.
 
 2. **Work** — implement the steps in the working tree (or a `sgt session` worktree). Edit code
    normally; you do not touch the plan while working.
