@@ -1568,3 +1568,27 @@ def test_now_view_keeps_a_stalled_plan_in_needs_you_not_in_progress(tmp_path):
 
     assert v["in_progress"] == []
     assert [p["session_id"] for p in v["needs_you"]["stalled_plans"]] == ["quiet"]
+
+
+def test_land_preview_says_what_undo_will_do_afterward(tmp_path):
+    """"Not reversible" tells a developer the land is one-way but not what their next move can be.
+    Landing the branch you are standing on journals an ordinary ideal_edit, so `sgt undo` works;
+    landing any other branch only moved a ref other people read, so undo refuses. Same verb,
+    opposite answer -- so the preview has to say which case this is."""
+    from sgt.api import _project_land_preview
+    from sgt.core.sync.land import LandPlan
+    from sgt.store.gitbind import GitBinding
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    current = (GitBinding(repo).symbolic_ref() or "refs/heads/main").rsplit("/", 1)[-1]
+
+    on_branch = _project_land_preview(repo, LandPlan(branch=current))
+    assert on_branch["checked_out"] is True
+    assert "forward correction" in on_branch["undo_note"]
+
+    elsewhere = _project_land_preview(repo, LandPlan(branch="some-other-branch"))
+    assert elsewhere["checked_out"] is False
+    assert "refuse" in elsewhere["undo_note"]
