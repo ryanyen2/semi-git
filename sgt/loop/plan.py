@@ -316,3 +316,31 @@ def sweep_stale_sessions(repo: str | Path, max_age_seconds: float, now: float | 
     for sid in stale:
         abandon(repo, sid)
     return stale
+
+
+def sweep_built_sessions(repo: str | Path, now: float | None = None) -> list[str]:
+    """Auto-close (`mark_done`) every *stalled* session whose pending steps are all file-covered --
+    the work landed (in the predicted files) but under different names than predicted, so the
+    name-exact matcher (`sgt.loop.match.compute_checkpoint`) will never confirm it and the plan
+    would otherwise sit on the "needs you" surface forever looking undone.
+
+    Gated to stalled (quiet past `STALLED_SECONDS`) so it never races an agent mid-build: while a
+    plan is still active the exact matcher may yet confirm the correctly-named step, so we only
+    reap the walked-away-but-actually-done case. Run on the save housekeeping beat
+    (`sgt.cli.porcelain._fold_plan_matches`). Reversible -- `mark_done` keeps the record for
+    `sgt revert --session`. Returns the sorted ids closed. `now` is injectable for tests."""
+    from sgt.loop.match import session_coverage
+
+    repo = Path(repo)
+    now = time.time() if now is None else now
+    coverage = session_coverage(repo)
+    table = _load_sessions(repo)
+    built = sorted(
+        sid for sid, cov in coverage.items()
+        if cov["fully_built"]
+        and (rec := table.get(sid)) is not None
+        and now - rec["last_activity_ts"] > STALLED_SECONDS
+    )
+    for sid in built:
+        mark_done(repo, sid)
+    return built

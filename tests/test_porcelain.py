@@ -172,6 +172,48 @@ def test_save_commits_a_witness_for_a_dirty_tree(tmp_path, capsys):
     assert current_ideal(repo).op_ids == after_ids
 
 
+def _seed_resolvable_fork(repo, symbol="a.py::foo"):
+    """Add two genuinely-divergent tips to the store and record them as an open fork -- a fork the
+    read side surfaces (real symbol, differing after versions), so a banner must render."""
+    from sgt import state
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
+
+    store = Store(repo)
+    a = store.add(make_op({symbol: ("v0", "v1")}, {symbol: b"a"}, kind="touched"))
+    b = store.add(make_op({symbol: ("v0", "v2")}, {symbol: b"b"}, kind="rebirth"))
+    state.save_json(repo, "forks", [
+        {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"sgt merge-op {a.id} {b.id}"},
+    ])
+
+
+def test_save_surfaces_a_loud_but_non_blocking_fork_banner(tmp_path, capsys):
+    """An open resolvable fork is impossible to ignore -- `sgt save` prints the red `⋔` banner naming
+    the symbol and `sgt resolve` remedy -- yet never blocks: the save still succeeds (rc 0)."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    _seed_resolvable_fork(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        rc = cli.main(["save", "--no-color", "-m", "add quux"])
+    out = capsys.readouterr().out
+    assert rc == 0  # non-blocking: divergence-as-state never refuses a save
+    assert "⋔" in out and "open fork(s)" in out
+    assert "sgt resolve a.py::foo" in out
+
+
+def test_save_json_reports_open_fork_count(tmp_path, capsys):
+    """The `--json` save contract carries `open_fork_count` for parity with `sync_view`, so a machine
+    consumer (VSCode toast) can key its warning on the same filtered count the terminal banner uses."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    _seed_resolvable_fork(repo)
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        rc = cli.main(["save", "--json", "-m", "add quux"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["ok"] is True and payload["open_fork_count"] == 1
+
+
 def test_save_leaves_the_tree_clean_for_the_next_verb(tmp_path):
     """F1 (workflow-hardening 2026-07-31-001): the save-time ownership cascade (`assign_at_save`)
     must be folded *into* the witness commit, not written after it. When a save introduces a brand-

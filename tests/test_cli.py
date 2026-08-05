@@ -85,6 +85,37 @@ def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
     assert "feature(s)" in capsys.readouterr().out
 
 
+def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
+    """Record a genuinely-divergent open fork (real symbol, differing after versions) so the state
+    banner must render on any fork-surfacing verb."""
+    from sgt import state
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
+
+    store = Store(tmp_path)
+    a = store.add(make_op({symbol: ("v0", "v1")}, {symbol: b"a"}, kind="touched"))
+    b = store.add(make_op({symbol: ("v0", "v2")}, {symbol: b"b"}, kind="rebirth"))
+    state.save_json(tmp_path, "forks", [
+        {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"sgt merge-op {a.id} {b.id}"},
+    ])
+
+
+def test_log_and_now_surface_a_loud_non_blocking_fork_banner(tmp_path, capsys):
+    """A genuine open fork renders the red `⋔` banner on both `sgt log` and `sgt now`, naming the
+    symbol and its `sgt resolve` remedy -- and neither verb changes its exit code (non-blocking)."""
+    _seed(tmp_path, 2)
+    _seed_resolvable_fork(tmp_path)
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["log", "--no-color"]) == 0
+    log_out = capsys.readouterr().out
+    assert "⋔" in log_out and "sgt resolve a.py::foo" in log_out
+
+    assert _in(tmp_path, ["now", "--no-color"]) == 0
+    now_out = capsys.readouterr().out
+    assert "⋔" in now_out and "sgt resolve a.py::foo" in now_out
+
+
 def test_log_focus_unknown_group_falls_through_to_the_map(tmp_path, capsys):
     # An unresolvable --focus arg names no group -> resolve_focus_group None -> the single-lane map
     # path, which reports the missing lane rather than crashing or hanging on the vertical view.

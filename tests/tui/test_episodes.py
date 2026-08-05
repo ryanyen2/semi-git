@@ -105,14 +105,30 @@ def test_a_feature_s_episodes_share_one_lane():
     assert lanes == {0} and out["lane_count"] == 1  # one feature -> one column, both episodes on it
 
 
-def test_recurring_features_each_get_a_dedicated_lane():
-    # F1 touched at commits 0-1, F2 at 2-3: each recurs (>=2 saves), so each gets its OWN lane --
-    # recurring features never share, so their lines stay individually traceable.
+def test_recurring_features_with_disjoint_spans_pool_into_one_lane():
+    # F1 touched at commits 0-1, F2 at 2-3: their row spans are disjoint (F1 rows 2-3, F2 rows 0-1),
+    # so ALL features now pool via interval coloring -- a lane is reused the moment its occupant's
+    # span ends. Two features that are never live at the same row share one lane; lane_count is the
+    # interval chromatic number (1 here), not one lane per feature.
     out = _rail([(i, f"s{i}", f"c{i}") for i in range(4)],
                 [("a", "add", "F1", 0), ("b", "add", "F1", 1), ("c", "add", "F2", 2), ("d", "add", "F2", 3)])
+    assert out["lane_count"] == 1
+    assert out["lane_of"]["F1"] == out["lane_of"]["F2"] == 0
+    assert sorted(out["recurring"]) == ["F1", "F2"]  # still recurring (cosmetic), just no longer dedicated
+
+
+def test_features_live_at_the_same_row_get_distinct_lanes():
+    # F1 dominates commits 0 and 3 (rows 3 and 0 -> dominated span [0,3]); F2 dominates commits 1 and
+    # 2 (rows 2,1 -> span [1,2]), nested inside F1's span. Both are live at the middle rows, so they
+    # must occupy distinct lanes -- interval coloring gives exactly 2 (the chromatic number). Clean
+    # 2-op domination per commit avoids ties so each commit's dominant feature is unambiguous.
+    out = _rail([(i, f"s{i}", f"c{i}") for i in range(4)],
+                [("a", "add", "F1", 0), ("a2", "extend", "F1", 0),
+                 ("b", "add", "F2", 1), ("b2", "extend", "F2", 1),
+                 ("c", "add", "F2", 2), ("c2", "extend", "F2", 2),
+                 ("d", "add", "F1", 3), ("d2", "extend", "F1", 3)])
     assert out["lane_count"] == 2
     assert out["lane_of"]["F1"] != out["lane_of"]["F2"]
-    assert sorted(out["recurring"]) == ["F1", "F2"]
 
 
 def test_one_off_features_pack_into_a_shared_lane():

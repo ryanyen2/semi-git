@@ -10,10 +10,12 @@ from sgt.core.order import (
     components_in,
     downset,
     downset_in,
+    forks,
     frontier,
     is_fork_free,
     is_valid_ideal,
     reference_edges,
+    resolvable_forks,
     upset,
     upset_in,
     upset_in_many,
@@ -80,6 +82,51 @@ def test_chain_fork_detected_when_two_ops_share_before_version():
     assert is_fork_free(ops, {root.id, tip_b.id})
     assert not is_fork_free(ops, {root.id, tip_a.id, tip_b.id})
     assert not is_valid_ideal(ops, {root.id, tip_a.id, tip_b.id})
+
+
+def test_resolvable_forks_keeps_only_divergent_real_symbol_forks():
+    root = make_op({"a.py::x": (None, "v0")}, {"a.py::x": b"root"})
+    # (a) a genuinely divergent fork on a real symbol: same before, different after.
+    div_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"}, provenance=("branch-a",))
+    div_b = make_op({"a.py::x": ("v0", "v2")}, {"a.py::x": b"b"}, provenance=("branch-b",))
+    # (b) a same-after pseudo-fork: two ops drive the symbol to byte-identical content (revert/rebirth).
+    # `kind` differs (excluded from equality-of-outcome but not from the content id) so the two are
+    # distinct ops that still both claim the same `(symbol, before)` step with an identical after.
+    same_root = make_op({"a.py::y": (None, "w0")}, {"a.py::y": b"y"})
+    same_a = make_op({"a.py::y": ("w0", "w1")}, {"a.py::y": b"same"}, kind="touched")
+    same_b = make_op({"a.py::y": ("w0", "w1")}, {"a.py::y": b"same"}, kind="rebirth")
+    # (c) a fork on a synthetic anchor sentinel the user can't act on.
+    anc_root = make_op({"a.py::__anchor__::m": (None, "z0")}, {"a.py::__anchor__::m": b"m"})
+    anc_a = make_op({"a.py::__anchor__::m": ("z0", "z1")}, {"a.py::__anchor__::m": b"p"}, provenance=("a-a",))
+    anc_b = make_op({"a.py::__anchor__::m": ("z0", "z2")}, {"a.py::__anchor__::m": b"q"}, provenance=("a-b",))
+
+    ops = [root, div_a, div_b, same_root, same_a, same_b, anc_root, anc_a, anc_b]
+    by_id = {op.id: op for op in ops}
+    ideal = {op.id for op in ops}
+
+    raw = forks(ops, ideal)
+    # `forks` (and thus the ideal-validity path) still sees every collision -- all three.
+    assert {sym for sym, _a, _b in raw} == {"a.py::x", "a.py::y", "a.py::__anchor__::m"}
+
+    resolvable = resolvable_forks(raw, by_id)
+    # Only the divergent, real-symbol fork survives surfacing.
+    assert resolvable == [("a.py::x", div_a.id, div_b.id)]
+
+
+def test_resolvable_forks_does_not_alter_fork_free_invariant_path():
+    """The sentinel/same-after filter is surfacing-only: `forks`/`is_fork_free` must be byte-for-byte
+    unchanged by its existence (sentinels are load-bearing for ideal validity)."""
+    root = make_op({"a.py::__anchor__::m": (None, "v0")}, {"a.py::__anchor__::m": b"r"})
+    tip_a = make_op({"a.py::__anchor__::m": ("v0", "v1")}, {"a.py::__anchor__::m": b"a"}, kind="touched")
+    tip_b = make_op({"a.py::__anchor__::m": ("v0", "v1")}, {"a.py::__anchor__::m": b"a"}, kind="rebirth")
+    ops = [root, tip_a, tip_b]
+    ideal = {root.id, tip_a.id, tip_b.id}
+
+    # Both a sentinel symbol and a same-after collision -- filtered out of surfacing entirely...
+    assert resolvable_forks(forks(ops, ideal), {op.id: op for op in ops}) == []
+    # ...yet the raw collision and the invariant still fire on it.
+    assert forks(ops, ideal) == [("a.py::__anchor__::m", tip_a.id, tip_b.id)]
+    assert not is_fork_free(ops, ideal)
 
 
 def test_upset_of_mid_chain_op_is_itself_and_its_descendants():

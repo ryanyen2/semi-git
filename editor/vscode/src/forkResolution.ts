@@ -1,15 +1,67 @@
-// Fork resolution: an N-column view of a same-symbol chain fork's tip images (`ForkDetailView`
-// already carries full file content per tip -- no extra fold call needed) plus the compose-and-
-// fulfill wizard that used to be a copy-tip-ids-to-clipboard placeholder in commands.ts:
-// `sgt merge-op <a> <b>` drafts a reconciling hollow -> the user hand-edits the working tree to
-// match -> `sgt fulfill <draft-id> --from-tree` stages it -> `sgt commit` commits it. Every
-// step but the hand-edit is a real, unmodified kernel verb; the wizard just keeps the draft id in
-// view state between steps. One panel per fork symbol.
+// Fork resolution: a native side-by-side diff of a same-symbol chain fork's two tip images
+// (`ForkDetailView` already carries full file content per tip -- no extra fold call needed) opened
+// through VS Code's built-in `vscode.diff` editor, plus a small compose-and-fulfill action strip
+// that used to be a copy-tip-ids-to-clipboard placeholder in commands.ts: `sgt merge-op <a> <b>`
+// drafts a reconciling hollow -> the user hand-edits the working tree to match -> `sgt fulfill
+// <draft-id> --from-tree` stages it -> `sgt commit` commits it. Every step but the hand-edit is a
+// real, unmodified kernel verb; the panel just keeps the draft id in view state between steps and
+// serves the two tips' content through a virtual `sgt-fork:` scheme. One panel per fork symbol.
 
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { Store } from "./store";
 import { ForkDetailView } from "./types";
+
+const TIP_SCHEME = "sgt-fork";
+
+// A read-only content provider for the two fork tips' images, mirroring PreviewProvider (preview.ts):
+// contents are keyed by a virtual `sgt-fork:` uri so `vscode.diff` can render them side by side.
+// Registered once, lazily, and disposed with the extension.
+class ForkTipProvider implements vscode.TextDocumentContentProvider {
+  private static instance: ForkTipProvider | undefined;
+  private contents = new Map<string, string>();
+  private seq = 0;
+
+  static ensure(context: vscode.ExtensionContext): ForkTipProvider {
+    if (!ForkTipProvider.instance) {
+      ForkTipProvider.instance = new ForkTipProvider();
+      context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(TIP_SCHEME, ForkTipProvider.instance)
+      );
+    }
+    return ForkTipProvider.instance;
+  }
+
+  provideTextDocumentContent(uri: vscode.Uri): string {
+    return this.contents.get(uri.toString()) ?? "";
+  }
+
+  private uri(token: string, side: string, rel: string): vscode.Uri {
+    // path in the fragment so the diff title/lang resolve from the real filename (as PreviewProvider).
+    return vscode.Uri.parse(`${TIP_SCHEME}:${side}/${token}/${rel}`).with({ fragment: rel });
+  }
+
+  /** Open one native `vscode.diff` per path in the tip union: left = tip A, right = tip B. */
+  async showDiff(detail: ForkDetailView): Promise<void> {
+    const [a, b] = detail.tips;
+    if (!a || !b) return;
+    const paths = new Set<string>([...Object.keys(a.files), ...Object.keys(b.files)]);
+    const token = String(this.seq++);
+    for (const rel of paths) {
+      const left = this.uri(token, "tipA", rel);
+      const right = this.uri(token, "tipB", rel);
+      this.contents.set(left.toString(), a.files[rel] ?? "");
+      this.contents.set(right.toString(), b.files[rel] ?? "");
+      await vscode.commands.executeCommand(
+        "vscode.diff",
+        left,
+        right,
+        `${rel} — Fork: ${detail.symbol} (tip A ◀▶ tip B)`,
+        { preview: true } as vscode.TextDocumentShowOptions
+      );
+    }
+  }
+}
 
 type Stage = "tips" | "drafted" | "fulfilled" | "landed";
 
@@ -34,17 +86,22 @@ export class ForkResolutionPanel {
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true }
     );
-    const inst = new ForkResolutionPanel(panel, store, root, symbol);
+    const inst = new ForkResolutionPanel(panel, store, root, symbol, context);
     ForkResolutionPanel.panels.set(symbol, inst);
   }
+
+  private readonly tipProvider: ForkTipProvider;
+  private diffsOpened = false;
 
   private constructor(
     panel: vscode.WebviewPanel,
     private store: Store,
     private root: string,
-    private symbol: string
+    private symbol: string,
+    context: vscode.ExtensionContext
   ) {
     this.panel = panel;
+    this.tipProvider = ForkTipProvider.ensure(context);
     this.disposables.push(
       panel.onDidDispose(() => this.dispose()),
       panel.webview.onDidReceiveMessage((msg) => void this.onMessage(msg))
@@ -128,28 +185,16 @@ export class ForkResolutionPanel {
       this.panel.webview.html = errorHtml(detail.error);
       return;
     }
+    // Open the two tips in a native side-by-side diff editor once (re-renders after each action must
+    // not re-spawn duplicate diff editors); the webview panel is the action strip beside it.
+    if (!this.diffsOpened && detail.tips.length >= 2) {
+      this.diffsOpened = true;
+      void this.tipProvider.showDiff(detail);
+    }
     this.panel.webview.html = this.html(detail);
   }
 
   private html(detail: ForkDetailView): string {
-    const paths = new Set<string>();
-    for (const tip of detail.tips) {
-      Object.keys(tip.files).forEach((p) => paths.add(p));
-    }
-    const columns = detail.tips
-      .map((tip) => {
-        const files = [...paths]
-          .map((p) => {
-            const content = tip.files[p];
-            return content === undefined
-              ? `<div class="file"><div class="path">${escapeHtml(p)}</div><pre class="missing">(not touched by this tip)</pre></div>`
-              : `<div class="file"><div class="path">${escapeHtml(p)}</div><pre>${escapeHtml(content)}</pre></div>`;
-          })
-          .join("");
-        return `<div class="col"><h3>${escapeHtml(tip.op_id.slice(0, 12))}</h3>${files}</div>`;
-      })
-      .join("");
-
     const actions = this.actionsHtml();
     const nonce = String(Math.random()).slice(2) + this.symbol.length;
 
@@ -163,12 +208,7 @@ export class ForkResolutionPanel {
   header { padding: 10px 14px; border-bottom: 1px solid var(--vscode-panel-border); }
   header h1 { font-size: 14px; margin: 0 0 4px; }
   header p { margin: 0; opacity: 0.8; font-size: 12px; }
-  #columns { display: flex; gap: 1px; overflow: auto; background: var(--vscode-panel-border); }
-  .col { flex: 1; min-width: 320px; background: var(--vscode-editor-background); }
-  .col h3 { font-size: 12px; margin: 0; padding: 6px 10px; background: var(--vscode-titleBar-inactiveBackground); }
-  .file .path { font-size: 11px; opacity: 0.75; padding: 4px 10px; }
-  .file pre { margin: 0; padding: 0 10px 10px; font-size: 12px; white-space: pre-wrap; }
-  .file pre.missing { opacity: 0.5; font-style: italic; }
+  #hint { padding: 8px 14px; opacity: 0.75; font-size: 12px; }
   footer { padding: 10px 14px; border-top: 1px solid var(--vscode-panel-border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   button { cursor: pointer; }
   #status { font-size: 12px; opacity: 0.85; }
@@ -181,7 +221,7 @@ export class ForkResolutionPanel {
   <h1>Fork on <code>${escapeHtml(detail.symbol)}</code></h1>
   <p>${escapeHtml(detail.remedy)}</p>
 </header>
-<div id="columns">${columns}</div>
+<div id="hint">Tip A ◀▶ Tip B opened in a diff editor. Reconcile the working tree, then use the actions below.</div>
 <footer>${actions}</footer>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();

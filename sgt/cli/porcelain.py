@@ -75,6 +75,7 @@ def register(subs, parent) -> None:
     sv.add_argument("--confirm-hollow", action="append", dest="confirm_hollow", default=[],
                     help="(with --resolve-plan) the plan step hollow(s) to confirm against --confirm-op")
     sv.add_argument("--confirm-op", action="append", dest="confirm_op", default=[])
+    sv.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     sv.set_defaults(func=_cmd_save)
 
     uv = subs.add_parser("undo", parents=[parent])
@@ -91,7 +92,7 @@ def _cmd_switch(args) -> int:
 def _cmd_save(args) -> int:
     return _save(".", args.message, args.as_json, resolve_plan=args.resolve_plan,
                  confirm_hollow=args.confirm_hollow, confirm_op=args.confirm_op,
-                 as_label=args.as_label)
+                 as_label=args.as_label, color=not args.no_color)
 
 
 def _cmd_undo(args) -> int:
@@ -145,7 +146,7 @@ def _restore_cascade_tables(repo: str, snapshot: dict[str, bytes | None]) -> Non
 
 def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
           confirm_hollow: list[str] = (), confirm_op: list[str] = (),
-          as_label: str | None = None) -> int:
+          as_label: str | None = None, color: bool = False) -> int:
     """`sgt save [-m]` (D3): the put-path sugar -- mine the working tree (R9), then materialize a
     witness commit for the resulting ideal and record it. "Nothing to save" is decided by the
     ideal, not git's dirty flag: with no uncommitted ops the mined ideal equals the recorded one
@@ -256,20 +257,27 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
             pass
     words = _echo_words(repo, message, plan) if saved else None
     why = _aligned_why(repo, new_op_ids, words) if saved else None  # pure read; the ledger already
+    # Open forks are non-blocking (save never refuses on them), but a divergence you must resolve
+    # shouldn't hide -- surface it loudly at the end of every save (⋔ banner + per-symbol remedy).
+    from sgt.api import forks_view
+    open_forks = forks_view(repo)["forks"]
     return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,  # holds only ALIGN
-                        message=message, features=features, renamed=renamed, why=why)  # + confirmed
+                        message=message, features=features, renamed=renamed, why=why,  # + confirmed
+                        open_forks=open_forks, color=color)
 
 
 def _fold_plan_matches(repo: str) -> dict | None:
     """After a save (U12/R10), auto-confirm every unambiguous single-step plan match -- one pending
-    step matched to its op(s) -- and leave n:m / multi-step groups for `save --resolve-plan`.
-    Returns the fold summary, or `None` when no active plan session produced any match/drift (the
-    common case), so `save`'s output and JSON are byte-unchanged then."""
+    step matched to its op(s) -- and leave n:m / multi-step groups for `save --resolve-plan`. Then
+    the housekeeping beat: auto-close any stalled plan whose remaining work clearly already landed
+    (file-covered but never name-matched -- see `sgt.loop.plan.sweep_built_sessions`), so
+    built-but-unmatched plans don't accrete on the "needs you" surface.
+    Returns the fold summary, or `None` when no active plan session produced any match/drift and
+    nothing was auto-closed (the common case), so `save`'s output and JSON are byte-unchanged then."""
+    from sgt.loop import plan as plan_mod
     from sgt.loop.match import compute_checkpoint, confirm_match
 
     result = compute_checkpoint(repo)
-    if not result.matches and not result.drift_op_ids:
-        return None
     auto, ambiguous = [], []
     for g in result.matches:
         entry = {"session_id": g.session_id, "hollow_ids": list(g.hollow_ids), "op_ids": list(g.op_ids)}
@@ -278,7 +286,11 @@ def _fold_plan_matches(repo: str) -> dict | None:
             auto.append(entry)
         else:  # multiple steps tangled in one op cluster -> needs `save --resolve-plan`
             ambiguous.append(entry)
-    return {"auto_confirmed": auto, "ambiguous": ambiguous, "drift_op_ids": list(result.drift_op_ids)}
+    auto_closed = plan_mod.sweep_built_sessions(repo)  # after confirm: coverage reads the leftovers
+    if not result.matches and not result.drift_op_ids and not auto_closed:
+        return None
+    return {"auto_confirmed": auto, "ambiguous": ambiguous,
+            "drift_op_ids": list(result.drift_op_ids), "auto_closed": auto_closed}
 
 
 def _resolve_prefix(ref: str, known: set[str], kind: str) -> tuple[str | None, str]:
@@ -465,9 +477,10 @@ def _aligned_why(repo: str, new_op_ids: frozenset, words: str | None) -> str | N
 def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                  plan: dict | None, resolve_plan: bool, *, message: str | None = None,
                  features: list[dict] = (), renamed: dict | None = None,
-                 words: str | None = None, why: str | None = None) -> int:
+                 words: str | None = None, why: str | None = None,
+                 open_forks: list[dict] = (), color: bool = False) -> int:
     if as_json:
-        out: dict = {"ok": True, "saved": saved}
+        out: dict = {"ok": True, "saved": saved, "open_fork_count": len(open_forks)}
         if saved:
             out["commit"], out["ops"] = sha, n
         if words:  # the captured words, structured for the editor/VSCode surface
@@ -524,8 +537,15 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                 print(f"      op:     {', '.join(o[:12] for o in e['op_ids'])}")
         if plan["drift_op_ids"]:
             print(f"  drift: {', '.join(o[:12] for o in plan['drift_op_ids'])}")
+        for sid in plan.get("auto_closed", []):
+            print(f"  ✓ auto-closed built plan {sid[:12]} (work landed under a different name "
+                  "than predicted)")
     elif resolve_plan and not saved:
         print("✓ no plan matches to resolve")
+    if open_forks:
+        from sgt.tui.graph import _state_banner
+        for line in _state_banner({"forks": open_forks}, color=color):
+            print(line)
     return 0
 
 

@@ -1562,11 +1562,15 @@ def plan_view(repo, *, full: bool = False) -> dict:
 
     from sgt.core import opindex
     from sgt.loop import plan as plan_mod
-    from sgt.loop.match import compute_checkpoint
+    from sgt.loop.match import compute_checkpoint, session_coverage
     from sgt.loop.plan import STALLED_SECONDS
 
     by_id = {op.id: op for op in opindex.index_ops(repo)}
     checkpoint = compute_checkpoint(repo)
+    # `full` alone carries per-step file-coverage ("did this step's work land, just under a
+    # different name?") -- the "why isn't this matched" surface. Kept off the compact path (which
+    # `now_view` reads on every refresh) so that hot path stays a pure count read.
+    coverage = session_coverage(repo) if full else {}
     now = time.time()
     # A session with a live candidate has uncommitted work flowing toward it right now, so it is
     # actively *building* regardless of how long ago its last step was confirmed -- age alone must
@@ -1600,8 +1604,16 @@ def plan_view(repo, *, full: bool = False) -> dict:
             "remaining_titles": [s["title"] for s in pending],
         }
         if full:
+            cov_by_hollow = {c["hollow_id"]: c for c in coverage.get(session_id, {}).get("pending", [])}
             base["steps"] = [
-                {**step, "files": _files_for_ops(step["matched_op_ids"]) if step["status"] == "matched" else []}
+                {**step,
+                 "files": _files_for_ops(step["matched_op_ids"]) if step["status"] == "matched" else [],
+                 # A pending step also carries whether its predicted file already saw edits (covered)
+                 # and why -- so a surface can explain a stall ("built in server.py, not the predicted
+                 # connection.py") without re-deriving it. Absent on matched steps (already resolved).
+                 **({"covered": cov_by_hollow[step["hollow_id"]]["covered"],
+                     "coverage_reason": cov_by_hollow[step["hollow_id"]]["reason"]}
+                    if step["hollow_id"] in cov_by_hollow else {})}
                 for step in steps
             ]
         else:
@@ -1852,17 +1864,43 @@ def suggestion_view(repo) -> dict:
     }
 
 
+def _open_fork_records(repo) -> list:
+    """The `.sgt/forks.json` records the read/surfacing path should show: filtered to *resolvable*
+    forks (`order.resolvable_forks`) -- real symbols whose two tips genuinely diverge. Synthetic
+    `__anchor__`/`__residue__` collisions and same-after pseudo-forks (a revert onto identical bytes,
+    or an add/delete/re-add rebirth) are neutralized by `fork_free` and carry no `sgt resolve` remedy,
+    so they never surface. This also cleans records persisted *before* the write-side filter landed
+    (`_record_parked_forks` is union-only and never removes), and drops any record whose tip is no
+    longer in the store (`Store.get` -> None). Decodes only the two tip ops per record -- no full
+    `all_ops()` scan."""
+    from sgt import state
+    from sgt.core.order import resolvable_forks
+    from sgt.core.store import Store
+
+    records = state.load_json(repo, "forks", default=[])
+    valid = [r for r in records if len(r.get("tips", ())) == 2]
+    if not valid:
+        return []
+    store = Store(repo)
+    by_id = {tip: store.get(tip) for r in valid for tip in r["tips"]}
+    keep = {
+        (s, a, b)
+        for s, a, b in resolvable_forks(
+            [(r["symbol"], r["tips"][0], r["tips"][1]) for r in valid], by_id
+        )
+    }
+    return [r for r in valid if (r["symbol"], r["tips"][0], r["tips"][1]) in keep]
+
+
 def forks_view(repo) -> dict:
     """The open same-symbol forks a prior sync recorded in committed `.sgt/forks.json` (plan U20,
     C4) -- for `sgt forks`. Each fork carries its symbol, its two tips, and the `sgt merge-op`
     remedy that closes it, plus the cheap-to-derive `file` it lives in (`symbol.split("::", 1)[0]`).
     There's no single "current" line span to add beyond that: both tips are, by construction,
     excluded from every verb-visible ideal, so a resolution UI that needs each tip's own content
-    calls `fork_detail_view` instead. A pure read of shared state; empty (`{"open": 0, "forks":
-    []}`) when there are none."""
-    from sgt import state
-
-    records = state.load_json(repo, "forks", default=[])
+    calls `fork_detail_view` instead. Filtered to resolvable forks via `_open_fork_records` (light
+    per-tip store reads); empty (`{"open": 0, "forks": []}`) when there are none."""
+    records = _open_fork_records(repo)
     return {
         "open": len(records),
         "forks": [{**r, "file": r["symbol"].split("::", 1)[0]} for r in records],
@@ -1875,15 +1913,14 @@ def fork_detail_view(repo, symbol: str) -> dict:
     correct here because a fork's two tips are siblings, never each other's predecessor, so a tip's
     own downset structurally excludes the other tip and anything reachable only through it) via
     `Ideal.from_ops` + `code`, so a resolution UI can diff both tips' full file content without a
-    separate frontier query per tip. `{"error": ...}` when the symbol has no open fork."""
-    from sgt import state
+    separate frontier query per tip. `{"error": ...}` when the symbol has no open (resolvable) fork."""
     from sgt.core.fold import code
     from sgt.core.ideal import Ideal
     from sgt.core.lens import _load_declared
     from sgt.core.order import downset
     from sgt.core.store import Store
 
-    records = state.load_json(repo, "forks", default=[])
+    records = _open_fork_records(repo)
     record = next((r for r in records if r["symbol"] == symbol), None)
     if record is None:
         return {"error": f"no open fork for {symbol!r}", "symbol": symbol}
@@ -2472,7 +2509,7 @@ def status_view(repo) -> dict:
     # frontier reaches ops this list carries imageless -- let it load the full store itself
     # (rare: only when tracked paths would be deleted).
     skips = materialization_skips(repo, materialized, None)
-    open_forks = state_mod.load_json(repo, "forks", default=[])
+    open_forks = _open_fork_records(repo)
 
     return {
         # Count files from the *same* `current_ideal` the symbol count comes from, not

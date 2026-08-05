@@ -141,8 +141,13 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     # re-derive rule and are rebuilt post-commit, once the merged history is real; see materialize).
     prompts = intent_prompts.merge(ing.ours_prompts, ing.theirs_prompts)
 
+    # Surface only *resolvable* forks (synthetic-symbol and same-after pseudo-forks carry no user
+    # remedy and are neutralized by `reduce_to_ideal` anyway). The full `fork_triples` still drives
+    # tip protection above -- surfacing filters, structural reduction sees every collision.
+    surfaced_forks = order.resolvable_forks(fork_triples, {o.id: o for o in ing.all_ops})
+
     return Resolution(
-        forks=tuple(fork_triples),
+        forks=tuple(surfaced_forks),
         merged_ideal=merged_ideal,
         declared_orset=declared_orset,
         declared_cycles=tuple(declared_cycles),

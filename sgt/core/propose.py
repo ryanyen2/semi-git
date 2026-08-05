@@ -158,7 +158,11 @@ def status(repo: str | Path, proposal_id: str) -> dict:
     delta = frozenset(p.delta_ids)
     base_now = lens.ideal_for_ref(repo, p.base_ref)
     union_ids = base_now.op_ids | delta
-    fork_triples = order.forks(all_ops, union_ids)
+    # Resolvable forks only: a same-after re-union (Δ and the moved base drive a symbol to identical
+    # bytes) applies cleanly and has no `sgt resolve` remedy, so it reports `clean-reunion`, not `fork`.
+    fork_triples = order.resolvable_forks(
+        order.forks(all_ops, union_ids), {o.id: o for o in all_ops}
+    )
 
     if base_now.op_ids == base_recorded:
         state_name, note = "current", None

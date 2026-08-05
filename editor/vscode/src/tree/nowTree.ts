@@ -1,5 +1,5 @@
 // `sgtNow`: the state-of-actions surface from `now_view` -- one sectioned list answering "what's
-// happening, what needs me, what did I just do, what's next". In flight (dirty ops that would land
+// happening, what needs me, what did I just do, what's next". Unsaved (dirty ops that would land
 // on the next save), Needs you (open forks / stalled plans / the review pile), Recently done (the
 // last few saves), and a single structured Next action whose row runs the recommended command.
 // Sourced from one `sgt now --json` call; refreshes live off the same `.sgt/**/*.json` watcher (the
@@ -94,6 +94,11 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       item.iconPath = new vscode.ThemeIcon("debug-pause");
       item.tooltip = node.plan.remaining_titles.join("\n") || "Stalled plan.";
       item.contextValue = "sgtNowStalled";
+      item.command = {
+        command: "sgt.resolveStalledPlan",
+        title: "Resolve Stalled Plan",
+        arguments: [node.plan.session_id],
+      };
       return item;
     }
     if (node.kind === "commit") {
@@ -142,7 +147,7 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       const needsYou =
         now.needs_you.forks.length + now.needs_you.reviews.length + now.needs_you.stalled_plans.length;
       const sections: NowNode[] = [
-        { kind: "section", sectionId: "in_flight", label: "In flight", count: now.in_flight.total_op_count },
+        { kind: "section", sectionId: "in_flight", label: "Unsaved", count: now.in_flight.total_op_count },
         { kind: "section", sectionId: "needs_you", label: "Needs you", count: needsYou },
         { kind: "section", sectionId: "recently_done", label: "Recently done", count: now.recently_done.length },
       ];
