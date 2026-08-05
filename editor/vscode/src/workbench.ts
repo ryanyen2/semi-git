@@ -425,27 +425,44 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     try {
-      const report = await this.store.sgt.mutate(this.cliArgsFor(verb, args));
+      const summary = await this.runFeatureVerb(verb, args);
       this.store.invalidate();
-      vscode.window.showInformationMessage(report.trim().split("\n")[0] || "Done.");
+      vscode.window.showInformationMessage(summary);
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     }
   }
 
-  private cliArgsFor(verb: string, args: string[]): string[] {
+  // Dispatches to the typed `Sgt` methods, which spell the verbs at their real CLI paths
+  // (`feature regroup merge`, `feature rename`, ...). This used to build bare `sgt merge` /
+  // `sgt rename` / `sgt move` / `sgt split` argv inline. Those spellings were re-homed under
+  // `feature` (KTD2) and are not top-level verbs any more, so the CLI answered them by printing
+  // its help text and exiting 0 -- the action bar reported success and changed nothing. Going
+  // through the typed methods means there is exactly one place each verb's path is written.
+  private async runFeatureVerb(verb: string, args: string[]): Promise<string> {
     switch (verb) {
-      case "merge":
-        return ["merge", args[0], args[1]];
-      case "rename":
-        return ["rename", args[0], args[1]];
+      case "merge": {
+        const r = await this.store.sgt.merge(args[0], args[1]);
+        if (!r.ok) throw new Error(r.message || "merge failed");
+        return `Merged ${r.op_count ?? 0} op(s) into ${r.survivor ?? args[0]}.`;
+      }
+      case "rename": {
+        const r = await this.store.sgt.rename(args[0], args[1]);
+        if (!r.ok) throw new Error(r.message || "rename failed");
+        return `Renamed to ${r.new_label ?? args[1]}.`;
+      }
       case "move": {
         const target = args[args.length - 1];
         const opIds = args.slice(0, -1);
-        return ["move", ...opIds, "--to", target];
+        const r = await this.store.sgt.move(opIds, target);
+        if (!r.ok) throw new Error(r.message || "move failed");
+        return `Moved ${r.op_ids?.length ?? opIds.length} op(s) to ${r.target ?? target}.`;
       }
-      case "split":
-        return ["split", args[0], "--apply"];
+      case "split": {
+        const r = await this.store.sgt.splitApply(args[0]);
+        if (!r.ok) throw new Error(r.message || "split failed");
+        return `Split ${r.feature ?? args[0]} into a new feature ${r.new_feature ?? ""}.`.trim();
+      }
       default:
         throw new Error(`unknown feature verb ${verb}`);
     }
