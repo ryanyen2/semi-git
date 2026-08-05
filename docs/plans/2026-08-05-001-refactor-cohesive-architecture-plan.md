@@ -190,6 +190,10 @@ Pulled forward from phase 3:
   episodes still get a synthesized name.
 - The `now` surface shows a plan that is actively being built and the live agent-action feed. Both
   were already recorded and neither was displayed.
+- The first slice of the preview symmetry in §5 item 4: `sgt.restore` in VS Code now runs the same
+  `--emit` dry run and opens the same before/after diff that revert always did, instead of
+  confirming with prose. The remaining verbs in that item (land, propose land, undo, and the
+  workbench batch reverts) still confirm with text only.
 
 Test state at the end of this pass: five failures, all confirmed pre-existing against 5161871
 (`test_land_fork_refusal_persists_the_fork_records`, two `save --resolve-plan` CLI tests, and the
