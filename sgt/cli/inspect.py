@@ -44,6 +44,16 @@ def register(subs, parent) -> None:
     lp.add_argument("--links", action="store_true",
                     help="map: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
+    # `sgt status` is the first thing anyone arriving from git types. U14 folded it into
+    # `log --summary` for surface economy, which meant the single most predictable command in the
+    # tool answered "invalid choice". Surface economy is about what a user must *learn*, not about
+    # refusing the word they already know, so the spelling is restored as a thin alias onto the
+    # same handler -- one verb's worth of muscle memory, zero new concepts.
+    st = subs.add_parser("status", parents=[parent],
+                         help="what needs attention (alias of `sgt log --summary`)")
+    _add_view_flags(st)
+    st.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
+    st.set_defaults(func=_cmd_status)
     op = subs.add_parser("ops", parents=[parent])
     _add_view_flags(op, paged=True)
     op.set_defaults(func=_cmd_ops)
@@ -110,6 +120,12 @@ def _cmd_log(args) -> int:
                          refresh=args.refresh, rebuild=args.rebuild)
     return _log_default(".", as_json=args.as_json, color=not args.no_color,
                         refresh=args.refresh, rebuild=args.rebuild)
+
+
+def _cmd_status(args) -> int:
+    """`sgt status` -- the same projection `sgt log --summary` renders, reached by the name a git
+    user already has. One handler, so the two spellings can never drift."""
+    return _status(".", args.as_json, full=args.full, color=not args.no_color)
 
 
 def _cmd_ops(args) -> int:
