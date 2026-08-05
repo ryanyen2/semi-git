@@ -57,6 +57,12 @@ def confirm_collab(pview, question: str) -> bool:
 
     for line in render_collab_preview_lines(pview, color=sys.stdout.isatty()):
         print(line)
+    # "Not reversible" tells the user this is one-way but not what their next move can be. When the
+    # projection knows what `sgt undo` will do afterward (land), say it here, right above the
+    # prompt where the decision is actually made.
+    note = pview.get("undo_note") if isinstance(pview, dict) else None
+    if note:
+        print(f"\n  {note}")
     try:
         reply = input(f"\n{question} [y/N] ").strip().lower()
     except EOFError:
