@@ -856,6 +856,7 @@ def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
         "switch", "diff", "intent", "now",  # `now` = state-of-actions orient (state block + what-next)
         "status",  # alias of `log --summary` (same handler, cannot drift)
         "why",  # selector-scoped, not feature-scoped: `sgt why <sha>` is its most-reached form
+        "show",  # read a file as it was at a past frontier; the workbench could, a terminal couldn't
         "plan",  # checkpoint/drift folded into `save` (U12)
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",
@@ -1128,3 +1129,46 @@ def test_intent_align_is_a_dry_run_that_writes_nothing_by_default(tmp_path, caps
     assert {"sessions", "episodes", "candidates", "aligned", "reviewed"} <= set(out)
     after = before.read_bytes() if before.is_file() else None
     assert after == before_bytes  # a dry run leaves the ledger byte-identical
+
+
+def test_show_prints_a_file_as_it_was_at_a_past_point(tmp_path, capsys):
+    """The bytes were always computable -- `fold_view` reconstructs `code(I)` at any frontier and the
+    workbench playhead already displayed them. A terminal simply had no way to ask: `sgt fold --at`
+    prints file names and never their contents."""
+    _seed(tmp_path, 3)  # a.py::foo returns 1, then 2, then 3
+
+    assert _in(tmp_path, ["show", "0", "a.py"]) == 0
+    assert "return 1" in capsys.readouterr().out
+
+    assert _in(tmp_path, ["show", "2", "a.py"]) == 0
+    assert "return 3" in capsys.readouterr().out
+
+
+def test_show_without_a_path_lists_what_existed_there(tmp_path, capsys):
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["show", "1", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["files"] == ["a.py"]
+
+
+def test_show_resolves_a_bare_filename_and_explains_a_miss(tmp_path, capsys):
+    """A reader knows the file by its name far more reliably than by its repo-relative path, and a
+    miss should say what *does* exist rather than only that this doesn't."""
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["show", "0", "a.py"]) == 0
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["show", "0", "nope.py"]) != 0
+    err = capsys.readouterr()
+    assert "does not exist" in (err.out + err.err)
+
+
+def test_show_never_touches_the_working_tree(tmp_path, capsys):
+    """Visiting the past is a read. sgt's history is append-only, so this must never be confusable
+    with a checkout."""
+    _seed(tmp_path, 3)
+    before = (tmp_path / "a.py").read_text(encoding="utf-8")
+
+    assert _in(tmp_path, ["show", "0", "a.py"]) == 0
+
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == before
