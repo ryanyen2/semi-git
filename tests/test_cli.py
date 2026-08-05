@@ -838,14 +838,24 @@ def test_unknown_verb_falls_back_to_help(capsys):
 def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
     """R12/KTD8/KTD9 (U14): the grid is the only inspection surface, so the top-level `_VERBS` is
     the daily spine + `log` + the two groupings + the unchanged collaboration/setup verbs.
-    `status`/`map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/
-    `commit`/`fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't
-    map to a `log` mode; re-promoted in c4f9966/KTD8)."""
+    `map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/`commit`/
+    `fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't map to a
+    `log` mode; re-promoted in c4f9966/KTD8).
+
+    Two spellings were restored in the P0 repair pass, both because collapsing them cost a user
+    something the collapse was never meant to cost. `status` is the first word a git user types,
+    and answering it with the help text taught nothing; it is a thin alias onto `log --summary`'s
+    own handler, so it adds a spelling and no concept. `why` answers "why is this code like this"
+    for an op, a symbol, *or* a commit sha -- only the `--for` closure form is feature-scoped -- so
+    living at `feature why` meant the natural spelling printed help instead of the prompt that
+    produced the commit."""
     from sgt.cli import _VERBS
 
     assert _VERBS == {
         "save", "log", "undo", "revert", "restore", "resolve",
         "switch", "diff", "intent", "now",  # `now` = state-of-actions orient (state block + what-next)
+        "status",  # alias of `log --summary` (same handler, cannot drift)
+        "why",  # selector-scoped, not feature-scoped: `sgt why <sha>` is its most-reached form
         "plan",  # checkpoint/drift folded into `save` (U12)
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",
@@ -1049,3 +1059,54 @@ def test_split_non_tty_still_prints_the_preview_only(tmp_path, monkeypatch, caps
     assert _in(tmp_path, ["feature", "regroup", "split", fid]) == 0
     assert "preview only" in capsys.readouterr().out
     assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # nothing applied
+
+
+# -- P0 repair: verb spellings a developer actually types -----------------------------------------
+
+def test_status_is_a_top_level_verb_matching_log_summary(tmp_path, capsys):
+    """`sgt status` is the first command anyone arriving from git types. It used to print the help
+    text, because U14 folded the spelling into `log --summary` and removed the verb."""
+    _seed(tmp_path)
+    assert _in(tmp_path, ["status", "--json"]) == 0
+    status_out = capsys.readouterr().out
+    assert _in(tmp_path, ["log", "--summary", "--json"]) == 0
+    assert json.loads(status_out) == json.loads(capsys.readouterr().out)
+
+
+def test_why_is_a_top_level_verb_and_answers_for_a_commit_sha(tmp_path, capsys):
+    """"Why is this code like this" is a question about a selector, not about features. `sgt why`
+    lived under `feature why`, so pasting a commit sha printed the help text."""
+    gb = _seed(tmp_path)
+    sha = gb.head()
+    assert _in(tmp_path, ["why", sha]) == 0
+    assert sha[:8] in capsys.readouterr().out
+
+
+def test_why_names_every_selector_it_tried_when_nothing_resolves(tmp_path, capsys):
+    _seed(tmp_path)
+    assert _in(tmp_path, ["why", "definitely-not-a-thing"]) != 0
+    err = capsys.readouterr()
+    assert "commit" in (err.out + err.err)  # not just "op-id / live symbol"
+
+
+def test_switch_refuses_a_non_branch_instead_of_detaching_head(tmp_path, capsys):
+    """`switch` passed its argument straight to `git checkout`, so a sha silently detached HEAD --
+    and a later `sgt save` then commits onto no branch at all."""
+    gb = _seed(tmp_path)
+    sha = gb.head()
+    head_before = gb.symbolic_ref()
+
+    assert _in(tmp_path, ["switch", sha]) != 0
+
+    out = capsys.readouterr()
+    assert "not a local branch" in (out.out + out.err)
+    assert gb.symbolic_ref() == head_before  # HEAD never moved
+
+
+def test_switch_still_moves_to_a_real_branch(tmp_path, capsys):
+    gb = _seed(tmp_path)
+    import subprocess
+    subprocess.run(["git", "-C", str(tmp_path), "branch", "side"], check=True, capture_output=True)
+
+    assert _in(tmp_path, ["switch", "side"]) == 0
+    assert gb.symbolic_ref() == "refs/heads/side"
