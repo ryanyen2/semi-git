@@ -1048,11 +1048,13 @@ def test_plan_view_derives_building_and_stalled_from_activity_and_candidates(tmp
 
 def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
     """A mined, clean repo has nothing in flight, nothing needing the user, and a `clean`
-    next-action. The four sections are always present so the surfaces can render unconditionally."""
+    next-action. Every section is always present so the surfaces can render unconditionally."""
     repo = _mined(tmp_path, "mixed_coverage")
     v = now_view(repo)
-    assert set(v) == {"in_flight", "needs_you", "recently_done", "context", "next_action"}
+    assert set(v) == {"in_flight", "in_progress", "needs_you", "recently_done",
+                      "context", "next_action"}
     assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
+    assert v["in_progress"] == []
     assert v["needs_you"] == {"forks": [], "reviews": [], "stalled_plans": []}
     assert v["next_action"]["kind"] == "clean"
     assert v["next_action"]["command"] is None
@@ -1526,3 +1528,43 @@ def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
     view = history_view(repo)
     assert view["latest_commits"][0]["subject"] == "add the thing I meant to add"
     assert view["latest_commits"][0]["bookkeeping"] is False
+
+
+def test_now_view_surfaces_a_plan_that_is_actively_being_built(tmp_path):
+    """Only *stalled* plans used to reach any section of `now`, so an agent making progress was
+    invisible on the surface built to answer "what is happening right now" -- for a full hour,
+    until it went quiet enough to count as stalled."""
+    import time as _time
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    _seed_plan_session(repo, gb, session_id="live", last_activity_ts=_time.time(),
+                       claude_session_id="sess-live")
+
+    v = now_view(repo)
+
+    assert [p["session_id"] for p in v["in_progress"]] == ["live"]
+    assert v["in_progress"][0]["current_title"] == "touch foo"
+    assert v["in_progress"][0]["pending_count"] == 1
+    # Progress is not a demand for attention: a building plan must not also show as needing you.
+    assert v["needs_you"]["stalled_plans"] == []
+
+
+def test_now_view_keeps_a_stalled_plan_in_needs_you_not_in_progress(tmp_path):
+    import time as _time
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    _seed_plan_session(repo, gb, session_id="quiet",
+                       last_activity_ts=_time.time() - (plan_mod.STALLED_SECONDS + 60))
+
+    v = now_view(repo)
+
+    assert v["in_progress"] == []
+    assert [p["session_id"] for p in v["needs_you"]["stalled_plans"]] == ["quiet"]

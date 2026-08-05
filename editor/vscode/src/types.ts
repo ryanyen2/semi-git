@@ -712,8 +712,21 @@ export interface NextAction {
   label: string;
 }
 
+// A plan being actively built. Deliberately not part of `needs_you`: an agent making progress
+// needs nothing from the developer, it just needs to be visible. Before this existed, only
+// *stalled* plans surfaced, so a working agent was invisible until it had been quiet for an hour.
+export interface NowInProgressPlan {
+  session_id: string;
+  claude_session_id: string | null;
+  matched_count: number;
+  step_count: number;
+  pending_count: number;
+  current_title: string | null;
+}
+
 export interface NowView {
   in_flight: { affected: NowInFlightRow[]; new_work_count: number; total_op_count: number };
+  in_progress: NowInProgressPlan[];
   needs_you: { forks: ForkRecord[]; reviews: NowReview[]; stalled_plans: NowStalledPlan[] };
   recently_done: HistoryCommit[];
   context: { turns: { text: string; actor: string; ts: number }[]; activity: NowActivity[] };
