@@ -28,6 +28,14 @@ OP_TRAILER_KEY = "Sgt-Op"
 # D1's append-only land-log trailer: the shared-branch commit sha a log entry records landing.
 LANDED_SHA_KEY = "Sgt-Landed-Sha"
 
+# Marks a commit sgt made for its OWN mechanics -- the materialization behind a revert, a restore,
+# or an undo -- rather than work the developer did. History is append-only, so undoing is a forward
+# commit; without this mark those commits are indistinguishable from real work and `sgt now` reports
+# "sgt restore f-08ccdb12..." back to the developer as a thing they accomplished. The mark is what
+# lets every human-facing list fold them and count them separately, while every *semantic* read
+# (ops, ideals, provenance) keeps treating them exactly as before.
+BOOKKEEPING_KEY = "Sgt-Bookkeeping"
+
 # git's canonical empty-tree object: diffing against it makes a root commit (no parent)
 # read as "everything added".
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -83,6 +91,29 @@ def parse_node_id(commit_message: str) -> str | None:
 
 def format_op_trailers(op_ids) -> str:
     return "\n".join(f"{OP_TRAILER_KEY}: {oid}" for oid in op_ids)
+
+
+def format_bookkeeping_trailer() -> str:
+    return f"{BOOKKEEPING_KEY}: 1"
+
+
+# Subjects sgt gave its own materialization commits before the trailer existed. Used ONLY to fold
+# pre-existing history in display: a repo mined before this change has no trailer to read, and a
+# developer should not have to see years of `sgt revert <hex>` rows to get the benefit. Never used
+# for anything semantic -- a real commit a user happened to title "sgt revert x" would be hidden
+# from a list, which is recoverable, but must never be treated as sgt's own for op purposes.
+_LEGACY_BOOKKEEPING_PREFIXES = ("sgt revert ", "sgt restore ", "sgt pin ", "sgt cherry-pick ",
+                                "sgt undo:", "sgt: materialize ideal")
+
+
+def is_bookkeeping_message(commit_message: str) -> bool:
+    """Whether a commit is sgt's own plumbing rather than the developer's work -- by trailer, or by
+    subject shape for commits made before the trailer existed."""
+    if any(line.strip().startswith(f"{BOOKKEEPING_KEY}:")
+           for line in commit_message.splitlines()):
+        return True
+    subject = commit_message.strip().splitlines()[0].strip() if commit_message.strip() else ""
+    return subject.startswith(_LEGACY_BOOKKEEPING_PREFIXES)
 
 
 def parse_op_ids(commit_message: str) -> list[str]:
@@ -578,6 +609,19 @@ class GitBinding:
             first_parent = parents.split()[0] if parents.strip() else None
             rows.append((sha, first_parent, subject))
         return rows
+
+    def bookkeeping_shas(self, target: str = "HEAD") -> set[str]:
+        """Shas of commits sgt made for its own mechanics, by trailer. One `git log --grep` rather
+        than reading every commit body: `history()` carries only subjects (widening it would ripple
+        into the miner's hot path), and git can do this filter itself. Legacy commits predating the
+        trailer are matched separately, on their subject, by `is_bookkeeping_message`."""
+        proc = self._git(
+            "log", "--format=%H", "--extended-regexp", f"--grep=^{BOOKKEEPING_KEY}: 1$",
+            target, check=False,
+        )
+        if proc.returncode != 0:
+            return set()
+        return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
 
     def commit_times(self, target: str = "HEAD") -> dict[str, int]:
         """``sha -> committer unix timestamp`` for every commit reachable from ``target``. One

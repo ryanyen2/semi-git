@@ -201,6 +201,14 @@ def graph_layout(
         "lanes": lanes, "headers": headers, "edges": edges, "overflow": overflow,
         "node_by_id": lane_by_id, "ops_by_feature": ops_by_feature,
         "row_count": max(1, row), "commit_count": len(grid_view.get("commits") or []),
+        # The axis length (`commit_count`) and the number a person would call "saves" are different
+        # numbers whenever sgt has materialized one of its own edits. The ruler needs the former;
+        # the header needs the latter, or the map contradicts `sgt log` on the same repo.
+        "save_count": grid_view.get(
+            "save_count",
+            sum(1 for c in (grid_view.get("commits") or []) if not c.get("bookkeeping")),
+        ),
+        "bookkeeping_count": grid_view.get("bookkeeping_count", 0),
     }
 
 
@@ -931,8 +939,10 @@ def render_graph_lines(
     lines: list[str] = []
     n_sub = len(layout["headers"])
     sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
-    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['commit_count']} save(s)"
-                      f"{sub_note}"))
+    bk = layout.get("bookkeeping_count", 0)
+    bk_note = dim(f"  (+{bk} bookkeeping)") if bk else ""
+    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout.get('save_count', layout['commit_count'])} save(s)"
+                      f"{sub_note}") + bk_note)
     if frontier is not None:
         lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
     lines.append("")
