@@ -207,6 +207,14 @@ Pulled forward from phase 1 (the bounded parts that need no id-spine migration):
 - A save no longer closes the plan it just told the user to resolve. Two of the three long-standing
   test failures were this bug, not fixture rot: `sgt save` printed "run `sgt save --resolve-plan`"
   and the same housekeeping beat deleted the hollow that command needs.
+- `sgt intent align` makes the alignment pipeline reachable as a dry run. §3 item 3 said to wire it
+  into the save beat behind a flag defaulting on; reading `align_session`'s own docstring changed
+  that. It is unwired deliberately, because a wrong ALIGN record on a young corpus is a wrong answer
+  from `sgt why`, and the author left the calibration question open rather than guessing. A dry run
+  answers that question without overriding it. On the testbed it reports 9 sessions, 252 candidate
+  pairs, 0 confident alignments and 10 held for review -- so defaulting it on would have added an
+  inference pass to every save to record nothing. The plan's original instruction was wrong and the
+  code said so.
 
 Test state at the end of this pass: three failures, all pre-existing against 5161871
 (`test_land_fork_refusal_persists_the_fork_records` and the `diverged_chain` / `mixed_coverage`
