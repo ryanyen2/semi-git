@@ -27,7 +27,8 @@ _USAGE = ("usage: sgt intent list [--json] | "
           "sgt intent relabel <feature@n> \"<intent>\" [--json] | "
           "sgt intent revert <theme-id|commit-sha> [--subset <sha>...] [--json] | "
           "sgt intent open [--json] | sgt intent done <id> [--json] | "
-          "sgt intent review [confirm|reject <id>] [--json]\n"
+          "sgt intent review [confirm|reject <id>] [--json] | "
+          "sgt intent align [--apply] [--json]\n"
           "  (rewind a single checkpoint with `sgt revert <feature>@<n>`)")
 
 
@@ -43,18 +44,20 @@ def register(subs, parent) -> None:
     # Hidden but functional (see revert): the tty consequence pane is the default confirm step.
     p.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--apply", action="store_true",
+                   help="with `align`: write the records instead of only counting them")
     p.set_defaults(func=_cmd_intent)
 
 
 def _cmd_intent(args) -> int:
     return _intent(".", args.sub, args.target, args.rest, args.subset, args.emit, args.as_json,
-                   args.yes, args.recut)
+                   args.yes, args.recut, args.apply)
 
 
 def _intent(
     repo: str, sub: str | None, target: str | None, rest: list[str] | None,
     subset: list[str] | None, emit: bool, as_json: bool, yes: bool = False,
-    recut: str | None = None,
+    recut: str | None = None, apply: bool = False,
 ) -> int:
     from sgt.core.lens import get
 
@@ -62,10 +65,13 @@ def _intent(
         return _record(repo, as_json)
     if sub == "activity":  # the PostToolUse hook entry point: append one tool event, no mining
         return _activity(repo, as_json)
-    if sub not in ("list", "show", "build", "revert", "relabel", "open", "done", "edit", "review"):
+    if sub not in ("list", "show", "build", "revert", "relabel", "open", "done", "edit", "review",
+                   "align"):
         print(_USAGE)
         return 2
     get(repo)  # mine-on-contact so the overlay reflects current reality (R9)
+    if sub == "align":
+        return _align(repo, as_json, apply)
     if sub == "list":
         return _list(repo, as_json)
     if sub == "build":
@@ -107,6 +113,37 @@ def _open(repo: str, as_json: bool) -> int:
     for r in opens:
         print(f"  [{r['id'][:12]}] {r['reason'] or '(unknown)'}")
     print("\n  retire one with `sgt intent done <id>`")
+    return 0
+
+
+def _align(repo: str, as_json: bool, apply: bool) -> int:
+    """`sgt intent align [--apply]`: run the alignment pipeline over captured conversation turns and
+    the ops that landed, answering "which prompts produced which code".
+
+    Dry run by default, deliberately. The pipeline is calibrated over a corpus, and on a young one
+    it scores confidently on too little evidence -- an ALIGN record it gets wrong becomes a wrong
+    answer from `sgt why` and from an agent's `recall()`, which is worse than no answer at all. So
+    the module has sat unwired since it was written (`sgt.intent.align_session`). Making it *look
+    at* a repo costs nothing and is the only way to find out whether this repo's corpus is mature
+    enough, which is exactly the judgment its author left open. `--apply` is that judgment being
+    made, by the person whose repo it is. Unconfident pairs go to `sgt intent review` either way,
+    where they never leak into recall until confirmed."""
+    from sgt.intent.align_session import align_session
+
+    counts = align_session(repo, write=apply)
+    if as_json:
+        return _emit_json({"ok": True, "applied": apply, **counts})
+    mode = "wrote" if apply else "would write"
+    print(f"{counts['sessions']} chat session(s) · {counts['episodes']} episode(s) · "
+          f"{counts['candidates']} candidate pair(s)")
+    print(f"  {mode} {counts['aligned']} rationale record(s); "
+          f"{counts['reviewed']} pair(s) held for review")
+    if not apply:
+        if counts["aligned"] or counts["reviewed"]:
+            print("  (dry run — re-run with `--apply` to record them, "
+                  "then read them back with `sgt why <sha>`)")
+        else:
+            print("  (nothing to align yet — the pipeline needs captured prompts and landed ops)")
     return 0
 
 
