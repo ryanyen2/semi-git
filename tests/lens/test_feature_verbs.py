@@ -693,13 +693,22 @@ def test_move_adds_the_moved_member_to_the_targets_authored_feature(tmp_path):
     get(repo)
     split_result = _split_into_two(repo)
     source, target = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
-    op_refs = [op for op, leaf in split_result["op_leaf"].items() if leaf == source][:1]
-    assert op_refs
-
     ops_by_id = {op.id: op for op in Store(repo).all_ops()}
     src_members = set(split_result["nodes"][source]["members"])
-    moved = {sym for sym in ops_by_id[op_refs[0]].footprint if sym in src_members}
-    assert moved  # the moved op carries at least one tracked source member
+    # Pick an op that actually carries one of the source's tracked members, rather than whichever
+    # op happens to sort first. Not every op assigned to a leaf contributes a *member* symbol --
+    # residue and anchor footprints are real ops with no entry in `members` -- so taking the first
+    # one made this test depend on an incidental ordering, and it went red when a change to tier
+    # assignment shifted which symbols are tracked at all.
+    op_refs, moved = [], set()
+    for op_id, leaf in sorted(split_result["op_leaf"].items()):
+        if leaf != source:
+            continue
+        carried = {sym for sym in ops_by_id[op_id].footprint if sym in src_members}
+        if carried:
+            op_refs, moved = [op_id], carried
+            break
+    assert moved, "no op in the source leaf carries a tracked member -- fixture no longer splittable"
 
     # Author the source first, so the move must drop the moved members from its authored record.
     verbs.apply_rename(repo, verbs.plan_rename(repo, source, "Source"))
