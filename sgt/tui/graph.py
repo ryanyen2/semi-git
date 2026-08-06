@@ -570,42 +570,14 @@ def _bucket_density(sub_bins: list, width: int) -> list[int]:
 
 _SPARK = "▁▂▃▄▅▆▇█"
 
-# Temporal LOD: the commit-time axis is power-warped so recent commits get more column width than
-# old ones (γ>1 pushes low fractions toward 0, so history near the newest end spreads out and the
-# old tail compresses). The bar and the ruler share `_col_of` so their positions can never drift.
-_LOD_GAMMA = 2.0
-
-
-def _col_of(ci: int, max_ci: int, width: int) -> int:
-    """Screen column for commit index `ci` on a `width`-wide strip, power-warped by `_LOD_GAMMA`:
-    0 (oldest) … max_ci (newest) maps to 0 … width-1, with recent commits given more room."""
-    if max_ci <= 0 or width <= 0:
-        return 0
-    t = max(0, min(max_ci, ci)) / max_ci  # 0 oldest … 1 newest
-    return int(round((t ** _LOD_GAMMA) * (width - 1)))
-
-
-def _time_ruler(prefix_w: int, bar_w: int, commit_count: int) -> str:
-    """A commit-index ruler aligned under the car strip: start/mid/end ticks at evenly-spaced screen
-    columns, but each label reads the *true* commit index under the power warp (`ci = round(frac**(1/γ)
-    * max_ci)`) -- so the mid tick honestly reads ~70% through history, communicating the compression
-    of the old tail. Blank when there's no width or only one commit (nothing to place along)."""
-    if bar_w <= 0 or commit_count <= 1:
-        return ""
-    max_ci = commit_count - 1
-    buf = [" "] * bar_w
-    for frac in (0.0, 0.5, 1.0):
-        ci = int(round((frac ** (1 / _LOD_GAMMA)) * max_ci))  # invert the warp so the label is honest
-        tick = f"c{ci}"
-        pos = int(round(frac * (bar_w - 1)))
-        if frac == 1.0:
-            pos = bar_w - len(tick)          # end-anchored
-        elif frac == 0.5:
-            pos -= len(tick) // 2            # centered
-        pos = max(0, min(bar_w - len(tick), pos))
-        for k, ch in enumerate(tick):
-            buf[pos + k] = ch
-    return " " * prefix_w + "".join(buf)
+# The --map strip PACKS each feature's own timeline: a lane draws only its OWN checkpoints, left to
+# right, so a feature that lived briefly reads at a glance instead of being flung across a shared
+# clock by dead history. The lane's own quiet gaps between checkpoints collapse -- a short one to a
+# single dim `·`, a long one (>= `_GAP_THRESHOLD` commits) to a dim `┄`. Because every row packs its
+# own activity, columns do NOT line up across lanes: a row is one feature's life, not a shared axis.
+_GAP_THRESHOLD = 8   # a lane's own gap this long (or longer) between checkpoints shows as `┄`, not `·`
+_CAR_CAP = 24        # cap a single checkpoint's block width so one long run can't hog the whole strip
+_COLLAPSE = "┄"      # marks a long gap the lane skipped (a plain dim `·` marks a short one)
 
 
 def _ellipsize(s: str, width: int) -> str:
@@ -673,10 +645,53 @@ def _row_headline(subject: str, feature: str | None, labels: dict) -> str:
     return subject
 
 
+# Git-topology glyphs, shared by the save-list spine (`--saves`) and the default rail's topology
+# column: a save on the first-parent trunk (●), a merge where a side branch folded back in (◆), a
+# save that landed on a side branch (○ — off the trunk), and the trunk connector (│).
+_SPINE_NODE = "●"
+_SPINE_MERGE = "◆"
+_SPINE_OFF = "○"
+_SPINE_TRUNK = "│"
+
+
+def _spine_prefixes(rows: list[dict], topology: dict, *, color: bool) -> tuple[list[str], str | None]:
+    """A narrow git-log-style spine drawn to the left of each save row, from git topology (not the
+    feature lanes). Two columns: col 0 is the first-parent TRUNK -- a continuous `│` connector with
+    a `●` where a save landed directly on it and a `◆` at a merge (where a side branch folded in);
+    col 1 marks a save that landed on a SIDE BRANCH with a `●`, the trunk still running as `│` in
+    col 0 beside it. No diagonal connectors are drawn: the save list shows only the commits that
+    carried edits, so the rows between two shown saves are hidden and a slanted merge line between
+    them would claim an adjacency that isn't there. Returns `(prefix_per_row, legend_or_None)`; the
+    legend names only the glyphs that actually appear."""
+    mainline = topology.get("mainline") or set()
+    merges = topology.get("merges") or set()
+    prefixes: list[str] = []
+    saw_merge = saw_branch = False
+    for r in rows:
+        sha = r.get("sha") or ""
+        trunk = _dim(_SPINE_TRUNK, color=color)
+        if sha in merges:
+            saw_merge = True
+            prefixes.append(f"{_bold(_SPINE_MERGE, color=color)} ")  # merge sits on the trunk
+        elif sha in mainline or not sha:
+            prefixes.append(f"{_SPINE_NODE} ")  # save landed on the trunk
+        else:
+            saw_branch = True
+            prefixes.append(f"{trunk}{_SPINE_NODE}")  # trunk continues; save is one column right
+    legend_bits = [f"{_SPINE_NODE} on trunk"]
+    if saw_merge:
+        legend_bits.append(f"{_SPINE_MERGE} merge")
+    if saw_branch:
+        legend_bits.append(f"{_SPINE_TRUNK}{_SPINE_NODE} on a side branch")
+    legend = _dim("   " + "    ".join(legend_bits), color=color) if len(legend_bits) > 1 else None
+    return prefixes, legend
+
+
 def render_save_list_lines(
     map_view: dict,
     grid_view: dict,
     *,
+    topology: dict | None = None,
     selected: str | None = None,
     color: bool = True,
     label_width: int = 48,
@@ -686,7 +701,11 @@ def render_save_list_lines(
     newest on top, `cN  sha  subject  features`. Drops `render_rail_lines`' recurring-feature lane
     column (the `" ".join(cell(...))` art that overruns the terminal past ~20 lanes and wraps),
     keeping the same episode rows and width-bounded feature chips. The lane rail stays available
-    under `sgt log --rail` for readers who want the recurring-feature threads."""
+    under `sgt log --rail` for readers who want the recurring-feature threads.
+
+    When `topology` (from `GitBinding.graph_topology`) is given, a narrow git-log-style spine is
+    drawn to the left of each row (`_spine_prefixes`); when it is None the rendering is unchanged
+    (so callers and golden snapshots without topology stay byte-identical)."""
     ep = episodes(map_view, grid_view)
     layout = episode_rail_layout(ep)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
@@ -694,16 +713,21 @@ def render_save_list_lines(
 
     n_ep = len(rows)
     n_feat = len({r["feature"] for r in rows if r["feature"] is not None})
-    lines = [_bold(f" {n_ep} save(s)  ·  {n_feat} feature(s)   (newest on top)", color=color), ""]
+    lines = [_bold(f" {n_ep} save(s)  ·  {n_feat} feature(s)   (newest on top)", color=color)]
     shown = rows[:max_rows]
+    spine, legend = _spine_prefixes(shown, topology, color=color) if topology else ([None] * len(shown), None)
+    if legend:
+        lines.append(legend)
+    lines.append("")
     pos_w = max((len(f"c{r['index']}") for r in shown), default=2)
-    for r in shown:
+    for r, sp in zip(shown, spine):
         pos = _dim(f"c{r['index']}".rjust(pos_w), color=color)
         sha = _dim((r["sha"] or "")[:7], color=color)
         head = _row_headline(r["subject"], r["feature"], labels)
         subj = _ellipsize((head or "").replace("\n", " "), label_width).ljust(label_width)
         subj_s = _bold(subj, color=color) if r["feature"] == selected else subj
-        lines.append(f" {pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
+        prefix = f"{sp} " if sp is not None else ""
+        lines.append(f" {prefix}{pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
     if n_ep > len(shown):
         lines.append("")
         lines.append(_dim(f" {n_ep - len(shown)} older save(s) folded (newest {len(shown)} shown)",
@@ -854,50 +878,50 @@ def render_graph_lines(
         return _render_car(car, width, hexc, color=color, is_big=is_big)
 
     def time_bar(cars: list[dict], hexc: str, width: int) -> str:
-        """A lane's `▁▂▃▄▅▆▇█` edit-density positioned on the SHARED commit-time axis: each checkpoint's
-        region sits at the column of its commits (`first_index`→`last_index`, one commit-column wide at
-        minimum via gap-fill), so left-to-right reads *when* the work happened; glyph height scales to
-        the lane's busiest commit, so taller reads *busier*. Quiet spans between checkpoints are dim `·`.
-        Future cars (past the frontier) render dim. This is the former `--timeline` placement carrying
-        the map's density texture -- the two views merged. Empty (dim `·`) when the lane has no ops yet."""
+        """Per-feature packing: this lane's checkpoints drawn left→right as `▁▂▃▄▅▆▇█` edit-density
+        blocks, one block per checkpoint, back to back. The lane's OWN gap between two checkpoints is
+        squeezed to a single dim `·`, or a dim `┄` when it skipped a long run (>= `_GAP_THRESHOLD`
+        commits) -- dead stretches are packed away rather than drawn to scale. Height scales to the
+        lane's busiest commit (taller = busier). Because each row packs its own activity, columns do
+        NOT line up across lanes: a row reads as that one feature's life, not a shared clock. Padded
+        with spaces to `width` so the trailing `@n` chips stay aligned. Future cars (past the frontier)
+        render dim. Empty when the lane has no ops yet."""
         if not cars or width <= 0:
-            return dim("·" * max(0, width))
-        max_ci = max(1, layout["commit_count"] - 1)
+            return " " * max(0, width)
         counts = [cnt for c in cars for _ci, cnt in c.get("sub_bins", [])]
         gmax = max(counts) if counts else 0
 
-        def col_of(ci: int) -> int:
-            return _col_of(ci, max_ci, width)
+        def car_cols(c: dict) -> int:  # natural block width = commits it actually edited, capped
+            n = len(c.get("sub_bins") or ()) or (c["last_index"] - c["first_index"] + 1)
+            return max(1, min(_CAR_CAP, n))
 
-        placed: list[tuple[int, int, dict]] = []
-        cursor = 0
+        # Interleave each checkpoint's block with a one-column gap marker for the lane's own quiet
+        # spans, then scale the blocks to fit (gap markers always stay one column).
+        pieces: list[tuple[str, object]] = []
         for i, c in enumerate(cars):
-            start = max(col_of(c["first_index"]), cursor)
-            # Gap-fill tiling: fill through the END of this car's last commit column, so a single-commit
-            # checkpoint is a full column, not one pixel bleeding into dead space. Under the power warp
-            # a commit's column span varies with position (old commits are narrower), so measure it
-            # locally as the distance to the next commit's column rather than a fixed step. The last car
-            # fills to the strip edge, and no car runs into the next; distant checkpoints still leave a
-            # dim `·` track between them, which is what reads as "went quiet".
-            li = c["last_index"]
-            col_span = max(1, _col_of(li + 1, max_ci, width) - col_of(li))
-            right_end = width if li >= max_ci else col_of(li) + col_span
+            pieces.append(("car", c))
             if i + 1 < len(cars):
-                right_end = min(right_end, col_of(cars[i + 1]["first_index"]) - 1)
-            w = max(1, right_end - start)
-            if start + w > width:
-                start = max(cursor, width - w)
-            if start + w > width:
-                w = max(1, width - start)
-            if w < 1 or start >= width:
-                break  # out of room -- the remaining (rightmost, latest) cars don't fit
-            placed.append((start, w, c))
-            cursor = start + w + 1  # a one-column gap between adjacent cars
+                gap = cars[i + 1]["first_index"] - c["last_index"]
+                if gap >= _GAP_THRESHOLD:
+                    pieces.append(("gap", True))
+                elif gap >= 2:
+                    pieces.append(("gap", False))
+        gap_cols = sum(1 for k, _ in pieces if k == "gap")
+        car_total = sum(car_cols(c) for k, c in pieces if k == "car") or 1
+        scale = min(1.0, max(0, width - gap_cols) / car_total)
 
-        out, col = "", 0
-        for start, w, c in placed:
-            if start > col:
-                out += dim("·" * (start - col))
+        out, used = "", 0
+        for kind, payload in pieces:
+            if used >= width:
+                break
+            if kind == "gap":
+                out += dim(_COLLAPSE if payload else "·")
+                used += 1
+                continue
+            c = payload
+            w = min(max(1, int(round(car_cols(c) * scale))), width - used)
+            if w <= 0:
+                break
             if gmax <= 0:
                 out += dim("·" * w)
             else:
@@ -909,9 +933,9 @@ def render_graph_lines(
                     ch = _SPARK[min(len(_SPARK) - 1, int(frac * (len(_SPARK) - 1) + 0.5))]
                     out += dim(ch) if c.get("is_future") else (
                         _shade(hexc, frac ** 0.5, ch) if color else ch)
-            col = start + w
-        if col < width:
-            out += dim("·" * (width - col))
+            used += w
+        if used < width:
+            out += " " * (width - used)
         return out
 
     # Nearest co-change neighbours (strongest first), for the optional per-lane annotation.
@@ -996,13 +1020,15 @@ def render_graph_lines(
     # Terminal-fit bar width: fill the space left after the fixed prefix so rows don't hard-wrap on a
     # narrow terminal (which would break lane alignment). Fall back to the proven 38 when the size is
     # unavailable or absurdly small; an explicit caller/test override is honoured untouched.
+    term_cols = shutil.get_terminal_size(fallback=(0, 0)).columns
     if bar_width is None:
-        cols = shutil.get_terminal_size(fallback=(0, 0)).columns
-        bar_width = 38 if cols < 40 else max(12, cols - bar_prefix)
+        bar_width = 38 if term_cols < 40 else max(12, term_cols - bar_prefix)
+    # The checkpoints ride on their own indented sub-line (below the bar) so a long feature label plus
+    # its `@n` chips can never wrap the density bar. Align that line under the label; ellipsize its
+    # content to what's left of the terminal so it stays one row.
+    chip_indent = 3 + 1 + 1 + 1 + 8 + 1  # indent()+marker+glyph+space+handle+space -> under the label
+    chip_avail = max(20, (term_cols or (bar_prefix + bar_width + 60)) - chip_indent)
 
-    ruler = _time_ruler(bar_prefix, bar_width, layout["commit_count"])
-    if ruler:
-        lines.append(dim(ruler))
     lanes_shown = 0
     total_lanes = len(layout["lanes"])
     for row in range(layout["row_count"]):
@@ -1026,25 +1052,25 @@ def render_graph_lines(
             handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = the minimal unique prefix
             label = _ellipsize(raw, title_w - 1).ljust(title_w)  # cap + ellipsize a long label
             bar = time_bar(l["cars"], hexc, bar_width)
-            # Checkpoints spelled out as `@n label`: the `@n` is the `sgt revert` handle, the label
-            # its human name. Only the last 3 (most recent) are named -- the rest fold into a `+N
-            # earlier` head -- and each label is ellipsized so a busy lane can't run off the edge; the
-            # density bar still shows every checkpoint's position, so nothing is lost, just unlabelled.
+            row_s = (f"   {marker}{paint(hexc, glyph)} {handle} "
+                     f"{bold(label) if is_sel else label} {bar}")
+            row_s += links_note(fid)
+            lines.append(row_s)
+            # Checkpoints spelled out as `@n label` on their own indented sub-line: the `@n` is the
+            # `sgt revert` handle, the label its human name. Only the last 3 (most recent) are named --
+            # the rest fold into a `+N earlier` head -- and the whole line is ellipsized to the
+            # terminal so a busy lane can't wrap. The density bar above still shows every checkpoint's
+            # position, so nothing is lost, just unlabelled.
             cars = l["cars"]
             recent = cars[-3:]
             chips = [f"@{c['seg_index']} {_ellipsize(c['label'], 24)}" for c in recent]
             hidden = len(cars) - len(recent)
             if hidden > 0:
                 chips.insert(0, f"+{hidden} earlier")
-            trailer = ("  " + dim("  ·  ".join(chips))) if chips else ""
             planned = ghost_by_lane.get(fid)
-            if planned:
-                trailer += "  " + dim("  ".join(f"{_GHOST} planned: {_ellipsize(t, 24)}"
-                                                for t in planned))
-            row_s = (f"   {marker}{paint(hexc, glyph)} {handle} "
-                     f"{bold(label) if is_sel else label} {bar}{trailer}")
-            row_s += links_note(fid)
-            lines.append(row_s)
+            chip_parts = chips + [f"{_GHOST} planned: {_ellipsize(t, 24)}" for t in (planned or ())]
+            if chip_parts:
+                lines.append(" " * chip_indent + dim(_ellipsize("  ·  ".join(chip_parts), chip_avail)))
             lanes_shown += 1
     if total_lanes > lanes_shown:
         lines.append("")
@@ -1055,8 +1081,10 @@ def render_graph_lines(
     lines.append("")
 
     # Legend: the view explains its own encoding.
-    lines.append(dim(" ▁▂▃▄▅▆▇█ = edit density (taller = busier), positioned by save-time (c0…cN above)"
-                     "   ·   dim · = a quiet span   ·   trailing @n chips = the checkpoints (rewind by @n)"))
+    lines.append(dim(" ▁▂▃▄▅▆▇█ = edit density (taller = busier)"
+                     "   ·   each row packs its OWN checkpoints left→right (columns don't align across features)"
+                     "   ·   ┄ = a long gap it skipped"
+                     "   ·   @n chips (line below each bar) = the checkpoints (rewind by @n)"))
     lines.extend(_state_banner(states, color=color))
     return lines
 
@@ -1419,6 +1447,7 @@ def render_rail_lines(
     only_features: set | None = None,
     group_label: str | None = None,
     states: dict | None = None,
+    topology: dict | None = None,
 ) -> list[str]:
     """Render the episode rail as a vertical git-log (Stage C): newest episode on top. Recurring
     features (touched by >=2 saves) each get a dedicated lane so their saves read as one unbroken
@@ -1471,6 +1500,24 @@ def render_rail_lines(
             return bold(dot) if is_dom else dot
         return paint(hexc, "│")
 
+    mainline = set((topology or {}).get("mainline", ()))
+    merges = set((topology or {}).get("merges", ()))
+
+    def topo_col(sha: str | None) -> str:
+        """Left-margin git-topology glyph tying each rail save back to the commit graph: ◆ a merge
+        where a side branch folded in, ● a save on the first-parent trunk, ○ a save off the trunk.
+        Empty (no column) when topology wasn't supplied."""
+        if topology is None:
+            return ""
+        s = sha or ""
+        if s in merges:
+            return bold(_SPINE_MERGE) + " "
+        if s in mainline:
+            return dim(_SPINE_NODE) + " "
+        return dim(_SPINE_OFF) + " "
+
+    topo_pad = "  " if topology is not None else ""
+
     lines: list[str] = []
     n_ep = len(rows)
     n_feat = len({r["feature"] for r in rows if r["feature"] is not None})
@@ -1480,8 +1527,10 @@ def render_rail_lines(
                           f"   (newest on top)"))
     else:
         lines.append(bold(f" {n_ep} save(s)  ·  {n_feat} feature(s){recur_note}   (newest on top)"))
-    lines.append(dim(" each row = one save (cN = its commit position); ● = feature touched here "
-                     "(bold ● = the save's main one), │ = a feature carried across"))
+    topo_legend = ("◆/●/○ = merge / on-trunk / off-trunk save; " if topology is not None else "")
+    lines.append(dim(f" each row = one save (cN = its commit position, colored by its main feature); "
+                     f"{topo_legend}● = feature touched here (bold ● = the save's main one), "
+                     "│ = a feature carried across"))
     lines.append("")
 
     shown = rows[:max_rows]
@@ -1500,18 +1549,19 @@ def render_rail_lines(
         lane = layout["lane_of"][g["feature_id"]]
         fid = g["feature_id"]
         hexc = color_for(fid or "")
-        rail = " ".join(dim(paint(hexc, _GHOST)) if L == lane else " " for L in range(lane_count))
+        rail = "".join(dim(paint(hexc, _GHOST)) if L == lane else " " for L in range(lane_count))
         pos = dim("plan".rjust(pos_w))
         subj = _ellipsize(g.get("title", "") or "planned", label_width).ljust(label_width)
-        lines.append(f" {rail}  {pos} {' ' * 7}  {dim(subj)}  {_paint(hexc, labels.get(fid, fid), color=color)}")
+        lines.append(f" {topo_pad}{rail} {pos} {' ' * 7}  {dim(subj)}  {_paint(hexc, labels.get(fid, fid), color=color)}")
     for r in shown:
-        rail = " ".join(cell(L, r["row"], L == r["lane"]) for L in range(lane_count))
+        rail = "".join(cell(L, r["row"], L == r["lane"]) for L in range(lane_count))
         pos = dim(f"c{r['index']}".rjust(pos_w))
-        sha = dim((r["sha"] or "")[:7])
+        sha7 = (r["sha"] or "")[:7]
+        sha = _paint(color_for(r["feature"] or ""), sha7, color=color) if r["feature"] else dim(sha7)
         head = _row_headline(r["subject"], r["feature"], labels)
         subj = _ellipsize((head or "").replace("\n", " "), label_width).ljust(label_width)
         subj_s = bold(subj) if r["feature"] == selected else subj
-        lines.append(f" {rail}  {pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
+        lines.append(f" {topo_col(r['sha'])}{rail} {pos} {sha}  {subj_s}  {_chips(r, labels, color=color)}")
 
     if n_ep > len(shown):
         lines.append("")

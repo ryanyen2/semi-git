@@ -69,7 +69,7 @@ def _tiers_set(repo: str, pattern: str, tier: str, as_json: bool) -> int:
         from sgt.core.store import Store
 
         covered = ideal.covered_paths(Store(repo).all_ops())
-        hit = sorted(p for p in covered if tiers._match_one(p, pattern))
+        hit = sorted(p for p in covered if tiers._gitignore_ignored(p, (pattern,)))
         if hit:
             shown = ", ".join(hit[:3]) + (", ..." if len(hit) > 3 else "")
             msg = (
