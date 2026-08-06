@@ -612,6 +612,8 @@ def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
     if not as_json and _sys.stdin.isatty() and _sys.stdout.isatty():
         pv = oplog.preview(repo, force=force)
         if pv["kind"] is not None:
+            if not pv["ok"]:
+                return _fail(pv["message"])  # the refusal IS the message; don't say it twice
             print(f"undo: {pv['message']}")
             if pv["restored"]:
                 print(f"  brings back {len(pv['restored'])} edit(s)")
@@ -620,8 +622,6 @@ def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
             if pv["symbols"]:
                 print(f"  touches {', '.join(pv['symbols'][:6])}"
                       + (" …" if len(pv["symbols"]) > 6 else ""))
-            if not pv["ok"]:
-                return _fail(pv["message"])
             try:
                 reply = input("apply this undo? [y/N] ").strip().lower()
             except EOFError:

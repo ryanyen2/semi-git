@@ -142,9 +142,11 @@ SUBJECT_DOMINANCE = 0.6
 # Subjects that name a moment rather than a piece of work. A developer scanning `sgt log` learns
 # nothing from a feature called "wip" or "fix tests", so these fall through to the ordinary naming
 # path even when they dominate.
+# Entries shorter than the length guard below would be unreachable through this set, so they are
+# left out rather than kept as decoration.
 _UNINFORMATIVE = {
-    "wip", "fix", "fixes", "fixup", "update", "updates", "cleanup", "clean up", "tweak",
-    "tweaks", "refactor", "misc", "stuff", "changes", "temp", "tmp", "test", "tests",
+    "fixes", "fixup", "update", "updates", "cleanup", "clean up", "tweak",
+    "tweaks", "refactor", "misc", "stuff", "changes", "temp", "test", "tests",
     "fix tests", "fix test", "fix typo", "typo", "lint", "format", "formatting", "sgt save",
     "initial commit", "wip commit", "checkpoint", "rebase", "merge",
 }

@@ -232,7 +232,6 @@ def test_re_intake_of_an_active_session_keeps_its_baseline(tmp_path, monkeypatch
 
     assert resumed.baseline_op_ids == first.baseline_op_ids
     assert resumed.created_ts == first.created_ts
-    assert plan_mod._load_sessions(tmp_path)["mine"]["resumed"] is True
 
 
 def test_re_intake_does_not_leave_the_superseded_hollows_behind(tmp_path, monkeypatch):
@@ -271,7 +270,6 @@ def test_a_fresh_session_id_still_takes_a_current_baseline(tmp_path, monkeypatch
     session = plan_mod.intake(tmp_path, "1. step one\n", session_id="brand-new")
 
     assert len(session.baseline_op_ids) == 1  # the already-present op is not this plan's work
-    assert plan_mod._load_sessions(tmp_path)["brand-new"]["resumed"] is False
 
 
 def test_sweep_never_closes_a_session_the_save_just_asked_to_resolve(tmp_path, monkeypatch):

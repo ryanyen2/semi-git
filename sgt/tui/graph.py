@@ -963,9 +963,9 @@ def render_graph_lines(
     lines: list[str] = []
     n_sub = len(layout["headers"])
     sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
-    bk = layout.get("bookkeeping_count", 0)
+    bk = layout["bookkeeping_count"]
     bk_note = dim(f"  (+{bk} bookkeeping)") if bk else ""
-    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout.get('save_count', layout['commit_count'])} save(s)"
+    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['save_count']} save(s)"
                       f"{sub_note}") + bk_note)
     if frontier is not None:
         lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
@@ -1546,8 +1546,8 @@ def render_rail_lines(
     # above a six-row linear history that has none of them. A developer reads it once, learns it
     # does not describe what they are looking at, and stops reading the header entirely, which is
     # the opposite of what a legend is for.
-    _shown_rows = rows[:max_rows]
-    _shas = {r["sha"] for r in _shown_rows}
+    shown = rows[:max_rows]
+    _shas = {r["sha"] for r in shown}
     parts = [f"each row = one save (cN = its commit position{', colored by its main feature' if n_feat > 1 else ''})"]
     if topology is not None:
         topo_bits = []
@@ -1562,7 +1562,6 @@ def render_rail_lines(
     lines.append(dim(" " + "; ".join(parts)))
     lines.append("")
 
-    shown = rows[:max_rows]
     # Plan ghosts (pending steps, no code yet): a ◇ row above the newest save on its predicted
     # lane; a prediction whose feature has no rail lane (it dominates no save) drops to an
     # "unplaced" gutter after the rail. Read straight off `grid_view.ghosts` -- no new input.

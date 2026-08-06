@@ -1219,20 +1219,19 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
     from sgt.lens.tree import load as load_tree
     from sgt.store.gitbind import GitBinding
 
-    from sgt.store.gitbind import is_bookkeeping_message
-
     gb = GitBinding(repo)
-    rows = gb.history()
+    # `history_meta` carries the committer time and the bookkeeping mark in the format of the walk
+    # `history()` already does, so knowing which commits are sgt's own mechanics -- and when the
+    # last save happened -- costs no extra git calls. Every commit keeps its index and its place on
+    # the time axis (the grid, the fold frontier, and every op's `commit_index` are unchanged); only
+    # human-facing lists drop them, instead of telling a developer that `sgt restore f-08ccdb12...`
+    # is something they did.
+    meta = gb.history_meta()
+    rows = [(sha, parent, subject) for sha, parent, subject, _ts, _bk in meta]
     commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
-    # Which commits are sgt's own mechanics rather than the developer's work. Every commit keeps its
-    # index and its place on the time axis -- the grid, the fold frontier, and every op's
-    # `commit_index` are unchanged -- but a human-facing list can now drop them instead of telling a
-    # developer that `sgt restore f-08ccdb12...` is something they did.
-    marked = gb.bookkeeping_shas()
     commits = [
-        {"sha": sha, "subject": subject, "index": i,
-         "bookkeeping": sha in marked or is_bookkeeping_message(subject)}
-        for i, (sha, _parent, subject) in enumerate(rows)
+        {"sha": sha, "subject": subject, "index": i, "ts": ts, "bookkeeping": bk}
+        for i, (sha, _parent, subject, ts, bk) in enumerate(meta)
     ]
 
     tree_result = load_tree(repo)
@@ -2375,16 +2374,17 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
     # with op counts. A prompt older than the last save has already been answered by it, so the last
     # save's committer time is the cutoff.
     from sgt.intent.working import working_on
-    from sgt.store.gitbind import GitBinding as _GB
 
-    try:
-        last_save_ts = _GB(repo).head_time()
-    except Exception:  # noqa: BLE001 -- an advisory line must never break the orient surface
-        last_save_ts = None
-    working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts,
-                         has_unsaved=in_flight["total_op_count"] > 0)
-
+    # The newest save's time comes off `recently_done`, which `history_view` just returned -- no
+    # extra git call for one integer. It is the newest *real* save, since that list is already
+    # folded, which is what "has this prompt been answered" should compare against.
+    last_save_ts = recently_done[0].get("ts") if recently_done else None
+    # One parse of the turn store, shared: `working_on` needs the newest human prompt and `context`
+    # needs the newest few turns, and the file holds every prompt ever typed with no pruning, so
+    # reading it twice is a cost that grows forever.
     turns_all = sorted(turns_mod.load_turns(repo).values(), key=lambda t: t["ts"], reverse=True)
+    working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts,
+                         has_unsaved=in_flight["total_op_count"] > 0, turns=turns_all)
     context = {
         "turns": [{"text": t["text"], "actor": t["actor"], "ts": t["ts"]} for t in turns_all[:recent_limit]],
         "activity": activity_mod.recent_activity(repo, limit=recent_limit),

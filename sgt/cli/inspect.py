@@ -397,7 +397,6 @@ def _state_block_lines(repo: str, *, color: bool = False) -> list[str]:
     (⋔ + per-symbol remedy) atop the block instead of a muted count buried in `needs you` -- a fork
     is divergence you must resolve, not a passing note (still non-blocking; save/switch never refuse)."""
     from sgt.api import now_view
-    from sgt.tui.graph import _state_banner
 
     lines = state_lines(now_view(repo), color=color, indent=" ")
     lines.append("")
@@ -827,25 +826,17 @@ def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
 
 
 def _ago(ts: float | None, *, color: bool = False) -> str:
-    """A dim, relative "when" -- ` 4m ago` -- or nothing when there is no timestamp. Relative,
+    """A dim, relative "when" -- ` (4m ago)` -- or nothing when there is no timestamp. Relative,
     because the only thing a developer reads this for is whether it is still the thing they were
-    just doing, and a clock time makes them do that subtraction themselves."""
+    just doing, and a clock time makes them do that subtraction themselves. The wording is
+    `_fmt_age`'s, so the two places this file states an age cannot drift into two vocabularies."""
     if not ts:
         return ""
     import time as _t
 
     from sgt.tui.graph import _dim
 
-    delta = max(0, int(_t.time() - ts))
-    if delta < 90:
-        word = f"{delta}s ago"
-    elif delta < 5400:
-        word = f"{delta // 60}m ago"
-    elif delta < 172800:
-        word = f"{delta // 3600}h ago"
-    else:
-        word = f"{delta // 86400}d ago"
-    return _dim(f"  ({word})", color=color)
+    return _dim(f"  ({_fmt_age(max(0.0, _t.time() - ts))})", color=color)
 
 
 def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:

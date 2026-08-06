@@ -597,44 +597,38 @@ class GitBinding:
         ``target`` lets sync mine a *fetched* teammate branch (``merge_base..theirs_sha``) without
         checking it out (U20). First-parent only: merges never re-attribute a whole side branch
         onto the merge commit (a v1 simplification also used by the entity miner)."""
+        return [(sha, parent, subject) for sha, parent, subject, _t, _bk
+                in self.history_meta(since, target)]
+
+    def history_meta(
+        self, since: str | None = None, target: str = "HEAD",
+    ) -> list[tuple[str, str | None, str, int | None, bool]]:
+        """`history()` plus each commit's committer time and whether it is sgt's own bookkeeping --
+        `(sha, first_parent, subject, ts, bookkeeping)`, oldest-first.
+
+        Both extras ride along in the format string of the walk `history()` already does, because
+        both were previously separate full-history `git log` calls (`head_time`, a `--grep` for the
+        trailer) on surfaces that had just run this one. Widening the format measured free; the
+        extra walks did not. `history()` stays a 3-tuple so the miner and every other caller are
+        untouched -- only the two callers that want the extras take this."""
         rev_range = f"{since}..{target}" if since is not None else target
-        proc = self._git("log", "--reverse", "--format=%H%x1f%P%x1f%s", rev_range, check=False)
+        fmt = "%H%x1f%P%x1f%s%x1f%ct%x1f%(trailers:key=" + BOOKKEEPING_KEY + ",valueonly)"
+        proc = self._git("log", "--reverse", f"--format={fmt}", rev_range, check=False)
         if proc.returncode != 0:
             return []
-        rows: list[tuple[str, str | None, str]] = []
+        rows: list[tuple[str, str | None, str, int | None, bool]] = []
         for line in proc.stdout.splitlines():
             if not line:
                 continue
-            sha, parents, subject = line.split("\x1f", 2)
+            parts = line.split("\x1f")
+            if len(parts) < 5:
+                continue
+            sha, parents, subject, ts, trailer = parts[0], parts[1], parts[2], parts[3], parts[4]
             first_parent = parents.split()[0] if parents.strip() else None
-            rows.append((sha, first_parent, subject))
+            rows.append((sha, first_parent, subject,
+                         int(ts) if ts.strip().isdigit() else None,
+                         trailer.strip() == "1" or is_bookkeeping_message(subject)))
         return rows
-
-    def bookkeeping_shas(self, target: str = "HEAD") -> set[str]:
-        """Shas of commits sgt made for its own mechanics, by trailer. One `git log --grep` rather
-        than reading every commit body: `history()` carries only subjects (widening it would ripple
-        into the miner's hot path), and git can do this filter itself. Legacy commits predating the
-        trailer are matched separately, on their subject, by `is_bookkeeping_message`."""
-        proc = self._git(
-            "log", "--format=%H", "--extended-regexp", f"--grep=^{BOOKKEEPING_KEY}: 1$",
-            target, check=False,
-        )
-        if proc.returncode != 0:
-            return set()
-        return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
-
-    def head_time(self, target: str = "HEAD") -> int | None:
-        """Committer timestamp of `target` alone, or None on an unborn ref. `commit_times` answers
-        the same question for the *whole* history and costs O(commits) to do it -- fine for the
-        alignment pipeline, which needs every op's time, and wrong for a surface that only wants
-        "when was the last save" on every read."""
-        proc = self._git("log", "-1", "--format=%ct", target, check=False)
-        if proc.returncode != 0 or not proc.stdout.strip():
-            return None
-        try:
-            return int(proc.stdout.strip())
-        except ValueError:
-            return None
 
     def commit_times(self, target: str = "HEAD") -> dict[str, int]:
         """``sha -> committer unix timestamp`` for every commit reachable from ``target``. One

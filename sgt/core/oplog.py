@@ -154,13 +154,11 @@ def _restore(repo: str | Path, snap: dict) -> None:
 
 
 def _casualty_symbols(repo: str | Path, op_ids: frozenset[str]) -> str:
-    """The symbols an `undo` snapshot restore would drop, for the F3 refusal message (0.2c). Maps
-    the intervening op ids to their footprint symbols; falls back to the short op ids if an op is no
-    longer in the store."""
-    from sgt.core.store import Store
-
-    by_id = {op.id: op for op in Store(repo).all_ops()}
-    symbols = sorted({sym for oid in op_ids if oid in by_id for sym in by_id[oid].footprint})
+    """The symbols an `undo` snapshot restore would drop, for the F3 refusal message (0.2c). Shares
+    `_symbols_for`'s mapping -- one op-ids-to-symbols derivation in this module, over the
+    footprint-only index rather than `Store.all_ops()`, which decodes every op's images for names
+    it never reads. Falls back to short op ids if an op is no longer in the store."""
+    symbols = _symbols_for(repo, op_ids)
     return ", ".join(symbols) if symbols else ", ".join(sorted(o[:8] for o in op_ids))
 
 
@@ -189,31 +187,26 @@ def preview(repo: str | Path, *, force: bool = False) -> dict:
     from sgt.core import lens
 
     repo = Path(repo)
-    event = tail(repo)
-    while event is not None and event.get("kind") == "ideal_edit" and event.get("applied") is False:
-        # A crashed verb's unapplied entry is discarded by `undo` rather than executed; the preview
-        # has to skip it too or it would describe an operation that will never run.
-        stack = load(repo).get(_ref_key(repo), [])
-        idx = len(stack) - 1
-        event = stack[idx - 1] if idx >= 1 else None
+    # A crashed verb's unapplied entry is discarded by `undo` rather than executed, so the preview
+    # skips it too -- otherwise it would describe an operation that will never run. One read, one
+    # pass: re-reading the stack per skip could never advance past the first such entry.
+    stack = load(repo).get(_ref_key(repo), [])
+    event = next((e for e in reversed(stack)
+                  if not (e.get("kind") == "ideal_edit" and e.get("applied") is False)), None)
 
     if event is None:
-        return {"kind": None, "ok": True, "message": "nothing to undo", "restored": [],
-                "dropped": [], "symbols": []}
+        return _preview(None, True, "nothing to undo")
 
     kind = event.get("kind", "ideal_edit")
     if kind in ("land", "propose"):
-        return {"kind": kind, "ok": False, "restored": [], "dropped": [], "symbols": [],
-                "message": f"cannot undo `{kind}` -- it advanced a shared branch that already left "
-                           f"this clone"}
+        return _preview(kind, False, f"cannot undo `{kind}` -- it advanced a shared branch that "
+                                     f"already left this clone")
     if kind == "feature_reorg":
         verb = event.get("verb", "reorg")
-        return {"kind": kind, "ok": True, "restored": [], "dropped": [], "symbols": [],
-                "message": f"restores the feature grouping from before the {verb} "
-                           f"(no code changes)"}
+        return _preview(kind, True, f"restores the feature grouping from before the {verb} "
+                                    f"(no code changes)")
     if kind == "after":
-        return {"kind": kind, "ok": True, "restored": [], "dropped": [], "symbols": [],
-                "message": "retracts the declared order edge (no code changes)"}
+        return _preview(kind, True, "retracts the declared order edge (no code changes)")
 
     # `ideal` is the state this event restores; `result` is what the edit left behind. They are
     # different sets and only `ideal` answers "what will I get back".
@@ -230,22 +223,33 @@ def preview(repo: str | Path, *, force: bool = False) -> dict:
         ok = False
         message = (f"would drop work committed after that edit: "
                    f"{_casualty_symbols(repo, frozenset(intervening))} -- `--force` to drop it anyway")
-    return {"kind": kind, "ok": ok, "message": message, "restored": restored, "dropped": removed,
-            "symbols": _symbols_for(repo, frozenset(restored) | frozenset(removed))}
+    return _preview(kind, ok, message, restored=restored, dropped=removed,
+                    symbols=_symbols_for(repo, frozenset(restored) | frozenset(removed))[:12])
+
+
+def _preview(kind: str | None, ok: bool, message: str, *, restored=(), dropped=(),
+             symbols=()) -> dict:
+    """One shape for every `preview` return, so its single consumer (`porcelain._undo`) can index
+    every key unconditionally instead of the four branches each spelling the same six-key literal."""
+    return {"kind": kind, "ok": ok, "message": message, "restored": list(restored),
+            "dropped": list(dropped), "symbols": list(symbols)}
 
 
 def _symbols_for(repo: str | Path, op_ids: frozenset[str]) -> list[str]:
     """The symbols an op-set touches, for naming a change in terms a developer recognizes: a list
-    of op ids says nothing, and the file-and-symbol names are what they were actually editing."""
+    of op ids says nothing, and the file-and-symbol names are what they were actually editing.
+    Filtered by `is_behavioral` -- the repo's one predicate for "a unit a person edits" -- so sgt's
+    positional residue and plan sentinels stay out of a line whose whole job is recognizability."""
     if not op_ids:
         return []
     from sgt.core import opindex
+    from sgt.core.op import is_behavioral
 
     names: set[str] = set()
     for op in opindex.index_ops(Path(repo)):
         if op.id in op_ids:
             names.update(op.footprint)
-    return sorted(n for n in names if "__plan__" not in n)[:12]
+    return sorted(n for n in names if is_behavioral(n))
 
 
 def undo(repo: str | Path, force: bool = False) -> UndoOutcome:
