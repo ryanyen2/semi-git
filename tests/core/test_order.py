@@ -109,8 +109,15 @@ def test_resolvable_forks_keeps_only_divergent_real_symbol_forks():
     assert {sym for sym, _a, _b in raw} == {"a.py::x", "a.py::y", "a.py::__anchor__::m"}
 
     resolvable = resolvable_forks(raw, by_id)
-    # Only the divergent, real-symbol fork survives surfacing.
-    assert resolvable == [("a.py::x", div_a.id, div_b.id)]
+    # Only the divergent, real-symbol fork survives surfacing. The two tips are asserted as a SET:
+    # `forks` walks `sorted(ideal_ids)`, so which tip lands in the `a` slot is decided by how two
+    # content-address hashes happen to sort, and nothing about a fork makes one of its tips "first".
+    # Pinning that order made this test fail on any change to what goes into an op's id, which is a
+    # false alarm about hashing dressed up as one about fork detection.
+    assert len(resolvable) == 1
+    sym, a, b = resolvable[0]
+    assert sym == "a.py::x"
+    assert {a, b} == {div_a.id, div_b.id}
 
 
 def test_resolvable_forks_does_not_alter_fork_free_invariant_path():
