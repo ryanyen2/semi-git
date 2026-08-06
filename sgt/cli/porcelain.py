@@ -603,6 +603,33 @@ def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.store.gitbind import GitError
 
+    # Show what it will do before doing it. `undo` is what a developer reaches for when something
+    # has gone wrong, and it used to apply on contact -- so the one command whose whole job is
+    # recovering from a surprise was itself a surprise. The gate is tty-only and matches `revert`'s
+    # (`--json` and non-interactive callers apply immediately, the machine contract).
+    import sys as _sys
+
+    if not as_json and _sys.stdin.isatty() and _sys.stdout.isatty():
+        pv = oplog.preview(repo, force=force)
+        if pv["kind"] is not None:
+            print(f"undo: {pv['message']}")
+            if pv["restored"]:
+                print(f"  brings back {len(pv['restored'])} edit(s)")
+            if pv["dropped"]:
+                print(f"  drops {len(pv['dropped'])} edit(s) made since")
+            if pv["symbols"]:
+                print(f"  touches {', '.join(pv['symbols'][:6])}"
+                      + (" …" if len(pv["symbols"]) > 6 else ""))
+            if not pv["ok"]:
+                return _fail(pv["message"])
+            try:
+                reply = input("apply this undo? [y/N] ").strip().lower()
+            except EOFError:
+                reply = ""
+            if reply not in ("y", "yes"):
+                print("  aborted — nothing undone.")
+                return 1
+
     try:
         outcome = oplog.undo(repo, force=force)
     except (DirtyWorkingTreeError, GitError, ValueError) as e:
