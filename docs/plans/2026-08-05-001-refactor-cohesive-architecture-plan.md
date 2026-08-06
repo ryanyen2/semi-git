@@ -290,3 +290,40 @@ A note for whoever picks this up. Every item in this pass came from reading real
 what a developer does with each line, not from the plan's own list -- and the plan was wrong twice
 (the aligner, the assumption that plans are declared). The remaining items are worth re-deriving
 the same way rather than executed as written.
+
+## 12. Cleanup pass, and two things deliberately left
+
+A four-angle review (reuse, simplification, efficiency, altitude) over this branch's own additions.
+Two findings were defects in the new code: `oplog.preview`'s skip loop could never advance past one
+entry, and its symbol list used an ad-hoc filter instead of `is_behavioral`, so the undo preview
+printed sgt's own pseudo-symbols in the line whose job is recognizability.
+
+The efficiency finding was the instructive one, because it was invisible at the scale I was testing.
+`now_view` had gone from 7 git subprocesses to 9, and `sgt log` from two full-history walks to four:
+a `git log -1` for one timestamp and a `--grep` for the bookkeeping trailer, both walks made by
+surfaces that had just run `history()`. Widening that one walk's format to carry the committer time
+and the trailer deletes both -- measured free on 2632 commits -- and `history()` keeps its 3-tuple so
+the miner never sees it. The turn store was also parsed twice per `now_view`; it keeps every prompt
+ever typed and is never pruned, so that cost grows forever. Now read once and shared.
+
+Two altitude findings were real and are **not** done, both bounded:
+
+- **`_run_cli_json` is one missing function papered over.** `tool_now` and `tool_show` reach library
+  entry points; only `save` needed an adapter, because its payload is built inside its printer
+  (`_render_save`). Extracting `save_payload()` (~40 lines, one file) lets `tool_save` call
+  porcelain directly and deletes the adapter's reason to exist -- along with an `os.chdir` and a
+  stdout redirect on a process that speaks JSON-RPC over stdout. Generalizing that to every verb is
+  the phase-2 work; doing it for `save` alone is not.
+- **`subject_label` is naming policy inlined into a traversal loop, and it already diverges.**
+  `lens/map.py` plumbs subject counts into `label_tree` and gets the new naming; `lens/reconcile.py`
+  calls `label_tree` without them and silently does not, so the same feature can be named two ways
+  depending on which path built the tree -- the exact "surfaces disagree" failure this plan exists
+  to end. `Labeler.leaf_request` already receives `subjects`; the ladder (pin > authored > the
+  developer's words > LLM > structural) wants to be one ordered policy the Labeler owns. ~30 lines,
+  and it needs a `"source": "subject"` cache tag so `--rebuild` and the backoff treat it correctly.
+
+Also left, with reasons: the bookkeeping subject heuristic will linger while `put`'s callers each
+decide the flag by hand (two of four sgt-own materialization paths still pass nothing); deriving it
+from the message inside `put` is ~10 lines and would let the legacy list freeze. And `state_lines`
+is at the right depth but the wrong address -- it lives in `cli/inspect.py` while importing line
+primitives from `tui/graph.py`, where the repo's other shared renderers live.

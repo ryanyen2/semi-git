@@ -67,9 +67,12 @@ set, a plain-English phrase.
 | --- | --- |
 | `sgt init` | Read your existing git history into `sgt`. Run once per repo. |
 | `sgt save -m "..."` | Record the edits you just made, and name the feature(s) they landed in. |
-| `sgt now` | Where am I? What's in progress, what needs you, and the one next thing to do. |
+| `sgt now` | Where am I? What you asked for, what's unsaved, what needs you, and the one next thing to do. |
 | `sgt log` | What you did, newest first. `--map` (features over time), `--tree` (the feature tree), `--summary` (what needs attention). |
-| `sgt undo` | Step back: reverse your last `sgt` command, as a new change rather than by rewriting history. |
+| `sgt status` | What needs attention right now. The same view as `sgt log --summary`. |
+| `sgt show <spec> [<file>]` | Read a file as it was at a past point, or list what existed there. Nothing is checked out. |
+| `sgt why <target>` | Why this code exists: the prompt or plan step behind a commit, op, or symbol. |
+| `sgt undo` | Step back: reverse your last `sgt` command, as a new change rather than by rewriting history. It shows what it will do before doing it. |
 | `sgt revert <target>` | Remove one symbol, feature, or session's worth of work, plus anything built on it. |
 | `sgt restore <target>` | Bring a removed thing back, along with anything it needs. |
 | `sgt resolve <symbol>` | Walk through reconciling a symbol that ended up edited two different ways at once. |
