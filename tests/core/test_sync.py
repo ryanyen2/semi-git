@@ -140,9 +140,15 @@ def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
 
     detail = fork_detail_view(b, "main.py::foo")
     assert [t["op_id"] for t in detail["tips"]] == [tip_a, tip_b]
+    # Both sides' real content is visible, asserted without assuming WHICH slot each landed in:
+    # `order.forks` walks `sorted(ideal_ids)`, so the tip order follows how two content-address
+    # hashes sort, not who wrote which. (That is worth knowing for the resolve UI -- "left" is not
+    # reliably "yours" -- but it is a property of fork *surfacing*, not of this view.)
     contents = {t["op_id"]: t["files"]["main.py"] for t in detail["tips"]}
-    assert "return 999" in contents[tip_a]
-    assert "return 42" in contents[tip_b]
+    assert {tip_a, tip_b} == set(contents)
+    assert sorted(("return 999" in c, "return 42" in c) for c in contents.values()) == [
+        (False, True), (True, False),
+    ]
     assert detail["remedy"] == fv["forks"][0]["remedy"]
 
     assert fork_detail_view(b, "main.py::no_such_symbol") == {
