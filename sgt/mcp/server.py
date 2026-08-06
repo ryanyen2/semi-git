@@ -314,29 +314,17 @@ def tool_now(repo_path: str, args: dict) -> dict:
 
 
 def tool_show(repo_path: str, args: dict) -> dict:
-    """`sgt show <spec> [<path>]`: a file as it was at a past frontier, read-only."""
-    from sgt.api import fold_view
-    from sgt.core.lens import get
+    """`sgt show <spec> [<path>]`: a file as it was at a past frontier, read-only.
 
+    Routed through the CLI verb rather than rebuilt here. It was rebuilt at first and had already
+    drifted before it shipped -- the CLI matches an exact repo-relative path *or* a suffix and
+    distinguishes "no such file" from "ambiguous", this one only did suffixes and collapsed both
+    errors -- which is exactly the two-copies failure `_run_cli_json` exists to prevent."""
     spec = (args.get("at") or "").strip()
     if not spec:
         return {"error": "missing 'at' (a commit index, `op:<id>,...`, or a ref)"}
-    get(repo_path)
-    from sgt.cli.inspect import _parse_at
-
-    view = fold_view(repo_path, **_parse_at(spec))
-    if view.get("forked") or "error" in view:
-        return {"error": view.get("message") or view.get("error")}
     path = (args.get("path") or "").strip()
-    if not path:
-        return {"at": spec, "op_count": view["op_count"], "files": sorted(view["files"])}
-    files = view["files"]
-    if path not in files:
-        matches = [p for p in sorted(files) if p.endswith("/" + path)]
-        if len(matches) != 1:
-            return {"error": f"{path!r} is not a single file at {spec}"}
-        path = matches[0]
-    return {"at": spec, "path": path, "content": files[path]}
+    return _run_cli_json(repo_path, ["show", spec, *([path] if path else [])])
 
 
 def tool_plan_done(repo_path: str, args: dict) -> dict:

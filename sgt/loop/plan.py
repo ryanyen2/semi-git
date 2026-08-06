@@ -213,7 +213,8 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
     # produced it. So the original baseline and creation time are kept, and only the steps are
     # re-decomposed: the agent's current plan text is authoritative about what remains to do, while
     # the baseline is a fact about when the work started and cannot be restated.
-    existing = _load_sessions(repo).get(session_id)
+    table = _load_sessions(repo)
+    existing = table.get(session_id)
     resumed = bool(existing) and existing.get("status") == "active"
     if resumed:
         baseline_op_ids = tuple(existing.get("baseline_op_ids") or ())
@@ -244,7 +245,6 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
             "matched_op_ids": [],
         })
 
-    table = _load_sessions(repo)
     table[session_id] = {
         "plan_text": plan_text,
         "created_ts": created_ts,
@@ -255,7 +255,6 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
         "claude_session_id": claude_session_id or (existing or {}).get("claude_session_id"),
         "baseline_op_ids": list(baseline_op_ids),
         "steps": steps,
-        "resumed": resumed,
     }
     _save_sessions(repo, table)
 

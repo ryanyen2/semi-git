@@ -21,8 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# A prompt is only "what I'm working on" while its work is still unsaved. Past that the save's own
-# message is the better record, and `recently_done` is where it belongs.
+# How much of the ask a status row can hold before it has to be elided.
 _MAX_TITLE = 72
 
 # How long a prompt stays "current" once there is nothing unsaved to attribute to it. With work in
@@ -47,28 +46,32 @@ def _shorten(text: str) -> str:
     return first[:_MAX_TITLE - 1].rstrip() + "…"
 
 
-def latest_prompt(repo: str | Path, *, since_ts: float | None = None) -> dict | None:
+def latest_prompt(repo: str | Path, *, since_ts: float | None = None,
+                  turns: list[dict] | None = None) -> dict | None:
     """The most recent human prompt, optionally only if it arrived after `since_ts`.
 
     `since_ts` is the last save's time: a prompt older than the last save has already been answered
     by that save, so treating it as current work would leave a finished task on screen forever.
-    """
-    from sgt.intent import turns as turns_mod
 
-    best = None
-    for t in turns_mod.load_turns(repo).values():
-        if t.get("key_kind") != "chat" or t.get("actor") != "human":
-            continue
-        if since_ts is not None and t.get("ts", 0) <= since_ts:
-            continue
-        if best is None or t.get("ts", 0) > best.get("ts", 0):
-            best = t
-    return best
+    `turns` accepts an already-loaded list, newest first, so a caller that is reading the turn store
+    anyway does not pay for a second parse. That store keeps every prompt ever typed and is never
+    pruned, so re-reading it is a cost that grows with the repo's whole conversation history.
+    """
+    if turns is None:
+        from sgt.intent import turns as turns_mod
+        turns = sorted(turns_mod.load_turns(repo).values(),
+                       key=lambda t: t.get("ts", 0), reverse=True)
+    return next(
+        (t for t in turns
+         if t.get("key_kind") == "chat" and t.get("actor") == "human"
+         and (since_ts is None or t.get("ts", 0) > since_ts)),
+        None,
+    )
 
 
 def working_on(repo: str | Path, *, active_plans: list[dict] | None = None,
                last_save_ts: float | None = None, has_unsaved: bool = True,
-               now: float | None = None) -> dict | None:
+               now: float | None = None, turns: list[dict] | None = None) -> dict | None:
     """The current task: `{title, source, ts, session_id}`, or `None` when nothing is in progress.
 
     `source` says where the words came from, because a developer should be able to tell at a glance
@@ -84,7 +87,7 @@ def working_on(repo: str | Path, *, active_plans: list[dict] | None = None,
             return {"title": _shorten(title), "full_title": _first_line(title),
                     "source": "plan", "ts": None,
                     "session_id": plan.get("claude_session_id")}
-    prompt = latest_prompt(repo, since_ts=last_save_ts)
+    prompt = latest_prompt(repo, since_ts=last_save_ts, turns=turns)
     if prompt is None:
         return None
     if not has_unsaved:

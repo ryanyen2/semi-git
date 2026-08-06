@@ -4,6 +4,7 @@ from sgt.store.gitbind import (
     EMPTY_TREE,
     GitBinding,
     _CatFileBatch,
+    format_bookkeeping_trailer,
     format_trailer,
     init_store,
     new_node_id,
@@ -324,20 +325,30 @@ def test_state_tree_advances_a_ref_by_cas(tmp_path):
     assert gb.rev_parse(ref) == c2
 
 
-def test_head_time_is_the_tip_alone(tmp_path):
-    """`commit_times` answers the same question for the whole history at O(commits), which is right
-    for the alignment pipeline (it needs every op's time) and wrong for a surface that only wants
-    "when was the last save" on every single read."""
+def test_history_meta_carries_time_and_the_bookkeeping_mark(tmp_path):
+    """Both extras ride in the format of the walk `history()` already does. They used to be two
+    separate full-history `git log` calls (`head_time`, and a `--grep` for the trailer) made by
+    surfaces that had just run this one, so `sgt log` paid four history walks where it needed two."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("first")
+    gb.commit_all("real work")
     (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("second")
+    gb.commit_all("sgt revert a.py::foo", trailers=format_bookkeeping_trailer())
 
-    assert gb.head_time() == max(gb.commit_times().values())
+    meta = gb.history_meta()
+
+    assert [m[2] for m in meta] == ["real work", "sgt revert a.py::foo"]
+    assert all(isinstance(m[3], int) and m[3] > 0 for m in meta)  # committer times
+    assert [m[4] for m in meta] == [False, True]  # only sgt's own is marked
+    # `history()` is unchanged, so the miner and every other caller are untouched.
+    assert gb.history() == [(m[0], m[1], m[2]) for m in meta]
 
 
-def test_head_time_is_none_before_the_first_commit(tmp_path):
-    gb = GitBinding(tmp_path)
-    gb.init()
-    assert gb.head_time() is None
+def test_history_meta_marks_a_legacy_commit_by_subject(tmp_path):
+    """A repo mined before the trailer existed has none to read, and a developer should not have to
+    see years of `sgt revert <hex>` rows to get the benefit."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("sgt undo: restore prior ideal")  # no trailer
+
+    assert gb.history_meta()[0][4] is True
