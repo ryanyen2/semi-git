@@ -246,6 +246,99 @@ def tool_drift(repo_path: str, args: dict) -> dict:
     return drift_view(repo_path, full=bool(args.get("full", False)))
 
 
+def _run_cli_json(repo_path: str, argv: list[str]) -> dict:
+    """Run a CLI verb in `--json` mode and return its payload.
+
+    The MCP surface and the CLI answer to the same verbs, and the `--json` payload is already the
+    machine contract both the extension and the TUI consume. Re-implementing a verb here would mean
+    two copies of it, and the copies would drift -- which is the failure this whole surface exists
+    downstream of. So the adapter runs the real verb and captures the payload it already emits.
+
+    Capturing stdout is load-bearing, not incidental: this process speaks newline-delimited JSON-RPC
+    on stdout, so a verb printing even one line would corrupt the transport mid-session. Redirecting
+    it is what makes calling porcelain from here safe at all.
+    """
+    import contextlib
+    import io
+    import os
+
+    from sgt.cli import main
+
+    buf = io.StringIO()
+    cwd = os.getcwd()
+    try:
+        os.chdir(repo_path)
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = main([*argv, "--json"])
+    except Exception as ex:  # noqa: BLE001 -- a verb failure is a tool error, never a dead server
+        return {"error": f"{type(ex).__name__}: {ex}"}
+    finally:
+        os.chdir(cwd)
+    text = buf.getvalue().strip()
+    if not text:
+        return {"error": f"`sgt {' '.join(argv)}` produced no output (exit {code})"}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # A verb that printed prose instead of JSON: report it verbatim rather than pretending.
+        return {"error": text.splitlines()[-1]}
+
+
+def tool_save(repo_path: str, args: dict) -> dict:
+    """`sgt save`: record the agent's edits as a real save.
+
+    Without this an agent could read the graph and edit code but not record either, so a human had
+    to relay every save by hand -- the exact back-and-forth between editor, terminal and agent that
+    the graph exists to remove. A save is additive and `sgt undo` reverses it, which is what makes
+    it safe to hand over."""
+    argv = ["save"]
+    message = (args.get("message") or "").strip()
+    if message:
+        argv += ["-m", message]
+    label = (args.get("as_feature") or "").strip()
+    if label:
+        argv += ["--as", label]
+    return _run_cli_json(repo_path, argv)
+
+
+def tool_now(repo_path: str, args: dict) -> dict:
+    """`sgt now`: what the developer asked for, what is unsaved, what needs them, what is next.
+
+    Useful to the *agent* as well as the human: `working_on` carries the user's own prompt, so an
+    agent picking work back up can read what was actually asked rather than infer it from a diff."""
+    from sgt.api import now_view
+    from sgt.core.lens import get
+
+    get(repo_path)
+    return now_view(repo_path)
+
+
+def tool_show(repo_path: str, args: dict) -> dict:
+    """`sgt show <spec> [<path>]`: a file as it was at a past frontier, read-only."""
+    from sgt.api import fold_view
+    from sgt.core.lens import get
+
+    spec = (args.get("at") or "").strip()
+    if not spec:
+        return {"error": "missing 'at' (a commit index, `op:<id>,...`, or a ref)"}
+    get(repo_path)
+    from sgt.cli.inspect import _parse_at
+
+    view = fold_view(repo_path, **_parse_at(spec))
+    if view.get("forked") or "error" in view:
+        return {"error": view.get("message") or view.get("error")}
+    path = (args.get("path") or "").strip()
+    if not path:
+        return {"at": spec, "op_count": view["op_count"], "files": sorted(view["files"])}
+    files = view["files"]
+    if path not in files:
+        matches = [p for p in sorted(files) if p.endswith("/" + path)]
+        if len(matches) != 1:
+            return {"error": f"{path!r} is not a single file at {spec}"}
+        path = matches[0]
+    return {"at": spec, "path": path, "content": files[path]}
+
+
 def tool_plan_done(repo_path: str, args: dict) -> dict:
     """Close a finished plan session (plan U14). A fully-matched session already completes on its
     own via `sgt_checkpoint`'s confirm; this is the explicit close for a plan whose remaining steps
@@ -314,6 +407,31 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "grouped by symbol.",
         _schema({"ref_a": {"type": "string"}, "ref_b": {"type": "string"}}, ["ref_a", "ref_b"]),
         tool_diff,
+    ),
+    "sgt_save": (
+        "Record your edits as a save. Pass `message` -- your own words about what this work was; "
+        "they become the save's subject and the recorded intent, and a feature born from this work "
+        "is named from them rather than by a model. Additive and reversible (`sgt undo`).",
+        _schema({"message": {"type": "string", "description": "what this work was, in your words"},
+                 "as_feature": {"type": "string", "description": "name the feature this work lands in (optional)"}},
+                []),
+        tool_save,
+    ),
+    "sgt_now": (
+        "Where the work stands: what the user asked for (`working_on`, their own prompt verbatim), "
+        "what is unsaved, what needs them, what was recently done, and the single next action. Call "
+        "this when picking work back up -- it says what was actually asked, rather than leaving you "
+        "to infer it from a diff.",
+        _schema({}, []),
+        tool_now,
+    ),
+    "sgt_show": (
+        "Read a file as it was at a past point, or list what existed there. `at` is a commit index "
+        "(`12`), an op set (`op:<id>,...`), or a ref. Read-only: nothing is checked out and the "
+        "working tree is untouched.",
+        _schema({"at": {"type": "string"}, "path": {"type": "string", "description": "omit to list files"}},
+                ["at"]),
+        tool_show,
     ),
     "sgt_advanced_fsck": (
         "Verify the op store's content-address integrity.",
