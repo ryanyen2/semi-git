@@ -399,23 +399,51 @@ def _state_block_lines(repo: str, *, color: bool = False) -> list[str]:
     from sgt.api import now_view
     from sgt.tui.graph import _state_banner
 
-    view = now_view(repo)
-    inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
+    lines = state_lines(now_view(repo), color=color, indent=" ")
+    lines.append("")
+    return lines
+
+
+def state_lines(view: dict, *, color: bool = False, indent: str = "") -> list[str]:
+    """The state-of-actions block, rendered once for every surface that shows it.
+
+    `sgt now` and bare `sgt log`'s header are the same answer to the same question, and they were
+    two copies that had already drifted apart in wording. One renderer means a developer reads the
+    identical sentence wherever they happen to be standing, and a change to how sgt phrases its
+    state cannot land in one place and not the other."""
+    from sgt.tui.graph import _state_banner
+
+    inflight, needs = view["in_flight"], view["needs_you"]
+    action, working = view["next_action"], view.get("working_on")
     lines: list[str] = _state_banner({"forks": needs["forks"]}, color=color)
+
+    if working:
+        lines.append(f"{indent}working on  {working['title']}{_ago(working.get('ts'), color=color)}")
     if inflight["total_op_count"]:
-        extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
-        lines.append(f" unsaved     {inflight['total_op_count']} op(s) across "
-                     f"{len(inflight['affected'])} feature(s){extra}")
+        total, fresh = inflight["total_op_count"], inflight["new_work_count"]
+        n_feat = len(inflight["affected"])
+        where = f" in {n_feat} feature{'s' if n_feat != 1 else ''}" if n_feat else ""
+        what = f"{total} new edit(s)" if fresh == total else f"{total} edit(s)"
+        if fresh and fresh != total:
+            what += f", {fresh} new"
+        lines.append(f"{indent}unsaved     {what}{where}")
+    for p in view.get("in_progress", []):
+        lines.append(f"{indent}            step {p['matched_count'] + 1} of {p['step_count']}")
+    activity = (view.get("context") or {}).get("activity") or []
+    if activity:
+        last = activity[0]
+        where = f" {last['file']}" if last.get("file") else ""
+        more = f" (+{len(activity) - 1} more)" if len(activity) > 1 else ""
+        lines.append(f"{indent}agent       {last['tool']}{where}{more}")
     parts = []
     if needs["stalled_plans"]:
         parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
     if needs["reviews"]:
         parts.append(f"{len(needs['reviews'])} review(s)")
     if parts:
-        lines.append(" needs you   " + " · ".join(parts))
+        lines.append(f"{indent}needs you   " + " · ".join(parts))
     cmd = f"   ({action['command']})" if action["command"] else ""
-    lines.append(f" → next      {action['label']}{cmd}")
-    lines.append("")
+    lines.append(f"{indent}→ next      {action['label']}{cmd}")
     return lines
 
 
@@ -589,8 +617,15 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     refresh = refresh or rebuild
     mv = None if refresh else map_view(repo)
     if not (refresh or not (mv and mv.get("nodes"))):
-        if color:
-            print("\x1b[2m (cached — run `sgt log --refresh` to reflect new edits)\x1b[0m")
+        # Only say the view is behind when it actually is. This line used to print on every single
+        # read, which made it carry no information and cast doubt on every reading -- the developer
+        # either learns to ignore it (so a genuinely stale view goes unnoticed) or re-runs with
+        # `--refresh` reflexively, paying a rebuild to be told nothing changed. Saying what is
+        # missing, and only when something is, is both shorter and worth reading.
+        missing = _map_staleness(repo)
+        if missing:
+            line = f" ({missing} not shown yet — `sgt log --refresh`)"
+            print(f"\x1b[2m{line}\x1b[0m" if color else line)
         return mv
 
     from sgt.core.lens import get
@@ -605,6 +640,33 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     build_segments(repo)     # per-feature checkpoints (the "what I did, in chapters" layer)
     build_themes(repo)       # cross-feature rollup (kept for the "one PR spanned N features" view)
     return map_view(repo)
+
+
+def _map_staleness(repo: str) -> str | None:
+    """What the last-built map does not yet reflect, phrased for a person, or `None` when it is
+    current. Two ways it can fall behind: edits sitting in the working tree that no save has mined
+    into it, and ops that landed since it was built. Both checks are cheap reads -- a git dirty
+    probe and the persisted `op_leaf` against the current ideal -- so this stays affordable on a
+    surface the developer hits constantly."""
+    from sgt.core.lens import current_ideal
+    from sgt.lens.tree import load as load_tree
+    from sgt.store.gitbind import GitBinding
+
+    parts: list[str] = []
+    try:
+        tree = load_tree(repo)
+        known = set((tree or {}).get("op_leaf") or {})
+        unmapped = len(current_ideal(repo).op_ids - known)
+        if unmapped:
+            parts.append(f"{unmapped} saved edit(s)")
+    except Exception:  # noqa: BLE001 -- an advisory line must never break a read
+        pass
+    try:
+        if GitBinding(repo).has_dirty_source():
+            parts.append("unsaved edits")
+    except Exception:  # noqa: BLE001
+        pass
+    return " and ".join(parts) if parts else None
 
 
 def _blame(repo: str, file: str, as_json: bool = False) -> int:
@@ -789,56 +851,24 @@ def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
     (⋔ + per-symbol remedy) -- a fork is divergence you must resolve, not a muted count (non-blocking)."""
     from sgt.api import now_view
     from sgt.core.lens import get
-    from sgt.tui.graph import _state_banner
 
     get(repo)
     view = now_view(repo)
     if as_json:
         return _emit_json(view)
 
-    inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
-    for line in _state_banner({"forks": needs["forks"]}, color=color):
+    # `sgt now` and bare `sgt log`'s header answer the same question, so they share one renderer
+    # (`state_lines`) rather than two copies that drift apart in wording. Only the recently-done
+    # list is `now`'s own -- `log` prints the save list right below, which is already that.
+    lines = state_lines(view, color=color)
+    tail = lines.pop()  # the "→ next" line, printed last so recently-done sits above it
+    for line in lines:
         print(line)
-    # Lead with the task in the developer's own words. "12 op(s) across 2 feature(s)" answers a
-    # question about the store; "what am I working on" is a question about *them*, and the prompt
-    # hook already recorded the answer verbatim.
-    working = view.get("working_on")
-    if working:
-        print(f"working on  {working['title']}{_ago(working.get('ts'), color=color)}")
-    if inflight["total_op_count"]:
-        total, fresh = inflight["total_op_count"], inflight["new_work_count"]
-        n_feat = len(inflight["affected"])
-        where = f" in {n_feat} feature{'s' if n_feat != 1 else ''}" if n_feat else ""
-        # "4 edit(s), 4 new" reads as two facts and is one. Say "new" only when it distinguishes
-        # part of the total from the rest.
-        what = f"{total} new edit(s)" if fresh == total else f"{total} edit(s)"
-        if fresh and fresh != total:
-            what += f", {fresh} new"
-        print(f"unsaved     {what}{where}")
-    # A plan being actively built. Its step title already led the surface above when it exists, so
-    # this line carries only the progress the title cannot.
-    for p in view.get("in_progress", []):
-        done, total = p["matched_count"], p["step_count"]
-        print(f"            step {done + 1} of {total}")
-    activity = (view.get("context") or {}).get("activity") or []
-    if activity:
-        last = activity[0]
-        where = f" {last['file']}" if last.get("file") else ""
-        more = f" (+{len(activity) - 1} more)" if len(activity) > 1 else ""
-        print(f"agent       {last['tool']}{where}{more}")
-    parts = []
-    if needs["stalled_plans"]:
-        parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
-    if needs["reviews"]:
-        parts.append(f"{len(needs['reviews'])} review(s)")
-    if parts:
-        print("needs you   " + " · ".join(parts))
     if view["recently_done"]:
         print("recently done")
         for c in view["recently_done"]:
             print(f"    {c['sha'][:8]}  {c['subject']}")
-    cmd = f"   ({action['command']})" if action["command"] else ""
-    print(f"→ next      {action['label']}{cmd}")
+    print(tail)
     return 0
 
 
