@@ -560,7 +560,13 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     refresh = refresh or rebuild
     mv = None if refresh else map_view(repo)
     if not (refresh or not (mv and mv.get("nodes"))):
-        if color:
+        from sgt.core.lens import cached_map_is_current
+
+        # Only nag about refreshing when a re-mine would actually pick something up (edited/added
+        # source, a new commit, an ideal edit). When the working tree is in sync with the last
+        # build, the cached read already reflects reality -- a standing "run --refresh" line is
+        # just noise on the daily surface.
+        if color and not cached_map_is_current(repo):
             print("\x1b[2m (cached — run `sgt log --refresh` to reflect new edits)\x1b[0m")
         return mv
 
