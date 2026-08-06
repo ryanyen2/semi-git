@@ -2036,6 +2036,45 @@ def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
     }
 
 
+def show_view(repo, at: str, path: str | None = None) -> dict:
+    """A file as it was at a past frontier, or the list of files that existed there.
+
+    The shared resolution behind `sgt show` and the MCP `sgt_show`. It lives here because both
+    surfaces need the same answer and rebuilding it per surface is how they drift: the MCP copy
+    matched only a path suffix while the CLI matched an exact repo-relative path *or* a suffix, and
+    the two reported a miss differently. Read-only -- `fold_view` reconstructs `code(I)` without
+    checking anything out."""
+    view = fold_view(repo, **_parse_show_spec(at))
+    if view.get("forked"):
+        return {"error": view["message"]}
+    if "error" in view:
+        return {"error": view["error"]}
+    files = view["files"]
+    if not path:
+        return {"at": at, "op_count": view["op_count"], "files": sorted(files)}
+    if path not in files:
+        # Suffix-matching beats an exact-path demand: the reader knows the file by its name far
+        # more reliably than by its full repo-relative path.
+        matches = [p for p in sorted(files) if p == path or p.endswith("/" + path)]
+        if not matches:
+            return {"error": f"{path!r} does not exist at {at} ({len(files)} file(s) do; "
+                             f"run `sgt show {at}` to list them)"}
+        if len(matches) > 1:
+            return {"error": f"{path!r} is ambiguous at {at}: {', '.join(matches)}"}
+        path = matches[0]
+    return {"at": at, "path": path, "content": files[path]}
+
+
+def _parse_show_spec(spec: str) -> dict:
+    """`sgt show`/`sgt fold --at`'s frontier grammar: an all-digit spec is a commit-index position,
+    `op:<id>,...` an explicit op-id set, anything else a ref name."""
+    if spec.isdigit():
+        return {"at_commit_index": int(spec)}
+    if spec.startswith("op:"):
+        return {"op_ids": spec[3:].split(",")}
+    return {"ref": spec}
+
+
 def _atom_prompt(repo, atom) -> str | None:
     """The best available recorded prompt for one atom (plan U3/U6): try its own commit sha
     first (`sgt session start --task` keys land here indirectly only via provenance, but a direct

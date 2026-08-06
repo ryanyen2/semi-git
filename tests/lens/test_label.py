@@ -460,3 +460,36 @@ def test_naming_from_own_words_never_calls_the_client(tmp_path, monkeypatch):
 
     assert result["nodes"]["f-1"]["label"] == subject
     assert calls["n"] == 0
+
+
+def test_both_tree_build_paths_name_a_feature_the_same_way(tmp_path, monkeypatch):
+    """`lens/map.py` assembled the naming context and passed it; `lens/reconcile.py` called
+    `label_tree` without it and silently skipped the developer's own words. The same feature could
+    therefore be named from its commit subject on one path and from a synthesized summary on the
+    other -- surfaces disagreeing, which is the failure the naming work exists to end. `label_tree`
+    derives the context itself now, so a caller cannot forget it."""
+    from sgt.core.lens import get
+    from sgt.lens import tree as tree_mod
+    from sgt.store.gitbind import init_store
+
+    monkeypatch.setattr(label_mod, "get_client", _no_client)
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("Add the alpha helper")
+    ideal = get(tmp_path)
+
+    from sgt.core import opindex
+    ops = opindex.index_ops(tmp_path)
+
+    # The `map.py` shape (context derived) and the `reconcile.py` shape (ops passed, nothing else).
+    built = tree_mod.build(tmp_path, ops, ideal)
+    tree_mod.label_tree(built, tmp_path, ops=ops)
+    via_map = {nid: nd["label"] for nid, nd in built["nodes"].items() if not nd["children"]}
+
+    rebuilt = tree_mod.build(tmp_path, ops, ideal)
+    tree_mod.label_tree(rebuilt, tmp_path, pins=None, ops=ops)
+    via_reconcile = {nid: nd["label"] for nid, nd in rebuilt["nodes"].items() if not nd["children"]}
+
+    assert via_map == via_reconcile
+    # And it is the developer's own subject, not a structural fallback.
+    assert "Add the alpha helper" in set(via_map.values())

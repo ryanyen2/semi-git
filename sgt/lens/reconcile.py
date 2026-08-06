@@ -136,5 +136,5 @@ def reconcile_tree(
     # red oracle or lost CAS. The label cache is `committed=False` (not git-tracked), so a rolled-
     # back attempt's `restore_worktree_to` can't undo a write here -- it would leak past R7's "no
     # trace" guarantee. `result`'s nodes already carry the labels regardless of this save.
-    tree.label_tree(result, repo, pins=pins)
+    tree.label_tree(result, repo, pins=pins, ops=ops)
     return result
