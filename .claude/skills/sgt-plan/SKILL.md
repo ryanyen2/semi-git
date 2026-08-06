@@ -29,7 +29,10 @@ plan.
    it silently breaks both the join and the resume link while appearing to work.
 
 2. **Work** — implement the steps in the working tree (or a `sgt session` worktree). Edit code
-   normally; you do not touch the plan while working.
+   normally; you do not touch the plan while working. When a step's work is finished, record it
+   with `sgt_save` and pass `message` — your own words about what this work was. They become the
+   save's subject, the recorded intent, and the name of any feature born from it, so writing the
+   sentence you would have written in a commit is the whole of the obligation.
 
 3. **Checkpoint** — call `sgt_checkpoint` (no args) for a read-only preview of which mined ops
    overlap which pending steps, plus any drift. When a group is right, call `sgt_checkpoint` again
@@ -48,6 +51,12 @@ same `session_id`. That is a resume, not a new plan: the original baseline and c
 kept, so everything you built before the interruption stays attributed to this plan instead of
 reappearing as drift, and the steps are re-decomposed from whatever you now intend to do. Steps the
 new plan no longer has are cleaned up.
+
+**Working without a plan.** This loop is worth the ceremony for multi-step work, and most work is
+not that. If you are just doing what was asked, skip it: edit, then `sgt_save` with your own words.
+`sgt_now` tells you where things stand at any point — including `working_on`, the user's own prompt
+verbatim, which is what to read when picking work back up rather than inferring the task from a
+diff. `sgt_show` reads a file as it was at a past point without checking anything out.
 
 Between steps 3 and 4, `sgt_drift` lists ops no active plan predicted. Drift is not a chore to
 resolve; it is a read-only diff of what happened outside your stated plan. Read it to confirm no

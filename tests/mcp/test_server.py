@@ -49,7 +49,11 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     assert names == {"sgt_init", "sgt_log", "sgt_grid", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
                       "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
                       "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done",
-                      "sgt_recall"}
+                      "sgt_recall",
+                      # An agent could read the graph and edit code but record neither, so a human
+                      # relayed every save by hand -- the back-and-forth between editor, terminal
+                      # and agent that the graph exists to remove.
+                      "sgt_save", "sgt_now", "sgt_show"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -341,3 +345,68 @@ def test_plan_done_without_a_caller_id_still_closes(tmp_path):
 
     _, ok = _call(repo, "sgt_plan_done", {"session_id": "theirs"})
     assert ok.get("ok") is True
+
+
+# -- the agent can record its own work -------------------------------------------------------
+
+def test_save_records_the_agents_edits(tmp_path):
+    """An agent could read the graph and edit code but record neither, so a human had to relay
+    every save by hand -- the exact back-and-forth between editor, terminal and agent that the
+    graph exists to remove."""
+    repo = _seed(tmp_path, 1)
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+
+    _, payload = _call(repo, "sgt_save", {"message": "bump foo"})
+
+    assert payload["ok"] is True and payload["saved"] is True
+    assert payload["commit"]
+    # The agent's own words are what got recorded, not a generated paraphrase of them.
+    assert payload.get("words") == "bump foo"
+
+
+def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _call(repo, "sgt_log")  # mine, so the ideal is current
+
+    _, payload = _call(repo, "sgt_save", {})
+
+    assert payload["ok"] is True and payload["saved"] is False
+
+
+def test_now_gives_an_agent_the_users_own_ask(tmp_path):
+    """`working_on` is as useful to the agent as to the human: picking work back up, it says what
+    was actually asked instead of leaving the agent to infer it from a diff."""
+    from sgt.intent.turns import record_turn
+
+    repo = _seed(tmp_path, 1)
+    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text="Add rate limiting to the API")
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+
+    _, payload = _call(repo, "sgt_now")
+
+    assert payload["working_on"]["title"] == "Add rate limiting to the API"
+    assert payload["working_on"]["source"] == "prompt"
+
+
+def test_show_reads_a_past_file_without_touching_the_tree(tmp_path):
+    repo = _seed(tmp_path, 3)
+    before = (tmp_path / "a.py").read_text(encoding="utf-8")
+
+    _, listing = _call(repo, "sgt_show", {"at": "0"})
+    _, content = _call(repo, "sgt_show", {"at": "0", "path": "a.py"})
+
+    assert listing["files"] == ["a.py"]
+    assert "return 1" in content["content"]
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == before
+
+
+def test_a_failing_verb_is_a_tool_error_not_a_dead_server(tmp_path):
+    """The adapter captures stdout because this process speaks JSON-RPC on it; a verb that fails
+    must come back as an error payload, never as stray output mid-transport."""
+    repo = _seed(tmp_path, 1)
+
+    resp, payload = _call(repo, "sgt_show", {"at": "op:not-a-real-op-id"})
+
+    assert "error" in payload
+    assert resp["result"]["isError"] is True
