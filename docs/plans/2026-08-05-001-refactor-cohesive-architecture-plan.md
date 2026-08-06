@@ -306,15 +306,22 @@ and the trailer deletes both -- measured free on 2632 commits -- and `history()`
 the miner never sees it. The turn store was also parsed twice per `now_view`; it keeps every prompt
 ever typed and is never pruned, so that cost grows forever. Now read once and shared.
 
-Two altitude findings were real and are **not** done, both bounded:
+Two altitude findings were real, and both are now done:
 
-- **`_run_cli_json` is one missing function papered over.** `tool_now` and `tool_show` reach library
+- **`_run_cli_json` was one missing function papered over.** Fixed: `porcelain.save()` returns the
+  payload and `api.show_view()` holds the resolution both surfaces share, so the adapter is gone
+  rather than generalized -- along with the `os.chdir` and the stdout redirect on a process whose
+  stdout carries JSON-RPC frames. The original finding, for the record: `tool_now` and `tool_show` reach library
   entry points; only `save` needed an adapter, because its payload is built inside its printer
   (`_render_save`). Extracting `save_payload()` (~40 lines, one file) lets `tool_save` call
   porcelain directly and deletes the adapter's reason to exist -- along with an `os.chdir` and a
   stdout redirect on a process that speaks JSON-RPC over stdout. Generalizing that to every verb is
   the phase-2 work; doing it for `save` alone is not.
-- **`subject_label` is naming policy inlined into a traversal loop, and it already diverges.**
+- **`subject_label` was naming policy inlined into a traversal loop, and it diverged.** Fixed at the
+  root: `label_tree` derives the naming context itself (`label_context`, moved beside it) instead of
+  each caller assembling and passing it, because a caller that has to remember is one that will
+  forget. `reconcile` passes its in-memory ops, since mid-sync the unioned store is not yet on disk.
+  A test pins both paths to the same name. The original finding:
   `lens/map.py` plumbs subject counts into `label_tree` and gets the new naming; `lens/reconcile.py`
   calls `label_tree` without them and silently does not, so the same feature can be named two ways
   depending on which path built the tree -- the exact "surfaces disagree" failure this plan exists
