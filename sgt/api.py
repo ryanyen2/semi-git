@@ -2276,7 +2276,7 @@ def segments_view(repo) -> list[dict]:
     return _segments_out(repo, op_leaf, tree_result)
 
 
-def _next_action(in_flight: dict, needs_you: dict) -> dict:
+def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) -> dict:
     """The single "do this next" recommendation as a STRUCTURED action (not a rendered string, so
     each surface phrases it in its own idiom), from a fixed priority ladder: an open fork blocks
     everything (its two tips are excluded from every ideal), a stalled plan is a resumable thread,
@@ -2303,8 +2303,18 @@ def _next_action(in_flight: dict, needs_you: dict) -> dict:
                 "target": s["session_id"],
                 "label": f"resume stalled plan ({s['pending_count']} step(s) left)"}
     if in_flight["total_op_count"] > 0:
-        return {"kind": "save", "command": "sgt save", "target": None,
-                "label": f"save {in_flight['total_op_count']} pending op(s)"}
+        # A save is offered by what it *records*, not by the store's unit of accounting. The
+        # developer's own words are already on the surface one line above; if a message can be
+        # suggested from them, the command is copy-pasteable as-is rather than a `-m` to fill in.
+        n = in_flight["total_op_count"]
+        title = (working or {}).get("full_title") if isinstance(working, dict) else None
+        # Only offer a filled-in message when it can be pasted verbatim: a quote in the sentence
+        # would break the shell line, and a suggestion the developer has to repair is worse than
+        # none. Long asks stay as the sentence they were -- a save message may run long.
+        usable = title and '"' not in title and "\\" not in title and "\n" not in title
+        command = f'sgt save -m "{title}"' if usable else "sgt save"
+        return {"kind": "save", "command": command, "target": None,
+                "label": f"save your {n} unsaved edit(s)"}
     reviews = needs_you["reviews"]
     if reviews:
         return {"kind": "review", "command": "sgt intent review", "target": None,
@@ -2358,6 +2368,23 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
 
     recently_done = history_view(repo, limit=recent_limit)["latest_commits"]
 
+    # What the developer is working on, in their own words. The prompt hook has always recorded
+    # every ask verbatim, so this needs no declaration step -- which matters because the common way
+    # to work is Claude Code's plan mode or a planning plugin, neither of which calls
+    # `sgt plan intake`. Without this the surface built to answer "what am I working on" answered
+    # with op counts. A prompt older than the last save has already been answered by it, so the last
+    # save's committer time is the cutoff.
+    from sgt.intent.working import working_on
+    from sgt.store.gitbind import GitBinding as _GB
+
+    last_save_ts = None
+    try:
+        times = _GB(repo).commit_times()
+        last_save_ts = max(times.values()) if times else None
+    except Exception:  # noqa: BLE001 -- an advisory line must never break the orient surface
+        last_save_ts = None
+    working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts)
+
     turns_all = sorted(turns_mod.load_turns(repo).values(), key=lambda t: t["ts"], reverse=True)
     context = {
         "turns": [{"text": t["text"], "actor": t["actor"], "ts": t["ts"]} for t in turns_all[:recent_limit]],
@@ -2365,12 +2392,13 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
     }
 
     return {
+        "working_on": working,
         "in_flight": in_flight,
         "in_progress": in_progress,
         "needs_you": needs_you,
         "recently_done": recently_done,
         "context": context,
-        "next_action": _next_action(in_flight, needs_you),
+        "next_action": _next_action(in_flight, needs_you, working),
     }
 
 

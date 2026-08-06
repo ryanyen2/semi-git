@@ -724,7 +724,21 @@ export interface NowInProgressPlan {
   current_title: string | null;
 }
 
+// The current task in the developer's own words, derived from the prompt hook rather than declared
+// via `sgt plan intake` -- the common way to work (Claude Code plan mode, a planning plugin) never
+// calls intake, so nothing else supplies it. `source` distinguishes a stated plan step from a raw
+// prompt, because the two carry different amounts of deliberation and blurring them would make the
+// surface look like it knows more than it does. Null when nothing has been asked for.
+export interface NowWorkingOn {
+  title: string;
+  full_title: string;
+  source: "plan" | "prompt";
+  ts: number | null;
+  session_id: string | null;
+}
+
 export interface NowView {
+  working_on: NowWorkingOn | null;
   in_flight: { affected: NowInFlightRow[]; new_work_count: number; total_op_count: number };
   in_progress: NowInProgressPlan[];
   needs_you: { forks: ForkRecord[]; reviews: NowReview[]; stalled_plans: NowStalledPlan[] };

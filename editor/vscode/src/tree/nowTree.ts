@@ -17,6 +17,7 @@ import {
   NowReview,
   NowStalledPlan,
   NowView,
+  NowWorkingOn,
 } from "../types";
 
 type SectionId = "in_progress" | "in_flight" | "needs_you" | "recently_done" | "next";
@@ -24,6 +25,7 @@ type SectionId = "in_progress" | "in_flight" | "needs_you" | "recently_done" | "
 export type NowNode =
   | { kind: "section"; sectionId: SectionId; label: string; count: number | null }
   | { kind: "inflight"; row: NowInFlightRow }
+  | { kind: "working"; working: NowWorkingOn }
   | { kind: "building"; plan: NowInProgressPlan }
   | { kind: "activity"; event: NowActivity }
   | { kind: "fork"; record: ForkRecord }
@@ -105,6 +107,16 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       };
       return item;
     }
+    if (node.kind === "working") {
+      const item = new vscode.TreeItem(node.working.title, vscode.TreeItemCollapsibleState.None);
+      // Say where the words came from. A stated plan step and a raw prompt are both the
+      // developer's, but only one was deliberated over, and the surface should not blur that.
+      item.description = node.working.source === "plan" ? "plan step" : "your prompt";
+      item.iconPath = new vscode.ThemeIcon(node.working.source === "plan" ? "checklist" : "comment");
+      item.tooltip = node.working.full_title;
+      item.contextValue = "sgtNowWorking";
+      return item;
+    }
     if (node.kind === "building") {
       // Progress, not a demand for attention: the step the agent is on, and how far through it is.
       const label = node.plan.current_title ?? `plan ${node.plan.session_id.slice(0, 8)}`;
@@ -177,7 +189,10 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
     if (!node) {
       const needsYou =
         now.needs_you.forks.length + now.needs_you.reviews.length + now.needs_you.stalled_plans.length;
-      const inProgress = (now.in_progress?.length ?? 0) + (now.context?.activity?.length ?? 0);
+      const inProgress =
+        (now.working_on ? 1 : 0) +
+        (now.in_progress?.length ?? 0) +
+        (now.context?.activity?.length ?? 0);
       const sections: NowNode[] = [
         { kind: "section", sectionId: "in_progress", label: "In progress", count: inProgress },
         { kind: "section", sectionId: "in_flight", label: "Unsaved", count: now.in_flight.total_op_count },
@@ -195,6 +210,8 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
     if (node.kind !== "section") return [];
     if (node.sectionId === "in_progress") {
       return [
+        // The task first, in the developer's own words, then the machinery under it.
+        ...(now.working_on ? [{ kind: "working", working: now.working_on } as NowNode] : []),
         ...(now.in_progress ?? []).map((plan): NowNode => ({ kind: "building", plan })),
         ...(now.context?.activity ?? []).map((event): NowNode => ({ kind: "activity", event })),
       ];

@@ -759,6 +759,28 @@ def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
     return 0
 
 
+def _ago(ts: float | None, *, color: bool = False) -> str:
+    """A dim, relative "when" -- ` 4m ago` -- or nothing when there is no timestamp. Relative,
+    because the only thing a developer reads this for is whether it is still the thing they were
+    just doing, and a clock time makes them do that subtraction themselves."""
+    if not ts:
+        return ""
+    import time as _t
+
+    from sgt.tui.graph import _dim
+
+    delta = max(0, int(_t.time() - ts))
+    if delta < 90:
+        word = f"{delta}s ago"
+    elif delta < 5400:
+        word = f"{delta // 60}m ago"
+    elif delta < 172800:
+        word = f"{delta // 3600}h ago"
+    else:
+        word = f"{delta // 86400}d ago"
+    return _dim(f"  ({word})", color=color)
+
+
 def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
     """`sgt now [--json]`: the state-of-actions surface (`api.now_view`) -- what's in flight, what
     needs you, what was recently done, and the single recommended next action. The daily "where am
@@ -777,17 +799,27 @@ def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
     inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
     for line in _state_banner({"forks": needs["forks"]}, color=color):
         print(line)
+    # Lead with the task in the developer's own words. "12 op(s) across 2 feature(s)" answers a
+    # question about the store; "what am I working on" is a question about *them*, and the prompt
+    # hook already recorded the answer verbatim.
+    working = view.get("working_on")
+    if working:
+        print(f"working on  {working['title']}{_ago(working.get('ts'), color=color)}")
     if inflight["total_op_count"]:
-        extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
-        print(f"unsaved     {inflight['total_op_count']} op(s) across "
-              f"{len(inflight['affected'])} feature(s){extra}")
-    # What is happening right now. A plan being actively built, and the agent's last few edits,
-    # were both already recorded and neither was ever shown -- so "is anything running?" was a
-    # question this surface could answer and didn't.
+        total, fresh = inflight["total_op_count"], inflight["new_work_count"]
+        n_feat = len(inflight["affected"])
+        where = f" in {n_feat} feature{'s' if n_feat != 1 else ''}" if n_feat else ""
+        # "4 edit(s), 4 new" reads as two facts and is one. Say "new" only when it distinguishes
+        # part of the total from the rest.
+        what = f"{total} new edit(s)" if fresh == total else f"{total} edit(s)"
+        if fresh and fresh != total:
+            what += f", {fresh} new"
+        print(f"unsaved     {what}{where}")
+    # A plan being actively built. Its step title already led the surface above when it exists, so
+    # this line carries only the progress the title cannot.
     for p in view.get("in_progress", []):
         done, total = p["matched_count"], p["step_count"]
-        title = f"  {p['current_title']}" if p["current_title"] else ""
-        print(f"in progress step {done}/{total}{title}")
+        print(f"            step {done + 1} of {total}")
     activity = (view.get("context") or {}).get("activity") or []
     if activity:
         last = activity[0]
