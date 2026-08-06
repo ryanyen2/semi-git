@@ -163,9 +163,20 @@ def _restore_cascade_tables(repo: str, snapshot: dict[str, bytes | None]) -> Non
             p.write_bytes(raw)
 
 
+def save(repo: str, *, message: str | None = None, as_label: str | None = None) -> dict:
+    """Record the working tree's edits and return what the save did, as data.
+
+    The library entry point behind `sgt save`, for callers that are not a terminal -- the MCP
+    server, chiefly. It exists because the only way to reach a save's result used to be to print
+    it, which forced that server to run the verb through argparse with stdout redirected, on a
+    process whose stdout carries JSON-RPC frames."""
+    out = _save(repo, message, True, as_label=as_label, return_payload=True)
+    return out if isinstance(out, dict) else {"ok": False, "error": "save failed"}
+
+
 def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
           confirm_hollow: list[str] = (), confirm_op: list[str] = (),
-          as_label: str | None = None, color: bool = False) -> int:
+          as_label: str | None = None, color: bool = False, return_payload: bool = False):
     """`sgt save [-m]` (D3): the put-path sugar -- mine the working tree (R9), then materialize a
     witness commit for the resulting ideal and record it. "Nothing to save" is decided by the
     ideal, not git's dirty flag: with no uncommitted ops the mined ideal equals the recorded one
@@ -249,8 +260,11 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
                 pass
     elif not resolve_plan:
         msg = "nothing to save -- no uncommitted ops"
+        nothing = {"ok": True, "saved": False, "message": msg}
+        if return_payload:  # this early exit is a real outcome, not a shortcut past the payload
+            return nothing
         if as_json:
-            return _emit_json({"ok": True, "saved": False, "message": msg})
+            return _emit_json(nothing)
         print(f"✓ {msg}")
         return 0
 
@@ -280,6 +294,9 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     # shouldn't hide -- surface it loudly at the end of every save (⋔ banner + per-symbol remedy).
     from sgt.api import forks_view
     open_forks = forks_view(repo)["forks"]
+    if return_payload:
+        return save_payload(saved=saved, sha=sha, n=n, plan=plan, words=words, why=why,
+                            features=features, renamed=renamed, open_forks=open_forks)
     return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,  # holds only ALIGN
                         message=message, features=features, renamed=renamed, why=why,  # + confirmed
                         open_forks=open_forks, color=color)
@@ -498,26 +515,40 @@ def _aligned_why(repo: str, new_op_ids: frozenset, words: str | None) -> str | N
     return "; ".join(reasons) if reasons else None
 
 
+def save_payload(*, saved: bool, sha: str | None, n: int, plan: dict | None = None,
+                 words: str | None = None, why: str | None = None, features=(),
+                 renamed: dict | None = None, open_forks=()) -> dict:
+    """What a save did, as data. Extracted from `_render_save` so a non-CLI caller can have the
+    save's result without the CLI printing it: the MCP server used to run the verb through argparse
+    with stdout redirected, purely because the only way to reach this dict was to print it -- on a
+    process that speaks JSON-RPC over stdout, which made the redirect load-bearing rather than
+    incidental. One builder, two renderers."""
+    out: dict = {"ok": True, "saved": saved, "open_fork_count": len(open_forks)}
+    if saved:
+        out["commit"], out["ops"] = sha, n
+    if words:  # the captured words, structured for the editor/VSCode surface
+        out["words"] = words
+    if why:  # the ledger's aligned reason for these ops (distinct from the captured words)
+        out["why"] = why
+    if features:
+        out["features"] = list(features)
+    if renamed is not None:
+        out["renamed"] = renamed
+    if plan is not None:
+        out["plan"] = plan
+    return out
+
+
 def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                  plan: dict | None, resolve_plan: bool, *, message: str | None = None,
                  features: list[dict] = (), renamed: dict | None = None,
                  words: str | None = None, why: str | None = None,
                  open_forks: list[dict] = (), color: bool = False) -> int:
     if as_json:
-        out: dict = {"ok": True, "saved": saved, "open_fork_count": len(open_forks)}
-        if saved:
-            out["commit"], out["ops"] = sha, n
-        if words:  # the captured words, structured for the editor/VSCode surface
-            out["words"] = words
-        if why:  # the ledger's aligned reason for these ops (distinct from the captured words)
-            out["why"] = why
-        if features:
-            out["features"] = list(features)
-        if renamed is not None:
-            out["renamed"] = renamed
-        if plan is not None:
-            out["plan"] = plan
-        return _emit_json(out)
+        return _emit_json(save_payload(
+            saved=saved, sha=sha, n=n, plan=plan, words=words, why=why,
+            features=features, renamed=renamed, open_forks=open_forks,
+        ))
 
     if saved:
         from sgt.tui.color import color_for

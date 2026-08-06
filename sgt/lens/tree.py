@@ -1079,11 +1079,51 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
     return remap
 
 
+def label_context(repo: Path, ops: list, result: dict) -> tuple[dict, dict]:
+    """Per-leaf label enrichment for `label_tree`: the commit subjects (the strongest WHAT-is-this
+    signal -- "feat(cli): revert frontier" names the feature far better than the symbol ids) and a
+    compact change-kind summary, both keyed by leaf. Subjects are ordered by frequency so the
+    prompt's cap surfaces the dominant intent. `op.intent` is not used -- it is empty on mined
+    history (advisory, only set by sgt's own plan/rewrite verbs), so commit subjects + kind are the
+    real per-leaf signal.
+
+    Lives here, beside `label_tree`, because it is not optional enrichment -- it decides whether a
+    feature is named from the developer's own commit subject or from a synthesized summary. When it
+    was the caller's job to assemble and pass, `lens/map.py` did and `lens/reconcile.py` did not, so
+    the same feature got named two different ways depending on which path built the tree. `label_tree`
+    now derives it when the caller doesn't supply it, which is the only way that cannot drift."""
+    from sgt.store.gitbind import GitBinding
+
+    subjects = {sha: subj for sha, _parent, subj in GitBinding(repo).history()}
+    by_id = {op.id: op for op in ops}
+    subj_counts: dict[str, Counter] = defaultdict(Counter)
+    kind_counts: dict[str, Counter] = defaultdict(Counter)
+    for op_id, leaf in result["op_leaf"].items():
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        kind_counts[leaf][op.kind] += 1
+        for sha in op.provenance:
+            subj = subjects.get(sha)
+            if subj:
+                subj_counts[leaf][subj] += 1
+    subjects_by_leaf = {leaf: [s for s, _ in c.most_common()] for leaf, c in subj_counts.items()}
+    kinds_by_leaf = {
+        leaf: ", ".join(f"{k}×{n}" for k, n in c.most_common(4)) for leaf, c in kind_counts.items()
+    }
+    # The raw counts too, not just the frequency order: naming a feature after its dominant commit
+    # is only right when that commit actually dominates (`label.subject_label`), and "which subject
+    # is first" cannot answer that.
+    subject_counts_by_leaf = {leaf: dict(c) for leaf, c in subj_counts.items()}
+    return subjects_by_leaf, kinds_by_leaf, subject_counts_by_leaf
+
+
 def label_tree(
     result: dict, repo: str | Path = ".", labeler=None,
     subjects_by_leaf: dict[str, list[str]] | None = None, pins: Pins | None = None,
     kinds_by_leaf: dict[str, str] | None = None, weights: dict[str, float] | None = None,
     relabel: bool = False, subject_counts_by_leaf: dict[str, dict[str, int]] | None = None,
+    ops: list | None = None,
 ) -> object:
     """Label every node bottom-up (leaves from members, a single-child node reuses its child's
     label, an internal node from its children's labels), then DEDUP. Mutates `result` in place:
@@ -1114,6 +1154,20 @@ def label_tree(
         labeler = Labeler(repo, relabel=relabel)
     if pins is None:
         pins = load_pins(repo)
+    # Derive the naming context when the caller didn't supply it, rather than silently naming
+    # features a different way. `lens/map.py` passed it and `lens/reconcile.py` did not, so the same
+    # feature could be named from its own commit subject on one path and from a synthesized summary
+    # on the other. `ops` is a parameter because `reconcile` runs mid-sync, where the unioned store
+    # exists only in memory and reading it off disk would see the wrong set.
+    if subjects_by_leaf is None and subject_counts_by_leaf is None:
+        try:
+            if ops is None:
+                from sgt.core import opindex
+                ops = opindex.index_ops(Path(repo))
+            subjects_by_leaf, kinds_by_leaf, subject_counts_by_leaf = label_context(
+                Path(repo), ops, result)
+        except Exception:  # noqa: BLE001 -- naming context is enrichment; never fail a build for it
+            pass
     nodes = result["nodes"]
     subjects_by_leaf = subjects_by_leaf or {}
     kinds_by_leaf = kinds_by_leaf or {}

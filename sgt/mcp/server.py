@@ -246,44 +246,6 @@ def tool_drift(repo_path: str, args: dict) -> dict:
     return drift_view(repo_path, full=bool(args.get("full", False)))
 
 
-def _run_cli_json(repo_path: str, argv: list[str]) -> dict:
-    """Run a CLI verb in `--json` mode and return its payload.
-
-    The MCP surface and the CLI answer to the same verbs, and the `--json` payload is already the
-    machine contract both the extension and the TUI consume. Re-implementing a verb here would mean
-    two copies of it, and the copies would drift -- which is the failure this whole surface exists
-    downstream of. So the adapter runs the real verb and captures the payload it already emits.
-
-    Capturing stdout is load-bearing, not incidental: this process speaks newline-delimited JSON-RPC
-    on stdout, so a verb printing even one line would corrupt the transport mid-session. Redirecting
-    it is what makes calling porcelain from here safe at all.
-    """
-    import contextlib
-    import io
-    import os
-
-    from sgt.cli import main
-
-    buf = io.StringIO()
-    cwd = os.getcwd()
-    try:
-        os.chdir(repo_path)
-        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
-            code = main([*argv, "--json"])
-    except Exception as ex:  # noqa: BLE001 -- a verb failure is a tool error, never a dead server
-        return {"error": f"{type(ex).__name__}: {ex}"}
-    finally:
-        os.chdir(cwd)
-    text = buf.getvalue().strip()
-    if not text:
-        return {"error": f"`sgt {' '.join(argv)}` produced no output (exit {code})"}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # A verb that printed prose instead of JSON: report it verbatim rather than pretending.
-        return {"error": text.splitlines()[-1]}
-
-
 def tool_save(repo_path: str, args: dict) -> dict:
     """`sgt save`: record the agent's edits as a real save.
 
@@ -291,14 +253,11 @@ def tool_save(repo_path: str, args: dict) -> dict:
     to relay every save by hand -- the exact back-and-forth between editor, terminal and agent that
     the graph exists to remove. A save is additive and `sgt undo` reverses it, which is what makes
     it safe to hand over."""
-    argv = ["save"]
-    message = (args.get("message") or "").strip()
-    if message:
-        argv += ["-m", message]
-    label = (args.get("as_feature") or "").strip()
-    if label:
-        argv += ["--as", label]
-    return _run_cli_json(repo_path, argv)
+    from sgt.cli.porcelain import save
+
+    return save(repo_path,
+                message=(args.get("message") or "").strip() or None,
+                as_label=(args.get("as_feature") or "").strip() or None)
 
 
 def tool_now(repo_path: str, args: dict) -> dict:
@@ -316,15 +275,18 @@ def tool_now(repo_path: str, args: dict) -> dict:
 def tool_show(repo_path: str, args: dict) -> dict:
     """`sgt show <spec> [<path>]`: a file as it was at a past frontier, read-only.
 
-    Routed through the CLI verb rather than rebuilt here. It was rebuilt at first and had already
-    drifted before it shipped -- the CLI matches an exact repo-relative path *or* a suffix and
-    distinguishes "no such file" from "ambiguous", this one only did suffixes and collapsed both
-    errors -- which is exactly the two-copies failure `_run_cli_json` exists to prevent."""
+    Shares `api.show_view` with the CLI verb rather than resolving it again here. It was rebuilt at
+    first and had drifted before it shipped -- the CLI matched an exact repo-relative path *or* a
+    suffix and told "no such file" apart from "ambiguous"; this one did suffixes only and collapsed
+    both errors."""
+    from sgt.api import show_view
+    from sgt.core.lens import get
+
     spec = (args.get("at") or "").strip()
     if not spec:
         return {"error": "missing 'at' (a commit index, `op:<id>,...`, or a ref)"}
-    path = (args.get("path") or "").strip()
-    return _run_cli_json(repo_path, ["show", spec, *([path] if path else [])])
+    get(repo_path)
+    return show_view(repo_path, spec, (args.get("path") or "").strip() or None)
 
 
 def tool_plan_done(repo_path: str, args: dict) -> dict:
