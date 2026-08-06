@@ -520,8 +520,13 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
         return _emit_json(out)
 
     if saved:
+        from sgt.tui.color import color_for
+        from sgt.tui.graph import _dim, _paint
+        # Feature-colored sha, matching the rail's own coding (the dominant feature = most-touched).
+        dom = features[0]["feature_id"] if features else ""
+        sha_s = _paint(color_for(dom), sha[:7], color=color) if (color and dom) else sha[:7]
         title = f' "{message}"' if message else ""
-        print(f"✓ save {sha[:7]}{title}")
+        print(f"✓ save {sha_s}{title}")
         # Capture legibility (intent-ledger P1): when the header didn't already echo an `-m`
         # message, show what capture actually holds for this save -- the plan step's words, or an
         # explicit empty state. Never the temporally-nearest turn: the echo shows only words truly
@@ -533,14 +538,24 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
         if why:
             import textwrap
             print(f'  · why (aligned): {textwrap.shorten(why, width=60, placeholder="…")}')
-        for f in features:
+        # Post-save graph (Issue 4): the save node branching into the feature lane(s) its new ops
+        # landed in, drawn in the rail's own vocabulary (feature-colored ● live / ○ freshly minted)
+        # so `sgt save` and `sgt log` read the same -- not a stale full-map rail (a save doesn't
+        # rebuild the map), but the accurate save-time attribution rendered as a compact tree.
+        for i, f in enumerate(features):
+            conn = "└─" if i == len(features) - 1 else "├─"
+            hexc = color_for(f["feature_id"])
+            glyph = _paint(hexc, "○" if f["new"] else "●", color=color)
             syms = ", ".join(f["symbols"][:3]) + (f" +{len(f['symbols']) - 3} more"
                                                   if len(f["symbols"]) > 3 else "")
             if f["new"]:
-                print(f"  → new feature ({f['handle']})  {syms}"
-                      f'  — unnamed; name it: sgt feature rename {f["handle"]} "<label>"')
+                name = _paint(hexc, "new feature", color=color)
+                tail = _dim(f'({f["handle"]}) — unnamed; name it: '
+                            f'sgt feature rename {f["handle"]} "<label>"', color=color)
             else:
-                print(f"  → {f['label']} ({f['handle']})  {syms}")
+                name = _paint(hexc, f["label"], color=color)
+                tail = _dim(f'({f["handle"]})', color=color)
+            print(f"  {conn} {glyph} {name} {tail}  {syms}")
         if renamed is not None:
             if renamed["ok"]:
                 print(f'  ✓ named "{renamed["label"]}"')
@@ -549,6 +564,10 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
         if len(features) >= 3:
             print(f"  ⚠ one save touched {len(features)} features — deliberate? "
                   f"`sgt log --map` shows them; `sgt feature regroup move` re-files work")
+        # Un-save discoverability (Issue 2): make reversing the save one obvious command. `sgt undo`
+        # pops the tail event of the op-log, which right now is this save's ideal edit -- so it drops
+        # exactly this save, returning its ops to pending (they stay on the tree, re-minable).
+        print(_dim("  ⤺ reverse this save:  sgt undo", color=color))
     if plan is not None:
         for e in plan["auto_confirmed"]:
             steps = ", ".join(h[:12] for h in e["hollow_ids"])
@@ -610,11 +629,11 @@ def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
             })
         parts = []
         if result.removed:
-            parts.append(f"{len(result.removed)} edit(s) dropped")
+            parts.append(f"{len(result.removed)} op(s) back to pending")
         if result.added:
-            parts.append(f"{len(result.added)} edit(s) re-added")
+            parts.append(f"{len(result.added)} op(s) restored")
         detail = f" — {', '.join(parts)}" if parts else ""
-        print(f"✓ undo {result.witness_sha[:7]}{detail}")
+        print(f"✓ undo {result.witness_sha[:7]}: restored the prior ideal{detail}")
         return 0
 
     # A metadata-snapshot kind (feature reorg / declared edge).

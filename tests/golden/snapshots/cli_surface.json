@@ -48,7 +48,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ref_a\": \"main\",\n  \"ref_b\": \"release\",\n  \"by_symbol\": {\n    \"slugify.py::slugify\": {\n      \"only_in_a\": [\n        \"1892ddefa476e65d50cbd19f81df1e526fadbb7654ccf539c55239eb4bf448f9\"\n      ],\n      \"only_in_b\": [\n        \"48a698ae5a9945ae3fb13f658cb8915423de578e124fc65dbaef16bcabd727c0\"\n      ]\n    }\n  },\n  \"count\": 2\n}\n"
+      "out": "{\n  \"ref_a\": \"main\",\n  \"ref_b\": \"release\",\n  \"by_symbol\": {\n    \"slugify.py::slugify\": {\n      \"only_in_a\": [\n        \"9fd4b0886aaedf032eac3806d63c63edd033851456ee6c7aa37df55184fe6284\"\n      ],\n      \"only_in_b\": [\n        \"cc65b269e800a0820bebe4c1395b1752d55c632fdbc53abb7df27d8ced81f831\"\n      ]\n    }\n  },\n  \"count\": 2\n}\n"
     },
     "text": {
       "argv": [
@@ -57,7 +57,7 @@
         "release"
       ],
       "exit": 0,
-      "out": "2 differing op(s) between main (a) and release (b):\n  slugify.py::slugify\n    a: 1892ddefa476\n    b: 48a698ae5a99\n"
+      "out": "2 differing op(s) between main (a) and release (b):\n  slugify.py::slugify\n    a: 9fd4b0886aae\n    b: cc65b269e800\n"
     }
   },
   "fsck": {
@@ -117,7 +117,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"commit_count\": 7,\n  \"save_count\": 7,\n  \"bookkeeping_count\": 0,\n  \"op_count\": 29,\n  \"kinds\": {\n    \"add\": 19,\n    \"rework\": 4,\n    \"prune\": 5,\n    \"move\": 1\n  },\n  \"features\": {\n    \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\": 14\n  },\n  \"latest_commits\": [\n    {\n      \"sha\": \"b558b8b181a39275346b572e85dcbd4bcde9e56d\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"f3a8be67501678ab5e88f271a636be25fe80a599\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"d1a2bc5f59bfa84096a83c6aeafd77c6d9e70db1\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"00cc584679966f0932f1767e619a4aeaaf9702eb\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"1e57edf2fe1e51ee3d25bc2618b43dd9bfcd55b1\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"716bae4d81f2032000ac811f4229b78061b50264\",\n      \"subject\": \"modify foo\",\n      \"index\": 1,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"b511794289b3d52552ed664bd582b155dda2d54b\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0,\n      \"bookkeeping\": false\n    }\n  ]\n}\n"
+      "out": "{\n  \"commit_count\": 7,\n  \"save_count\": 7,\n  \"bookkeeping_count\": 0,\n  \"op_count\": 29,\n  \"kinds\": {\n    \"add\": 19,\n    \"rework\": 4,\n    \"prune\": 5,\n    \"move\": 1\n  },\n  \"features\": {\n    \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\": 14\n  },\n  \"latest_commits\": [\n    {\n      \"sha\": \"b558b8b181a39275346b572e85dcbd4bcde9e56d\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"f3a8be67501678ab5e88f271a636be25fe80a599\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"d1a2bc5f59bfa84096a83c6aeafd77c6d9e70db1\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"00cc584679966f0932f1767e619a4aeaaf9702eb\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"1e57edf2fe1e51ee3d25bc2618b43dd9bfcd55b1\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"716bae4d81f2032000ac811f4229b78061b50264\",\n      \"subject\": \"modify foo\",\n      \"index\": 1,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"b511794289b3d52552ed664bd582b155dda2d54b\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0,\n      \"bookkeeping\": false\n    }\n  ]\n}\n"
     },
     "text": {
       "argv": [
@@ -134,23 +134,23 @@
         "advanced",
         "identity",
         "split",
-        "29692a773b4da4d44297df5d96bfb9bb19227e9b5a0decb35fe0d59e29c8508f",
-        "45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af",
+        "4bd592d91e4eca812536a6c48f6ab9654c246d1e525cb62701c2ecad9d6dd2fa",
+        "aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"never_link\": [\n    [\n      \"29692a773b4da4d44297df5d96bfb9bb19227e9b5a0decb35fe0d59e29c8508f\",\n      \"45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af\"\n    ]\n  ],\n  \"force_link\": []\n}\n"
+      "out": "{\n  \"never_link\": [\n    [\n      \"4bd592d91e4eca812536a6c48f6ab9654c246d1e525cb62701c2ecad9d6dd2fa\",\n      \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\"\n    ]\n  ],\n  \"force_link\": []\n}\n"
     },
     "text": {
       "argv": [
         "advanced",
         "identity",
         "split",
-        "29692a773b4da4d44297df5d96bfb9bb19227e9b5a0decb35fe0d59e29c8508f",
-        "45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af"
+        "4bd592d91e4eca812536a6c48f6ab9654c246d1e525cb62701c2ecad9d6dd2fa",
+        "aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82"
       ],
       "exit": 0,
-      "out": "\u2713 identity split: 29692a773b4da4d44297df5d96bfb9bb19227e9b5a0decb35fe0d59e29c8508f / 45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af\n"
+      "out": "\u2713 identity split: 4bd592d91e4eca812536a6c48f6ab9654c246d1e525cb62701c2ecad9d6dd2fa / aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\n"
     }
   },
   "init": {
@@ -168,14 +168,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"commits\": [\n    {\n      \"sha\": \"b511794289b3d52552ed664bd582b155dda2d54b\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"716bae4d81f2032000ac811f4229b78061b50264\",\n      \"subject\": \"modify foo\",\n      \"index\": 1,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"1e57edf2fe1e51ee3d25bc2618b43dd9bfcd55b1\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"00cc584679966f0932f1767e619a4aeaaf9702eb\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"d1a2bc5f59bfa84096a83c6aeafd77c6d9e70db1\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"f3a8be67501678ab5e88f271a636be25fe80a599\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"b558b8b181a39275346b572e85dcbd4bcde9e56d\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"bookkeeping\": false\n    }\n  ],\n  \"cells\": [\n    {\n      \"feature_id\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n      \"commit_index\": 0,\n      \"op_ids\": [\n        \"1da76fdb1c22e1f9219a9ed18e9bb370e3ade2480f0f64e96f4bcb5546ac3fa1\",\n        \"2b779bc47ebdfc023e52f843ba0e7ba1f8c77faa56269f7bc5161f11c948a53c\",\n        \"45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af\",\n        \"bc1345b4f273865221d7f31fe6a9a9c9dea7c99c157458f998619d80133320e6\",\n        \"d25e32a987670ac62f7e0708b6045948f46927be4b8cbb06b74398958547160c\",\n        \"d4aa85b797b35130074f35f903afdc3da23d90f7767830b98436c0a7b696f6c9\",\n        \"d7eccae9240f35bdd7eda8fc89ff1bdf123c2ff041fc926dd990f613d953e2dd\",\n        \"e162fad205498e7babac035a88f6995996aa431de42dabf1cd99e1ca2f0ffbef\"\n      ],\n      \"op_count\": 8,\n      \"kinds\": {\n        \"add\": 8\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n      \"commit_index\": 3,\n      \"op_ids\": [\n        \"a3514af745670eb9dc4054810f3b11396e629d3c18f8591b764aceadbc2e8d8c\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"add\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n      \"commit_index\": 4,\n      \"op_ids\": [\n        \"75cf10229e45b20fcd0784c310325e4b70102047bcd22744d45dab0e5c8e2410\",\n        \"ae8d50731d42432c53a5d1282e5ab7ccf97a5fe40b8574f7c9f47ba42543aec0\",\n        \"d4b3f6620b504c186b35b0e36a054db30cd0f934693f3a1eec942404a5976363\",\n        \"ebb6f7e11f904fc5e6dc92ba717d73623e856a833c221c4fe0d3659fda610f6d\"\n      ],\n      \"op_count\": 4,\n      \"kinds\": {\n        \"add\": 3,\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n      \"commit_index\": 6,\n      \"op_ids\": [\n        \"184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    }\n  ],\n  \"features\": {\n    \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\": {\n      \"label\": \"baz qux\",\n      \"op_count\": 14\n    }\n  },\n  \"ghosts\": [],\n  \"partial_commits\": [],\n  \"commit_count\": 7,\n  \"save_count\": 7,\n  \"bookkeeping_count\": 0,\n  \"op_count\": 14,\n  \"feature_count\": 1\n}\n"
+      "out": "{\n  \"commits\": [\n    {\n      \"sha\": \"b511794289b3d52552ed664bd582b155dda2d54b\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"716bae4d81f2032000ac811f4229b78061b50264\",\n      \"subject\": \"modify foo\",\n      \"index\": 1,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"1e57edf2fe1e51ee3d25bc2618b43dd9bfcd55b1\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"00cc584679966f0932f1767e619a4aeaaf9702eb\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"d1a2bc5f59bfa84096a83c6aeafd77c6d9e70db1\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"f3a8be67501678ab5e88f271a636be25fe80a599\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"b558b8b181a39275346b572e85dcbd4bcde9e56d\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"bookkeeping\": false\n    }\n  ],\n  \"cells\": [\n    {\n      \"feature_id\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n      \"commit_index\": 0,\n      \"op_ids\": [\n        \"3d8055a788fc58a7be344e25c39b9bc8914cf18ab1af90505687eddd805d79f8\",\n        \"65f50b304a5afb71d8bf55dcf9a40008a42cbd17f7803728b2804cf8931f7238\",\n        \"737a737cf46b69825b98947aa210519a270fe8532e62535982258c2e0971b9ee\",\n        \"90a79973c38d663400d4c841670f7244f6265b009d5b2e30d08a81e89083a7f6\",\n        \"cb7893c36f821961235b04f0a965a3326f5e34ad4b80034471ecfd8b8071e340\",\n        \"e1e8c3370eb9f62f43877d233da9fcf12bd65a53da213a04ff93d4654a23cfed\",\n        \"e88cf2554030e0cb5689206b6689815f3a85b36b8f459e1f9ef590bc87ada736\",\n        \"faae3fdbee567515a05c17817286f85371e8ec377fe3fef5f2e6fe84b1c4be5c\"\n      ],\n      \"op_count\": 8,\n      \"kinds\": {\n        \"add\": 8\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n      \"commit_index\": 3,\n      \"op_ids\": [\n        \"b3a5cd76acb02637ce7a2029929e9f7de20444129f0515e74b4d211fffaea7b5\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"add\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n      \"commit_index\": 4,\n      \"op_ids\": [\n        \"00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n        \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\",\n        \"b3fc0b0032ce0dc776de694208d57d0730d9cff822b090aaad5b30cd2263fa8d\",\n        \"d830fc380928ced80f6d23627cb782188284d91694fde7e6b0fd92077ecb4e13\"\n      ],\n      \"op_count\": 4,\n      \"kinds\": {\n        \"add\": 3,\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n      \"commit_index\": 6,\n      \"op_ids\": [\n        \"2f2a7a90fa50141e494fa0c4b9068a67459e5e531a8da5561350be6dda3c73f4\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    }\n  ],\n  \"features\": {\n    \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\": {\n      \"label\": \"baz qux\",\n      \"op_count\": 14\n    }\n  },\n  \"ghosts\": [],\n  \"partial_commits\": [],\n  \"commit_count\": 7,\n  \"save_count\": 7,\n  \"bookkeeping_count\": 0,\n  \"op_count\": 14,\n  \"feature_count\": 1\n}\n"
     },
     "text": {
       "argv": [
         "log"
       ],
       "exit": 0,
-      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n \u2192 next      nothing pending\n\n\u001b[1m 4 save(s)  \u00b7  1 feature(s)   (newest on top)\u001b[0m\n\n \u001b[2mc6\u001b[0m \u001b[2mb558b8b\u001b[0m  edit non-parseable config                         \u001b[38;2;228;139;83mbaz qux\u001b[0m\n \u001b[2mc4\u001b[0m \u001b[2md1a2bc5\u001b[0m  tangled: add baz to b.py and edit unrelated\u2026      \u001b[38;2;228;139;83mbaz qux\u001b[0m\n \u001b[2mc3\u001b[0m \u001b[2m00cc584\u001b[0m  move bar from a.py to b.py                        \u001b[38;2;228;139;83mbaz qux\u001b[0m\n \u001b[2mc0\u001b[0m \u001b[2mb511794\u001b[0m  add foo, qux, config, binary                      \u001b[38;2;228;139;83mbaz qux\u001b[0m\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\n \u2192 next      nothing pending\n\n\u001b[1m 4 save(s)  \u00b7  1 feature(s)  \u00b7  1 recurring   (newest on top)\u001b[0m\n\u001b[2m each row = one save (cN = its commit position, colored by its main feature); \u25c6/\u25cf/\u25cb = merge / on-trunk / off-trunk save; \u25cf = feature touched here (bold \u25cf = the save's main one), \u2502 = a feature carried across\u001b[0m\n\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;212;151;56m\u25cf\u001b[0m\u001b[0m \u001b[2mc6\u001b[0m \u001b[38;2;212;151;56mb558b8b\u001b[0m  edit non-parseable config                     \u001b[38;2;212;151;56mbaz qux\u001b[0m\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;212;151;56m\u25cf\u001b[0m\u001b[0m \u001b[2mc4\u001b[0m \u001b[38;2;212;151;56md1a2bc5\u001b[0m  tangled: add baz to b.py and edit unrelated\u2026  \u001b[38;2;212;151;56mbaz qux\u001b[0m\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;212;151;56m\u25cf\u001b[0m\u001b[0m \u001b[2mc3\u001b[0m \u001b[38;2;212;151;56m00cc584\u001b[0m  move bar from a.py to b.py                    \u001b[38;2;212;151;56mbaz qux\u001b[0m\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;212;151;56m\u25cf\u001b[0m\u001b[0m \u001b[2mc0\u001b[0m \u001b[38;2;212;151;56mb511794\u001b[0m  add foo, qux, config, binary                  \u001b[38;2;212;151;56mbaz qux\u001b[0m\n\n\u001b[2m next:  sgt log --map  (the feature map)   \u00b7   sgt log --focus 00573aaf  (one feature's checkpoints)   \u00b7   sgt revert 00573aaf  (remove that feature)\u001b[0m\n"
     }
   },
   "map": {
@@ -186,7 +186,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 14,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"birth\",\n      \"feature_id\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
+      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 14,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"birth\",\n      \"feature_id\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -194,7 +194,7 @@
         "--tree"
       ],
       "exit": 0,
-      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\nbaz qux (184d8b57) \u00b7 10 symbol(s)\n1 feature(s)\n"
+      "out": "\u001b[2m (cached \u2014 run `sgt log --refresh` to reflect new edits)\u001b[0m\nbaz qux (00573aaf) \u00b7 10 symbol(s)\n1 feature(s)\n"
     }
   },
   "merge": {
@@ -203,8 +203,8 @@
         "feature",
         "regroup",
         "merge",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
         "--json"
       ],
       "exit": 0,
@@ -215,8 +215,8 @@
         "feature",
         "regroup",
         "merge",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3"
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e"
       ],
       "exit": 1,
       "out": "\u2717 cannot merge a feature into itself\n"
@@ -227,22 +227,22 @@
       "argv": [
         "advanced",
         "merge-op",
-        "1892ddefa476e65d50cbd19f81df1e526fadbb7654ccf539c55239eb4bf448f9",
-        "48a698ae5a9945ae3fb13f658cb8915423de578e124fc65dbaef16bcabd727c0",
+        "9fd4b0886aaedf032eac3806d63c63edd033851456ee6c7aa37df55184fe6284",
+        "cc65b269e800a0820bebe4c1395b1752d55c632fdbc53abb7df27d8ced81f831",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"merge-op\",\n  \"target\": \"1892ddefa476+48a698ae5a99\",\n  \"draft_id\": \"42db92c1866b\",\n  \"hollow_ids\": [\n    \"9f1d1719dc4544386ce8edc86e0e108d8b0c3f574eaf3dc6841d9fd064c38138\"\n  ],\n  \"message\": \"drafted 1 hollow(s) for slugify.py::slugify\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"merge-op\",\n  \"target\": \"9fd4b0886aae+cc65b269e800\",\n  \"draft_id\": \"9ff8bce58d80\",\n  \"hollow_ids\": [\n    \"260e3cdecafb4454863363f9b37ad07e3d8c67077cc15a11210246ef653d1335\"\n  ],\n  \"message\": \"drafted 1 hollow(s) for slugify.py::slugify\"\n}\n"
     },
     "text": {
       "argv": [
         "advanced",
         "merge-op",
-        "1892ddefa476e65d50cbd19f81df1e526fadbb7654ccf539c55239eb4bf448f9",
-        "48a698ae5a9945ae3fb13f658cb8915423de578e124fc65dbaef16bcabd727c0"
+        "9fd4b0886aaedf032eac3806d63c63edd033851456ee6c7aa37df55184fe6284",
+        "cc65b269e800a0820bebe4c1395b1752d55c632fdbc53abb7df27d8ced81f831"
       ],
       "exit": 0,
-      "out": "\u2713 [merge-op] 1892ddefa476+48a698ae5a99 \u2014 drafted 1 hollow(s) for slugify.py::slugify\n    draft: 42db92c1866b\n    hollow: 9f1d1719dc45\n    edit the working tree, then: sgt fulfill 42db92c1866b --from-tree\n"
+      "out": "\u2713 [merge-op] 9fd4b0886aae+cc65b269e800 \u2014 drafted 1 hollow(s) for slugify.py::slugify\n    draft: 9ff8bce58d80\n    hollow: 260e3cdecafb\n    edit the working tree, then: sgt fulfill 9ff8bce58d80 --from-tree\n"
     }
   },
   "move": {
@@ -251,25 +251,25 @@
         "feature",
         "regroup",
         "move",
-        "45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af",
+        "aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82",
         "--to",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"op_ids\": [\n    \"45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af\"\n  ],\n  \"target\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"op_ids\": [\n    \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\"\n  ],\n  \"target\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\"\n}\n"
     },
     "text": {
       "argv": [
         "feature",
         "regroup",
         "move",
-        "45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af",
+        "aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82",
         "--to",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3"
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e"
       ],
       "exit": 0,
-      "out": "\u2713 moved 1 op(s) to f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\n"
+      "out": "\u2713 moved 1 op(s) to f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\n"
     }
   },
   "now": {
@@ -360,21 +360,21 @@
         "advanced",
         "preview",
         "revert",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"message\": \"\",\n  \"target\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n  \"removed\": [\n    \"184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n    \"1da76fdb1c22e1f9219a9ed18e9bb370e3ade2480f0f64e96f4bcb5546ac3fa1\",\n    \"2b779bc47ebdfc023e52f843ba0e7ba1f8c77faa56269f7bc5161f11c948a53c\",\n    \"45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af\",\n    \"75cf10229e45b20fcd0784c310325e4b70102047bcd22744d45dab0e5c8e2410\",\n    \"a3514af745670eb9dc4054810f3b11396e629d3c18f8591b764aceadbc2e8d8c\",\n    \"ae8d50731d42432c53a5d1282e5ab7ccf97a5fe40b8574f7c9f47ba42543aec0\",\n    \"bc1345b4f273865221d7f31fe6a9a9c9dea7c99c157458f998619d80133320e6\",\n    \"d25e32a987670ac62f7e0708b6045948f46927be4b8cbb06b74398958547160c\",\n    \"d4aa85b797b35130074f35f903afdc3da23d90f7767830b98436c0a7b696f6c9\",\n    \"d4b3f6620b504c186b35b0e36a054db30cd0f934693f3a1eec942404a5976363\",\n    \"d7eccae9240f35bdd7eda8fc89ff1bdf123c2ff041fc926dd990f613d953e2dd\",\n    \"e162fad205498e7babac035a88f6995996aa431de42dabf1cd99e1ca2f0ffbef\",\n    \"ebb6f7e11f904fc5e6dc92ba717d73623e856a833c221c4fe0d3659fda610f6d\"\n  ],\n  \"added\": [],\n  \"affected_features\": [\n    \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\"\n  ],\n  \"affected\": [\n    {\n      \"feature_id\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n      \"direction\": \"blast\",\n      \"op_count\": 14\n    }\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"message\": \"\",\n  \"target\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n  \"removed\": [\n    \"00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n    \"2f2a7a90fa50141e494fa0c4b9068a67459e5e531a8da5561350be6dda3c73f4\",\n    \"3d8055a788fc58a7be344e25c39b9bc8914cf18ab1af90505687eddd805d79f8\",\n    \"65f50b304a5afb71d8bf55dcf9a40008a42cbd17f7803728b2804cf8931f7238\",\n    \"737a737cf46b69825b98947aa210519a270fe8532e62535982258c2e0971b9ee\",\n    \"90a79973c38d663400d4c841670f7244f6265b009d5b2e30d08a81e89083a7f6\",\n    \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\",\n    \"b3a5cd76acb02637ce7a2029929e9f7de20444129f0515e74b4d211fffaea7b5\",\n    \"b3fc0b0032ce0dc776de694208d57d0730d9cff822b090aaad5b30cd2263fa8d\",\n    \"cb7893c36f821961235b04f0a965a3326f5e34ad4b80034471ecfd8b8071e340\",\n    \"d830fc380928ced80f6d23627cb782188284d91694fde7e6b0fd92077ecb4e13\",\n    \"e1e8c3370eb9f62f43877d233da9fcf12bd65a53da213a04ff93d4654a23cfed\",\n    \"e88cf2554030e0cb5689206b6689815f3a85b36b8f459e1f9ef590bc87ada736\",\n    \"faae3fdbee567515a05c17817286f85371e8ec377fe3fef5f2e6fe84b1c4be5c\"\n  ],\n  \"added\": [],\n  \"affected_features\": [\n    \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\"\n  ],\n  \"affected\": [\n    {\n      \"feature_id\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n      \"direction\": \"blast\",\n      \"op_count\": 14\n    }\n  ]\n}\n"
     },
     "text": {
       "argv": [
         "advanced",
         "preview",
         "revert",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3"
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e"
       ],
       "exit": 0,
-      "out": "\u2713 preview revert: affects f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\n"
+      "out": "\u2713 preview revert: affects f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\n"
     }
   },
   "rename": {
@@ -382,22 +382,22 @@
       "argv": [
         "feature",
         "rename",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
         "Renamed Feature",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n  \"old_label\": \"baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n  \"old_label\": \"baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
     },
     "text": {
       "argv": [
         "feature",
         "rename",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
         "Renamed Feature"
       ],
       "exit": 0,
-      "out": "\u2713 renamed f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3: 'baz qux' \u2192 'Renamed Feature'\n"
+      "out": "\u2713 renamed f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e: 'baz qux' \u2192 'Renamed Feature'\n"
     }
   },
   "restore": {
@@ -409,7 +409,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"restore\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [],\n  \"added\": [\n    \"d4b3f6620b504c186b35b0e36a054db30cd0f934693f3a1eec942404a5976363\"\n  ],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"message\": \"\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"restore\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [],\n  \"added\": [\n    \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\"\n  ],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"message\": \"\"\n}\n"
     },
     "text": {
       "argv": [
@@ -418,7 +418,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": " \u25b8 restore  baz qux  184d8b57  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  13\u219214 edits\n      sgt restore c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u00b7 1/14 edits restored\n\n restores 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 restore applied \u2014 0 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n"
+      "out": " \u25b8 restore  baz qux  00573aaf  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  13\u219214 edits\n      sgt restore c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u00b7 1/14 edits restored\n\n restores 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 restore applied \u2014 0 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n"
     }
   },
   "revert": {
@@ -430,7 +430,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"d4b3f6620b504c186b35b0e36a054db30cd0f934693f3a1eec942404a5976363\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"message\": \"\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"message\": \"\"\n}\n"
     },
     "text": {
       "argv": [
@@ -439,7 +439,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": " \u25b8 rewind  baz qux  184d8b57  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  14\u219213 edits\n      sgt revert c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/14 edits removed\n\n removes 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n"
+      "out": " \u25b8 rewind  baz qux  00573aaf  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  14\u219213 edits\n      sgt revert c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/14 edits removed\n\n removes 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): c.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n"
     }
   },
   "revert_emit": {
@@ -451,7 +451,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"d4b3f6620b504c186b35b0e36a054db30cd0f934693f3a1eec942404a5976363\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"coupling\": [],\n  \"frontier\": [\n    {\n      \"op_id\": \"45525bc89e0ea2930ac33aa8f9675d4c72ecbc04d24076b65d3b2775016b83af\",\n      \"bucket\": \"foundation\",\n      \"toggleable\": false\n    }\n  ],\n  \"reversible\": true,\n  \"fallout\": [],\n  \"carry_count\": 0,\n  \"so_what\": \"Removes c.py::qux. Nothing depends on it \\u2014 clean revert. Undo-able.\",\n  \"focus\": {\n    \"so_what\": \"Removes c.py::qux. Nothing depends on it \\u2014 clean revert. Undo-able.\",\n    \"nodes\": [],\n    \"edges\": [],\n    \"context_count\": 0\n  }\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"coupling\": [],\n  \"frontier\": [\n    {\n      \"op_id\": \"e1e8c3370eb9f62f43877d233da9fcf12bd65a53da213a04ff93d4654a23cfed\",\n      \"bucket\": \"foundation\",\n      \"toggleable\": false\n    }\n  ],\n  \"reversible\": true,\n  \"fallout\": [],\n  \"carry_count\": 0,\n  \"so_what\": \"Removes c.py::qux. Nothing depends on it \\u2014 clean revert. Undo-able.\",\n  \"focus\": {\n    \"so_what\": \"Removes c.py::qux. Nothing depends on it \\u2014 clean revert. Undo-able.\",\n    \"nodes\": [],\n    \"edges\": [],\n    \"context_count\": 0\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -500,7 +500,7 @@
         "add new_file"
       ],
       "exit": 0,
-      "out": "\u2713 save <witness-sha> \"add new_file\"\n"
+      "out": "\u2713 save <witness-sha> \"add new_file\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n"
     }
   },
   "save_nothing_to_save": {
@@ -526,18 +526,18 @@
         "feature",
         "regroup",
         "split",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3",
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3\",\n  \"applied\": false,\n  \"groups\": [\n    [\n      \"README.md\",\n      \"a.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::qux\",\n      \"config.yaml\",\n      \"logo.bin\"\n    ],\n    [\n      \"b.py::__residue__::\\u0000HEAD\\u0000\",\n      \"b.py::__residue__::baz\",\n      \"b.py::baz\",\n      \"c.py::qux\"\n    ]\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e\",\n  \"applied\": false,\n  \"groups\": [\n    [\n      \"README.md\",\n      \"a.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::qux\",\n      \"config.yaml\",\n      \"logo.bin\"\n    ],\n    [\n      \"b.py::__residue__::\\u0000HEAD\\u0000\",\n      \"b.py::__residue__::baz\",\n      \"b.py::baz\",\n      \"c.py::qux\"\n    ]\n  ]\n}\n"
     },
     "text": {
       "argv": [
         "feature",
         "regroup",
         "split",
-        "f-184d8b57269d75203eb6ed1c35c7f34db202b53ccdd2612fa2bc5d90eb2600a3"
+        "f-00573aaffa0c0061788da5dd27ec3e32d8f4e03adaf2ccb4ed36a9ca3d51783e"
       ],
       "exit": 0,
       "out": "  group 0: README.md, a.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::qux, config.yaml, logo.bin\n  group 1: b.py::__residue__::\u0000HEAD\u0000, b.py::__residue__::baz, b.py::baz, c.py::qux\n  (preview only \u2014 pass --apply to split)\n"
@@ -641,24 +641,24 @@
       "argv": [
         "advanced",
         "transplant",
-        "48a698ae5a9945ae3fb13f658cb8915423de578e124fc65dbaef16bcabd727c0",
+        "cc65b269e800a0820bebe4c1395b1752d55c632fdbc53abb7df27d8ced81f831",
         "--onto",
         "main",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"transplant\",\n  \"target\": \"48a698ae5a99 onto main\",\n  \"draft_id\": \"b42cb784684c\",\n  \"hollow_ids\": [\n    \"adee8027ce854f2ff52c0b882b76ca8daf91adca1b494c342bba4f4cea091b7b\"\n  ],\n  \"message\": \"drafted 1 hollow(s) with main's chain tip as before_version\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"verb\": \"transplant\",\n  \"target\": \"cc65b269e800 onto main\",\n  \"draft_id\": \"9fa6446987d0\",\n  \"hollow_ids\": [\n    \"db51a5882d8b79b3f7a39a380bceef25d5b7e6d885ea10ad92a727d02ce9cf68\"\n  ],\n  \"message\": \"drafted 1 hollow(s) with main's chain tip as before_version\"\n}\n"
     },
     "text": {
       "argv": [
         "advanced",
         "transplant",
-        "48a698ae5a9945ae3fb13f658cb8915423de578e124fc65dbaef16bcabd727c0",
+        "cc65b269e800a0820bebe4c1395b1752d55c632fdbc53abb7df27d8ced81f831",
         "--onto",
         "main"
       ],
       "exit": 0,
-      "out": "\u2713 [transplant] 48a698ae5a99 onto main \u2014 drafted 1 hollow(s) with main's chain tip as before_version\n    draft: b42cb784684c\n    hollow: adee8027ce85\n    edit the working tree, then: sgt fulfill b42cb784684c --from-tree\n"
+      "out": "\u2713 [transplant] cc65b269e800 onto main \u2014 drafted 1 hollow(s) with main's chain tip as before_version\n    draft: 9fa6446987d0\n    hollow: db51a5882d8b\n    edit the working tree, then: sgt fulfill 9fa6446987d0 --from-tree\n"
     }
   },
   "undo": {
@@ -668,14 +668,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"undone\": true,\n  \"commit\": \"<witness-sha>\",\n  \"restored_ops\": 29,\n  \"removed\": [],\n  \"added\": [\n    \"d4b3f6620b504c186b35b0e36a054db30cd0f934693f3a1eec942404a5976363\"\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"undone\": true,\n  \"commit\": \"<witness-sha>\",\n  \"restored_ops\": 29,\n  \"removed\": [],\n  \"added\": [\n    \"aebd614aef0cba4c83fdd780f774f5425dfd7e72749a68f314faaf3a71fcbc82\"\n  ]\n}\n"
     },
     "text": {
       "argv": [
         "undo"
       ],
       "exit": 0,
-      "out": "\u2713 undo <witness-sha> \u2014 1 edit(s) re-added\n"
+      "out": "\u2713 undo <witness-sha>: restored the prior ideal \u2014 1 op(s) restored\n"
     }
   },
   "undo_nothing_to_undo": {
