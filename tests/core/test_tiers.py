@@ -135,6 +135,93 @@ def test_divergent_working_tier_maps_mine_to_byte_identical_ops(tmp_path):
     assert {op.id for op in ops_a} == {op.id for op in ops_b}
 
 
+def test_dot_paths_are_ignored_by_default(tmp_path):
+    """Default exclusion #1 (launch): any path with a leading-dot component -- tooling and config
+    that sgt should never mint one-file features for -- resolves to `ignored` with no config at
+    all, while ordinary source keeps its grammar-based default."""
+    from sgt.core.tiers import EMPTY, resolve_tier
+
+    for p in (".gitignore", ".github/workflows/ci.yml", ".vscode/settings.json",
+              ".claude/commands/plan.md", ".mcp.json", ".sgt/tiers.json", "src/.cache/x.py"):
+        assert resolve_tier(p, EMPTY) == "ignored", p
+    assert resolve_tier("src/app.py", EMPTY) == "entity"
+    assert resolve_tier("README.md", EMPTY) == "opaque"
+
+
+def test_committed_dot_paths_are_never_mined(tmp_path):
+    """Integration: a dot-path committed to the tree (e.g. a `.claude/` file checked in) mints no
+    ops at all, so it can't become a spurious one-file feature -- while a sibling `.py` still is."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "plan.md").write_text("# plan\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add source and a checked-in dot-path")
+
+    ops, _last_sha = mine(tmp_path)
+
+    assert not any(any(sym.startswith(".claude/") for sym in op.footprint) for op in ops)
+    assert any("app.py::foo" in op.footprint for op in ops)
+
+
+def test_gitignored_tracked_files_are_ignored_but_overridable(tmp_path):
+    """Default exclusion #2: a non-dot path the repo `.gitignore` matches resolves to `ignored`
+    even though it's tracked (the committed-before-ignored case) -- unless a `.sgt/tiers.json`
+    override force-includes it, since overrides are checked first."""
+    from sgt.core.tiers import TierConfig, resolve_tier
+
+    cfg = TierConfig(gitignore=("build/", "*.log"))
+    assert resolve_tier("build/out.js", cfg) == "ignored"  # gitignored beats the grammar default
+    assert resolve_tier("build/out.py", cfg) == "ignored"
+    assert resolve_tier("debug.log", cfg) == "ignored"
+    assert resolve_tier("src/app.py", cfg) == "entity"  # not matched -> ordinary default
+
+    forced = TierConfig(overrides={"entity": ("build/keep.py",), "opaque": (), "ignored": ()},
+                        gitignore=("build/",))
+    assert resolve_tier("build/keep.py", forced) == "entity"
+    assert resolve_tier("build/other.py", forced) == "ignored"
+
+
+def test_gitignore_matcher_semantics():
+    """The compact gitignore engine: anchoring, `*` not crossing `/`, `**` crossing it, dir-only,
+    and ordered `!` negation (last match wins)."""
+    from sgt.core.tiers import _gitignore_ignored as ig
+
+    # unanchored basename matches at any depth
+    assert ig("a/b/x.log", ("*.log",))
+    assert not ig("a/b/x.txt", ("*.log",))
+    # `*` does not cross a separator
+    assert not ig("a/b/c.js", ("a/*.js",))
+    assert ig("a/c.js", ("a/*.js",))
+    # `**` crosses separators
+    assert ig("a/b/c.js", ("a/**/*.js",))
+    # leading-slash anchors to root
+    assert ig("build/out", ("/build",))
+    assert not ig("src/build/out", ("/build",))
+    # dir-only pattern covers descendants at any depth
+    assert ig("x/node_modules/pkg/index.js", ("node_modules/",))
+    # ordered negation: ignore all logs, then un-ignore one
+    assert not ig("keep.log", ("*.log", "!keep.log"))
+    assert ig("drop.log", ("*.log", "!keep.log"))
+
+
+def test_gitignore_honored_per_commit_for_law0(tmp_path):
+    """LAW-0: `.gitignore` is read from the mined commit's own tree. A file committed *before* a
+    `.gitignore` rule exists is mined at that commit; once a later commit ignores it, no further
+    touches are minted for it -- the standard tier-transition path, deterministic per commit."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "notes.txt").write_text("v1\n", encoding="utf-8")
+    sha1 = gb.commit_all("add notes.txt (not yet ignored)")
+
+    (tmp_path / ".gitignore").write_text("notes.txt\n", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("v2\n", encoding="utf-8")
+    sha2 = gb.commit_all("ignore notes.txt + edit it")
+
+    ops, _last_sha = mine(tmp_path)
+    # sha1 (before the rule) mined the file; sha2 (after) mints no touch for it.
+    assert any("notes.txt" in op.footprint for op in _ops_for_commit(ops, sha1))
+    assert not any("notes.txt" in op.footprint for op in _ops_for_commit(ops, sha2))
+
+
 def test_demoted_path_post_demotion_edit_materializes_as_whole_file(tmp_path):
     """A path demoted entity->opaque via `.sgt/tiers.json`: its old entity chain is frozen at
     its tip (no further touches ever emitted for it) but contributes zero bytes once a
