@@ -25,6 +25,13 @@ from pathlib import Path
 # message is the better record, and `recently_done` is where it belongs.
 _MAX_TITLE = 72
 
+# How long a prompt stays "current" once there is nothing unsaved to attribute to it. With work in
+# the tree the prompt is plainly still live, whatever the clock says; with a clean tree it is only
+# still live if it was just asked and the agent has not produced anything yet. Without this,
+# `sgt now` reported "working on X (9h ago)" directly above "next: nothing pending" -- two lines
+# that contradict each other, which teaches the developer that the first one cannot be trusted.
+_IDLE_PROMPT_SECONDS = 1800
+
 
 def _first_line(text: str) -> str:
     """The ask itself. Prompts are often several sentences; the first line is nearly always what
@@ -60,7 +67,8 @@ def latest_prompt(repo: str | Path, *, since_ts: float | None = None) -> dict | 
 
 
 def working_on(repo: str | Path, *, active_plans: list[dict] | None = None,
-               last_save_ts: float | None = None) -> dict | None:
+               last_save_ts: float | None = None, has_unsaved: bool = True,
+               now: float | None = None) -> dict | None:
     """The current task: `{title, source, ts, session_id}`, or `None` when nothing is in progress.
 
     `source` says where the words came from, because a developer should be able to tell at a glance
@@ -79,5 +87,14 @@ def working_on(repo: str | Path, *, active_plans: list[dict] | None = None,
     prompt = latest_prompt(repo, since_ts=last_save_ts)
     if prompt is None:
         return None
+    if not has_unsaved:
+        # Nothing in the tree to attribute to it, so this is only still the current task if it was
+        # just asked. An old prompt with a clean tree was either answered or abandoned, and either
+        # way saying "working on" is a claim the rest of the surface contradicts.
+        import time as _t
+
+        age = (now if now is not None else _t.time()) - (prompt.get("ts") or 0)
+        if age > _IDLE_PROMPT_SECONDS:
+            return None
     return {"title": _shorten(prompt["text"]), "full_title": _first_line(prompt["text"]),
             "source": "prompt", "ts": prompt.get("ts"), "session_id": prompt.get("key")}

@@ -83,3 +83,31 @@ def test_only_the_first_line_of_a_multi_line_prompt_is_the_ask(tmp_path):
                 ts=100.0)
 
     assert working_on(tmp_path)["full_title"] == "Add rate limiting"
+
+
+def test_an_old_prompt_with_a_clean_tree_is_not_current_work(tmp_path):
+    """`sgt now` reported "working on X (9h ago)" directly above "next: nothing pending" -- two
+    lines contradicting each other, which teaches the developer that the first cannot be trusted.
+    With nothing in the tree to attribute to it, an old prompt was answered or abandoned."""
+    record_turn(tmp_path, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text="Add rate limiting", ts=1000.0)
+
+    stale = working_on(tmp_path, has_unsaved=False, now=1000.0 + 9 * 3600)
+    assert stale is None
+
+
+def test_a_just_asked_prompt_is_current_even_before_any_edits(tmp_path):
+    """The agent may not have produced anything yet; that is the start of the work, not its
+    absence."""
+    record_turn(tmp_path, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text="Add rate limiting", ts=1000.0)
+
+    assert working_on(tmp_path, has_unsaved=False, now=1000.0 + 60) is not None
+
+
+def test_unsaved_work_keeps_a_prompt_current_however_old_it_is(tmp_path):
+    """Work sitting in the tree is direct evidence the task is live, whatever the clock says."""
+    record_turn(tmp_path, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text="Add rate limiting", ts=1000.0)
+
+    assert working_on(tmp_path, has_unsaved=True, now=1000.0 + 9 * 3600) is not None
