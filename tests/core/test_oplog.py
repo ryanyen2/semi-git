@@ -317,3 +317,83 @@ def test_shared_land_is_logged_but_its_undo_is_refused(tmp_path):
     # refused, not popped: the provenance record survives (no rebase story past a shared op).
     table_after = oplog.load(repo)
     assert any(e.get("kind") == "land" for entries in table_after.values() for e in entries)
+
+
+# ---------------------------------------------------------------------------
+# preview: what undo will do, before it does it
+# ---------------------------------------------------------------------------
+
+def test_preview_names_the_edits_undo_would_bring_back(tmp_path):
+    """`undo` is what a developer reaches for when something has gone wrong, which is the worst
+    moment to make them run it blind and find out afterward. Everything shown is already known
+    before the fact."""
+    from sgt.core import verbs
+
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    op_id = sorted(current_ideal(repo).op_ids)[0]
+    verbs.revert(repo, op_id)
+
+    pv = oplog.preview(repo)
+
+    assert pv["kind"] == "ideal_edit"
+    assert pv["ok"] is True
+    assert op_id in pv["restored"]
+    assert any("a.py::" in s for s in pv["symbols"])  # named in terms the developer recognizes
+
+
+def test_preview_reports_a_refusal_before_the_user_commits_to_it(tmp_path):
+    """The F3 guard already refuses an undo that would drop work committed after the edit. Learning
+    that *after* asking for the undo is the same information arriving too late to be useful."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    gb = _seed_two_symbols(repo)
+    op_id = sorted(current_ideal(repo).op_ids)[0]
+    verbs.revert(repo, op_id)
+    # Work lands after the edit was recorded -- the casualty the guard exists to protect.
+    (repo / "b.py").write_text("def baz():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("add baz")
+    lens.get(repo)
+
+    pv = oplog.preview(repo)
+
+    assert pv["ok"] is False
+    assert "drop work committed after" in pv["message"]
+    assert oplog.preview(repo, force=True)["ok"] is True  # --force is the documented override
+
+
+def test_preview_of_an_empty_log_says_so_without_raising(tmp_path):
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+
+    pv = oplog.preview(repo)
+
+    assert pv["kind"] is None and pv["ok"] is True and pv["restored"] == []
+
+
+def test_preview_of_a_shared_land_reports_the_refusal(tmp_path):
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    oplog.append(repo, {"kind": "land", "branch": "main", "ops": []})
+
+    pv = oplog.preview(repo)
+
+    assert pv["ok"] is False and pv["kind"] == "land"
+    assert "shared branch" in pv["message"]
+
+
+def test_preview_writes_nothing(tmp_path):
+    """A preview that mutates is not a preview."""
+    from sgt.core import verbs
+
+    repo = tmp_path / "repo"
+    _seed_two_symbols(repo)
+    verbs.revert(repo, sorted(current_ideal(repo).op_ids)[0])
+    before_log = oplog.load(repo)
+    before_ideal = current_ideal(repo).op_ids
+
+    oplog.preview(repo)
+
+    assert oplog.load(repo) == before_log
+    assert current_ideal(repo).op_ids == before_ideal

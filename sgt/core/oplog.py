@@ -176,6 +176,78 @@ class UndoOutcome:
     kind: str | None = None
 
 
+def preview(repo: str | Path, *, force: bool = False) -> dict:
+    """What the next `undo` would do, computed without doing it.
+
+    `undo` is what a developer reaches for when something has gone wrong, which is the worst moment
+    to make them run it blind and find out afterward. Everything shown here is already known before
+    the fact: the tail event says what kind of operation is being reversed, an `ideal_edit` carries
+    the exact prior op-set (so the symbols coming back and going away are a set difference), and the
+    F3 guard's refusal is decided from the same comparison. Returns
+    `{kind, ok, message, restored, dropped, symbols}` -- `ok` False means `undo` would refuse.
+    """
+    from sgt.core import lens
+
+    repo = Path(repo)
+    event = tail(repo)
+    while event is not None and event.get("kind") == "ideal_edit" and event.get("applied") is False:
+        # A crashed verb's unapplied entry is discarded by `undo` rather than executed; the preview
+        # has to skip it too or it would describe an operation that will never run.
+        stack = load(repo).get(_ref_key(repo), [])
+        idx = len(stack) - 1
+        event = stack[idx - 1] if idx >= 1 else None
+
+    if event is None:
+        return {"kind": None, "ok": True, "message": "nothing to undo", "restored": [],
+                "dropped": [], "symbols": []}
+
+    kind = event.get("kind", "ideal_edit")
+    if kind in ("land", "propose"):
+        return {"kind": kind, "ok": False, "restored": [], "dropped": [], "symbols": [],
+                "message": f"cannot undo `{kind}` -- it advanced a shared branch that already left "
+                           f"this clone"}
+    if kind == "feature_reorg":
+        verb = event.get("verb", "reorg")
+        return {"kind": kind, "ok": True, "restored": [], "dropped": [], "symbols": [],
+                "message": f"restores the feature grouping from before the {verb} "
+                           f"(no code changes)"}
+    if kind == "after":
+        return {"kind": kind, "ok": True, "restored": [], "dropped": [], "symbols": [],
+                "message": "retracts the declared order edge (no code changes)"}
+
+    # `ideal` is the state this event restores; `result` is what the edit left behind. They are
+    # different sets and only `ideal` answers "what will I get back".
+    prior = frozenset(event.get("ideal") or ())
+    current = lens.current_ideal(repo).op_ids
+    restored = sorted(prior - current)
+    removed = sorted(current - prior)
+    # The same comparison the F3 guard makes, reported *before* the user commits to it: work
+    # committed after this edit was recorded is not part of the edit, so restoring an absolute
+    # snapshot would silently take it away.
+    intervening = sorted(current - frozenset(event.get("result") or ()))
+    ok, message = True, "re-materializes the ideal from before the last edit"
+    if not force and intervening:
+        ok = False
+        message = (f"would drop work committed after that edit: "
+                   f"{_casualty_symbols(repo, frozenset(intervening))} -- `--force` to drop it anyway")
+    return {"kind": kind, "ok": ok, "message": message, "restored": restored, "dropped": removed,
+            "symbols": _symbols_for(repo, frozenset(restored) | frozenset(removed))}
+
+
+def _symbols_for(repo: str | Path, op_ids: frozenset[str]) -> list[str]:
+    """The symbols an op-set touches, for naming a change in terms a developer recognizes: a list
+    of op ids says nothing, and the file-and-symbol names are what they were actually editing."""
+    if not op_ids:
+        return []
+    from sgt.core import opindex
+
+    names: set[str] = set()
+    for op in opindex.index_ops(Path(repo)):
+        if op.id in op_ids:
+            names.update(op.footprint)
+    return sorted(n for n in names if "__plan__" not in n)[:12]
+
+
 def undo(repo: str | Path, force: bool = False) -> UndoOutcome:
     """Pop the current ref's tail event and apply its inverse (KTD6). Reverse-chronological: each
     call reverses exactly one event. A shared-out `land`/`propose` is *refused* (and left in place,
