@@ -228,8 +228,45 @@ The CLI surface golden was regenerated, reviewed, and is green. The two `save --
 failures are gone, because they were reporting the bug fixed above rather than stale fixtures --
 worth remembering the next time a long-red test is assumed to be rot.
 
-Not started: the rest of phase 1 (the work-unit id spine itself, the aligner wired to the save beat,
-plan adoption), phase 2 (the engine and canonical queries), the rest of
-phase 3 (episode-first history, ids out of default output, the remaining preview symmetry,
-`show`/`peek`), and
-phase 4 (substrate hardening). The next increment is phase 1, whose exit test is written in §3.
+## 11. Second pass: what the developer's actual workflow changed
+
+Merged `origin/main` and continued into phases 2 and 3. One fact reshaped both: this repo's own
+developer plans in Claude Code's plan mode or with a planning plugin, and does not call
+`sgt plan intake`. The agentic loop is built on an agent *declaring* its plan, so for the way the
+work actually arrives, sgt was told nothing and the entire plan and intent layer had nothing to
+show. §3 item 4 treated adoption as one item among several; it is closer to the premise.
+
+The answer is not a bigger on-ramp but a smaller one. sgt already observes everything it needs: the
+`UserPromptSubmit` hook records every ask verbatim, so the developer has already said what they
+want, in their own words, at a known time. `sgt.intent.working` derives the current task from that
+and never writes. A stated plan step still wins when one exists, and `source` records which kind of
+words these are so the surface cannot pass a raw prompt off as deliberation.
+
+That reframes D4's work-unit spine too. Its value was never the id; it was that a question about
+intent should resolve without the developer having declared anything. Deriving the task is the same
+goal reached without a migration, and the spine is now worth doing for *joining* records, not for
+making the layer work at all.
+
+Landed in this pass:
+
+- `working_on`: `sgt now` and `sgt log`'s header lead with the developer's own words, and the
+  suggested next action carries them (`sgt save -m "<your ask>"`), offered only when it pastes
+  verbatim -- a suggestion you have to repair is worse than none.
+- One `state_lines` renderer for both surfaces. They were two copies that had already drifted in
+  wording, which is the smallest instance of the problem D3 exists to end.
+- Presentation honesty, three cases where the tool claimed more than it knew. The staleness banner
+  printed on every read, so it carried no information and taught developers to ignore it; it now
+  names what is actually missing and says nothing when the view is current. The rail legend named
+  every glyph the renderer can draw rather than the ones on screen. And "working on X (9h ago)" sat
+  directly above "nothing pending" -- two contradicting lines, where the newer one loses.
+- `sgt undo` shows what it will do first. The one command whose job is recovering from a surprise
+  was itself a surprise, and everything it reports was computable before the fact.
+- Two fork tests that went red on main: both pinned an arbitrary hash-sort order, not fork
+  behavior. Worth keeping: that order reaches the resolve UI, where "left" is therefore not
+  reliably "yours". Making it meaningful belongs in the surfacing layer, not in `forks()`, which
+  sits on the ideal-validity hot path.
+
+Still open: the resident engine and the canonical-query collapse (D1/D3) -- `sgt now` sits around
+0.5s, which is fine for a command you type and wrong for a surface an editor refreshes on every
+save; the work-unit spine as a joining mechanism; episode-first history and ids leaving default
+output; `sgt peek`; and phase 4 entirely.
