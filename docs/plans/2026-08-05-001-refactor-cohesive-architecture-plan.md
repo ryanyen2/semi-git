@@ -261,10 +261,19 @@ Landed in this pass:
   directly above "nothing pending" -- two contradicting lines, where the newer one loses.
 - `sgt undo` shows what it will do first. The one command whose job is recovering from a surprise
   was itself a surprise, and everything it reports was computable before the fact.
-- Two fork tests that went red on main: both pinned an arbitrary hash-sort order, not fork
-  behavior. Worth keeping: that order reaches the resolve UI, where "left" is therefore not
-  reliably "yours". Making it meaningful belongs in the surfacing layer, not in `forks()`, which
-  sits on the ideal-validity hot path.
+- MCP parity for the verbs an agent needs to close its own loop: `sgt_save`, `sgt_now`, `sgt_show`.
+  An agent could read the graph and edit code but record neither, so a human relayed every save by
+  hand. They go through a `_run_cli_json` adapter that runs the real verb instead of reimplementing
+  it -- two copies drift, and drifting surfaces are what this plan exists downstream of -- which is
+  also how the remaining verbs get a surface cheaply. The skill now says the loop is for multi-step
+  work and ordinary work is edit-then-save; requiring the ceremony for everything is why the plan
+  layer saw nothing.
+- Three tests that went red on main, none of them about the behavior they name. Two pinned an
+  arbitrary hash-sort order of a fork's tips; one took whichever op sorted first and assumed it
+  carried a tracked member. Worth keeping from the first: that order reaches the resolve UI, where
+  "left" is therefore not reliably "yours". Making it meaningful belongs in the surfacing layer,
+  not in `forks()`, which sits on the ideal-validity hot path. Worth keeping from all three: a test
+  that has been red for a while is not evidence that it is stale.
 
 Still open: the resident engine and the canonical-query collapse (D1/D3) -- `sgt now` sits around
 0.5s, which is fine for a command you type and wrong for a surface an editor refreshes on every
