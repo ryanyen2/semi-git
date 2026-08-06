@@ -275,7 +275,18 @@ Landed in this pass:
   not in `forks()`, which sits on the ideal-validity hot path. Worth keeping from all three: a test
   that has been red for a while is not evidence that it is stale.
 
-Still open: the resident engine and the canonical-query collapse (D1/D3) -- `sgt now` sits around
-0.5s, which is fine for a command you type and wrong for a surface an editor refreshes on every
-save; the work-unit spine as a joining mechanism; episode-first history and ids leaving default
-output; `sgt peek`; and phase 4 entirely.
+- Features addressed by name. The hint under every `sgt log` said `sgt revert 08ccdb12`, asking the
+  reader to work out which feature that is from a view where the hex appears nowhere and the name
+  appears on every row. `resolve_feature` already accepts an exact label, so the suggestion is now
+  the same command in words that are on screen. `--focus` also stopped printing a 64-character id
+  across its header beside the name it belongs to.
+
+Still open: the resident engine and the rest of the canonical-query collapse (D1/D3) -- `sgt now`
+sits around 0.5s, fine for a command you type and wrong for a surface an editor refreshes on every
+save; the work-unit spine as a joining mechanism; episode-first history; `sgt peek`; and phase 4
+entirely.
+
+A note for whoever picks this up. Every item in this pass came from reading real output and asking
+what a developer does with each line, not from the plan's own list -- and the plan was wrong twice
+(the aligner, the assumption that plans are declared). The remaining items are worth re-deriving
+the same way rather than executed as written.
