@@ -623,6 +623,19 @@ class GitBinding:
             return set()
         return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
 
+    def head_time(self, target: str = "HEAD") -> int | None:
+        """Committer timestamp of `target` alone, or None on an unborn ref. `commit_times` answers
+        the same question for the *whole* history and costs O(commits) to do it -- fine for the
+        alignment pipeline, which needs every op's time, and wrong for a surface that only wants
+        "when was the last save" on every read."""
+        proc = self._git("log", "-1", "--format=%ct", target, check=False)
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return None
+        try:
+            return int(proc.stdout.strip())
+        except ValueError:
+            return None
+
     def commit_times(self, target: str = "HEAD") -> dict[str, int]:
         """``sha -> committer unix timestamp`` for every commit reachable from ``target``. One
         ``git log`` call, no per-op cost. The committer date is when the commit was *created* --

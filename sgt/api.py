@@ -2377,10 +2377,8 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
     from sgt.intent.working import working_on
     from sgt.store.gitbind import GitBinding as _GB
 
-    last_save_ts = None
     try:
-        times = _GB(repo).commit_times()
-        last_save_ts = max(times.values()) if times else None
+        last_save_ts = _GB(repo).head_time()
     except Exception:  # noqa: BLE001 -- an advisory line must never break the orient surface
         last_save_ts = None
     working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts,
