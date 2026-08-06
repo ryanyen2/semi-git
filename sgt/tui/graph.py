@@ -1537,10 +1537,25 @@ def render_rail_lines(
                           f"   (newest on top)"))
     else:
         lines.append(bold(f" {n_ep} save(s)  ·  {n_feat} feature(s){recur_note}   (newest on top)"))
-    topo_legend = ("◆/●/○ = merge / on-trunk / off-trunk save; " if topology is not None else "")
-    lines.append(dim(f" each row = one save (cN = its commit position, colored by its main feature); "
-                     f"{topo_legend}● = feature touched here (bold ● = the save's main one), "
-                     "│ = a feature carried across"))
+    # Explain only what is actually on screen. This legend used to name every glyph the renderer
+    # can draw, on every run -- two dense lines about merges, off-trunk saves and carried lanes
+    # above a six-row linear history that has none of them. A developer reads it once, learns it
+    # does not describe what they are looking at, and stops reading the header entirely, which is
+    # the opposite of what a legend is for.
+    _shown_rows = rows[:max_rows]
+    _shas = {r["sha"] for r in _shown_rows}
+    parts = [f"each row = one save (cN = its commit position{', colored by its main feature' if n_feat > 1 else ''})"]
+    if topology is not None:
+        topo_bits = []
+        if _shas & merges:
+            topo_bits.append("◆ merge")
+        if _shas - mainline - merges:
+            topo_bits.append("○ off-trunk")
+        if topo_bits:
+            parts.append(" / ".join(topo_bits) + " save")
+    if lane_count > 1:
+        parts.append("● = feature touched here (bold ● = the save's main one), │ = a feature carried across")
+    lines.append(dim(" " + "; ".join(parts)))
     lines.append("")
 
     shown = rows[:max_rows]

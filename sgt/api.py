@@ -2383,7 +2383,8 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
         last_save_ts = max(times.values()) if times else None
     except Exception:  # noqa: BLE001 -- an advisory line must never break the orient surface
         last_save_ts = None
-    working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts)
+    working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts,
+                         has_unsaved=in_flight["total_op_count"] > 0)
 
     turns_all = sorted(turns_mod.load_turns(repo).values(), key=lambda t: t["ts"], reverse=True)
     context = {
