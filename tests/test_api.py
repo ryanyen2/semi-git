@@ -1051,10 +1051,11 @@ def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
     next-action. Every section is always present so the surfaces can render unconditionally."""
     repo = _mined(tmp_path, "mixed_coverage")
     v = now_view(repo)
-    assert set(v) == {"in_flight", "in_progress", "needs_you", "recently_done",
+    assert set(v) == {"working_on", "in_flight", "in_progress", "needs_you", "recently_done",
                       "context", "next_action"}
     assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
     assert v["in_progress"] == []
+    assert v["working_on"] is None  # nothing asked for, so nothing claimed
     assert v["needs_you"] == {"forks": [], "reviews": [], "stalled_plans": []}
     assert v["next_action"]["kind"] == "clean"
     assert v["next_action"]["command"] is None
@@ -1062,7 +1063,9 @@ def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
 
 
 def test_now_view_dirty_tree_recommends_save(tmp_path):
-    """Uncommitted work puts ops in flight and makes `sgt save` the next action."""
+    """Uncommitted work puts ops in flight and makes `sgt save` the next action. The offer is
+    phrased by what it records ("your N unsaved edits"), not by the store's unit of accounting --
+    "pending op(s)" is a fact about the kernel, and the developer is asking about their work."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -1073,7 +1076,7 @@ def test_now_view_dirty_tree_recommends_save(tmp_path):
     v = now_view(repo)
     assert v["in_flight"]["total_op_count"] > 0
     assert v["next_action"] == {"kind": "save", "command": "sgt save", "target": None,
-                                "label": f"save {v['in_flight']['total_op_count']} pending op(s)"}
+                                "label": f"save your {v['in_flight']['total_op_count']} unsaved edit(s)"}
 
 
 def test_now_view_include_preview_false_skips_the_mine(tmp_path):
@@ -1592,3 +1595,42 @@ def test_land_preview_says_what_undo_will_do_afterward(tmp_path):
     elsewhere = _project_land_preview(repo, LandPlan(branch="some-other-branch"))
     assert elsewhere["checked_out"] is False
     assert "refuse" in elsewhere["undo_note"]
+
+
+def test_now_view_leads_with_the_developers_own_words(tmp_path):
+    """`sgt now` answered "what am I working on" with op counts. The prompt hook had recorded the
+    real answer verbatim all along -- and the common way to work (Claude Code plan mode, a planning
+    plugin) never calls `sgt plan intake`, so nothing else was ever going to supply it."""
+    from sgt.intent.turns import record_turn
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text="Add rate limiting to the API")
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+
+    v = now_view(repo)
+
+    assert v["working_on"]["title"] == "Add rate limiting to the API"
+    assert v["working_on"]["source"] == "prompt"
+    # The suggested save carries those same words, and must paste verbatim.
+    assert v["next_action"]["command"] == 'sgt save -m "Add rate limiting to the API"'
+
+
+def test_now_view_suggests_a_plain_save_when_the_words_would_not_paste(tmp_path):
+    """A suggestion the developer has to repair is worse than none."""
+    from sgt.intent.turns import record_turn
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text='Rename the "old" flag to --legacy')
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+
+    assert now_view(repo)["next_action"]["command"] == "sgt save"
