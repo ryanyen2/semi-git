@@ -322,3 +322,22 @@ def test_state_tree_advances_a_ref_by_cas(tmp_path):
     # a CAS against a stale old value is refused, ref stays at c2.
     assert not gb.update_ref_cas(ref, c1, c1)
     assert gb.rev_parse(ref) == c2
+
+
+def test_head_time_is_the_tip_alone(tmp_path):
+    """`commit_times` answers the same question for the whole history at O(commits), which is right
+    for the alignment pipeline (it needs every op's time) and wrong for a surface that only wants
+    "when was the last save" on every single read."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("first")
+    (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("second")
+
+    assert gb.head_time() == max(gb.commit_times().values())
+
+
+def test_head_time_is_none_before_the_first_commit(tmp_path):
+    gb = GitBinding(tmp_path)
+    gb.init()
+    assert gb.head_time() is None
