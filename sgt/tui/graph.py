@@ -983,7 +983,11 @@ def render_graph_lines(
         hexc = color_for(focus)
         raw = labels.get(focus, focus)
         n_ckpt = len(lane["cars"])
-        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {brighten_prefix(focus, hexc, full=True)}"
+        # The short handle, not the whole 64-char id. The full hash was a wall of noise across the
+        # header of a view whose subject is named right beside it, and nothing a reader does with
+        # this line needs more than the prefix -- every verb that takes a feature resolves a unique
+        # prefix, or the name itself.
+        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {dim(handle)}"
                      f"  ·  {n_ckpt} checkpoint(s)")
         lines.append("")
         if not lane["cars"]:
@@ -1595,8 +1599,18 @@ def render_rail_lines(
         lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), label_width)}"))
     lines.append("")
     example = next((r["feature"] for r in shown if r["feature"]), None)
-    handle = (example[2:10] if example and example.startswith("f-") else (example or "<feature>")[:8])
-    lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt log --focus {handle}  "
-                     f"(one feature's checkpoints)   ·   sgt revert {handle}  (remove that feature)"))
+    # Address the example feature by its NAME when it has one. `resolve_feature` accepts an exact
+    # label, so `sgt revert "Task Tracking CLI"` is a command the reader can act on without first
+    # working out which feature `08ccdb12` is -- and the name is right there in the rows above,
+    # where the hex handle appears nowhere. The handle stays the fallback for an unlabeled feature
+    # and for a label with a quote in it, which would not survive being pasted into a shell.
+    label = labels.get(example) if example else None
+    if label and '"' not in label and label != example:
+        target = f'"{label}"'
+    else:
+        target = (example[2:10] if example and example.startswith("f-")
+                  else (example or "<feature>")[:8])
+    lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt log --focus {target}  "
+                     f"(one feature's checkpoints)   ·   sgt revert {target}  (remove that feature)"))
     lines.extend(_state_banner(states, color=color))
     return lines
