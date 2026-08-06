@@ -617,14 +617,18 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     refresh = refresh or rebuild
     mv = None if refresh else map_view(repo)
     if not (refresh or not (mv and mv.get("nodes"))):
-        # Only say the view is behind when it actually is. This line used to print on every single
-        # read, which made it carry no information and cast doubt on every reading -- the developer
-        # either learns to ignore it (so a genuinely stale view goes unnoticed) or re-runs with
-        # `--refresh` reflexively, paying a rebuild to be told nothing changed. Saying what is
-        # missing, and only when something is, is both shorter and worth reading.
-        missing = _map_staleness(repo)
-        if missing:
-            line = f" ({missing} not shown yet — `sgt log --refresh`)"
+        from sgt.core.lens import cached_map_is_current
+
+        # Only say the view is behind when it actually is, and say what is missing. This line used
+        # to print on every read, which made it carry no information: the developer either learns
+        # to ignore it (so a genuinely stale view goes unnoticed) or re-runs with `--refresh`
+        # reflexively, paying a rebuild to be told nothing changed.
+        #
+        # `cached_map_is_current` is the authority on *whether* -- it mirrors `_sync`'s own no-op
+        # gate, so it agrees with what a re-mine would actually do, and is conservative on any
+        # ambiguity. `_map_staleness` only says *what* is missing, which is the part worth reading.
+        if not cached_map_is_current(repo):
+            line = f" ({_map_staleness(repo) or 'new edits'} not shown yet — `sgt log --refresh`)"
             print(f"\x1b[2m{line}\x1b[0m" if color else line)
         return mv
 
@@ -643,11 +647,12 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
 
 
 def _map_staleness(repo: str) -> str | None:
-    """What the last-built map does not yet reflect, phrased for a person, or `None` when it is
-    current. Two ways it can fall behind: edits sitting in the working tree that no save has mined
-    into it, and ops that landed since it was built. Both checks are cheap reads -- a git dirty
-    probe and the persisted `op_leaf` against the current ideal -- so this stays affordable on a
-    surface the developer hits constantly."""
+    """What the last-built map does not yet reflect, phrased for a person -- the *description* only.
+    Whether it is stale at all is `lens.cached_map_is_current`'s call, which mirrors `_sync`'s own
+    no-op gate and so agrees with what a re-mine would really do; this just names the two ways it
+    falls behind. `None` means "nothing nameable", and the caller falls back to a plain wording
+    rather than suppressing a warning the gate asked for. Both checks are cheap reads, so this
+    stays affordable on a surface the developer hits constantly."""
     from sgt.core.lens import current_ideal
     from sgt.lens.tree import load as load_tree
     from sgt.store.gitbind import GitBinding

@@ -209,6 +209,35 @@ def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry) -> str | None:
     return h.hexdigest()
 
 
+def cached_map_is_current(repo: str | Path) -> bool:
+    """True when a `get()` would short-circuit on `_sync`'s no-op gate -- i.e. HEAD, the working-tree
+    source, and the persisted ideal are all unchanged since the last sync, so a cached read (`sgt
+    log` without `--refresh`) already reflects reality and there is nothing for `--refresh` to pick
+    up. Mirrors the gate below (the `prev_head == head` + fingerprint + cached-ids check) but never
+    mines: it only runs the same O(files) dirty digest the gate itself compares. Any real change --
+    a new commit, an edited/added source file, or an explicit ideal edit -- moves the fingerprint
+    and returns False. Conservative on any ambiguity (git can't digest, mid-backfill, cached ids no
+    longer in the store): returns False, so we err toward a spurious refresh hint over falsely
+    claiming freshness."""
+    repo = Path(repo)
+    try:
+        gb = GitBinding(repo)
+        head = gb.head()
+        key = _ref_key(gb) or head
+        if _load_witnesses(repo).get(key) != head:
+            return False
+        backfill = _load_backfill_state(repo).get(key)
+        if backfill is not None and not backfill.get("reached_genesis", False):
+            return False
+        fp = _sync_fingerprint(gb, head, _load_ideal_table(repo).get(key))
+        cached = _load_sync_cache(repo).get(key)
+        if fp is None or cached is None or cached.get("fp") != fp:
+            return False
+        return frozenset(cached.get("ids", [])) <= {op.id for op in opindex.index_ops(repo)}
+    except Exception:
+        return False
+
+
 def _load_ideal_journal(repo: Path) -> dict[str, list[dict]]:
     """The per-ref undo stack: `{ref_key: [{ideal: [op_ids], witness: sha}, ...]}` -- the prior
     ideals `record_ideal` pushed before each overwrite (U26). Local, never travels."""
