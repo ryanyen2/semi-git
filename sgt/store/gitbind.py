@@ -579,6 +579,26 @@ class GitBinding:
             out[sha] = int(ct)
         return out
 
+    def graph_topology(self, target: str = "HEAD") -> dict:
+        """`{"mainline": set[str], "merges": set[str]}` for every commit reachable from `target`,
+        in two cheap passes. `mainline` is the first-parent chain from the tip -- the "trunk" a
+        `sgt log` spine draws as a continuous line; a commit not in it landed on a side branch that
+        was later merged. `merges` is the commits with two or more parents (where a side branch
+        folded back in). The default `sgt log` uses this to draw a narrow git-log-style spine to the
+        left of each save without re-deriving topology per row."""
+        merges: set[str] = set()
+        proc = self._git("log", "--format=%H%x1f%P", target, check=False)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                if not line:
+                    continue
+                sha, _, parents = line.partition("\x1f")
+                if len(parents.split()) >= 2:
+                    merges.add(sha)
+        fp = self._git("log", "--first-parent", "--format=%H", target, check=False)
+        mainline = set(fp.stdout.split()) if fp.returncode == 0 else set()
+        return {"mainline": mainline, "merges": merges}
+
     def history_backward(self, tip: str, limit: int | None = None) -> list[tuple[str, str | None, str]]:
         """``(sha, first_parent, subject)`` newest-first from ``tip`` back toward the root --
         the mirror image of :meth:`history`, which walks the same shape oldest-first via

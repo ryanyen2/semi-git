@@ -242,23 +242,26 @@ def test_render_lines_carry_header_and_labels():
 
 def test_render_map_lists_positioned_checkpoint_chips_and_drops_the_f_tag():
     """The map surface (formerly split into overview + `--timeline`): a bare-hex handle (no `f-`
-    tag), an edit-density bar positioned on the shared commit-time axis, and the checkpoints spelled
-    out as `@n slug` chips -- the `@n` is the revert handle. NOT the opaque `✦N` count."""
+    tag), a per-feature-packed edit-density bar, and the checkpoints spelled out as `@n slug` chips
+    on their OWN indented sub-line below the bar (so a long label can't wrap the bar) -- the `@n` is
+    the revert handle. NOT the opaque `✦N` count."""
     fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
     segs = [_seg(fid, 0, ["o0"], 0, 0, label="scaffold"),
             _seg(fid, 1, ["o1", "o2"], 100, 199, label="refine")]
     lines = render_graph_lines(m, hist, segs, color=False)
-    lane = next(ln for ln in lines if "aaaaaaaa" in ln)
+    lane_idx = next(i for i, ln in enumerate(lines) if "aaaaaaaa" in ln)
+    lane = lines[lane_idx]
+    chips = lines[lane_idx + 1]                              # checkpoints ride on the sub-line below
     assert fid[:10] not in lane                              # the `f-` tag is gone from the handle
     assert "aaaaaaaa" in lane                                # bare-hex copy token
-    assert "scaffold" in lane and "refine" in lane           # checkpoints listed by name
-    assert "@0" in lane and "@1" in lane                     # ...led by their @n revert handle
     assert "✦" not in lane                                   # no opaque ✦N count
-    assert any(ch in lane for ch in "▁▂▃▄▅▆▇█·")              # a positioned density bar
+    assert any(ch in lane for ch in "▁▂▃▄▅▆▇█·")              # a packed density bar on the lane line
+    assert "scaffold" in chips and "refine" in chips         # checkpoints listed by name (own line)
+    assert "@0" in chips and "@1" in chips                   # ...led by their @n revert handle
     assert any("edit density" in ln for ln in lines)         # legend explains the bar
-    assert any("c0" in ln for ln in lines)                   # shared commit-time ruler above the lanes
+    assert any("columns don't align" in ln for ln in lines)  # legend states rows pack their own timeline
     # no segments -> no chips
     plain = render_graph_lines(m, _grid((fid, 0)), color=False)
     plain_lane = next(ln for ln in plain if "aaaaaaaa" in ln)
@@ -276,23 +279,27 @@ def test_render_car_draws_tier_brackets():
     assert _render_car(th, 6, "#abcdef", color=False).startswith("(")
 
 
-def test_time_bar_gap_fills_a_single_commit_checkpoint_across_its_column():
-    """A single-commit checkpoint on a wide/sparse strip fills its whole commit column with density
-    glyphs (gap-fill tiling), not one bright pixel bleeding into dead space -- so it reads as a solid
-    block, not a sliver. Regression for the 'blocks are unreadable slivers' report. Placed at a RECENT
-    commit, where the power-warped axis (`_LOD_GAMMA`) gives each commit column its full granular
-    width -- the old tail is intentionally compressed, so granularity is asserted at the newest end."""
+def test_time_bar_packs_a_lanes_own_long_gap_to_the_collapse_marker():
+    """Per-feature packing: two checkpoints far apart in commit-time sit back-to-back on the lane's
+    strip, separated by a single `┄` (the long gap it skipped) -- NOT a wide dead run of `·` drawn to
+    scale. Regression for the 'sparse lanes are unreadable slivers flung across the strip' report: the
+    dead history between a lane's checkpoints is packed away, so both blocks stay full-height and near."""
     fid = "f-cccccccccc"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
-    # 8 commits across the 38-col strip; commit 6 sits near the granular (recent) end, so its single
-    # column is several cols wide and the gap-fill widening is observable.
-    grid = {"commits": [{"index": i} for i in range(8)], "commit_count": 8,
-            "cells": [{"feature_id": fid, "commit_index": 6, "op_ids": ["o0"], "op_count": 1,
+    # 200 commits; the lane touches only commit 0 and commit 199 -- a long gap it skipped.
+    grid = {"commits": [{"index": i} for i in range(200)], "commit_count": 200,
+            "cells": [{"feature_id": fid, "commit_index": 0, "op_ids": ["o0"], "op_count": 1,
+                       "kinds": {"add": 1}, "fidelity": "full"},
+                      {"feature_id": fid, "commit_index": 199, "op_ids": ["o1"], "op_count": 1,
                        "kinds": {"add": 1}, "fidelity": "full"}]}
-    segs = [_seg(fid, 0, ["o0"], 6, 6, tier="co-changed")]  # a single-commit car (first_index == last_index)
+    segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed"),
+            _seg(fid, 1, ["o1"], 199, 199, tier="co-changed")]
     lines = render_graph_lines(m, grid, segs, color=False)
     lane = next(ln for ln in lines if "cccccccc" in ln)
-    assert "███" in lane  # the single checkpoint's density block spans several columns, not one
+    bar = lane[lane.index("cccccccc"):]
+    assert "┄" in bar                    # the long skipped gap is one collapse marker...
+    assert "·" * 8 not in bar            # ...not a wide dead run drawn to scale
+    assert "█" in bar                    # both checkpoints render as full-height blocks
 
 
 def test_render_links_hidden_by_default_and_shown_with_show_links():
@@ -399,9 +406,10 @@ def test_min_unique_prefixes_grow_until_the_prefix_is_unique():
 
 
 def test_map_density_bar_positions_checkpoints_by_commit_time():
-    """The map density bar positions each checkpoint at its commit column, so two checkpoints far
-    apart in commit-time read as two density regions separated by a dim `·` quiet span -- time is the
-    boundary, not a `│` separator (which the merged view dropped)."""
+    """The map density bar packs a lane's checkpoints left→right, so two checkpoints far apart in
+    commit-time read as two density blocks separated by the gap the lane skipped -- the gap is the
+    boundary, not a `│` separator (which the merged view dropped). A long skipped gap reads as the
+    `┄` collapse marker (a short one a plain `·`)."""
     fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
@@ -410,9 +418,9 @@ def test_map_density_bar_positions_checkpoints_by_commit_time():
     lane = next(ln for ln in lines if fid[2:10] in ln)  # handle is bare hex (no `f-`)
     pre = lane.split("  @")[0]                      # handle + label + density bar, before the @n chips
     assert "│" not in pre                           # no rewind-boundary separator anymore
-    assert "█" in pre and "·" in pre                # a positioned density bar with quiet spans
+    assert "█" in pre                               # a positioned density bar
     first, last = pre.index("█"), pre.rindex("█")
-    assert "·" in pre[first:last]                   # a quiet span sits between the two checkpoints
+    assert any(ch in pre[first:last] for ch in "·┄")  # a quiet span sits between the two checkpoints
 
 
 # ── feedforward verb-preview graph ───────────────────────────────────────────────────────────────
@@ -732,6 +740,32 @@ def test_render_save_list_has_no_lane_column_and_lists_saves_newest_first():
     body = [l for l in lines if " sha" in l or "add " in l]
     assert body.index(next(l for l in body if "add rga" in l)) < \
            body.index(next(l for l in body if "add wire" in l))
+
+
+def test_render_save_list_draws_a_topology_spine_when_topology_given():
+    # With git topology, the default log gains a narrow git-log-style spine: a `●` for a save on the
+    # first-parent trunk, a `◆` merge, and a `│●` for a save that landed on a side branch. s2 is a
+    # merge, s1 is off-trunk, s0 is trunk.
+    m = {"nodes": [{"id": "fa", "label": "Wire"}, {"id": "fb", "label": "Bus"},
+                   {"id": "fc", "label": "RGA"}]}
+    topology = {"mainline": {"s0", "s2"}, "merges": {"s2"}}
+    lines = render_save_list_lines(m, _rail_grid(), topology=topology, color=False)
+    text = "\n".join(lines)
+    row_of = {tag: next(l for l in lines if tag in l)
+              for tag in ("add rga", "add bus", "add wire")}
+    assert row_of["add rga"].lstrip().startswith("◆")   # s2 is a merge
+    assert row_of["add bus"].lstrip().startswith("│●")  # s1 landed on a side branch
+    assert row_of["add wire"].lstrip().startswith("●")  # s0 landed on the trunk
+    # the legend names exactly the glyphs that appear (merge + side branch here)
+    assert "◆ merge" in text and "on a side branch" in text
+
+
+def test_render_save_list_without_topology_has_no_spine():
+    # No topology -> byte-for-byte the lane-less list (the golden-snapshot contract); no spine glyphs.
+    m = {"nodes": [{"id": "fa", "label": "Wire"}, {"id": "fb", "label": "Bus"},
+                   {"id": "fc", "label": "RGA"}]}
+    text = "\n".join(render_save_list_lines(m, _rail_grid(), color=False))
+    assert "●" not in text and "◆" not in text and "on trunk" not in text
 
 
 def test_render_save_list_bounds_chips_so_a_wide_save_does_not_wrap():

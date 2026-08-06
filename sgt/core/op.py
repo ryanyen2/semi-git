@@ -37,7 +37,7 @@ def is_bottom(version: str | None) -> bool:
     return version is not None and (version == BOTTOM or version.startswith(BOTTOM + "@"))
 
 
-MINER_VERSION = "4"  # R12: bump on any change to mining/untangling/identity logic. Part of
+MINER_VERSION = "5"  # R12: bump on any change to mining/untangling/identity logic. Part of
 # every op's content address, so an algorithm upgrade opens a new identity space rather than
 # silently colliding with -- or silently reusing -- ops minted under the old rules.
 # v2 (2026-07-08, kernel byte-fidelity audit): byte-native entity/residue addressing (was
@@ -51,6 +51,10 @@ MINER_VERSION = "4"  # R12: bump on any change to mining/untangling/identity log
 # differently from *every* parent (the conflict/evil hunks), not the whole first-parent cumulative
 # diff, so the second parent's own chain is no longer re-minted as one forking op. See the workflow
 # hardening plan (docs/plans/2026-07-31-001).
+# v5 (2026-08-05, launch): default tier exclusions -- any dot-path (`.claude/`, `.github/`,
+# `.mcp.json`, sgt's own `.sgt/`) and anything the repo-root `.gitignore` matches (honored even
+# for tracked files) resolve to `ignored`, so tooling/config no longer mints one-file features.
+# `.sgt/tiers.json` overrides still force-include. See sgt/core/tiers.py.
 
 # symbol id -> (before_version, after_version); before_version is None for a fresh add.
 # A "version" is a content-addressed string (the symbol's content hash, or a git blob OID for
