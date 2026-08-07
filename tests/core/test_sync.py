@@ -140,9 +140,15 @@ def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
 
     detail = fork_detail_view(b, "main.py::foo")
     assert [t["op_id"] for t in detail["tips"]] == [tip_a, tip_b]
-    contents = {t["op_id"]: t["files"]["main.py"] for t in detail["tips"]}
-    assert "return 999" in contents[tip_a]
-    assert "return 42" in contents[tip_b]
+    # Both sides' real content is visible -- the property this view exists for. Which tip is
+    # reported first follows op-id sort order (`order.forks` walks `sorted(ideal_ids)`), not which
+    # clone made the edit, so the two are checked as a pair rather than positionally: assuming
+    # `tip_a` is clone A's write pinned a coincidence of content hashes that any change to op
+    # identity flips.
+    contents = [t["files"]["main.py"] for t in detail["tips"]]
+    assert len(contents) == 2
+    assert any("return 999" in c for c in contents), contents  # A's write
+    assert any("return 42" in c for c in contents), contents   # B's write
     assert detail["remedy"] == fv["forks"][0]["remedy"]
 
     assert fork_detail_view(b, "main.py::no_such_symbol") == {

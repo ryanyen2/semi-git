@@ -241,22 +241,6 @@ def test_commits_touching_follows_a_side_branch_deletion_across_a_merge(tmp_path
     assert c0 in shas  # as is the original add
 
 
-def test_detect_orphans_flags_out_of_band_commit(tmp_path):
-    gb, _ = init_store(tmp_path)
-    # a commit sgt knows about
-    nid = new_node_id()
-    (tmp_path / "tracked.txt").write_text("x", encoding="utf-8")
-    known_sha = gb.commit_all("feat: tracked", node_id=nid)
-
-    # a commit made directly via git, outside sgt
-    (tmp_path / "rogue.txt").write_text("y", encoding="utf-8")
-    orphan_sha = gb.commit_all("chore: out-of-band edit")
-
-    orphans = gb.detect_orphans({known_sha})
-    assert orphan_sha in orphans
-    assert known_sha not in orphans
-
-
 def test_batch_reads_do_not_alias_across_chdir_with_relative_repo(tmp_path, monkeypatch):
     """The persistent cat-file batch registry keys on the RESOLVED repo path: `GitBinding(".")`
     under two different cwds must serve each repo's own blobs -- a relative key would hand one

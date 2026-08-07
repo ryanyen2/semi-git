@@ -1222,14 +1222,63 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
         kinds[o["kind"]] = kinds.get(o["kind"], 0) + 1
         if o["feature_id"] is not None:
             features[o["feature_id"]] = features.get(o["feature_id"], 0) + 1
+    # Each recent commit carries a `headline` beside its raw `subject`: what the work *was*, falling
+    # back to its dominant feature's label when the subject is a bare stamp. Only computed for the
+    # returned window (a label lookup per row), so this stays a compact-path cost.
     latest_first = list(reversed(commits))
+    window = latest_first[offset:offset + limit]
+    if window:
+        labels = _grid_labels(repo)
+        dominant = _dominant_feature_by_commit(ops_out)
+        window = [{**c, "feature_id": dominant.get(c["index"]),
+                   "headline": headline_for(c["subject"], dominant.get(c["index"]), labels)}
+                  for c in window]
     return {
         "commit_count": len(commits),
         "op_count": len(ops_out),
         "kinds": kinds,
         "features": features,
-        "latest_commits": latest_first[offset:offset + limit],
+        "latest_commits": window,
     }
+
+
+# Bare stamps a real history is full of -- they say nothing about what the save did.
+_LOW_SIGNAL_SUBJECTS = {"done", "ok", "wip", "fix", "sss", "update", "stuff", "misc"}
+
+
+def headline_for(subject: str, feature: str | None, labels: dict) -> str:
+    """What to call a commit in a history listing: its own subject when that carries signal, else the
+    label of the feature it mostly touched. A subject is low-signal when it is empty, <=3 characters,
+    or a bare stamp like `done`/`wip`/`sss`. Falls back to the raw subject when there is no feature
+    label to borrow -- better a weak name than none.
+
+    Lives here, in the projection layer, because it is a statement about *what the work was* and
+    every surface listing history needs the same answer: the rail, the save list, `sgt now`'s
+    recently-done, and the extension's Now tree. It used to be TUI-only, so the terminal's history
+    views read as feature work while `sgt now` -- the surface a user hits first -- still listed raw
+    `sss`/`done` subjects for the same commits."""
+    subj = (subject or "").strip()
+    if len(subj) >= 4 and subj.lower() not in _LOW_SIGNAL_SUBJECTS:
+        return subject
+    if feature is not None:
+        return labels.get(feature) or subject
+    return subject
+
+
+def _dominant_feature_by_commit(ops_out: list[dict]) -> dict[int, str]:
+    """commit-index -> the feature id most of that commit's ops belong to. Ties break on the smallest
+    feature id, matching `tree.assign_ops_to_leaves`, so the headline a commit gets is stable."""
+    from collections import Counter
+
+    tally: dict[int, Counter] = {}
+    for o in ops_out:
+        if o["feature_id"] is not None:
+            tally.setdefault(o["commit_index"], Counter())[o["feature_id"]] += 1
+    out = {}
+    for idx, counts in tally.items():
+        top = max(counts.values())
+        out[idx] = min(fid for fid, n in counts.items() if n == top)
+    return out
 
 
 def _grid_labels(repo) -> dict:
@@ -2221,6 +2270,30 @@ def segments_view(repo) -> list[dict]:
     return _segments_out(repo, op_leaf, tree_result)
 
 
+def _paused_git_operation(repo) -> str | None:
+    """`"merge"`/`"cherry-pick"`/`"revert"` when that git operation is paused mid-conflict, else
+    `None`. Never raises: an unreadable/unborn repo simply reports nothing paused, since this feeds
+    an orientation view that must not fail on a broken repo."""
+    from sgt.core.lens import merge_in_progress
+    from sgt.store.gitbind import GitBinding
+
+    try:
+        return merge_in_progress(GitBinding(repo))
+    except Exception:  # noqa: BLE001 -- orientation must never fail on a repo it can't read
+        return None
+
+
+def _history_rewritten_flag(repo) -> bool:
+    """Whether git history moved backward under the recorded state (see `lens._history_rewritten`).
+    Never raises -- orientation must not fail on a repo it can't read."""
+    from sgt.core.lens import sync_status
+
+    try:
+        return bool(sync_status(repo).get("history_rewritten"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _next_action(in_flight: dict, needs_you: dict) -> dict:
     """The single "do this next" recommendation as a STRUCTURED action (not a rendered string, so
     each surface phrases it in its own idiom), from a fixed priority ladder: an open fork blocks
@@ -2228,6 +2301,20 @@ def _next_action(in_flight: dict, needs_you: dict) -> dict:
     then dirty work to save, then guesses to review, else clean. Shape:
     `{kind, command, target, label}` -- `command` is a copy-pasteable shell line (or `None` when
     there's nothing to run, e.g. `clean`, or a fork with no recorded remedy)."""
+    # A paused git merge/cherry-pick/revert outranks everything, because in that state sgt cannot
+    # act at all: the tree holds conflict-marker bytes, so `save` refuses outright and every
+    # mine-on-contact path skips its dirty pass (F26). Any other suggestion here would be a command
+    # the user cannot successfully run yet -- and "finish the merge" is genuinely their next move.
+    paused = needs_you.get("paused_operation")
+    if paused:
+        return {"kind": "finish_git_operation", "command": f"git {paused} --continue",
+                "target": paused,
+                "label": f"finish the paused git {paused} (or `git {paused} --abort`)"}
+    if needs_you.get("history_rewritten"):
+        # Above forks/save because until the ideal is re-derived, *every* other reading here is
+        # computed over ops from commits that no longer exist -- including the fork list.
+        return {"kind": "resync", "command": "sgt advanced resync", "target": None,
+                "label": "git history moved backward — re-derive sgt's state"}
     forks = needs_you["forks"]
     if forks:
         f = forks[0]
@@ -2241,10 +2328,11 @@ def _next_action(in_flight: dict, needs_you: dict) -> dict:
     stalled = needs_you["stalled_plans"]
     if stalled:
         s = stalled[0]
-        csid = s.get("claude_session_id")
-        # There is no `sgt plan resume` verb; a stalled plan is a Claude Code thread the developer
-        # left mid-build, so the resume path is Claude's own `--resume` (plan_view carries the id).
-        return {"kind": "resume_plan", "command": f"claude --resume {csid}" if csid else None,
+        # `sgt plan resume <session>` is the entry point: it reads out which steps remain (flagging
+        # any that look already-built under other names) *and* prints the `claude --resume <uuid>`
+        # handle for the conversation that was building it. Suggesting `claude --resume` directly
+        # would drop the user back into a thread without telling them where it had got to.
+        return {"kind": "resume_plan", "command": f"sgt plan resume {s['session_id']}",
                 "target": s["session_id"],
                 "label": f"resume stalled plan ({s['pending_count']} step(s) left)"}
     if in_flight["total_op_count"] > 0:
@@ -2279,6 +2367,14 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
     reviews = pending_reviews(repo)
     stalled = [s for s in plan_view(repo)["sessions"] if s["derived_status"] == "stalled"]
     needs_you = {
+        # A half-finished git merge/cherry-pick/revert is the one state that blocks every sgt verb
+        # (`save` refuses on it, F26), so it belongs on the surface whose whole job is "what needs
+        # me". One `rev-parse` per pseudo-ref, so it stays cheap enough for this hot path.
+        "paused_operation": _paused_git_operation(repo),
+        # A backward git move desyncs the recorded ideal, and every count on every surface silently
+        # over-reports until it's repaired -- so it belongs on the "what needs me" list, not only in
+        # `log --summary`.
+        "history_rewritten": _history_rewritten_flag(repo),
         "forks": forks["forks"],
         "reviews": [{"id": r["id"], "subject": r["subject"], "reason": r["reason"]} for r in reviews],
         "stalled_plans": [
@@ -2303,6 +2399,219 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
         "context": context,
         "next_action": _next_action(in_flight, needs_you),
     }
+
+
+def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
+              op_limit: int | None = None) -> dict:
+    """`sgt show <sel>` -- "what is this thing?" for any id sgt ever printed.
+
+    Every other view is organized around a *question* the user already knows how to ask (history,
+    attribution, forks). This one is organized around the opposite situation: the user is holding an
+    opaque token -- a `f-` handle off a graph node, a bare hex off `--ops`, a `f-x:slug` checkpoint,
+    a symbol off a blame line -- and does not yet know which question applies, let alone which verb
+    takes it. Before this, answering "what is `f-00573aa`?" required knowing its *type* first in
+    order to pick between `feature why`, `intent show`, and `advanced state`, which is backwards.
+
+    Four things, in the order a user needs them:
+
+    1. **identity** -- what kind of thing it is, its canonical copy token, its label
+    2. **extent** -- how many edits, which symbols/files, which saves produced it, over what span
+    3. **consequence** -- how much would go with it if reverted, and how much of *that* is other
+       work built on top (`dependents`). This is the number that decides whether a revert is a
+       small correction or a demolition, and it is computed with the same pure `plan_revert_op_set`
+       the real revert uses -- not an estimate, and nothing is written.
+    4. **next** -- runnable commands for this *kind* of thing.
+
+    Deliberately deterministic and offline: no LLM rung, no mining. `show` is what a cautious user
+    runs *before* a mutating verb, possibly several times, so it must be instant and must never
+    change what it is describing. A token the deterministic ladder can't claim comes back
+    `ok: False` with the places to look, rather than an LLM's guess about what was probably meant.
+
+    It also deliberately does not re-derive *why* -- attribution and rationale belong to
+    `sgt feature why`, which `next` points at. Two views answering "why" would drift apart."""
+    from sgt.core import verbs as core_verbs
+    from sgt.select import resolve as select_resolve
+
+    found = select_resolve.identify(repo, target)
+    if found is None:
+        return {
+            "ok": False, "target": target, "kind": None,
+            "message": f"{target!r} is not a known feature, checkpoint, op, or symbol",
+            "next": [
+                {"cmd": "sgt log", "why": "browse what you did, newest first"},
+                {"cmd": "sgt log --tree", "why": "the feature tree, with each feature's handle"},
+                {"cmd": f"sgt revert {target}", "why": "if this was a phrase, revert resolves it by meaning"},
+            ],
+        }
+
+    ops = sorted(found.op_ids)
+    symbols, files = _show_footprint(repo, found.op_ids)
+    consequences = _show_consequences(repo, found, core_verbs)
+    provenance = _show_provenance(repo, found.op_ids, save_limit)
+    return {
+        "ok": True,
+        "kind": found.kind,
+        "target": target,
+        # `id` is canonical and unambiguous (for machines and for copy-out); `handle` is the short
+        # form the graph gutter already prints, which is what the suggested commands use -- a 64-char
+        # id in a `next:` line wraps the terminal and makes the whole block unreadable. Both resolve
+        # identically: `resolve_feature` accepts the bare-hex prefix.
+        "id": found.feature_id if found.kind == "feature" else (found.label or target),
+        "handle": _show_handle(found),
+        "label": found.label,
+        "feature": _show_feature_ref(repo, found),
+        "op_count": len(ops),
+        # The full op-id set by default: `op_count` is the count, and a caller that asks *which* ops
+        # needs all of them (an agent feeding them to another verb, the extension resolving a
+        # selection). These were previously sliced by `save_limit`, so a 35-op feature reported five
+        # ids with no indication the rest existed -- a machine consumer had no way to notice.
+        # `op_limit` is there for a caller that genuinely wants a sample; `op_count` stays the truth.
+        "ops": ops if op_limit is None else ops[:op_limit],
+        "symbols": symbols[:symbol_limit],
+        "symbol_count": len(symbols),
+        "files": files,
+        "saves": provenance["saves"],
+        "save_count": provenance["save_count"],
+        "span": provenance["span"],
+        "consequences": consequences,
+        "next": _show_next(found, consequences),
+    }
+
+
+def _show_handle(found) -> str:
+    """The short token to put in a suggested command: for a feature, the 8-char bare hex the graph
+    gutter prints (`f-00573aa…` -> `00573aaf`), so `show` hands back the same string the user saw
+    there; for an op, the same 8-char truncation `--ops` shows; otherwise the token as typed."""
+    if found.kind == "feature" and found.feature_id:
+        fid = found.feature_id
+        return fid[2:10] if fid.startswith("f-") else fid[:8]
+    if found.kind == "op":
+        return next(iter(sorted(found.op_ids)))[:8]
+    return found.target
+
+
+def _show_footprint(repo, op_ids) -> tuple[list[str], list[str]]:
+    """(symbols, files) the selection's ops touch. Bookkeeping sentinels (`__residue__`/`__anchor__`)
+    are dropped: they are how the miner represents the parts of a file *around* the symbols, so
+    counting them would inflate "what this touched" with entries no user recognizes."""
+    from sgt.core import opindex
+
+    wanted = frozenset(op_ids)
+    symbols: set[str] = set()
+    for op in opindex.index_ops(repo):
+        if op.id in wanted:
+            symbols.update(s for s in op.footprint
+                           if "__residue__" not in s and "__anchor__" not in s)
+    files = sorted({s.partition("::")[0] for s in symbols})
+    return sorted(symbols), files
+
+
+def _show_feature_ref(repo, found) -> dict | None:
+    """The feature this selection lives in -- omitted when the selection *is* that feature, since
+    echoing it twice reads as two different things."""
+    if found.feature_id is None or found.kind == "feature":
+        return None
+    from sgt.lens.tree import load as load_tree
+
+    nodes = (load_tree(repo) or {}).get("nodes", {})
+    node = nodes.get(found.feature_id) or {}
+    fid = found.feature_id
+    return {"id": fid, "handle": fid[2:10] if fid.startswith("f-") else fid[:8],
+            "label": node.get("label", fid)}
+
+
+def _show_provenance(repo, op_ids, limit: int) -> tuple[list[dict], dict]:
+    """(saves, span) for a selection's ops, from one pass over the commit graph.
+
+    `saves` are the commits that produced these ops, deduped and ordered **oldest-first** so a
+    feature's saves read as its story -- matching how `sgt log --focus` presents the same thing. When
+    there are more than `limit`, the *most recent* are kept (the tail), because "what happened lately"
+    is what a user is usually reconstructing; keeping the head would hide current work behind history.
+
+    `span` is the `{first, last}` committer timestamp across them, i.e. "when did I do this"; both
+    ends are `None` for ops with no committed witness yet (saved but not landed).
+
+    Computed together because they need the same `history()` + `earliest_commit_sha()` work, and
+    `show` is a read a user runs repeatedly."""
+    from sgt.core import opindex
+    from sgt.store.gitbind import GitBinding
+
+    gb = GitBinding(repo)
+    rows = gb.history()  # oldest-first (see `history_view`, which reverses it for its own window)
+    ops = [op for op in opindex.index_ops(repo) if op.id in frozenset(op_ids)]
+    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
+    subject = {sha: subj for sha, _parent, subj in rows}
+
+    witnessing = set(sha_of.values())
+    chronological = [sha for sha, _p, _s in rows if sha in witnessing]
+    kept = chronological[-limit:] if limit and len(chronological) > limit else chronological
+
+    times = gb.commit_times()
+    stamps = sorted(times[sha] for sha in witnessing if sha in times)
+    return {
+        "saves": [{"sha": sha[:7], "subject": subject.get(sha, "")} for sha in kept],
+        # The true total, so a renderer can say how many it isn't showing. A silent truncation reads
+        # as "this is all of it", which is the same class of quiet mislead as a silent no-op.
+        "save_count": len(chronological),
+        "span": {"first": stamps[0] if stamps else None, "last": stamps[-1] if stamps else None},
+    }
+
+
+def _show_consequences(repo, found, core_verbs) -> dict:
+    """What reverting this selection would cost, from the real `plan_revert_op_set` (pure, writes
+    nothing). `dependents` is the part that is *not* the selection's own ops -- later work that sits
+    on top and would come out with it. A user deciding whether a revert is safe is really asking for
+    that one number, and it is invisible in every other view."""
+    preview = core_verbs.plan_revert_op_set(repo, found.target, frozenset(found.op_ids))
+    removed = preview.removed
+    own = frozenset(found.op_ids) & preview.before_ids
+    return {
+        "ok": preview.ok,
+        "forked": preview.forked,
+        "message": preview.message,
+        "live_op_count": len(own),
+        "removes": len(removed),
+        "dependents": len(removed - own),
+        "affected_symbols": [s for s in preview.affected_symbols
+                             if "__residue__" not in s and "__anchor__" not in s],
+    }
+
+
+def _show_next(found, consequences: dict) -> list[dict]:
+    """Runnable next steps for this kind of selection. Every `cmd` here is a real, currently-spelled
+    verb at its current path -- the P0-A rule: a suggestion that silently no-ops is worse than no
+    suggestion, so nothing entity-level and nothing re-homed-without-its-prefix goes in this list."""
+    token = _show_handle(found)
+    steps: list[dict] = []
+
+    if found.kind == "feature":
+        steps.append({"cmd": f"sgt log --focus {token}", "why": "its checkpoints, oldest to newest"})
+        steps.append({"cmd": f"sgt intent show {token}", "why": "what each checkpoint was for"})
+        steps.append({"cmd": f'sgt feature rename {token} "<name>"',
+                      "why": "if the generated label doesn't match what this is"})
+    elif found.kind == "checkpoint":
+        feature = found.feature_id or ""
+        steps.append({"cmd": f"sgt intent show {feature[2:10] if feature.startswith('f-') else token}",
+                      "why": "this checkpoint in the context of its feature"})
+    elif found.kind == "symbol":
+        file = found.target.partition("::")[0]
+        steps.append({"cmd": f"sgt advanced blame {file}", "why": "who set each symbol in this file"})
+        if consequences.get("forked"):
+            steps.append({"cmd": f"sgt resolve {found.target}",
+                          "why": "two versions of this symbol compete -- guided resolution"})
+    if found.kind in ("op", "symbol"):
+        steps.append({"cmd": f"sgt feature why {found.target}",
+                      "why": "why this edit is grouped where it is, and the recorded reason"})
+
+    # The revert offer comes last and states its cost, so the consequence is read before the verb is
+    # copied. Omitted entirely when nothing here is live -- a revert would be a no-op.
+    if consequences.get("live_op_count"):
+        removes, dependents = consequences["removes"], consequences["dependents"]
+        cost = f"removes {removes} edit" + ("s" if removes != 1 else "")
+        if dependents:
+            cost += f", {dependents} of them work built on top"
+        steps.append({"cmd": f"sgt revert {token}", "why": cost})
+    return steps
 
 
 def compose_view(repo, *, full: bool = False) -> dict:

@@ -35,7 +35,7 @@ from pathlib import Path
 from sgt import state
 from sgt.core.op import Attribution, _symbol_kind
 from sgt.core.store import Store
-from sgt.loop.plan import _load_sessions, _save_sessions
+from sgt.loop.plan import _check_owner, _load_sessions, _save_sessions, plan_lock
 
 THRESHOLD = 0.3  # overlap-coefficient floor (see `_overlap`) for a step<->op candidate edge
 
@@ -343,28 +343,35 @@ def session_coverage(repo: str | Path) -> dict:
     return out
 
 
-def confirm_match(repo: str | Path, session_id: str, hollow_ids: list[str], op_ids: list[str]) -> None:
+def confirm_match(repo: str | Path, session_id: str, hollow_ids: list[str], op_ids: list[str],
+                  *, actor: str | None = None) -> None:
     """The explicit, caller-named write: records `plan_matches.json` entries for `op_ids`, marks
-    the steps owning `hollow_ids` as `matched`, and deletes their now-consumed hollow files."""
+    the steps owning `hollow_ids` as `matched`, and deletes their now-consumed hollow files.
+
+    Raises `KeyError` for an unknown `session_id`, and `PlanOwnershipError` when `actor` names a
+    Claude session other than the plan's owner -- confirming into someone else's plan credits that
+    plan with work it did not do, and consumes the hollow its owner was still working toward."""
     repo = Path(repo)
     store = Store(repo)
-    sessions = _load_sessions(repo)
-    record = sessions[session_id]
+    with plan_lock(repo):
+        sessions = _load_sessions(repo)
+        record = sessions[session_id]
+        _check_owner(record, session_id, actor)
 
-    titles = []
-    for step in record["steps"]:
-        if step["hollow_id"] in hollow_ids:
-            step["status"] = "matched"
-            step["matched_op_ids"] = sorted(op_ids)
-            titles.append(step["title"])
-    record["last_activity_ts"] = time.time()
-    # A plan with no step left pending is done: flip it to the terminal `completed` status so it
-    # leaves the active review surface (`plan.active_sessions`) instead of lingering as an
-    # "unresolved" plan forever -- nothing closed a session before this. The record is kept for
-    # provenance; only its status changes.
-    if all(step["status"] != "pending" for step in record["steps"]):
-        record["status"] = "completed"
-    _save_sessions(repo, sessions)
+        titles = []
+        for step in record["steps"]:
+            if step["hollow_id"] in hollow_ids:
+                step["status"] = "matched"
+                step["matched_op_ids"] = sorted(op_ids)
+                titles.append(step["title"])
+        record["last_activity_ts"] = time.time()
+        # A plan with no step left pending is done: flip it to the terminal `completed` status so it
+        # leaves the active review surface (`plan.active_sessions`) instead of lingering as an
+        # "unresolved" plan forever -- nothing closed a session before this. The record is kept for
+        # provenance; only its status changes.
+        if all(step["status"] != "pending" for step in record["steps"]):
+            record["status"] = "completed"
+        _save_sessions(repo, sessions)
 
     matches = _load_matches(repo)
     intent = "; ".join(titles)

@@ -45,11 +45,21 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     repo = _seed(tmp_path, 1)
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = {t["name"] for t in resp["result"]["tools"]}
-    # kernel parity with the CLI's registered verbs — a regression dropping any is caught here
+    # kernel parity with the CLI's registered verbs — a regression dropping any is caught here.
+    #
+    # The surface is deliberately NOT every CLI verb. Three groups are held back on purpose, and the
+    # reasoning belongs next to the assertion so "parity" is never restored by reflex:
+    #   * `save` makes a git commit. The agent loop absorbs edits through `sgt_checkpoint`'s
+    #     mine-on-contact instead, which keeps commit-authoring with the human.
+    #   * `land`/`sync`/`propose land`/`resolve` advance *shared* state and are gated behind the
+    #     CLI's interactive confirm; exposing them here would drop that gate for the least
+    #     supervised caller.
+    #   * the feature verbs (merge/split/move/rename) set authored labels and re-cut groupings,
+    #     which permanently override generated ones -- a human call made while looking at the graph.
     assert names == {"sgt_init", "sgt_log", "sgt_grid", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
                       "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
                       "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done",
-                      "sgt_recall"}
+                      "sgt_plan_adopt", "sgt_recall", "sgt_now", "sgt_show"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):

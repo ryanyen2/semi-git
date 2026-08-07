@@ -377,11 +377,7 @@ def _state_block_lines(repo: str, *, color: bool = False) -> list[str]:
         extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
         lines.append(f" unsaved     {inflight['total_op_count']} op(s) across "
                      f"{len(inflight['affected'])} feature(s){extra}")
-    parts = []
-    if needs["stalled_plans"]:
-        parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
-    if needs["reviews"]:
-        parts.append(f"{len(needs['reviews'])} review(s)")
+    parts = _needs_you_parts(needs)
     if parts:
         lines.append(" needs you   " + " · ".join(parts))
     cmd = f"   ({action['command']})" if action["command"] else ""
@@ -628,7 +624,17 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
     print(f"  oracle: {view['oracle']['status']}")
     for line in _state_banner({"forks": view["forks"]["records"]}, color=color):
         print(line)
-    if view["drift"]["any"]:
+    rewritten = view.get("sync_status", {}).get("history_rewritten")
+    if rewritten:
+        # A backward/sideways git move (`reset --hard`, `amend`, `branch -f`) leaves the recorded
+        # ideal naming ops from commits that are gone, so the counts above over-report and the
+        # difference is NOT ordinary working-tree drift. Said before the drift line, and pointing at
+        # the verb that actually fixes it: the generic "`sgt save` absorbs them" advice below finds
+        # nothing new here, prints "nothing to save", and exits 0 -- success with the problem intact.
+        print("  ⚠ git history moved backward since sgt last recorded this branch — the counts above "
+              "still include dropped commits")
+        print("      run `sgt advanced resync` to re-derive the current state from git history")
+    if view["drift"]["any"] and not rewritten:
         n = len(view["drift"]["paths"])
         print(f"  ⚠ {n} file(s) on disk differ from the recorded state — `sgt save` absorbs them")
         print(f"      {clip(view['drift']['paths'])}")
@@ -643,6 +649,25 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
         print("  ✓ in sync")
     _print_residual(repo, full)
     return 0
+
+
+def _needs_you_parts(needs: dict) -> list[str]:
+    """The "needs you" summary items, shared by `sgt now` and the save-list header block. One
+    implementation because there are two renderers of the same data: when the paused-git-operation
+    item was added to only one of them, the other silently kept omitting it."""
+    parts: list[str] = []
+    if needs.get("history_rewritten"):
+        parts.append("git history moved backward — run `sgt advanced resync`")
+    if needs.get("paused_operation"):
+        # First, and phrased as a blocker rather than a note: while a git merge/cherry-pick/revert is
+        # paused the tree holds conflict markers and `sgt save` refuses outright (F26), so every
+        # other item here describes work the user cannot actually do yet.
+        parts.append(f"a paused git {needs['paused_operation']} is blocking sgt")
+    if needs["stalled_plans"]:
+        parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
+    if needs["reviews"]:
+        parts.append(f"{len(needs['reviews'])} review(s)")
+    return parts
 
 
 def _fmt_age(seconds: float) -> str:
@@ -758,17 +783,15 @@ def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
         extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
         print(f"unsaved     {inflight['total_op_count']} op(s) across "
               f"{len(inflight['affected'])} feature(s){extra}")
-    parts = []
-    if needs["stalled_plans"]:
-        parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
-    if needs["reviews"]:
-        parts.append(f"{len(needs['reviews'])} review(s)")
+    parts = _needs_you_parts(needs)
     if parts:
         print("needs you   " + " · ".join(parts))
     if view["recently_done"]:
         print("recently done")
         for c in view["recently_done"]:
-            print(f"    {c['sha'][:8]}  {c['subject']}")
+            # `headline`, not `subject`: a bare `wip`/`sss` commit message says nothing about what
+            # the work was, and this is the surface a user reads first.
+            print(f"    {c['sha'][:8]}  {c.get('headline') or c['subject']}")
     cmd = f"   ({action['command']})" if action["command"] else ""
     print(f"→ next      {action['label']}{cmd}")
     return 0

@@ -421,7 +421,8 @@ def test_sync_status_reports_complete_on_a_fully_synced_ref(tmp_path):
     mining) reports both `complete` and `reached_genesis` true."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    assert sync_status(repo) == {"complete": True, "reached_genesis": True}
+    assert sync_status(repo) == {"complete": True, "reached_genesis": True,
+                                "history_rewritten": False}
 
 
 def test_sync_status_reports_incomplete_while_a_first_contact_chunk_is_still_backfilling(tmp_path, monkeypatch):

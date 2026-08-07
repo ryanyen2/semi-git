@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import argparse
 
+from sgt.select import resolve as select_resolve
+
 from ._common import _emit_json, _fail, _fail_json
 from .rewrite import _print_draft, _print_repair_result
 
@@ -236,7 +238,7 @@ def _kernel_edit_verb(
     # it to its deterministic op-set and run the exact same op-set revert `sgt intent revert` uses
     # (KTD6). Tried first for `revert` because `@`/`:` name a checkpoint unambiguously; a non-match
     # returns None and falls through. restore has no op-set counterpart, so it never enters here.
-    if cmd == "revert" and ("@" in target or ":" in target):
+    if cmd == "revert" and select_resolve.is_checkpoint_shaped(target):
         from sgt.intent.segment import resolve_checkpoint
 
         resolved = resolve_checkpoint(repo, target)
@@ -252,8 +254,6 @@ def _kernel_edit_verb(
             return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label},
                                      yes=yes, focus_fid=focus_fid)
 
-    import re
-
     from sgt.lens import verbs as lens_verbs
 
     plan_single = verbs.plan_revert if cmd == "revert" else verbs.plan_restore
@@ -262,7 +262,9 @@ def _kernel_edit_verb(
     # would target that one op. But the handle names the whole feature -- resolve it as a feature first,
     # the feature scope winning over the op it shadows. Symbols (`a.py::foo`) and `@n`/`:slug` never
     # match this shape (handled earlier / carry `::@:`), so single-op-by-symbol is unchanged.
-    handle_shaped = re.fullmatch(r"(f-)?[0-9a-f]{3,}", target) is not None
+    # The shape predicates live in `sgt.select.resolve` so `sgt show <x>` classifies `<x>` exactly as
+    # this ladder does -- a token that reads as a feature here must not read as an op there.
+    handle_shaped = select_resolve.is_handle_shaped(target)
     focus_fid = None
     if handle_shaped:
         resolved_feature = lens_verbs.resolve_feature(repo, target)

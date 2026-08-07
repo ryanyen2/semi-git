@@ -64,8 +64,8 @@ class VerbPreview:
 
 def resolve_target(ideal: Ideal, ops: list[Op], ref: str) -> tuple[str | None, str]:
     """Resolve a user-supplied `ref` to a single op-id within `ideal`. Accepts an exact op-id, a
-    unique op-id prefix, or a `file::name` symbol (→ that symbol's frontier tip op). Returns
-    `(op_id, "")` on a unique hit, or `(None, message)` on missing/ambiguous."""
+    unique op-id prefix, a `file::name` symbol, or a whole-file path (each → that symbol's frontier
+    tip op). Returns `(op_id, "")` on a unique hit, or `(None, message)` on missing/ambiguous."""
     ids = ideal.op_ids
     if ref in ids:
         return ref, ""
@@ -74,6 +74,14 @@ def resolve_target(ideal: Ideal, ops: list[Op], ref: str) -> tuple[str | None, s
         if tip is not None:
             return tip, ""
         return None, f"symbol {ref!r} is not live in the ideal"
+    # A non-code file (`README.md`, `config.yaml`, a binary) is tracked as one whole-file symbol, so
+    # its frontier key is the bare path with no `::`. Checked before the hex-prefix rung -- an exact
+    # frontier hit is more specific than a prefix, and `sgt revert README.md` is a command a user
+    # types straight off a `log`/`blame` line. Without this it reached neither symbol rung and fell
+    # through to the NL/LLM resolver, which is both slow and needless for an exact name.
+    tip = order.frontier(ids, ops).get(ref)
+    if tip is not None:
+        return tip, ""
     matches = sorted(oid for oid in ids if oid.startswith(ref))
     if len(matches) == 1:
         return matches[0], ""

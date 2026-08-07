@@ -735,8 +735,9 @@ def test_sync_status_reports_complete_from_both_views_on_a_fresh_fully_synced_fi
     `map_view` and `status_view`, per the plan's own scenario (1)."""
     repo = _mined(tmp_path, "mixed_coverage")
 
-    assert map_view(repo)["sync_status"] == {"complete": True, "reached_genesis": True}
-    assert status_view(repo)["sync_status"] == {"complete": True, "reached_genesis": True}
+    synced = {"complete": True, "reached_genesis": True, "history_rewritten": False}
+    assert map_view(repo)["sync_status"] == synced
+    assert status_view(repo)["sync_status"] == synced
 
 
 def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(tmp_path, monkeypatch):
@@ -750,8 +751,9 @@ def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(t
     get(repo)
 
     op_count_before = len(Store(repo).all_ops())
-    assert map_view(repo)["sync_status"] == {"complete": False, "reached_genesis": False}
-    assert status_view(repo)["sync_status"] == {"complete": False, "reached_genesis": False}
+    behind = {"complete": False, "reached_genesis": False, "history_rewritten": False}
+    assert map_view(repo)["sync_status"] == behind
+    assert status_view(repo)["sync_status"] == behind
     assert len(Store(repo).all_ops()) == op_count_before
 
 
@@ -1048,7 +1050,8 @@ def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
     v = now_view(repo)
     assert set(v) == {"in_flight", "needs_you", "recently_done", "context", "next_action"}
     assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
-    assert v["needs_you"] == {"forks": [], "reviews": [], "stalled_plans": []}
+    assert v["needs_you"] == {"forks": [], "reviews": [], "stalled_plans": [],
+                              "paused_operation": None, "history_rewritten": False}
     assert v["next_action"]["kind"] == "clean"
     assert v["next_action"]["command"] is None
     assert v["recently_done"]  # the fixture's commits show up as recently done
@@ -1084,9 +1087,12 @@ def test_now_view_include_preview_false_skips_the_mine(tmp_path):
     assert v["next_action"]["kind"] == "clean"  # save rung never fires without the preview
 
 
-def test_now_view_stalled_plan_recommends_claude_resume(tmp_path):
-    """A stalled plan session outranks a clean tree: the next action is Claude's own `--resume`
-    (there is no `sgt plan resume` verb), targeting the stalled session."""
+def test_now_view_stalled_plan_recommends_sgt_plan_resume(tmp_path):
+    """A stalled plan session outranks a clean tree. The recommended command is `sgt plan resume
+    <session>`, which reads out which steps remain (flagging any that already look built under other
+    names) *and* prints the `claude --resume <uuid>` handle. It used to recommend `claude --resume`
+    directly, which dropped the user back into a conversation without telling them where it had got
+    to -- the orientation is the part they were missing."""
     import time
 
     from sgt.loop.plan import STALLED_SECONDS
@@ -1104,8 +1110,10 @@ def test_now_view_stalled_plan_recommends_claude_resume(tmp_path):
     assert len(v["needs_you"]["stalled_plans"]) == 1
     assert v["needs_you"]["stalled_plans"][0]["session_id"] == "s1"
     assert v["next_action"]["kind"] == "resume_plan"
-    assert v["next_action"]["command"] == "claude --resume sess-xyz"
+    assert v["next_action"]["command"] == "sgt plan resume s1"
     assert v["next_action"]["target"] == "s1"
+    # The chat handle is still reachable -- `plan resume` prints it -- so nothing was lost.
+    assert v["needs_you"]["stalled_plans"][0]["claude_session_id"] == "sess-xyz"
 
 
 def test_now_view_open_fork_outranks_everything_and_recommends_resolve(tmp_path):
@@ -1471,3 +1479,50 @@ def test_focus_subgraph_is_empty_when_no_feature_tree_is_built(tmp_path):
     preview = verbs._preview("revert", user_op.id, all_ids, all_ids - {user_op.id}, ops)
     focus = focus_subgraph(preview, repo, so_what="X")
     assert focus == {"so_what": "X", "nodes": [], "edges": [], "context_count": 0}
+
+
+def test_headline_for_falls_back_to_the_feature_label_on_a_low_signal_subject():
+    """`headline_for` is the one definition of "what to call this commit", shared by the rail, the
+    save list, `sgt now`'s recently-done, and the extension's Now tree. It used to be TUI-only, so
+    the terminal's history views read as feature work while `sgt now` -- the surface a user reads
+    first -- still listed the raw `sss`/`wip` subjects for those same commits."""
+    from sgt.api import headline_for
+
+    labels = {"f-1": "retry backoff on the fetch path"}
+
+    # A subject that says something is kept verbatim.
+    assert headline_for("add a real credential check", "f-1", labels) == "add a real credential check"
+    # Bare stamps, too-short, and empty subjects borrow the dominant feature's label.
+    for junk in ("wip", "sss", "done", "ok", "", "  ", "fix"):
+        assert headline_for(junk, "f-1", labels) == "retry backoff on the fetch path", junk
+    # Case-insensitive on the stamp list.
+    assert headline_for("WIP", "f-1", labels) == "retry backoff on the fetch path"
+    # With no feature, or no label for it, a weak subject beats no name at all.
+    assert headline_for("wip", None, labels) == "wip"
+    assert headline_for("wip", "f-unknown", labels) == "wip"
+
+
+def test_history_view_latest_commits_carry_a_headline(tmp_path):
+    """The projection, not just the helper: each recent commit gets `headline` beside its raw
+    `subject`, so every surface can lead with what the work was without re-deriving the rule."""
+    from sgt.api import history_view
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "auth.py").write_text("def login(u, p):\n    return True\n", encoding="utf-8")
+    gb.commit_all("sss")
+    (repo / "auth.py").write_text(
+        "def login(u, p):\n    return True\n\n\ndef logout():\n    pass\n", encoding="utf-8")
+    gb.commit_all("add a logout path")
+    get(repo)
+    from sgt.lens import map as lensmap
+    lensmap.build_map(repo)
+
+    rows = history_view(repo)["latest_commits"]
+    assert rows
+    by_subject = {r["subject"]: r for r in rows}
+    assert by_subject["add a logout path"]["headline"] == "add a logout path"
+    # The `sss` commit borrows a real name from the feature its ops landed in.
+    junk = by_subject["sss"]
+    assert junk["headline"] != "sss"
+    assert junk["feature_id"]

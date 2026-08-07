@@ -36,12 +36,13 @@ n:m/multi-step match (`--confirm-hollow`/`--confirm-op` names one group). The wo
 from __future__ import annotations
 
 import argparse
+import difflib
 import subprocess
 import sys
 
 from . import (
     edit, feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose,
-    resolve, review, rewrite, select, session, suggestions, sync, tiers,
+    resolve, review, rewrite, select, session, show, suggestions, sync, tiers,
 )
 
 # The daily spine + the frequently-reached verbs kept at the top level, two groupings, and the
@@ -52,7 +53,7 @@ from . import (
 _VERBS = {
     # spine (U14: the grid is the only inspection surface -- status/map/graph/episodes are `log`
     # modes, no longer verbs; blame/edit/commit/fulfill demoted under `advanced`)
-    "save", "log", "undo", "revert", "restore", "resolve",
+    "save", "log", "undo", "revert", "restore", "resolve", "show",
     # navigation + inspection (daily). `intent` stays top-level: its subcommands (list/show/build)
     # don't map to a `log` mode and it was deliberately re-promoted (c4f9966/KTD8). `now` is the
     # state-of-actions orient (what's in flight / needs you / next), a fast assembler distinct from
@@ -87,7 +88,23 @@ _ROUTING = {
 }
 
 _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review, intent, edit, resolve, suggestions)
+             porcelain, tiers, select, session, review, intent, edit, resolve, show, suggestions)
+
+# Verbs that were *renamed* rather than re-homed: `log` render modes (U14) and the two loop verbs
+# folded into `save` (U12). `_ROUTING` covers the re-homed ones, so this table only holds the names
+# whose replacement isn't `sgt <grouping> <same-name>`. Both feed `_unknown_verb`: the KTD2 rename
+# was deliberately alias-free, which means a user arriving from older output or docs types a verb
+# that no longer exists -- the one thing we owe them is the command that replaced it.
+_RENAMED = {
+    "status": "sgt log --summary",
+    "map": "sgt log --map",
+    "graph": "sgt log --map",
+    "episodes": "sgt log --rail",
+    "tree": "sgt log --tree",
+    "checkpoint": "sgt save",       # U12: folded into the save beat
+    "drift": "sgt log --summary",   # working-tree drift kept its name as a summary scalar
+    "put": "sgt save",              # never existed as a verb (stale in core/sync/land.py docstring)
+}
 
 
 class _Router:
@@ -166,11 +183,11 @@ def main(argv: list[str] | None = None) -> int:
     if argv[0] == "git":
         return _git_passthrough(argv[1:])
 
-    if argv[0] == "help":
+    if argv[0] in ("help", "-h", "--help"):
         return _help()
 
     if argv[0] not in _VERBS:
-        return _help()
+        return _unknown_verb(argv[0])
 
     parser = _build_parser()
     try:
@@ -178,6 +195,47 @@ def main(argv: list[str] | None = None) -> int:
     except _CLIExit as e:
         return e.code
     return args.func(args)
+
+
+def _runnable(name: str) -> str:
+    """The command a user can actually type for `name` today: its `log`-mode/fold replacement, its
+    re-homed path, or the bare top-level verb."""
+    if name in _RENAMED:
+        return _RENAMED[name]
+    group = _ROUTING.get(name)
+    if group == "regroup":
+        return f"sgt feature regroup {name}"
+    if group is not None:
+        return f"sgt {group} {name}"
+    return f"sgt {name}"
+
+
+def _unknown_verb(token: str) -> int:
+    """An unrecognized first token. Never prints the full help and exits 0: a caller (a script, an
+    agent, a user reading a stale README) that types a verb which no longer exists would read that
+    success as "it ran and did nothing to do", which is the same silent-no-op failure class the
+    workbench fixed. Exit 2 always, and -- because KTD2's re-homing shipped without an alias layer --
+    name the command that replaced it whenever we can compute one."""
+    if token.startswith("-"):
+        sys.stderr.write(
+            f"sgt: `{token}` is a flag, not a verb — flags go after the verb (e.g. `sgt log --json`).\n"
+            "  run `sgt help` for the verb surface.\n")
+        return 2
+
+    if token in _RENAMED or token in _ROUTING:
+        sys.stderr.write(f"sgt: `sgt {token}` no longer exists — it moved.\n"
+                         f"  run: {_runnable(token)}\n")
+        return 2
+
+    known = sorted(_VERBS | set(_ROUTING) | set(_RENAMED))
+    close = difflib.get_close_matches(token, known, n=3, cutoff=0.6)
+    sys.stderr.write(f"sgt: unknown verb `{token}`.\n")
+    if close:
+        sys.stderr.write("  did you mean:\n")
+        for name in close:
+            sys.stderr.write(f"    {_runnable(name)}\n")
+    sys.stderr.write("  run `sgt help` for the verb surface.\n")
+    return 2
 
 
 def _git_passthrough(args: list[str]) -> int:
@@ -206,6 +264,8 @@ def _help() -> int:
         "  sgt log [--json]            what you did, newest first — the one inspection surface:\n"
         "                              --map (feature lanes over time) · --tree (feature tree) ·\n"
         "                              --summary (what needs attention) · --refresh (reflect new edits)\n"
+        "  sgt show <sel>              what is this? — any id sgt printed: what it covers, what\n"
+        "                              would go with it, and what you can do next\n"
         "  sgt undo                    invert the last mutating operation (the unified op log)\n"
         "  sgt revert <sel>            remove a selection and everything built on it\n"
         "  sgt restore <sel>           bring a selection back, along with what it needs\n"

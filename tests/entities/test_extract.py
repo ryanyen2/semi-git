@@ -64,6 +64,45 @@ def test_typescript_arrow_const_is_a_function():
     assert "submit" in ents and ents["submit"].kind == "function"
 
 
+def test_javascript_is_parsed_through_the_typescript_grammar():
+    """A JS/React repo used to mine no symbol-level ops at all: `.js`/`.jsx` weren't in `_EXT_LANG`,
+    so every file fell through to a single whole-file symbol -- which silently removes feature
+    grouping, blame, and symbol-scoped revert for the whole project. TS is a syntactic superset of
+    JS, so the installed grammars cover it with no new dependency."""
+    src = (
+        "export function greet(name) {\n"
+        "  return `hi ${name}`;\n"
+        "}\n"
+        "export class Store {\n"
+        "  constructor(x) { this.x = x; }\n"
+        "  get(k) { return this.x[k]; }\n"
+        "}\n"
+        "module.exports = { greet };\n"
+    )
+    for path in ("web/app.js", "web/app.mjs", "web/app.cjs"):
+        ents = _by_name(extract_file(path, src))
+        assert ents["greet"].kind == "function", path
+        assert ents["Store"].kind == "class", path
+        assert ents["Store.get"].kind == "method", path
+        assert ents["Store.get"].container == "Store", path
+
+
+def test_jsx_is_parsed_through_the_tsx_grammar():
+    src = (
+        "import React from 'react';\n"
+        "export function Button({ label, onClick }) {\n"
+        "  return <button onClick={onClick}>{label}</button>;\n"
+        "}\n"
+        "export default class Panel extends React.Component {\n"
+        "  render() { return <div><Button label=\"ok\" /></div>; }\n"
+        "}\n"
+    )
+    ents = _by_name(extract_file("web/ui.jsx", src))
+    assert ents["Button"].kind == "function"
+    assert ents["Panel"].kind == "class"
+    assert ents["Panel.render"].kind == "method"
+
+
 def test_empty_comment_only_and_broken_files_yield_no_entities_without_raising():
     assert extract_file("a.py", "") == []
     assert extract_file("a.py", "# just a comment\n") == []

@@ -2,7 +2,7 @@
   "blame_view": {
     "covered": true,
     "features": {
-      "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736": {
+      "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157": {
         "label": "compute helper"
       }
     },
@@ -10,7 +10,7 @@
     "spans": [
       {
         "end_line": 2,
-        "feature_id": "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736",
+        "feature_id": "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157",
         "label": "compute helper",
         "sessions": [],
         "start_line": 1,
@@ -24,14 +24,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736"
+        "feature_id": "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "pkg.py",
-        "id": "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736",
+        "id": "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157",
         "kind": "feature",
         "label": "compute helper",
         "members": [
@@ -53,10 +53,11 @@
       }
     ],
     "roots": [
-      "f-12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736"
+      "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157"
     ],
     "sync_status": {
       "complete": true,
+      "history_rewritten": false,
       "reached_genesis": true
     }
   },
@@ -67,15 +68,7 @@
     },
     "ops": [
       {
-        "id": "12827cd98d9c2396bf66be3e904b91edf0413efddd002bdddbfa5366dea9b736",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "util.py::__anchor__::helper"
-        ]
-      },
-      {
-        "id": "1400c67f250fcb140e9a7b9c7c4529b03f2c3214ee094c091a14a1536aa98c03",
+        "id": "0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -83,7 +76,7 @@
         ]
       },
       {
-        "id": "3b6f5f051d0ebdaf68c911b0fe81d70de5c851a24c1ac423883d3f786963196d",
+        "id": "0c2b0fbd2334b48f78c78853d4c780a7fb4c1f9598961dddab667cadff8a6fec",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -91,39 +84,15 @@
         ]
       },
       {
-        "id": "3cfcd7617bd75cac5449bb6cd72193df80073cc9e16d13abbecd9dbc71d27ba4",
+        "id": "187f8cf9a9f812f5af43fbe4721cdbc7a0201b79c592ac417a9dd730f7e573a1",
         "intent": null,
         "kind": "add",
         "symbols": [
-          "pkg.py::__residue__::\u0000HEAD\u0000"
+          "util.py::__anchor__::helper"
         ]
       },
       {
-        "id": "3fa51d51690cdbf25d75e423cd9b27ac88be4d519d3a2df9df81fe367dcc53fa",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "notes.md"
-        ]
-      },
-      {
-        "id": "536b1e1e55f00e715cdf69c3c5218359bff355ba4bc8e68e40610c09ed5d4588",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "config.yaml"
-        ]
-      },
-      {
-        "id": "6b87308e74107b69def85797c97a4adeeffcf1e90b517946f718638a0f08a82b",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "pkg.py::__residue__::compute"
-        ]
-      },
-      {
-        "id": "7ea6fe0e76421777dfb325da7a4805830734fe8727e7bfc609387eae93dd3c42",
+        "id": "257602c4f6df568bc35a316ed0372ea5bc84da86099c5051f1fac36bf350d749",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -131,7 +100,23 @@
         ]
       },
       {
-        "id": "aa3321960d8f9018c3549c92932224fc1107686d27620a3223b58eb6337c51dd",
+        "id": "4166adbba4c38c05df174fe72422a89e8a5587eba7039a6d7361926b5c2c88df",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "pkg.py::__residue__::compute"
+        ]
+      },
+      {
+        "id": "5717041e1811197d6e8299d50bb2a2670acf730503a2c7ec53670ac11ebf6e09",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "notes.md"
+        ]
+      },
+      {
+        "id": "a3d0a9df722d74bffc72c8f52a25efefd4b6828a5c79d48e73575257afcd1bec",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -139,7 +124,23 @@
         ]
       },
       {
-        "id": "cb8a40e2663fbc3a60c9fea08b0ac7ea537dd8e6c76cd56360d4005ca81c8d13",
+        "id": "b6e89ef8902c0485340584bbd963e351dd2eb988173223e177d713054726f9ef",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "pkg.py::__residue__::\u0000HEAD\u0000"
+        ]
+      },
+      {
+        "id": "c8e59368af2081c65abb441452621db128d95008eb6ce9355626d5691aa348d3",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "config.yaml"
+        ]
+      },
+      {
+        "id": "d4b78db6cfab5639af9f0369049f1076c6d6e626ad14c5a020d147aab13b3832",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -183,6 +184,7 @@
     "symbols": 10,
     "sync_status": {
       "complete": true,
+      "history_rewritten": false,
       "reached_genesis": true
     },
     "unmanaged": []

@@ -798,7 +798,68 @@ def sync_status(repo: str | Path, ref: str | None = None) -> dict:
     backfill = _load_backfill_state(repo).get(key)
     reached_genesis = backfill is None or bool(backfill.get("reached_genesis"))
     complete = witness is not None and witness == head and reached_genesis
-    return {"complete": complete, "reached_genesis": reached_genesis}
+    return {"complete": complete, "reached_genesis": reached_genesis,
+            "history_rewritten": _history_rewritten(gb, witness, head)}
+
+
+def dropped_ideal_ops(repo: str | Path, ref: str | None = None) -> list[str]:
+    """Ops in this ref's *persisted* ideal whose witnessing commits are all gone from git history --
+    the residue of a backward/sideways move (`git reset --hard`, `commit --amend`, `branch -f`).
+
+    This is the P0-1 desync made observable. `_sync` seeds `base_ids` from `ideal_table[key]` and
+    treats it as authoritative from then on (deliberately: that is what keeps an explicit revert
+    durable, F11/F20), but it never intersects it with the ref's *current* ancestry. So after a
+    backward move the ideal still names ops from dropped commits: `log --summary` counts files that
+    no longer exist, `--map` shows vanished symbols, and a later `save` can dead-end.
+
+    Comparing the recorded *witness* to HEAD does not detect this -- mine-on-contact advances the
+    witness to the new head while leaving the ideal untouched, so by the time any surface reads,
+    witness == head and the ideal is still stale. The reliable signal is per-op reachability.
+
+    Ops with *empty* provenance are never counted: `put` commits via `Sgt-Op:` trailers and advances
+    the witness without re-mining, so a legitimately-live op can carry no provenance until a later
+    cold mine. Only an op that names commits, none of which git can still reach, is definitively
+    dropped -- which is also exactly the set a future auto-intersect on the catch-up branch may
+    subtract, so the two agree by construction.
+
+    A pure read: decodes the footprint-only index and one `git log`. Returns sorted op-ids."""
+    repo = Path(repo)
+    gb = GitBinding(repo)
+    if ref is None:
+        key = _ref_key(gb) or gb.head()
+    else:
+        key = ref if ref.startswith("refs/") else f"refs/heads/{ref}"
+    recorded = _load_ideal_table(repo).get(key)
+    if not recorded:
+        return []
+    reachable = set(gb.commit_shas())
+    if not reachable:
+        return []
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
+    dropped = []
+    for op_id in recorded:
+        op = by_id.get(op_id)
+        if op is None or not op.provenance:
+            continue  # unknown, or committed-by-trailer with no provenance yet -- not evidence
+        if not set(op.provenance) & reachable:
+            dropped.append(op_id)
+    return sorted(dropped)
+
+
+def _history_rewritten(gb: GitBinding, witness: str | None, head: str | None) -> bool:
+    """True iff this ref's recorded ideal still names ops from commits git can no longer reach --
+    i.e. git history moved backward/sideways and `sgt advanced resync` is the remedy.
+
+    Before this, the desync presented as ordinary working-tree drift, so every surface suggested
+    `sgt save` -- which finds nothing new, prints "nothing to save", exits 0, and leaves the
+    discrepancy in place. A remedy that reports success without fixing anything is worse than none,
+    because it also removes the user's reason to keep looking."""
+    if head is None:
+        return False
+    try:
+        return bool(dropped_ideal_ops(gb.repo))
+    except Exception:  # noqa: BLE001 -- a pure read feeding orientation; never fail a status call
+        return False
 
 
 def resync(repo: str | Path, *, reseed: bool = False) -> dict:
