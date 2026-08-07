@@ -830,9 +830,14 @@ def test_help_mentions_history_and_preview_verbs(capsys):
     assert "history" in out and "preview" in out
 
 
-def test_unknown_verb_falls_back_to_help(capsys):
-    assert main(["nonsense"]) == 0
-    assert "sgt —" in capsys.readouterr().out
+def test_unknown_verb_is_an_error_not_a_help_dump(capsys):
+    """An unrecognized verb used to print the full help and return 0, which reads as success to any
+    caller -- the same silent-no-op class the workbench fixed. It is now an error naming the token.
+    The detailed contract (moved-verb hints, did-you-mean) lives in `test_cli_unknown_verb.py`."""
+    assert main(["nonsense"]) == 2
+    captured = capsys.readouterr()
+    assert "unknown verb" in captured.err
+    assert "sgt —" not in captured.out
 
 
 def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
@@ -840,11 +845,13 @@ def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
     the daily spine + `log` + the two groupings + the unchanged collaboration/setup verbs.
     `status`/`map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/
     `commit`/`fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't
-    map to a `log` mode; re-promoted in c4f9966/KTD8)."""
+    map to a `log` mode; re-promoted in c4f9966/KTD8). `show` is the "what is this?" reader for any
+    id sgt printed -- top-level because it is the verb you reach for when you do *not* yet know what
+    kind of thing you are holding, so it cannot sit behind a grouping you'd have to guess."""
     from sgt.cli import _VERBS
 
     assert _VERBS == {
-        "save", "log", "undo", "revert", "restore", "resolve",
+        "save", "log", "undo", "revert", "restore", "resolve", "show",
         "switch", "diff", "intent", "now",  # `now` = state-of-actions orient (state block + what-next)
         "plan",  # checkpoint/drift folded into `save` (U12)
         "feature", "advanced",
@@ -965,11 +972,21 @@ def _feature_repo(tmp_path):
     return next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
 
 
+def _as_tty(monkeypatch):
+    """Simulate an interactive terminal. The feature verbs' `_confirm` gates on `isatty` before it
+    consults the pane -- off a tty they apply immediately, which is the deliberate machine/CI
+    contract -- so a test about pane behavior has to say it is on a tty. Without this, these tests
+    passed by taking the non-interactive short-circuit rather than by exercising the pane."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
+
+
 def test_rename_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, capsys):
     from sgt.cli import _common
     from sgt.tui.consequence import Decision
 
     fid = _feature_repo(tmp_path)
+    _as_tty(monkeypatch)
     monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
     capsys.readouterr()
 
@@ -984,6 +1001,7 @@ def test_rename_on_a_tty_changes_nothing_when_the_pane_aborts(tmp_path, monkeypa
     from sgt.tui.consequence import Decision
 
     fid = _feature_repo(tmp_path)
+    _as_tty(monkeypatch)
     monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(False))
     capsys.readouterr()
 

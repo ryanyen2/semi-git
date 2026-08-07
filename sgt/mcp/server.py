@@ -207,6 +207,7 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
             pass
     confirm = args.get("confirm")
     if confirm:
+        actor = (args.get("claude_session_id") or "").strip() or None
         sessions = plan_mod.active_sessions(repo_path)
         for group in confirm:
             hollow_ids = group.get("hollow_ids") or []
@@ -218,12 +219,41 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
             )
             if session_id is None:
                 return {"error": f"no active session owns hollow(s) {hollow_ids}"}
-            confirm_match(repo_path, session_id, hollow_ids, op_ids)
+            # Ownership-checked like `plan done`/`abandon`: a confirm consumes the hollow and credits
+            # the plan, so confirming into another agent's session both steals its pending step and
+            # attributes work that session never did.
+            try:
+                confirm_match(repo_path, session_id, hollow_ids, op_ids, actor=actor)
+            except plan_mod.PlanOwnershipError as e:
+                return {"error": str(e), "owner": e.owner, "session_id": e.session_id}
     # Compact by default: each candidate group keeps its `hollow_ids`/`op_ids` -- everything a
     # follow-up `confirm` call needs -- and drops the per-op file/line span fold, the bulky part.
     # Pass `detail=true` for the spans when the agent wants to eyeball the actual changes.
     detail = bool(args.get("detail", False))
     return plan_view(repo_path, full=detail)["checkpoint"]
+
+
+def tool_now(repo_path: str, args: dict) -> dict:
+    """The state-of-actions orient: what's in flight, what needs a human, what was recently done,
+    and the single suggested next action. The tool an agent should call *first* when it picks up
+    work in an unfamiliar or resumed repo -- it answers "is someone mid-something here?" before the
+    agent starts editing over it."""
+    from sgt.api import now_view
+
+    return now_view(repo_path)
+
+
+def tool_show(repo_path: str, args: dict) -> dict:
+    """What is this id? Resolves any token sgt printed -- a feature handle, a checkpoint, an op id,
+    a `file::name` symbol, a file path -- and reports what it covers, how much would come out with
+    it if reverted (including work built on top), and the commands that apply to it. Deterministic
+    and read-only: it writes nothing and never calls an LLM."""
+    from sgt.api import show_view
+
+    target = (args.get("sel") or "").strip()
+    if not target:
+        return {"error": "missing 'sel'"}
+    return show_view(repo_path, target)
 
 
 def tool_recall(repo_path: str, args: dict) -> dict:
@@ -249,14 +279,39 @@ def tool_drift(repo_path: str, args: dict) -> dict:
 def tool_plan_done(repo_path: str, args: dict) -> dict:
     """Close a finished plan session (plan U14). A fully-matched session already completes on its
     own via `sgt_checkpoint`'s confirm; this is the explicit close for a plan whose remaining steps
-    were done differently than predicted and will never match, so it stops showing as active."""
+    were done differently than predicted and will never match, so it stops showing as active.
+
+    Ownership-checked: closing unlinks the still-pending hollows, so an agent closing a *different*
+    agent's plan would make that agent's remaining steps permanently unmatchable with nothing
+    anywhere explaining why. Passing `claude_session_id` is what lets the check protect you too."""
     from sgt.loop import plan as plan_mod
 
     session_id = (args.get("session_id") or "").strip()
     if not session_id:
         return {"error": "missing 'session_id'"}
-    ok = plan_mod.mark_done(repo_path, session_id)
+    actor = (args.get("claude_session_id") or "").strip() or None
+    try:
+        ok = plan_mod.mark_done(repo_path, session_id, actor=actor)
+    except plan_mod.PlanOwnershipError as e:
+        return {"error": str(e), "owner": e.owner, "session_id": e.session_id}
     return {"ok": ok} if ok else {"error": f"no such session: {session_id}"}
+
+
+def tool_plan_adopt(repo_path: str, args: dict) -> dict:
+    """Take over a plan session another Claude session started -- typically one left stalled when
+    its agent stopped. Non-destructive: the steps, their confirmed matches, and the pending hollows
+    all survive, so you continue from where the previous agent stopped rather than re-intaking (which
+    would mint duplicate hollows for work already done)."""
+    from sgt.loop import plan as plan_mod
+
+    session_id = (args.get("session_id") or "").strip()
+    if not session_id:
+        return {"error": "missing 'session_id'"}
+    actor = (args.get("claude_session_id") or "").strip() or None
+    ok, previous = plan_mod.adopt(repo_path, session_id, actor)
+    if not ok:
+        return {"error": f"no such session: {session_id}"}
+    return {"ok": True, "session_id": session_id, "previous_owner": previous, "owner": actor}
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +319,18 @@ def tool_plan_done(repo_path: str, args: dict) -> dict:
 # ---------------------------------------------------------------------------
 def _schema(props: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
+
+
+# The caller's own Claude Code session id, used by the plan tools to tell agents apart. Declared once
+# because it now appears on several tools and its guidance (which env var, and why not the bridge
+# one) must not drift between them.
+_OWN_SESSION_PROP = {
+    "type": "string",
+    "description": "your Claude Code session id (read $CLAUDE_CODE_SESSION_ID via Bash -- the "
+                   "per-session UUID; do NOT use $CLAUDE_CODE_BRIDGE_SESSION_ID, which can carry a "
+                   "parent session's id in nested runs). Identifies you as the plan's owner so "
+                   "another agent cannot close your plan out from under you, and vice versa.",
+}
 
 
 TOOLS: dict[str, tuple[str, dict, Any]] = {
@@ -361,6 +428,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
                 ),
             },
              "session_id": {"type": "string", "description": "which plan session a `note` belongs to (optional; defaults to the single active one)"},
+             "claude_session_id": _OWN_SESSION_PROP,
              "note": {"type": "string", "description": "the user's latest instruction/correction in this conversation, verbatim -- recorded as intent evidence so `sgt why` can answer later"}},
             [],
         ),
@@ -385,9 +453,39 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "completes automatically when its last step is confirmed; call this for a plan whose "
         "remaining steps were built differently than predicted and will never match. The record is "
         "kept as completed history (its work stays attributable); use `sgt plan abandon` to delete "
-        "an unwanted plan entirely.",
-        _schema({"session_id": {"type": "string"}}, ["session_id"]),
+        "an unwanted plan entirely. Pass your own claude_session_id: closing another agent's plan "
+        "is refused, because it would make that agent's remaining steps permanently unmatchable.",
+        _schema({"session_id": {"type": "string"},
+                 "claude_session_id": _OWN_SESSION_PROP}, ["session_id"]),
         tool_plan_done,
+    ),
+    "sgt_now": (
+        "Orient before you edit: what work is in flight, what needs a human decision (forks, "
+        "stalled plans, review items), what was recently done, and the one suggested next action. "
+        "Call this first when picking up work in a repo you did not just set up — it tells you "
+        "whether someone is mid-something before you start editing over it.",
+        _schema({}, []),
+        tool_now,
+    ),
+    "sgt_show": (
+        "What is this? Give it any id sgt printed — a feature handle, a `feature@n` checkpoint, an "
+        "op id, a `file::name` symbol, or a file path — and it reports what the thing covers, how "
+        "many edits a revert would remove (and how many of those are work built on top), and which "
+        "commands apply to it. Read-only and deterministic: writes nothing, never calls an LLM. Use "
+        "it before proposing a revert so you can state the consequence.",
+        _schema({"sel": {"type": "string",
+                         "description": "the id/label/symbol to explain"}}, ["sel"]),
+        tool_show,
+    ),
+    "sgt_plan_adopt": (
+        "Take over a plan session another Claude session started — use this when a plan shows as "
+        "stalled and the agent that owned it is gone, so you can finish and close it. "
+        "Non-destructive: its steps, confirmed matches, and pending predictions all survive, so "
+        "continue from where that agent stopped instead of re-intaking the same plan (which would "
+        "predict work that is already done).",
+        _schema({"session_id": {"type": "string"},
+                 "claude_session_id": _OWN_SESSION_PROP}, ["session_id"]),
+        tool_plan_adopt,
     ),
 }
 

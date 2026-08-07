@@ -253,7 +253,7 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
                 f"ancestor of HEAD) -- `sgt sync` first to fold it in before landing"
             )
 
-    def _blocked(reason: str, attempt: int, res=None, forks=()) -> LandReport:
+    def _blocked(reason: str, attempt: int, res=None, forks=(), ing=None) -> LandReport:
         gb.restore_worktree_to(snapshot)  # a land that does not land leaves no trace (R7)
         _restore_local_caches(repo, local_before)  # ...and rewind the gitignored local caches too
         _restore_traveling_tables(repo, tables_before)  # ...and the moved gitignored tables (Phase 1.2)
@@ -263,6 +263,12 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
             # is refusing on (the "run merge-op / but forks says none" dead end). Written last so the
             # worktree restore above doesn't clobber it; the red-gate/contention paths stay trace-free.
             _materialize.save_fork_records(repo, forks)
+            # ...and the ops those records name. `stage_candidate` (the usual op writer) runs only
+            # after this check, so without this the record pointed at a tip the store never held --
+            # which `_open_fork_records` treats as stale and silently drops, reopening the very dead
+            # end F23 closed. Monotone/append-only, so it survives the rollback above by design (R8).
+            if ing is not None:
+                _materialize.save_fork_ops(repo, ing)
         extra = {} if res is None else dict(
             pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
             identity_events=tuple(res.tree_result.get("identity_events", [])),
@@ -284,7 +290,8 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
         # `sgt resolve <symbol>` before it can advance.
         if res.forks:
             sym = res.forks[0][0]
-            return _blocked(f"open fork(s) -- run `sgt resolve {sym}`", attempt, res, forks=res.forks)
+            return _blocked(f"open fork(s) -- run `sgt resolve {sym}`", attempt, res,
+                            forks=res.forks, ing=ing)
 
         # Stage the reconciled *source* only (ops are monotone; metadata waits), so the LAW-G gate
         # runs the oracle against the real candidate tree. No metadata, no ref move yet -- a red gate

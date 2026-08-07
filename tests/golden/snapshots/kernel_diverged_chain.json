@@ -2,7 +2,7 @@
   "blame_view": {
     "covered": true,
     "features": {
-      "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139": {
+      "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1": {
         "label": "slugify"
       }
     },
@@ -10,7 +10,7 @@
     "spans": [
       {
         "end_line": 2,
-        "feature_id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
+        "feature_id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
         "label": "slugify",
         "sessions": [],
         "start_line": 1,
@@ -22,10 +22,10 @@
     "by_symbol": {
       "slugify.py::slugify": {
         "only_in_a": [
-          "4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139"
+          "a3a3fbd62c6330f6e1d33d22e2e9ca47bf44652ee654c50810aa824d25c18c49"
         ],
         "only_in_b": [
-          "73ca5ab500ec9a5a5aa409f5b3412416ef58d0f2a230095f29f1a506d004dcdb"
+          "f371306679b4493fc3b0060ea0b568060a22112ecae594c1e58cacdbad857ada"
         ]
       }
     },
@@ -39,14 +39,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139"
+        "feature_id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "slugify.py",
-        "id": "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
+        "id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
         "kind": "feature",
         "label": "slugify",
         "members": [
@@ -63,10 +63,11 @@
       }
     ],
     "roots": [
-      "f-4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139"
+      "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1"
     ],
     "sync_status": {
       "complete": true,
+      "history_rewritten": false,
       "reached_genesis": true
     }
   },
@@ -78,31 +79,15 @@
     },
     "ops": [
       {
-        "id": "4b1644d01e981b672e7c1477a6a4b6d15857646cc401a3003bfebc9909789139",
-        "intent": null,
-        "kind": "rework",
-        "symbols": [
-          "slugify.py::slugify"
-        ]
-      },
-      {
-        "id": "73ca5ab500ec9a5a5aa409f5b3412416ef58d0f2a230095f29f1a506d004dcdb",
-        "intent": null,
-        "kind": "rework",
-        "symbols": [
-          "slugify.py::slugify"
-        ]
-      },
-      {
-        "id": "74002ad4828a39421e15341134625bb3bc544220e19177e913026b27b8c901be",
+        "id": "197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
         "intent": null,
         "kind": "add",
         "symbols": [
-          "slugify.py::__residue__::\u0000HEAD\u0000"
+          "slugify.py::slugify"
         ]
       },
       {
-        "id": "a4bb80b88207b3b223f82a1241efb2761b43416e16fc8caef9a1dab911905687",
+        "id": "2f72ded9db8c7332e8be77e94edd97b4980486069d1838cee8b6f979dc0fc782",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -110,19 +95,35 @@
         ]
       },
       {
-        "id": "c0dd9783156481b0a35d2bb921946056d222a4f0aceab1898685f6e29b824b1c",
+        "id": "7d087528703c4b4fd5905f8b6ff6efad3fddece001db105a33a84fe93632ceb2",
         "intent": null,
         "kind": "add",
+        "symbols": [
+          "slugify.py::__residue__::slugify"
+        ]
+      },
+      {
+        "id": "a3a3fbd62c6330f6e1d33d22e2e9ca47bf44652ee654c50810aa824d25c18c49",
+        "intent": null,
+        "kind": "rework",
         "symbols": [
           "slugify.py::slugify"
         ]
       },
       {
-        "id": "c8e4f14034b4244a39de529b77b41f55e4e71fde9be2fd3d8bf15b9d873be443",
+        "id": "cf0e38dccf6b847d087bfd6189432318ac857a3a59ea185a3dac7e25f9b8dda8",
         "intent": null,
         "kind": "add",
         "symbols": [
-          "slugify.py::__residue__::slugify"
+          "slugify.py::__residue__::\u0000HEAD\u0000"
+        ]
+      },
+      {
+        "id": "f371306679b4493fc3b0060ea0b568060a22112ecae594c1e58cacdbad857ada",
+        "intent": null,
+        "kind": "rework",
+        "symbols": [
+          "slugify.py::slugify"
         ]
       }
     ],
@@ -159,6 +160,7 @@
     "symbols": 4,
     "sync_status": {
       "complete": true,
+      "history_rewritten": false,
       "reached_genesis": true
     },
     "unmanaged": []

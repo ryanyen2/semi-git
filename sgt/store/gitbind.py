@@ -805,11 +805,6 @@ class GitBinding:
             raise GitError("amend succeeded but HEAD is unresolved")
         return head
 
-    # -- drift detection ---------------------------------------------------
-    def detect_orphans(self, known_commit_ids: set[str]) -> list[str]:
-        """Commits present in git but unknown to `known_commit_ids` (out-of-band changes)."""
-        return [sha for sha in self.commit_shas() if sha not in known_commit_ids]
-
     # -- sync transport (U15) -----------------------------------------------
     def is_clean(self) -> bool:
         """True if the working tree and index have no uncommitted changes -- the precondition

@@ -64,6 +64,37 @@ def confirm_collab(pview, question: str) -> bool:
     return reply in ("y", "yes")
 
 
+def confirm_summary(pview, question: str) -> bool:
+    """The confirm step for a verb whose consequence is already a short human `summary` -- the
+    metadata feature verbs (merge/rename/move/split). Returns True to apply.
+
+    Preview symmetry: `confirm_collab` degrades to a printed feedforward graph plus `[y/N]` when
+    `textual` isn't installed, and the ideal edits degrade to their own `[y/N]`. The feature verbs
+    had no degrade at all -- `maybe_confirm` returns `None` without `textual`, which the caller read
+    as "proceed", so on any machine without that *optional* dependency `sgt feature regroup merge A B`
+    re-cut two features with nothing shown and nothing asked. The summary is the same text the pane
+    would have shown, so the degraded path answers the same question the pane does.
+
+    Only call on an interactive tty: the caller gates `isatty`/`--json` first, keeping the
+    machine/CI immediate-apply contract byte-for-byte."""
+    decision = maybe_confirm(pview)
+    if decision is not None:  # tty + textual: the pane is the confirm step
+        return decision.apply
+
+    verb = pview.get("verb", "this")
+    print(f"\n  {verb}:")
+    for line in pview.get("summary") or []:
+        print(f"    {line}")
+    if pview.get("reversible"):
+        # Worth saying: it changes how carefully the user needs to read the rest.
+        print("    (metadata only — no code changes, reversible)")
+    try:
+        reply = input(f"\n{question} [y/N] ").strip().lower()
+    except EOFError:
+        reply = ""
+    return reply in ("y", "yes")
+
+
 def _add_view_flags(p, *, paged: bool = False) -> None:
     """`--full` (every compact-by-default `sgt.api` view) and, for a view whose compact shape is
     itself paginated (`oplog_view`/`history_view`), `--limit`/`--offset`. Attached per-subparser

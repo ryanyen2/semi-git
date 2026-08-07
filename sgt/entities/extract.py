@@ -115,6 +115,17 @@ _EXT_LANG = {
     ".mts": "typescript",
     ".cts": "typescript",
     ".tsx": "tsx",
+    # JavaScript reuses the TypeScript grammars: TS is a syntactic superset of JS, so every
+    # def-bearing node in `_DEFS["typescript"]`/`["tsx"]` parses the same out of a `.js`/`.jsx` file.
+    # Without these entries a JS/React repo produced no symbol-level ops at all -- every file fell
+    # through `_language_for` to a single whole-file symbol, which quietly removes the entire point
+    # of sgt (features, blame, and revert are all symbol-scoped) for a large share of real projects.
+    # Deliberately not a new dependency: `tree-sitter-javascript` would add a grammar for syntax the
+    # installed one already accepts (CLAUDE.md §8).
+    ".js": "typescript",
+    ".mjs": "typescript",
+    ".cjs": "typescript",
+    ".jsx": "tsx",
 }
 
 # Per-language map of def-bearing node types -> base kind. "method" vs "function" is then

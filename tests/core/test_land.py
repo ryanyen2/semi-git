@@ -575,6 +575,22 @@ def test_land_fork_refusal_persists_the_fork_records(tmp_path):
     assert (wt_b / ".sgt" / "forks.json").is_file()         # ...and now leaves the fork on disk (F23)
     assert forks_view(wt_b)["open"] == len(report.forks)    # `sgt forks` sees what land refused on
 
+    # ...and the remedy land named is actually followable. The record is only useful if this repo can
+    # read the ops it points at: `ingest` keeps theirs' ops in memory and `stage_candidate` (the
+    # usual writer) runs only *after* the fork check, so the refusal used to record a tip it never
+    # stored. `_open_fork_records` treats an unreadable tip as a stale record and drops it, which
+    # made `sgt forks` report none and `sgt resolve <sym>` answer "no open fork" -- for the exact
+    # symbol the refusal told the user to resolve. Both tips' content must be foldable here.
+    from sgt.api import fork_detail_view
+
+    symbol = report.forks[0][0]
+    detail = fork_detail_view(wt_b, symbol)
+    assert "error" not in detail, detail
+    contents = [t["files"]["main.py"] for t in detail["tips"]]
+    assert len(contents) == 2
+    assert any("return 111" in c for c in contents), contents  # A's landed side
+    assert any("return 222" in c for c in contents), contents  # B's refused side
+
 
 # -- concurrency (the SYNC-2 core) -------------------------------------------------------------
 

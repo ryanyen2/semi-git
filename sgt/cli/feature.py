@@ -13,15 +13,25 @@ def _fail_preview(preview, as_json: bool) -> int:
 
 
 def _confirm(repo: str, verb: str, preview) -> bool:
-    """The consequence-pane gate for a metadata verb (merge/rename/move) on a tty. Returns False
-    only when the user explicitly aborted the pane; True to proceed -- which covers a pane confirm
-    *and* the non-tty / no-textual case, so the immediate-apply contract stays byte-for-byte."""
+    """The consequence gate for a metadata verb (merge/rename/move/split). Returns False only when
+    the user explicitly declined.
+
+    On an interactive tty this is the consequence pane, or -- when `textual` isn't installed -- the
+    printed summary plus `[y/N]` (`confirm_summary`). Previously the no-`textual` case returned True
+    and applied immediately with nothing shown and nothing asked, which made an *optional*
+    dependency the difference between a previewed re-cut and a silent one.
+
+    Off a tty (a script, CI, an editor shelling out) it still returns True immediately: that
+    machine contract is deliberate and unchanged -- there is nobody there to answer a prompt."""
+    import sys
+
     from sgt.api import _project_feature_preview
 
-    from ._common import maybe_confirm
+    from ._common import confirm_summary
 
-    decision = maybe_confirm(_project_feature_preview(repo, verb, preview))
-    return decision.apply if decision is not None else True
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return True
+    return confirm_summary(_project_feature_preview(repo, verb, preview), f"{verb}?")
 
 
 def register(subs, parent) -> None:

@@ -628,21 +628,14 @@ def _chips(r: dict, labels: dict, *, color: bool, chip_width: int = 22, budget: 
     return _dim(" · ", color=color).join(parts) if parts else _dim("(unattributed)", color=color)
 
 
-# Bare stamps a launch-eve history is full of -- they say nothing about what the save did.
-_LOW_SIGNAL_SUBJECTS = {"done", "ok", "wip", "fix", "sss", "update", "stuff", "misc"}
-
-
 def _row_headline(subject: str, feature: str | None, labels: dict) -> str:
-    """The headline for a save row: its commit subject when that subject carries signal, else the
-    save's dominant-feature label (already in `labels` -- the same feature+intent data the `--map`
-    view leads with). A subject is low-signal when it's empty, <=3 chars, or a bare stamp like
-    `done`/`wip`/`sss`. Falls through to the raw subject when there's no feature label to borrow."""
-    subj = (subject or "").strip()
-    if len(subj) >= 4 and subj.lower() not in _LOW_SIGNAL_SUBJECTS:
-        return subject
-    if feature is not None:
-        return labels.get(feature) or subject
-    return subject
+    """The headline for a save row. Delegates to `sgt.api.headline_for`, which is the single
+    definition of this rule: every surface that lists history needs it (this rail, the save list,
+    `sgt now`'s recently-done, the extension's Now tree), and a second copy would let them disagree
+    about what the same commit is called."""
+    from sgt.api import headline_for
+
+    return headline_for(subject, feature, labels)
 
 
 # Git-topology glyphs, shared by the save-list spine (`--saves`) and the default rail's topology
@@ -1571,7 +1564,12 @@ def render_rail_lines(
     lines.append("")
     example = next((r["feature"] for r in shown if r["feature"]), None)
     handle = (example[2:10] if example and example.startswith("f-") else (example or "<feature>")[:8])
-    lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt log --focus {handle}  "
-                     f"(one feature's checkpoints)   ·   sgt revert {handle}  (remove that feature)"))
+    # `sgt show` comes before `revert` deliberately: this view prints handles, and the next thing a
+    # user wants is usually "what *is* that?" rather than "remove it". Naming the safe reader beside
+    # the destructive verb is what makes the consequence (how much a revert would take, including
+    # work built on top) reachable before the revert is typed.
+    lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt show {handle}  "
+                     f"(what is it)   ·   sgt log --focus {handle}  (its checkpoints)   ·   "
+                     f"sgt revert {handle}  (remove it)"))
     lines.extend(_state_banner(states, color=color))
     return lines

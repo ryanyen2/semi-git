@@ -109,8 +109,15 @@ def test_resolvable_forks_keeps_only_divergent_real_symbol_forks():
     assert {sym for sym, _a, _b in raw} == {"a.py::x", "a.py::y", "a.py::__anchor__::m"}
 
     resolvable = resolvable_forks(raw, by_id)
-    # Only the divergent, real-symbol fork survives surfacing.
-    assert resolvable == [("a.py::x", div_a.id, div_b.id)]
+    # Only the divergent, real-symbol fork survives surfacing. The pair is compared as a *set* of
+    # tips: `forks` walks `sorted(ideal_ids)` and emits (earlier-id, later-id), so which tip lands in
+    # which slot follows the two content hashes, not the order they were written here. Asserting
+    # creation order pinned an accidental coincidence of those hashes, and any change to op identity
+    # flipped it -- a fork pair has no inherent first side, and nothing downstream depends on one.
+    assert len(resolvable) == 1
+    sym, tip_a, tip_b = resolvable[0]
+    assert sym == "a.py::x"
+    assert {tip_a, tip_b} == {div_a.id, div_b.id}
 
 
 def test_resolvable_forks_does_not_alter_fork_free_invariant_path():
@@ -125,7 +132,14 @@ def test_resolvable_forks_does_not_alter_fork_free_invariant_path():
     # Both a sentinel symbol and a same-after collision -- filtered out of surfacing entirely...
     assert resolvable_forks(forks(ops, ideal), {op.id: op for op in ops}) == []
     # ...yet the raw collision and the invariant still fire on it.
-    assert forks(ops, ideal) == [("a.py::__anchor__::m", tip_a.id, tip_b.id)]
+    # Compared as a set of tips: `forks` walks `sorted(ideal_ids)` and emits (earlier-id,
+    # later-id), so which tip lands in which slot follows the content hashes rather than the order
+    # they were written here -- a fork pair has no inherent first side.
+    raw = forks(ops, ideal)
+    assert len(raw) == 1
+    sym, a, b = raw[0]
+    assert sym == "a.py::__anchor__::m"
+    assert {a, b} == {tip_a.id, tip_b.id}
     assert not is_fork_free(ops, ideal)
 
 

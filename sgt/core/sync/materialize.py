@@ -121,6 +121,26 @@ def save_fork_records(repo: Path, forks: tuple[tuple[str, str, str], ...]) -> No
     state.save_json(repo, "forks", _fork_records(forks))
 
 
+def save_fork_ops(repo: Path, ing) -> None:
+    """Persist theirs'/mined ops on `land`'s fork refusal, so the fork records `save_fork_records`
+    just wrote point at ops this repo can actually read.
+
+    `ingest` holds theirs' ops in memory and only `stage_candidate` writes them -- and in `land` that
+    runs *after* the fork check, so a fork-blocked land recorded a fork naming an op it never stored.
+    Everything downstream then dropped it: `_open_fork_records` filters out any record whose tip
+    `Store.get` can't resolve, so `sgt forks` reported none and `fork_detail_view` answered "no open
+    fork" -- for the exact symbol land's own refusal told the user to run `sgt resolve` on. F23 gave
+    the refusal one trace; without the ops that trace can't be read, so this completes it.
+
+    Consistent with R7: the content-addressed stores are explicitly exempt from the non-landing
+    rollback (they are monotone and append-only, R8), and an op in the store but in no ideal is
+    invisible to every verb-facing view until a resolution admits it."""
+    store = Store(repo)
+    store.init()
+    for op in [*ing.theirs_ops, *ing.mined_ops]:
+        store.add(op)  # content-addressed: a re-add unions provenance, never duplicates (R8)
+
+
 def stage_candidate(
     repo: Path, gb: GitBinding, ing: Ingested, res: Resolution
 ) -> dict[str, bytes]:
