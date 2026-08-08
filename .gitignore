@@ -20,7 +20,11 @@ uv.lock
 .sgt/
 
 
-references/
+# Vendored reference checkouts, at the root only. Anchored deliberately: an unanchored
+# `references/` also matched `.claude/skills/*/references/`, which is the standard place a skill
+# keeps its progressively-loaded docs -- so a skill's own references were silently untracked and
+# would vanish for anyone cloning.
+/references/
 
 papers/
 .DS_Store
