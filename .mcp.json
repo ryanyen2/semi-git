@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sgt": {
+      "command": "python",
+      "args": ["-m", "sgt.cli", "mcp"]
+    }
+  }
+}

@@ -235,16 +235,31 @@ def test_saves_keep_the_most_recent_and_say_how_many_were_elided(tmp_path):
     assert "add helper0" not in subjects
 
 
-def test_the_op_id_list_is_complete_by_default(tmp_path):
-    """`ops` must agree with `op_count`. It was sliced by `save_limit`, so a 35-op feature reported
-    five ids with nothing saying the rest existed -- fine for a human reading prose, silently wrong
-    for an agent or the extension feeding that set to another verb."""
+def test_op_ids_are_omitted_by_default_and_complete_when_asked_for(tmp_path):
+    """Three options existed and only one is honest at a sane cost.
+
+    A silent slice (the original: `ops` cut by `save_limit`) is the worst -- a caller reading five of
+    forty ids cannot tell the rest exist. Always-complete is honest but expensive: ids are 64 chars
+    and no renderer prints them, which measured 1,862 tokens for one `sgt_show` on a large feature.
+    Omitting the field unless asked is both: absent is unmistakably absent, `op_count` carries the
+    fact, and a caller that needs the set gets all of it."""
     repo, result = _repo(tmp_path)
     view = api.show_view(repo, _feature(result))
-    assert len(view["ops"]) == view["op_count"]
-    assert view["op_count"] > 5, "fixture should exceed the old save_limit slice to be meaningful"
+    assert "ops" not in view
+    assert view["op_count"] > 5
 
-    # An explicit sample is still available, and `op_count` still reports the truth.
-    sampled = api.show_view(repo, _feature(result), op_limit=2)
-    assert len(sampled["ops"]) == 2
-    assert sampled["op_count"] == view["op_count"]
+    full = api.show_view(repo, _feature(result), include_ops=True)
+    assert len(full["ops"]) == full["op_count"] == view["op_count"]
+
+
+def test_affected_symbols_are_capped_with_an_honest_count(tmp_path):
+    """Reverting a large feature moves many symbols. Uncapped, that list was 5.3 KB of a single
+    `sgt show` payload on this project's own repo, and no surface renders it -- the actionable part
+    of a consequence is the magnitude (`removes`/`dependents`), not the roll call. Capped, with the
+    real count beside it so the cap doesn't read as completeness."""
+    repo, result = _repo(tmp_path)
+    cons = api.show_view(repo, _feature(result), symbol_limit=2)["consequences"]
+    assert len(cons["affected_symbols"]) <= 2
+    assert cons["affected_symbol_count"] >= len(cons["affected_symbols"])
+    # The magnitude is always present regardless of the cap.
+    assert isinstance(cons["removes"], int) and isinstance(cons["dependents"], int)

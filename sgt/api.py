@@ -2402,7 +2402,7 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
 
 
 def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
-              op_limit: int | None = None) -> dict:
+              include_ops: bool = False) -> dict:
     """`sgt show <sel>` -- "what is this thing?" for any id sgt ever printed.
 
     Every other view is organized around a *question* the user already knows how to ask (history,
@@ -2446,7 +2446,7 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
 
     ops = sorted(found.op_ids)
     symbols, files = _show_footprint(repo, found.op_ids)
-    consequences = _show_consequences(repo, found, core_verbs)
+    consequences = _show_consequences(repo, found, core_verbs, symbol_limit)
     provenance = _show_provenance(repo, found.op_ids, save_limit)
     return {
         "ok": True,
@@ -2461,12 +2461,13 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
         "label": found.label,
         "feature": _show_feature_ref(repo, found),
         "op_count": len(ops),
-        # The full op-id set by default: `op_count` is the count, and a caller that asks *which* ops
-        # needs all of them (an agent feeding them to another verb, the extension resolving a
-        # selection). These were previously sliced by `save_limit`, so a 35-op feature reported five
-        # ids with no indication the rest existed -- a machine consumer had no way to notice.
-        # `op_limit` is there for a caller that genuinely wants a sample; `op_count` stays the truth.
-        "ops": ops if op_limit is None else ops[:op_limit],
+        # Op ids are omitted unless asked for, and then complete. No renderer prints them, and they
+        # are 64 chars each: on this repo a large feature made the payload 1,862 tokens, most of it
+        # ids nobody read. `op_count` carries the fact. The rejected middle option was a silent
+        # slice, which is the worse failure -- a caller reading five of forty ids has no way to know
+        # the rest exist, where an absent field is unmistakably absent. `include_ops=True` when you
+        # genuinely need the set (feeding it to another verb).
+        **({"ops": ops} if include_ops else {}),
         "symbols": symbols[:symbol_limit],
         "symbol_count": len(symbols),
         "files": files,
@@ -2557,7 +2558,7 @@ def _show_provenance(repo, op_ids, limit: int) -> tuple[list[dict], dict]:
     }
 
 
-def _show_consequences(repo, found, core_verbs) -> dict:
+def _show_consequences(repo, found, core_verbs, symbol_limit: int = 12) -> dict:
     """What reverting this selection would cost, from the real `plan_revert_op_set` (pure, writes
     nothing). `dependents` is the part that is *not* the selection's own ops -- later work that sits
     on top and would come out with it. A user deciding whether a revert is safe is really asking for
@@ -2565,6 +2566,8 @@ def _show_consequences(repo, found, core_verbs) -> dict:
     preview = core_verbs.plan_revert_op_set(repo, found.target, frozenset(found.op_ids))
     removed = preview.removed
     own = frozenset(found.op_ids) & preview.before_ids
+    affected = [s for s in preview.affected_symbols
+                if "__residue__" not in s and "__anchor__" not in s]
     return {
         "ok": preview.ok,
         "forked": preview.forked,
@@ -2572,8 +2575,12 @@ def _show_consequences(repo, found, core_verbs) -> dict:
         "live_op_count": len(own),
         "removes": len(removed),
         "dependents": len(removed - own),
-        "affected_symbols": [s for s in preview.affected_symbols
-                             if "__residue__" not in s and "__anchor__" not in s],
+        # Capped, with the true count beside it. Reverting a large feature moves ~100 symbols, which
+        # uncapped made this field 5.3 KB of the payload -- and no surface renders the list, because
+        # the actionable part of a consequence is the *magnitude* (`removes`/`dependents`), not 100
+        # names. The count keeps the cap honest rather than making the list look complete.
+        "affected_symbols": affected[:symbol_limit],
+        "affected_symbol_count": len(affected),
     }
 
 
