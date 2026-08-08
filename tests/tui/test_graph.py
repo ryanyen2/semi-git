@@ -12,6 +12,8 @@ from __future__ import annotations
 import pytest
 
 from sgt.tui.graph import (
+    _NOW_RULE,
+    _forecast_band,
     _min_unique_prefixes,
     _state_banner,
     graph_layout,
@@ -706,12 +708,38 @@ def test_render_rail_drops_a_ghost_with_no_lane_to_the_unplaced_gutter():
     assert "planned (no lane yet)" in text and "future work" in text
 
 
-def test_render_graph_shows_a_plan_ghost_chip_at_the_feature_lane_tip():
+def test_render_graph_draws_a_plan_step_as_a_named_card_in_the_lane_forecast_band():
+    """A pending plan step is a NAMED card on its lane's own row, past the `┊` now-rule -- the same
+    place and grammar the lane's built work uses. It used to be a `◇ planned: …` chip on the
+    checkpoint line below, which put "what is coming" in a different spot than everything else."""
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     grid = _grid(("A", 0), ("A", 1))
     grid["ghosts"] = [{"feature_id": "A", "title": "add caching", "known_feature": True}]
-    text = "\n".join(render_graph_lines(m, grid, color=False))
-    assert "◇ planned: add caching" in text
+    lines = render_graph_lines(m, grid, color=False)
+    text = "\n".join(lines)
+    assert "◇ add caching" in text                     # named, not a bare count
+    assert "planned: " not in text                     # the old chip encoding is gone
+    assert f"past {_NOW_RULE} = planned" in text        # and the legend explains the new region
+    # The card sits on the LANE row (right of the density bar), not on a line of its own.
+    lane_row = next(l for l in lines if "add caching" in l)
+    assert _NOW_RULE in lane_row and "A" in lane_row
+
+
+def test_forecast_band_collapses_extra_steps_but_always_names_at_least_one():
+    """Crowding must never reduce the band to a bare count. With more steps than cards fit, the last
+    card becomes `◇+N` -- but only once another step is already named; a band with room for a single
+    card names that card instead of showing a naked number."""
+    wide = _forecast_band(["first step", "second step", "third step"], 2 + 17 * 2, "#888", color=False)
+    assert "◇ first step" in wide and "◇+2" in wide
+
+    # One slot, three steps: the terminal has no tooltip, so the count rides on the named card rather
+    # than being deferred to hover -- the reader gets both "what is next" and "there is more".
+    narrow = _forecast_band(["only room for one", "second", "third"], 2 + 17, "#888", color=False)
+    assert "◇ only room… +2" in narrow
+    assert "◇+" not in narrow  # never a naked count as the band's only content
+
+    # An empty forecast occupies its reserved columns without drawing a rule (nothing is coming).
+    assert _forecast_band([], 12, "#888", color=False) == " " * 12
 
 
 def _wide_grid(n):

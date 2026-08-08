@@ -894,17 +894,40 @@ function episodeRailLayout(epView) {
   // lanes than fit. A resize re-runs render() via the ResizeObserver, so it reflows continuously.
   // The bottom axis + frontier scrubber still read real commit-time (recovered cross-feature
   // alignment lives in the episode rail); a car past the scrubbed frontier just dims in place.
-  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 34, gutterPad: 8, cellGap: 0.5, indent: 14 };
+  // `ghostW` is the width a forecast car needs to carry a READABLE name (~12 glyphs at 6px). It is
+  // deliberately much wider than a history car's minimum: history can lean on position-in-time to say
+  // what it is, a forecast has only its label. Truncating a step title to 6 glyphs ("Reserv…") would
+  // leave the reader exactly where the old `+1` badge did, so the band prefers fewer, legible cars
+  // over more, unreadable ones -- and collapses the remainder into a stack card (see renderForecastCars).
+  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 34, gutterPad: 8, cellGap: 0.5, indent: 14, ghostW: 72, nowPad: 7 };
   let graphView = null; // { geom, handleEl, frontierEl, veilEl } -- set each render for the scrubber
 
-  function ganttGeom() {
+  // `forecastCars` is the widest forecast a single lane carries this render (0 when nothing is
+  // pending or planned). It buys a FORECAST BAND to the right of the `now` rule: measured time ends
+  // at `now`, and anticipated work lives past it. Without a band the future has literally no room on
+  // an axis whose domain is [c0, lastCommit] -- which is why pending work used to degenerate into a
+  // badge jammed against the plot edge instead of reading as a car.
+  function ganttGeom(forecastCars = 0) {
     const paneW = Math.max(rail.clientWidth || 0, 320);
     // Keep the label column wide enough to stay legible even when the inspector is dragged wide and
     // the rail is squeezed -- the labels never collapse; instead the plot compresses (and clips at
     // the pane edge) when there isn't room, which is the acceptable trade here.
     const labelW = Math.round(Math.max(130, Math.min(220, paneW * 0.4)));
     const plotX0 = labelW + GANTT.gutterPad;
-    const plotW = Math.max(60, paneW - plotX0 - 16);
+    const fullW = Math.max(60, paneW - plotX0 - 16);
+    // The band asks for one nameable slot per forecast car, then gets clamped to 38% of the plot so a
+    // forecast can never crowd out measured history (and the history side never drops below 40px).
+    // `forecastSlots` reports how many slots SURVIVED that clamp -- the renderer collapses anything
+    // beyond them into a stack card, which is what makes the band responsive: squeeze the pane and the
+    // band sheds cards rather than shrinking them all into illegible stubs.
+    const slotW = GANTT.ghostW + GANTT.carGap;
+    const wantW = forecastCars > 0 ? forecastCars * slotW + GANTT.nowPad * 2 : 0;
+    const forecastW = Math.min(wantW, Math.max(0, Math.round(fullW * 0.38)), Math.max(0, fullW - 40));
+    const forecastSlots = forecastCars > 0
+      ? Math.max(1, Math.floor((forecastW - GANTT.nowPad * 2 + GANTT.carGap) / slotW)) : 0;
+    const plotW = Math.max(40, fullW - forecastW);
+    const nowX = plotX0 + plotW;          // the `now` rule: right edge of measured time
+    const forecastX0 = nowX + GANTT.nowPad;
     const w = paneW;
     const rowsH = layout.rowCount * GANTT.rowH;
     // Rows stay top-anchored, but the axis pins to the bottom of the pane: the SVG grows to fill the
@@ -917,6 +940,7 @@ function episodeRailLayout(epView) {
     const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
     return {
       labelW, plotX0, plotW, w, h, axisY, maxCommit,
+      forecastW, forecastSlots, nowX, forecastX0,
       xOf,
       rowY: (row) => GANTT.padT + row * GANTT.rowH, // top of the row
       midY: (row) => GANTT.padT + row * GANTT.rowH + GANTT.rowH / 2,
@@ -1041,38 +1065,155 @@ function episodeRailLayout(epView) {
     return savePreviewMarks.byFeature[l.id] || 0;
   }
 
-  // A dashed "ghost car" at the now-frontier: the work that WOULD land on the next `sgt save`.
-  // Uncommitted ops have no commit index yet, so it's anchored at the right of the plot (just past
-  // the lane's last real car), reading as "coming next" on the same shared time axis. The `+N` tag
-  // floats above so it never collides with the mid-row op-count label.
-  function renderPendingCar(g, l, geom, color, barY, midY, lastX, pendingOps) {
-    const plotR = geom.plotX0 + geom.plotW;
-    const w = GANTT.minCarW;
-    let x = Math.max(geom.xOf(geom.maxCommit), lastX + GANTT.carGap);
-    if (x + w > plotR) x = plotR - w;
-    const wrap = mk("g", { class: "gcar-wrap gcar-pending-wrap" });
-    wrap.appendChild(mk("rect", {
-      x, y: barY, width: w, height: GANTT.barH, rx: 3, class: "gcar gcar-pending", fill: color,
-    }, [mk("title", { text: `+${pendingOps} edit(s) — will land on save` })]));
-    wrap.appendChild(mk("text", {
-      x: x + w / 2, y: barY - 3, class: "gcar-pending-count", text: `+${pendingOps}`,
-    }));
-    g.appendChild(wrap);
+  // ─── The forecast band: anticipated work as cars, not badges ────────────────────────────────
+  // A lane's future in ONE grammar. sgt has two kinds of not-yet-real work, and they used to be drawn
+  // as two unrelated marks in two unrelated units: uncommitted ops became a dashed stub car with a
+  // floating `+N` (N = edits), while pending plan steps became a dashed underline under the whole bar
+  // with a different `+N` (N = steps). Same glyph, two denominators, two shapes, for one idea. Both
+  // are now CARS in the forecast band -- the same rounded rect, the same identity hue, the same
+  // three-tier label rule as history -- so "what is coming here" reads with the vocabulary the reader
+  // already learned from the left of the `now` rule. Dash weight, never hue, separates the two kinds:
+  //   save ghost  (3 3 dash, filled, slow pulse) = real edits on disk right now, will land on save
+  //   plan ghost  (1.5 2.5 dash, unfilled)       = a step someone intends; no code exists yet
+  // Motion is meaning here: only the save ghost pulses, because only it describes work that exists.
+  function laneForecast(l) {
+    const out = [];
+    const pending = pendingOpsForLane(l);
+    if (pending > 0) {
+      out.push({
+        kind: "save", label: "uncommitted",
+        detail: `${pending} edit(s) on disk now — will land on the next save`,
+      });
+    }
+    // A meta (collapsed-subsystem) lane rolls up its leaves' steps, matching pendingOpsForLane.
+    const steps = l.isMeta
+      ? (l.leaves || []).flatMap((f) => planMarks.byFeature[f] || [])
+      : (planMarks.byFeature[l.id] || []);
+    for (const step of steps) {
+      const syms = step.footprint || [];
+      out.push({
+        kind: "plan", label: step.label, step,
+        // The honest magnitude for a prediction is its FOOTPRINT, not an op count (no ops exist yet).
+        // This is the answer to "what content is going to be added?" -- the symbols it says it'll touch.
+        detail: [step.label, step.rationale || null,
+          syms.length ? `predicted: ${syms.slice(0, 6).join(", ")}` +
+            (syms.length > 6 ? ` +${syms.length - 6} more` : "") : "no predicted footprint",
+        ].filter(Boolean).join("\n"),
+      });
+    }
+    return out;
+  }
+
+  // Draw a lane's forecast cars in the band right of the `now` rule. Ghosts flow left->right in the
+  // order they'd land (uncommitted work first, then plan steps in plan order). When more ghosts exist
+  // than slots survived the clamp, the LAST slot becomes a STACK CARD standing for the remainder --
+  // drawn as a card with a second outline offset behind it, the ordinary "there are more behind this"
+  // idiom. The stack is labelled by NAME while no other card is named yet, and only falls back to a
+  // `＋N` count once named cards are already on screen. That ordering matters: a reader should never
+  // be shown a bare number as their only information about what is coming, which is the whole failure
+  // of the badge this replaced.
+  function renderForecastCars(g, l, geom, color, barY, midY, ghosts) {
+    if (!ghosts.length || geom.forecastW <= 0) return;
+    const slots = Math.max(1, geom.forecastSlots);
+    const overflow = ghosts.length > slots;
+    const namedCount = overflow ? slots - 1 : ghosts.length;
+    const named = ghosts.slice(0, namedCount);
+    const rest = ghosts.slice(namedCount);
+    const total = named.length + (rest.length ? 1 : 0);
+    const bandW = geom.forecastW - GANTT.nowPad * 2;
+    const w = Math.max(GANTT.minCarW, Math.min(GANTT.ghostW,
+      (bandW - (total - 1) * GANTT.carGap) / total));
+    let x = geom.forecastX0;
+
+    const drawCard = (gh, opts) => {
+      const isPlan = gh.kind === "plan";
+      const wrap = mk("g", {
+        class: "gcar-wrap gcar-ghost-wrap" + (isPlan ? " gcar-plan-wrap" : " gcar-pending-wrap") +
+          (opts.stack ? " gcar-ghost-stack" : ""),
+      });
+      // The stack's back edge: one offset outline behind the front card. Shape, not a number, says
+      // "several" -- and it survives at any width, where a count label would not.
+      if (opts.stack) {
+        wrap.appendChild(mk("rect", {
+          x: x + 2.5, y: barY - 2.5, width: Math.max(GANTT.minCarW, w - 2.5), height: GANTT.barH,
+          rx: 3, class: "gcar-ghost-stackback", stroke: color,
+        }));
+      }
+      wrap.appendChild(mk("rect", {
+        x, y: barY, width: w, height: GANTT.barH, rx: 3,
+        class: "gcar gcar-ghost " + (isPlan ? "gcar-plan-ghost" : "gcar-pending"), fill: color,
+      }, [mk("title", { text: opts.detail })]));
+      // The same three-tier label rule history uses (renderCars): inline when the car can hold a few
+      // glyphs, a tag floated above when it can't, and the tooltip always. A plan step's title is its
+      // name exactly as a checkpoint's intent is -- so the reader never has to ask what `+1` meant.
+      const text = opts.label;
+      if (w >= GANTT.labelMinW) {
+        wrap.appendChild(mk("text", {
+          x: x + w / 2, y: midY + 3, class: "gcar-label gcar-ghost-label",
+          text: truncate(text, Math.floor(w / 6)),
+        }));
+      } else {
+        wrap.appendChild(mk("text", {
+          x: x + w / 2, y: barY - 3, class: "gcar-tag gcar-ghost-tag", text: truncate(text, 14),
+        }));
+      }
+      // Staggered entry for a newly-arrived plan step: the steps of one plan settle in reading order
+      // rather than all popping at once. `planStepEnterStagger` was already computed each render and
+      // never read -- this is its consumer.
+      const order = isPlan && gh.step ? planStepEnterStagger[gh.step.id] : undefined;
+      if (order != null && !prefersReducedMotion()) {
+        wrap.classList.add("gcar-ghost-enter");
+        wrap.style.animationDelay = `${Math.min(order, 6) * 55}ms`;
+      }
+      // A plan ghost is the same click target as its card in the inspector: the mark in the graph and
+      // the row in the list select one thing. The old badge was not clickable at all.
+      if (isPlan && gh.step) {
+        wrap.style.pointerEvents = "auto";
+        wrap.style.cursor = "pointer";
+        wrap.addEventListener("click", (ev) => { ev.stopPropagation(); selectPlanStep(gh.step.id); });
+      }
+      g.appendChild(wrap);
+      x += w + GANTT.carGap;
+    };
+
+    for (const gh of named) drawCard(gh, { label: gh.label, detail: gh.detail });
+    if (rest.length) {
+      drawCard(rest[0], {
+        stack: true,
+        // Name the next thing while nothing else is named; count only once names are already visible.
+        label: named.length ? `＋${rest.length}` : rest[0].label,
+        detail: rest.map((gh) => `• ${gh.label}`).join("\n"),
+      });
+    }
   }
 
   function renderGraph() {
     if (state.view === "rail") { renderRail(); return; }
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
-    const geom = ganttGeom();
+    // Size the forecast band to the busiest lane's forecast, once, before geometry: every lane shares
+    // one band edge so the `now` rule is a single straight line down the plot (a per-lane band would
+    // make "now" ragged, and the eye reads a ragged boundary as data).
+    const forecasts = new Map(layout.lanes.map((l) => [l.id, laneForecast(l)]));
+    const widest = Math.max(0, ...[...forecasts.values()].map((f) => f.length));
+    const geom = ganttGeom(widest);
     const svg = mk("svg", { width: geom.w, height: geom.h, class: "railsvg gantt" });
     const bandLayer = mk("g", { class: "swimlanes" });
     const laneLayer = mk("g", { class: "glanes" });
+    // The forecast ground, drawn first so every ghost car sits ON it: a faint wash from the `now` rule
+    // to the plot edge. It is what makes the band a *place* ("past here is not measured yet") rather
+    // than a few floating dashed marks the reader has to infer a region from.
+    if (geom.forecastW > 0) {
+      svg.appendChild(mk("rect", {
+        x: geom.nowX, y: GANTT.padT - 4, width: geom.forecastW,
+        height: Math.max(0, geom.axisY - GANTT.padT + 4), class: "forecast-band",
+      }));
+    }
     svg.appendChild(bandLayer);
     svg.appendChild(laneLayer);
 
     for (const hd of layout.headers) bandLayer.appendChild(renderSwimlaneHeader(hd, geom));
-    for (const l of layout.lanes) laneLayer.appendChild(renderLane(l, geom));
+    for (const l of layout.lanes) laneLayer.appendChild(renderLane(l, geom, forecasts.get(l.id) || []));
     renderTimeAxis(svg, geom);
 
     rail.appendChild(svg);
@@ -1252,7 +1393,7 @@ function episodeRailLayout(epView) {
     return g;
   }
 
-  function renderLane(l, geom) {
+  function renderLane(l, geom, ghosts = []) {
     const y = geom.rowY(l.row);
     const midY = geom.midY(l.row);
     const barY = midY - GANTT.barH / 2;
@@ -1298,10 +1439,9 @@ function episodeRailLayout(epView) {
     const cx = Math.min(lastX + 6, geom.w - 30);
     g.appendChild(mk("text", { x: cx, y: midY + 4, class: "gbar-count", text: String(l.opCount) }));
 
-    // In-situ save preview: a dashed ghost car at the frontier for the work this lane would gain on
-    // the next save (see collectSavePreview / renderPendingCar).
-    const pendingOps = pendingOpsForLane(l);
-    if (pendingOps > 0) renderPendingCar(g, l, geom, color, barY, midY, lastX, pendingOps);
+    // This lane's future, in the band right of the `now` rule: uncommitted work + pending plan steps,
+    // drawn as cars in the same grammar as history (see laneForecast / renderForecastCars).
+    renderForecastCars(g, l, geom, color, barY, midY, ghosts);
 
     renderLaneBadges(g, l, geom, color, barY, midY, geom.plotX0, lastX);
 
@@ -1315,9 +1455,13 @@ function episodeRailLayout(epView) {
     return g;
   }
 
-  // Plan / drift / fork are decorations ON the lane (never separate marks): a pending-plan lane gets
-  // a dashed accent underline + count; a lane carrying a drift op gets a solid identity outline; a
-  // forked lane gets a ⋔ badge in the gutter. None introduces a second hue competing with identity.
+  // Drift / fork are decorations ON the lane (never separate marks): a lane carrying a drift op gets
+  // a solid identity outline; a forked lane gets a ⋔ badge in the gutter. Neither introduces a second
+  // hue competing with identity. Pending PLAN steps used to live here too, as a dashed underline plus
+  // a `+N` step count -- a second visual language for "not real yet" that competed with the save
+  // preview's ghost car and left the reader with a bare count and no way to learn what it stood for.
+  // They are forecast cars now (renderForecastCars), so a plan step is named, positioned, and
+  // clickable like every other unit of work in this view.
   function renderLaneBadges(g, l, geom, color, barY, midY, x1, x2) {
     const barW = Math.max(GANTT.minBarW, x2 - x1);
     const hasDrift = (layout.opsByFeature[l.id] || []).some((op) => driftMarks.ids.has(op.id));
@@ -1326,13 +1470,6 @@ function episodeRailLayout(epView) {
         x: x1 - 1.5, y: barY - 1.5, width: barW + 3, height: GANTT.barH + 3, rx: 4,
         class: "gbar-drift", stroke: color,
       }));
-    }
-    const pending = (planMarks.byFeature[l.id] || []).length;
-    if (pending) {
-      g.appendChild(mk("line", {
-        x1, x2: x1 + barW, y1: barY + GANTT.barH + 3, y2: barY + GANTT.barH + 3, class: "gbar-plan",
-      }));
-      g.appendChild(mk("text", { x: x1 + barW + 5, y: barY + GANTT.barH + 6, class: "gbar-plan-count", text: `+${pending}` }));
     }
     if (forkMarks.byFeature[l.id]) {
       const f = mk("text", { x: geom.labelW - 6, y: midY + 4, class: "gbar-fork", text: "⋔" });
@@ -1364,6 +1501,19 @@ function episodeRailLayout(epView) {
       }));
     }
     svg.appendChild(mk("text", { x: geom.plotX0, y: GANTT.padT - 3, class: "axis-title", text: "time →" }));
+
+    // The `now` rule: the honest right edge of measured time. Everything left of it happened;
+    // everything right of it is forecast. Drawn only when there IS a forecast, so a repo with nothing
+    // pending keeps exactly the axis it had. Labelled once, at the top, in the dim channel -- the band
+    // wash plus this one word is the whole explanation, so no ghost car needs its own caption.
+    if (geom.forecastW > 0) {
+      svg.appendChild(mk("line", {
+        x1: geom.nowX, x2: geom.nowX, y1: GANTT.padT - 4, y2: y, class: "now-rule",
+      }));
+      svg.appendChild(mk("text", {
+        x: geom.nowX + 4, y: GANTT.padT - 3, class: "axis-title now-label", text: "next",
+      }));
+    }
 
     const frontier = playheadCommitIndex == null ? geom.maxCommit : playheadCommitIndex;
     const fx = geom.scrubX(frontier);

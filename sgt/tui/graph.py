@@ -587,6 +587,15 @@ _GAP_THRESHOLD = 8   # a lane's own gap this long (or longer) between checkpoint
 _CAR_CAP = 24        # cap a single checkpoint's block width so one long run can't hog the whole strip
 _COLLAPSE = "┄"      # marks a long gap the lane skipped (a plain dim `·` marks a short one)
 
+# The FORECAST BAND, the terminal twin of the webview's band right of the `now` rule: anticipated work
+# (a pending plan step) drawn on the lane's own row, past a `┊` rule, in the same left→right reading
+# order as history. It replaces a `◇ planned: …` chip that used to sit on the checkpoint line below --
+# which put "what is coming" in a different place, and a different grammar, from every other unit of
+# work in the view. `_NOW_RULE` is the boundary: left of it happened, right of it has not.
+_NOW_RULE = "┊"
+_CARD_W = 17         # one forecast card: `◇ ` + a 14-column name + a trailing space
+_CARD_NAME_W = 14
+
 
 def _ellipsize(s: str, width: int) -> str:
     """Truncate a checkpoint label to `width` columns, cutting on a word boundary where one is near
@@ -599,6 +608,37 @@ def _ellipsize(s: str, width: int) -> str:
     if space >= width - 8:  # a word boundary close enough to the limit -- cut there, not mid-word
         cut = cut[:space].rstrip(" ,;:")
     return cut + "…"
+
+
+def _forecast_band(titles: list[str], width: int, hexc: str, *, color: bool) -> str:
+    """One lane's forecast, drawn to exactly `width` columns: a dim `┊` now-rule, then a `◇ name` card
+    per pending plan step. When more steps exist than cards fit, the last card collapses to `◇+N` --
+    but only once at least one step is already NAMED. A single surviving card is always named, never a
+    bare count: a reader should not be told "one more thing" without being told which thing, which is
+    the failure of the count-only badge this replaces. Mirrors the webview's `renderForecastCars`."""
+    if width <= 0:
+        return ""
+    if not titles:
+        return " " * width
+    body_w = max(0, width - 2)  # the `┊ ` rule and its space
+    slots = max(1, body_w // _CARD_W)
+    overflow = len(titles) > slots
+    named = titles[:slots - 1] if overflow else titles
+    rest = titles[len(named):]
+    cards = [f"{_GHOST} {_ellipsize(t, _CARD_NAME_W)}" for t in named]
+    if rest and named:
+        cards.append(f"{_GHOST}+{len(rest)}")
+    elif rest:
+        # Only one card fits and more exist. A terminal has no tooltip to fall back on, so the count
+        # cannot be deferred to hover the way the webview's stack card defers it -- it rides ON the
+        # named card (`◇ name… +2`). Name first so the reader learns WHAT is next, count second so
+        # they know it isn't the whole story; dropping either would hide something recoverable nowhere.
+        extra = len(rest) - 1
+        suffix = f" +{extra}" if extra > 0 else ""
+        cards.append(f"{_GHOST} {_ellipsize(rest[0], max(4, body_w - 2 - len(suffix)))}{suffix}")
+    raw = " ".join(cards)[:body_w]
+    painted = _dim(_paint(hexc, raw, color=color), color=color)
+    return _dim(_NOW_RULE, color=color) + " " + painted + " " * max(0, body_w - len(raw))
 
 
 def _paint(hex_str: str, s: str, *, color: bool) -> str:
@@ -634,6 +674,21 @@ def _chips(r: dict, labels: dict, *, color: bool, chip_width: int = 22, budget: 
     if extra > 0:
         parts.append(_dim(f"+{extra}", color=color))
     return _dim(" · ", color=color).join(parts) if parts else _dim("(unattributed)", color=color)
+
+
+def _history_header(n_saves: int, n_feat: int, total_saves: int) -> str:
+    """The one phrasing every history-listing surface uses for its own totals.
+
+    These headers used to each name their own denominator with the SAME words, so one repo read as
+    "145 save(s) · 44 feature(s)" from `sgt log`, "332 save(s) · 84 feature(s)" from `sgt log --map`,
+    and "154 feature(s)" from `sgt status` -- three contradictory sizes for one repo, which teaches a
+    reader that sgt's numbers cannot be trusted. A save list shows only the saves that carried tracked
+    work and counts only the features that LED one, so it says both things out loud instead of
+    implying it is showing everything. When the two save counts agree there is no subset to disclose
+    and the shorter phrasing is used."""
+    saves = (f"{n_saves} of {total_saves} save(s) with tracked work"
+             if total_saves > n_saves else f"{n_saves} save(s)")
+    return f" {saves}  ·  {n_feat} main feature(s)"
 
 
 def _row_headline(subject: str, feature: str | None, labels: dict) -> str:
@@ -714,7 +769,8 @@ def render_save_list_lines(
 
     n_ep = len(rows)
     n_feat = len({r["feature"] for r in rows if r["feature"] is not None})
-    lines = [_bold(f" {n_ep} save(s)  ·  {n_feat} feature(s)   (newest on top)", color=color)]
+    lines = [_bold(_history_header(n_ep, n_feat, grid_view.get("save_count", n_ep))
+                   + "   (newest on top)", color=color)]
     shown = rows[:max_rows]
     spine, legend = _spine_prefixes(shown, topology, color=color) if topology else ([None] * len(shown), None)
     if legend:
@@ -958,7 +1014,11 @@ def render_graph_lines(
     sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
     bk = layout["bookkeeping_count"]
     bk_note = dim(f"  (+{bk} bookkeeping)") if bk else ""
-    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['save_count']} save(s)"
+    # Count FEATURES, not rows. This used to report `len(lanes)`, which folds a collapsed subsystem to
+    # a single meta-lane -- so the headline size of the repo dropped every time the reader folded a
+    # row, and disagreed with every other surface. Leaves are stable under collapse.
+    n_feat = sum(len(l["leaves"]) for l in layout["lanes"])
+    lines.append(bold(f" {n_feat} feature(s)  ·  {layout['save_count']} save(s)"
                       f"{sub_note}") + bk_note)
     if frontier is not None:
         lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
@@ -1030,6 +1090,14 @@ def render_graph_lines(
     term_cols = shutil.get_terminal_size(fallback=(0, 0)).columns
     if bar_width is None:
         bar_width = 38 if term_cols < 40 else max(12, term_cols - bar_prefix)
+    # Carve the forecast band out of the density bar's columns, capped at 40% so anticipated work can
+    # never crowd out the measured history it hangs off. Zero when nothing is planned, so an ordinary
+    # repo's rows stay byte-identical (and every existing golden/bar_width caller with it).
+    forecast_w = 0
+    if ghost_by_lane:
+        want = 2 + _CARD_W * max(len(v) for v in ghost_by_lane.values())
+        forecast_w = max(0, min(want, int(bar_width * 0.4)))
+        bar_width = max(12, bar_width - forecast_w)
     # The checkpoints ride on their own indented sub-line (below the bar) so a long feature label plus
     # its `@n` chips can never wrap the density bar. Align that line under the label; ellipsize its
     # content to what's left of the terminal so it stays one row.
@@ -1061,6 +1129,13 @@ def render_graph_lines(
             bar = time_bar(l["cars"], hexc, bar_width)
             row_s = (f"   {marker}{paint(hexc, glyph)} {handle} "
                      f"{bold(label) if is_sel else label} {bar}")
+            # This lane's forecast, on the lane's own row past the `┊` now-rule -- so "what is coming
+            # here" reads in the same place, and the same order, as what already happened. A lane with
+            # nothing planned only reserves the columns when something trails them (`show_links`);
+            # otherwise the row ends at its bar rather than in a run of trailing spaces.
+            lane_ghosts = ghost_by_lane.get(fid, [])
+            if forecast_w and (lane_ghosts or show_links):
+                row_s += _forecast_band(lane_ghosts, forecast_w, hexc, color=color)
             row_s += links_note(fid)
             lines.append(row_s)
             # Checkpoints spelled out as `@n label` on their own indented sub-line: the `@n` is the
@@ -1074,24 +1149,34 @@ def render_graph_lines(
             hidden = len(cars) - len(recent)
             if hidden > 0:
                 chips.insert(0, f"+{hidden} earlier")
-            planned = ghost_by_lane.get(fid)
-            chip_parts = chips + [f"{_GHOST} planned: {_ellipsize(t, 24)}" for t in (planned or ())]
+            # Plan steps are NOT chips here: they are cards in the lane's forecast band above. Keeping
+            # them in both places gave "what is coming" two encodings in one view, which is the same
+            # split the webview had between its plan underline and its ghost car.
+            chip_parts = chips
             if chip_parts:
                 lines.append(" " * chip_indent + dim(_ellipsize("  ·  ".join(chip_parts), chip_avail)))
             lanes_shown += 1
     if total_lanes > lanes_shown:
         lines.append("")
-        lines.append(dim(f" …{total_lanes - lanes_shown} more feature(s) "
+        # "row(s)", not "feature(s)": a row can be a folded subsystem standing for many features, and
+        # the header above now states the feature total -- two different numbers needing two words.
+        lines.append(dim(f" …{total_lanes - lanes_shown} more row(s) "
                          f"({lanes_shown} of {total_lanes} shown)"))
     for g in unplaced_ghosts:
         lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), 40)}"))
     lines.append("")
 
-    # Legend: the view explains its own encoding.
-    lines.append(dim(" ▁▂▃▄▅▆▇█ = edit density (taller = busier)"
-                     "   ·   each row packs its OWN checkpoints left→right (columns don't align across features)"
-                     "   ·   ┄ = a long gap it skipped"
-                     "   ·   @n chips (line below each bar) = the checkpoints (rewind by @n)"))
+    # Legend: the view explains its own encoding -- and only the parts of it that are on screen. The
+    # forecast clause appears only when a lane actually has one, for the same reason the rail's legend
+    # names only the topology glyphs it drew: a legend that describes absent marks teaches the reader
+    # that the header is not about what they are looking at, and they stop reading it.
+    legend = (" ▁▂▃▄▅▆▇█ = edit density (taller = busier)"
+              "   ·   each row packs its OWN checkpoints left→right (columns don't align across features)"
+              "   ·   ┄ = a long gap it skipped"
+              "   ·   @n chips (line below each bar) = the checkpoints (rewind by @n)")
+    if forecast_w:
+        legend += f"   ·   past {_NOW_RULE} = planned, not built yet"
+    lines.append(dim(legend))
     lines.extend(_state_banner(states, color=color))
     return lines
 
@@ -1533,7 +1618,8 @@ def render_rail_lines(
         lines.append(bold(f" focus: {group_label}  ·  {n_feat} feature(s)  ·  {n_ep} save(s)"
                           f"   (newest on top)"))
     else:
-        lines.append(bold(f" {n_ep} save(s)  ·  {n_feat} feature(s){recur_note}   (newest on top)"))
+        lines.append(bold(_history_header(n_ep, n_feat, grid_view.get("save_count", n_ep))
+                          + f"{recur_note}   (newest on top)"))
     # Explain only what is actually on screen. This legend used to name every glyph the renderer
     # can draw, on every run -- two dense lines about merges, off-trunk saves and carried lanes
     # above a six-row linear history that has none of them. A developer reads it once, learns it
