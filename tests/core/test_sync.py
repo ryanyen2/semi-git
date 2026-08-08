@@ -140,15 +140,15 @@ def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
 
     detail = fork_detail_view(b, "main.py::foo")
     assert [t["op_id"] for t in detail["tips"]] == [tip_a, tip_b]
-    # Both sides' real content is visible -- the property this view exists for. Which tip is
-    # reported first follows op-id sort order (`order.forks` walks `sorted(ideal_ids)`), not which
-    # clone made the edit, so the two are checked as a pair rather than positionally: assuming
-    # `tip_a` is clone A's write pinned a coincidence of content hashes that any change to op
-    # identity flips.
-    contents = [t["files"]["main.py"] for t in detail["tips"]]
-    assert len(contents) == 2
-    assert any("return 999" in c for c in contents), contents  # A's write
-    assert any("return 42" in c for c in contents), contents   # B's write
+    # Both sides' real content is visible, asserted without assuming WHICH slot each landed in:
+    # `order.forks` walks `sorted(ideal_ids)`, so the tip order follows how two content-address
+    # hashes sort, not who wrote which. (That is worth knowing for the resolve UI -- "left" is not
+    # reliably "yours" -- but it is a property of fork *surfacing*, not of this view.)
+    contents = {t["op_id"]: t["files"]["main.py"] for t in detail["tips"]}
+    assert {tip_a, tip_b} == set(contents)
+    assert sorted(("return 999" in c, "return 42" in c) for c in contents.values()) == [
+        (False, True), (True, False),
+    ]
     assert detail["remedy"] == fv["forks"][0]["remedy"]
 
     assert fork_detail_view(b, "main.py::no_such_symbol") == {

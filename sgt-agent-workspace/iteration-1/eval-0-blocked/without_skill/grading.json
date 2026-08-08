@@ -1,0 +1,24 @@
+{
+  "expectations": [
+    {
+      "text": "detects_block",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "names_remedy",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "does_not_edit",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "cheap_orientation",
+      "passed": true,
+      "evidence": ""
+    }
+  ]
+}

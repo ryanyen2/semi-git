@@ -126,6 +126,30 @@ def _flag_index():
     return index
 
 
+def _bad_subcommand(tokens, flag_index) -> str | None:
+    """A message when `tokens` names a *grouping* plus a subcommand that grouping does not have.
+
+    Only reported for a verb that actually hosts subparsers (`feature`, `advanced`, `feature
+    regroup`, `tiers`). A verb whose second token is an ordinary argument -- `sgt show f-abc`,
+    `sgt revert auth.py::login` -- has no subparsers, so nothing is checked and a placeholder is
+    never mistaken for a missing subcommand."""
+    verbs = [t for t in tokens if not t.startswith("--")]
+    if len(verbs) < 2:
+        return None
+    path = (verbs[0],)
+    if path not in flag_index:
+        return None
+    for token in verbs[1:]:
+        children = {p[-1] for p in flag_index if len(p) == len(path) + 1 and p[:len(path)] == path}
+        if not children:
+            return None  # this verb takes arguments, not subcommands
+        if token not in children:
+            return (f"{' '.join(path)} has no {token!r} subcommand "
+                    f"(it has: {', '.join(sorted(children))})")
+        path = (*path, token)
+    return None
+
+
 def _bad_flags(tokens, flag_index) -> list[str]:
     """Long flags in `tokens` that the deepest matching verb path does not accept."""
     verbs = [t for t in tokens if not t.startswith("--")]
@@ -144,6 +168,35 @@ def _bad_flags(tokens, flag_index) -> list[str]:
     allowed = flag_index[path]
     # `--help` is available on every parser; argparse adds it implicitly.
     return [f for f in flags if f not in allowed and f != "--help"]
+
+
+def unrunnable(command: str) -> str | None:
+    """Why `command` would not run, or `None` if it would. `command` is a whole shell line
+    (`"sgt feature why auth.py::login"`); arguments and placeholders after the verb path are ignored.
+
+    Public because two callers need the same answer and a second implementation drifted immediately:
+    `tests/test_show.py` checks that every command `show_view` *suggests* dispatches, and it had grown
+    its own parser walk with the same blind spot this module just fixed -- both treated an unknown
+    subcommand as if it were a positional argument, so `sgt feature why` passed in both places after
+    `why` was promoted out of the `feature` grouping."""
+    tokens = command.split()
+    if not tokens or tokens[0] != "sgt":
+        return f"{command!r} does not start with `sgt`"
+    rest = [t for t in tokens[1:] if not t.startswith("-")]
+    flags = [t for t in tokens[1:] if t.startswith("--")]
+    if not rest:
+        return None  # `sgt --help` and friends
+    verbs, routing, renamed = _surface()
+    if rest[0] not in verbs:
+        replacement = _replacement(rest[0], routing, renamed)
+        return (f"`sgt {rest[0]}` moved -> {replacement}" if replacement
+                else f"`sgt {rest[0]}` is not a verb")
+    flag_index = _flag_index()
+    bad_sub = _bad_subcommand(rest, flag_index)
+    if bad_sub is not None:
+        return bad_sub
+    bad = _bad_flags(rest + flags, flag_index)
+    return f"{bad[0]} is not a flag of that verb" if bad else None
 
 
 def _iter_files(targets):
@@ -177,7 +230,15 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
                 tokens = match.group(1).split()
                 verb = tokens[0]
                 if verb in verbs:
-                    continue  # dispatches at the top level; argparse owns the rest
+                    # The top-level verb dispatches. Also check the *sub*-path when the next token
+                    # names a grouping's subcommand: checking only the first token let
+                    # `sgt feature why` pass unnoticed after `why` was promoted out of `feature`,
+                    # because `feature` itself still dispatched. A grouping prints its subhelp for an
+                    # unknown subcommand, so the failure there is quiet rather than loud.
+                    bad_sub = _bad_subcommand(tokens, flag_index)
+                    if bad_sub is not None:
+                        findings.append((_display(path), i, f"sgt {' '.join(tokens)}", bad_sub))
+                    continue
                 replacement = _replacement(verb, routing, renamed)
                 quoted = f"sgt {' '.join(tokens)}"
                 findings.append((_display(path), i, quoted, replacement))

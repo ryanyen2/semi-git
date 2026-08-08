@@ -10,7 +10,8 @@ reachable that way, because the MCP tools are thin wrappers over the same projec
 | MCP tool | Shell equivalent |
 |---|---|
 | `sgt_now` | `sgt now --json` |
-| `sgt_show` | `sgt show <sel> --json` |
+| `sgt_show` (id) | `sgt show <sel> --json` |
+| `sgt_show` (with `at`) | `sgt show <file> --at <spec> --json` |
 | `sgt_log` | `sgt log --ops --json --limit 30` |
 | `sgt_status` | `sgt log --summary --json` |
 | `sgt_diff` | `sgt diff <ref_a> <ref_b> --json` |
@@ -18,7 +19,18 @@ reachable that way, because the MCP tools are thin wrappers over the same projec
 | `sgt_recall` | no CLI equivalent — MCP-only |
 | `sgt_advanced_fsck` | `sgt advanced fsck --json` |
 
-`sgt_recall` is the one real gap. Its nearest substitute is `sgt feature why <symbol> --json`, which
+## Two argument shapes that catch people out
+
+`sgt save` takes its message as a **flag**, not a positional: `sgt save -m "what you did"`. The
+`sgt plan intake "<text>"` row above takes a bare positional, and that similarity primed the wrong
+form in testing -- an agent wrote `sgt save "msg"` and got an argparse rejection.
+
+A **whitespace-only** working-tree edit cannot be saved. No symbol changed, so sgt mines no op for it,
+and `put()` then refuses with `would overwrite uncommitted changes`. The tree can only go back
+(`git checkout -- <file>`). Fold such tidying into a real edit to the same file instead of trying to
+record it alone.
+
+`sgt_recall` is the one real gap. Its nearest substitute is `sgt why <symbol> --json`, which
 gives you one symbol's attribution and recorded reason rather than a batch lookup across several.
 
 ## The plan loop

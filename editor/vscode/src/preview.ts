@@ -45,17 +45,19 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
   }
 
   /** Open a read-only before→after diff per changed file for an already-fetched emit view -- the
-   * "where this lands" preview. Shared by `sgt.previewRevert` and the revert confirm flow (so a
-   * revert always shows its resulting diff before it commits) without re-running `emit`. Returns
-   * the count of files shown. */
+   * "where this lands" preview. Shared by `sgt.previewRevert` and the revert/restore confirm flows
+   * (so an exact ideal edit always shows its resulting diff before it commits) without re-running
+   * `emit`. Titles come from the view's own `verb`, so nothing here assumes revert. Returns the
+   * count of files shown. */
   async openDiff(res: EmitView): Promise<number> {
+    const verb = res.verb ? res.verb[0].toUpperCase() + res.verb.slice(1) : "Edit";
     const paths = Object.keys(res.files);
     if (paths.length === 0) {
-      vscode.window.showInformationMessage(`Revert ${res.target}: no file changes.`);
+      vscode.window.showInformationMessage(`${verb} ${res.target}: no file changes.`);
       return 0;
     }
     const token = String(this.seq++);
-    const label = `Revert: ${res.target}`;
+    const label = `${verb}: ${res.target}`;
     for (const path of paths) {
       const left = this.uri(token, "current", path);
       const right = this.uri(token, "predicted", path);

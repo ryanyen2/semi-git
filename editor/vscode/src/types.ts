@@ -712,8 +712,35 @@ export interface NextAction {
   label: string;
 }
 
+// A plan being actively built. Deliberately not part of `needs_you`: an agent making progress
+// needs nothing from the developer, it just needs to be visible. Before this existed, only
+// *stalled* plans surfaced, so a working agent was invisible until it had been quiet for an hour.
+export interface NowInProgressPlan {
+  session_id: string;
+  claude_session_id: string | null;
+  matched_count: number;
+  step_count: number;
+  pending_count: number;
+  current_title: string | null;
+}
+
+// The current task in the developer's own words, derived from the prompt hook rather than declared
+// via `sgt plan intake` -- the common way to work (Claude Code plan mode, a planning plugin) never
+// calls intake, so nothing else supplies it. `source` distinguishes a stated plan step from a raw
+// prompt, because the two carry different amounts of deliberation and blurring them would make the
+// surface look like it knows more than it does. Null when nothing has been asked for.
+export interface NowWorkingOn {
+  title: string;
+  full_title: string;
+  source: "plan" | "prompt";
+  ts: number | null;
+  session_id: string | null;
+}
+
 export interface NowView {
+  working_on: NowWorkingOn | null;
   in_flight: { affected: NowInFlightRow[]; new_work_count: number; total_op_count: number };
+  in_progress: NowInProgressPlan[];
   needs_you: { forks: ForkRecord[]; reviews: NowReview[]; stalled_plans: NowStalledPlan[] };
   recently_done: HistoryCommit[];
   context: { turns: { text: string; actor: string; ts: number }[]; activity: NowActivity[] };

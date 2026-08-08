@@ -103,11 +103,30 @@ def _switch(repo: str, branch: str, as_json: bool) -> int:
     """`sgt switch <branch>` (D3): materialize a named ideal -- an existing branch's committed
     tree. Mines the current ref first so nothing is lost (R9), moves HEAD to `branch` (git writes
     that branch's tree, which *is* `code(ideal)`), then mines the new ref so the op store reflects
-    it. sgt owns the write path; a raw `git switch` is what D2 refuses in favor of this."""
+    it. sgt owns the write path; a raw `git switch` is what D2 refuses in favor of this.
+
+    The argument must name a *local branch*. It used to go straight to `git checkout`, so a commit
+    sha or tag detached HEAD with no warning -- and a `sgt save` on a detached HEAD writes a commit
+    that belongs to no branch and disappears from every ideal the moment the user switches back.
+    Refusing here (rather than materializing a state sgt cannot keep) is the only honest answer:
+    sgt's history is append-only, so "go look at an old state" is a read, not a checkout."""
     from sgt.core.lens import DirtyWorkingTreeError, get
     from sgt.store.gitbind import GitBinding, GitError
 
     gb = GitBinding(repo)
+    if not gb.local_branch_exists(branch):
+        known = gb.local_branches()
+        resolved = gb.rev_parse(branch)
+        what = "a commit or tag" if resolved else "nothing in this repo"
+        listing = ", ".join(known[:8]) + ("…" if len(known) > 8 else "") if known else "(none)"
+        return _fail_json(
+            f"`{branch}` is not a local branch -- it resolves to {what}. `sgt switch` moves HEAD, "
+            f"and switching to anything but a branch detaches it, where a later `sgt save` commits "
+            f"onto no branch. Branches here: {listing}. To *look at* an older state instead, use "
+            f"`sgt log --at <commit>` or `sgt diff <ref> HEAD`; to detach deliberately, "
+            f"`sgt git checkout --force {branch}`.",
+            as_json,
+        )
     try:
         get(repo)  # absorb current reality before leaving this ref (R9)
         gb.checkout_branch(branch)  # move HEAD + materialize the branch's committed tree
@@ -144,9 +163,20 @@ def _restore_cascade_tables(repo: str, snapshot: dict[str, bytes | None]) -> Non
             p.write_bytes(raw)
 
 
+def save(repo: str, *, message: str | None = None, as_label: str | None = None) -> dict:
+    """Record the working tree's edits and return what the save did, as data.
+
+    The library entry point behind `sgt save`, for callers that are not a terminal -- the MCP
+    server, chiefly. It exists because the only way to reach a save's result used to be to print
+    it, which forced that server to run the verb through argparse with stdout redirected, on a
+    process whose stdout carries JSON-RPC frames."""
+    out = _save(repo, message, True, as_label=as_label, return_payload=True)
+    return out if isinstance(out, dict) else {"ok": False, "error": "save failed"}
+
+
 def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
           confirm_hollow: list[str] = (), confirm_op: list[str] = (),
-          as_label: str | None = None, color: bool = False) -> int:
+          as_label: str | None = None, color: bool = False, return_payload: bool = False):
     """`sgt save [-m]` (D3): the put-path sugar -- mine the working tree (R9), then materialize a
     witness commit for the resulting ideal and record it. "Nothing to save" is decided by the
     ideal, not git's dirty flag: with no uncommitted ops the mined ideal equals the recorded one
@@ -230,8 +260,11 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
                 pass
     elif not resolve_plan:
         msg = "nothing to save -- no uncommitted ops"
+        nothing = {"ok": True, "saved": False, "message": msg}
+        if return_payload:  # this early exit is a real outcome, not a shortcut past the payload
+            return nothing
         if as_json:
-            return _emit_json({"ok": True, "saved": False, "message": msg})
+            return _emit_json(nothing)
         print(f"✓ {msg}")
         return 0
 
@@ -261,6 +294,9 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     # shouldn't hide -- surface it loudly at the end of every save (⋔ banner + per-symbol remedy).
     from sgt.api import forks_view
     open_forks = forks_view(repo)["forks"]
+    if return_payload:
+        return save_payload(saved=saved, sha=sha, n=n, plan=plan, words=words, why=why,
+                            features=features, renamed=renamed, open_forks=open_forks)
     return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,  # holds only ALIGN
                         message=message, features=features, renamed=renamed, why=why,  # + confirmed
                         open_forks=open_forks, color=color)
@@ -286,11 +322,12 @@ def _fold_plan_matches(repo: str) -> dict | None:
             auto.append(entry)
         else:  # multiple steps tangled in one op cluster -> needs `save --resolve-plan`
             ambiguous.append(entry)
-    # After confirm, so coverage reads the leftovers -- but never closing a session this same beat
-    # told the user to resolve, whose hollows `mark_done` would unlink out from under the
-    # `--confirm-hollow <id>` instruction we just printed.
+    # After confirm, so coverage reads the leftovers -- but never close a session this very save is
+    # about to tell the user to resolve. Doing so printed "run `sgt save --resolve-plan`" and
+    # deleted the hollow that command needs, so the advertised next step answered "not a known
+    # pending hollow id".
     auto_closed = plan_mod.sweep_built_sessions(
-        repo, awaiting={e["session_id"] for e in ambiguous})
+        repo, exclude=frozenset(e["session_id"] for e in ambiguous))
     if not result.matches and not result.drift_op_ids and not auto_closed:
         return None
     return {"auto_confirmed": auto, "ambiguous": ambiguous,
@@ -478,26 +515,40 @@ def _aligned_why(repo: str, new_op_ids: frozenset, words: str | None) -> str | N
     return "; ".join(reasons) if reasons else None
 
 
+def save_payload(*, saved: bool, sha: str | None, n: int, plan: dict | None = None,
+                 words: str | None = None, why: str | None = None, features=(),
+                 renamed: dict | None = None, open_forks=()) -> dict:
+    """What a save did, as data. Extracted from `_render_save` so a non-CLI caller can have the
+    save's result without the CLI printing it: the MCP server used to run the verb through argparse
+    with stdout redirected, purely because the only way to reach this dict was to print it -- on a
+    process that speaks JSON-RPC over stdout, which made the redirect load-bearing rather than
+    incidental. One builder, two renderers."""
+    out: dict = {"ok": True, "saved": saved, "open_fork_count": len(open_forks)}
+    if saved:
+        out["commit"], out["ops"] = sha, n
+    if words:  # the captured words, structured for the editor/VSCode surface
+        out["words"] = words
+    if why:  # the ledger's aligned reason for these ops (distinct from the captured words)
+        out["why"] = why
+    if features:
+        out["features"] = list(features)
+    if renamed is not None:
+        out["renamed"] = renamed
+    if plan is not None:
+        out["plan"] = plan
+    return out
+
+
 def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                  plan: dict | None, resolve_plan: bool, *, message: str | None = None,
                  features: list[dict] = (), renamed: dict | None = None,
                  words: str | None = None, why: str | None = None,
                  open_forks: list[dict] = (), color: bool = False) -> int:
     if as_json:
-        out: dict = {"ok": True, "saved": saved, "open_fork_count": len(open_forks)}
-        if saved:
-            out["commit"], out["ops"] = sha, n
-        if words:  # the captured words, structured for the editor/VSCode surface
-            out["words"] = words
-        if why:  # the ledger's aligned reason for these ops (distinct from the captured words)
-            out["why"] = why
-        if features:
-            out["features"] = list(features)
-        if renamed is not None:
-            out["renamed"] = renamed
-        if plan is not None:
-            out["plan"] = plan
-        return _emit_json(out)
+        return _emit_json(save_payload(
+            saved=saved, sha=sha, n=n, plan=plan, words=words, why=why,
+            features=features, renamed=renamed, open_forks=open_forks,
+        ))
 
     if saved:
         from sgt.tui.color import color_for
@@ -582,6 +633,33 @@ def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
     from sgt.core import oplog
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.store.gitbind import GitError
+
+    # Show what it will do before doing it. `undo` is what a developer reaches for when something
+    # has gone wrong, and it used to apply on contact -- so the one command whose whole job is
+    # recovering from a surprise was itself a surprise. The gate is tty-only and matches `revert`'s
+    # (`--json` and non-interactive callers apply immediately, the machine contract).
+    import sys as _sys
+
+    if not as_json and _sys.stdin.isatty() and _sys.stdout.isatty():
+        pv = oplog.preview(repo, force=force)
+        if pv["kind"] is not None:
+            if not pv["ok"]:
+                return _fail(pv["message"])  # the refusal IS the message; don't say it twice
+            print(f"undo: {pv['message']}")
+            if pv["restored"]:
+                print(f"  brings back {len(pv['restored'])} edit(s)")
+            if pv["dropped"]:
+                print(f"  drops {len(pv['dropped'])} edit(s) made since")
+            if pv["symbols"]:
+                print(f"  touches {', '.join(pv['symbols'][:6])}"
+                      + (" …" if len(pv["symbols"]) > 6 else ""))
+            try:
+                reply = input("apply this undo? [y/N] ").strip().lower()
+            except EOFError:
+                reply = ""
+            if reply not in ("y", "yes"):
+                print("  aborted — nothing undone.")
+                return 1
 
     try:
         outcome = oplog.undo(repo, force=force)

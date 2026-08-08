@@ -27,10 +27,21 @@ def _cmd_init(args) -> int:
         return _emit_json({"error": str(ex)}) if args.as_json else _fail(str(ex))
     hooked = _install_prompt_hook(args.path)
     activity_hooked = _install_activity_hook(args.path)
+    # Never let a repo commit as the placeholder without the user hearing about it: every commit
+    # sgt makes here would be authored "semi-git <sgt@semi-git.local>" in git log, blame, and on
+    # the remote, and the only moment that is cheap to fix is right now.
+    from sgt.store.gitbind import GitBinding
+    placeholder = GitBinding(args.path).placeholder_identity()
     if args.as_json:
         return _emit_json({"ok": True, "path": args.path, "horizon": args.horizon,
-                           "hook": hooked, "activity_hook": activity_hooked})
+                           "hook": hooked, "activity_hook": activity_hooked,
+                           "placeholder_identity": placeholder})
     print(f"✓ initialized sgt kernel in {args.path} (.sgt/ + git)")
+    if placeholder:
+        print("⚠ this repo has no git identity, so commits will be authored "
+              "'semi-git <sgt@semi-git.local>'. Set yours with:\n"
+              "    git config user.name  \"Your Name\"\n"
+              "    git config user.email \"you@example.com\"")
     if hooked:
         print("✓ installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts "
               "become local intent evidence; remove the UserPromptSubmit entry to opt out")

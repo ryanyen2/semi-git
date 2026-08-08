@@ -289,6 +289,18 @@ def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
         commit = _commit_why(repo, op_ref)
         if commit is not None:
             return commit
+        # All three selectors failed. `verbs._resolve`'s message names only the two *it* tried
+        # (op-id, symbol), which is right for revert/restore but under-reports here -- `why` also
+        # accepts a commit, and a user who pasted a sha deserves to be told that is what was
+        # checked, not to be corrected about op-ids they never mentioned.
+        return {
+            "kind": "op", "ok": False, "op_id": None, "feature_id": None,
+            "for_feature": None, "votes": [], "chain": [], "rationale": [],
+            "message": (
+                f"{op_ref!r} is not an op-id, a live symbol (`path.py::name`), or a commit in "
+                f"this repo's history"
+            ),
+        }
     # Intent-ledger M1: append the recorded "why" -- the rationale reflection derived from the
     # user's own words -- beside the structural attribution. Empty when nothing was captured/derived
     # for this op, which `sgt why` renders as an honest "no recorded reason" rather than a guess.
@@ -877,6 +889,25 @@ def _project_land_preview(repo, plan) -> dict:
         "oracle_configured": plan.oracle_configured,
         "advisory": plan.advisory,
     }
+    # What `sgt undo` will do *after* this land -- the one thing the "not reversible" line above
+    # doesn't answer, and the thing the user actually asks next. The shared advance itself is
+    # one-way either way; what differs is whether undo has anything local to act on. Landing the
+    # branch you are standing on journals an ordinary ideal_edit, so undo works and writes a
+    # forward correction; landing any other branch only moved a ref other people read, so undo
+    # refuses. (`sgt/core/sync/land.py:317` vs `:334`.)
+    try:
+        from sgt.store.gitbind import GitBinding
+        gb = GitBinding(repo)
+        checked_out = gb.symbolic_ref() == f"refs/heads/{plan.branch}"
+    except Exception:  # noqa: BLE001 -- an advisory line must never break a preview
+        checked_out = None
+    projected["checked_out"] = checked_out
+    projected["undo_note"] = (
+        "the shared advance is one-way; `sgt undo` afterward writes a local forward correction"
+        if checked_out else
+        "the shared advance is one-way; `sgt undo` will refuse it (it only moved a ref others read)"
+        if checked_out is False else ""
+    )
     projected["so_what"] = so_what_for(projected)
     projected["summary"] = render_collab_preview_lines(projected, color=True)
     return projected
@@ -1189,9 +1220,19 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
     from sgt.store.gitbind import GitBinding
 
     gb = GitBinding(repo)
-    rows = gb.history()
+    # `history_meta` carries the committer time and the bookkeeping mark in the format of the walk
+    # `history()` already does, so knowing which commits are sgt's own mechanics -- and when the
+    # last save happened -- costs no extra git calls. Every commit keeps its index and its place on
+    # the time axis (the grid, the fold frontier, and every op's `commit_index` are unchanged); only
+    # human-facing lists drop them, instead of telling a developer that `sgt restore f-08ccdb12...`
+    # is something they did.
+    meta = gb.history_meta()
+    rows = [(sha, parent, subject) for sha, parent, subject, _ts, _bk in meta]
     commit_index = {sha: i for i, (sha, _parent, _subject) in enumerate(rows)}
-    commits = [{"sha": sha, "subject": subject, "index": i} for i, (sha, _parent, subject) in enumerate(rows)]
+    commits = [
+        {"sha": sha, "subject": subject, "index": i, "ts": ts, "bookkeeping": bk}
+        for i, (sha, _parent, subject, ts, bk) in enumerate(meta)
+    ]
 
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
@@ -1222,11 +1263,19 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
         kinds[o["kind"]] = kinds.get(o["kind"], 0) + 1
         if o["feature_id"] is not None:
             features[o["feature_id"]] = features.get(o["feature_id"], 0) + 1
-    # Each recent commit carries a `headline` beside its raw `subject`: what the work *was*, falling
-    # back to its dominant feature's label when the subject is a bare stamp. Only computed for the
-    # returned window (a label lookup per row), so this stays a compact-path cost.
+    # "What did I do" is a question about the developer's work, so two filters apply in sequence and
+    # they are independent improvements to the same answer.
+    #
+    # First, sgt's own materializations drop out of the rows and are reported as a count beside them.
+    # `commit_count` stays the honest total (it is the time axis's length, which every index refers
+    # to); `save_count` is the number a person would give if asked how much they had done.
+    #
+    # Then each surviving row gets a `headline` beside its raw `subject`: what the work *was*,
+    # falling back to its dominant feature's label when the subject is a bare stamp like `wip`. Only
+    # computed for the returned window (one label lookup per row), so this stays a compact-path cost.
     latest_first = list(reversed(commits))
-    window = latest_first[offset:offset + limit]
+    real_first = [c for c in latest_first if not c["bookkeeping"]]
+    window = real_first[offset:offset + limit]
     if window:
         labels = _grid_labels(repo)
         dominant = _dominant_feature_by_commit(ops_out)
@@ -1235,6 +1284,8 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
                   for c in window]
     return {
         "commit_count": len(commits),
+        "save_count": len(real_first),
+        "bookkeeping_count": len(commits) - len(real_first),
         "op_count": len(ops_out),
         "kinds": kinds,
         "features": features,
@@ -1394,7 +1445,13 @@ def grid_view(repo) -> dict:
         },
         "ghosts": _grid_ghosts(repo, set(features)),
         "partial_commits": sorted(partial_indices),
+        # `commit_count` is the time axis's length -- every op's `commit_index` refers to it, so it
+        # must keep counting sgt's own materialization commits. `save_count` is what a person means
+        # by "how many saves": the same axis minus sgt's plumbing. Keeping both is what stops the
+        # map's header from disagreeing with `sgt log`'s save list on the same repo.
         "commit_count": len(hv["commits"]),
+        "save_count": sum(1 for c in hv["commits"] if not c.get("bookkeeping")),
+        "bookkeeping_count": sum(1 for c in hv["commits"] if c.get("bookkeeping")),
         "op_count": sum(len(c["op_ids"]) for c in cells.values()),
         "feature_count": len(features),
     }
@@ -2031,6 +2088,50 @@ def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
     }
 
 
+def show_at_view(repo, at: str, path: str | None = None) -> dict:
+    """A file as it was at a past frontier, or the list of files that existed there.
+
+    The shared resolution behind `sgt show <path> --at <spec>` and the MCP `sgt_show`'s `at` mode. It
+    lives here because both surfaces need the same answer and rebuilding it per surface is how they
+    drift: the MCP copy matched only a path suffix while the CLI matched an exact repo-relative path
+    *or* a suffix, and the two reported a miss differently. Read-only -- `fold_view` reconstructs
+    `code(I)` without checking anything out.
+
+    Named `show_at_view` rather than `show_view` because `sgt show` answers two questions and both
+    needed a projection: this one is the *time* reading ("as it was at"), and `show_view` below is the
+    *identity* reading ("what is this"). Two functions called `show_view` briefly coexisted here after
+    a merge, one silently shadowing the other."""
+    view = fold_view(repo, **_parse_show_spec(at))
+    if view.get("forked"):
+        return {"error": view["message"]}
+    if "error" in view:
+        return {"error": view["error"]}
+    files = view["files"]
+    if not path:
+        return {"at": at, "op_count": view["op_count"], "files": sorted(files)}
+    if path not in files:
+        # Suffix-matching beats an exact-path demand: the reader knows the file by its name far
+        # more reliably than by its full repo-relative path.
+        matches = [p for p in sorted(files) if p == path or p.endswith("/" + path)]
+        if not matches:
+            return {"error": f"{path!r} does not exist at {at} ({len(files)} file(s) do; "
+                             f"run `sgt show {at}` to list them)"}
+        if len(matches) > 1:
+            return {"error": f"{path!r} is ambiguous at {at}: {', '.join(matches)}"}
+        path = matches[0]
+    return {"at": at, "path": path, "content": files[path]}
+
+
+def _parse_show_spec(spec: str) -> dict:
+    """`sgt show`/`sgt fold --at`'s frontier grammar: an all-digit spec is a commit-index position,
+    `op:<id>,...` an explicit op-id set, anything else a ref name."""
+    if spec.isdigit():
+        return {"at_commit_index": int(spec)}
+    if spec.startswith("op:"):
+        return {"op_ids": spec[3:].split(",")}
+    return {"ref": spec}
+
+
 def _atom_prompt(repo, atom) -> str | None:
     """The best available recorded prompt for one atom (plan U3/U6): try its own commit sha
     first (`sgt session start --task` keys land here indirectly only via provenance, but a direct
@@ -2294,7 +2395,7 @@ def _history_rewritten_flag(repo) -> bool:
         return False
 
 
-def _next_action(in_flight: dict, needs_you: dict) -> dict:
+def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) -> dict:
     """The single "do this next" recommendation as a STRUCTURED action (not a rendered string, so
     each surface phrases it in its own idiom), from a fixed priority ladder: an open fork blocks
     everything (its two tips are excluded from every ideal), a stalled plan is a resumable thread,
@@ -2336,8 +2437,18 @@ def _next_action(in_flight: dict, needs_you: dict) -> dict:
                 "target": s["session_id"],
                 "label": f"resume stalled plan ({s['pending_count']} step(s) left)"}
     if in_flight["total_op_count"] > 0:
-        return {"kind": "save", "command": "sgt save", "target": None,
-                "label": f"save {in_flight['total_op_count']} pending op(s)"}
+        # A save is offered by what it *records*, not by the store's unit of accounting. The
+        # developer's own words are already on the surface one line above; if a message can be
+        # suggested from them, the command is copy-pasteable as-is rather than a `-m` to fill in.
+        n = in_flight["total_op_count"]
+        title = (working or {}).get("full_title") if isinstance(working, dict) else None
+        # Only offer a filled-in message when it can be pasted verbatim: a quote in the sentence
+        # would break the shell line, and a suggestion the developer has to repair is worse than
+        # none. Long asks stay as the sentence they were -- a save message may run long.
+        usable = title and '"' not in title and "\\" not in title and "\n" not in title
+        command = f'sgt save -m "{title}"' if usable else "sgt save"
+        return {"kind": "save", "command": command, "target": None,
+                "label": f"save your {n} unsaved edit(s)"}
     reviews = needs_you["reviews"]
     if reviews:
         return {"kind": "review", "command": "sgt intent review", "target": None,
@@ -2365,7 +2476,20 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
 
     forks = forks_view(repo)
     reviews = pending_reviews(repo)
-    stalled = [s for s in plan_view(repo)["sessions"] if s["derived_status"] == "stalled"]
+    sessions = plan_view(repo)["sessions"]
+    stalled = [s for s in sessions if s["derived_status"] == "stalled"]
+    # A plan that is actively being built appeared nowhere: only *stalled* plans reached
+    # `needs_you`, so a working agent was invisible until it had been quiet for an hour, and the
+    # question "what is happening right now" had no answer on the surface built to answer it.
+    # This is deliberately not in `needs_you` -- an agent making progress needs nothing from the
+    # developer, it just needs to be visible.
+    in_progress = [
+        {"session_id": s["session_id"], "claude_session_id": s.get("claude_session_id"),
+         "matched_count": s.get("matched_count", 0), "step_count": s.get("step_count", 0),
+         "pending_count": s["pending_count"],
+         "current_title": (s["remaining_titles"] or [None])[0]}
+        for s in sessions if s["derived_status"] == "building"
+    ]
     needs_you = {
         # A half-finished git merge/cherry-pick/revert is the one state that blocks every sgt verb
         # (`save` refuses on it, F26), so it belongs on the surface whose whole job is "what needs
@@ -2386,18 +2510,37 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
 
     recently_done = history_view(repo, limit=recent_limit)["latest_commits"]
 
+    # What the developer is working on, in their own words. The prompt hook has always recorded
+    # every ask verbatim, so this needs no declaration step -- which matters because the common way
+    # to work is Claude Code's plan mode or a planning plugin, neither of which calls
+    # `sgt plan intake`. Without this the surface built to answer "what am I working on" answered
+    # with op counts. A prompt older than the last save has already been answered by it, so the last
+    # save's committer time is the cutoff.
+    from sgt.intent.working import working_on
+
+    # The newest save's time comes off `recently_done`, which `history_view` just returned -- no
+    # extra git call for one integer. It is the newest *real* save, since that list is already
+    # folded, which is what "has this prompt been answered" should compare against.
+    last_save_ts = recently_done[0].get("ts") if recently_done else None
+    # One parse of the turn store, shared: `working_on` needs the newest human prompt and `context`
+    # needs the newest few turns, and the file holds every prompt ever typed with no pruning, so
+    # reading it twice is a cost that grows forever.
     turns_all = sorted(turns_mod.load_turns(repo).values(), key=lambda t: t["ts"], reverse=True)
+    working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts,
+                         has_unsaved=in_flight["total_op_count"] > 0, turns=turns_all)
     context = {
         "turns": [{"text": t["text"], "actor": t["actor"], "ts": t["ts"]} for t in turns_all[:recent_limit]],
         "activity": activity_mod.recent_activity(repo, limit=recent_limit),
     }
 
     return {
+        "working_on": working,
         "in_flight": in_flight,
+        "in_progress": in_progress,
         "needs_you": needs_you,
         "recently_done": recently_done,
         "context": context,
-        "next_action": _next_action(in_flight, needs_you),
+        "next_action": _next_action(in_flight, needs_you, working),
     }
 
 
@@ -2607,7 +2750,7 @@ def _show_next(found, consequences: dict) -> list[dict]:
             steps.append({"cmd": f"sgt resolve {found.target}",
                           "why": "two versions of this symbol compete -- guided resolution"})
     if found.kind in ("op", "symbol"):
-        steps.append({"cmd": f"sgt feature why {found.target}",
+        steps.append({"cmd": f"sgt why {found.target}",
                       "why": "why this edit is grouped where it is, and the recorded reason"})
 
     # The revert offer comes last and states its cost, so the consequence is read before the verb is

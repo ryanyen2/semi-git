@@ -3,7 +3,7 @@
     "covered": true,
     "features": {
       "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157": {
-        "label": "compute helper"
+        "label": "add mixed python and non-parseable paths"
       }
     },
     "file": "pkg.py",
@@ -11,7 +11,7 @@
       {
         "end_line": 2,
         "feature_id": "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157",
-        "label": "compute helper",
+        "label": "add mixed python and non-parseable paths",
         "sessions": [],
         "start_line": 1,
         "symbol": "pkg.py::compute"
@@ -33,7 +33,7 @@
         "dir": "pkg.py",
         "id": "f-0088fb4e92610c7212fc115127b2f1f07d8d42df5ace65963f683694fbb29157",
         "kind": "feature",
-        "label": "compute helper",
+        "label": "add mixed python and non-parseable paths",
         "members": [
           "config.yaml",
           "notes.md",
@@ -49,7 +49,7 @@
         "sessions": [],
         "size": 8,
         "split_reason": "max_leaf",
-        "why": "Auto-derived from pkg.py (no LLM label available)."
+        "why": "Named from the commit that introduced it: 'add mixed python and non-parseable paths'."
       }
     ],
     "roots": [

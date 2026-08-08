@@ -22,13 +22,35 @@ from .inspect import _fmt_age
 
 
 def register(subs, parent) -> None:
-    p = subs.add_parser("show", parents=[parent])
-    p.add_argument("sel", nargs="+", help="a feature id/label, a checkpoint, an op id, or a symbol")
+    p = subs.add_parser("show", parents=[parent],
+                        help="what is this? — or, with --at, what it was at a past point")
+    p.add_argument("sel", nargs="*",
+                   help="a feature id/label, a checkpoint, an op id, a symbol, or (with --at) a file")
+    p.add_argument("--at", metavar="SPEC", default=None,
+                   help="read it as it was at a past point: a commit index (`12`), an op set "
+                        "(`op:<id>,...`), or a ref. Omit the selection to list what existed there")
     p.set_defaults(func=_cmd_show)
 
 
 def _cmd_show(args) -> int:
-    return _show(".", " ".join(args.sel), args.as_json)
+    """One verb, two readings of "show me this", chosen by whether a point in time was named.
+
+    They could have been two verbs -- and briefly were, when a `show` that reads a file at a past
+    frontier and a `show` that explains an id landed from different directions. But a user does not
+    hold two concepts here: they are pointing at something and asking to see it. `--at` is the same
+    time modifier `sgt log --at` and `sgt advanced fold --at` already use, so "add `--at` to look at
+    the past" is one idea that composes across the tool rather than a second verb to learn."""
+    selection = " ".join(args.sel)
+    if args.at is not None:
+        from .inspect import _show_at
+
+        return _show_at(".", args.at, selection or None, args.as_json)
+    if not selection:
+        print("usage: sgt show <sel>            what is this? (feature, checkpoint, op, symbol)\n"
+              "       sgt show <file> --at 12   that file as it was at commit 12\n"
+              "       sgt show --at 12          what existed at commit 12")
+        return 2
+    return _show(".", selection, args.as_json)
 
 
 def _show(repo: str, target: str, as_json: bool) -> int:

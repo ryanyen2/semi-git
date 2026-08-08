@@ -906,9 +906,14 @@ def test_history_view_default_is_compact_with_latest_commits_most_recent_first(t
     compact = history_view(repo)
     full = history_view(repo, full=True)
 
-    assert set(compact) == {"commit_count", "op_count", "kinds", "features", "latest_commits"}
+    assert set(compact) == {"commit_count", "save_count", "bookkeeping_count",
+                            "op_count", "kinds", "features", "latest_commits"}
     assert compact["commit_count"] == len(full["commits"])
     assert compact["op_count"] == len(full["ops"])
+    # `linear_history` is all real work, so the two counts coincide here; the split is exercised
+    # by `test_history_view_folds_sgt_s_own_materialization_commits` below.
+    assert compact["save_count"] == compact["commit_count"]
+    assert compact["bookkeeping_count"] == 0
     assert [c["index"] for c in compact["latest_commits"]] == sorted(
         (c["index"] for c in full["commits"]), reverse=True
     )
@@ -1045,11 +1050,14 @@ def test_plan_view_derives_building_and_stalled_from_activity_and_candidates(tmp
 
 def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
     """A mined, clean repo has nothing in flight, nothing needing the user, and a `clean`
-    next-action. The four sections are always present so the surfaces can render unconditionally."""
+    next-action. Every section is always present so the surfaces can render unconditionally."""
     repo = _mined(tmp_path, "mixed_coverage")
     v = now_view(repo)
-    assert set(v) == {"in_flight", "needs_you", "recently_done", "context", "next_action"}
+    assert set(v) == {"working_on", "in_flight", "in_progress", "needs_you", "recently_done",
+                      "context", "next_action"}
     assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
+    assert v["in_progress"] == []
+    assert v["working_on"] is None  # nothing asked for, so nothing claimed
     assert v["needs_you"] == {"forks": [], "reviews": [], "stalled_plans": [],
                               "paused_operation": None, "history_rewritten": False}
     assert v["next_action"]["kind"] == "clean"
@@ -1058,7 +1066,9 @@ def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
 
 
 def test_now_view_dirty_tree_recommends_save(tmp_path):
-    """Uncommitted work puts ops in flight and makes `sgt save` the next action."""
+    """Uncommitted work puts ops in flight and makes `sgt save` the next action. The offer is
+    phrased by what it records ("your N unsaved edits"), not by the store's unit of accounting --
+    "pending op(s)" is a fact about the kernel, and the developer is asking about their work."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -1069,7 +1079,7 @@ def test_now_view_dirty_tree_recommends_save(tmp_path):
     v = now_view(repo)
     assert v["in_flight"]["total_op_count"] > 0
     assert v["next_action"] == {"kind": "save", "command": "sgt save", "target": None,
-                                "label": f"save {v['in_flight']['total_op_count']} pending op(s)"}
+                                "label": f"save your {v['in_flight']['total_op_count']} unsaved edit(s)"}
 
 
 def test_now_view_include_preview_false_skips_the_mine(tmp_path):
@@ -1526,3 +1536,156 @@ def test_history_view_latest_commits_carry_a_headline(tmp_path):
     junk = by_subject["sss"]
     assert junk["headline"] != "sss"
     assert junk["feature_id"]
+
+
+# -- bookkeeping folding: sgt's own commits are not the developer's work ---------------------------
+
+def test_history_view_folds_sgt_s_own_materialization_commits(tmp_path):
+    """History is append-only, so a revert is itself a forward commit. Unmarked, it is
+    indistinguishable from real work, and `sgt now` reported `sgt revert <hex>` back to the
+    developer as something they had done."""
+    from sgt.core import verbs
+
+    repo = _mined(tmp_path, "linear_history")
+    before = history_view(repo)
+    op_id = sorted(get(repo).op_ids)[-1]
+
+    verbs.revert(repo, op_id)  # materializes a real commit for its own mechanics
+
+    after = history_view(repo)
+    assert after["commit_count"] == before["commit_count"] + 1  # the axis grew
+    assert after["save_count"] == before["save_count"]  # the developer did no new work
+    assert after["bookkeeping_count"] == before["bookkeeping_count"] + 1
+    subjects = [c["subject"] for c in after["latest_commits"]]
+    assert not any(s.startswith("sgt revert") for s in subjects)
+
+
+def test_bookkeeping_commits_keep_their_place_on_the_time_axis(tmp_path):
+    """Folding is display-only. Every op's `commit_index` refers to the full axis, so dropping a
+    commit from the axis (rather than from a list) would silently move every later op."""
+    from sgt.core import verbs
+
+    repo = _mined(tmp_path, "linear_history")
+    op_id = sorted(get(repo).op_ids)[-1]
+    verbs.revert(repo, op_id)
+
+    full = history_view(repo, full=True)
+    indices = [c["index"] for c in full["commits"]]
+    assert indices == list(range(len(indices)))  # contiguous: nothing was removed from the axis
+    assert any(c["bookkeeping"] for c in full["commits"])  # marked, not missing
+
+
+def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
+    """The mark must follow sgt's own mechanics only -- a save carrying the user's message is the
+    work itself, and folding it would hide exactly what the developer wants to see."""
+    from sgt.core.lens import put
+
+    repo = _mined(tmp_path, "linear_history")
+    put(repo, get(repo), message="add the thing I meant to add")
+
+    view = history_view(repo)
+    assert view["latest_commits"][0]["subject"] == "add the thing I meant to add"
+    assert view["latest_commits"][0]["bookkeeping"] is False
+
+
+def test_now_view_surfaces_a_plan_that_is_actively_being_built(tmp_path):
+    """Only *stalled* plans used to reach any section of `now`, so an agent making progress was
+    invisible on the surface built to answer "what is happening right now" -- for a full hour,
+    until it went quiet enough to count as stalled."""
+    import time as _time
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    _seed_plan_session(repo, gb, session_id="live", last_activity_ts=_time.time(),
+                       claude_session_id="sess-live")
+
+    v = now_view(repo)
+
+    assert [p["session_id"] for p in v["in_progress"]] == ["live"]
+    assert v["in_progress"][0]["current_title"] == "touch foo"
+    assert v["in_progress"][0]["pending_count"] == 1
+    # Progress is not a demand for attention: a building plan must not also show as needing you.
+    assert v["needs_you"]["stalled_plans"] == []
+
+
+def test_now_view_keeps_a_stalled_plan_in_needs_you_not_in_progress(tmp_path):
+    import time as _time
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    _seed_plan_session(repo, gb, session_id="quiet",
+                       last_activity_ts=_time.time() - (plan_mod.STALLED_SECONDS + 60))
+
+    v = now_view(repo)
+
+    assert v["in_progress"] == []
+    assert [p["session_id"] for p in v["needs_you"]["stalled_plans"]] == ["quiet"]
+
+
+def test_land_preview_says_what_undo_will_do_afterward(tmp_path):
+    """"Not reversible" tells a developer the land is one-way but not what their next move can be.
+    Landing the branch you are standing on journals an ordinary ideal_edit, so `sgt undo` works;
+    landing any other branch only moved a ref other people read, so undo refuses. Same verb,
+    opposite answer -- so the preview has to say which case this is."""
+    from sgt.api import _project_land_preview
+    from sgt.core.sync.land import LandPlan
+    from sgt.store.gitbind import GitBinding
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    current = (GitBinding(repo).symbolic_ref() or "refs/heads/main").rsplit("/", 1)[-1]
+
+    on_branch = _project_land_preview(repo, LandPlan(branch=current))
+    assert on_branch["checked_out"] is True
+    assert "forward correction" in on_branch["undo_note"]
+
+    elsewhere = _project_land_preview(repo, LandPlan(branch="some-other-branch"))
+    assert elsewhere["checked_out"] is False
+    assert "refuse" in elsewhere["undo_note"]
+
+
+def test_now_view_leads_with_the_developers_own_words(tmp_path):
+    """`sgt now` answered "what am I working on" with op counts. The prompt hook had recorded the
+    real answer verbatim all along -- and the common way to work (Claude Code plan mode, a planning
+    plugin) never calls `sgt plan intake`, so nothing else was ever going to supply it."""
+    from sgt.intent.turns import record_turn
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text="Add rate limiting to the API")
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+
+    v = now_view(repo)
+
+    assert v["working_on"]["title"] == "Add rate limiting to the API"
+    assert v["working_on"]["source"] == "prompt"
+    # The suggested save carries those same words, and must paste verbatim.
+    assert v["next_action"]["command"] == 'sgt save -m "Add rate limiting to the API"'
+
+
+def test_now_view_suggests_a_plain_save_when_the_words_would_not_paste(tmp_path):
+    """A suggestion the developer has to repair is worse than none."""
+    from sgt.intent.turns import record_turn
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text='Rename the "old" flag to --legacy')
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+
+    assert now_view(repo)["next_action"]["command"] == "sgt save"

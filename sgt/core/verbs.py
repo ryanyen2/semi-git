@@ -279,7 +279,12 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
 
         return GitBinding(repo).head() or ""
     edited = Ideal.from_ops(preview.after_ids, Store(repo).all_ops())
-    sha = lens.put(repo, edited, message=message or f"sgt {preview.verb} {preview.target}")
+    # An ideal edit is sgt's own mechanics: history is append-only, so removing an edit is itself a
+    # forward commit. Mark it (`bookkeeping=True`) so "what did I do today" surfaces fold it instead
+    # of reporting `sgt revert f-08ccdb12...` back to the developer as an accomplishment. A caller
+    # that supplies its own `message` is naming real work, so it is left unmarked.
+    sha = lens.put(repo, edited, message=message or f"sgt {preview.verb} {preview.target}",
+                   bookkeeping=message is None)
     lens.record_ideal(repo, edited, sha)
     return sha
 

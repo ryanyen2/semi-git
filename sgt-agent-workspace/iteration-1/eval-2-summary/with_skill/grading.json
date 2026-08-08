@@ -1,0 +1,24 @@
+{
+  "expectations": [
+    {
+      "text": "bounded_read",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "no_map_dump",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "prose_summary",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "mentions_real_work",
+      "passed": true,
+      "evidence": ""
+    }
+  ]
+}

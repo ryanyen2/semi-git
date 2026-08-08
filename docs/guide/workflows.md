@@ -248,7 +248,7 @@ this version (see the last section). Features in separate files do not have this
 
 `sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of running it as a
 shell command. It exposes 14 tools today, not the full command set: `sgt_init`, `sgt_log`,
-`sgt_grid`, `sgt_status`, `sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`,
+`sgt_status`, `sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`,
 `sgt_advanced_oracle_run`, `sgt_plan_intake`, `sgt_checkpoint`, `sgt_recall`, `sgt_drift`, and
 `sgt_plan_done`.
 

@@ -32,16 +32,21 @@ sgt init                    # read your existing git history into the op store u
 # edit files with your editor or agent, the same as always
 
 sgt save -m "add email validation"   # record your edits; sgt names the feature(s) they landed in
-sgt now                              # where am I: what's in progress, what needs you, what's next
+sgt now                              # where am I: what you asked for, what's unsaved, what's next
 sgt log                              # what you did: one row per save, feature chips per row
-sgt log --summary                    # files, symbols, features, coverage, and any drift
+sgt status                           # files, symbols, features, coverage, and any drift
+sgt show app.py --at 12              # read a file as it was at save 12 (nothing is checked out)
 sgt log --tree                       # the feature tree
 sgt advanced blame app.py            # which feature owns each symbol in this file
 ```
 
 `sgt save` is the commit step of your daily loop. It reads what you changed on disk, records the
-new ops, and commits. `sgt log --summary` tells you whether your working tree matches the state `sgt` has
+new ops, and commits. `sgt status` tells you whether your working tree matches the state `sgt` has
 recorded, or has drifted ahead of it.
+
+`sgt now` leads with what you asked for, in your own words. If you use Claude Code, the prompt hook
+installed by `sgt init` records each prompt as you type it, so the surface can say what you are
+working on without you telling it twice — you do not have to declare a plan for this to work.
 
 ## Remove and bring back a symbol
 
@@ -73,7 +78,7 @@ propose candidates and previews each one before applying anything. See
 ## For coding agents
 
 `sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of running it as a
-shell command. It exposes 14 tools today: `sgt_init`, `sgt_log`, `sgt_grid`, `sgt_status`,
+shell command. It exposes 14 tools today: `sgt_init`, `sgt_log`, `sgt_status`,
 `sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`, `sgt_advanced_oracle_run`,
 `sgt_plan_intake`, `sgt_checkpoint`, `sgt_recall`, `sgt_drift`, and `sgt_plan_done`. An agent using
 MCP can inspect state, recall why existing code is the way it is, run the plan → checkpoint → drift
