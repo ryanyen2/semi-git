@@ -152,8 +152,12 @@ export class Sgt {
 
   // Structured dry-run of a feature revert: `sgt revert <feature> --emit --json`. Carries the
   // U3 `frontier`/`affected` blocks the quick-pick checklist consumes.
-  emit(feature: string): Promise<EmitView> {
-    return this.json<EmitView>(["revert", feature, "--emit", "--json"]);
+  // `--emit` is a dry run: it computes the exact before/after and writes nothing. Both exact ideal
+  // edits support it, so the verb is a parameter -- `restore` used to confirm with prose alone
+  // ("this rewrites the working tree and commits") while `revert` showed the actual diff, which
+  // meant the more reassuring-sounding verb was the one you could not see before running.
+  emit(feature: string, verb: "revert" | "restore" = "revert"): Promise<EmitView> {
+    return this.json<EmitView>([verb, feature, "--emit", "--json"]);
   }
 
   // Apply a chosen revert frontier (U3/R4). `keepOpIds` are the toggleable dependents to keep:

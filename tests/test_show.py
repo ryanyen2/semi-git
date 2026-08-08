@@ -152,40 +152,22 @@ def test_a_dead_selection_says_a_revert_would_do_nothing(tmp_path):
 
 
 def test_every_suggested_command_is_a_real_dispatchable_verb(tmp_path):
-    """The P0-A rule, enforced. Each suggested command's verb path must exist on the current
-    surface: a top-level verb, or a grouping plus a subcommand registered under it. Checked against
-    the built parser rather than a hand-list, so a future re-home breaks this test instead of
-    silently shipping a dead suggestion."""
-    import sgt.cli as cli
+    """The P0-A rule, enforced: a suggestion that fails is worse than no suggestion.
+
+    Checked with `scripts.check_docs_commands.unrunnable`, the same function that validates the
+    commands in the skills and docs, rather than a parser walk of its own. This test previously had
+    one, and it shared the blind spot the docs checker had: an unknown *subcommand* was treated as a
+    positional argument, so when `why` was promoted out of the `feature` grouping this test kept
+    passing while `show_view` went on suggesting `sgt feature why`."""
+    from scripts.check_docs_commands import unrunnable
 
     repo, result = _repo(tmp_path)
-    parser = cli._build_parser()
-    top = {a.dest: a for a in parser._actions}
-    subparsers = next(a for a in parser._actions if hasattr(a, "choices") and a.choices)
-
-    def assert_runnable(cmd: str):
-        tokens = [t for t in cmd.split() if not t.startswith("-")]
-        assert tokens[0] == "sgt", cmd
-        node = subparsers.choices
-        for tok in tokens[1:]:
-            if tok not in node:
-                return  # a positional argument (an id, a label), not a verb -- stop descending
-            child = node[tok]
-            nested = next((a for a in child._actions if hasattr(a, "choices") and a.choices), None)
-            if nested is None:
-                return
-            node = nested.choices
-
-    assert top  # parser built
     targets = [_feature(result), "a.py::foo", "README.md", "nonsense-token"]
     seen = 0
     for target in targets:
         for step in api.show_view(repo, target)["next"]:
-            assert_runnable(step["cmd"])
-            # And the first token after `sgt` must be a verb the dispatcher accepts, not one that
-            # would fall through to the unknown-verb handler.
-            verb = step["cmd"].split()[1]
-            assert verb in cli._VERBS, f"{step['cmd']!r} names {verb!r}, which does not dispatch"
+            reason = unrunnable(step["cmd"])
+            assert reason is None, f"suggested {step['cmd']!r}: {reason}"
             seen += 1
     assert seen >= 6, "expected suggestions across the selection kinds"
 

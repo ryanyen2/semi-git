@@ -201,6 +201,14 @@ def graph_layout(
         "lanes": lanes, "headers": headers, "edges": edges, "overflow": overflow,
         "node_by_id": lane_by_id, "ops_by_feature": ops_by_feature,
         "row_count": max(1, row), "commit_count": len(grid_view.get("commits") or []),
+        # The axis length (`commit_count`) and the number a person would call "saves" are different
+        # numbers whenever sgt has materialized one of its own edits. The ruler needs the former;
+        # the header needs the latter, or the map contradicts `sgt log` on the same repo.
+        "save_count": grid_view.get(
+            "save_count",
+            sum(1 for c in (grid_view.get("commits") or []) if not c.get("bookkeeping")),
+        ),
+        "bookkeeping_count": grid_view.get("bookkeeping_count", 0),
     }
 
 
@@ -948,8 +956,10 @@ def render_graph_lines(
     lines: list[str] = []
     n_sub = len(layout["headers"])
     sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
-    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['commit_count']} save(s)"
-                      f"{sub_note}"))
+    bk = layout["bookkeeping_count"]
+    bk_note = dim(f"  (+{bk} bookkeeping)") if bk else ""
+    lines.append(bold(f" {len(layout['lanes'])} feature(s)  ·  {layout['save_count']} save(s)"
+                      f"{sub_note}") + bk_note)
     if frontier is not None:
         lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
     lines.append("")
@@ -966,7 +976,11 @@ def render_graph_lines(
         hexc = color_for(focus)
         raw = labels.get(focus, focus)
         n_ckpt = len(lane["cars"])
-        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {brighten_prefix(focus, hexc, full=True)}"
+        # The short handle, not the whole 64-char id. The full hash was a wall of noise across the
+        # header of a view whose subject is named right beside it, and nothing a reader does with
+        # this line needs more than the prefix -- every verb that takes a feature resolves a unique
+        # prefix, or the name itself.
+        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {dim(handle)}"
                      f"  ·  {n_ckpt} checkpoint(s)")
         lines.append("")
         if not lane["cars"]:
@@ -1520,13 +1534,27 @@ def render_rail_lines(
                           f"   (newest on top)"))
     else:
         lines.append(bold(f" {n_ep} save(s)  ·  {n_feat} feature(s){recur_note}   (newest on top)"))
-    topo_legend = ("◆/●/○ = merge / on-trunk / off-trunk save; " if topology is not None else "")
-    lines.append(dim(f" each row = one save (cN = its commit position, colored by its main feature); "
-                     f"{topo_legend}● = feature touched here (bold ● = the save's main one), "
-                     "│ = a feature carried across"))
+    # Explain only what is actually on screen. This legend used to name every glyph the renderer
+    # can draw, on every run -- two dense lines about merges, off-trunk saves and carried lanes
+    # above a six-row linear history that has none of them. A developer reads it once, learns it
+    # does not describe what they are looking at, and stops reading the header entirely, which is
+    # the opposite of what a legend is for.
+    shown = rows[:max_rows]
+    _shas = {r["sha"] for r in shown}
+    parts = [f"each row = one save (cN = its commit position{', colored by its main feature' if n_feat > 1 else ''})"]
+    if topology is not None:
+        topo_bits = []
+        if _shas & merges:
+            topo_bits.append("◆ merge")
+        if _shas - mainline - merges:
+            topo_bits.append("○ off-trunk")
+        if topo_bits:
+            parts.append(" / ".join(topo_bits) + " save")
+    if lane_count > 1:
+        parts.append("● = feature touched here (bold ● = the save's main one), │ = a feature carried across")
+    lines.append(dim(" " + "; ".join(parts)))
     lines.append("")
 
-    shown = rows[:max_rows]
     # Plan ghosts (pending steps, no code yet): a ◇ row above the newest save on its predicted
     # lane; a prediction whose feature has no rail lane (it dominates no save) drops to an
     # "unplaced" gutter after the rail. Read straight off `grid_view.ghosts` -- no new input.
@@ -1563,13 +1591,23 @@ def render_rail_lines(
         lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), label_width)}"))
     lines.append("")
     example = next((r["feature"] for r in shown if r["feature"]), None)
-    handle = (example[2:10] if example and example.startswith("f-") else (example or "<feature>")[:8])
-    # `sgt show` comes before `revert` deliberately: this view prints handles, and the next thing a
-    # user wants is usually "what *is* that?" rather than "remove it". Naming the safe reader beside
-    # the destructive verb is what makes the consequence (how much a revert would take, including
-    # work built on top) reachable before the revert is typed.
-    lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt show {handle}  "
-                     f"(what is it)   ·   sgt log --focus {handle}  (its checkpoints)   ·   "
-                     f"sgt revert {handle}  (remove it)"))
+    # Address the example feature by its NAME when it has one. `resolve_feature` accepts an exact
+    # label, so `sgt revert "Task Tracking CLI"` is a command the reader can act on without first
+    # working out which feature `08ccdb12` is -- and the name is right there in the rows above,
+    # where the hex handle appears nowhere. The handle stays the fallback for an unlabeled feature
+    # and for a label with a quote in it, which would not survive being pasted into a shell.
+    label = labels.get(example) if example else None
+    if label and '"' not in label and label != example:
+        target = f'"{label}"'
+    else:
+        target = (example[2:10] if example and example.startswith("f-")
+                  else (example or "<feature>")[:8])
+    # `show` is offered before `revert` deliberately: the next thing a reader wants is usually "what
+    # *is* that?" rather than "remove it". Naming the safe reader beside the destructive one is what
+    # makes the consequence (how much a revert takes, including work built on top) reachable before
+    # the revert is typed.
+    lines.append(dim(f" next:  sgt log --map  (the feature map)   ·   sgt show {target}  "
+                     f"(what is it)   ·   sgt log --focus {target}  (its checkpoints)   ·   "
+                     f"sgt revert {target}  (remove it)"))
     lines.extend(_state_banner(states, color=color))
     return lines

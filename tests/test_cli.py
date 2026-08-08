@@ -843,16 +843,27 @@ def test_unknown_verb_is_an_error_not_a_help_dump(capsys):
 def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
     """R12/KTD8/KTD9 (U14): the grid is the only inspection surface, so the top-level `_VERBS` is
     the daily spine + `log` + the two groupings + the unchanged collaboration/setup verbs.
-    `status`/`map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/
-    `commit`/`fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't
-    map to a `log` mode; re-promoted in c4f9966/KTD8). `show` is the "what is this?" reader for any
-    id sgt printed -- top-level because it is the verb you reach for when you do *not* yet know what
-    kind of thing you are holding, so it cannot sit behind a grouping you'd have to guess."""
+    `map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/`commit`/
+    `fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't map to a
+    `log` mode; re-promoted in c4f9966/KTD8).
+
+    Three spellings live at the top level because collapsing or burying them cost a user something
+    the collapse was never meant to cost. `status` is the first word a git user types, and answering
+    it with the help text taught nothing; it is a thin alias onto `log --summary`'s own handler, so
+    it adds a spelling and no concept. `why` answers "why is this code like this" for an op, a
+    symbol, *or* a commit sha -- only the `--for` closure form is feature-scoped -- so living at
+    `feature why` meant the natural spelling printed help instead of the prompt that produced the
+    commit. `show` is where you point at a thing to see it: an id when you do not yet know what kind
+    of thing you are holding, or a file plus `--at` to read it as it was -- and a verb for "I don't
+    know what this is" cannot sit behind a grouping you would have to guess."""
     from sgt.cli import _VERBS
 
     assert _VERBS == {
-        "save", "log", "undo", "revert", "restore", "resolve", "show",
+        "save", "log", "undo", "revert", "restore", "resolve",
         "switch", "diff", "intent", "now",  # `now` = state-of-actions orient (state block + what-next)
+        "status",  # alias of `log --summary` (same handler, cannot drift)
+        "why",  # selector-scoped, not feature-scoped: `sgt why <sha>` is its most-reached form
+        "show",  # "show me this thing": an id, or a file + `--at` for how it was
         "plan",  # checkpoint/drift folded into `save` (U12)
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",
@@ -1067,3 +1078,119 @@ def test_split_non_tty_still_prints_the_preview_only(tmp_path, monkeypatch, caps
     assert _in(tmp_path, ["feature", "regroup", "split", fid]) == 0
     assert "preview only" in capsys.readouterr().out
     assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # nothing applied
+
+
+# -- P0 repair: verb spellings a developer actually types -----------------------------------------
+
+def test_status_is_a_top_level_verb_matching_log_summary(tmp_path, capsys):
+    """`sgt status` is the first command anyone arriving from git types. It used to print the help
+    text, because U14 folded the spelling into `log --summary` and removed the verb."""
+    _seed(tmp_path)
+    assert _in(tmp_path, ["status", "--json"]) == 0
+    status_out = capsys.readouterr().out
+    assert _in(tmp_path, ["log", "--summary", "--json"]) == 0
+    assert json.loads(status_out) == json.loads(capsys.readouterr().out)
+
+
+def test_why_is_a_top_level_verb_and_answers_for_a_commit_sha(tmp_path, capsys):
+    """"Why is this code like this" is a question about a selector, not about features. `sgt why`
+    lived under `feature why`, so pasting a commit sha printed the help text."""
+    gb = _seed(tmp_path)
+    sha = gb.head()
+    assert _in(tmp_path, ["why", sha]) == 0
+    assert sha[:8] in capsys.readouterr().out
+
+
+def test_why_names_every_selector_it_tried_when_nothing_resolves(tmp_path, capsys):
+    _seed(tmp_path)
+    assert _in(tmp_path, ["why", "definitely-not-a-thing"]) != 0
+    err = capsys.readouterr()
+    assert "commit" in (err.out + err.err)  # not just "op-id / live symbol"
+
+
+def test_switch_refuses_a_non_branch_instead_of_detaching_head(tmp_path, capsys):
+    """`switch` passed its argument straight to `git checkout`, so a sha silently detached HEAD --
+    and a later `sgt save` then commits onto no branch at all."""
+    gb = _seed(tmp_path)
+    sha = gb.head()
+    head_before = gb.symbolic_ref()
+
+    assert _in(tmp_path, ["switch", sha]) != 0
+
+    out = capsys.readouterr()
+    assert "not a local branch" in (out.out + out.err)
+    assert gb.symbolic_ref() == head_before  # HEAD never moved
+
+
+def test_switch_still_moves_to_a_real_branch(tmp_path, capsys):
+    gb = _seed(tmp_path)
+    import subprocess
+    subprocess.run(["git", "-C", str(tmp_path), "branch", "side"], check=True, capture_output=True)
+
+    assert _in(tmp_path, ["switch", "side"]) == 0
+    assert gb.symbolic_ref() == "refs/heads/side"
+
+
+def test_intent_align_is_a_dry_run_that_writes_nothing_by_default(tmp_path, capsys):
+    """The alignment pipeline has sat unwired since it was written: on a young corpus it scores
+    confidently on too little evidence, and a wrong ALIGN record becomes a wrong answer from
+    `sgt why`. Making it *look at* a repo costs nothing and is the only way to find out whether a
+    corpus is mature enough -- the judgment its author deliberately left open."""
+    _seed(tmp_path)
+    before = (tmp_path / ".sgt" / "local" / "rationale.json")
+    before_bytes = before.read_bytes() if before.is_file() else None
+
+    assert _in(tmp_path, ["intent", "align", "--json"]) == 0
+
+    out = json.loads(capsys.readouterr().out)
+    assert out["applied"] is False
+    assert {"sessions", "episodes", "candidates", "aligned", "reviewed"} <= set(out)
+    after = before.read_bytes() if before.is_file() else None
+    assert after == before_bytes  # a dry run leaves the ledger byte-identical
+
+
+def test_show_prints_a_file_as_it_was_at_a_past_point(tmp_path, capsys):
+    """The bytes were always computable -- `fold_view` reconstructs `code(I)` at any frontier and the
+    workbench playhead already displayed them. A terminal simply had no way to ask: `sgt fold --at`
+    prints file names and never their contents.
+
+    Reached as `sgt show <file> --at <spec>`: `show` is one verb for "show me this thing", and `--at`
+    is the same time modifier `log --at`/`fold --at` already use, so the past is a modifier on a verb
+    rather than a second verb to learn."""
+    _seed(tmp_path, 3)  # a.py::foo returns 1, then 2, then 3
+
+    assert _in(tmp_path, ["show", "a.py", "--at", "0"]) == 0
+    assert "return 1" in capsys.readouterr().out
+
+    assert _in(tmp_path, ["show", "a.py", "--at", "2"]) == 0
+    assert "return 3" in capsys.readouterr().out
+
+
+def test_show_without_a_path_lists_what_existed_there(tmp_path, capsys):
+    _seed(tmp_path, 2)
+    assert _in(tmp_path, ["show", "--at", "1", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["files"] == ["a.py"]
+
+
+def test_show_resolves_a_bare_filename_and_explains_a_miss(tmp_path, capsys):
+    """A reader knows the file by its name far more reliably than by its repo-relative path, and a
+    miss should say what *does* exist rather than only that this doesn't."""
+    _seed(tmp_path, 1)
+    assert _in(tmp_path, ["show", "a.py", "--at", "0"]) == 0
+    capsys.readouterr()
+
+    assert _in(tmp_path, ["show", "nope.py", "--at", "0"]) != 0
+    err = capsys.readouterr()
+    assert "does not exist" in (err.out + err.err)
+
+
+def test_show_never_touches_the_working_tree(tmp_path, capsys):
+    """Visiting the past is a read. sgt's history is append-only, so this must never be confusable
+    with a checkout."""
+    _seed(tmp_path, 3)
+    before = (tmp_path / "a.py").read_text(encoding="utf-8")
+
+    assert _in(tmp_path, ["show", "a.py", "--at", "0"]) == 0
+
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == before

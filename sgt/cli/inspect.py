@@ -45,6 +45,22 @@ def register(subs, parent) -> None:
     lp.add_argument("--links", action="store_true",
                     help="map: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
+    # `sgt status` is the first thing anyone arriving from git types. U14 folded it into
+    # `log --summary` for surface economy, which meant the single most predictable command in the
+    # tool answered "invalid choice". Surface economy is about what a user must *learn*, not about
+    # refusing the word they already know, so the spelling is restored as a thin alias onto the
+    # same handler -- one verb's worth of muscle memory, zero new concepts.
+    st = subs.add_parser("status", parents=[parent],
+                         help="what needs attention (alias of `sgt log --summary`)")
+    _add_view_flags(st)
+    st.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
+    st.set_defaults(func=_cmd_status)
+    # `sgt show <spec> [<path>]` -- the read half of "let me look at that version". The bytes were
+    # always computable (`fold_view`) and the workbench playhead already displayed them; a terminal
+    # simply had no way to ask.
+    # `show` is registered once, in `cli/show.py`: it answers both "what is this" and "as it was at",
+    # and one verb owning both keeps the mental model to a single idea (see that module). The
+    # historical-read renderer stays here (`_show_at`) beside `fold`, which shares its spec grammar.
     op = subs.add_parser("ops", parents=[parent])
     _add_view_flags(op, paged=True)
     op.set_defaults(func=_cmd_ops)
@@ -113,6 +129,12 @@ def _cmd_log(args) -> int:
     # Bare `sgt log` and the `--rail` alias both land here: the rail is now the default view.
     return _log_rail(".", as_json=args.as_json, color=not args.no_color,
                      refresh=args.refresh, rebuild=args.rebuild)
+
+
+def _cmd_status(args) -> int:
+    """`sgt status` -- the same projection `sgt log --summary` renders, reached by the name a git
+    user already has. One handler, so the two spellings can never drift."""
+    return _status(".", args.as_json, full=args.full, color=not args.no_color)
 
 
 def _cmd_ops(args) -> int:
@@ -368,21 +390,48 @@ def _state_block_lines(repo: str, *, color: bool = False) -> list[str]:
     (⋔ + per-symbol remedy) atop the block instead of a muted count buried in `needs you` -- a fork
     is divergence you must resolve, not a passing note (still non-blocking; save/switch never refuse)."""
     from sgt.api import now_view
+
+    lines = state_lines(now_view(repo), color=color, indent=" ")
+    lines.append("")
+    return lines
+
+
+def state_lines(view: dict, *, color: bool = False, indent: str = "") -> list[str]:
+    """The state-of-actions block, rendered once for every surface that shows it.
+
+    `sgt now` and bare `sgt log`'s header are the same answer to the same question, and they were
+    two copies that had already drifted apart in wording. One renderer means a developer reads the
+    identical sentence wherever they happen to be standing, and a change to how sgt phrases its
+    state cannot land in one place and not the other."""
     from sgt.tui.graph import _state_banner
 
-    view = now_view(repo)
-    inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
+    inflight, needs = view["in_flight"], view["needs_you"]
+    action, working = view["next_action"], view.get("working_on")
     lines: list[str] = _state_banner({"forks": needs["forks"]}, color=color)
+
+    if working:
+        lines.append(f"{indent}working on  {working['title']}{_ago(working.get('ts'), color=color)}")
     if inflight["total_op_count"]:
-        extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
-        lines.append(f" unsaved     {inflight['total_op_count']} op(s) across "
-                     f"{len(inflight['affected'])} feature(s){extra}")
+        total, fresh = inflight["total_op_count"], inflight["new_work_count"]
+        n_feat = len(inflight["affected"])
+        where = f" in {n_feat} feature{'s' if n_feat != 1 else ''}" if n_feat else ""
+        what = f"{total} new edit(s)" if fresh == total else f"{total} edit(s)"
+        if fresh and fresh != total:
+            what += f", {fresh} new"
+        lines.append(f"{indent}unsaved     {what}{where}")
+    for p in view.get("in_progress", []):
+        lines.append(f"{indent}            step {p['matched_count'] + 1} of {p['step_count']}")
+    activity = (view.get("context") or {}).get("activity") or []
+    if activity:
+        last = activity[0]
+        where = f" {last['file']}" if last.get("file") else ""
+        more = f" (+{len(activity) - 1} more)" if len(activity) > 1 else ""
+        lines.append(f"{indent}agent       {last['tool']}{where}{more}")
     parts = _needs_you_parts(needs)
     if parts:
-        lines.append(" needs you   " + " · ".join(parts))
+        lines.append(f"{indent}needs you   " + " · ".join(parts))
     cmd = f"   ({action['command']})" if action["command"] else ""
-    lines.append(f" → next      {action['label']}{cmd}")
-    lines.append("")
+    lines.append(f"{indent}→ next      {action['label']}{cmd}")
     return lines
 
 
@@ -558,12 +607,17 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     if not (refresh or not (mv and mv.get("nodes"))):
         from sgt.core.lens import cached_map_is_current
 
-        # Only nag about refreshing when a re-mine would actually pick something up (edited/added
-        # source, a new commit, an ideal edit). When the working tree is in sync with the last
-        # build, the cached read already reflects reality -- a standing "run --refresh" line is
-        # just noise on the daily surface.
-        if color and not cached_map_is_current(repo):
-            print("\x1b[2m (cached — run `sgt log --refresh` to reflect new edits)\x1b[0m")
+        # Only say the view is behind when it actually is, and say what is missing. This line used
+        # to print on every read, which made it carry no information: the developer either learns
+        # to ignore it (so a genuinely stale view goes unnoticed) or re-runs with `--refresh`
+        # reflexively, paying a rebuild to be told nothing changed.
+        #
+        # `cached_map_is_current` is the authority on *whether* -- it mirrors `_sync`'s own no-op
+        # gate, so it agrees with what a re-mine would actually do, and is conservative on any
+        # ambiguity. `_map_staleness` only says *what* is missing, which is the part worth reading.
+        if not cached_map_is_current(repo):
+            line = f" ({_map_staleness(repo) or 'new edits'} not shown yet — `sgt log --refresh`)"
+            print(f"\x1b[2m{line}\x1b[0m" if color else line)
         return mv
 
     from sgt.core.lens import get
@@ -578,6 +632,34 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     build_segments(repo)     # per-feature checkpoints (the "what I did, in chapters" layer)
     build_themes(repo)       # cross-feature rollup (kept for the "one PR spanned N features" view)
     return map_view(repo)
+
+
+def _map_staleness(repo: str) -> str | None:
+    """What the last-built map does not yet reflect, phrased for a person -- the *description* only.
+    Whether it is stale at all is `lens.cached_map_is_current`'s call, which mirrors `_sync`'s own
+    no-op gate and so agrees with what a re-mine would really do; this just names the two ways it
+    falls behind. `None` means "nothing nameable", and the caller falls back to a plain wording
+    rather than suppressing a warning the gate asked for. Both checks are cheap reads, so this
+    stays affordable on a surface the developer hits constantly."""
+    from sgt.core.lens import current_ideal
+    from sgt.lens.tree import load as load_tree
+    from sgt.store.gitbind import GitBinding
+
+    parts: list[str] = []
+    try:
+        tree = load_tree(repo)
+        known = set((tree or {}).get("op_leaf") or {})
+        unmapped = len(current_ideal(repo).op_ids - known)
+        if unmapped:
+            parts.append(f"{unmapped} saved edit(s)")
+    except Exception:  # noqa: BLE001 -- an advisory line must never break a read
+        pass
+    try:
+        if GitBinding(repo).has_dirty_source():
+            parts.append("unsaved edits")
+    except Exception:  # noqa: BLE001
+        pass
+    return " and ".join(parts) if parts else None
 
 
 def _blame(repo: str, file: str, as_json: bool = False) -> int:
@@ -761,6 +843,20 @@ def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
     return 0
 
 
+def _ago(ts: float | None, *, color: bool = False) -> str:
+    """A dim, relative "when" -- ` (4m ago)` -- or nothing when there is no timestamp. Relative,
+    because the only thing a developer reads this for is whether it is still the thing they were
+    just doing, and a clock time makes them do that subtraction themselves. The wording is
+    `_fmt_age`'s, so the two places this file states an age cannot drift into two vocabularies."""
+    if not ts:
+        return ""
+    import time as _t
+
+    from sgt.tui.graph import _dim
+
+    return _dim(f"  ({_fmt_age(max(0.0, _t.time() - ts))})", color=color)
+
+
 def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
     """`sgt now [--json]`: the state-of-actions surface (`api.now_view`) -- what's in flight, what
     needs you, what was recently done, and the single recommended next action. The daily "where am
@@ -769,31 +865,26 @@ def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
     (⋔ + per-symbol remedy) -- a fork is divergence you must resolve, not a muted count (non-blocking)."""
     from sgt.api import now_view
     from sgt.core.lens import get
-    from sgt.tui.graph import _state_banner
 
     get(repo)
     view = now_view(repo)
     if as_json:
         return _emit_json(view)
 
-    inflight, needs, action = view["in_flight"], view["needs_you"], view["next_action"]
-    for line in _state_banner({"forks": needs["forks"]}, color=color):
+    # `sgt now` and bare `sgt log`'s header answer the same question, so they share one renderer
+    # (`state_lines`) rather than two copies that drift apart in wording. Only the recently-done
+    # list is `now`'s own -- `log` prints the save list right below, which is already that.
+    lines = state_lines(view, color=color)
+    tail = lines.pop()  # the "→ next" line, printed last so recently-done sits above it
+    for line in lines:
         print(line)
-    if inflight["total_op_count"]:
-        extra = f" (+{inflight['new_work_count']} new)" if inflight["new_work_count"] else ""
-        print(f"unsaved     {inflight['total_op_count']} op(s) across "
-              f"{len(inflight['affected'])} feature(s){extra}")
-    parts = _needs_you_parts(needs)
-    if parts:
-        print("needs you   " + " · ".join(parts))
     if view["recently_done"]:
         print("recently done")
         for c in view["recently_done"]:
             # `headline`, not `subject`: a bare `wip`/`sss` commit message says nothing about what
-            # the work was, and this is the surface a user reads first.
+            # the work was, and this is the surface a developer reads first.
             print(f"    {c['sha'][:8]}  {c.get('headline') or c['subject']}")
-    cmd = f"   ({action['command']})" if action["command"] else ""
-    print(f"→ next      {action['label']}{cmd}")
+    print(tail)
     return 0
 
 
@@ -830,6 +921,36 @@ def _fold(repo: str, at: str, as_json: bool = False) -> int:
     for path in sorted(view["files"]):
         print(f"  {path}")
     print(f"  oracle verdict: {overall_status(view['oracle_verdict'])}")
+    return 0
+
+
+def _show_at(repo: str, at: str, path: str | None, as_json: bool = False) -> int:
+    """`sgt show <path> --at <spec>`: print a file's content as it was at a past point, or, with no
+    path, list the files that existed there.
+
+    The bytes were always computable -- `fold_view` reconstructs `code(I)` at any frontier, and the
+    workbench's playhead has been reading exactly this. There was simply no way to ask for it from a
+    terminal: `sgt fold --at` prints file *names* and never their contents, so "let me look at that
+    version" had no answer short of checking a branch out. `git show <rev>:<path>` is the shape
+    people already know, so this is that, over sgt's own frontier grammar. Resolution lives in
+    `api.show_view`, shared with the MCP tool; this function only renders. Read-only: nothing is
+    checked out, and the working tree is untouched."""
+    from sgt.api import show_at_view
+    from sgt.core.lens import get
+
+    get(repo)  # mine-on-contact so the fold reflects current reality (R9)
+    view = show_at_view(repo, at, path)
+    if "error" in view:
+        return _fail(view["error"])
+    if as_json:
+        return _emit_json(view)
+    if "content" not in view:
+        print(f"{len(view['files'])} file(s) at {at}:")
+        for p in view["files"]:
+            print(f"  {p}")
+        print(f"  (add a path to print one: `sgt show <path> --at {at}`)")
+        return 0
+    print(view["content"], end="" if view["content"].endswith("\n") else "\n")
     return 0
 
 

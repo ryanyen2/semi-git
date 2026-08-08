@@ -4,6 +4,7 @@ from sgt.store.gitbind import (
     EMPTY_TREE,
     GitBinding,
     _CatFileBatch,
+    format_bookkeeping_trailer,
     format_trailer,
     init_store,
     new_node_id,
@@ -306,3 +307,32 @@ def test_state_tree_advances_a_ref_by_cas(tmp_path):
     # a CAS against a stale old value is refused, ref stays at c2.
     assert not gb.update_ref_cas(ref, c1, c1)
     assert gb.rev_parse(ref) == c2
+
+
+def test_history_meta_carries_time_and_the_bookkeeping_mark(tmp_path):
+    """Both extras ride in the format of the walk `history()` already does. They used to be two
+    separate full-history `git log` calls (`head_time`, and a `--grep` for the trailer) made by
+    surfaces that had just run this one, so `sgt log` paid four history walks where it needed two."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("real work")
+    (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("sgt revert a.py::foo", trailers=format_bookkeeping_trailer())
+
+    meta = gb.history_meta()
+
+    assert [m[2] for m in meta] == ["real work", "sgt revert a.py::foo"]
+    assert all(isinstance(m[3], int) and m[3] > 0 for m in meta)  # committer times
+    assert [m[4] for m in meta] == [False, True]  # only sgt's own is marked
+    # `history()` is unchanged, so the miner and every other caller are untouched.
+    assert gb.history() == [(m[0], m[1], m[2]) for m in meta]
+
+
+def test_history_meta_marks_a_legacy_commit_by_subject(tmp_path):
+    """A repo mined before the trailer existed has none to read, and a developer should not have to
+    see years of `sgt revert <hex>` rows to get the benefit."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("sgt undo: restore prior ideal")  # no trailer
+
+    assert gb.history_meta()[0][4] is True

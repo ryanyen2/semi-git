@@ -1,6 +1,6 @@
 ---
 name: sgt-agent
-description: Read this whenever you are doing coding work in a repository that has a `.sgt/` directory or where sgt/semi-git is mentioned, even if the user never names sgt. It tells you how to orient in one cheap call, which sgt read answers which question and what each one costs in tokens, which sgt actions are yours versus the human's (sgt save makes commits, so it is theirs), how to show sgt output in a transcript without dumping terminal control codes, and what to do when MCP is unavailable and you only have a shell. Load it before your first sgt call, not after a surprising one.
+description: Read this whenever you are doing coding work in a repository that has a `.sgt/` directory or where sgt/semi-git is mentioned, even if the user never names sgt. It tells you how to orient in one cheap call, which sgt read answers which question and what each one costs in tokens, which sgt actions are yours (reading, the plan loop, and saving your own work with your own words) versus the human's (the shared-state verbs), how to show sgt output in a transcript without dumping terminal control codes, and what to do when MCP is unavailable and you only have a shell. Load it before your first sgt call, not after a surprising one.
 ---
 
 # Working in an sgt repo
@@ -52,6 +52,7 @@ more than the exact number: the first three stay flat as history grows, the last
 | Where am I, is anyone mid-something | `scripts/sgt_brief` | ~80 tokens, flat |
 | What needs a human right now | `sgt_now` | ~530 tokens, flat |
 | What is this id, what would a revert cost | `sgt_show` | ~720 tokens |
+| What did this file look like back then | `sgt_show` with `at` | small |
 | What happened recently | `sgt_log` | ~1,400 tokens, capped at 30 ops |
 | Scalars: coverage, oracle, working-tree drift | `sgt_status` | ~3,300 tokens |
 
@@ -77,18 +78,22 @@ run it freely. Then state that number to the human instead of the bare command.
 
 ## What is yours and what is theirs
 
-Yours: reading (`sgt_show`, `sgt_recall`, `sgt_log`, `sgt_now`, `sgt_drift`), and the plan loop
-(`sgt_plan_intake` → work → `sgt_checkpoint` → `sgt_plan_done`). See the `sgt-plan` skill for that
-loop and for how ownership works when several agents share a repo.
+Yours: reading (`sgt_show`, `sgt_recall`, `sgt_log`, `sgt_now`, `sgt_drift`), the plan loop
+(`sgt_plan_intake` → work → `sgt_checkpoint` → `sgt_plan_done`), and **`sgt_save`**. See the
+`sgt-plan` skill for the loop and for how ownership works when several agents share a repo.
+
+Saving is yours on purpose, and it comes with one obligation. `sgt_save` asks for your own words, and
+they become the save's subject, the recorded intent, and the name of any feature born from the work —
+so write the sentence you would have put in a commit message. That sentence is the thing only you
+have at that moment, and it is what makes the history answer "why" later. The verb is additive and
+`sgt undo` reverses it, which is what makes it safe to hand over; the alternative was a human
+relaying every save by hand at a terminal, which is the loop sgt exists to remove.
 
 Theirs, and deliberately not exposed to you as tools:
 
-- **`sgt save`** makes a git commit. Your edits are absorbed into sgt's state by `sgt_checkpoint`'s
-  mine-on-contact, so you never need to save to make your work visible. Do not shell out to
-  `sgt save` to get around this; committing on someone's behalf is the thing being avoided, not an
-  implementation detail.
-- **`sgt land`, `sgt sync`, `sgt propose land`, `sgt resolve`** change shared state and are gated
-  behind an interactive confirmation in the terminal. Running them through a shell skips that gate.
+- **`sgt land`, `sgt sync`, `sgt propose land`, `sgt resolve`** change *shared* state and are gated
+  behind an interactive confirmation in the terminal. Running them through a shell skips that gate —
+  and unlike a save, these are not reversed by `sgt undo`.
 - **The feature verbs** (`sgt feature regroup merge|split|move`, `sgt feature rename`) set labels
   and regroupings that permanently override sgt's generated ones. That is a judgement a human makes
   looking at the graph.

@@ -55,10 +55,13 @@ To use them in another checkout, copy `.claude/skills/` and `.mcp.json` into it.
 Point your agent at `.claude/skills/sgt-agent/references/cli-fallback.md`, which maps each tool to
 its command.
 
-Two things are deliberately kept away from agents, whichever harness you use: `sgt save`, because it
-makes a commit, and the shared-state verbs (`sgt land`, `sgt sync`, `sgt propose land`,
-`sgt resolve`), because they are gated behind a confirmation you should see. An agent's edits still
-show up in `sgt` without a save — it mines the working tree on contact.
+Your agent can save its own work, and should: `sgt save` asks for its own words, and those become
+the save's subject, the recorded reason, and the name of any feature born from the work. That
+sentence is the thing only the agent has at that moment. It is additive and `sgt undo` reverses it.
+
+What is kept away from agents, whichever harness you use, is the shared-state verbs (`sgt land`,
+`sgt sync`, `sgt propose land`, `sgt resolve`) — they are gated behind a confirmation you should see,
+and unlike a save they are not undone by one command.
 
 ## The problem it solves
 
@@ -95,9 +98,12 @@ set, a plain-English phrase.
 | --- | --- |
 | `sgt init` | Read your existing git history into `sgt`. Run once per repo. |
 | `sgt save -m "..."` | Record the edits you just made, and name the feature(s) they landed in. |
-| `sgt now` | Where am I? What's in progress, what needs you, and the one next thing to do. |
+| `sgt now` | Where am I? What you asked for, what's unsaved, what needs you, and the one next thing to do. |
 | `sgt log` | What you did, newest first. `--map` (features over time), `--tree` (the feature tree), `--summary` (what needs attention). |
-| `sgt undo` | Step back: reverse your last `sgt` command, as a new change rather than by rewriting history. |
+| `sgt status` | What needs attention right now. The same view as `sgt log --summary`. |
+| `sgt show <target>` | Show me this: what an id/feature/symbol is and what removing it would cost. Add `--at <point>` to read a file as it was then instead. Nothing is checked out. |
+| `sgt why <target>` | Why this code exists: the prompt or plan step behind a commit, op, or symbol. |
+| `sgt undo` | Step back: reverse your last `sgt` command, as a new change rather than by rewriting history. It shows what it will do before doing it. |
 | `sgt revert <target>` | Remove one symbol, feature, or session's worth of work, plus anything built on it. |
 | `sgt restore <target>` | Bring a removed thing back, along with anything it needs. |
 | `sgt resolve <symbol>` | Walk through reconciling a symbol that ended up edited two different ways at once. |

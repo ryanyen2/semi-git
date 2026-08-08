@@ -28,6 +28,14 @@ OP_TRAILER_KEY = "Sgt-Op"
 # D1's append-only land-log trailer: the shared-branch commit sha a log entry records landing.
 LANDED_SHA_KEY = "Sgt-Landed-Sha"
 
+# Marks a commit sgt made for its OWN mechanics -- the materialization behind a revert, a restore,
+# or an undo -- rather than work the developer did. History is append-only, so undoing is a forward
+# commit; without this mark those commits are indistinguishable from real work and `sgt now` reports
+# "sgt restore f-08ccdb12..." back to the developer as a thing they accomplished. The mark is what
+# lets every human-facing list fold them and count them separately, while every *semantic* read
+# (ops, ideals, provenance) keeps treating them exactly as before.
+BOOKKEEPING_KEY = "Sgt-Bookkeeping"
+
 # git's canonical empty-tree object: diffing against it makes a root commit (no parent)
 # read as "everything added".
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -83,6 +91,29 @@ def parse_node_id(commit_message: str) -> str | None:
 
 def format_op_trailers(op_ids) -> str:
     return "\n".join(f"{OP_TRAILER_KEY}: {oid}" for oid in op_ids)
+
+
+def format_bookkeeping_trailer() -> str:
+    return f"{BOOKKEEPING_KEY}: 1"
+
+
+# Subjects sgt gave its own materialization commits before the trailer existed. Used ONLY to fold
+# pre-existing history in display: a repo mined before this change has no trailer to read, and a
+# developer should not have to see years of `sgt revert <hex>` rows to get the benefit. Never used
+# for anything semantic -- a real commit a user happened to title "sgt revert x" would be hidden
+# from a list, which is recoverable, but must never be treated as sgt's own for op purposes.
+_LEGACY_BOOKKEEPING_PREFIXES = ("sgt revert ", "sgt restore ", "sgt pin ", "sgt cherry-pick ",
+                                "sgt undo:", "sgt: materialize ideal")
+
+
+def is_bookkeeping_message(commit_message: str) -> bool:
+    """Whether a commit is sgt's own plumbing rather than the developer's work -- by trailer, or by
+    subject shape for commits made before the trailer existed."""
+    if any(line.strip().startswith(f"{BOOKKEEPING_KEY}:")
+           for line in commit_message.splitlines()):
+        return True
+    subject = commit_message.strip().splitlines()[0].strip() if commit_message.strip() else ""
+    return subject.startswith(_LEGACY_BOOKKEEPING_PREFIXES)
 
 
 def parse_op_ids(commit_message: str) -> list[str]:
@@ -346,19 +377,36 @@ class GitBinding:
         proc = self._git("rev-parse", "--is-inside-work-tree", check=False)
         return proc.returncode == 0 and proc.stdout.strip() == "true"
 
-    def init(self) -> None:
-        """Initialize the repo if needed and ensure a usable committer identity.
+    def init(self) -> bool:
+        """Initialize the repo if needed and ensure a usable committer identity. Returns whether a
+        placeholder identity had to be planted.
 
-        Identity is set at repo scope only when unset, so a `.sgt`-managed repo can
-        commit without depending on the user's global git config.
+        Identity is set at repo scope only when unset (`_has_identity` reads the full config
+        cascade, so a user with a global identity is never touched), which lets a bare container or
+        a test fixture commit at all. But planting it *silently* meant every commit a real developer
+        made through sgt was authored "semi-git <sgt@semi-git.local>" -- wrong in `git log`, wrong
+        in blame, wrong on the remote, and invisible until someone else noticed. So the fact is
+        returned, and every caller that a human can reach says so out loud.
         """
         if not self.is_repo():
             self.repo.mkdir(parents=True, exist_ok=True)
             self._git("init", "-q")
+        planted = False
         if not self._has_identity("user.email"):
             self._git("config", "user.email", "sgt@semi-git.local")
+            planted = True
         if not self._has_identity("user.name"):
             self._git("config", "user.name", "semi-git")
+            planted = True
+        return planted
+
+    def placeholder_identity(self) -> bool:
+        """Whether this repo currently commits as the planted placeholder rather than as a person.
+        Read at commit time so the warning follows the *state*, not just the one `init` call that
+        created it -- a repo initialized months ago is the case that actually bites."""
+        return self._git(
+            "config", "--get", "user.email", check=False
+        ).stdout.strip() == "sgt@semi-git.local"
 
     def _has_identity(self, key: str) -> bool:
         proc = self._git("config", "--get", key, check=False)
@@ -549,17 +597,37 @@ class GitBinding:
         ``target`` lets sync mine a *fetched* teammate branch (``merge_base..theirs_sha``) without
         checking it out (U20). First-parent only: merges never re-attribute a whole side branch
         onto the merge commit (a v1 simplification also used by the entity miner)."""
+        return [(sha, parent, subject) for sha, parent, subject, _t, _bk
+                in self.history_meta(since, target)]
+
+    def history_meta(
+        self, since: str | None = None, target: str = "HEAD",
+    ) -> list[tuple[str, str | None, str, int | None, bool]]:
+        """`history()` plus each commit's committer time and whether it is sgt's own bookkeeping --
+        `(sha, first_parent, subject, ts, bookkeeping)`, oldest-first.
+
+        Both extras ride along in the format string of the walk `history()` already does, because
+        both were previously separate full-history `git log` calls (`head_time`, a `--grep` for the
+        trailer) on surfaces that had just run this one. Widening the format measured free; the
+        extra walks did not. `history()` stays a 3-tuple so the miner and every other caller are
+        untouched -- only the two callers that want the extras take this."""
         rev_range = f"{since}..{target}" if since is not None else target
-        proc = self._git("log", "--reverse", "--format=%H%x1f%P%x1f%s", rev_range, check=False)
+        fmt = "%H%x1f%P%x1f%s%x1f%ct%x1f%(trailers:key=" + BOOKKEEPING_KEY + ",valueonly)"
+        proc = self._git("log", "--reverse", f"--format={fmt}", rev_range, check=False)
         if proc.returncode != 0:
             return []
-        rows: list[tuple[str, str | None, str]] = []
+        rows: list[tuple[str, str | None, str, int | None, bool]] = []
         for line in proc.stdout.splitlines():
             if not line:
                 continue
-            sha, parents, subject = line.split("\x1f", 2)
+            parts = line.split("\x1f")
+            if len(parts) < 5:
+                continue
+            sha, parents, subject, ts, trailer = parts[0], parts[1], parts[2], parts[3], parts[4]
             first_parent = parents.split()[0] if parents.strip() else None
-            rows.append((sha, first_parent, subject))
+            rows.append((sha, first_parent, subject,
+                         int(ts) if ts.strip().isdigit() else None,
+                         trailer.strip() == "1" or is_bookkeeping_message(subject)))
         return rows
 
     def commit_times(self, target: str = "HEAD") -> dict[str, int]:
@@ -911,6 +979,23 @@ class GitBinding:
         just nothing to recover from yet. Returns whether the fetch succeeded."""
         proc = self._git("fetch", remote, refspec, check=False)
         return proc.returncode == 0
+
+    def local_branch_exists(self, branch: str) -> bool:
+        """Whether `branch` names an existing *local* branch (`refs/heads/<branch>`). `sgt switch`
+        gates on this: its argument goes straight to `git checkout`, so a commit sha or tag would
+        silently detach HEAD, and a `sgt save` on a detached HEAD commits onto no branch at all --
+        work that vanishes from every branch the moment the user switches away."""
+        return self._git(
+            "show-ref", "--verify", "--quiet", f"refs/heads/{branch}", check=False
+        ).returncode == 0
+
+    def local_branches(self) -> list[str]:
+        """Every local branch name, sorted -- the candidate list `sgt switch` shows when its
+        argument doesn't name one."""
+        proc = self._git("for-each-ref", "--format=%(refname:short)", "refs/heads/", check=False)
+        if proc.returncode != 0:
+            return []
+        return sorted(b for b in proc.stdout.split("\n") if b.strip())
 
     def checkout_branch(self, branch: str) -> None:
         """Move HEAD to an existing `branch`, materializing its committed tree -- the git mechanism

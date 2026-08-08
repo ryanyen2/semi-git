@@ -7,15 +7,26 @@ and every label has a deterministic offline fallback (`fallback_label`) so the t
 on network/API availability to exist -- only to be *named well*.
 
 Cache entries are tagged `"source": "llm"` or `"source": "fallback"`. A cache hit only short-
-circuits the `"llm"` case; a fallback-sourced entry is retried on the next call that has a working
-client, so a repo that starts offline gets real labels the moment a key becomes available, without
-re-paying for anything that already got a real one.
+circuits the `"llm"` case; a fallback-sourced entry is retried once its backoff window expires, so
+a repo that starts offline gets real labels the moment a key becomes available, without re-paying
+for anything that already got a real one.
+
+That retry is *windowed*, not per-call (KTD-perf). Retrying every fallback entry on every read made
+the labeler a network round-trip on the read path forever in exactly the repos that can least
+afford it -- one with no credential, a stale key, or an endpoint that is simply down. Every
+`sgt log --refresh` then re-paid the full timeout for every terse feature, which measured as a
+multi-second "why is this so slow" on a five-save repo. So a fallback entry now records when it is
+next worth retrying (`retry_after`, exponential in that entry's consecutive failures), and a
+credential that cannot be built at all short-circuits the whole pass in-process rather than failing
+once per batch. `relabel=True` (what `--rebuild` passes) clears both, so the user always has an
+explicit "try again now" that does not depend on waiting out a backoff.
 """
 
 from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -28,6 +39,11 @@ MAX_MEMBERS = 24
 MAX_SUBJECTS = 6
 MAX_BATCH = 8  # cluster-naming requests per `responses.parse` call in `label_many`
 MAX_WORKERS = 6  # concurrent batches in flight -- network-bound, bounded to be a considerate API citizen
+# Backoff for retrying a fallback-labeled cluster. Doubles per consecutive failure on that entry so
+# a permanently-broken credential costs one attempt per day instead of one per read, while a
+# transient blip (proxy hiccup, rate limit) is retried within the same working session.
+FALLBACK_RETRY_BASE_SECONDS = 900  # 15 min after the first failure
+FALLBACK_RETRY_MAX_SECONDS = 86400  # capped at a day
 TAU_LABEL = 0.5  # weighted-Jaccard drift budget for reusing a leaf's LLM label (plan §3.2). A
 # feature keeps its cached name across a re-cluster while the current member set stays within this
 # much drift of the set the label was GENERATED on -- not the previous snapshot: anchoring at the
@@ -118,6 +134,63 @@ def _clean_symbol_name(member: str) -> str | None:
 _DOC_EXT = (".md", ".rst", ".txt", ".toml", ".yaml", ".yml", ".cfg", ".ini", ".json",
             ".lock", ".html", ".css")
 
+# How much of a cluster's op mass one commit subject must carry before that subject simply *is* the
+# feature's name. Above it, the cluster is essentially one episode and the developer already named
+# it; below it, the cluster genuinely spans several episodes and needs a synthesized name.
+SUBJECT_DOMINANCE = 0.6
+
+# Subjects that name a moment rather than a piece of work. A developer scanning `sgt log` learns
+# nothing from a feature called "wip" or "fix tests", so these fall through to the ordinary naming
+# path even when they dominate.
+# Entries shorter than the length guard below would be unreachable through this set, so they are
+# left out rather than kept as decoration.
+_UNINFORMATIVE = {
+    "fixes", "fixup", "update", "updates", "cleanup", "clean up", "tweak",
+    "tweaks", "refactor", "misc", "stuff", "changes", "temp", "test", "tests",
+    "fix tests", "fix test", "fix typo", "typo", "lint", "format", "formatting", "sgt save",
+    "initial commit", "wip commit", "checkpoint", "rebase", "merge",
+}
+
+
+def _strip_conventional_prefix(subject: str) -> str:
+    """`feat(cli): revert frontier` -> `revert frontier`. The type/scope prefix is metadata about
+    the commit, not a name for the work, and repeating it in every feature label crowds out the
+    words that actually distinguish one feature from another."""
+    head, sep, rest = subject.partition(":")
+    if not sep or len(head) > 24 or " " in head.strip():
+        return subject.strip()
+    kind = head.split("(", 1)[0].strip().lower()
+    if kind.isalpha() and rest.strip():
+        return rest.strip()
+    return subject.strip()
+
+
+def subject_label(subjects: list[str], counts: dict[str, int] | None = None) -> FeatureLabel | None:
+    """Name a feature with the developer's own words, or `None` when their words don't fit.
+
+    A feature is a cluster of edits, and the developer already said what those edits were -- in the
+    commit subjects and `sgt save -m` messages that produced them. Naming the cluster anything else
+    hands them back a paraphrase of something they wrote: a repo whose author wrote "Add 'done
+    <index>' command to mark a task complete" was showing the feature as "Task Command Additions".
+    So when one subject carries most of the cluster's mass (`SUBJECT_DOMINANCE`), that subject is
+    the name, verbatim apart from a conventional-commit prefix.
+
+    Returns `None` -- deferring to the LLM or the structural fallback -- when the cluster spans
+    several episodes with no dominant one (a synthesized name is genuinely the right tool there), or
+    when the dominant subject names a moment rather than a piece of work ("wip", "fix tests")."""
+    if not subjects:
+        return None
+    top = subjects[0]
+    if counts:
+        total = sum(counts.values())
+        if total <= 0 or counts.get(top, 0) / total < SUBJECT_DOMINANCE:
+            return None
+    cleaned = _strip_conventional_prefix(top)
+    if cleaned.lower().strip(" .") in _UNINFORMATIVE or len(cleaned) < 4:
+        return None
+    label = cleaned if len(cleaned) <= 60 else cleaned[:57].rstrip() + "…"
+    return FeatureLabel(label=label, rationale=f"Named from the commit that introduced it: {top!r}.")
+
 
 def fallback_label(members: list[str]) -> FeatureLabel:
     """Deterministic, offline, free, and *readable* -- and it names the cluster's *kind*, not just
@@ -155,7 +228,7 @@ def fallback_label(members: list[str]) -> FeatureLabel:
 
 
 class Labeler:
-    def __init__(self, repo: str | Path = ".") -> None:
+    def __init__(self, repo: str | Path = ".", *, relabel: bool = False) -> None:
         self._repo = repo
         self._client = None
         self.cache: dict = state.load_json(repo, "label_cache", default={})
@@ -164,29 +237,63 @@ class Labeler:
         self.calls = 0
         self._lock = threading.Lock()  # guards cache writes + token counters across concurrent batches
         self._auth_warned = False
+        # `--rebuild`'s explicit "name everything again": ignore both the fallback backoff and any
+        # cached LLM label, so the user's escape hatch never depends on waiting out a window.
+        self._relabel = relabel
+        # Set once `get_client` itself fails (no credential at all). Nothing in this process can
+        # succeed after that, so every remaining entry falls back without attempting a call --
+        # the difference between one failure and one per batch on a keyless repo.
+        self._client_unavailable = False
 
     def _note_failure(self, exc: Exception) -> None:
-        """First time an LLM call fails on *auth*, note it once on stderr -- worded so it fits both
-        cases without crying wolf: a permanently-rejected key (the whole graph goes terse -- the
-        trap that made it look broken) AND a transient proxy hiccup under concurrent batches (a few
-        features fall back, the rest are fine). It reports the affected calls, not "labeling
-        disabled", and points at the fix only *if* the graph is broadly terse."""
+        """First time an LLM call fails on *credentials*, note it once on stderr -- worded so it
+        fits every case without crying wolf: a missing key, a permanently-rejected one (the whole
+        graph goes terse -- the trap that made it look broken), and a transient proxy hiccup under
+        concurrent batches (a few features fall back, the rest are fine). It reports the affected
+        calls, not "labeling disabled", and points at the fix only *if* the graph is broadly
+        terse."""
         name, msg = type(exc).__name__.lower(), str(exc).lower()
+        # "No LLM credential found" (`config.get_client`) is a plain RuntimeError, so match the
+        # message too: without it the most common cause of terse names -- no key configured at all
+        # -- was the one case that explained itself to nobody.
         is_auth = ("auth" in name or "permission" in name or "401" in msg
-                   or ("invalid" in msg and "token" in msg))
+                   or ("invalid" in msg and "token" in msg) or "credential" in msg)
         if is_auth and not self._auth_warned:
             self._auth_warned = True
             import sys
             print(f"⚠ an LLM labeling call was rejected ({type(exc).__name__}); those features use "
-                  "terse fallback names. If the whole graph is terse, the key is stale — fix "
-                  "OPENAI_API_KEY (or ANTHROPIC_AUTH_TOKEN for a Claude model), then "
-                  "`sgt log --refresh`.", file=sys.stderr)
+                  "terse fallback names. If the whole graph is terse, the key is missing or stale — "
+                  "set OPENAI_API_KEY (or ANTHROPIC_AUTH_TOKEN for a Claude model), then "
+                  "`sgt log --rebuild`.", file=sys.stderr)
 
     @property
     def client(self):
         if self._client is None:
             self._client = get_client(self._repo)
         return self._client
+
+    def _client_or_none(self):
+        """The client, or `None` once we know this process cannot build one. `get_client` raises
+        when no credential resolves, which is a *configuration* fact, not a per-call one: retrying
+        it per batch turns one missing key into N identical failures and N terse warnings."""
+        if self._client_unavailable:
+            return None
+        try:
+            return self.client
+        except Exception as e:  # noqa: BLE001 -- any construction failure means no labeling here
+            self._client_unavailable = True
+            self._note_failure(e)
+            return None
+
+    def _fallback_entry(self, key: str, members: list[str], now: float | None = None) -> dict:
+        """A fallback cache entry carrying its own next-retry time. `attempts` counts consecutive
+        failures for this key so the backoff grows, and is reset by any later successful label."""
+        prior = self.cache.get(key) or {}
+        attempts = int(prior.get("attempts", 0)) + 1 if prior.get("source") == "fallback" else 1
+        delay = min(FALLBACK_RETRY_BASE_SECONDS * (2 ** (attempts - 1)), FALLBACK_RETRY_MAX_SECONDS)
+        out = fallback_label(members)
+        return {**out.model_dump(), "source": "fallback", "attempts": attempts,
+                "retry_after": (now if now is not None else time.time()) + delay}
 
     def _request(self, prompt: str) -> FeatureLabel:
         # `reasoning={"effort": "low"}`: naming a cluster is one-shot structured extraction that
@@ -235,14 +342,23 @@ class Labeler:
 
     def _resolve(self, key: str, prompt: str, members: list[str]) -> FeatureLabel:
         cached = self.cache.get(key)
-        if cached is not None and cached.get("source") == "llm":
-            return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
+        if not self._relabel and cached is not None:
+            if cached.get("source") == "llm":
+                return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
+            if cached.get("source") == "fallback" and time.time() < cached.get("retry_after", 0):
+                return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
+        if self._client_or_none() is None:
+            entry = self._fallback_entry(key, members)
+            self.cache[key] = entry
+            return FeatureLabel(label=entry["label"], rationale=entry["rationale"])
         try:
-            out, source = self._request(prompt), "llm"
+            out = self._request(prompt)
         except Exception as e:
             self._note_failure(e)
-            out, source = fallback_label(members), "fallback"
-        self.cache[key] = {**out.model_dump(), "source": source}
+            entry = self._fallback_entry(key, members)
+            self.cache[key] = entry
+            return FeatureLabel(label=entry["label"], rationale=entry["rationale"])
+        self.cache[key] = {**out.model_dump(), "source": "llm"}
         return out
 
     def label(
@@ -280,13 +396,19 @@ class Labeler:
         self, key: str, members: list[str], weights: dict[str, float] | None,
     ) -> FeatureLabel | None:
         """The reusable cached label for one `label_many` entry, or ``None`` to (re)compute.
-        A `fallback`-sourced entry is never reused (retry-on-next-client, unchanged). A super entry
-        (`weights is None`) reuses on exact-key match. A leaf entry reuses iff the current member
-        set is within `TAU_LABEL` weighted-Jaccard drift of the generation-time set the label was
-        earned on. On a leaf miss with no id-keyed entry, a legacy member-hash entry is adopted
+        A `fallback`-sourced entry is reused until its `retry_after` window expires, so a broken or
+        absent credential costs one attempt per backoff period rather than one per read. A super
+        entry (`weights is None`) reuses on exact-key match. A leaf entry reuses iff the current
+        member set is within `TAU_LABEL` weighted-Jaccard drift of the generation-time set the label
+        was earned on. On a leaf miss with no id-keyed entry, a legacy member-hash entry is adopted
         as this feature's generation point without an LLM call (lazy re-key). Mutates the cache
         only on that adoption; called single-threaded before the batch pool starts."""
+        if self._relabel:
+            return None  # `--rebuild`: name everything again, cache and backoff both ignored
         cached = self.cache.get(key)
+        if (cached is not None and cached.get("source") == "fallback"
+                and time.time() < cached.get("retry_after", 0)):
+            return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
         if cached is not None and cached.get("source") == "llm":
             if weights is None:  # super: content-keyed, exact match is identity
                 return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
@@ -325,6 +447,26 @@ class Labeler:
         if not misses:
             return results  # type: ignore[return-value]
 
+        def _record_fallbacks(batch_idx: list[int]) -> None:
+            """Fall every entry in `batch_idx` back, each with its own backoff, and stamp the leaf
+            drift anchor exactly as a successful label would -- so a later retry compares against
+            the same generation set rather than treating the feature as brand new."""
+            for global_i in batch_idx:
+                key, _prompt, members, weights = entries[global_i]
+                with self._lock:
+                    entry = self._fallback_entry(key, members)
+                    if weights is not None:
+                        entry["gen_members"] = sorted(members)
+                        entry["member_hash"] = _key(members)
+                    self.cache[key] = entry
+                results[global_i] = FeatureLabel(label=entry["label"], rationale=entry["rationale"])
+
+        # No credential resolves at all: skip the pool entirely rather than paying one construction
+        # failure per batch. Every miss falls back with a backoff stamped, so the next read is local.
+        if self._client_or_none() is None:
+            _record_fallbacks(misses)
+            return results  # type: ignore[return-value]
+
         batches = [misses[i:i + MAX_BATCH] for i in range(0, len(misses), MAX_BATCH)]
 
         def _run_batch(batch_idx: list[int]) -> None:
@@ -333,14 +475,21 @@ class Labeler:
                 batch_out = self._request_batch(prompts)
             except Exception as e:
                 self._note_failure(e)
-                batch_out = [None] * len(prompts)
+                _record_fallbacks(batch_idx)
+                return
             for local_i, global_i in enumerate(batch_idx):
                 key, _prompt, members, weights = entries[global_i]
                 out = batch_out[local_i]
-                source = "llm"
-                if out is None:
-                    out, source = fallback_label(members), "fallback"
-                entry = {**out.model_dump(), "source": source}
+                if out is None:  # the model dropped/misindexed this slot -- fall back just this one
+                    with self._lock:
+                        entry = self._fallback_entry(key, members)
+                        if weights is not None:
+                            entry["gen_members"] = sorted(members)
+                            entry["member_hash"] = _key(members)
+                        self.cache[key] = entry
+                    results[global_i] = FeatureLabel(label=entry["label"], rationale=entry["rationale"])
+                    continue
+                entry = {**out.model_dump(), "source": "llm"}
                 if weights is not None:  # leaf: anchor the drift budget at this generation
                     entry["gen_members"] = sorted(members)
                     entry["member_hash"] = _key(members)

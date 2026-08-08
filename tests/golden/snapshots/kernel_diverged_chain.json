@@ -3,7 +3,7 @@
     "covered": true,
     "features": {
       "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1": {
-        "label": "slugify"
+        "label": "base slugify"
       }
     },
     "file": "slugify.py",
@@ -11,7 +11,7 @@
       {
         "end_line": 2,
         "feature_id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
-        "label": "slugify",
+        "label": "base slugify",
         "sessions": [],
         "start_line": 1,
         "symbol": "slugify.py::slugify"
@@ -48,7 +48,7 @@
         "dir": "slugify.py",
         "id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
         "kind": "feature",
-        "label": "slugify",
+        "label": "base slugify",
         "members": [
           "slugify.py::__residue__::\u0000HEAD\u0000",
           "slugify.py::__residue__::slugify",
@@ -59,7 +59,7 @@
         "sessions": [],
         "size": 3,
         "split_reason": "max_leaf",
-        "why": "Auto-derived from slugify.py (no LLM label available)."
+        "why": "Named from the commit that introduced it: 'base slugify'."
       }
     ],
     "roots": [

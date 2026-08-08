@@ -225,29 +225,6 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
     return plan_view(repo_path, full=detail)["checkpoint"]
 
 
-def tool_now(repo_path: str, args: dict) -> dict:
-    """The state-of-actions orient: what's in flight, what needs a human, what was recently done,
-    and the single suggested next action. The tool an agent should call *first* when it picks up
-    work in an unfamiliar or resumed repo -- it answers "is someone mid-something here?" before the
-    agent starts editing over it."""
-    from sgt.api import now_view
-
-    return now_view(repo_path)
-
-
-def tool_show(repo_path: str, args: dict) -> dict:
-    """What is this id? Resolves any token sgt printed -- a feature handle, a checkpoint, an op id,
-    a `file::name` symbol, a file path -- and reports what it covers, how much would come out with
-    it if reverted (including work built on top), and the commands that apply to it. Deterministic
-    and read-only: it writes nothing and never calls an LLM."""
-    from sgt.api import show_view
-
-    target = (args.get("sel") or "").strip()
-    if not target:
-        return {"error": "missing 'sel'"}
-    return show_view(repo_path, target)
-
-
 def tool_recall(repo_path: str, args: dict) -> dict:
     """Agent recall (intent-ledger M1, design §4.4): the recorded "why" for the symbols an agent
     is about to touch + stated-but-unlanded intents. Local-tier read; no mining needed beyond
@@ -266,6 +243,60 @@ def tool_drift(repo_path: str, args: dict) -> dict:
 
     get(repo_path)
     return drift_view(repo_path, full=bool(args.get("full", False)))
+
+
+def tool_save(repo_path: str, args: dict) -> dict:
+    """`sgt save`: record the agent's edits as a real save.
+
+    Without this an agent could read the graph and edit code but not record either, so a human had
+    to relay every save by hand -- the exact back-and-forth between editor, terminal and agent that
+    the graph exists to remove. A save is additive and `sgt undo` reverses it, which is what makes
+    it safe to hand over."""
+    from sgt.cli.porcelain import save
+
+    return save(repo_path,
+                message=(args.get("message") or "").strip() or None,
+                as_label=(args.get("as_feature") or "").strip() or None)
+
+
+def tool_now(repo_path: str, args: dict) -> dict:
+    """`sgt now`: what the developer asked for, what is unsaved, what needs them, what is next.
+
+    The tool to call *first* when picking up work in a repo you did not just set up -- it answers "is
+    someone mid-something here?" before you edit over them. Useful to the *agent* as well as the
+    human: `working_on` carries the user's own prompt, so an agent resuming reads what was actually
+    asked rather than inferring it from a diff."""
+    from sgt.api import now_view
+    from sgt.core.lens import get
+
+    get(repo_path)
+    return now_view(repo_path)
+
+
+def tool_show(repo_path: str, args: dict) -> dict:
+    """`sgt show`: two readings of "show me this", chosen by whether a point in time was named.
+
+    Without `at`, `sel` is an id -- a feature handle, a checkpoint, an op id, a `file::name` symbol,
+    a path -- and the answer is what it covers, how much a revert would remove (including the work
+    built on top), and the commands that apply. With `at`, `sel` is a file and the answer is its
+    content as it was at that frontier, or the list of what existed there when `sel` is omitted.
+
+    One tool because a caller holds one intent (point at a thing, see it), and `at` is the same time
+    modifier the rest of sgt uses. Both readings share their projection with the CLI verb rather than
+    resolving anything here: the historical read was rebuilt separately once and had already drifted
+    before it shipped -- the CLI matched an exact repo-relative path *or* a suffix and told "no such
+    file" apart from "ambiguous", while the copy did suffixes only and collapsed both errors."""
+    from sgt.api import show_at_view, show_view
+    from sgt.core.lens import get
+
+    spec = (args.get("at") or "").strip()
+    sel = (args.get("sel") or args.get("path") or "").strip()
+    if spec:
+        get(repo_path)  # mine-on-contact so the fold reflects current reality (R9)
+        return show_at_view(repo_path, spec, sel or None)
+    if not sel:
+        return {"error": "pass 'sel' (what is this?) or 'at' (what existed at a past point)"}
+    return show_view(repo_path, sel)
 
 
 def tool_plan_done(repo_path: str, args: dict) -> dict:
@@ -365,6 +396,40 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"ref_a": {"type": "string"}, "ref_b": {"type": "string"}}, ["ref_a", "ref_b"]),
         tool_diff,
     ),
+    "sgt_save": (
+        "Record your edits as a save. Pass `message` -- your own words about what this work was; "
+        "they become the save's subject and the recorded intent, and a feature born from this work "
+        "is named from them rather than by a model. Additive and reversible (`sgt undo`).",
+        _schema({"message": {"type": "string", "description": "what this work was, in your words"},
+                 "as_feature": {"type": "string", "description": "name the feature this work lands in (optional)"}},
+                []),
+        tool_save,
+    ),
+    "sgt_now": (
+        "Where the work stands: what the user asked for (`working_on`, their own prompt verbatim), "
+        "what is unsaved, what needs a human (forks, stalled plans, a paused git merge), what was "
+        "recently done, and the single next action. Call this FIRST when picking up work in a repo "
+        "you did not just set up: it says what was actually asked rather than leaving you to infer "
+        "it from a diff, and it tells you whether someone is mid-something before you edit over them.",
+        _schema({}, []),
+        tool_now,
+    ),
+    "sgt_show": (
+        "Show me this thing. With `sel` alone it explains an id — a feature handle, a `feature@n` "
+        "checkpoint, an op id, a `file::name` symbol, a path — reporting what it covers, how many "
+        "edits a revert would remove (and how many of those are work built on top), and which "
+        "commands apply. Use it before proposing a revert so you can state the consequence. Add "
+        "`at` to read the past instead: `sel` is then a file and you get its content as it was at "
+        "that point (a commit index like `12`, an op set `op:<id>,...`, or a ref), or the list of "
+        "what existed there if you omit `sel`. Read-only either way — nothing is checked out, and "
+        "the id reading never calls an LLM.",
+        _schema({"sel": {"type": "string",
+                         "description": "an id/label/symbol to explain, or (with `at`) a file to read"},
+                 "at": {"type": "string",
+                        "description": "read it as it was at this point: a commit index, `op:<id>,...`, or a ref"}},
+                []),
+        tool_show,
+    ),
     "sgt_advanced_fsck": (
         "Verify the op store's content-address integrity.",
         _schema({}, []),
@@ -450,24 +515,6 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"session_id": {"type": "string"},
                  "claude_session_id": _OWN_SESSION_PROP}, ["session_id"]),
         tool_plan_done,
-    ),
-    "sgt_now": (
-        "Orient before you edit: what work is in flight, what needs a human decision (forks, "
-        "stalled plans, review items), what was recently done, and the one suggested next action. "
-        "Call this first when picking up work in a repo you did not just set up — it tells you "
-        "whether someone is mid-something before you start editing over it.",
-        _schema({}, []),
-        tool_now,
-    ),
-    "sgt_show": (
-        "What is this? Give it any id sgt printed — a feature handle, a `feature@n` checkpoint, an "
-        "op id, a `file::name` symbol, or a file path — and it reports what the thing covers, how "
-        "many edits a revert would remove (and how many of those are work built on top), and which "
-        "commands apply to it. Read-only and deterministic: writes nothing, never calls an LLM. Use "
-        "it before proposing a revert so you can state the consequence.",
-        _schema({"sel": {"type": "string",
-                         "description": "the id/label/symbol to explain"}}, ["sel"]),
-        tool_show,
     ),
     "sgt_plan_adopt": (
         "Take over a plan session another Claude session started — use this when a plan shows as "

@@ -125,7 +125,7 @@ it somewhere shared.
 - `sgt advanced preview <verb> <args>` previews merge/rename/move/revert side-effect-free. For split,
   there's no separate preview verb — bare `sgt feature regroup split <feature>` (no `--apply`) already previews;
   `--apply` confirms it.
-- `sgt feature select <feature>...` / `sgt feature why <op>` are *explanation* verbs (closure/attribution), not
+- `sgt feature select <feature>...` / `sgt why <op>` are *explanation* verbs (closure/attribution), not
   a way to switch what's materialized in the working tree — they don't change state.
 - `sgt advanced migrate [feature-ids|ops-v3] [--apply]` is a one-time op-store schema migration, not a
   daily-loop verb — dry-run by default, run it only when a plan doc or error message tells you to.

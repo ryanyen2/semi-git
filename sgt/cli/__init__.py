@@ -58,7 +58,16 @@ _VERBS = {
     # don't map to a `log` mode and it was deliberately re-promoted (c4f9966/KTD8). `now` is the
     # state-of-actions orient (what's in flight / needs you / next), a fast assembler distinct from
     # `log`'s history grid.
-    "switch", "diff", "intent", "now",
+    # `status` is a thin alias of `log --summary` (one handler, so they cannot drift): U14 removed
+    # the spelling, which made the first command every git user types answer with the help text.
+    # `why` is top-level because "why is this code like this" is a question about a *selector*, not
+    # about features: `sgt why <sha>` answers with the prompt and words that produced a commit, and
+    # nothing in that reading is feature-scoped (the feature-closure form is the `--for` flag). It
+    # sat under `feature why`, so the natural spelling printed the help text instead of answering.
+    # `show` is the read half of visiting a past state: sgt could always reconstruct `code(I)` at an
+    # arbitrary frontier, and only the workbench's playhead ever displayed it. Reading an old version
+    # of a file is a daily question, so it answers at the top level, like `git show <rev>:<path>`.
+    "switch", "diff", "intent", "now", "status", "why", "show",
     # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
     "plan",
     # groupings
@@ -71,7 +80,7 @@ _VERBS = {
 # The verb NAME and its args/handler are untouched -- only the parent subparser changes -- so the
 # family modules register unchanged and each verb keeps its exact behavior at its new path.
 _ROUTING = {
-    "rename": "feature", "select": "feature", "why": "feature",
+    "rename": "feature", "select": "feature",
     "merge": "regroup", "split": "regroup", "move": "regroup",
     "state": "advanced", "oracle": "advanced", "fsck": "advanced",
     "resync": "advanced", "history": "advanced", "ops": "advanced",
@@ -96,7 +105,9 @@ _FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, mi
 # was deliberately alias-free, which means a user arriving from older output or docs types a verb
 # that no longer exists -- the one thing we owe them is the command that replaced it.
 _RENAMED = {
-    "status": "sgt log --summary",
+    # `status` is deliberately absent: it is a real top-level verb again (a thin alias onto
+    # `log --summary`'s handler), so an entry here would be unreachable -- the `_VERBS` gate passes
+    # it through before `_unknown_verb` is ever consulted -- and would read as a claim that it moved.
     "map": "sgt log --map",
     "graph": "sgt log --map",
     "episodes": "sgt log --rail",

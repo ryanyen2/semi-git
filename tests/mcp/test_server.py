@@ -49,8 +49,6 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     #
     # The surface is deliberately NOT every CLI verb. Three groups are held back on purpose, and the
     # reasoning belongs next to the assertion so "parity" is never restored by reflex:
-    #   * `save` makes a git commit. The agent loop absorbs edits through `sgt_checkpoint`'s
-    #     mine-on-contact instead, which keeps commit-authoring with the human.
     #   * `land`/`sync`/`propose land`/`resolve` advance *shared* state and are gated behind the
     #     CLI's interactive confirm; exposing them here would drop that gate for the least
     #     supervised caller.
@@ -61,7 +59,11 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     assert names == {"sgt_init", "sgt_log", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
                       "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
                       "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done",
-                      "sgt_plan_adopt", "sgt_recall", "sgt_now", "sgt_show"}
+                      "sgt_plan_adopt", "sgt_recall", "sgt_now", "sgt_show",
+                      # An agent could read the graph and edit code but record neither, so a human
+                      # relayed every save by hand -- the back-and-forth between editor, terminal
+                      # and agent that the graph exists to remove.
+                      "sgt_save"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -118,6 +120,8 @@ def test_the_grid_is_not_an_mcp_tool_and_log_stays_bounded(tmp_path):
 
     repo = _seed(tmp_path, 2)
     build_map(repo)
+    # `grid_view`'s own shape (including `save_count`/`bookkeeping_count`) is asserted in
+    # `tests/test_api.py`, which is where it belongs now that the projection has no MCP surface.
 
     resp, payload = _call(repo, "sgt_grid")
     assert resp["result"]["isError"] is True
@@ -291,3 +295,141 @@ def test_drift_full_carries_entries(tmp_path):
     repo = _seed(tmp_path, 2)
     _, payload = _call(repo, "sgt_drift", {"full": True})
     assert payload["entries"] == []
+
+
+# -- agent-facing docs must agree with the tool contract ------------------------------------------
+
+def _skill_text() -> str | None:
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[2] / ".claude" / "skills" / "sgt-plan" / "SKILL.md"
+    return p.read_text(encoding="utf-8") if p.is_file() else None
+
+
+def test_plan_skill_and_mcp_tool_name_the_same_session_id_variable():
+    """The `sgt-plan` skill told agents to store `$CLAUDE_CODE_BRIDGE_SESSION_ID` while the
+    `UserPromptSubmit` hook keys captured prompts by `$CLAUDE_CODE_SESSION_ID`. The two never
+    matched, so an agent that followed the skill silently lost both the prompt-to-commit join and
+    the `claude --resume` handle -- with nothing failing loudly enough to notice.
+
+    Both surfaces are prose read by an agent, so nothing but a test keeps them honest."""
+    skill = _skill_text()
+    if skill is None:
+        import pytest
+        pytest.skip("skill file not present in this checkout")
+
+    from sgt.mcp.server import TOOLS
+
+    intake_schema = TOOLS["sgt_plan_intake"][1]
+    tool_desc = intake_schema["properties"]["claude_session_id"]["description"]
+
+    assert "CLAUDE_CODE_SESSION_ID" in tool_desc
+    assert "CLAUDE_CODE_SESSION_ID" in skill, "the skill must name the id the hook actually keys by"
+    # The bridge id may only appear as an explicit warning, never as the thing to pass.
+    for surface, text in (("skill", skill), ("tool description", tool_desc)):
+        if "CLAUDE_CODE_BRIDGE_SESSION_ID" in text:
+            idx = text.index("CLAUDE_CODE_BRIDGE_SESSION_ID")
+            # Strip markdown emphasis so the check reads meaning, not formatting: the warning is
+            # equally a warning whether it is written "do not" or "do **not**".
+            window = text[max(0, idx - 200):idx].lower().replace("*", "").replace("_", "")
+            assert any(w in window for w in ("do not", "don't", "never")), (
+                f"the {surface} mentions the bridge id without warning against it"
+            )
+
+
+def test_plan_done_refuses_to_close_another_agents_plan(tmp_path):
+    """Ownership was stated in the skill ("only confirm your own") and enforced by nothing: any
+    agent holding another's session id could close its plan out from under it, mid-build."""
+    from sgt.loop import plan as plan_mod
+
+    repo = _seed(tmp_path, 1)
+    plan_mod.intake(repo, "1. do the thing\n", session_id="theirs", claude_session_id="chat-A")
+
+    _, refused = _call(repo, "sgt_plan_done", {"session_id": "theirs", "claude_session_id": "chat-B"})
+    # Assert what makes a refusal actionable rather than one phrasing of it: who owns the plan, and
+    # what to do about it. A substring match on a sentence goes red on any rewording of the same
+    # message, which teaches the next person to weaken the message rather than keep it useful.
+    error = refused.get("error", "")
+    assert "chat-A" in error, f"the owner must be named: {error!r}"
+    assert "adopt" in error, f"the way forward must be named: {error!r}"
+    assert refused.get("owner") == "chat-A"
+    assert plan_mod.active_sessions(repo).get("theirs") is not None  # still open
+
+    _, ok = _call(repo, "sgt_plan_done", {"session_id": "theirs", "claude_session_id": "chat-A"})
+    assert ok.get("ok") is True
+
+
+def test_plan_done_without_a_caller_id_still_closes(tmp_path):
+    """Identifying yourself is what buys the check; a caller that cannot (a human on the CLI, an
+    older agent) keeps the previous behavior rather than being locked out."""
+    from sgt.loop import plan as plan_mod
+
+    repo = _seed(tmp_path, 1)
+    plan_mod.intake(repo, "1. do the thing\n", session_id="theirs", claude_session_id="chat-A")
+
+    _, ok = _call(repo, "sgt_plan_done", {"session_id": "theirs"})
+    assert ok.get("ok") is True
+
+
+# -- the agent can record its own work -------------------------------------------------------
+
+def test_save_records_the_agents_edits(tmp_path):
+    """An agent could read the graph and edit code but record neither, so a human had to relay
+    every save by hand -- the exact back-and-forth between editor, terminal and agent that the
+    graph exists to remove."""
+    repo = _seed(tmp_path, 1)
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+
+    _, payload = _call(repo, "sgt_save", {"message": "bump foo"})
+
+    assert payload["ok"] is True and payload["saved"] is True
+    assert payload["commit"]
+    # The agent's own words are what got recorded, not a generated paraphrase of them.
+    assert payload.get("words") == "bump foo"
+
+
+def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _call(repo, "sgt_log")  # mine, so the ideal is current
+
+    _, payload = _call(repo, "sgt_save", {})
+
+    assert payload["ok"] is True and payload["saved"] is False
+
+
+def test_now_gives_an_agent_the_users_own_ask(tmp_path):
+    """`working_on` is as useful to the agent as to the human: picking work back up, it says what
+    was actually asked instead of leaving the agent to infer it from a diff."""
+    from sgt.intent.turns import record_turn
+
+    repo = _seed(tmp_path, 1)
+    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
+                text="Add rate limiting to the API")
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+
+    _, payload = _call(repo, "sgt_now")
+
+    assert payload["working_on"]["title"] == "Add rate limiting to the API"
+    assert payload["working_on"]["source"] == "prompt"
+
+
+def test_show_reads_a_past_file_without_touching_the_tree(tmp_path):
+    repo = _seed(tmp_path, 3)
+    before = (tmp_path / "a.py").read_text(encoding="utf-8")
+
+    _, listing = _call(repo, "sgt_show", {"at": "0"})
+    _, content = _call(repo, "sgt_show", {"at": "0", "path": "a.py"})
+
+    assert listing["files"] == ["a.py"]
+    assert "return 1" in content["content"]
+    assert (tmp_path / "a.py").read_text(encoding="utf-8") == before
+
+
+def test_a_failing_verb_is_a_tool_error_not_a_dead_server(tmp_path):
+    """The adapter captures stdout because this process speaks JSON-RPC on it; a verb that fails
+    must come back as an error payload, never as stray output mid-transport."""
+    repo = _seed(tmp_path, 1)
+
+    resp, payload = _call(repo, "sgt_show", {"at": "op:not-a-real-op-id"})
+
+    assert "error" in payload
+    assert resp["result"]["isError"] is True
