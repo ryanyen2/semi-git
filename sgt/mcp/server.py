@@ -68,14 +68,6 @@ def tool_log(repo_path: str, args: dict) -> dict:
     return oplog_view(repo_path, **kwargs)
 
 
-def tool_grid(repo_path: str, args: dict) -> dict:
-    from sgt.api import grid_view
-    from sgt.core.lens import get
-
-    get(repo_path)  # mine-on-contact before projecting the grid
-    return grid_view(repo_path)
-
-
 def tool_state(repo_path: str, args: dict) -> dict:
     from sgt.api import state_view
     from sgt.core.lens import get
@@ -351,14 +343,14 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         ),
         tool_log,
     ),
-    "sgt_grid": (
-        "The lane×commit grid: the canonical join every timeline surface renders. "
-        "Returns {commits, cells, features, ghosts, partial_commits} -- one cell per (feature, "
-        "commit) that carries ops, the commit axis, active-plan ghost cells, and per-commit "
-        "mining-fidelity marks. A complete projection (not paged): a grid needs every cell.",
-        _schema({}, []),
-        tool_grid,
-    ),
+    # `sgt_grid` is deliberately NOT exposed. `grid_view` is a *complete* projection by design --
+    # a grid surface needs every cell to draw -- which is right for the TUI and the VS Code webview
+    # and wrong for a language model, because a model never draws it. Measured on a 290-commit repo:
+    # ~515 KB, about 129,000 tokens in a single tool result, growing linearly with history (1.5k
+    # tokens at 10 commits, 6.5k at 60). One call would consume most of a context window and answer
+    # no question that `sgt_log` (capped at 30) or `sgt_now` (flat ~470 tokens) doesn't answer more
+    # cheaply. An agent that genuinely needs the raw join can shell out to `sgt log --json` and page
+    # it itself. Please don't re-add it without a compact, paged shape.
     "sgt_status": (
         "The current ref's ideal: covered paths, entity-granularity coverage fraction, and the "
         "async oracle's verdict (if `.sgt/oracle.json` is configured). Compact by default "

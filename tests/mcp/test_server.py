@@ -56,7 +56,9 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     #     supervised caller.
     #   * the feature verbs (merge/split/move/rename) set authored labels and re-cut groupings,
     #     which permanently override generated ones -- a human call made while looking at the graph.
-    assert names == {"sgt_init", "sgt_log", "sgt_grid", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
+    #   * `sgt_grid` returns a *complete* projection (right for a TUI/webview that draws it, wrong
+    #     for a model that never does): ~129,000 tokens on a 290-commit repo, growing with history.
+    assert names == {"sgt_init", "sgt_log", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
                       "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
                       "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done",
                       "sgt_plan_adopt", "sgt_recall", "sgt_now", "sgt_show"}
@@ -100,19 +102,29 @@ def test_log_full_carries_footprint(tmp_path):
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
 
 
-def test_grid_returns_the_canonical_lane_commit_join(tmp_path):
-    """U1: `sgt_grid` mines-on-contact then returns `grid_view` -- the commit axis, cells, ghosts,
-    and fidelity marks. `sgt_log`'s op-DAG shape is untouched (KTD9), so the two are distinct."""
+def test_the_grid_is_not_an_mcp_tool_and_log_stays_bounded(tmp_path):
+    """The grid is deliberately absent from MCP, and the shape that replaces it stays capped.
+
+    `grid_view` is a *complete* projection on purpose -- a TUI or webview needs every cell to draw
+    one -- but a language model never draws it, so over MCP that completeness is pure cost. Measured
+    on a 290-commit repo it was ~515 KB, about 129,000 tokens in one tool result, and it grows with
+    history (1.5k tokens at 10 commits, 4.6k at 30, 6.5k at 60). `sgt_log` answers the same "what
+    happened" question at a flat ~1.1k tokens because it is windowed.
+
+    The projection itself is untouched and still tested in `tests/test_api.py`; only the MCP exposure
+    is gone. This test exists so re-adding it requires deleting an explanation rather than just
+    appending a registry entry."""
     from sgt.lens.map import build_map
 
     repo = _seed(tmp_path, 2)
-    build_map(repo)  # populate op_leaf so ops land in cells
-    _, grid = _call(repo, "sgt_grid")
-    assert set(grid) == {"commits", "cells", "features", "ghosts", "partial_commits",
-                         "commit_count", "op_count", "feature_count"}
-    assert grid["commit_count"] == 2
+    build_map(repo)
 
-    # tool_log still returns the op DAG, not the grid — the schema-stable contract (KTD9).
+    resp, payload = _call(repo, "sgt_grid")
+    assert resp["result"]["isError"] is True
+    assert "unknown tool" in payload["error"]
+
+    # `sgt_log` still returns the op DAG (the KTD9 schema-stable contract) and carries the
+    # `truncated` flag that tells a caller a window was applied rather than hiding it.
     _, log = _call(repo, "sgt_log")
     assert set(log) == {"count", "kinds", "truncated", "ops"}
 

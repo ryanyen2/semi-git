@@ -32,6 +32,34 @@ sgt init                              # read your existing git history in, once 
 sgt save -m "add input validation"    # record those edits, and see which feature(s) they landed in
 ```
 
+## Setting up your coding agent
+
+`sgt` is most useful when your agent uses it, because the two things it knows — the recorded reason
+behind a piece of code, and the true cost of removing something — are exactly what an agent
+otherwise has to guess at.
+
+**Claude Code.** Nothing to install. This repo ships a project-scoped `.mcp.json`, so Claude Code
+offers the `sgt` MCP server on first run in the repo (it asks before enabling a project server).
+The skills under `.claude/skills/` load themselves when relevant:
+
+| Skill | What it is for |
+| --- | --- |
+| `sgt-agent` | How to work in an sgt repo: orient in one cheap call, which read to use, what belongs to you versus the human, how to show output in a transcript. |
+| `sgt-plan` | Record intent before you build, then reconcile it against the code you actually wrote. |
+| `sgt-workflow` | Choosing between the look-alike verbs (four shapes of revert, feature verbs versus op verbs, land versus propose). |
+
+To use them in another checkout, copy `.claude/skills/` and `.mcp.json` into it.
+
+**Codex, or any shell-only agent.** There is no MCP to wire up: every read has a `--json` form, and
+`python -m scripts.sgt_brief` prints a short orientation block that works anywhere a shell does.
+Point your agent at `.claude/skills/sgt-agent/references/cli-fallback.md`, which maps each tool to
+its command.
+
+Two things are deliberately kept away from agents, whichever harness you use: `sgt save`, because it
+makes a commit, and the shared-state verbs (`sgt land`, `sgt sync`, `sgt propose land`,
+`sgt resolve`), because they are gated behind a confirmation you should see. An agent's edits still
+show up in `sgt` without a save — it mines the working tree on contact.
+
 ## The problem it solves
 
 Say a coding agent runs for an hour, touches a dozen files, and lands rate limiting, a caching
