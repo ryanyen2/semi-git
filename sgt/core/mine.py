@@ -727,6 +727,13 @@ def mine(
     mines the working tree, which only makes sense once a chunk actually reaches `target`."""
     repo = Path(repo)
     gb = GitBinding(repo)
+    # Arm the tree-sitter caches' disk backing for this repo; flushed once in the finally below,
+    # so a mine that parsed nothing new writes nothing and a chunked catch-up writes once.
+    from sgt.entities import extract as _extract
+    from sgt.entities import graph as _graph_mod
+
+    _extract.attach_persistent_cache(repo)
+    _graph_mod.attach_persistent_refs_cache(repo)
     uf = _UnionFind()
     touches: list[_Touch] = []
     constraints = load_identity_constraints(repo)  # U11 R14: identity split/join corrections
@@ -760,6 +767,8 @@ def mine(
             )
         )
 
+    _extract.flush_persistent_cache()
+    _graph_mod.flush_persistent_refs_cache()
     return _build_ops(touches, uf), last_sha
 
 

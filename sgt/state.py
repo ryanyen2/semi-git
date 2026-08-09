@@ -215,12 +215,36 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # never authoritative -- the ops directory always is. Per-clone, never travels. Compact: at
     # thousands of ops the pretty-printed encode/parse dominated every rebuild and every read.
     "op_index": _Artifact(("local", "op_index.json"), committed=False, compact=True),
+    # local, gitignored disk backing for the content-addressed tree-sitter caches
+    # (`sgt.entities.extract._EXTRACT_CACHE` / `sgt.entities.graph._REFS_CACHE`): the live tree's
+    # per-file parses, so a fresh process's dirty mining pass re-parses only the files that
+    # actually changed instead of the whole tree. Content-addressed keys make staleness
+    # structural; a bad entry degrades to a re-parse. Per-clone, never travels.
+    "extract_cache": _Artifact(("local", "extract_cache.json"), committed=False, compact=True),
+    "refs_cache": _Artifact(("local", "refs_cache.json"), committed=False, compact=True),
     # local, gitignored cache of `sgt.entities.graph.build_entity_graph`'s edges at a given HEAD
     # sha (`sgt.lens.cluster`): that full-repo source parse is by far the costliest step in the
     # clustering signal build, yet its result is a pure function of HEAD alone -- so a no-op
     # refresh or small edit (HEAD unchanged) skips the reparse entirely. Self-healing (a sha
     # mismatch just triggers a rebuild), never authoritative. Per-clone, never travels.
     "structural_edge_cache": _Artifact(("local", "structural_edges.json"), committed=False),
+    # local, gitignored racy-clean record of the last full `.sgt/ops/` dirent scan
+    # (`sgt.core.opindex._ops_dir_stat`): the ops dir's mtime, its dirent count + max entry mtime,
+    # and the wall-clock instant the scan *started*. A reader that finds the dir mtime unchanged
+    # AND the recorded scan started comfortably after that mtime can trust the recorded
+    # (count, max_mtime) without re-listing ~20k dirents -- any later write must stamp the dir
+    # with a strictly newer mtime. Self-healing (a mismatch just rescans), never authoritative.
+    "ops_dirstat": _Artifact(("local", "ops_dirstat.json"), committed=False),
+    # local, gitignored derivation stamps (`sgt.core.lens._derive_state`): digests of id sets
+    # whose grounding/fork-freedom validation or reduction already ran -- pure functions of the
+    # content-addressed ids, so the next process can skip re-deriving them. Presence of the ops
+    # themselves is always re-checked live. Self-healing, never authoritative, never travels.
+    "derive_cache": _Artifact(("local", "derive_cache.json"), committed=False),
+    # local, gitignored `{path: sha256}` manifest of `code(current_ideal)` keyed by the ideal's
+    # id-set digest + miner version (`api.status_view`): drift detection and the skips read need
+    # only per-path byte-equality and path membership, so a repeat status over an unchanged ideal
+    # skips loading frontier images entirely. Self-healing, never authoritative, never travels.
+    "mat_manifest": _Artifact(("local", "mat_manifest.json"), committed=False, compact=True),
     # local, gitignored cache of the fused coupling graph (`sgt.lens.tree.build`) that produced the
     # last-saved `tree.json`, tagged with that tree's own leaf-structure fingerprint. Lets the next
     # build detect cross-leaf coupling that gained/lost significance since then (Phase 2's
@@ -286,7 +310,9 @@ def load_json(repo: str | Path, name: str, default=None):
     if not p.is_file():
         return default
     try:
-        return _unwrap(json.loads(p.read_text(encoding="utf-8")))
+        # Bytes straight into the parser: `json.loads` decodes UTF-8 itself, so the multi-MB
+        # sidecars (op_index, extract_cache) skip materializing an intermediate `str`.
+        return _unwrap(json.loads(p.read_bytes()))
     except (json.JSONDecodeError, UnicodeDecodeError):
         if _ARTIFACTS[name].committed:
             raise

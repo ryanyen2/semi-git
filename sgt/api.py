@@ -1038,12 +1038,11 @@ def rewrite_view(repo) -> dict:
     `split-op`/`transplant`/`revert --keep-dependents`) with its hollow ops' symbol/kind/intent,
     plus the currently staged candidate ideal (if `sgt fulfill` has run) with its oracle verdict --
     the thing `sgt land` is gated on (R14). `None` for ``staged`` means nothing is staged."""
-    from sgt.core import oracle, rewrite
+    from sgt.core import opindex, oracle, rewrite
     from sgt.core.ideal import Ideal
     from sgt.core.store import Store
 
     store = Store(repo)
-    ops = store.all_ops()
 
     drafts = []
     for draft_id, rec in sorted(rewrite.pending_drafts(repo).items()):
@@ -1062,7 +1061,10 @@ def rewrite_view(repo) -> dict:
     staged_record = rewrite.staged_candidate(repo)
     staged = None
     if staged_record is not None:
-        candidate = Ideal.from_ops(frozenset(staged_record["op_ids"]), ops)
+        # Ideal validity is footprint-level, so the footprint-only index suffices -- loading it
+        # only here keeps the common nothing-staged path from paying any op read at all
+        # (`Store.all_ops()`'s every-op images decode was the dominant cost of bare `sgt log`).
+        candidate = Ideal.from_ops(frozenset(staged_record["op_ids"]), opindex.index_ops(repo))
         verdict = oracle.verdict_for(repo, candidate)
         staged = {
             "verb": staged_record["verb"],
@@ -2928,27 +2930,60 @@ def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:
     return sorted(drift)
 
 
+def _drift_paths_by_hash(repo, path_hashes: dict[str, str]) -> list[str]:
+    """`_drift_paths` against a `{path: sha256-hex}` manifest instead of materialized bytes --
+    same answer (hash equality stands in for byte equality), no op images loaded."""
+    from hashlib import sha256
+    from pathlib import Path
+
+    repo_path = Path(repo)
+    drift = []
+    for path, expected in path_hashes.items():
+        full = repo_path / path
+        actual = sha256(full.read_bytes()).hexdigest() if full.is_file() else None
+        if actual != expected:
+            drift.append(path)
+    return sorted(drift)
+
+
 def status_view(repo) -> dict:
     """A kernel-backed summary (plan U13): file/symbol/feature counts, R7's coverage fraction
     (reusing `state_view`'s definition), the oracle's overall status, and working-tree drift --
     paths whose on-disk bytes no longer match `code(current_ideal)` (e.g. an edit made outside
     `sgt`, or a verb applied without re-writing the working tree)."""
+    from hashlib import sha256 as _sha256
+
     from sgt import state as state_mod
+    from sgt.core import opindex
     from sgt.core.fold import code
-    from sgt.core.lens import current_ideal, ops_with_frontier_images, sync_status
+    from sgt.core.lens import _ids_digest, current_ideal, ops_with_frontier_images, sync_status
+    from sgt.core.op import MINER_VERSION, is_bottom
     from sgt.core.oracle import overall_status
-    from sgt.core.op import is_bottom
     from sgt.lens.tree import load as load_tree
 
     st = state_view(repo)
     ideal = current_ideal(repo)
-    # Frontier-selective read: this view folds only `ideal`, so it needs images for exactly the
-    # frontier producers -- not `Store.all_ops()`'s every-op images decode (the dominant cost of
-    # `sgt log --summary` on a large store).
-    ops = ops_with_frontier_images(repo, ideal)
-    by_id = {op.id: op for op in ops}
+    # Materialization manifest (`.sgt/local/mat_manifest.json`): `{path: sha256}` of
+    # `code(current_ideal)`, keyed by the ideal's id-set digest + miner version. Drift detection
+    # and the skips read only need byte-EQUALITY per path and path MEMBERSHIP -- both answered
+    # by the manifest -- so a repeat `status` over an unchanged ideal skips loading the frontier
+    # producers' images entirely (~3.5k op-file reads here). Any ideal movement changes the
+    # digest; op content is fixed by the content-addressed ids, so the digest fixes the fold.
+    ideal_digest = f"{MINER_VERSION}:{_ids_digest(ideal.op_ids)}"
+    manifest = state_mod.load_json(repo, "mat_manifest", default=None)
+    if isinstance(manifest, dict) and manifest.get("digest") == ideal_digest:
+        path_hashes = manifest["paths"]
+    else:
+        # Frontier-selective read: this view folds only `ideal`, so it needs images for exactly
+        # the frontier producers -- not `Store.all_ops()`'s every-op images decode.
+        ops = ops_with_frontier_images(repo, ideal)
+        materialized = code(ideal, ops)
+        path_hashes = {p: _sha256(b).hexdigest() for p, b in materialized.items()}
+        state_mod.save_json(repo, "mat_manifest", {"digest": ideal_digest, "paths": path_hashes})
+    index = opindex.index_ops(repo)
+    by_id = {op.id: op for op in index}
     symbol_count = sum(
-        1 for sym, op_id in ideal.frontier(ops).items() if not is_bottom(by_id[op_id].footprint[sym][1])
+        1 for sym, op_id in ideal.frontier(index).items() if not is_bottom(by_id[op_id].footprint[sym][1])
     )
 
     tree_result = load_tree(repo)
@@ -2962,19 +2997,19 @@ def status_view(repo) -> dict:
 
     from sgt.core.lens import materialization_skips
 
-    materialized = code(ideal, ops)
-    drift = _drift_paths(repo, materialized)
-    # `None`, not `ops`: the skips read folds the *maximal* ideal when candidates exist, whose
-    # frontier reaches ops this list carries imageless -- let it load the full store itself
+    drift = _drift_paths_by_hash(repo, path_hashes)
+    # `path_hashes` stands in for the materialized dict: the skips read consults it for path
+    # MEMBERSHIP only (which tracked paths the ideal doesn't cover). `None` as `all_ops`: the
+    # backstop read folds the *maximal* ideal -- let it load (path-restricted) images itself
     # (rare: only when tracked paths would be deleted).
-    skips = materialization_skips(repo, materialized, None)
+    skips = materialization_skips(repo, path_hashes, None)
     open_forks = _open_fork_records(repo)
 
     return {
         # Count files from the *same* `current_ideal` the symbol count comes from, not
         # `state_view`'s HEAD ideal -- on an init-only repo (no sgt commit advancing HEAD) the two
         # diverge, which read as the nonsensical "0 file(s), N symbol(s)".
-        "files": len(ideal.covered_paths(ops)),
+        "files": len(ideal.covered_paths(index)),
         "symbols": symbol_count,
         "features": feature_count,
         "coverage_fraction": st["coverage_fraction"],

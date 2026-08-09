@@ -337,6 +337,68 @@ def _close_batch_procs() -> None:
         _BATCH_PROCS.clear()
 
 
+# -- head-state read memo --------------------------------------------------------------------
+# One CLI command's views each construct their own `GitBinding(repo)` and independently re-run
+# the same whole-history `git log` / `symbolic-ref` / `rev-parse HEAD` subprocesses (~20ms each;
+# bare `sgt log` paid 9 `symbolic-ref` + 3 full-history walks). These module-level memos let
+# HEAD-anchored pure reads be paid once per *HEAD state* instead of once per call site. Validity
+# is anchored on git's own files, never on explicit invalidation: `_head_sig` stats `HEAD`, the
+# reflog (`logs/HEAD` -- every commit/checkout/reset/merge appends, so its *size* changes even
+# within one mtime tick), the checked-out branch's loose ref, and `packed-refs`. Any history- or
+# ref-moving mutation -- by this process mid-verb or by another process between MCP tool calls --
+# changes the signature, and the whole entry is dropped. Only reads whose output is a function of
+# that signature are routed through it: HEAD-anchored walks, or walks from an explicit full sha
+# (whose ancestry is immutable).
+_GITDIR_CACHE: "OrderedDict[str, tuple[Path, Path]]" = OrderedDict()
+_HEAD_MEMO: "OrderedDict[str, tuple[tuple, dict]]" = OrderedDict()
+_HEX = frozenset("0123456789abcdef")
+
+
+def _is_full_sha(ref: str) -> bool:
+    return len(ref) == 40 and set(ref) <= _HEX
+
+
+def _git_dirs(repo: Path, repo_key: str) -> tuple[Path, Path] | None:
+    """`(gitdir, commondir)` for `repo` -- `.git` itself, or the pointed-to directory for a
+    linked worktree. Successful resolutions are cached forever (a repo's gitdir never moves);
+    failures are re-tried each call, so a repo `git init`-ed after the first probe is picked up."""
+    hit = _GITDIR_CACHE.get(repo_key)
+    if hit is not None:
+        return hit
+    dot = repo / ".git"
+    if dot.is_dir():
+        gitdir = dot
+    elif dot.is_file():
+        try:
+            text = dot.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        if not text.startswith("gitdir:"):
+            return None
+        gitdir = Path(os.path.realpath(repo / text.split(":", 1)[1].strip()))
+    else:
+        return None
+    common = gitdir
+    cfile = gitdir / "commondir"
+    if cfile.is_file():
+        try:
+            common = Path(os.path.realpath(gitdir / cfile.read_text(encoding="utf-8").strip()))
+        except OSError:
+            pass
+    _GITDIR_CACHE[repo_key] = (gitdir, common)
+    if len(_GITDIR_CACHE) > 64:
+        _GITDIR_CACHE.popitem(last=False)
+    return gitdir, common
+
+
+def _stat_sig(p: Path) -> tuple[int, int] | None:
+    try:
+        st = p.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 class GitBinding:
     """Thin wrapper over the git CLI for one repository."""
 
@@ -348,6 +410,55 @@ class GitBinding:
         key every content-addressed memo over this binding must use -- `self.repo` is often a
         relative `"."`, which silently renames the repo whenever the process chdirs."""
         return os.path.realpath(self.repo)
+
+    def _head_sig(self) -> tuple | None:
+        """The repo's current HEAD-state signature (see the `_HEAD_MEMO` note above), or None
+        when it can't be read -- None disables memoization, never correctness."""
+        dirs = _git_dirs(self.repo, self.repo_key())
+        if dirs is None:
+            return None
+        gitdir, common = dirs
+        head_file = gitdir / "HEAD"
+        try:
+            head_text = head_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        detached_sha = None
+        branch_sig = None
+        if head_text.startswith("ref: "):
+            ref = head_text[5:].strip()
+            branch_sig = (ref, _stat_sig(common / ref))
+        else:
+            detached_sha = head_text.strip()
+        return (
+            _stat_sig(head_file),
+            _stat_sig(gitdir / "logs" / "HEAD"),
+            branch_sig,
+            detached_sha,
+            _stat_sig(common / "packed-refs"),
+        )
+
+    def _memo_head(self, key: tuple, compute):
+        """`compute()`'s result, cached process-wide until this repo's HEAD state changes.
+        Only for pure reads whose output is a function of the HEAD signature (or of an immutable
+        explicit-sha ancestry embedded in `key`). Callers that return a mutable container must
+        copy it on the way out -- the memoized value is shared."""
+        sig = self._head_sig()
+        if sig is None:
+            return compute()
+        rk = self.repo_key()
+        ent = _HEAD_MEMO.get(rk)
+        if ent is None or ent[0] != sig:
+            ent = (sig, {})
+            _HEAD_MEMO[rk] = ent
+            if len(_HEAD_MEMO) > 4:
+                _HEAD_MEMO.popitem(last=False)
+        else:
+            _HEAD_MEMO.move_to_end(rk)
+        vals = ent[1]
+        if key not in vals:
+            vals[key] = compute()
+        return vals[key]
 
     def _git(
         self, *args: str, check: bool = True, env: dict[str, str] | None = None
@@ -416,26 +527,46 @@ class GitBinding:
     def commit_shas(self, ref: str = "HEAD") -> list[str]:
         """Commit SHAs reachable from ``ref`` (default HEAD), newest first. Empty before the
         first commit, or if ``ref`` doesn't resolve."""
-        proc = self._git("log", "--format=%H", ref, check=False)
-        if proc.returncode != 0:
-            return []  # no commits yet, or ref doesn't resolve
-        return [line for line in proc.stdout.splitlines() if line]
+        def compute() -> list[str]:
+            proc = self._git("log", "--format=%H", ref, check=False)
+            if proc.returncode != 0:
+                return []  # no commits yet, or ref doesn't resolve
+            return [line for line in proc.stdout.splitlines() if line]
+        if ref == "HEAD" or _is_full_sha(ref):
+            return list(self._memo_head(("commit_shas", ref), compute))
+        return compute()
 
     def head(self) -> str | None:
-        proc = self._git("rev-parse", "HEAD", check=False)
-        return proc.stdout.strip() if proc.returncode == 0 else None
+        def compute() -> str | None:
+            proc = self._git("rev-parse", "HEAD", check=False)
+            return proc.stdout.strip() if proc.returncode == 0 else None
+        return self._memo_head(("head",), compute)
 
     def symbolic_ref(self) -> str | None:
         """The branch HEAD points at (e.g. ``refs/heads/main``), or None in detached-HEAD
         state -- the lens's key for per-ref witness tracking (U6)."""
-        proc = self._git("symbolic-ref", "-q", "HEAD", check=False)
-        return proc.stdout.strip() if proc.returncode == 0 else None
+        def compute() -> str | None:
+            proc = self._git("symbolic-ref", "-q", "HEAD", check=False)
+            return proc.stdout.strip() if proc.returncode == 0 else None
+        return self._memo_head(("symbolic_ref",), compute)
 
     def rev_parse(self, ref: str) -> str | None:
         """Resolve any ref expression (branch, tag, `HEAD~N`, a short sha, ...) to a full sha,
         or None if it doesn't resolve."""
         proc = self._git("rev-parse", "--verify", "-q", ref, check=False)
         return proc.stdout.strip() if proc.returncode == 0 else None
+
+    def pseudo_ref_set(self, name: str) -> bool:
+        """Whether a `*_HEAD` pseudo-ref file (MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD) is
+        currently set -- one stat on the per-worktree gitdir instead of a `rev-parse` subprocess.
+        Falls back to `rev_parse` when the gitdir can't be resolved. A present-but-unresolvable
+        file reads as set, which errs toward "operation in flight" -- the safe direction for
+        every caller (they refuse to mine, never the reverse)."""
+        dirs = _git_dirs(self.repo, self.repo_key())
+        if dirs is None:
+            return self.rev_parse(name) is not None
+        gitdir, _common = dirs
+        return (gitdir / name).is_file()
 
     def parent_of(self, sha: str) -> str | None:
         """`sha`'s first parent, or None if `sha` is a root commit."""
@@ -611,24 +742,28 @@ class GitBinding:
         trailer) on surfaces that had just run this one. Widening the format measured free; the
         extra walks did not. `history()` stays a 3-tuple so the miner and every other caller are
         untouched -- only the two callers that want the extras take this."""
-        rev_range = f"{since}..{target}" if since is not None else target
-        fmt = "%H%x1f%P%x1f%s%x1f%ct%x1f%(trailers:key=" + BOOKKEEPING_KEY + ",valueonly)"
-        proc = self._git("log", "--reverse", f"--format={fmt}", rev_range, check=False)
-        if proc.returncode != 0:
-            return []
-        rows: list[tuple[str, str | None, str, int | None, bool]] = []
-        for line in proc.stdout.splitlines():
-            if not line:
-                continue
-            parts = line.split("\x1f")
-            if len(parts) < 5:
-                continue
-            sha, parents, subject, ts, trailer = parts[0], parts[1], parts[2], parts[3], parts[4]
-            first_parent = parents.split()[0] if parents.strip() else None
-            rows.append((sha, first_parent, subject,
-                         int(ts) if ts.strip().isdigit() else None,
-                         trailer.strip() == "1" or is_bookkeeping_message(subject)))
-        return rows
+        def compute() -> list[tuple[str, str | None, str, int | None, bool]]:
+            rev_range = f"{since}..{target}" if since is not None else target
+            fmt = "%H%x1f%P%x1f%s%x1f%ct%x1f%(trailers:key=" + BOOKKEEPING_KEY + ",valueonly)"
+            proc = self._git("log", "--reverse", f"--format={fmt}", rev_range, check=False)
+            if proc.returncode != 0:
+                return []
+            rows: list[tuple[str, str | None, str, int | None, bool]] = []
+            for line in proc.stdout.splitlines():
+                if not line:
+                    continue
+                parts = line.split("\x1f")
+                if len(parts) < 5:
+                    continue
+                sha, parents, subject, ts, trailer = parts[0], parts[1], parts[2], parts[3], parts[4]
+                first_parent = parents.split()[0] if parents.strip() else None
+                rows.append((sha, first_parent, subject,
+                             int(ts) if ts.strip().isdigit() else None,
+                             trailer.strip() == "1" or is_bookkeeping_message(subject)))
+            return rows
+        if (since is None or _is_full_sha(since)) and (target == "HEAD" or _is_full_sha(target)):
+            return list(self._memo_head(("history_meta", since, target), compute))
+        return compute()
 
     def commit_times(self, target: str = "HEAD") -> dict[str, int]:
         """``sha -> committer unix timestamp`` for every commit reachable from ``target``. One
@@ -636,16 +771,20 @@ class GitBinding:
         for sgt that is the save beat, so it is the wall-clock "when this work landed" that the
         alignment pipeline's temporal generator compares against a conversation turn's own
         wall-clock. Empty on an unborn/failed ref (never raises)."""
-        proc = self._git("log", "--format=%H%x1f%ct", target, check=False)
-        if proc.returncode != 0:
-            return {}
-        out: dict[str, int] = {}
-        for line in proc.stdout.splitlines():
-            if not line:
-                continue
-            sha, _, ct = line.partition("\x1f")
-            out[sha] = int(ct)
-        return out
+        def compute() -> dict[str, int]:
+            proc = self._git("log", "--format=%H%x1f%ct", target, check=False)
+            if proc.returncode != 0:
+                return {}
+            out: dict[str, int] = {}
+            for line in proc.stdout.splitlines():
+                if not line:
+                    continue
+                sha, _, ct = line.partition("\x1f")
+                out[sha] = int(ct)
+            return out
+        if target == "HEAD" or _is_full_sha(target):
+            return dict(self._memo_head(("commit_times", target), compute))
+        return compute()
 
     def graph_topology(self, target: str = "HEAD") -> dict:
         """`{"mainline": set[str], "merges": set[str]}` for every commit reachable from `target`,
@@ -654,18 +793,23 @@ class GitBinding:
         was later merged. `merges` is the commits with two or more parents (where a side branch
         folded back in). The default `sgt log` uses this to draw a narrow git-log-style spine to the
         left of each save without re-deriving topology per row."""
-        merges: set[str] = set()
-        proc = self._git("log", "--format=%H%x1f%P", target, check=False)
-        if proc.returncode == 0:
-            for line in proc.stdout.splitlines():
-                if not line:
-                    continue
-                sha, _, parents = line.partition("\x1f")
-                if len(parents.split()) >= 2:
-                    merges.add(sha)
-        fp = self._git("log", "--first-parent", "--format=%H", target, check=False)
-        mainline = set(fp.stdout.split()) if fp.returncode == 0 else set()
-        return {"mainline": mainline, "merges": merges}
+        def compute() -> dict:
+            merges: set[str] = set()
+            proc = self._git("log", "--format=%H%x1f%P", target, check=False)
+            if proc.returncode == 0:
+                for line in proc.stdout.splitlines():
+                    if not line:
+                        continue
+                    sha, _, parents = line.partition("\x1f")
+                    if len(parents.split()) >= 2:
+                        merges.add(sha)
+            fp = self._git("log", "--first-parent", "--format=%H", target, check=False)
+            mainline = set(fp.stdout.split()) if fp.returncode == 0 else set()
+            return {"mainline": mainline, "merges": merges}
+        if target == "HEAD" or _is_full_sha(target):
+            cached = self._memo_head(("graph_topology", target), compute)
+            return {"mainline": set(cached["mainline"]), "merges": set(cached["merges"])}
+        return compute()
 
     def history_backward(self, tip: str, limit: int | None = None) -> list[tuple[str, str | None, str]]:
         """``(sha, first_parent, subject)`` newest-first from ``tip`` back toward the root --
@@ -698,18 +842,24 @@ class GitBinding:
         later `record_ideal` advanced the witness past, so `_sync` never re-mined it to stamp
         provenance) at the commit that actually introduced them, so just-saved work is not dropped
         from the time-aware views."""
-        # %B is the raw body (trailers live there); \x1e separates commits, \x1f splits sha/body.
-        proc = self._git("log", "--format=%H%x1f%B%x1e", target, check=False)
-        if proc.returncode != 0:
-            return {}
-        out: dict[str, set[str]] = {}
-        for record in proc.stdout.split("\x1e"):
-            record = record.strip("\n")
-            if not record or "\x1f" not in record:
-                continue
-            sha, body = record.split("\x1f", 1)
-            out[sha.strip()] = set(parse_op_ids(body))
-        return out
+        def compute() -> dict[str, set[str]]:
+            # %B is the raw body (trailers live there); \x1e separates commits, \x1f splits
+            # sha/body.
+            proc = self._git("log", "--format=%H%x1f%B%x1e", target, check=False)
+            if proc.returncode != 0:
+                return {}
+            out: dict[str, set[str]] = {}
+            for record in proc.stdout.split("\x1e"):
+                record = record.strip("\n")
+                if not record or "\x1f" not in record:
+                    continue
+                sha, body = record.split("\x1f", 1)
+                out[sha.strip()] = set(parse_op_ids(body))
+            return out
+        if target == "HEAD" or _is_full_sha(target):
+            # Outer-dict copy only: callers read the per-commit id sets, never mutate them.
+            return dict(self._memo_head(("op_ids_by_commit", target), compute))
+        return compute()
 
     def commits_touching(self, ref: str, path: str) -> list[tuple[str, str | None]]:
         """``(sha, first_parent)`` for every commit reachable from ``ref`` that changed ``path``,

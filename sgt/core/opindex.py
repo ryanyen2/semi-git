@@ -84,44 +84,67 @@ def apply_delta(repo: str | Path, stored_ops: list[Op]) -> None:
     })
 
 
-# `_ops_dir_stat` memo keyed by the ops directory's mtime *and* its dirent count: every store
-# write lands via rename into the directory (`_write_atomic`'s `os.replace`, git's object/checkout
-# writes), and any rename/add/delete bumps the dir mtime -- so an unchanged dir mtime usually
-# proves the per-entry scan would return what it returned last time. The count is the same-tick
-# backstop: on a coarse-granularity filesystem a write can land in the same mtime tick as the
-# memoized read, leaving the dir mtime unchanged, and recounting dirents (cheap, one readdir)
-# catches any add/remove that slipped through that tick. (A count-neutral in-place rewrite within
-# the same tick still isn't caught -- but every writer renames a fresh temp file into place, so a
-# rewrite replaces a dirent and normally bumps the dir mtime; the residual needs a same-tick
-# collision, deliberately left rather than paying git-style racy-clean logic on this hot path.)
-# LRU: hits re-order, overflow evicts the oldest.
-_DIR_STAT_MEMO: "OrderedDict[str, tuple[tuple[int, int], tuple[int, int]]]" = OrderedDict()
+# `_ops_dir_stat` memo keyed by the ops directory's mtime, with git's racy-clean rule deciding
+# whether the memoized scan can be trusted without re-listing the directory: every store write
+# lands via rename into the directory (`_write_atomic`'s `os.replace`, git's object/checkout
+# writes), and any rename/add/delete stamps the dir with the writer's wall-clock mtime. So a scan
+# that *started* comfortably after the dir's mtime (`_RACY_SLACK_NS`, covering coarse filesystem
+# timestamp granularity) cannot be invalidated silently: a write landing after the scan started
+# must stamp the dir strictly newer than the memoized mtime, and the single dir stat below sees
+# it; a write stamped within the memoized tick necessarily landed before the scan started (its
+# wall clock is inside the slack window) and was therefore in the listing the scan read. Within
+# the slack window -- a scan racing the write burst it follows -- the memo is not trusted and the
+# listing re-runs, with the dirent count as the same-tick guard exactly as before. The memoized
+# entry also persists to `.sgt/local/ops_dirstat.json` once it earns trust, so the *next process*
+# (each CLI command is one) skips its first full listing too. LRU: hits re-order, overflow evicts
+# the oldest.
+_DIR_STAT_MEMO: "OrderedDict[str, tuple[int, int, tuple[int, int]]]" = OrderedDict()
+_RACY_SLACK_NS = 2_000_000_000  # > any real filesystem timestamp granularity (HFS+: 1s)
 
 
 def _ops_dir_stat(repo: Path) -> tuple[int, int]:
     """`(dirent_count, max_mtime_ns)` over `.sgt/ops/`, stat-only -- no file content reads."""
     ops_dir = Store(repo).ops_dir
+    scan_start = time.time_ns()
     try:
         dir_mtime = ops_dir.stat().st_mtime_ns
     except OSError:
         return 0, -1
     key = os.path.realpath(ops_dir)
+    memo = _DIR_STAT_MEMO.get(key)
+    if memo is not None and memo[0] == dir_mtime and memo[1] - dir_mtime > _RACY_SLACK_NS:
+        _DIR_STAT_MEMO.move_to_end(key)
+        return memo[2]
+    if memo is None:
+        rec = state.load_json(repo, "ops_dirstat", default=None)
+        if (
+            isinstance(rec, dict) and rec.get("dir_mtime_ns") == dir_mtime
+            and rec.get("scan_start_ns", 0) - dir_mtime > _RACY_SLACK_NS
+            and isinstance(rec.get("count"), int) and isinstance(rec.get("max_mtime_ns"), int)
+        ):
+            result = (rec["count"], rec["max_mtime_ns"])
+            _DIR_STAT_MEMO[key] = (dir_mtime, rec["scan_start_ns"], result)
+            return result
     # One scan feeds both the cheap count (the same-tick guard) and the per-entry stat (the
-    # expensive part the memo actually skips on a hit).
+    # expensive part the count-match reuse skips inside the slack window).
     entries = [e for e in os.scandir(ops_dir) if e.is_file()]
     count = len(entries)
-    memo = _DIR_STAT_MEMO.get(key)
-    if memo is not None and memo[0] == (dir_mtime, count):
-        _DIR_STAT_MEMO.move_to_end(key)
-        return memo[1]
-    max_mtime = -1
-    for entry in entries:
-        mtime = entry.stat().st_mtime_ns
-        if mtime > max_mtime:
-            max_mtime = mtime
-    _DIR_STAT_MEMO[key] = ((dir_mtime, count), (count, max_mtime))
+    if memo is not None and memo[0] == dir_mtime and memo[2][0] == count:
+        max_mtime = memo[2][1]
+    else:
+        max_mtime = -1
+        for entry in entries:
+            mtime = entry.stat().st_mtime_ns
+            if mtime > max_mtime:
+                max_mtime = mtime
+    _DIR_STAT_MEMO[key] = (dir_mtime, scan_start, (count, max_mtime))
     if len(_DIR_STAT_MEMO) > 8:
         _DIR_STAT_MEMO.popitem(last=False)
+    if scan_start - dir_mtime > _RACY_SLACK_NS:  # only a trustworthy scan is worth persisting
+        state.save_json(repo, "ops_dirstat", {
+            "dir_mtime_ns": dir_mtime, "count": count,
+            "max_mtime_ns": max_mtime, "scan_start_ns": scan_start,
+        })
     return count, max_mtime
 
 

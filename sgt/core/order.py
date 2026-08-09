@@ -40,6 +40,20 @@ Declared = frozenset[Edge]
 _REDUCE_CACHE: "OrderedDict[tuple, frozenset[str]]" = OrderedDict()
 _REDUCE_CACHE_MAX = 64
 
+# `is_valid_ideal`'s memo, same soundness argument as `_REDUCE_CACHE`: once every id in the set is
+# verified present, grounding and fork-freedom are pure functions of the (content-addressed) id set
+# plus `declared`. The O(ops) presence check re-runs on every call -- only the grounding + fork
+# scan is skipped -- so a swapped-out store can never resurrect a stale True. Every
+# `Ideal.from_ops` re-validates its op set, and one command constructs the same handful of ideals
+# through several views; this makes each distinct (ids, declared) pay the full check once.
+_VALID_CACHE: "OrderedDict[tuple, bool]" = OrderedDict()
+_VALID_CACHE_MAX = 64
+
+# `frontier`'s memo (see its docstring): id-set -> {symbol: tip op id}. The returned dict is
+# copied per call; the memoized one is never handed out.
+_FRONTIER_CACHE: "OrderedDict[frozenset, dict[str, str]]" = OrderedDict()
+_FRONTIER_CACHE_MAX = 32
+
 
 def chain_edges(ops: list[Op]) -> frozenset[Edge]:
     """(A, B): some symbol's after_version in A equals its before_version in B."""
@@ -454,13 +468,19 @@ def is_valid_ideal(ops: list[Op], ideal_ids, declared: Declared = frozenset()) -
     collision (add->modify->revert) that a graph-edge form mis-resolves, and rejecting an
     originless cycle that a purely-existential check would wrongly accept. Declared edges fold
     into the same grounding (an op grounds only once its declared predecessors do)."""
-    ids = set(ideal_ids)
+    ids = frozenset(ideal_ids)
     if not ids <= {op.id for op in ops}:
         return False
-    if _grounded(ids, ops, declared) != ids:
-        return False
-
-    return is_fork_free(ops, ids)
+    key = (ids, declared)
+    cached = _VALID_CACHE.get(key)
+    if cached is not None:
+        _VALID_CACHE.move_to_end(key)
+        return cached
+    result = _grounded(ids, ops, declared) == ids and is_fork_free(ops, ids)
+    _VALID_CACHE[key] = result
+    if len(_VALID_CACHE) > _VALID_CACHE_MAX:
+        _VALID_CACHE.popitem(last=False)
+    return result
 
 
 def _ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
@@ -508,8 +528,22 @@ def frontier(ideal_ids, ops: list[Op]) -> dict[str, str]:
     in-memory representation (validity, upset/downset, and diff all operate on it directly);
     this is the compact *view* the ADR's frontier-vector KTD calls for, and the one U5's fold
     and U6/U9's on-disk ref->ideal persistence should use rather than serializing full op-id
-    sets. The tip is the last op of each symbol's ordered chain (`_ordered_chains`)."""
-    return {sym: seq[-1] for sym, seq in _ordered_chains(ideal_ids, ops).items()}
+    sets. The tip is the last of each symbol's ordered chain (`_ordered_chains`).
+
+    Memoized on the id set alone (same content-addressing argument as `_REDUCE_CACHE`): chains
+    read only in-ideal ops' *footprints*, identical across every ops-list variant that carries
+    the id -- footprint-only index ops and full image-bearing ops agree. One command computes
+    the same ideal's frontier through several views; each distinct id set pays once."""
+    key = frozenset(ideal_ids)
+    hit = _FRONTIER_CACHE.get(key)
+    if hit is not None:
+        _FRONTIER_CACHE.move_to_end(key)
+        return dict(hit)
+    result = {sym: seq[-1] for sym, seq in _ordered_chains(key, ops).items()}
+    _FRONTIER_CACHE[key] = result
+    if len(_FRONTIER_CACHE) > _FRONTIER_CACHE_MAX:
+        _FRONTIER_CACHE.popitem(last=False)
+    return dict(result)
 
 
 def upset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:

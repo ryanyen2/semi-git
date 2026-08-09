@@ -370,7 +370,14 @@ def _structural_edges_at(
     cached = state.load_json(repo, "structural_edge_cache")
     if cached is not None and cached.get("head") == head:
         return [EntityEdge(**e) for e in cached["edges"]]
+    from sgt.entities import extract as _extract
+    from sgt.entities import graph as _graph_mod
+
+    _extract.attach_persistent_cache(repo)
+    _graph_mod.attach_persistent_refs_cache(repo)
     edges = build_entity_graph(gb.tree_at(head), edges_only=True).edges
+    _extract.flush_persistent_cache()
+    _graph_mod.flush_persistent_refs_cache()
     if refresh_cache:
         state.save_json(repo, "structural_edge_cache", {
             "head": head, "edges": [e.to_dict() for e in edges],
