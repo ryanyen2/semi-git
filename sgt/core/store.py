@@ -27,6 +27,7 @@ import fcntl
 import json
 import os
 import tempfile
+import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -34,10 +35,15 @@ from pathlib import Path
 
 from sgt.core.op import Attribution, Images, Op, compute_id, merge_attribution
 
-# `Store.all_ops` process memo: ops-dir realpath -> ((ops-dir mtime_ns, dirent_count), parsed ops).
-# LRU (matches the codebase's OrderedDict cache convention); the dirent count keyed alongside the
-# dir mtime is the same-tick backstop `sgt.core.opindex._ops_dir_stat` documents.
-_ALL_OPS_MEMO: "OrderedDict[str, tuple[tuple[int, int], list[Op]]]" = OrderedDict()
+# `Store.all_ops` process memo: ops-dir realpath -> ((ops-dir mtime_ns, dirent_count), parsed
+# ops, scan-start wall clock). LRU (matches the codebase's OrderedDict cache convention); the
+# dirent count keyed alongside the dir mtime is the same-tick backstop
+# `sgt.core.opindex._ops_dir_stat` documents, and the scan-start wall clock powers the same
+# racy-clean fast path documented there: a memo whose read started comfortably after the dir's
+# mtime is provably current while that mtime is unchanged, so a hit costs one dir stat instead
+# of re-listing and re-sorting ~20k dirents.
+_ALL_OPS_MEMO: "OrderedDict[str, tuple[tuple[int, int], list[Op], int]]" = OrderedDict()
+_RACY_SLACK_NS = 2_000_000_000  # > any real filesystem timestamp granularity (HFS+: 1s)
 
 _OPS_DIR = "ops"
 _LOCAL_DIR = "local"
@@ -120,23 +126,38 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
     footprint = {k: tuple(v) for k, v in payload["footprint"].items()}
     prov = payload["provenance"]
     if prov and isinstance(prov[0], dict):  # v1: a list of `{sha, session?, ...}` dicts
-        provenance = tuple(sorted(e["sha"] for e in prov))
+        # One pass, splitting off the (rare) entries that carry more than the sha: almost every
+        # witness is bare, and the per-entry `any(...)` generator this replaces dominated the
+        # 19k-op index load. A `{sha}`-only dict (len 1) provably has no attribution fields.
+        shas = []
+        attr_entries = []
+        for e in prov:
+            shas.append(e["sha"])
+            if len(e) > 1:
+                attr_entries.append(e)
+        provenance = tuple(sorted(shas))
         attribution = tuple(sorted(
             (
                 Attribution(sha=e["sha"], **{f: e.get(f) for f in _ATTR_FIELDS})
-                for e in prov
+                for e in attr_entries
                 if any(e.get(f) is not None for f in _ATTR_FIELDS)
             ),
             key=lambda a: a.sha,
-        ))
+        )) if attr_entries else ()
     else:  # v0 (every committed repo today): a list of bare SHA strings, no attribution
         provenance = tuple(prov)
         attribution = ()
-    return Op(
+    # Direct construction: `Op` is a frozen no-slots dataclass, so its generated `__init__` pays
+    # an `object.__setattr__` per field -- ~230k of them on a 19k-op index load. Filling
+    # `__dict__` in one update is the same object, minus that machinery. (If `Op` ever grows
+    # `__slots__` this raises AttributeError loudly -- switch back to the plain constructor.)
+    reqs = payload["requires"]
+    op = object.__new__(Op)
+    op.__dict__.update(
         id=payload["id"],
         footprint=footprint,
         images=images,
-        requires=frozenset(tuple(r) for r in payload["requires"]),
+        requires=frozenset(map(tuple, reqs)) if reqs else frozenset(),
         kind=payload["kind"],
         provenance=provenance,
         attribution=attribution,
@@ -146,6 +167,7 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
         derived=payload.get("derived", False),
         resolves=frozenset(payload.get("resolves", [])),
     )
+    return op
 
 
 def _deserialize(data: bytes) -> Op:
@@ -321,11 +343,16 @@ class Store:
         # backstop (a write landing in the memoized read's mtime tick leaves the dir mtime
         # unchanged); the scan that produces `names` gives the count for free, and the memo still
         # spares the expensive part -- reading and decoding every op file (images hex included).
+        scan_start = time.time_ns()
         sig = self.ops_dir.stat().st_mtime_ns
-        names = sorted(e.name for e in os.scandir(self.ops_dir) if e.is_file())
         memo_key = os.path.realpath(self.ops_dir)
         memo = _ALL_OPS_MEMO.get(memo_key)
+        if memo is not None and memo[0][0] == sig and memo[2] - sig > _RACY_SLACK_NS:
+            _ALL_OPS_MEMO.move_to_end(memo_key)
+            return list(memo[1])
+        names = sorted(e.name for e in os.scandir(self.ops_dir) if e.is_file())
         if memo is not None and memo[0] == (sig, len(names)):
+            _ALL_OPS_MEMO[memo_key] = (memo[0], memo[1], scan_start)
             _ALL_OPS_MEMO.move_to_end(memo_key)
             return list(memo[1])
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -336,7 +363,7 @@ class Store:
                 ops.append(_deserialize(raw))
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 continue  # corrupt: skipped here, surfaced by fsck
-        _ALL_OPS_MEMO[memo_key] = ((sig, len(names)), ops)
+        _ALL_OPS_MEMO[memo_key] = ((sig, len(names)), ops, scan_start)
         if len(_ALL_OPS_MEMO) > 4:
             _ALL_OPS_MEMO.popitem(last=False)
         return list(ops)

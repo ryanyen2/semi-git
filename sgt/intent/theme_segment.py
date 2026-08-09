@@ -306,14 +306,16 @@ def build_segments(repo: str | Path, recut: str | None = None) -> dict[str, list
     `GitBinding.history()`, which only reflects merged history once the merge commit exists.
     Rebuilt on demand (`sgt intent build`). Content-hash caching keeps a re-build cheap -- an
     unchanged tail window hits the cache; only a feature with new commits costs a live call."""
-    from sgt.core.store import Store
+    from sgt.core import opindex
     from sgt.lens.tree import load as load_tree
 
     repo = Path(repo)
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
     nodes = tree_result["nodes"] if tree_result else {}
-    by_id = {op.id: op for op in Store(repo).all_ops()}
+    # Footprint-only index: `_run_line` reads `op.footprint`/`op.kind` only -- segmentation never
+    # opens `.images`, and `Store.all_ops()`'s every-op decode was most of `log --refresh`.
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
     runs_by_feature = feature_runs(repo, op_leaf)
 
     def prompt_for(sha: str):

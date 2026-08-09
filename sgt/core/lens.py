@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import time
 import uuid
@@ -67,7 +68,7 @@ def merge_in_progress(gb: GitBinding) -> str | None:
     is set, or None. The one guard against mining conflict-marker bytes into an op (F26), lifted here
     from `save` so every mine-on-contact path (`revert`/`switch`/read views) shares it."""
     for pseudo, verb in _MERGE_PSEUDO_REFS:
-        if gb.rev_parse(pseudo) is not None:
+        if gb.pseudo_ref_set(pseudo):
             return verb
     return None
 
@@ -349,6 +350,101 @@ def current_ref_key(repo: str | Path) -> str | None:
     return _ref_key(GitBinding(Path(repo)))
 
 
+# -- persisted derivation stamps (`.sgt/local/derive_cache.json`) ----------------------------
+# The ideal machinery's expensive derivations -- grounding + fork-freedom (`is_valid_ideal`,
+# re-run by `Ideal.from_ops` on every construction) and provenance-set reduction
+# (`order.reduce_to_ideal`) -- are pure functions of the *content-addressed id set* they're
+# given (with the default empty declared-edge set these read paths use). A CLI command is a
+# fresh process, so the kernel's in-process memos never carry across commands, and every command
+# re-paid the same O(ops) derivations for the same unchanged ideals. These stamps persist the
+# digest of each id set that passed validation (and each reduction's dropped-set) so the *next*
+# process skips the derivation. What is NOT stamped, and re-runs live on every call, is the
+# presence check (`ids <= present`): a `git switch` can remove op files while the digest is
+# unchanged, and presence is the one input that isn't fixed by the ids themselves.
+_DERIVE_STATE: dict[str, dict] = {}  # repo_key -> {"valid": [...], "valid_set": set, "reduce": {}}
+_DERIVE_VALID_MAX = 128
+_DERIVE_REDUCE_MAX = 8
+
+
+def _ids_digest(ids) -> str:
+    h = hashlib.sha256()
+    for oid in sorted(ids):
+        h.update(oid.encode())
+        h.update(b"\n")
+    return h.hexdigest()
+
+
+def _derive_state(repo: Path) -> dict:
+    rk = os.path.realpath(repo)
+    st = _DERIVE_STATE.get(rk)
+    if st is None:
+        body = state.load_json(repo, "derive_cache", default=None)
+        if not isinstance(body, dict):
+            body = {}
+        st = {
+            "valid": [d for d in body.get("valid", []) if isinstance(d, str)],
+            "reduce": {
+                k: v for k, v in body.get("reduce", {}).items() if isinstance(v, dict)
+            },
+        }
+        st["valid_set"] = set(st["valid"])
+        _DERIVE_STATE[rk] = st
+    return st
+
+
+def _derive_record(repo: Path, st: dict) -> None:
+    """Trim to the caps (drop oldest) and persist. Only called when an entry was just added, so a
+    steady-state read never writes. Concurrent writers last-win; losing an entry only means one
+    future re-derivation -- this is a cache, `.sgt/ops` stays the only authority."""
+    st["valid"] = st["valid"][-_DERIVE_VALID_MAX:]
+    st["valid_set"] = set(st["valid"])
+    reduce_map = st["reduce"]
+    while len(reduce_map) > _DERIVE_REDUCE_MAX:
+        del reduce_map[next(iter(reduce_map))]
+    state.save_json(repo, "derive_cache", {"valid": st["valid"], "reduce": reduce_map})
+
+
+def _validated_from_ops(repo: Path, ids, ops: list) -> Ideal:
+    """`Ideal.from_ops` with the persisted validity stamp: a stamped digest skips grounding +
+    fork-freedom (fixed by the content-addressed ids, default declared edges only -- callers
+    passing explicit declared edges must use `Ideal.from_ops` directly), while presence is
+    checked live either way. An unstamped set takes the full check and earns its stamp."""
+    ids = frozenset(ids)
+    st = _derive_state(repo)
+    digest = _ids_digest(ids)
+    if digest in st["valid_set"] and ids <= {op.id for op in ops}:
+        return Ideal(op_ids=ids)
+    ideal = Ideal.from_ops(ids, ops)  # raises on an invalid set, exactly as before
+    st["valid"].append(digest)
+    st["valid_set"].add(digest)
+    _derive_record(repo, st)
+    return ideal
+
+
+def _reduced_ideal_ids(repo: Path, raw_ids, ops: list) -> frozenset[str]:
+    """`order.reduce_to_ideal` (default declared edges) with the persisted dropped-set stamp:
+    the reduction of a given present-op id set is fixed by content addressing, so only the
+    (usually tiny) dropped set is stored and the result is `present-filtered ids - dropped`."""
+    present = {op.id for op in ops}
+    key_set = frozenset(raw_ids) & present
+    st = _derive_state(repo)
+    digest = _ids_digest(key_set)
+    entry = st["reduce"].get(digest)
+    if isinstance(entry, dict) and isinstance(entry.get("ids"), list):
+        ids = frozenset(entry["ids"])
+        return ids if entry.get("side") == "kept" else key_set - ids
+    result = order.reduce_to_ideal(key_set, ops)
+    dropped = key_set - result
+    # Persist whichever side is smaller -- a mostly-linear ref drops a handful, while the
+    # maximal reduction over a store with unfinished backfills can drop most of it.
+    st["reduce"][digest] = (
+        {"side": "kept", "ids": sorted(result)} if len(result) < len(dropped)
+        else {"side": "dropped", "ids": sorted(dropped)}
+    )
+    _derive_record(repo, st)
+    return result
+
+
 def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     """Every stored op whose provenance intersects this ref's own commit ancestry -- the ref's
     ideal derived fresh from content-addressed history. Used only to *seed* the persisted
@@ -365,7 +461,7 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     ref_commits = set(gb.commit_shas())
     all_ops = opindex.index_ops(store.repo)
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
-    return set(order.reduce_to_ideal(included, all_ops))
+    return set(_reduced_ideal_ids(store.repo, included, all_ops))
 
 
 def _record_parked_forks(repo: Path, parked: list[tuple[str, str, str]]) -> None:
@@ -428,19 +524,29 @@ def _ensure_fidelity(repo: Path, gb: GitBinding, key: str, committed_ids, all_op
         state.save_json(repo, "fidelity", table)
 
 
-def ops_with_frontier_images(repo: str | Path, ideal: Ideal) -> list:
+def ops_with_frontier_images(
+    repo: str | Path, ideal: Ideal, for_paths: "set[str] | None" = None
+) -> list:
     """The footprint-only index ops, with the *frontier producers'* full ops (images included)
     substituted in -- exactly the set `fold.code` reads images from when materializing `ideal`.
     `Store.all_ops()` decodes every op's images (85%+ of the store's bytes) yet a materializing
     read only ever opens the images of the ops at the ideal's frontier, so a view that needs
     `code(ideal, ops)` plus footprint-level queries can use this and skip the full decode. Do
     NOT hand the result to anything folding a *different* ideal -- its frontier ops would carry
-    `images={}` (empty, not absent) and fold to zero-length content."""
+    `images={}` (empty, not absent) and fold to zero-length content.
+
+    `for_paths`, if given, narrows the fetch to the producers of symbols on those paths -- for a
+    caller that will fold only those paths (`fold.code(..., only_paths=for_paths)`, the backstop
+    reads). Folding any other path from such a list would hit the imageless ops, so the two
+    restrictions must always travel together."""
     from concurrent.futures import ThreadPoolExecutor
 
     repo = Path(repo)
     ops = opindex.index_ops(repo)
-    need = sorted(set(ideal.frontier(ops).values()))
+    tip = ideal.frontier(ops)
+    if for_paths is not None:
+        tip = {sym: oid for sym, oid in tip.items() if sym.split("::", 1)[0] in for_paths}
+    need = sorted(set(tip.values()))
     store = Store(repo)
 
     def _safe_get(oid: str):
@@ -475,7 +581,7 @@ def current_ideal(repo: str | Path) -> Ideal:
     key = _ref_key(gb)
     table = _load_ideal_table(repo)
     ids = frozenset(table[key]) if key is not None and key in table else _committed_ids_by_provenance(gb, store)
-    return Ideal.from_ops(ids, opindex.index_ops(repo))
+    return _validated_from_ops(repo, ids, opindex.index_ops(repo))
 
 
 def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = None) -> Ideal:
@@ -495,7 +601,7 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
     ref_commits = set(gb.commit_shas(ref))
     all_ops = opindex.index_ops(repo)
     included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
-    return Ideal.from_ops(order.reduce_to_ideal(included, all_ops), all_ops)
+    return _validated_from_ops(repo, _reduced_ideal_ids(repo, included, all_ops), all_ops)
 
 
 def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
@@ -564,7 +670,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
             # through to a full sync, which re-mines the ref and reduces the stale set to what survives.
             if cached_ids <= {op.id for op in index_ops}:
                 _ensure_fidelity(repo, gb, key, cached_ids, index_ops)
-                return Ideal.from_ops(cached_ids, index_ops)
+                return _validated_from_ops(repo, cached_ids, index_ops)
 
     # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
     # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
@@ -1180,20 +1286,28 @@ def _writes_through_symlink(repo: Path, path: str) -> bool:
     return False
 
 
-def _reproducible_content(repo: Path, all_ops: list | None = None) -> dict[str, bytes]:
+def _reproducible_content(
+    repo: Path, all_ops: list | None = None, only_paths: "set[str] | None" = None
+) -> dict[str, bytes]:
     """Every path `code()` can produce from the store's *maximal valid ideal* -- all stored ops
     reduced to a grounded, fork-free set. A path present here is recoverable, so deleting its live
     bytes is safe; a path whose current bytes are absent (e.g. a dropped add/delete/re-add fork
     tip) is not (R4). Without a caller-supplied `all_ops`, reads frontier-selectively: reduce the
     maximal ideal over the footprint-only index, then load images for just its frontier producers
-    -- the only images `code` opens -- instead of `Store.all_ops()`'s every-op decode."""
+    -- the only images `code` opens -- instead of `Store.all_ops()`'s every-op decode.
+
+    Every caller consults the result for a small known path set (the paths a delete would touch),
+    so `only_paths` narrows both the image fetch and the fold to exactly those paths -- the
+    difference between reading a handful of op files and the full maximal frontier's thousands."""
     if all_ops is None:
         index = opindex.index_ops(repo)
-        maximal = Ideal.from_ops(order.reduce_to_ideal({op.id for op in index}, index), index)
-        ops = ops_with_frontier_images(repo, maximal)
-        return code(maximal, ops)
+        maximal = _validated_from_ops(
+            repo, _reduced_ideal_ids(repo, {op.id for op in index}, index), index
+        )
+        ops = ops_with_frontier_images(repo, maximal, for_paths=only_paths)
+        return code(maximal, ops, only_paths=only_paths)
     maximal = order.reduce_to_ideal({op.id for op in all_ops}, all_ops)
-    return code(Ideal.from_ops(maximal, all_ops), all_ops)
+    return code(Ideal.from_ops(maximal, all_ops), all_ops, only_paths=only_paths)
 
 
 def materialization_skips(
@@ -1210,7 +1324,7 @@ def materialization_skips(
         if p not in materialized and not p.startswith(".sgt/")
         and (repo / p).is_file() and not _writes_through_symlink(repo, p)
     ]
-    reproducible = _reproducible_content(repo, all_ops) if to_delete else {}
+    reproducible = _reproducible_content(repo, all_ops, only_paths=set(to_delete)) if to_delete else {}
     backstop_kept = [p for p in to_delete if (repo / p).read_bytes() != reproducible.get(p)]
     return {"unmanaged": sorted(set(unmanaged)), "backstop_kept": sorted(backstop_kept)}
 
@@ -1269,7 +1383,11 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
             if reproducible is None:
                 # `None`, not `all_ops`: the reproducibility read folds the *maximal* ideal,
                 # whose frontier reaches ops our frontier-selective list carries imageless.
-                reproducible = _reproducible_content(repo, None)
+                # Restricted to the paths this loop can still ask about -- the candidates the
+                # current ideal doesn't materialize -- not the maximal frontier's full sweep.
+                reproducible = _reproducible_content(
+                    repo, None, only_paths={p for p in candidates if p not in materialized}
+                )
             (result["backstop_kept"] if head_bytes != reproducible.get(path)
              else result["drift"]).append(path)
         else:
@@ -1309,7 +1427,7 @@ def _write_working_tree(
             unmanaged.append(path)
             continue
         if reproducible is None:
-            reproducible = _reproducible_content(repo, all_ops)
+            reproducible = _reproducible_content(repo, all_ops, only_paths=set(to_delete))
         full = repo / path
         if full.read_bytes() != reproducible.get(path):
             backstop_kept.append(path)  # live bytes no valid ideal can regenerate -- keep (R4)

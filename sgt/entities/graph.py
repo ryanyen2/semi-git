@@ -75,6 +75,61 @@ _CALL_TYPES = {"call", "call_expression", "new_expression"}
 _REFS_CACHE: "OrderedDict[tuple, list[tuple[int, str]]]" = OrderedDict()
 _REFS_CACHE_MAX = 4096
 
+# Disk backing for the refs cache (`.sgt/local/refs_cache.json`), the exact counterpart of
+# `extract.py`'s persisted extraction cache (see the note there): the same attach/flush contract,
+# driven by the same owning verbs, persisting the entries the most recent `build_entity_graph`
+# pass touched.
+_REFS_PERSIST_REPO = None
+_REFS_SEEN: set[tuple] = set()  # keys touched since the last flush
+_REFS_MISSES = 0
+
+
+def attach_persistent_refs_cache(repo) -> None:
+    """Point the refs cache's disk backing at `repo`'s `.sgt/local/` and load it. Idempotent per
+    repo."""
+    global _REFS_PERSIST_REPO
+    import os
+
+    if _REFS_PERSIST_REPO is not None and os.path.realpath(_REFS_PERSIST_REPO) == os.path.realpath(repo):
+        return
+    _REFS_PERSIST_REPO = repo
+    from sgt import state
+
+    body = state.load_json(repo, "refs_cache", default=None)
+    entries = body.get("entries") if isinstance(body, dict) else None
+    if not isinstance(entries, dict):
+        return
+    for skey, rows in entries.items():
+        lang, _, hexdigest = skey.partition("\x00")
+        try:
+            key = (lang, bytes.fromhex(hexdigest))
+            refs = [(int(line), str(name)) for line, name in rows]
+        except (TypeError, ValueError):
+            continue  # one bad entry degrades to a re-parse, never an error
+        _REFS_CACHE.setdefault(key, refs)
+    while len(_REFS_CACHE) > _REFS_CACHE_MAX:
+        _REFS_CACHE.popitem(last=False)
+
+
+def flush_persistent_refs_cache() -> None:
+    """Persist every entry touched since the last flush, then reset the touched set. No-op when
+    detached or when nothing new was parsed. Called by the verbs that attached (never per-file)."""
+    global _REFS_MISSES
+    if _REFS_PERSIST_REPO is None or _REFS_MISSES == 0 or not _REFS_SEEN:
+        return
+    _REFS_MISSES = 0
+    from sgt import state
+
+    entries = {}
+    for key in _REFS_SEEN:
+        refs = _REFS_CACHE.get(key)
+        if refs is None:
+            continue
+        lang, digest = key
+        entries[f"{lang}\x00{digest.hex()}"] = [[line, name] for line, name in refs]
+    _REFS_SEEN.clear()
+    state.save_json(_REFS_PERSIST_REPO, "refs_cache", {"entries": entries})
+
 
 def _references(path: str, source: str) -> list[tuple[int, str]]:
     """``(line, callee_leaf_name)`` for every call/instantiation in the file. Content-addressed
@@ -84,6 +139,8 @@ def _references(path: str, source: str) -> list[tuple[int, str]]:
         return []
     src = bytes(source, "utf-8")
     key = (lang, hashlib.sha256(src).digest())
+    if _REFS_PERSIST_REPO is not None:
+        _REFS_SEEN.add(key)
     cached = _REFS_CACHE.get(key)
     if cached is not None:
         _REFS_CACHE.move_to_end(key)
@@ -103,6 +160,9 @@ def _references(path: str, source: str) -> list[tuple[int, str]]:
     _REFS_CACHE[key] = refs
     if len(_REFS_CACHE) > _REFS_CACHE_MAX:
         _REFS_CACHE.popitem(last=False)
+    if _REFS_PERSIST_REPO is not None:
+        global _REFS_MISSES
+        _REFS_MISSES += 1
     return refs
 
 

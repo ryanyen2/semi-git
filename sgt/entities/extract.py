@@ -45,6 +45,7 @@ and one a line-range differ cannot produce. They are in-memory identity signals,
 from __future__ import annotations
 
 import hashlib
+import os
 from collections import OrderedDict
 from dataclasses import dataclass
 
@@ -348,6 +349,74 @@ def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: by
 _EXTRACT_CACHE: "OrderedDict[tuple, list[Entity]]" = OrderedDict()
 _EXTRACT_CACHE_MAX = 4096
 
+# Disk backing for the cache (`.sgt/local/extract_cache.json`). The cache is process-level and a
+# CLI command is one process, so after any source edit the dirty mining pass re-parsed the whole
+# tree -- plus the rebirth-lookback's historical blobs -- even though every *unchanged* input's
+# extraction was computed by an earlier command: ~6s of pure repeat tree-sitter work on this
+# repo. The backing file persists the mining working set: every entry touched between the owning
+# verb's attach and its flush (the live tree's file-versions plus the lookback's stable blob
+# set). Keys are content-addressed, so staleness is structural: an edited file misses and
+# re-parses; an entry nothing touches anymore falls out at the next flush. The owning verbs
+# (`mine()`, the clustering signal build) attach and flush -- `extract_file` itself stays
+# repo-free.
+_PERSIST_REPO = None
+_PERSIST_SEEN: set[tuple] = set()  # keys touched since the last flush
+_PERSIST_MISSES = 0  # fresh parses since the last flush
+
+_ENTITY_FIELDS = ("id", "name", "file", "kind", "start_line", "end_line", "container",
+                  "content_hash", "structural_hash", "start_byte", "end_byte")
+
+
+def attach_persistent_cache(repo) -> None:
+    """Point the extraction cache's disk backing at `repo`'s `.sgt/local/` and load it. Idempotent
+    per repo; switching repos loads the new backing (stale other-repo entries already in memory
+    are harmless -- keys are content-addressed, so a hit is correct wherever it came from)."""
+    global _PERSIST_REPO
+    if _PERSIST_REPO is not None and os.path.realpath(_PERSIST_REPO) == os.path.realpath(repo):
+        return
+    _PERSIST_REPO = repo
+    from sgt import state
+
+    body = state.load_json(repo, "extract_cache", default=None)
+    entries = body.get("entries") if isinstance(body, dict) else None
+    if not isinstance(entries, dict):
+        return
+    for skey, rows in entries.items():
+        lang, _, rest = skey.partition("\x00")
+        fpath, _, hexdigest = rest.partition("\x00")
+        try:
+            key = (fpath, lang, bytes.fromhex(hexdigest))
+            ents = [Entity(**dict(zip(_ENTITY_FIELDS, row, strict=True))) for row in rows]
+        except (TypeError, ValueError):
+            continue  # one bad entry degrades to a re-parse, never an error
+        _EXTRACT_CACHE.setdefault(key, ents)
+    while len(_EXTRACT_CACHE) > _EXTRACT_CACHE_MAX:
+        _EXTRACT_CACHE.popitem(last=False)
+
+
+def flush_persistent_cache() -> None:
+    """Persist every entry touched since the last flush, then reset the touched set. No-op when
+    detached or when nothing new was parsed -- a steady-state pass over unchanged inputs reads
+    the same entries it would rewrite, so skipping the write loses nothing. Called by the verbs
+    that attached (never per-file)."""
+    global _PERSIST_MISSES
+    if _PERSIST_REPO is None or _PERSIST_MISSES == 0 or not _PERSIST_SEEN:
+        return
+    _PERSIST_MISSES = 0
+    from sgt import state
+
+    entries = {}
+    for key in _PERSIST_SEEN:
+        ents = _EXTRACT_CACHE.get(key)
+        if ents is None:
+            continue
+        fpath, lang, digest = key
+        entries[f"{lang}\x00{fpath}\x00{digest.hex()}"] = [
+            [getattr(e, f) for f in _ENTITY_FIELDS] for e in ents
+        ]
+    _PERSIST_SEEN.clear()
+    state.save_json(_PERSIST_REPO, "extract_cache", {"entries": entries})
+
 
 def extract_file(path: str, source: bytes | str, *, language: str | None = None) -> list[Entity]:
     """Parse one file's source into entities. Unsupported/unparseable -> ``[]`` (never raises).
@@ -361,6 +430,8 @@ def extract_file(path: str, source: bytes | str, *, language: str | None = None)
         return []
     src = source if isinstance(source, bytes) else source.encode("utf-8")
     cache_key = (path, lang, hashlib.sha256(src).digest())
+    if _PERSIST_REPO is not None:
+        _PERSIST_SEEN.add(cache_key)
     cached = _EXTRACT_CACHE.get(cache_key)
     if cached is not None:
         _EXTRACT_CACHE.move_to_end(cache_key)
@@ -415,6 +486,9 @@ def extract_file(path: str, source: bytes | str, *, language: str | None = None)
     _EXTRACT_CACHE[cache_key] = out
     if len(_EXTRACT_CACHE) > _EXTRACT_CACHE_MAX:
         _EXTRACT_CACHE.popitem(last=False)
+    if _PERSIST_REPO is not None:
+        global _PERSIST_MISSES
+        _PERSIST_MISSES += 1
     return out
 
 

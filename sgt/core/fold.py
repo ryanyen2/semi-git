@@ -132,9 +132,15 @@ def _fold_file(path: str, symbols: dict[str, str], by_id: dict[str, Op]) -> byte
     return b"".join(parts)
 
 
-def code(ideal: Ideal, ops: list[Op]) -> dict[str, bytes]:
+def code(ideal: Ideal, ops: list[Op], only_paths: "set[str] | None" = None) -> dict[str, bytes]:
     """Total, deterministic materialization at entity granularity (R3): every ideal
-    materializes; there is no quarantine, no confluence gate, no gated rung."""
+    materializes; there is no quarantine, no confluence gate, no gated rung.
+
+    `only_paths`, if given, restricts the fold to those paths -- for a caller that will only read
+    a known handful of entries (a backstop check on the paths a delete would touch) and whose
+    `ops` may carry images for exactly those paths' frontier producers
+    (`lens.ops_with_frontier_images(for_paths=...)`). Folding an unfetched path there would
+    silently produce zero-length content, so the restriction is correctness, not just speed."""
     by_id = {op.id: op for op in ops}
     tip = ideal.frontier(ops)
 
@@ -146,6 +152,8 @@ def code(ideal: Ideal, ops: list[Op]) -> dict[str, bytes]:
         if is_bottom(after):
             continue
         path = sym.split("::", 1)[0]
+        if only_paths is not None and path not in only_paths:
+            continue
         by_path.setdefault(path, {})[sym] = op_id  # anchors stay in a live path's set for ordering
         if is_content_bearing(sym):
             content_paths.add(path)

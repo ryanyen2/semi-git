@@ -73,7 +73,16 @@ def tool_state(repo_path: str, args: dict) -> dict:
     from sgt.core.lens import get
 
     get(repo_path)
-    return state_view(repo_path, full=bool(args.get("full", False)))
+    full = bool(args.get("full", False))
+    view = state_view(repo_path, full=full)
+    if not full:
+        # Transport-level compaction, not a view change: the canonical projection keeps its
+        # schema (CLI `--json` parity), but over MCP the full covered/derived path lists were
+        # ~75% of the payload (~1200 tokens on this repo) and an orienting agent needs the
+        # counts; `full=true` restores the lists.
+        view["covered_path_count"] = len(view.pop("covered_paths"))
+        view["derived_path_count"] = len(view.pop("derived_paths"))
+    return view
 
 
 def tool_diff(repo_path: str, args: dict) -> dict:
@@ -267,9 +276,10 @@ def tool_now(repo_path: str, args: dict) -> dict:
     human: `working_on` carries the user's own prompt, so an agent resuming reads what was actually
     asked rather than inferring it from a diff."""
     from sgt.api import now_view
-    from sgt.core.lens import get
 
-    get(repo_path)
+    # No leading `get()`: `now_view`'s default `include_preview=True` already runs the one
+    # mine-on-contact step (`save_preview_view` calls `get`), and a second sync per tool call
+    # re-pays the dirty-tree fingerprint for nothing.
     return now_view(repo_path)
 
 
@@ -383,11 +393,11 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
     # cheaply. An agent that genuinely needs the raw join can shell out to `sgt log --json` and page
     # it itself. Please don't re-add it without a compact, paged shape.
     "sgt_status": (
-        "The current ref's ideal: covered paths, entity-granularity coverage fraction, and the "
-        "async oracle's verdict (if `.sgt/oracle.json` is configured). Compact by default "
-        "(frontier_count/entity_path_count instead of the full per-symbol frontier map and "
-        "entity_paths list); pass full=true to restore them.",
-        _schema({"full": {"type": "boolean", "description": "restore the full frontier map and entity_paths list"}}, []),
+        "The current ref's ideal: entity-granularity coverage fraction, covered/derived path "
+        "counts, and the async oracle's verdict (if `.sgt/oracle.json` is configured). Compact "
+        "by default (counts instead of the per-symbol frontier map and the covered/derived/"
+        "entity path lists); pass full=true to restore the lists.",
+        _schema({"full": {"type": "boolean", "description": "restore the frontier map and the covered/derived/entity path lists"}}, []),
         tool_state,
     ),
     "sgt_diff": (
