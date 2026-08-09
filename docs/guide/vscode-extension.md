@@ -6,7 +6,7 @@ It also runs your day-to-day git commands for you: switch, save, undo, sync, pus
 you never have to leave VS Code for those. It never edits your code directly. It only calls
 `sgt`'s read commands and its commands for features, kernel state, and git.
 
-An activity bar container called `semi-git` holds four tree views: Features, Forks, Changes, and
+An activity bar container called `semi-git` holds five tree views: Now, Features, Forks, Changes, and
 Compositions. A Composition Workbench panel shows the same data in a full window, with a tree and
 timeline, an inspector, and a panel that shows your files as they looked at any point you pick. If
 a workspace has no `sgt` store yet, the extension still activates. The Features view shows an
@@ -31,13 +31,13 @@ vsce package` and install the `.vsix` file. The extension activates in any works
 | --- | --- |
 | Feature blame | A colored tint on each line, based on the feature that owns it |
 | Composition Workbench | The feature tree and a timeline of commits, with an inspector that shows a feature's code at any point you pick, and a preview before any action that changes state |
-| Features, Forks, Changes, and Compositions (activity bar) | The feature tree, open forks with a count badge, drift and unreviewed edits, and active sessions and proposals |
+| Now, Features, Forks, Changes, and Compositions (activity bar) | What needs you and the one next action, the feature tree, open forks with a count badge, changes no plan predicted, and active sessions and proposals |
 | Plan status | Lines that match or drift from an active plan you started with `sgt plan` |
 | Revert preview | A read-only preview of what reverting a feature would change, before you commit to it |
 | Git bridge | Commands and a status bar item for switch, save, undo, sync, push, and land |
 | Fork resolution | A side-by-side view of a fork's two versions, walking you through merge, edit, and land |
 | Hovers, diagnostics, and inlay hints | A hover on each symbol showing its feature, why it was grouped that way, and what else it is coupled to. A hint on drifted code, a warning on forked code, and an optional inline note showing a symbol's feature and how many edits it has |
-| Trust queue and proposal review | Mark edits as reviewed from the Changes view, land part of a proposal, or publish one as a GitHub PR from the Compositions view |
+| Proposal review | Land part of a proposal, or publish one as a GitHub PR, from the Compositions view |
 
 ## A plain walkthrough
 
@@ -63,14 +63,17 @@ feature selected and spotlit, so code → graph is one click (the command palett
 
 ### 3. Check what is new
 
-Click the `semi-git` icon in the activity bar. You will see four lists:
+Click the `semi-git` icon in the activity bar. You will see five lists:
 
+- **Now**, the short answer to "what should I do next": edits not saved yet, anything that needs a
+  decision from you, the last few saves, and a single next action whose row runs the command for
+  you.
 - **Features**, everything semi-git knows about, shown as a tree where bigger areas contain
   smaller ones.
 - **Forks**, places where two different versions of the same code disagree and need a decision
   from you. This is empty most of the time.
-- **Changes**, edits that have not been checked in yet, files semi-git does not understand yet,
-  and a queue of edits waiting for someone to look them over.
+- **Changes**, two read-only lists: **Unplanned changes**, edits semi-git found that no plan of
+  yours predicted, one row per symbol, and **Untracked files**, paths it does not understand yet.
 - **Compositions**, your branches, any in-progress planning sessions, and proposals waiting to be
   merged in.
 
@@ -132,10 +135,11 @@ fork is open, and tells you which one.
 
 ### 9. Review what an agent, or a teammate, did
 
-Open **Changes** in the sidebar. Anything semi-git picked up automatically that was not part of an
-active plan shows up as drift. Right-click a line flagged this way in the editor and use the
-quick fix to save it and clear the flag. The trust queue below it lists edits grouped by who or
-what made them. Right-click a group and choose **Acknowledge** once you have looked it over.
+Open **Changes** in the sidebar. Anything semi-git picked up that was not part of an active plan
+shows up under **Unplanned changes**, one row per symbol; clicking a row jumps to that code. This is
+the short list to read after an agent run: not the whole diff, only the parts that fall outside what
+you asked for. Nothing here is a chore to tick off — you act on it by editing code. In the editor,
+code that has drifted from your last save also gets a hint with a quick fix that saves it.
 
 Under **Compositions**, a proposal, a bundle of finished work waiting to be merged in, has two
 right-click actions: **Land Proposal**, which merges it in and, if it covers more than one
@@ -172,6 +176,18 @@ tree and timeline on one side, and an inspector on the other. It reads one combi
 - A button in the title bar lets you pick a different branch or active session to view. Picking
   one reloads the inspector's code panel at that point. The status chip next to it mirrors your
   current build and test status.
+
+Anything not done yet gets its own place on the same axis rather than a badge. When you have
+uncommitted edits or an active plan with steps still open, a vertical `now` rule appears with a
+faintly washed band to the right of it, and each pending thing is drawn there as an ordinary card in
+its feature's color. Two kinds, told apart by their outline and not by a second color: a filled,
+slowly pulsing card is real edits sitting on disk that will land on your next save, and a hollow,
+still card is a plan step someone intends where no code exists yet. Each card carries the step's
+name; hovering shows its reason and the symbols it is predicted to touch, and clicking selects that
+step in the inspector. If the pane is too narrow to name every card, the extras collapse into a
+single named stack card rather than shrinking into unreadable stubs. The band is absent when nothing
+is pending, so an idle repo keeps exactly the axis it had. `sgt log --map` draws the same band in the
+terminal, past a `┊` rule.
 
 Hovering a row or a connecting line dims everything else and highlights what you are looking at
 and what it depends on; the time-axis ticks where that feature was actually worked on brighten
@@ -263,11 +279,7 @@ An inlay hint, off by default (`sgt.inlayHints.enabled`), adds a short note afte
 definition showing its feature and how many edits it has, for when you want that context without
 hovering or opening the workbench.
 
-### Trust queue and proposal review
-
-The Changes view's trust queue lists edits grouped by where they came from, such as an agent
-session or a git author. **semi-git: Acknowledge**, on a group or a single edit, marks it as
-reviewed, with an optional note, so it stops showing up as pending.
+### Proposal review
 
 In the Compositions view, a proposal has two right-click actions. **Land Proposal** merges it in.
 If the proposal spans more than one feature, you get a checklist to land a subset instead of the
