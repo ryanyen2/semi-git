@@ -78,11 +78,11 @@ propose candidates and previews each one before applying anything. See
 ## For coding agents
 
 `sgt mcp` runs a stdio MCP server so an agent can call `sgt` directly instead of running it as a
-shell command. It exposes 14 tools today: `sgt_init`, `sgt_log`, `sgt_status`,
-`sgt_diff`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`, `sgt_advanced_oracle_run`,
-`sgt_plan_intake`, `sgt_checkpoint`, `sgt_recall`, `sgt_drift`, and `sgt_plan_done`. An agent using
-MCP can inspect state, recall why existing code is the way it is, run the plan → checkpoint → drift
-loop, and do symbol-level revert and restore. The
-commands for working with other people (`sync`, `land`, `merge-op`, `session`, `propose`) have no
-MCP tool yet, so those still need to run from the terminal. See [User workflows](workflows.md) for
-the full picture.
+shell command. It exposes 17 tools today: `sgt_init`, `sgt_now`, `sgt_log`, `sgt_status`, `sgt_show`,
+`sgt_diff`, `sgt_save`, `sgt_advanced_fsck`, `sgt_revert`, `sgt_restore`,
+`sgt_advanced_oracle_run`, `sgt_plan_intake`, `sgt_checkpoint`, `sgt_recall`, `sgt_drift`,
+`sgt_plan_done`, and `sgt_plan_adopt`. An agent using MCP can orient itself, inspect state, recall
+why existing code is the way it is, run the plan → checkpoint → drift loop, save its own work, and
+do symbol-level revert and restore. The commands for working with other people (`sync`, `land`,
+`merge-op`, `session`, `propose`) have no MCP tool yet, so those still need to run from the
+terminal. See [User workflows](workflows.md) for the full picture.
