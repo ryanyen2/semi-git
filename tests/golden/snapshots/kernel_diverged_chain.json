@@ -2,7 +2,7 @@
   "blame_view": {
     "covered": true,
     "features": {
-      "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1": {
+      "f-0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271": {
         "label": "base slugify"
       }
     },
@@ -10,7 +10,7 @@
     "spans": [
       {
         "end_line": 2,
-        "feature_id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
+        "feature_id": "f-0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271",
         "label": "base slugify",
         "sessions": [],
         "start_line": 1,
@@ -22,10 +22,10 @@
     "by_symbol": {
       "slugify.py::slugify": {
         "only_in_a": [
-          "a3a3fbd62c6330f6e1d33d22e2e9ca47bf44652ee654c50810aa824d25c18c49"
+          "bac2657449ecaa02f92cdf8bebd8b3810e12aff30bb79d34f0a471ce2dbc9cea"
         ],
         "only_in_b": [
-          "f371306679b4493fc3b0060ea0b568060a22112ecae594c1e58cacdbad857ada"
+          "0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271"
         ]
       }
     },
@@ -39,14 +39,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1"
+        "feature_id": "f-0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "slugify.py",
-        "id": "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
+        "id": "f-0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271",
         "kind": "feature",
         "label": "base slugify",
         "members": [
@@ -63,7 +63,7 @@
       }
     ],
     "roots": [
-      "f-197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1"
+      "f-0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271"
     ],
     "sync_status": {
       "complete": true,
@@ -79,31 +79,7 @@
     },
     "ops": [
       {
-        "id": "197e92f05a6c9468d3de89fddf1cab13ba1ea0b09fc34baa198852b07fed21d1",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "slugify.py::slugify"
-        ]
-      },
-      {
-        "id": "2f72ded9db8c7332e8be77e94edd97b4980486069d1838cee8b6f979dc0fc782",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "slugify.py::__anchor__::slugify"
-        ]
-      },
-      {
-        "id": "7d087528703c4b4fd5905f8b6ff6efad3fddece001db105a33a84fe93632ceb2",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "slugify.py::__residue__::slugify"
-        ]
-      },
-      {
-        "id": "a3a3fbd62c6330f6e1d33d22e2e9ca47bf44652ee654c50810aa824d25c18c49",
+        "id": "0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271",
         "intent": null,
         "kind": "rework",
         "symbols": [
@@ -111,7 +87,7 @@
         ]
       },
       {
-        "id": "cf0e38dccf6b847d087bfd6189432318ac857a3a59ea185a3dac7e25f9b8dda8",
+        "id": "23cdd075582db80d7ef800e22a315e29e79fc6567b6ed18761aa7191ef6128e4",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -119,11 +95,35 @@
         ]
       },
       {
-        "id": "f371306679b4493fc3b0060ea0b568060a22112ecae594c1e58cacdbad857ada",
+        "id": "83071043df5fb2f7a6d84b2bb5d0c9cdd494dbac2dd9a7cd7fec74c9c0e5d01d",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "slugify.py::slugify"
+        ]
+      },
+      {
+        "id": "94681116b73789155610150b859648ebcbddd33490820e9e2d0ce6ae4091232d",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "slugify.py::__residue__::slugify"
+        ]
+      },
+      {
+        "id": "bac2657449ecaa02f92cdf8bebd8b3810e12aff30bb79d34f0a471ce2dbc9cea",
         "intent": null,
         "kind": "rework",
         "symbols": [
           "slugify.py::slugify"
+        ]
+      },
+      {
+        "id": "fa19a62eb22ce6f19556ad762c52d933d65a588a91381881b43628f149ea98fc",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "slugify.py::__anchor__::slugify"
         ]
       }
     ],

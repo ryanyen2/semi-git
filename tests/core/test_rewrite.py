@@ -335,8 +335,12 @@ def test_revert_frontier_keep_all_drafts_a_hollow_per_blast_and_carries_every_tr
 
 
 def test_revert_frontier_keep_none_is_a_plain_full_upset_removal(tmp_path):
-    """An empty kept-set degenerates to `plan_revert`: no continuation hollows, nothing carried,
-    the full up-set removed."""
+    """An empty kept-set degenerates to a full up-set removal: no continuation hollows, nothing
+    carried, everything that loses grounding removed.
+
+    That is `plan_revert(take_dependents=True)`, not the plain default. Since the forward-
+    subtraction default, a bare `plan_revert` keeps its dependents and splices them, so its
+    `removed` set is empty here -- the two verbs stopped being the same operation."""
     from sgt.core import verbs
 
     repo = _fan_repo(tmp_path)
@@ -347,7 +351,8 @@ def test_revert_frontier_keep_none_is_a_plain_full_upset_removal(tmp_path):
     assert draft.ok
     assert draft.hollow_ids == ()
     assert draft.meta["carry_forward"] == []
-    assert set(draft.meta["removed_ids"]) == set(verbs.plan_revert(repo, helper_op.id).removed)
+    blanket = verbs.plan_revert(repo, helper_op.id, take_dependents=True)
+    assert set(draft.meta["removed_ids"]) == set(blanket.removed)
 
 
 def test_revert_frontier_keeping_only_a_transitive_dependent_drafts_no_hollow(tmp_path):

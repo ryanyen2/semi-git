@@ -31,16 +31,32 @@ def _feature(result):
 # -- safety ------------------------------------------------------------------------------------
 
 
+# Pure derived caches: a read is allowed to refresh them, because every read mines on contact and
+# the whole point of these files is to make the next read cheap. `ops_dirstat` in particular is
+# written on a wall-clock condition (`opindex._ops_dir_stat` only persists a scan it can prove is
+# not racy, more than two seconds after the last write to `.sgt/ops/`), so hashing it made this
+# test pass or fail on how long the fixture happened to take.
+_DERIVED_CACHES = frozenset({
+    "local/ops_dirstat.json", "local/derive_cache.json", "local/extract_cache.json",
+    "local/label_cache.json", "local/refs_cache.json", "local/intent_cache.json",
+    "local/sync_cache.json", "local/op_index.json", "local/structural_edges.json",
+    "local/fused_snapshot.json",
+})
+
+
 def test_show_writes_nothing(tmp_path):
     """`show` is a read. Pinned by hashing every file under `.sgt/` before and after: the consequence
     number comes from `plan_revert_op_set`, and a plan that leaked a write would make the safe
-    pre-flight check itself destructive."""
+    pre-flight check itself destructive. Derived caches are excluded -- what must not move is the
+    op store, the ideal, and the journal."""
     repo, result = _repo(tmp_path)
     sgt_dir = repo / ".sgt"
 
     def snapshot():
-        return {p.relative_to(sgt_dir).as_posix(): p.read_bytes()
-                for p in sorted(sgt_dir.rglob("*")) if p.is_file()}
+        return {rel: p.read_bytes()
+                for p in sorted(sgt_dir.rglob("*")) if p.is_file()
+                for rel in [p.relative_to(sgt_dir).as_posix()]
+                if rel not in _DERIVED_CACHES}
 
     before = snapshot()
     api.show_view(repo, _feature(result))

@@ -263,7 +263,7 @@ def test_render_map_lists_positioned_checkpoint_chips_and_drops_the_f_tag():
     assert "scaffold" in chips and "refine" in chips         # checkpoints listed by name (own line)
     assert "@0" in chips and "@1" in chips                   # ...led by their @n revert handle
     assert any("edit density" in ln for ln in lines)         # legend explains the bar
-    assert any("columns don't align" in ln for ln in lines)  # legend states rows pack their own timeline
+    assert any("shared commit axis" in ln for ln in lines)   # legend states columns line up across rows
     # no segments -> no chips
     plain = render_graph_lines(m, _grid((fid, 0)), color=False)
     plain_lane = next(ln for ln in plain if "aaaaaaaa" in ln)
@@ -281,14 +281,18 @@ def test_render_car_draws_tier_brackets():
     assert _render_car(th, 6, "#abcdef", color=False).startswith("(")
 
 
-def test_time_bar_packs_a_lanes_own_long_gap_to_the_collapse_marker():
-    """Per-feature packing: two checkpoints far apart in commit-time sit back-to-back on the lane's
-    strip, separated by a single `┄` (the long gap it skipped) -- NOT a wide dead run of `·` drawn to
-    scale. Regression for the 'sparse lanes are unreadable slivers flung across the strip' report: the
-    dead history between a lane's checkpoints is packed away, so both blocks stay full-height and near."""
+def test_time_bar_draws_a_lanes_gap_to_scale_on_the_shared_axis():
+    """A lane that touched commit 0 and commit 199 marks both ends of the strip, with the quiet
+    stretch between them left blank.
+
+    This used to pack the two checkpoints back to back with a `┄` standing in for the skipped
+    history, which reads one feature's life well but makes the map unreadable as a whole: every row
+    became its own clock, so no two rows could be compared. Drawing to scale is what lets a column
+    mean the same thing in every row.
+    """
     fid = "f-cccccccccc"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
-    # 200 commits; the lane touches only commit 0 and commit 199 -- a long gap it skipped.
+    # 200 commits; the lane touches only commit 0 and commit 199 -- a long quiet stretch between.
     grid = {"commits": [{"index": i} for i in range(200)], "commit_count": 200,
             "cells": [{"feature_id": fid, "commit_index": 0, "op_ids": ["o0"], "op_count": 1,
                        "kinds": {"add": 1}, "fidelity": "full"},
@@ -298,10 +302,11 @@ def test_time_bar_packs_a_lanes_own_long_gap_to_the_collapse_marker():
             _seg(fid, 1, ["o1"], 199, 199, tier="co-changed")]
     lines = render_graph_lines(m, grid, segs, color=False)
     lane = next(ln for ln in lines if "cccccccc" in ln)
-    bar = lane[lane.index("cccccccc"):]
-    assert "┄" in bar                    # the long skipped gap is one collapse marker...
-    assert "·" * 8 not in bar            # ...not a wide dead run drawn to scale
-    assert "█" in bar                    # both checkpoints render as full-height blocks
+    bar = lane[lane.index("cccccccc") + 8:]
+    marks = [i for i, ch in enumerate(bar) if ch in "▁▂▃▄▅▆▇█"]
+    assert len(marks) == 2                       # one block per touched commit
+    assert marks[1] - marks[0] > 8               # drawn to scale, not packed together
+    assert set(bar[marks[0] + 1:marks[1]]) == {" "}  # the quiet stretch is blank
 
 
 def test_render_links_hidden_by_default_and_shown_with_show_links():
@@ -408,10 +413,9 @@ def test_min_unique_prefixes_grow_until_the_prefix_is_unique():
 
 
 def test_map_density_bar_positions_checkpoints_by_commit_time():
-    """The map density bar packs a lane's checkpoints left→right, so two checkpoints far apart in
-    commit-time read as two density blocks separated by the gap the lane skipped -- the gap is the
-    boundary, not a `│` separator (which the merged view dropped). A long skipped gap reads as the
-    `┄` collapse marker (a short one a plain `·`)."""
+    """The map density bar places each checkpoint at its own commit's column, so two checkpoints far
+    apart in commit-time read as two density blocks with blank columns between them -- the gap is
+    the boundary, not a `│` separator (which the merged view dropped)."""
     fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
@@ -420,9 +424,9 @@ def test_map_density_bar_positions_checkpoints_by_commit_time():
     lane = next(ln for ln in lines if fid[2:10] in ln)  # handle is bare hex (no `f-`)
     pre = lane.split("  @")[0]                      # handle + label + density bar, before the @n chips
     assert "│" not in pre                           # no rewind-boundary separator anymore
-    assert "█" in pre                               # a positioned density bar
-    first, last = pre.index("█"), pre.rindex("█")
-    assert any(ch in pre[first:last] for ch in "·┄")  # a quiet span sits between the two checkpoints
+    marks = [i for i, ch in enumerate(pre) if ch in "▁▂▃▄▅▆▇█"]
+    assert len(marks) >= 2                          # a positioned density bar
+    assert set(pre[marks[0] + 1:marks[-1]]) - set("▁▂▃▄▅▆▇█") == {" "}  # quiet columns, blank
 
 
 # ── feedforward verb-preview graph ───────────────────────────────────────────────────────────────
@@ -821,3 +825,48 @@ def test_render_rail_group_focus_hides_out_of_group_plan_ghosts():
     text = "\n".join(render_rail_lines(m, grid, color=False, only_features={"fa", "fb"}, group_label="Comms"))
     assert "in group step" in text
     assert "out of group step" not in text
+
+
+def _lane_rows(lines):
+    """The lane rows of a rendered map, ANSI stripped -- the rows a reader scans down."""
+    import re
+    plain = [re.sub(r"\x1b\[[0-9;]*m", "", ln) for ln in lines]
+    return [ln for ln in plain if re.match(r"^\s+[▸ ][◈●]", ln)]
+
+
+def test_map_columns_line_up_across_rows_whatever_the_handle_width():
+    """Every lane row occupies the same columns, so the map can be read downward.
+
+    The handle is a short `N9` on a meta lane and an 8-char hex on a feature lane. Left unpadded,
+    that difference shifted the label, the bar, and the chip line by several columns on every row,
+    which is what made the map read as noise even though each row was individually correct.
+    """
+    meta, feat = "N9", "f-aaaaaaaaaa"
+    m = {"roots": [meta, feat],
+         "nodes": [_node(meta, None, [], kind="meta"), _node(feat, None, [])], "edges": []}
+    hist = _grid((meta, 10), (feat, 10))
+    segs = [_seg(meta, 0, ["o0"], 10, 10, label="one"), _seg(feat, 0, ["o1"], 10, 10, label="two")]
+
+    rows = _lane_rows(render_graph_lines(m, hist, segs, color=False))
+    assert len(rows) == 2
+    assert len({len(r) for r in rows}) == 1, "lane rows must occupy identical column ranges"
+
+
+def test_map_draws_every_lane_on_one_shared_commit_axis():
+    """Two features that were edited at the same commit must mark the same column, and a feature
+    edited much later must mark a later one. Before this, each lane packed its own checkpoints from
+    the left, so column N meant a different point in time on every row."""
+    a, b = "f-aaaaaaaaaa", "f-bbbbbbbbbb"
+    m = {"roots": [a, b], "nodes": [_node(a, None, []), _node(b, None, [])], "edges": []}
+    # a and b both edit at commit 10; b also edits at 190, far to the right on a 200-commit axis.
+    hist = _grid((a, 10), (b, 10), (b, 190))
+    segs = [_seg(a, 0, ["o0"], 10, 10, label="early"),
+            _seg(b, 0, ["o1"], 10, 10, label="early"),
+            _seg(b, 1, ["o2"], 190, 190, label="late")]
+
+    rows = _lane_rows(render_graph_lines(m, hist, segs, color=False))
+    marks = [[i for i, ch in enumerate(r) if ch in "▁▂▃▄▅▆▇█"]
+             for r in rows]
+    assert all(marks), "each lane drew at least one density block"
+    assert marks[0][0] == marks[1][0], "the shared commit is the same column in both rows"
+    assert marks[1][-1] > marks[0][-1], "a later commit sits further right"
