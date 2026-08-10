@@ -1,9 +1,19 @@
 {
   "name": "semi-git",
   "displayName": "semi-git (sgt)",
-  "description": "Read your code by feature, not by diff: semantic blame, a feature DAG, and one-click plug-in/plug-out, in-situ.",
+  "description": "See which feature owns each line of code, and remove or restore one feature's work without touching the rest.",
   "version": "0.1.0",
   "publisher": "semi-git",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ryanyen2/semi-git.git",
+    "directory": "editor/vscode"
+  },
+  "homepage": "https://github.com/ryanyen2/semi-git",
+  "bugs": {
+    "url": "https://github.com/ryanyen2/semi-git/issues"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },

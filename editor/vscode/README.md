@@ -47,10 +47,21 @@ so on — is in `docs/guide/vscode-extension.md` in the main repo.
 
 ## Requirements
 
-- The [`sgt`](../../README.md) CLI on your `PATH` (or set `sgt.path`).
-- A workspace initialized with `sgt init`. A workspace with no `.sgt` store yet still activates the
-  extension — the Features view shows an **Initialize semi-git** welcome action instead of an
-  error.
+Install the `sgt` command, then point this extension at it.
+
+```bash
+uv tool install semi-git
+cd your-project
+sgt init --agent
+```
+
+`sgt init --agent` writes `.vscode/settings.json` with an absolute `sgt.path`. The absolute path
+matters, because a VS Code started from your Dock or Applications folder inherits the login shell's
+PATH rather than your terminal's, and `sgt` usually lives in a directory only your terminal knows
+about. If the extension can't run `sgt`, it tells you and offers to open the setting.
+
+A workspace with no `.sgt` store yet still activates the extension. The Features view shows an
+**Initialize semi-git** welcome action instead of an error.
 
 ## Settings
 
