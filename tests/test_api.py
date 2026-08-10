@@ -1418,9 +1418,14 @@ def _per_file_leaf_tree(tmp_path):
 
 def test_focus_subgraph_revert_splits_target_blast_and_foundation_with_before_after_counts(tmp_path):
     """The keystone morph contract: a revert's focus subgraph names exactly the affected features,
-    one spotlight `target`, the rest of the shrinking leaves as `blast`, and the live prerequisite the
-    revert is built on as an unchanged `foundation` -- each carrying its op-count before and after, so
-    a renderer can dim the field and morph just these nodes instead of listing 64 op-ids."""
+    one spotlight `target`, and the live prerequisite the revert is built on as an unchanged
+    `foundation` -- each carrying its op-count before and after, so a renderer can dim the field and
+    morph just these nodes instead of listing 64 op-ids.
+
+    Since the forward-subtraction default, the acted-on leaf *grows* rather than shrinks: the
+    revert appends compensating `prune` ops instead of dropping the target, so the dependents that
+    used to appear as shrinking `blast` leaves now survive untouched and never enter the subgraph.
+    The pane still has to name the leaf that changed, which is what this pins."""
     from sgt.api import map_view, verb_preview_view
 
     repo, ops = _per_file_leaf_tree(tmp_path)
@@ -1438,13 +1443,13 @@ def test_focus_subgraph_revert_splits_target_blast_and_foundation_with_before_af
     roles = [n["role"] for n in focus["nodes"]]
     assert roles.count("target") == 1  # exactly one spotlight node
     target = next(n for n in focus["nodes"] if n["role"] == "target")
-    assert target["ops_after"] < target["ops_before"]  # the acted-on leaf shrinks
-    assert all(n["ops_after"] < n["ops_before"] for n in focus["nodes"] if n["role"] == "blast")
+    assert target["feature_id"] == "f-b"  # the leaf owning the symbol the user named
     assert set(roles) <= {"target", "blast", "foundation"}
 
-    # the per-node deltas account for exactly the reverted ops (nothing added on a revert).
-    total_dropped = sum(n["ops_before"] - n["ops_after"] for n in focus["nodes"])
-    assert total_dropped == len(view["removed"])
+    # The per-node deltas account for exactly the ops the plan moves. The compensating ops the
+    # subtraction mints must be attributed to a feature, or the pane renders empty.
+    net = sum(n["ops_after"] - n["ops_before"] for n in focus["nodes"])
+    assert net == len(view["added"]) - len(view["removed"]) > 0
 
     # edges are the map's cross-feature edges restricted to focus members; context is the rest.
     fids = set(by_fid)

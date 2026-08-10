@@ -553,12 +553,18 @@ def _frontier_rows(repo, preview) -> list[dict]:
     if target is None:
         return []
     declared = lens._load_declared(repo)
-    removed = preview.removed
-    direct = {b for a, b in order.reference_edges(ops) if a == target and b in removed}
+    # The up-set, not `preview.removed`. Since the forward-subtraction default, a plain revert
+    # keeps its dependents (splicing them where it can), so `removed` is usually just the target
+    # and would make this list empty -- which read as "nothing depends on this" when the truth is
+    # "everything that depends on this survives by default". The checklist's job is the opposite
+    # question: which dependents COULD you take down with it. That set is the up-set, the same one
+    # `--keep-dependents` operates on, so it is computed here directly.
+    upset = order.upset_in(target, preview.before_ids, ops, declared) - {target}
+    direct = {b for a, b in order.reference_edges(ops) if a == target and b in upset}
 
     rows = [
         {"op_id": oid, "bucket": "blast" if oid in direct else "carry", "toggleable": True}
-        for oid in sorted(removed) if oid != target
+        for oid in sorted(upset)
     ]
     foundation = order.downset_in(target, preview.before_ids, ops, declared) - {target}
     rows += [{"op_id": oid, "bucket": "foundation", "toggleable": False} for oid in sorted(foundation)]
@@ -611,9 +617,15 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     touched symbol, then to the raw target. Carry is never named."""
     verb = projected.get("verb", "")
     target = projected.get("target")
+    # `__anchor__`/`__residue__` are the miner's own bookkeeping symbols, and they sort ahead of
+    # the real one in the same file. Naming one here put "b.py::__anchor__::user will break" in
+    # front of a user, which reads as an internal leak rather than a consequence, so the fallback
+    # skips them and only uses one if a preview genuinely touched nothing else.
+    touched = projected.get("affected_symbols") or []
+    real = [s for s in touched if "::__" not in s]
     primary = (
         target if target and "::" in target
-        else (projected.get("affected_symbols") or [None])[0] or target or "this"
+        else (real or touched or [None])[0] or target or "this"
     )
     undo = ("Undo-able." if projected.get("reversible", _reversible(verb))
             else "Not auto-undoable — review carefully.")
@@ -754,12 +766,35 @@ def focus_subgraph(preview, repo, *, so_what: str = "") -> dict:
     so the renderer falls back to the ``so_what`` headline alone."""
     from collections import Counter
 
+    from sgt.core.store import Store
     from sgt.lens.tree import load as load_tree
 
     op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
 
+    # A forward-subtracting revert mints compensating `rework` ops rather than dropping the target
+    # (`sgt.core.subtract`), and those ops cannot be in `op_leaf` -- the tree is built from mined
+    # history, and they have not been committed yet. Looking them up and missing meant every node
+    # fell out and the consequence pane rendered empty for exactly the reverts that need it most.
+    # A splice rewrites one symbol, so it belongs to whichever feature owns that symbol today.
+    sym_feature: dict[str, str] = {}
+    new_ops = getattr(preview, "new_ops", ()) or ()
+    if new_ops:
+        for op in Store(repo).all_ops():
+            fid = op_leaf.get(op.id)
+            if fid is not None:
+                for sym in op.footprint:
+                    sym_feature[sym] = fid
+
+    def feature_of(op_id: str, op=None):
+        fid = op_leaf.get(op_id)
+        if fid is not None:
+            return fid
+        return next((sym_feature[s] for s in (op.footprint if op else ()) if s in sym_feature), None)
+
     def per_feature(op_ids) -> Counter:
-        return Counter(op_leaf[o] for o in op_ids if o in op_leaf)
+        by_new = {op.id: op for op in new_ops}
+        fids = (feature_of(o, by_new.get(o)) for o in op_ids)
+        return Counter(f for f in fids if f is not None)
 
     before, after = per_feature(preview.before_ids), per_feature(preview.after_ids)
     touched = per_feature(preview.removed) + per_feature(preview.added)

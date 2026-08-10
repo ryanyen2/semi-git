@@ -578,14 +578,21 @@ def _bucket_density(sub_bins: list, width: int) -> list[int]:
 
 _SPARK = "▁▂▃▄▅▆▇█"
 
-# The --map strip PACKS each feature's own timeline: a lane draws only its OWN checkpoints, left to
-# right, so a feature that lived briefly reads at a glance instead of being flung across a shared
-# clock by dead history. The lane's own quiet gaps between checkpoints collapse -- a short one to a
-# single dim `·`, a long one (>= `_GAP_THRESHOLD` commits) to a dim `┄`. Because every row packs its
-# own activity, columns do NOT line up across lanes: a row is one feature's life, not a shared axis.
-_GAP_THRESHOLD = 8   # a lane's own gap this long (or longer) between checkpoints shows as `┄`, not `·`
+# The --map strip draws every feature on ONE shared commit axis: column `c` is the same span of
+# commits in every row, so a vertical slice reads as "what was happening then" and two lanes that
+# look adjacent really were. It used to pack each lane's own checkpoints left to right, which reads
+# a single feature's life nicely but makes the map as a whole unreadable -- every row was a private
+# clock, and nothing could be compared downward. A column a lane never touched is left blank, so
+# quiet stretches show as real gaps rather than being squeezed away.
+_GAP_THRESHOLD = 8   # kept for the rail renderer; the map no longer collapses gaps
 _CAR_CAP = 24        # cap a single checkpoint's block width so one long run can't hog the whole strip
 _COLLAPSE = "┄"      # marks a long gap the lane skipped (a plain dim `·` marks a short one)
+
+# Checkpoint chips sit in fixed-width cells so they line up as columns down the page. 30 fits three
+# cells plus separators in an 80-column terminal, which is the width the chips are ellipsized to.
+_CHIP_TEXT = 20      # label text inside a chip, before the `@n ` handle
+_CHIP_CELL = 30      # the whole cell, so chips in different rows start at the same column
+_HANDLE_W = 8        # the copy-paste handle column: 8-char hex, or a short `N9` padded out to match
 
 # The FORECAST BAND, the terminal twin of the webview's band right of the `now` rule: anticipated work
 # (a pending plan step) drawn on the lane's own row, past a `┊` rule, in the same left→right reading
@@ -934,66 +941,58 @@ def render_graph_lines(
     def render_car(car: dict, width: int, hexc: str, is_big: bool = False) -> str:
         return _render_car(car, width, hexc, color=color, is_big=is_big)
 
+    # One shared commit axis for every lane. Column `c` covers commit indices
+    # `[c*axis_len/width, (c+1)*axis_len/width)`, so the same column means the same commits in every
+    # row and a vertical slice reads as "what was happening then". The old renderer packed each
+    # lane's own checkpoints back to back, which made every row a private clock -- two blocks
+    # sitting in the same column had nothing to do with each other, and the map could not be read
+    # downward at all.
+    axis_len = max(1, int(layout.get("commit_count") or 0))
+    # Density is scaled against the busiest column *anywhere*, not per lane, so height is comparable
+    # across rows too. Per-lane scaling made a quiet lane's one edit as tall as a busy lane's twenty.
+    _global_max = 0
+    for _l in layout["lanes"]:
+        _per_col: dict[int, int] = {}
+        for _c in _l["cars"]:
+            for _ci, _cnt in _c.get("sub_bins") or ():
+                _per_col[_ci] = _per_col.get(_ci, 0) + _cnt
+        if _per_col:
+            _global_max = max(_global_max, max(_per_col.values()))
+
     def time_bar(cars: list[dict], hexc: str, width: int) -> str:
-        """Per-feature packing: this lane's checkpoints drawn left→right as `▁▂▃▄▅▆▇█` edit-density
-        blocks, one block per checkpoint, back to back. The lane's OWN gap between two checkpoints is
-        squeezed to a single dim `·`, or a dim `┄` when it skipped a long run (>= `_GAP_THRESHOLD`
-        commits) -- dead stretches are packed away rather than drawn to scale. Height scales to the
-        lane's busiest commit (taller = busier). Because each row packs its own activity, columns do
-        NOT line up across lanes: a row reads as that one feature's life, not a shared clock. Padded
-        with spaces to `width` so the trailing `@n` chips stay aligned. Future cars (past the frontier)
-        render dim. Empty when the lane has no ops yet."""
-        if not cars or width <= 0:
-            return " " * max(0, width)
-        counts = [cnt for c in cars for _ci, cnt in c.get("sub_bins", [])]
-        gmax = max(counts) if counts else 0
+        """This lane's edit density on the shared commit axis, as `▁▂▃▄▅▆▇█` blocks. Taller = busier,
+        scaled against the busiest column in the whole map. A column the lane never touched is a
+        space, so the gaps are real gaps rather than squeezed-away ones. Future cars (past the
+        frontier) render dim. Padded to `width` so the columns after the bar stay aligned.
 
-        def car_cols(c: dict) -> int:  # natural block width = commits it actually edited, capped
-            n = len(c.get("sub_bins") or ()) or (c["last_index"] - c["first_index"] + 1)
-            return max(1, min(_CAR_CAP, n))
-
-        # Interleave each checkpoint's block with a one-column gap marker for the lane's own quiet
-        # spans, then scale the blocks to fit (gap markers always stay one column).
-        pieces: list[tuple[str, object]] = []
-        for i, c in enumerate(cars):
-            pieces.append(("car", c))
-            if i + 1 < len(cars):
-                gap = cars[i + 1]["first_index"] - c["last_index"]
-                if gap >= _GAP_THRESHOLD:
-                    pieces.append(("gap", True))
-                elif gap >= 2:
-                    pieces.append(("gap", False))
-        gap_cols = sum(1 for k, _ in pieces if k == "gap")
-        car_total = sum(car_cols(c) for k, c in pieces if k == "car") or 1
-        scale = min(1.0, max(0, width - gap_cols) / car_total)
-
-        out, used = "", 0
-        for kind, payload in pieces:
-            if used >= width:
-                break
-            if kind == "gap":
-                out += dim(_COLLAPSE if payload else "·")
-                used += 1
+        One pass over this lane's bins plus one over the columns, so the whole map costs O(total
+        bins + lanes*width)."""
+        if width <= 0:
+            return ""
+        if not cars:
+            return " " * width
+        buckets = [0] * width
+        future = [False] * width
+        for c in cars:
+            is_future = bool(c.get("is_future"))
+            bins = c.get("sub_bins") or ()
+            if not bins:  # a car with no per-commit detail still occupies its own span
+                bins = [(i, 1) for i in range(c["first_index"], c["last_index"] + 1)]
+            for ci, cnt in bins:
+                col = min(width - 1, max(0, ci * width // axis_len))
+                buckets[col] += cnt
+                if is_future:
+                    future[col] = True
+        gmax = _global_max or max(buckets) or 1
+        out = []
+        for col, n in enumerate(buckets):
+            if n <= 0:
+                out.append(" ")
                 continue
-            c = payload
-            w = min(max(1, int(round(car_cols(c) * scale))), width - used)
-            if w <= 0:
-                break
-            if gmax <= 0:
-                out += dim("·" * w)
-            else:
-                for n in _bucket_density(c.get("sub_bins", []), w):
-                    if n <= 0:
-                        out += dim("·")
-                        continue
-                    frac = n / gmax
-                    ch = _SPARK[min(len(_SPARK) - 1, int(frac * (len(_SPARK) - 1) + 0.5))]
-                    out += dim(ch) if c.get("is_future") else (
-                        _shade(hexc, frac ** 0.5, ch) if color else ch)
-            used += w
-        if used < width:
-            out += " " * (width - used)
-        return out
+            frac = min(1.0, n / gmax)
+            ch = _SPARK[min(len(_SPARK) - 1, int(frac * (len(_SPARK) - 1) + 0.5))]
+            out.append(dim(ch) if future[col] else (_shade(hexc, frac ** 0.5, ch) if color else ch))
+        return "".join(out)
 
     # Nearest co-change neighbours (strongest first), for the optional per-lane annotation.
     nbrs: dict[str, list] = {}
@@ -1101,7 +1100,7 @@ def render_graph_lines(
     # The checkpoints ride on their own indented sub-line (below the bar) so a long feature label plus
     # its `@n` chips can never wrap the density bar. Align that line under the label; ellipsize its
     # content to what's left of the terminal so it stays one row.
-    chip_indent = 3 + 1 + 1 + 1 + 8 + 1  # indent()+marker+glyph+space+handle+space -> under the label
+    chip_indent = 3 + 1 + 1 + 1 + _HANDLE_W + 1  # indent+marker+glyph+space+handle+space -> under the label
     chip_avail = max(20, (term_cols or (bar_prefix + bar_width + 60)) - chip_indent)
 
     lanes_shown = 0
@@ -1124,7 +1123,13 @@ def render_graph_lines(
             glyph = "◈" if l["is_meta"] else "●"  # ◈ / ●
             marker = "▸" if is_sel else " "
             raw = lane_label(l)
+            # Pad the handle to a fixed width by its *visible* length -- it carries colour escapes,
+            # so `ljust` would count those and under-pad. A meta lane's handle is short (`N9`) and a
+            # feature's is the 8-char hex, and leaving that unpadded shifted the label, the bar, and
+            # the chip line by up to six columns per row. That was the misalignment: not the bars
+            # themselves, but everything ahead of them starting in a different place on each row.
             handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = the minimal unique prefix
+            handle += " " * max(0, _HANDLE_W - min(_HANDLE_W, len(fid[2:] if fid.startswith("f-") else fid)))
             label = _ellipsize(raw, title_w - 1).ljust(title_w)  # cap + ellipsize a long label
             bar = time_bar(l["cars"], hexc, bar_width)
             row_s = (f"   {marker}{paint(hexc, glyph)} {handle} "
@@ -1145,10 +1150,15 @@ def render_graph_lines(
             # position, so nothing is lost, just unlabelled.
             cars = l["cars"]
             recent = cars[-3:]
-            chips = [f"@{c['seg_index']} {_ellipsize(c['label'], 24)}" for c in recent]
+            # Fixed-width cells, so the chips form columns down the page instead of landing wherever
+            # the previous label happened to end. Ragged chips were most of why the map read as
+            # noise: three rows of `@n text · @n text` with different break points give the eye no
+            # line to follow.
+            chips = [f"@{c['seg_index']} {_ellipsize(c['label'], _CHIP_TEXT)}".ljust(_CHIP_CELL)
+                     for c in recent]
             hidden = len(cars) - len(recent)
             if hidden > 0:
-                chips.insert(0, f"+{hidden} earlier")
+                chips.insert(0, f"+{hidden} earlier".ljust(_CHIP_CELL))
             # Plan steps are NOT chips here: they are cards in the lane's forecast band above. Keeping
             # them in both places gave "what is coming" two encodings in one view, which is the same
             # split the webview had between its plan underline and its ghost car.
@@ -1171,8 +1181,8 @@ def render_graph_lines(
     # names only the topology glyphs it drew: a legend that describes absent marks teaches the reader
     # that the header is not about what they are looking at, and they stop reading it.
     legend = (" ▁▂▃▄▅▆▇█ = edit density (taller = busier)"
-              "   ·   each row packs its OWN checkpoints left→right (columns don't align across features)"
-              "   ·   ┄ = a long gap it skipped"
+              "   ·   one shared commit axis: the same column is the same time in every row"
+              "   ·   blank = that feature was quiet then"
               "   ·   @n chips (line below each bar) = the checkpoints (rewind by @n)")
     if forecast_w:
         legend += f"   ·   past {_NOW_RULE} = planned, not built yet"
