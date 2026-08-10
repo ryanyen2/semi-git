@@ -38,6 +38,10 @@ def register(subs, parent) -> None:
     r.add_argument("--to", type=int, metavar="COMMIT", dest="to",
                    help="scrub <lane> back to its state as of commit <COMMIT> (a grid column "
                         "index from `sgt log`); drops that lane's ops after it and their up-set.")
+    r.add_argument("--take-dependents", action="store_true", dest="take_dependents",
+                   help="the old blanket removal: also remove everything that builds on the "
+                        "target, later work included. The default instead subtracts the target "
+                        "from shared code at its tip and keeps later work.")
     r.add_argument("--repair", action="store_true")
     r.add_argument("--intent")
     r.add_argument("--session")
@@ -108,7 +112,8 @@ def _cmd_revert(args) -> int:
             tok for tok in (t.strip() for t in args.keep.split(",")) if tok
         )
         return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json, keep=keep)
-    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes)
+    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes,
+                             take_dependents=args.take_dependents)
 
 
 def _cmd_restore(args) -> int:
@@ -156,6 +161,8 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         color = sys.stdout.isatty()
         for line in render_verb_preview_lines(mv, gv, sv, pview, focus_fid=focus_fid, color=color):
             print(line)
+        for line in _subtraction_report(preview):
+            print(line)
         if not yes:
             if not sys.stdin.isatty():
                 print("\n  not applied — this was the preview. re-run with --yes to apply.")
@@ -173,6 +180,8 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             return _dirty_refusal(e, as_json)
         print(f"  ✓ {preview.verb} applied — {len(preview.removed)} edit(s) removed, "
               f"{len(preview.added)} added. (`sgt undo` reverses this.)")
+        for line in _subtraction_report(preview):
+            print(line)
         return 0
 
     if preview.ok:
@@ -185,10 +194,37 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         "removed": sorted(preview.removed), "added": sorted(preview.added),
         "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
         "message": preview.message,
+        "subtracted_symbols": list(getattr(preview, "subtracted_symbols", ())),
+        "pruned_symbols": list(getattr(preview, "pruned_symbols", ())),
+        "kept_conflicts": list(getattr(preview, "kept_conflicts", ())),
+        "broken_references": list(getattr(preview, "broken_references", ())),
     }
     if extra:
         view = {**view, **extra}
     return _emit_json(view) if as_json else _print_verb_view(view)
+
+
+def _subtraction_report(preview) -> list[str]:
+    """The safe-revert consequence report, printed with the preview AND after apply: what was
+    spliced out of shared code, what was bottomed, and -- most important -- what was deliberately
+    left alone and still needs a human: conflicting symbols kept byte-identical, and surviving
+    code that still names something removed."""
+    lines: list[str] = []
+    subtracted = getattr(preview, "subtracted_symbols", ())
+    pruned = getattr(preview, "pruned_symbols", ())
+    kept = getattr(preview, "kept_conflicts", ())
+    broken = getattr(preview, "broken_references", ())
+    if subtracted:
+        lines.append(f"  subtracted from shared code (later work kept): {', '.join(subtracted)}")
+    if pruned:
+        lines.append(f"  removed going forward: {', '.join(pruned)}")
+    if kept:
+        lines.append(f"  ⚠ kept unchanged (the removal overlaps later edits — needs your edit): "
+                     f"{', '.join(kept)}")
+    if broken:
+        lines.append(f"  ⚠ still references removed code (fix or revert separately): "
+                     f"{', '.join(broken)}")
+    return lines
 
 
 def _revert_lane_to_commit(
@@ -212,6 +248,7 @@ def _revert_lane_to_commit(
 
 def _kernel_edit_verb(
     repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool, yes: bool = False,
+    take_dependents: bool = False,
 ) -> int:
     """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
     `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). Both verbs' targets
@@ -244,7 +281,8 @@ def _kernel_edit_verb(
         resolved = resolve_checkpoint(repo, target)
         if resolved is not None:
             op_ids, label = resolved
-            preview = verbs.plan_revert_op_set(repo, target, op_ids)
+            preview = verbs.plan_revert_op_set(repo, target, op_ids,
+                                               take_dependents=take_dependents)
             # The feedforward focus is the feature the checkpoint's ops belong to (all ops in one
             # segment share a feature); pick any target op and read its leaf feature.
             from sgt.lens.tree import load as load_tree
@@ -254,10 +292,16 @@ def _kernel_edit_verb(
             return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label},
                                      yes=yes, focus_fid=focus_fid)
 
+    from functools import partial
+
     from sgt.lens import verbs as lens_verbs
 
-    plan_single = verbs.plan_revert if cmd == "revert" else verbs.plan_restore
-    plan_feature = lens_verbs.plan_revert_feature if cmd == "revert" else lens_verbs.plan_restore_feature
+    if cmd == "revert":
+        plan_single = partial(verbs.plan_revert, take_dependents=take_dependents)
+        plan_feature = partial(lens_verbs.plan_revert_feature, take_dependents=take_dependents)
+    else:
+        plan_single = verbs.plan_restore
+        plan_feature = lens_verbs.plan_restore_feature
     # A bare-hex / `f-` handle (the copy token the graph prints) *is* a founding op id, so `plan_single`
     # would target that one op. But the handle names the whole feature -- resolve it as a feature first,
     # the feature scope winning over the op it shadows. Symbols (`a.py::foo`) and `@n`/`:slug` never

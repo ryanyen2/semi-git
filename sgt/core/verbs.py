@@ -52,6 +52,11 @@ class VerbPreview:
     forked: bool = False
     message: str = ""
     declared_edge: tuple[str, str] | None = None  # (a, b) for `after`; None otherwise
+    new_ops: tuple[Op, ...] = ()  # forward-subtraction ops (splices/prunes) `apply` must store
+    subtracted_symbols: tuple[str, ...] = ()  # shared symbols spliced at their tip
+    pruned_symbols: tuple[str, ...] = ()  # target-introduced symbols bottomed at their tip
+    kept_conflicts: tuple[str, ...] = ()  # symbols left unchanged that need a manual edit
+    broken_references: tuple[str, ...] = ()  # surviving symbols still naming removed code
 
     @property
     def removed(self) -> frozenset[str]:
@@ -131,13 +136,47 @@ def _validated(
 
 # -- plans (pure) ---------------------------------------------------------------------------------
 
-def plan_revert(repo: str | Path, target: str) -> VerbPreview:
+def _plan_removal(
+    repo: str | Path, verb: str, tag: str, target_ids, ops, ideal, declared, *,
+    take_dependents: bool,
+) -> VerbPreview:
+    """The one removal planner behind every revert shape. Default: semantic removal plus forward
+    subtraction (`sgt.core.subtract`) -- later work layered above the target inside shared
+    symbols survives, mechanically spliced where clean, reported where not. `take_dependents`
+    is the old blanket `ideal \\ ↑X`: X and everything that loses grounding, demolition
+    included -- explicit, never the default (the 2026-08-09 study-testbed demolition)."""
+    if take_dependents:
+        after = ideal.op_ids - order.upset_in_many(target_ids, ideal.op_ids, ops, declared)
+        return _validated(verb, tag, ideal.op_ids, after, ops, declared)
+
+    from sgt.core.subtract import plan_subtraction
+
+    plan = plan_subtraction(repo, target_ids, ops, ideal.op_ids, declared, tag=tag)
+    if not plan.ok:
+        return _preview(verb, tag, ideal.op_ids, ideal.op_ids, ops, ok=False, message=plan.message)
+    all_ops = ops + list(plan.new_ops)
+    try:
+        Ideal.from_ops(plan.after_ids, all_ops, declared)
+    except ValueError as e:
+        return _preview(verb, tag, ideal.op_ids, ideal.op_ids, ops, ok=False, forked=True,
+                        message=f"would leave an invalid (forked) ideal, refused: {e}")
+    base = _preview(verb, tag, ideal.op_ids, plan.after_ids, all_ops, message=plan.message)
+    return VerbPreview(
+        ok=True, verb=verb, target=tag, before_ids=base.before_ids, after_ids=base.after_ids,
+        affected_symbols=base.affected_symbols, message=plan.message,
+        new_ops=plan.new_ops, subtracted_symbols=plan.subtracted_symbols,
+        pruned_symbols=plan.pruned_symbols, kept_conflicts=plan.kept_conflicts,
+        broken_references=plan.broken_references,
+    )
+
+
+def plan_revert(repo: str | Path, target: str, *, take_dependents: bool = False) -> VerbPreview:
     ops, ideal, declared = _load(repo)
     op_id, err = resolve_target(ideal, ops, target)
     if err:
         return _preview("revert", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
-    after = ideal.op_ids - order.upset_in(op_id, ideal.op_ids, ops, declared)
-    return _validated("revert", target, ideal.op_ids, after, ops, declared)
+    return _plan_removal(repo, "revert", target, {op_id}, ops, ideal, declared,
+                         take_dependents=take_dependents)
 
 
 def plan_pin(repo: str | Path, symbol: str, version: str) -> VerbPreview:
@@ -199,7 +238,7 @@ def plan_cherry_pick(repo: str | Path, target: str, source_ref: str) -> VerbPrev
     return _validated("cherry-pick", target, ideal.op_ids, after, ops, declared)
 
 
-def plan_revert_session(repo: str | Path, name: str) -> VerbPreview:
+def plan_revert_session(repo: str | Path, name: str, *, take_dependents: bool = False) -> VerbPreview:
     """Resolve a session name (plan U31, S7: addressing by provenance) to the op-set it landed --
     `sgt.core.session.ops_by_session`, which reads structured attribution and so still resolves
     long after the session record itself is gone -- then the exact ideal edit
@@ -218,11 +257,12 @@ def plan_revert_session(repo: str | Path, name: str) -> VerbPreview:
         return _preview("revert", name, ideal.op_ids, ideal.op_ids, ops,
                         message=f"session {name!r}'s ops are not in the current ideal; no change")
 
-    after = ideal.op_ids - order.upset_in_many(op_ids, ideal.op_ids, ops, declared)
-    return _validated("revert", name, ideal.op_ids, after, ops, declared)
+    return _plan_removal(repo, "revert", name, op_ids, ops, ideal, declared,
+                         take_dependents=take_dependents)
 
 
-def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> VerbPreview:
+def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str], *,
+                       take_dependents: bool = False) -> VerbPreview:
     """Revert an already-resolved op-set X as the exact ideal edit `I \\ upset_in_many(X)` --
     the fully-generic form `plan_revert_session` and `lens.verbs.plan_revert_feature`
     each specialize with their own resolution step (session attribution / feature `op_leaf`).
@@ -237,8 +277,8 @@ def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> Ve
         return _preview("revert", tag, ideal.op_ids, ideal.op_ids, ops,
                         message=f"{tag}: none of its ops are in the current ideal; no change")
 
-    after = ideal.op_ids - order.upset_in_many(op_ids, ideal.op_ids, ops, declared)
-    return _validated("revert", tag, ideal.op_ids, after, ops, declared)
+    return _plan_removal(repo, "revert", tag, op_ids, ops, ideal, declared,
+                         take_dependents=take_dependents)
 
 
 def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:
@@ -270,6 +310,12 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
         assert preview.declared_edge is not None
         lens.declare_after(repo, *preview.declared_edge)  # OR-Set add with a fresh tag (U21/D6)
         return ""
+    if preview.new_ops:
+        # Forward-subtraction ops (safe revert's splices/prunes) exist only in the preview until
+        # here; store them first so `Ideal.from_ops` below sees their producers.
+        store = Store(repo)
+        for op in preview.new_ops:
+            store.add(op)
     if preview.after_ids == preview.before_ids:
         # An ok no-op edit (e.g. `revert <lane> --to <last-commit>`, `pin` already at the tip,
         # `restore` of an already-present op): nothing changed, so there is nothing to materialize.
@@ -291,8 +337,9 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
 
 # -- thin wrappers (plan, then preview or apply) --------------------------------------------------
 
-def revert(repo: str | Path, target: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
-    preview = plan_revert(repo, target)
+def revert(repo: str | Path, target: str, *, emit: bool = False, message: str | None = None,
+           take_dependents: bool = False) -> VerbPreview:
+    preview = plan_revert(repo, target, take_dependents=take_dependents)
     if preview.ok and not emit:
         apply(repo, preview, message)
     return preview

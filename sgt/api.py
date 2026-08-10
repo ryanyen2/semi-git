@@ -690,7 +690,9 @@ def _project_verb_preview(repo, preview) -> dict:
     from sgt.core.store import Store
     from sgt.lens.tree import load as load_tree
 
-    ops = Store(repo).all_ops()
+    # Safe revert's forward-subtraction ops exist only on the preview until `apply` stores them;
+    # the after-projection must see their producers or every splice previews as an invalid ideal.
+    ops = Store(repo).all_ops() + list(getattr(preview, "new_ops", ()))
     before = code(Ideal.from_ops(preview.before_ids, ops), ops)
     after = code(Ideal.from_ops(preview.after_ids, ops), ops)
     files = {

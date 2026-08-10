@@ -525,13 +525,12 @@ def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, st
     return op_ids, feature_id, nodes[feature_id].get("label", feature_id)
 
 
-def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
-    """Resolve `ref` to a feature's op-set X, then the exact ideal edit `I \\ upset_in_many(X)`
-    -- the feature-grouped generalization of `core.verbs.plan_revert`'s single-op case, reusing
-    its collision-safe up-set and `Ideal.from_ops` fork validation verbatim so a feature revert
-    refuses on a chain fork exactly as a single-op revert would. One grounding pass for the whole
-    op-set: the per-op union it replaces cost O(|X|·|ops|), which made the feature-revert
-    feedforward preview take tens of seconds on a large store."""
+def plan_revert_feature(repo: str | Path, ref: str, *,
+                        take_dependents: bool = False) -> core_verbs.VerbPreview:
+    """Resolve `ref` to a feature's op-set X, then plan its removal through the same
+    `core.verbs._plan_removal` every revert shape uses: the safe default subtracts X from
+    shared symbols at their tips and keeps interleaved later work; `take_dependents` is the
+    explicit old `I \\ upset_in_many(X)` demolition."""
     repo = Path(repo)
     ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
     ideal = kernel_lens.current_ideal(repo)
@@ -546,8 +545,8 @@ def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
         return core_verbs._preview("revert", feature_id, ideal.op_ids, ideal.op_ids, ops,
                                     message=f"feature {label!r} has no ops in the current ideal; no change")
 
-    after = ideal.op_ids - order.upset_in_many(op_ids, ideal.op_ids, ops, declared)
-    return core_verbs._validated("revert", feature_id, ideal.op_ids, after, ops, declared)
+    return core_verbs._plan_removal(repo, "revert", feature_id, op_ids, ops, ideal, declared,
+                                    take_dependents=take_dependents)
 
 
 def plan_revert_lane_to_commit(

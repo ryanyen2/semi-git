@@ -42,23 +42,43 @@ def _op_with(ops, sym: str, needle: bytes):
     )
 
 
-def test_revert_removes_exactly_the_upset_and_preview_lists_it(tmp_path):
-    """revert of a mid-chain op removes that op and every op that builds on it (`↑X`), and the
-    preview names exactly what was removed; the fold reverts to the pre-op bytes."""
+def test_revert_take_dependents_removes_exactly_the_upset(tmp_path):
+    """With `take_dependents=True` (explicit, never the default), revert of a mid-chain op
+    removes that op and every op that builds on it (`↑X`), the preview names exactly what was
+    removed, and the fold reverts to the pre-op bytes -- the pre-2026-08-09 behavior."""
     repo = _foo_chain(tmp_path / "repo", 3)
-    ideal = get(repo)
+    get(repo)
     ops = Store(repo).all_ops()
     mid = _op_with(ops, "a.py::foo", b"return 2")  # add(1) -> mid(2) -> tip(3)
     tip = _op_with(ops, "a.py::foo", b"return 3")
 
-    preview = verbs.revert(repo, mid.id, emit=True)
+    preview = verbs.revert(repo, mid.id, emit=True, take_dependents=True)
     assert preview.ok
     assert preview.removed == {mid.id, tip.id}  # exactly ↑mid
     assert "a.py::foo" in preview.affected_symbols
 
-    verbs.revert(repo, mid.id)  # apply
+    verbs.revert(repo, mid.id, take_dependents=True)  # apply
     materialized = code(get(repo), Store(repo).all_ops())
     assert materialized["a.py"] == b"def foo():\n    return 1\n"
+
+
+def test_default_revert_of_overlapping_midchain_keeps_later_work_and_reports(tmp_path):
+    """The safe default never demolishes: subtracting a mid-chain op whose lines the tip also
+    rewrote is a conflict, so the symbol is KEPT byte-identical and reported for a manual edit --
+    later work survives, nothing is silently dropped."""
+    repo = _foo_chain(tmp_path / "repo", 3)
+    get(repo)
+    ops = Store(repo).all_ops()
+    mid = _op_with(ops, "a.py::foo", b"return 2")
+
+    preview = verbs.revert(repo, mid.id, emit=True)
+    assert preview.ok
+    assert "a.py::foo" in preview.kept_conflicts
+    assert not preview.removed  # the mid op stays in history; nothing is excluded
+
+    verbs.revert(repo, mid.id)  # apply -- a no-op edit plus the report
+    materialized = code(get(repo), Store(repo).all_ops())
+    assert materialized["a.py"] == b"def foo():\n    return 3\n"  # later work intact
 
 
 def test_restore_is_reverts_inverse_on_a_tip(tmp_path):
@@ -332,3 +352,68 @@ def test_every_verb_output_is_a_valid_ideal(tmp_path_factory, data):
         assert is_valid_ideal(ops, preview.after_ids)
     else:
         assert preview.after_ids == preview.before_ids  # a refusal leaves the ideal untouched
+
+
+def test_redo_after_undo_saves_again(tmp_path):
+    """`sgt undo` of a save excludes that save's ops; re-authoring the same content by hand is a
+    new statement of intent, so the next save must lift the exclusion (tombstone its tags) instead
+    of wedging every future save on put()'s byte-drift refusal (found 2026-08-09 building the
+    study testbed: save -> undo -> redo -> save failed forever)."""
+    from sgt.cli.porcelain import _undo, save
+    from sgt.store.gitbind import init_store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("seed")
+
+    body = "def foo():\n    return 1\n\ndef bar():\n    return 2\n"
+    (tmp_path / "a.py").write_text(body, encoding="utf-8")
+    first = save(str(tmp_path), message="add bar")
+    assert first.get("saved")
+
+    assert _undo(str(tmp_path), True) == 0
+    assert b"bar" not in gb.blob_bytes("HEAD", "a.py")
+
+    (tmp_path / "a.py").write_text(body, encoding="utf-8")  # the redo, byte-identical
+    second = save(str(tmp_path), message="add bar again")
+    assert second.get("saved"), f"redo save wedged: {second}"
+    assert b"bar" in gb.blob_bytes("HEAD", "a.py")
+
+
+def test_default_revert_subtracts_cleanly_and_keeps_interleaved_later_work(tmp_path):
+    """The 2026-08-09 demolition scenario in miniature: feature F adds a symbol AND wires it
+    into a shared symbol; a later feature reworks the same shared symbol. Default revert of F
+    prunes F's own symbol, splices F's wiring out of the shared symbol's tip, and leaves the
+    later feature byte-identical -- nothing beyond F is removed."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "util.py").write_text("def build():\n    a()\n    b()\n", encoding="utf-8")
+    gb.commit_all("base")
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n",
+        encoding="utf-8")
+    gb.commit_all("feature F: wl plus wiring")
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n    c()\n\ndef wl():\n    return 1\n"
+        "\ndef c_helper():\n    return 2\n",
+        encoding="utf-8")
+    gb.commit_all("later feature: c")
+
+    get(repo)
+    ops = Store(repo).all_ops()
+    target = next(o for o in ops
+                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+
+    preview = verbs.revert(repo, target.id, emit=True)
+    assert preview.ok, preview.message
+    assert "util.py::wl" in preview.pruned_symbols
+    assert "util.py::build" in preview.subtracted_symbols
+    assert not preview.kept_conflicts
+
+    verbs.revert(repo, target.id)  # apply
+    text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
+    assert "def wl" not in text
+    assert "wl()" not in text
+    assert "c()" in text and "def c_helper" in text and "b()" in text

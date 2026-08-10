@@ -3,10 +3,12 @@
 Promoted from ``experiments/patch_clustering/mine.py`` (the "kernel embryo", plan U2) and
 extended with what the experiment didn't need: whole-file pseudo-symbols for non-parseable
 paths (config, docs, binaries -- R7), one residue pseudo-symbol per file for module-level
-statements outside any entity span, one anchor pseudo-symbol *per newly-added top-level entity*
-recording which entity (if any) immediately precedes it -- independent per entity, not one
-shared chain per file, so two unrelated insertions from different features never fork
-("anchor-disjoint additions commute", ADR S3.5) -- def-use untangling of a single commit's
+statements outside any entity span, one anchor pseudo-symbol *per top-level entity* recording
+which entity (if any) immediately precedes it -- born with the entity and *revised* whenever a
+later commit changes its immediate predecessor (an insertion before it, a deletion of its
+predecessor), diffed old-tree-vs-new-tree exactly like residue segments; independent per
+entity, not one shared chain per file, so two unrelated insertions from different features
+never fork ("anchor-disjoint additions commute", ADR S3.5) -- def-use untangling of a single commit's
 touched entities into separate ops (ClusterChanges-style -- BET-A), and content-addressed `Op`
 construction stamped with the miner version (R12) via `sgt.core.op.make_op`.
 
@@ -36,7 +38,7 @@ from sgt.core.identity import Snap, link_residual, match_pair, snapshot
 from sgt.core.op import BOTTOM, Images, Op, _symbol_kind, is_bottom, make_op, salted_bottom
 from sgt.entities.extract import Entity, _language, _language_for, extract_file
 from sgt.entities.graph import EntityEdge, build_entity_graph
-from sgt.store.gitbind import GitBinding
+from sgt.store.gitbind import GitBinding, is_bookkeeping_message
 
 
 class _UnionFind:
@@ -309,8 +311,9 @@ def _apply_rebirth_chaining(gb: GitBinding, sha: str, parent: str | None, touche
     that deletion predates a `since`-restricted incremental mine; the prune op minted by the earlier
     mine already sits in the append-only store, so grounding holds. A symbol that was never present
     before (a genuinely new entity in a re-added file) matches nothing and stays a true `None` birth.
-    Anchors are skipped -- they never close, so they can never chain (they may still coalesce or,
-    if their predecessor changed, fork harmlessly since nothing builds on an anchor)."""
+    Anchors are skipped -- they never close, so they can never chain (a changed predecessor is a
+    *revision* of the fact since 2026-08-09; only a re-added entity's fresh birth still forks,
+    harmlessly, since nothing builds on an anchor)."""
     if parent is None:
         return  # a root / genesis-horizon commit has no ancestry to have closed anything in
     fresh_by_path: dict[str, list[_Touch]] = {}
@@ -332,6 +335,15 @@ def _apply_rebirth_chaining(gb: GitBinding, sha: str, parent: str | None, touche
         for d_sha, d_parent in commits:
             if not remaining:
                 break
+            # An sgt bookkeeping commit (undo/revert/restore materialization) removes bytes from
+            # the tree, but its removal is recorded as an *exclusion*, never mined as a prune --
+            # `put` advances the witness past its own commit. Chaining a re-add onto its salted
+            # bottom would ground the rebirth on an op that does not exist (permanently dropped
+            # chain, the redo-after-undo wedge, 2026-08-09). Skip it and keep walking for a real
+            # closure; with none, the re-add stays a true `None` birth and dedups with the
+            # original op id, which is what lets the exclusion lift on re-authoring see it.
+            if is_bookkeeping_message(gb.commit_message(d_sha)):
+                continue
             present_in_d = _present_symbols_at(gb, d_sha, path)
             present_in_parent = _present_symbols_at(gb, d_parent, path) if d_parent else set()
             for sym in [s for s in remaining if s in present_in_parent and s not in present_in_d]:
@@ -619,6 +631,41 @@ def _mine_one(
             else:
                 emit_other(sym, before_v, _content_version(new_seg), new_seg)
 
+        # Anchor facts (R6 layout), diffed old-vs-new exactly like the residue segments above.
+        # A fresh top-level entity births its fact; a *surviving* entity whose immediate
+        # predecessor changed (something inserted before it, its predecessor deleted) gets a
+        # revision chaining off the marker the parent tree implies. Without the revision the
+        # fold's DFS places entities by stale facts, `code(I)` stops round-tripping, and every
+        # later `sgt save` refuses on the byte drift (top-of-file insertion failure, 2026-08-09).
+        # Facts speak *canonical* names: a same-file rename keeps its slot under the old name
+        # (the identity weld keeps that chain live in the fold), so both the renamed entity's
+        # own fact and any successor's marker translate through the commit's rename links --
+        # a pure rename emits no anchor ops at all, exactly as before.
+        rename_canon = {
+            new.ent.name: old.ent.name
+            for old, new in m.links
+            if old.ent.kind == new.ent.kind and old.ent.container is None
+            and new.ent.container is None and old.ent.name != new.ent.name
+        }
+        old_facts = (
+            {} if close_flip_to_entities
+            else (_top_level_anchor_facts(old_entities) if old_raw is not None else {})
+        )
+        new_facts = _top_level_anchor_facts(new_entities) if new_bytes is not None else {}
+        for name in sorted(new_facts):
+            cname = rename_canon.get(name, name)
+            pred = new_facts[name]
+            cpred = rename_canon.get(pred, pred) if pred is not None else None
+            if cname in old_facts and old_facts[cname] == cpred:
+                continue  # slot unchanged (renames compare under canonical names)
+            marker = (cpred or _ANCHOR_FIRST).encode("utf-8")
+            sym = f"{fc.path}::__anchor__::{cname}"
+            if cname not in old_facts:
+                emit_other(sym, None, _content_version(marker), marker)
+            else:
+                old_marker = (old_facts[cname] or _ANCHOR_FIRST).encode("utf-8")
+                emit_other(sym, _content_version(old_marker), _content_version(marker), marker)
+
     # Cross-file moves: a function cut from one file and pasted into another links by body.
     cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added, constraints)
     for old, new in cross_links:
@@ -648,25 +695,8 @@ def _mine_one(
     for s in res_removed:
         emit_entity(s.ent.id, _positional_version(s.ent.id, s.content_hash), bottom, None, frozenset())
 
-    # Anchor facts (R6 layout): for each top-level entity freshly added this commit, an
-    # independent pseudo-symbol recording which top-level entity (if any) precedes it --
-    # never revised after the fact (this v1 doesn't track re-ordering), so its chain is
-    # always a single add. One symbol per entity, not one shared chain per file, is what
-    # makes two unrelated insertions commute instead of forking on a coincidentally-shared
-    # file-wide "before" state.
-    anchor_facts_by_file: dict[str, dict[str, str | None]] = {}
-    for t in entity_touches:
-        if t.before_version is not None or container_of.get(t.surface_id) is not None:
-            continue  # only fresh, top-level adds get an anchor
-        path, _, name = t.surface_id.partition("::")
-        file_entities = new_entities_by_file.get(path)
-        if file_entities is None:
-            continue  # defensive: no live entity list for this path (shouldn't happen)
-        if path not in anchor_facts_by_file:
-            anchor_facts_by_file[path] = _top_level_anchor_facts(file_entities)
-        predecessor = anchor_facts_by_file[path].get(name)
-        marker = (predecessor or _ANCHOR_FIRST).encode("utf-8")
-        emit_other(f"{path}::__anchor__::{name}", None, _content_version(marker), marker)
+    # Anchor facts are emitted inside the per-file loop above (diffed old-vs-new alongside the
+    # residue segments), so insertions and deletions revise the displaced neighbors' facts too.
 
     # Untangle this commit's touched entities into def-use-connected groups (BET-A), then
     # bucket each touch by its group's deterministic anchor (lexicographically-smallest

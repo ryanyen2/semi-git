@@ -29,3 +29,10 @@ uv.lock
 papers/
 .DS_Store
 review/
+study/
+allinone.md
+docs/plans/
+docs/design/
+docs/brainstorms/
+docs/ideation/
+docs/slides/

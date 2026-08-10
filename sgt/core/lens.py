@@ -45,6 +45,7 @@ from sgt.core import opindex, order
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
+from sgt.core.op import MINER_VERSION
 from sgt.core.store import Store, locked_section
 from sgt.store.gitbind import GitBinding, format_op_trailers
 
@@ -197,7 +198,10 @@ def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry) -> str | None:
     """The fingerprint the no-op gate compares. None (git couldn't compute the dirty digest) means
     'don't gate -- mine'. `ideal_entry` is the persisted ideal id-list for this ref, so an explicit
     ideal edit (revert/pin, U8) -- which moves neither HEAD nor the tree -- still changes the
-    fingerprint and forces a fresh sync."""
+    fingerprint and forces a fresh sync. `MINER_VERSION` is folded in so upgrading sgt invalidates
+    the memo: a gate that keeps serving a prior version's mining result pins its bugs in place --
+    the stale-anchor wedge (2026-08-09) survived its own fix that way until the cache was
+    hand-cleared."""
     digest = gb.dirty_source_digest()
     if digest is None:
         return None
@@ -205,6 +209,8 @@ def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry) -> str | None:
     h.update(head.encode())
     h.update(b"\x00")
     h.update(digest.encode())
+    h.update(b"\x00")
+    h.update(MINER_VERSION.encode())
     h.update(b"\x00")
     h.update(json.dumps(ideal_entry, sort_keys=True).encode())
     return h.hexdigest()
@@ -755,13 +761,48 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # re-scan on this hot path for no steady-state benefit.
     index_stale_before_add = opindex.is_stale(repo)
 
+    # Re-include on re-authoring: an op mined from the *dirty tree* (no provenance at mine time)
+    # whose id sits in this ref's live exclusion set is content the user just wrote back by hand
+    # after an undo/revert -- a new statement of intent, so the exclusion's tags are tombstoned
+    # here. Without it the redo wedges permanently: `store.add` dedups the redo into the op's
+    # committed self, provenance classifies it as committed, and the exclusion subtracts it right
+    # back out, so every save refuses on put()'s byte drift (2026-08-09). Ops re-mined from
+    # *history* keep their provenance and are never lifted -- that asymmetry is what preserves a
+    # revert's durability across rebase/cherry-pick (F11/F20).
+    pre_exclusions = load_exclusions(repo)
+    live_excluded = pre_exclusions.get(key, ExclusionORSet()).live()
+    # The redo rarely carries the excluded op's *id*: rebirth chaining re-points a re-authored
+    # birth onto the undo commit's salted bottom, so the redo op is a different id with the same
+    # (symbol, after-version) content -- and the excluded original, still subtracted, leaves that
+    # whole chain ungrounded. Match by content, not id.
+    excluded_by_content: dict[tuple[str, str], str] = {}
+    if live_excluded:
+        for ex_op in opindex.index_ops(repo):
+            if ex_op.id in live_excluded:
+                for ex_sym, (_before, ex_after) in ex_op.footprint.items():
+                    excluded_by_content[(ex_sym, ex_after)] = ex_op.id
+    reincluded: set[str] = set()
+
     new_committed_ids: set[str] = set()
     pending_ids: set[str] = set()
     stored_ops = []
     for op in mined_ops:
         stored = store.add(op)
         stored_ops.append(stored)
+        if not op.provenance and excluded_by_content:
+            if stored.id in live_excluded:
+                reincluded.add(stored.id)
+            for sym, (_before, after) in op.footprint.items():
+                hit = excluded_by_content.get((sym, after))
+                if hit is not None:
+                    reincluded.add(hit)
         (new_committed_ids if stored.provenance else pending_ids).add(stored.id)
+
+    if reincluded:
+        excl = pre_exclusions.get(key, ExclusionORSet())
+        dead_tags = frozenset(tag for (oid, tag) in excl.adds if oid in reincluded)
+        pre_exclusions[key] = ExclusionORSet(excl.adds, excl.tombstones | dead_tags)
+        save_exclusions(repo, pre_exclusions)
 
     # Keep the footprint-only opindex sidecar current: a full rebuild pays the images decode once
     # (cheaper than letting every read view re-derive staleness against a snapshot already known
