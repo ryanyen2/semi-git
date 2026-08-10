@@ -2,8 +2,36 @@
 name = "semi-git"
 version = "0.1.0"
 description = "Semantic feature-level version control over git"
+readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["openai>=1.40"]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ryan Yen", email = "ryanyen2@mit.edu" }]
+keywords = ["git", "version-control", "refactoring", "code-review", "ai-agents"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Version Control :: Git",
+]
+
+# Everything needed for `sgt init` and the daily loop. `entities` (tree-sitter) and `lens`
+# (igraph/leidenalg) used to be extras, but `sgt.core.mine` and `sgt.lens.cluster` import them at
+# module scope -- a stock install without them crashed on the first command, so they are not
+# optional in any real sense.
+dependencies = [
+    "openai>=1.40",
+    "tree-sitter>=0.25",
+    "tree-sitter-python>=0.25",
+    "tree-sitter-typescript>=0.23",
+    "igraph>=0.11",
+    "leidenalg>=0.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/ryanyen2/semi-git"
+Repository = "https://github.com/ryanyen2/semi-git"
+Issues = "https://github.com/ryanyen2/semi-git/issues"
 
 [project.scripts]
 sgt = "sgt.cli:main"
@@ -11,22 +39,18 @@ sgt = "sgt.cli:main"
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6.100"]
 tui = ["textual>=0.60"]
-entities = [
-    "tree-sitter>=0.25",
-    "tree-sitter-python>=0.25",
-    "tree-sitter-typescript>=0.23",
-]
-lens = [
-    "igraph>=0.11",
-    "leidenalg>=0.10",
-]
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["sgt*"]
+
+# The agent assets `sgt init --agent` copies into a repo (Claude Code skills). They ship inside the
+# wheel so the command works from a plain `uv tool install`, with no checkout present.
+[tool.setuptools.package-data]
+"sgt.agent_assets" = ["skills/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
