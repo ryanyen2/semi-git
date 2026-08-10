@@ -5,6 +5,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Build output from `uv build`
+/build/
+/dist/
+*.vsix
+
 # Secrets / environment
 .env
 .env.*
@@ -18,6 +23,17 @@ uv.lock
 
 # semi-git runtime data (only present if `sgt init` is run inside this repo)
 .sgt/
+
+# Written by `sgt init --agent`, and machine-specific: each file names the absolute path of the
+# `sgt` that generated it, so a committed copy would be wrong for everyone else. The skills are
+# generated too -- their source of truth is sgt/agent_assets/skills/, which ships in the wheel.
+# Run `sgt init --agent` after cloning to get your own copies.
+/.mcp.json
+/.vscode/settings.json
+/.claude/settings.json
+/.claude/skills/sgt-agent/
+/.claude/skills/sgt-plan/
+/.claude/skills/sgt-workflow/
 
 
 # Vendored reference checkouts, at the root only. Anchored deliberately: an unanchored

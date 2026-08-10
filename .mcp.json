@@ -1,8 +1,10 @@
 {
   "mcpServers": {
     "sgt": {
-      "command": "python",
-      "args": ["-m", "sgt.cli", "mcp"]
+      "command": "/Users/r4yen/repos/semi-git/.venv/bin/sgt",
+      "args": [
+        "mcp"
+      ]
     }
   }
 }
