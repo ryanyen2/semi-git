@@ -3,6 +3,8 @@
 // read-cache on top and invalidates it after every mutation.
 
 import { execFile } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 import {
@@ -55,6 +57,35 @@ export function foldAtSpec(frontier: FoldFrontier): string {
 
 const pExecFile = promisify(execFile);
 
+/** Is this an existing, executable file? Used to vet each `sgt` candidate before spawning it. */
+function isExecutable(candidate: string): boolean {
+  try {
+    if (!fs.statSync(candidate).isFile()) return false;
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Our own PATH walk, rather than letting `execFile("sgt", ...)` do it. Two reasons. First, we can
+// say *what* we looked for when it fails, instead of surfacing a bare errno. Second, macOS
+// `execvp` walks PATH and reports whatever errno the last candidate produced, so a single
+// malformed PATH entry -- one that names a file where a directory belongs -- turns an ordinary
+// "not found" into `spawn ENOTDIR` with no command name attached. That error is impossible to act
+// on. Skipping non-directory entries ourselves means "not found" always reads as not found.
+function whichSgt(env: NodeJS.ProcessEnv): string | undefined {
+  const names = process.platform === "win32" ? ["sgt.exe", "sgt.cmd", "sgt"] : ["sgt"];
+  for (const dir of (env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (isExecutable(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
 // The CLI daily surface is the ~7-verb spine (`save`/`status`/`log`/`undo`/`revert`/`restore`/
 // `edit`) plus the daily navigation/inspection/loop/rewrite verbs kept at the top level
 // (`switch`, `diff`, `map`, `blame`, `plan`, `checkpoint`, `drift`, `commit`, `fulfill`). Only
@@ -68,8 +99,59 @@ export class Sgt {
     this.out = out;
   }
 
+  // Resolved once per session: an explicit `sgt.path` first, then PATH, then a virtualenv in the
+  // repo itself. The winner is an absolute path wherever one can be found, so nothing downstream
+  // depends on the extension host having inherited a usable PATH -- a VS Code launched from the
+  // Dock gets the login shell's PATH, not the terminal's, and `sgt` typically lives in a
+  // uv/venv bin dir that only the terminal knows about. `sgt init --agent` writes `sgt.path`
+  // for exactly this reason; this is the fallback for repos where nobody ran it.
+  private resolvedBin: string | undefined;
+
   private bin(): string {
-    return vscode.workspace.getConfiguration("sgt").get<string>("path", "sgt");
+    if (this.resolvedBin) return this.resolvedBin;
+    const configured = vscode.workspace.getConfiguration("sgt").get<string>("path", "sgt");
+    const candidates = [
+      configured === "sgt" ? undefined : configured, // only when explicitly set to something else
+      whichSgt(process.env),
+      path.join(this.repoRoot, ".venv", "bin", "sgt"),
+    ];
+    // Falling back to the configured value (normally the bare `sgt`) keeps the failure path
+    // honest: we still try to spawn it, and the error names what we tried.
+    this.resolvedBin = candidates.find((c) => c && isExecutable(c)) ?? configured;
+    return this.resolvedBin;
+  }
+
+  // A CLI we cannot run breaks every panel at once. The only trace used to be one line in an
+  // output channel nobody has open, so the sidebar just sat there empty looking like a bug in the
+  // extension. Say it once, out loud, with the two things that actually fix it.
+  private notifiedMissing = false;
+
+  private reportMissingCli(code: string): void {
+    if (this.notifiedMissing) return;
+    this.notifiedMissing = true;
+    this.out.appendLine(
+      `could not run '${this.bin()}' (${code}). PATH as seen by the extension host:\n  ` +
+        (process.env.PATH ?? "").split(path.delimiter).join("\n  ")
+    );
+    const setPath = "Set sgt.path";
+    const help = "Installation help";
+    void vscode.window
+      .showErrorMessage(
+        "semi-git cannot run the `sgt` command, so its panels will stay empty. Install it with " +
+          "`uv tool install semi-git`, then run `sgt init --agent` in this repo to point the " +
+          "extension at it.",
+        setPath,
+        help
+      )
+      .then((choice) => {
+        if (choice === setPath) {
+          void vscode.commands.executeCommand("workbench.action.openSettings", "sgt.path");
+        } else if (choice === help) {
+          void vscode.env.openExternal(
+            vscode.Uri.parse("https://github.com/ryanyen2/semi-git#install")
+          );
+        }
+      });
   }
 
   // Every `sgt` invocation takes the store's exclusive flock (store.py's `_locked()`) for
@@ -114,10 +196,21 @@ export class Sgt {
       });
       return stdout;
     } catch (err: any) {
+      // A spawn-level failure means we never reached the CLI at all, so there is no stderr to
+      // report and the errno is the whole story. Distinguish it from a CLI that ran and failed:
+      // the two need completely different fixes, and conflating them is what makes "the sidebar
+      // is empty" so hard to diagnose.
+      const spawnFailed =
+        !err.killed &&
+        !(err.stderr || "").trim() &&
+        ["ENOENT", "ENOTDIR", "EACCES"].includes(err.code);
       const detail = err.killed
         ? `timed out after ${timeout}ms (mining/rebuild likely still in progress -- try again once it finishes)`
-        : (err.stderr || "").trim() || err.message;
+        : spawnFailed
+          ? `could not run the sgt CLI at '${this.bin()}' (${err.code})`
+          : (err.stderr || "").trim() || err.message;
       this.out.appendLine(`sgt ${args.join(" ")} failed: ${detail}`);
+      if (spawnFailed) this.reportMissingCli(err.code);
       throw new Error(detail);
     } finally {
       // Stamp on completion so the watcher keeps ignoring the trailing .sgt writes (and the fs
