@@ -1,0 +1,83 @@
+name: Release
+
+# Cutting a release is one push of a tag. The tag name is the version, e.g. `v0.1.0`, and it has to
+# match the version in pyproject.toml and editor/vscode/package.json. The check-version job fails
+# the run if they disagree, before anything is published, because a version can never be re-uploaded
+# to PyPI once it is taken.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          PY=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          EXT=$(node -p "require('./editor/vscode/package.json').version")
+          echo "tag=$VERSION python=$PY extension=$EXT"
+          if [ "$VERSION" != "$PY" ] || [ "$VERSION" != "$EXT" ]; then
+            echo "::error::version mismatch. Tag says $VERSION, pyproject says $PY, extension says $EXT."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  pypi:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: uv publish
+
+  vsix:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: editor/vscode/package-lock.json
+      - run: npm ci
+        working-directory: editor/vscode
+      - name: Build the .vsix
+        run: npx --yes @vscode/vsce package --no-dependencies --out semi-git-${{ needs.check-version.outputs.version }}.vsix
+        working-directory: editor/vscode
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: editor/vscode/*.vsix
+
+  release:
+    needs: [check-version, pypi, vsix]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: "*.vsix"

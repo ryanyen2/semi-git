@@ -1,78 +1,101 @@
 # semi-git (`sgt`)
 
-`sgt` sits on top of an ordinary git repo and tracks your code function by function, not just file
-by file. Because it follows each function and class on its own, you can pull out — or bring back —
-exactly one function's or one feature's worth of history, without disturbing anything else. `sgt`
-never writes your code: you or your coding agent edit files the same way you always have, and `sgt`
-just keeps track of which of those edits are currently in.
+`sgt` runs on top of an ordinary git repo and tracks your code function by function instead of file
+by file. Because it follows each function and class separately, you can remove one function's
+history, or bring it back, without disturbing the rest of the file.
 
-## Install and first run
+`sgt` never writes your code. You and your coding agent edit files the same way you always have, and
+`sgt` keeps track of which of those edits are currently in.
 
-You need [`uv`](https://docs.astral.sh/uv/).
+## Install
 
-```bash
-uv venv --python 3.12
-uv pip install -e ".[entities,lens]"
-```
-
-Two extras matter: `entities` lets `sgt` read your code into individual symbols, and `lens` lets it
-build the feature tree. Add `dev` (`".[entities,lens,dev]"`) if you also want to run the tests.
-
-The daily loop needs no API key. A few optional steps call an LLM — the feature labeler, `sgt plan
-intake`, `sgt intent build`, and the plain-English forms of `revert`/`restore`. Set
-`OPENAI_API_KEY` for those. The endpoint is env-driven, so you are not tied to OpenAI: point
-`OPENAI_BASE_URL` at any OpenAI-compatible gateway (a litellm proxy serving Claude models, say) and
-pick the model with `SGT_MODEL` (default `gpt-5.4-mini`).
-
-Then, inside a git repo:
+You need [uv](https://docs.astral.sh/uv/) and Python 3.10 or newer.
 
 ```bash
-sgt init                              # read your existing git history in, once per repo
-# edit files with your editor or agent, exactly as always
-sgt save -m "add input validation"    # record those edits, and see which feature(s) they landed in
+uv tool install semi-git
 ```
 
-## Setting up your coding agent
+The `sgt` command is now on your PATH. If your shell can't find it, run `uv tool update-shell` and
+open a new terminal.
 
-`sgt` is most useful when your agent uses it, because the two things it knows — the recorded reason
-behind a piece of code, and the true cost of removing something — are exactly what an agent
-otherwise has to guess at.
+Then go into a git repo and read its history in. You only do this once per repo.
 
-**Claude Code.** Nothing to install. This repo ships a project-scoped `.mcp.json`, so Claude Code
-offers the `sgt` MCP server on first run in the repo (it asks before enabling a project server).
-The skills under `.claude/skills/` load themselves when relevant:
+```bash
+cd your-project
+sgt init
+```
 
-| Skill | What it is for |
-| --- | --- |
-| `sgt-agent` | How to work in an sgt repo: orient in one cheap call, which read to use, what belongs to you versus the human, how to show output in a transcript. |
-| `sgt-plan` | Record intent before you build, then reconcile it against the code you actually wrote. |
-| `sgt-workflow` | Choosing between the look-alike verbs (four shapes of revert, feature verbs versus op verbs, land versus propose). |
+From then on, edit files however you normally do, and record the edits when you're ready.
 
-To use them in another checkout, copy `.claude/skills/` and `.mcp.json` into it.
+```bash
+sgt save -m "add input validation"
+```
 
-**Codex, or any shell-only agent.** There is no MCP to wire up: every read has a `--json` form, and
-`python -m scripts.sgt_brief` prints a short orientation block that works anywhere a shell does.
-Point your agent at `.claude/skills/sgt-agent/references/cli-fallback.md`, which maps each tool to
-its command.
+`sgt save` tells you which feature each edit landed in.
 
-Your agent can save its own work, and should: `sgt save` asks for its own words, and those become
-the save's subject, the recorded reason, and the name of any feature born from the work. That
-sentence is the thing only the agent has at that moment. It is additive and `sgt undo` reverses it.
+## Set up your coding agent and editor
 
-What is kept away from agents, whichever harness you use, is the shared-state verbs (`sgt land`,
-`sgt sync`, `sgt propose land`, `sgt resolve`) — they are gated behind a confirmation you should see,
-and unlike a save they are not undone by one command.
+If you use Claude Code or the VS Code extension, run this in the repo:
+
+```bash
+sgt init --agent
+```
+
+It writes four things:
+
+- `.mcp.json`, so Claude Code offers the `sgt` tools when you start it in this repo.
+- `.claude/settings.json`, which pre-approves that server so you don't get asked.
+- `.claude/skills/`, which holds three skills that teach an agent how to use `sgt`.
+- `.vscode/settings.json`, which points the VS Code extension at your `sgt` install.
+
+Every path it writes is absolute, because a program started from your Dock or Applications folder
+doesn't inherit the same PATH your terminal has.
+
+The three skills are `sgt-agent`, which covers how to work in an sgt repo and which command answers
+which question, `sgt-plan`, which covers recording intent before you build and reconciling it
+afterward, and `sgt-workflow`, which covers choosing between commands that look alike.
+
+For an agent that only has a shell, there's nothing to wire up. Every read command takes `--json`,
+and `sgt help` lists the full surface.
+
+Your agent can record its own work, and it should. `sgt save` asks the agent for its own words, and
+those words become the name of any feature born from the work. `sgt undo` reverses a save.
+
+Four commands change state other people can see, and they stay with you rather than your agent.
+They are `sgt land`, `sgt sync`, `sgt propose land`, and `sgt resolve`. Each one asks you to confirm,
+and no single command undoes them.
+
+## Install the VS Code extension
+
+Download `semi-git-0.1.0.vsix` from the
+[latest release](https://github.com/ryanyen2/semi-git/releases/latest). In VS Code, open the
+Extensions view, click the `...` menu, and choose "Install from VSIX".
+
+Run `sgt init --agent` in your repo so the extension knows where `sgt` is.
+
+## Setting an API key
+
+The daily loop needs no API key. A few commands call a language model, e.g., `sgt plan intake`. Put
+your key in a `.env` file at the root of your repo.
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+You can point `sgt` at any OpenAI-compatible endpoint by setting `OPENAI_BASE_URL`, and you can pick
+the model with `SGT_MODEL`. The default model is `gpt-5.4-mini`.
 
 ## The problem it solves
 
-Say a coding agent runs for an hour, touches a dozen files, and lands rate limiting, a caching
-layer, and a retry policy in one pass. The caching layer turns out to be wrong. In plain git,
-removing only that work means finding every line the caching code touched and reverting those lines
-by hand, or cherry-picking around a commit that also holds the two features you want to keep. Either
-way you risk taking the other two features down with it.
+Say a coding agent runs for an hour, touches a dozen files, and adds rate limiting, a caching layer,
+and a retry policy in one pass. The caching layer turns out to be wrong.
 
-`sgt` already tracked each function's edits on their own, so removing one is a single command. This
-ran against a scratch repo while writing this doc:
+In plain git you have two options, and both risk the work you want to keep. You can find every line
+the caching code touched and revert those lines by hand. Or you can cherry-pick around a commit that
+also holds the two features you want.
+
+`sgt` already tracked each function's edits separately, so removing one is a single command. Here is
+a run against a scratch repo.
 
 ```
 $ sgt revert cache.py::get_cached
@@ -82,82 +105,89 @@ $ sgt revert cache.py::get_cached
   ✓ revert applied — 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)
 ```
 
-`get_cached` is gone from `cache.py`. `set_cached`, the other function in the same file, is
-untouched, and every symbol in `rate_limit.py` and `retry.py` is byte for byte what it was before.
-`sgt restore cache.py::get_cached` puts it back. The same command works on a whole feature (`sgt
-revert <feature>`) or a whole agent session (`sgt revert --session <name>`) once those edits have
-been grouped that way. See [`docs/guide/workflows.md`](docs/guide/workflows.md) for when that
-grouping is reliable and when it is not.
+`get_cached` is gone from `cache.py`. The other function in that file, `set_cached`, is untouched,
+and every symbol in `rate_limit.py` and `retry.py` is byte for byte what it was before. `sgt restore
+cache.py::get_cached` puts it back.
+
+The same command works on a whole feature with `sgt revert <feature>`, or on a whole agent session
+with `sgt revert --session <name>`, once the edits have been grouped that way.
+[docs/guide/workflows.md](docs/guide/workflows.md) covers when that grouping is reliable and when it
+isn't.
 
 ## Daily commands
 
-A target for `revert`/`restore` can be a `file::symbol` name, an op id, a feature, or, with a key
-set, a plain-English phrase.
+A target for `revert` or `restore` can be a `file::symbol` name, an op id, a feature, or, if you set
+an API key, a plain English phrase.
 
 | Command | What it's for |
 | --- | --- |
 | `sgt init` | Read your existing git history into `sgt`. Run once per repo. |
-| `sgt save -m "..."` | Record the edits you just made, and name the feature(s) they landed in. |
-| `sgt now` | Where am I? What you asked for, what's unsaved, what needs you, and the one next thing to do. |
-| `sgt log` | What you did, newest first. `--map` (features over time), `--tree` (the feature tree), `--summary` (what needs attention). |
+| `sgt save -m "..."` | Record the edits you just made, and name the feature they landed in. |
+| `sgt now` | Where am I? What you asked for, what's unsaved, what needs you, and the next thing to do. |
+| `sgt log` | What you did, newest first. `--map` shows features over time, `--tree` shows the feature tree, and `--summary` shows what needs attention. |
 | `sgt status` | What needs attention right now. The same view as `sgt log --summary`. |
-| `sgt show <target>` | Show me this: what an id/feature/symbol is and what removing it would cost. Add `--at <point>` to read a file as it was then instead. Nothing is checked out. |
-| `sgt why <target>` | Why this code exists: the prompt or plan step behind a commit, op, or symbol. |
-| `sgt undo` | Step back: reverse your last `sgt` command, as a new change rather than by rewriting history. It shows what it will do before doing it. |
-| `sgt revert <target>` | Remove one symbol, feature, or session's worth of work, plus anything built on it. |
+| `sgt show <target>` | What an id, feature, or symbol is, and what removing it would cost. Add `--at <point>` to read a file as it was then. Nothing is checked out. |
+| `sgt why <target>` | Why this code exists, meaning the prompt or plan step behind a commit, op, or symbol. |
+| `sgt undo` | Reverse your last `sgt` command as a new change, rather than by rewriting history. It shows what it will do first. |
+| `sgt revert <target>` | Remove one symbol, feature, or session's work, along with anything built on it. |
 | `sgt restore <target>` | Bring a removed thing back, along with anything it needs. |
-| `sgt resolve <symbol>` | Walk through reconciling a symbol that ended up edited two different ways at once. |
+| `sgt resolve <symbol>` | Walk through reconciling a symbol that was edited two different ways at once. |
 | `sgt switch <branch>` | Switch branches and rebuild that branch's files. |
-| `sgt diff <a> <b>` | Show which symbol-level edits differ between two states. |
-| `sgt intent ...` | Browse the "why" behind a feature — the segments of its history, spanning features. |
-| `sgt plan ...` | State a plan up front so later saves can match your work against it. |
-| `sgt feature ...` | Re-group or rename features. Labels only — never touches your code. |
-| `sgt advanced ...` | Rare and maintenance commands: fork surgery, `advanced fsck`, and the raw plumbing. |
+| `sgt diff <a> <b>` | Which symbol-level edits differ between two states. |
+| `sgt intent ...` | Browse the reason behind a feature. |
+| `sgt plan ...` | State a plan up front so later saves can be matched against it. |
+| `sgt feature ...` | Re-group or rename features. Labels only, and it never touches your code. |
+| `sgt advanced ...` | Rare and maintenance commands, e.g., `sgt advanced fsck`. |
 | `sgt sync` | Fetch a teammate's work and merge it, flagging any real conflict. |
-| `sgt land <branch>` | Advance a shared branch — one writer at a time, and only once your checks pass. |
-| `sgt push` | Push; if it's rejected, it points you at `sgt sync`. |
-| `sgt propose ...` | Open a review object (like a PR) a reviewer can accept feature by feature. |
+| `sgt land <branch>` | Advance a shared branch, one writer at a time, once your checks pass. |
+| `sgt push` | Push. If the push is rejected, it points you at `sgt sync`. |
+| `sgt propose ...` | Open a review object, like a pull request, that a reviewer can accept feature by feature. |
 | `sgt session ...` | Run an agent in its own scratch worktree, then land its work. |
 | `sgt mcp` | Run an MCP server so a coding agent can call `sgt` directly. |
 
-Run `sgt help` for the full list, including the rare verbs under `sgt advanced` and `sgt feature`.
+Run `sgt help` for the full list.
 
 ## How it works
 
-`sgt` reads each commit and breaks it into per-symbol edits. Your codebase at any moment is just the
-set of edits that are currently in, and `sgt` can rebuild your files from that set exactly — run it
-and you get back, byte for byte, what is checked out. Removing an edit also removes anything built on
-top of it, so whatever is left still rebuilds into working files. Two versions of the same function
-can never both be in at once; when that happens — say two people edit it in parallel — `sgt` calls
-it a fork and asks you to reconcile it, rather than picking a side. `sgt advanced fsck` checks that
-the current state is still valid and that the files it builds match what git has.
+`sgt` reads each commit and breaks it into per-symbol edits. Your codebase at any moment is the set
+of edits that are currently in, and `sgt` can rebuild your files from that set exactly. Run it and
+you get back, byte for byte, what is checked out.
 
-[`docs/guide/the-semantic-tree.md`](docs/guide/the-semantic-tree.md) has the formal version.
+Removing an edit also removes anything built on top of it, so whatever is left still rebuilds into
+working files. Two versions of the same function can never both be in at once. When that happens,
+because two people edited it in parallel, `sgt` calls it a fork and asks you to reconcile it rather
+than picking a side. `sgt advanced fsck` checks that the current state is still valid and that the
+files it builds match what git has.
 
-> For the curious: `sgt` calls one per-symbol edit an *op*, the current set of edits an *ideal*, and
-> rebuilding your files from it the *fold*.
+[docs/guide/the-semantic-tree.md](docs/guide/the-semantic-tree.md) has the formal version.
+
+For the curious, `sgt` calls one per-symbol edit an op, the current set of edits an ideal, and
+rebuilding your files from that set the fold.
 
 ## Working with other people
 
-Conflicts do not go away, but they get smaller. If two people edit the same function at the same
-time, that is a real conflict; `sgt` isolates it to that one function — a fork — and merges
-everything else right away, with no conflict markers to resolve. You reconcile the fork with `sgt
-resolve <symbol>`, which will not let it close until your build and test checks pass, so a conflict
-is never closed by code nobody verified. `sgt land` advances a shared branch one writer at a time,
-and only once those checks are green. [`docs/guide/workflows.md`](docs/guide/workflows.md) walks
-through this end to end, along with parallel agent sessions and the points where a person still has
-to step in.
+Conflicts don't go away, but they get smaller. If two people edit the same function at the same
+time, that's a real conflict, and `sgt` isolates it to that one function. Everything else merges
+right away with no conflict markers to resolve.
+
+You reconcile the conflict with `sgt resolve <symbol>`. It won't let the conflict close until your
+build and test checks pass, so a conflict is never closed by code nobody verified. `sgt land`
+advances a shared branch one writer at a time, and only once those checks are green.
+
+[docs/guide/workflows.md](docs/guide/workflows.md) walks through this end to end, along with
+parallel agent sessions and the points where a person still has to step in.
 
 ## Docs
 
-[`docs/guide/`](docs/guide/) is the place to start: how `sgt` models your code, a getting-started
-walk-through, the VS Code extension, and a tour by use case ([`workflows.md`](docs/guide/workflows.md))
-that also lists today's limits.
+Start with [docs/guide/](docs/guide/). It covers how `sgt` models your code, a getting started
+walk-through, the VS Code extension, and a tour by use case in
+[workflows.md](docs/guide/workflows.md) that also lists today's limits.
 
-## Development
+## Contributing
 
-```bash
-uv venv --python 3.12
-uv pip install -e ".[entities,lens,dev]"
-uv run pytest
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up a development checkout, run the tests, and
+cut a release.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
