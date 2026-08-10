@@ -139,3 +139,20 @@ def test_head_memo_tracks_mutations(tmp_path):
     assert h2 is not None and h2 != h1
     assert gb.commit_shas()[0] == h2
     assert len(gb.history_meta()) == 2
+
+
+def test_sync_no_op_gate_misses_after_miner_upgrade(tmp_path, monkeypatch):
+    """A sync memo written by an older miner must not gate away the re-mine after an upgrade:
+    the fingerprint folds MINER_VERSION in, so the gate misses and the new miner's ops (e.g.
+    anchor revisions absent under the old rules) actually land."""
+    from sgt.core import lens
+    from sgt.store.gitbind import init_store
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("seed")
+    lens.get(tmp_path)  # warm the sync memo under the current miner version
+    assert lens.cached_map_is_current(tmp_path)
+
+    monkeypatch.setattr(lens, "MINER_VERSION", lens.MINER_VERSION + "-next")
+    assert not lens.cached_map_is_current(tmp_path)

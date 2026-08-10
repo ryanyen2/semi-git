@@ -522,3 +522,98 @@ def test_readd_after_merge_chains_across_the_merge(tmp_path):
     readd_z = [op for op in mined if op.footprint.get("z.txt", (None, None))[0] == _readd_bottom(del_z)]
     assert readd_a, "a.txt re-add did not chain onto its side-branch deleting commit"
     assert readd_z, "z.txt re-add did not chain onto its trunk deleting commit"
+
+
+# ---------------------------------------------------------------------------
+# Anchor-fact revisions (R6): layout facts must follow insertions, deletions,
+# and renames, or `code(I)` stops round-tripping and every later save refuses
+# on the byte drift (the top-of-file insertion failure, 2026-08-09).
+# ---------------------------------------------------------------------------
+
+
+def _materialized(repo):
+    from sgt.core.fold import code
+    from sgt.core.lens import get
+    from sgt.core.store import Store
+
+    return code(get(repo), Store(repo).all_ops())
+
+
+def test_top_of_file_insertion_round_trips(tmp_path):
+    """A new first entity displaces the old first entity's FIRST fact; without a revision op the
+    fold materializes the newcomer at the end of the file."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text(
+        "def alpha():\n    return 1\n\ndef beta():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("seed")
+    new = ("def zulu():\n    return 0\n\ndef alpha():\n    return 1\n\n"
+           "def beta():\n    return 2\n")
+    (tmp_path / "a.py").write_text(new, encoding="utf-8")
+    gb.commit_all("insert zulu at top")
+    assert _materialized(tmp_path)["a.py"] == new.encode()
+
+
+def test_mid_file_insertion_with_unlucky_name_round_trips(tmp_path):
+    """The fold's sorted-name fallback rescues an insertion only when the new name happens to sort
+    before its successor; `zeta` between `alpha` and `delta` must not depend on that luck."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text(
+        "def alpha():\n    return 1\n\ndef delta():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("seed")
+    new = ("def alpha():\n    return 1\n\ndef zeta():\n    return 3\n\n"
+           "def delta():\n    return 2\n")
+    (tmp_path / "a.py").write_text(new, encoding="utf-8")
+    gb.commit_all("insert zeta between alpha and delta")
+    assert _materialized(tmp_path)["a.py"] == new.encode()
+
+
+def test_predecessor_deletion_round_trips(tmp_path):
+    """Deleting an entity re-anchors its successor onto the deleted one's own predecessor; the
+    stale fact would orphan the successor into the sorted-at-end fallback."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text(
+        "def mike():\n    return 0\n\ndef zulu():\n    return 1\n\n"
+        "def alpha():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("seed")
+    new = "def zulu():\n    return 1\n\ndef alpha():\n    return 2\n"
+    (tmp_path / "a.py").write_text(new, encoding="utf-8")
+    gb.commit_all("delete mike")
+    assert _materialized(tmp_path)["a.py"] == new.encode()
+
+
+def test_rename_keeps_file_position(tmp_path):
+    """A renamed entity is a fresh anchor birth at its current position, and its successor's fact
+    follows the new name; both previously fell to the sorted-at-end fallback."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text(
+        "def zulu():\n    return 10\n\ndef mike():\n    return 20\n", encoding="utf-8")
+    gb.commit_all("seed")
+    new = "def yankee():\n    return 10\n\ndef mike():\n    return 20\n"
+    (tmp_path / "a.py").write_text(new, encoding="utf-8")
+    gb.commit_all("rename zulu to yankee")
+    assert _materialized(tmp_path)["a.py"] == new.encode()
+
+
+def test_displaced_anchor_is_a_revision_not_a_fork(tmp_path):
+    """The displaced entity's new fact chains off its old marker (a rework, not a second birth),
+    so the frontier resolves to the revised predecessor."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("seed")
+    (tmp_path / "a.py").write_text(
+        "def zulu():\n    return 0\n\ndef alpha():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("insert zulu at top")
+
+    from sgt.core.lens import get
+    from sgt.core.store import Store
+
+    ideal = get(tmp_path)
+    ops = Store(tmp_path).all_ops()
+    by_id = {op.id: op for op in ops}
+    tip = ideal.frontier(ops)
+    sym = "a.py::__anchor__::alpha"
+    assert sym in tip
+    marker = (by_id[tip[sym]].images[sym] or b"").decode("utf-8")
+    assert marker == "zulu"
+    before, _after = by_id[tip[sym]].footprint[sym]
+    assert before is not None, "displaced anchor must chain off its old marker, not fork"

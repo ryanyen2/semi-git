@@ -37,7 +37,7 @@ def is_bottom(version: str | None) -> bool:
     return version is not None and (version == BOTTOM or version.startswith(BOTTOM + "@"))
 
 
-MINER_VERSION = "6"  # R12: bump on any change to mining/untangling/identity logic. Part of
+MINER_VERSION = "8"  # R12: bump on any change to mining/untangling/identity logic. Part of
 # every op's content address, so an algorithm upgrade opens a new identity space rather than
 # silently colliding with -- or silently reusing -- ops minted under the old rules.
 # v2 (2026-07-08, kernel byte-fidelity audit): byte-native entity/residue addressing (was
