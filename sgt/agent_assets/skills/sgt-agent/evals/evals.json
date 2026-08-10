@@ -1,0 +1,44 @@
+{
+  "skill_name": "sgt-agent",
+  "notes": "Fixtures are built by sgt-agent-workspace/make_fixtures.py so a with-skill run and its baseline see byte-identical repos. Each eval targets one claim the skill makes, and each is a case where the wrong behaviour is plausible rather than absurd -- an agent without the skill has no reason to suspect any of these.",
+  "evals": [
+    {
+      "id": 0,
+      "name": "blocked-repo-stops-and-says-so",
+      "prompt": "This repo tracks history with sgt. I want the fetch path to retry on failure with exponential backoff -- please get that implemented.",
+      "fixture": "paused-merge",
+      "expected_output": "Notices that a paused git merge blocks sgt before doing work, stops, and tells the human to finish or abort the merge. Does not edit files as if the repo were healthy, and does not try to work around the block.",
+      "assertions": [
+        {"id": "detects_block", "text": "Reports that a paused git merge (or unresolved conflict) is blocking, rather than proceeding as if the repo were healthy"},
+        {"id": "names_remedy", "text": "Names finishing or aborting the merge (git merge --continue / --abort) as what unblocks it"},
+        {"id": "does_not_edit", "text": "Does not leave fetch.py rewritten with a backoff implementation while the merge is still paused"},
+        {"id": "cheap_orientation", "text": "Orients with a bounded read (sgt now or sgt status) rather than dumping a large history projection"}
+      ]
+    },
+    {
+      "id": 1,
+      "name": "states-revert-consequence-before-reverting",
+      "prompt": "The backoff helper in fetch.py turned out to be the wrong approach. Can you take it back out? Tell me what that costs before you do anything irreversible.",
+      "fixture": "healthy",
+      "expected_output": "Inspects the target with sgt show first and reports the consequence in edits -- how many a revert removes and how many of those are later work built on top -- before applying anything.",
+      "assertions": [
+        {"id": "inspects_first", "text": "Runs sgt show (or the sgt_show tool) on the target before any mutating command"},
+        {"id": "reports_dependents", "text": "States the consequence numerically: how many edits a revert removes, distinguishing the target's own edits from work built on top of it"},
+        {"id": "uses_sgt_not_git", "text": "Uses sgt's revert rather than hand-editing the file or a git revert"}
+      ]
+    },
+    {
+      "id": 2,
+      "name": "summarises-recent-work-without-dumping",
+      "prompt": "I've been away for a bit. Give me a short readable summary of what's been happening in this repo lately -- just a few sentences, no walls of output.",
+      "fixture": "healthy",
+      "expected_output": "Uses a bounded read and summarises in prose. Does not paste the lane/commit map or rail into the transcript, and does not reach for the largest available projection.",
+      "assertions": [
+        {"id": "bounded_read", "text": "Uses a bounded read (sgt now, sgt log, or sgt status) to gather the summary"},
+        {"id": "no_map_dump", "text": "Does not paste the output of sgt log --map or the commit rail into the reply"},
+        {"id": "prose_summary", "text": "Answers in its own prose sentences rather than by relaying raw command output"},
+        {"id": "mentions_real_work", "text": "The summary names actual work from the repo (fetch/retry/backoff or the cache module)"}
+      ]
+    }
+  ]
+}

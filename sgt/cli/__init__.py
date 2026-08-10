@@ -197,6 +197,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv[0] in ("help", "-h", "--help"):
         return _help()
 
+    if argv[0] in ("--version", "-V"):
+        return _version()
+
     if argv[0] not in _VERBS:
         return _unknown_verb(argv[0])
 
@@ -206,6 +209,18 @@ def main(argv: list[str] | None = None) -> int:
     except _CLIExit as e:
         return e.code
     return args.func(args)
+
+
+def _version() -> int:
+    """`sgt --version`. The first thing anyone runs after installing, to check that it worked."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        print(version("semi-git"))
+    except PackageNotFoundError:
+        # Running straight from a source checkout that was never installed.
+        print("semi-git (not installed; running from source)")
+    return 0
 
 
 def _runnable(name: str) -> str:

@@ -8,6 +8,9 @@ from __future__ import annotations
 def register(subs, parent) -> None:
     ip = subs.add_parser("init", parents=[parent])
     ip.add_argument("--horizon")
+    ip.add_argument("--agent", action="store_true",
+                    help="also wire up a coding agent and the VS Code extension: .mcp.json, the "
+                         "Claude Code skills, and sgt.path")
     ip.add_argument("path", nargs="?", default=".")
     ip.set_defaults(func=_cmd_init)
 
@@ -27,6 +30,10 @@ def _cmd_init(args) -> int:
         return _emit_json({"error": str(ex)}) if args.as_json else _fail(str(ex))
     hooked = _install_prompt_hook(args.path)
     activity_hooked = _install_activity_hook(args.path)
+    # Opt-in, because plenty of people run `sgt` from the CLI or the TUI alone and have no use for
+    # an agent config appearing in their repo. `--agent` is what a coding-agent or VS Code user
+    # runs instead.
+    agent = _install_agent(args.path) if args.agent else None
     # Never let a repo commit as the placeholder without the user hearing about it: every commit
     # sgt makes here would be authored "semi-git <sgt@semi-git.local>" in git log, blame, and on
     # the remote, and the only moment that is cheap to fix is right now.
@@ -35,7 +42,7 @@ def _cmd_init(args) -> int:
     if args.as_json:
         return _emit_json({"ok": True, "path": args.path, "horizon": args.horizon,
                            "hook": hooked, "activity_hook": activity_hooked,
-                           "placeholder_identity": placeholder})
+                           "agent": agent, "placeholder_identity": placeholder})
     print(f"✓ initialized sgt kernel in {args.path} (.sgt/ + git)")
     if placeholder:
         print("⚠ this repo has no git identity, so commits will be authored "
@@ -48,6 +55,15 @@ def _cmd_init(args) -> int:
     if activity_hooked:
         print("✓ installed Claude Code edit hook -- each Edit/Write becomes a live activity event "
               "`sgt now` surfaces; remove the PostToolUse entry to opt out")
+    if agent:
+        print(f"✓ wired up your coding agent (.mcp.json, {agent['skills']} skills in "
+              ".claude/skills/) and the VS Code extension (.vscode/settings.json)\n"
+              f"    sgt path: {agent['sgt_path']}")
+    elif args.agent:
+        print("⚠ could not write the agent config (.mcp.json, .claude/, .vscode/). The repo is "
+              "initialized; re-run `sgt init --agent` once the directory is writable.")
+    else:
+        print("→ using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up")
     return 0
 
 
@@ -61,9 +77,9 @@ def _install_prompt_hook(path: str) -> bool:
     existing settings; any failure means "no hook", never a failed init. Returns whether the hook
     is (now) installed."""
     import json
-    import shutil
-    import sys
     from pathlib import Path
+
+    from sgt.agent_assets.install import resolve_sgt_path
 
     try:
         p = Path(path) / ".claude" / "settings.local.json"
@@ -73,11 +89,7 @@ def _install_prompt_hook(path: str) -> bool:
         if any("intent record" in (h.get("command") or "")
                for e in entries for h in e.get("hooks", [])):
             return True  # already installed (any variant of the command counts)
-        exe = Path(sys.argv[0])
-        if exe.name != "sgt":  # e.g. invoked via pytest or `python -m`
-            found = shutil.which("sgt")
-            exe = Path(found) if found else None
-        cmd = f'"{exe.resolve()}" intent record' if exe else "sgt intent record"
+        cmd = f'"{resolve_sgt_path()}" intent record'
         entries.append({"hooks": [{"type": "command", "command": cmd}]})
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
@@ -95,9 +107,9 @@ def _install_activity_hook(path: str) -> bool:
     scoped). Same absolute-path resolution, idempotency (substring check on `intent activity`), and
     best-effort contract; preserves any existing hooks. Returns whether the hook is (now) installed."""
     import json
-    import shutil
-    import sys
     from pathlib import Path
+
+    from sgt.agent_assets.install import resolve_sgt_path
 
     try:
         p = Path(path) / ".claude" / "settings.local.json"
@@ -107,11 +119,7 @@ def _install_activity_hook(path: str) -> bool:
         if any("intent activity" in (h.get("command") or "")
                for e in entries for h in e.get("hooks", [])):
             return True  # already installed
-        exe = Path(sys.argv[0])
-        if exe.name != "sgt":  # e.g. invoked via pytest or `python -m`
-            found = shutil.which("sgt")
-            exe = Path(found) if found else None
-        cmd = f'"{exe.resolve()}" intent activity' if exe else "sgt intent activity"
+        cmd = f'"{resolve_sgt_path()}" intent activity'
         entries.append({"matcher": "Edit|Write|MultiEdit",
                         "hooks": [{"type": "command", "command": cmd}]})
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -119,6 +127,18 @@ def _install_activity_hook(path: str) -> bool:
         return True
     except Exception:  # noqa: BLE001 -- capture setup must never fail an init
         return False
+
+
+def _install_agent(path: str) -> dict | None:
+    """Write the agent + editor config (`sgt init --agent`). Best-effort, like the hooks: a repo
+    that cannot be wired up should still end up initialized, with the failure visible rather than
+    fatal."""
+    from sgt.agent_assets.install import install_agent
+
+    try:
+        return install_agent(path)
+    except OSError:
+        return None
 
 
 def _cmd_mcp(args) -> int:
