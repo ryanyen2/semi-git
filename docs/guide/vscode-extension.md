@@ -12,7 +12,34 @@ timeline, an inspector, and a panel that shows your files as they looked at any 
 a workspace has no `sgt` store yet, the extension still activates. The Features view shows an
 **Initialize semi-git** button instead of an error, along with a short walkthrough.
 
-## Install from source
+## Install
+
+First install the `sgt` command itself, because the extension is a front end for it and does
+nothing without it.
+
+```bash
+uv tool install semi-git
+```
+
+Then download `semi-git-<version>.vsix` from the
+[latest release](https://github.com/ryanyen2/semi-git/releases/latest). In VS Code, open the
+Extensions view, click the `...` menu at the top, and choose "Install from VSIX".
+
+Finally, run this in your repo so the extension knows where `sgt` is:
+
+```bash
+sgt init --agent
+```
+
+That writes `.vscode/settings.json` with an absolute `sgt.path`. The absolute path matters, because
+a VS Code started from your Dock or Applications folder inherits the login shell's PATH rather than
+your terminal's, and `sgt` usually lives in a directory only your terminal knows about. If the
+extension can't run `sgt`, it says so and offers to open the setting, rather than leaving the panels
+empty.
+
+The extension activates in any workspace that has run `sgt init`.
+
+### Building from source
 
 ```bash
 cd editor/vscode
@@ -20,10 +47,8 @@ npm install
 npm run compile        # type-check and bundle to dist/extension.js
 ```
 
-Press `F5` in VS Code to launch a development instance of the extension, or package it with `npx
-vsce package` and install the `.vsix` file. The extension activates in any workspace that has run
-`sgt init`. It calls the `sgt` command on your system path, which you can change with the
-`sgt.path` setting.
+Press `F5` in VS Code to launch a development instance, or run `npx @vscode/vsce package` to build
+a `.vsix` file yourself.
 
 ## What you get
 
