@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run semi-git extension (rag workspace)",
+      "name": "Run semi-git extension",
       "type": "extensionHost",
       "request": "launch",
       "args": [

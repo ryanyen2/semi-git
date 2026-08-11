@@ -439,6 +439,25 @@ function episodeRailLayout(epView) {
   let layout = computeSegmentLayout(map, grid, segmentsOf(compose), { collapsed: state.collapsed });
   let lastRenderWidth = -1; // rail width the last render() drew at; the resize observer skips no-op width reflows
   let lastRenderHeight = -1; // rail height the last render() drew at; the observer reflows on vertical resize too
+  // The pane measurement a draw is sized from, recorded at the ONE place the DOM is measured so the
+  // resize gate's baseline can never drift from the geometry actually drawn. It used to be stamped at
+  // the top of render(), which meant anything throwing before the draw (or a draw that never ran) left
+  // the gate claiming the new size while the SVG still showed the old one -- and since the gate then
+  // saw no delta, no later resize ever reflowed: the timeline stayed squeezed into a corner of a wide
+  // pane. 320 is the floor the geometry falls back to; the raw measurement is what gets recorded.
+  function panePx() {
+    lastRenderWidth = rail.clientWidth;
+    lastRenderHeight = rail.clientHeight;
+    return { w: Math.max(lastRenderWidth || 0, 320), h: lastRenderHeight || 0 };
+  }
+
+  // A hidden or collapsed pane (the panel folded shut, another view holding the slot) measures 0x0.
+  // Drawing then bakes the 320px floor and a natural-height axis into the DOM, which is exactly the
+  // squeezed-into-the-corner state a wide pane must never be left in. Skip the draw instead -- the
+  // last good SVG stays put, and reflowIfStale() redraws the moment the pane is measurable again.
+  function paneMeasurable() {
+    return rail.clientWidth > 0;
+  }
   let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
   let previewSeq = 0;
   let pendingPreview = null;
@@ -810,8 +829,6 @@ function episodeRailLayout(epView) {
   }
 
   function render() {
-    lastRenderWidth = rail.clientWidth; // baseline the resize observer compares against (item below)
-    lastRenderHeight = rail.clientHeight; // same baseline for vertical resizes (the axis is height-pinned)
     renderTitlebar();
     // Plan-badge transition bookkeeping: a step newly seen pending gets an entering pulse; a step
     // that just matched drops its pending badge. (The rail's cross-row comet/FLIP morphs retired
@@ -908,7 +925,8 @@ function episodeRailLayout(epView) {
   // an axis whose domain is [c0, lastCommit] -- which is why pending work used to degenerate into a
   // badge jammed against the plot edge instead of reading as a car.
   function ganttGeom(forecastCars = 0) {
-    const paneW = Math.max(rail.clientWidth || 0, 320);
+    const pane = panePx();
+    const paneW = pane.w;
     // Keep the label column wide enough to stay legible even when the inspector is dragged wide and
     // the rail is squeezed -- the labels never collapse; instead the plot compresses (and clips at
     // the pane edge) when there isn't room, which is the acceptable trade here.
@@ -934,7 +952,7 @@ function episodeRailLayout(epView) {
     // rail's viewport (minus its 8px padding each side) so a short timeline no longer leaves a dead
     // band of background below it -- the void becomes an honest empty plot with a full-height axis.
     const naturalH = GANTT.padT + rowsH + 12 + GANTT.axisH;
-    const h = Math.max(naturalH, (rail.clientHeight || 0) - 16);
+    const h = Math.max(naturalH, pane.h - 16);
     const axisY = h - GANTT.axisH;
     const maxCommit = Math.max(1, layout.commitCount - 1);
     const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
@@ -981,6 +999,11 @@ function episodeRailLayout(epView) {
     // The "big event": the fattest chapter in this lane. It gets a stronger fill and first claim on
     // an inline label, so the lane's most consequential edit reads at a glance.
     const laneMaxOps = Math.max(1, ...cars.map((c) => c.opCount));
+    // Exactly one car per lane is "the" big event. Ties are the common case (a lane of one-op
+    // chapters), and promoting every tied car drew every one of their tags at once -- a lane's worth
+    // of centered labels overprinting each other into an unreadable smear above the strip, plus a
+    // whole row brightened as if every chapter were the notable one. First one attaining the max wins.
+    const bigIndex = cars.findIndex((c) => c.opCount === laneMaxOps);
     // Gap-fill tiling: a car fills from its first commit through the END of its last commit's column
     // (one colStep wide), so a single-commit chapter occupies a whole column instead of a sliver --
     // wide enough to carry its label inline. It never runs into the next car (capped at that car's
@@ -991,7 +1014,7 @@ function episodeRailLayout(epView) {
     let lastRight = geom.plotX0;
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
-      const isBig = cars.length > 1 && car.opCount === laneMaxOps;
+      const isBig = cars.length > 1 && i === bigIndex;
       let x = Math.max(geom.xOf(car.firstIndex), cursor); // anchored in time, never behind the last car
       let rightEnd = car.lastIndex >= geom.maxCommit ? plotR : geom.xOf(car.lastIndex) + colStep;
       if (i + 1 < cars.length) rightEnd = Math.min(rightEnd, geom.xOf(cars[i + 1].firstIndex) - GANTT.carGap);
@@ -1189,6 +1212,7 @@ function episodeRailLayout(epView) {
 
   function renderGraph() {
     if (state.view === "rail") { renderRail(); return; }
+    if (!paneMeasurable()) return;
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
     // Size the forecast band to the busiest lane's forecast, once, before geometry: every lane shares
@@ -1229,6 +1253,7 @@ function episodeRailLayout(epView) {
   const RAIL = { rowH: 22, laneW: 16, padT: 10, dotR: 4, padL: 12, shaW: 58, maxRows: 200 };
 
   function renderRail() {
+    if (!paneMeasurable()) return;
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
     graphView = null; // no frontier scrubber in rail mode; drop the stale Gantt handle
@@ -1239,7 +1264,7 @@ function episodeRailLayout(epView) {
     const allRows = rlayout.rows;
     const rows = allRows.slice(0, RAIL.maxRows);
     const hiddenRows = allRows.length - rows.length;
-    const paneW = Math.max(rail.clientWidth || 0, 320);
+    const paneW = panePx().w;
     const gutterW = RAIL.padL + rlayout.laneCount * RAIL.laneW;
     const h = RAIL.padT * 2 + rows.length * RAIL.rowH + (hiddenRows > 0 ? RAIL.rowH : 0);
     const svg = mk("svg", { width: paneW, height: Math.max(h, 40), class: "railsvg rail" });
@@ -3018,17 +3043,32 @@ function episodeRailLayout(epView) {
   // too, or the scrubber drifts off the fold. Debounced, and gated on a real delta in either axis so
   // the scrollbar appearing/disappearing mid-render can't feed a render back into itself.
   let resizeTimer = null;
-  new ResizeObserver(() => {
+
+  // Is what's on screen still drawn for the pane we have? The width half asks the DOM itself -- the
+  // rendered SVG's own `width` is the geometry it was laid out against -- rather than trusting a
+  // bookkeeping variable, so a draw that was skipped or that died halfway cannot leave the gate
+  // believing the pane is already up to date. The height half compares the last measurement, since the
+  // SVG's height is max(natural, pane) and so can't be read back as the pane's.
+  function reflowIfStale() {
+    if (!paneMeasurable()) return; // hidden pane: nothing to reconcile against yet
+    const svg = rail.querySelector("svg.railsvg");
+    const drawnW = svg ? Number(svg.getAttribute("width")) : -1;
+    if (svg && Math.abs(drawnW - Math.max(rail.clientWidth, 320)) < 4 &&
+        Math.abs(rail.clientHeight - lastRenderHeight) < 4) return;
+    render();
+  }
+
+  function scheduleReflow() {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      // render() records the width AND height it last drew at (lastRenderWidth/lastRenderHeight), so
-      // a resize changing neither (a scrollbar toggle within the 4px slop) is skipped, while a real
-      // width or height change reflows -- the height branch keeps the scrubber on-screen.
-      if (Math.abs(rail.clientWidth - lastRenderWidth) < 4 &&
-          Math.abs(rail.clientHeight - lastRenderHeight) < 4) return;
-      render();
-    }, 80);
-  }).observe(rail);
+    resizeTimer = setTimeout(reflowIfStale, 80);
+  }
+
+  new ResizeObserver(scheduleReflow).observe(rail);
+  window.addEventListener("resize", scheduleReflow);
+  // The pane can be resized (or moved between the panel and the sidebar) while this webview is hidden,
+  // and a hidden document doesn't observe its own layout -- so the show is the event that has to
+  // reconcile. Without this the workbench comes back drawn for whatever size it was last visible at.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleReflow(); });
 
   vscode.postMessage({ type: "ready" });
   render();
