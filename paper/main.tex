@@ -1,0 +1,53 @@
+% sgt: version control at the level of what you asked for
+% Build with ./build.sh
+\PassOptionsToPackage{expansion=true,protrusion=true}{microtype}
+\documentclass[sigconf,review,anonymous]{acmart}
+
+\AtBeginDocument{%
+  \providecommand\BibTeX{{\normalfont B\kern-0.5em{\scshape i\kern-0.25em b}\kern-0.8em\TeX}}}
+\setcopyright{none}
+\copyrightyear{2027}
+\acmYear{2027}
+\acmConference[CHI '27]{CHI Conference on Human Factors in Computing Systems}{April 2027}{Yokohama, Japan}
+\acmBooktitle{CHI '27}
+\settopmatter{printacmref=false}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+
+\input{preamble}
+
+\begin{document}
+
+\title{Version Control for Code You Did Not Write}
+\subtitle{Recording history at the level of what was asked for}
+
+\author{Anonymous Author(s)}
+\affiliation{%
+  \institution{Anonymous Institution}
+  \country{}
+}
+
+\input{sections/00-abstract}
+
+\keywords{version control, coding agents, program comprehension, developer tools, change history}
+
+\begin{teaserfigure}
+  \input{figures/fig1-two-records}
+  \caption{\FigOneCaption}
+  \Description{\FigOneDescription}
+  \label{fig:two-records}
+\end{teaserfigure}
+
+\maketitle
+
+\input{sections/01-intro}
+\input{sections/02-related}
+\input{sections/03-scenarios}
+\input{sections/04-design}
+\input{sections/05-walkthrough}
+\input{sections/06-study}
+\input{sections/07-discussion}
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{refs}
+
+\end{document}

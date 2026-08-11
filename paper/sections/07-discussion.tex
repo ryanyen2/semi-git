@@ -1,0 +1,127 @@
+\section{Where the Design Breaks}
+\label{sec:discussion}
+
+Every number in this section comes from running \sgt{} on the repository that
+contains \sgt{}, today, with the command a user would run. We have been the
+heaviest users of this system for eight months, and the six limits below are what
+we would want to know before adopting it.
+
+\subsection{Most of a repository is not functions}
+
+\cmd{sgt log --summary} prints \cmd{371 file(s), 6781 symbol(s), 154 feature(s),
+27\% entity coverage}. That last figure is the fraction of recorded files with any
+function-level record at all, so roughly three quarters of this repository is
+recorded as whole files, at the grain git already offers. The files in that three
+quarters are Markdown, JSON, HTML, and lock files. Every operation in
+Section~\ref{sec:design} runs on them and none of them gets sharper than
+\cmd{git revert} would be.
+
+Adding languages does not fix this, and we want to be clear about which part of it
+they do fix. A tree-sitter grammar plus a decision about which node kinds count as
+a function is a day of work per language, and we would take Go and Rust that way
+tomorrow. The case that remains after that is a repository whose interesting change
+is four lines of a deployment configuration, where the change a developer names has
+no function to be filed under, and git's grain is the correct grain for it. We say
+this plainly because calling the design language-independent would be false, and a
+reader deciding whether to adopt \sgt{} should start by counting how much of their
+repository is code.
+
+\subsection{Where a function loses its history}
+
+Section~\ref{sec:grain} claims a record survives a rename, and that claim rests on
+a matcher with a threshold in it. \sgt{} links a function across a commit first by
+its name, then by identical bytes, then by identical structure with formatting and
+comments ignored, and last by token overlap above 0.80, with a guard that rejects
+any pair whose token counts differ by more than a factor of two. The 0.80 comes
+from sem, which uses the same figure for the same job~\cite{sem2026}. A rename that
+also rewrites about a fifth of the function falls below it and is recorded as one
+function removed and a different function added.
+
+The developer then sees a function whose recorded history begins at that
+commit, with its earlier edits still filed under a group the function is no longer
+part of. An agent asked to clean up a module produces exactly this, renaming six
+functions and rewriting their bodies in one sitting. Origin analysis is
+a well studied problem, and the accurate detectors work from a full syntax tree
+comparison~\cite{godfrey2005,kim2005,falleri2014,tsantalis2018}. \sgt{} uses the
+token count because it runs on every save and has to finish while the developer is
+waiting. Lowering the threshold would link functions that merely resemble each
+other, and a wrong link is the worse failure, because it files one function's edits
+under another function's name and gives the developer no reason to doubt the
+answer. \cmd{sgt identity join} states a link by hand, and it requires the
+developer to notice that a history restarted, and noticing that is what they were
+using \sgt{} to avoid having to do.
+
+\subsection{Fifty-six files we cannot rebuild}
+
+The same command reports 56 files whose bytes on disk no valid set of records can
+produce. \sgt{} keeps every one of them, prints the count, names the first five,
+and points at \cmd{sgt advanced fsck --tree}. Nothing was deleted and nothing was
+quietly wrong, because \sgt{} reports what it cannot do instead of refusing to run
+(Section~\ref{sec:sets}). The developer loses the record for those files. A revert of a group that touched
+one of them leaves the file as it is, and \cmd{sgt show} on a function inside it
+answers from an incomplete chain.
+
+We have not tracked down what put all 56 in that state. This repository has been
+mined by five successive versions of our miner, and some of these files are the
+residue of our own format changes. A developer adopting \sgt{} on a repository with
+two years of history should expect a number of this kind on the first run, and
+should read it as work the design has not finished.
+
+\subsection{The gate nobody switched on}
+
+Section~\ref{sec:fork} says a resolved fork has to pass the project's test command
+before \sgt{} will include it. The summary above also prints
+\cmd{oracle: unconfigured}. In the repository we use every day, resolving a fork
+means the developer picks a version and \sgt{} takes their word for it, because
+nobody ever pointed \sgt{} at our test runner.
+
+That one line of output is the most uncomfortable in this section, and we have kept
+it here because the failure it describes generalises past our repository.
+A safety property a developer has to configure is
+a safety property most repositories will not have, so the set of repositories where
+our strongest claim about forks holds is the set where somebody did the setup, and
+on the evidence of our own it is smaller than we assumed. The fix needs no
+research, because \sgt{} could find the test command the project already uses and
+offer it during \cmd{sgt init}, and making the developer ask for it was the wrong
+default.
+
+\subsection{Who should turn the fork rule off}
+
+We designed the fork rule for a repository with three contributors, where a merge
+nobody reviewed turns into a bug three days later and the person who finds it is
+the person who wrote both sides of it. On a repository where twenty people edit the
+same functions every day, the same rule produces a queue of decisions nobody has
+time to work through, and the honest prediction is that they would switch it off and
+take the textual merge. \sgt{} also stops a developer for nothing at all in one
+case. Deleting a function and adding it back with byte-identical content on two
+branches produces two versions from one parent, and \sgt{} reports a disagreement
+between two pieces of text that agree exactly.
+
+The setting we would build merges when the two edits changed no overlapping lines
+and asks when they did, which is git's rule applied at the grain of a function.
+Guimarães and Silva argue for telling a developer about a divergence while both
+sides are still being written~\cite{guimaraes2012}, and that setting would let
+\sgt{} do it without stopping anybody. We have not built it, because we cannot yet
+tell a reader which of the two should be the default. Our answer comes from
+repositories with three contributors and a shared understanding of the code, and it
+is the part of this design that a study of larger teams would most usefully
+overturn.
+
+\subsection{The record the agent already had}
+
+The grouping \sgt{} recovers by clustering existed before any of the code did. The
+agent held it while it worked, and every agent we have used discards it when the
+session ends. A record written by the agent, one entry per request naming the
+functions it changed, would make the inference in Section~\ref{sec:names}
+unnecessary, and it would fix the case in Section~\ref{sec:walkthrough} where a
+rename nobody asked for got a name derived from the code.
+
+We did not build that, because we are unwilling to let \sgt{} depend on any
+particular agent. Reading the working files works with any agent, any editor, and a
+developer typing by hand, and it keeps working when a vendor changes an output
+format. A record the agent writes works while that agent is the one being used, and
+a developer who switched agents mid-project would find their history split into a
+part with stated groupings and a part with inferred ones. We would take both
+sources, with the files as the one \sgt{} trusts and the agent's account as a hint
+that improves a label. Which of the two should be authoritative is the design
+question we would put to a reader of this paper first.

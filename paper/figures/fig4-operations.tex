@@ -1,0 +1,72 @@
+% Every operation sgt offers, the state change it makes, and its bill.
+% Prints as Figure 5, after the fork figure in Section 4.3.
+% Each thumbnail reads left to right: the set before the command, then after.
+\newcommand{\FigFourCaption}{The ten operations, each drawn as the set before the
+command and the set after it. One line is one request and the marks on it are the
+edits filed under it, as in
+Figure~\ref{fig:two-records}, and a dotted outline is an edit the version no
+longer includes. No operation takes a hash. Every argument is a sentence the
+developer wrote, a branch name, or a function name. The right-hand column says
+what each operation costs, and we put it beside the command because a developer
+meets these costs on the first day.}
+
+\newcommand{\FigFourDescription}{A ten row table. Each row has a small diagram, a
+command, a sentence saying what the command does for the developer, and a
+sentence saying what it costs. Each diagram draws one horizontal line per request
+with a mark on it for every edit filed under that request, as in Figure 1, and a
+dotted outline is an edit the version no longer includes.}
+
+\newcommand{\opsrow}[4]{%
+  \raisebox{0.2ex}{#1} & \cmd{#2} & #3 & #4 \\[0.7ex]}
+
+{\footnotesize
+\setlength{\tabcolsep}{2.4mm}
+\begin{tabular}{@{}p{14mm}p{40mm}p{51mm}p{50mm}@{}}
+\toprule
+& \textbf{command} & \textbf{what the developer gets} & \textbf{what it costs} \\
+\midrule
+\opsrow{\thsave}{sgt save -m "..."}
+  {One record per changed function, filed under a name for the request.}
+  {The grouping is a guess. When it is wrong the developer moves labels, and no
+   recorded edit changes.}
+\opsrow{\thwhy}{sgt show api.py::handle}
+  {The request this function came from, the saves that touched it, and how many
+   edits removing it would take along.}
+  {The answer is exactly as good as the grouping behind it.}
+\opsrow{\threvert}{sgt revert "price cache"}
+  {The named set subtracted from the version, with every function it changes
+   named before anything is applied.}
+  {A function later work also edited has the set's lines subtracted from its
+   current text, and the developer's tests decide whether the result stands.}
+\opsrow{\threstore}{sgt restore "price cache"}
+  {The same set back, byte for byte, with everything added since left alone.}
+  {Refused when putting it back would leave two versions of one function live,
+   and the refusal prints edit identifiers with no function name attached.}
+\opsrow{\thdiff}{sgt diff main feat/export}
+  {The edits each version has that the other does not, in both directions.}
+  {It answers in functions, so seeing which lines moved still means opening the
+   file.}
+\opsrow{\thswitch}{sgt switch feat/export}
+  {The working files rebuilt from that branch's set.}
+  {Refused on unsaved edits, because \sgt{} has nowhere to put them yet.}
+\opsrow{\thckpt}{sgt intent list}
+  {Each feature cut into the stretches of work done on it, each with a name like
+   \cmd{rate limiting@2} that the other commands accept.}
+  {The cuts come from a language model reading the saves, so a stretch can start
+   one save too early.}
+\opsrow{\thfork}{sgt resolve api.py::handle}
+  {The two competing versions of the function side by side, and whichever one the
+   developer picks or writes is included once the project's test command passes.}
+  {Two edits at opposite ends of one function are also competing versions, and
+   git would have merged them without asking.}
+\opsrow{\thplan}{sgt plan intake "..."}
+  {A name for work that does not exist yet, which the next save matches itself
+   against.}
+  {A plan that predicts whole files matches nothing. It has to name functions.}
+\opsrow{\thsubset}{sgt propose land --subset "export"}
+  {One finished feature sent to the shared branch, with the unfinished one left
+   behind.}
+  {Two functions that sit next to each other in one file can lose the blank line
+   between them.}
+\bottomrule
+\end{tabular}}

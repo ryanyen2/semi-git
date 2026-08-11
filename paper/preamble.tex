@@ -1,0 +1,258 @@
+% ---------------------------------------------------------------------------
+% Shared visual language for every figure in this paper.
+% One palette, one glyph set, one rail geometry. Figures reuse these so a
+% reader who learns the notation once in Figure 1 can read all of them.
+% ---------------------------------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{calc,positioning,arrows.meta,decorations.pathreplacing,
+                decorations.pathmorphing,fit,backgrounds,shapes.geometric,
+                patterns,patterns.meta}
+\usepackage{xcolor}
+\usepackage{booktabs}
+% newtxmath (loaded by acmart when the ACM fonts are present) already supplies
+% the AMS symbols we use, and loading amssymb on top of it redefines \Bbbk.
+\providecommand{\checkmark}{\ensuremath{\surd}}
+
+% Long command strings and qualified symbol names are unbreakable words in a
+% narrow column, so let TeX stretch a line rather than run it into the gutter.
+\setlength{\emergencystretch}{0.8em}
+
+% Every command line in this paper is typed literally, so the typewriter font
+% must not turn -- into a dash or `' into curly quotes.
+\DisableLigatures{encoding=*, family=tt*}
+\usepackage{upquote}
+
+% --- palette ---------------------------------------------------------------
+\definecolor{sgtInk}{HTML}{1B1F24}
+\definecolor{sgtGrey}{HTML}{8A8F96}
+\definecolor{sgtWash}{HTML}{EFECE6}
+\definecolor{sgtPaper}{HTML}{FBFAF8}
+\definecolor{fRate}{HTML}{C0701A}   % rate limiting
+\definecolor{fCache}{HTML}{14736C}  % caching
+\definecolor{fRetry}{HTML}{6A4A9E}  % retry policy
+\definecolor{fExport}{HTML}{A83252} % export
+\definecolor{fIdx}{HTML}{3A6EA5}    % database index (colleague's work)
+
+% --- type ------------------------------------------------------------------
+\newcommand{\cmd}[1]{\texttt{\small #1}}
+% the typewriter fonts have no em dash, so quoted terminal output borrows one
+\newcommand{\ttdash}{\textrm{\,\textemdash\,}}
+% A qualified name like api.py::handle is one unbreakable word wide enough to
+% overrun a column, so allow a line to end after the file and resume at the
+% function. Nothing else in the name may break.
+\ExplSyntaxOn
+\NewDocumentCommand \sym { m }
+  { \group_begin:
+    \tl_set:Nn \l_tmpa_tl {#1}
+    \tl_replace_all:Nnn \l_tmpa_tl { :: } { ::\allowbreak }
+    \texttt { \small \l_tmpa_tl }
+    \group_end: }
+\ExplSyntaxOff
+\newcommand{\flab}[1]{{\sffamily\bfseries\scriptsize #1}}
+\newcommand{\ftiny}[1]{{\sffamily\scriptsize #1}}
+\newcommand{\fmini}[1]{{\sffamily\fontsize{5.4}{6}\selectfont #1}}
+% a symbol name inside a figure, sized to sit beside 5 to 6pt sans labels
+\newcommand{\fsym}[1]{{\ttfamily\fontsize{5.2}{6}\selectfont #1}}
+
+% --- quoted terminal output ------------------------------------------------
+% Every block in the walkthrough is what the command printed. The typewriter
+% font has none of the marks sgt uses, so each one is drawn or borrowed from the
+% roman font and the rest of the line stays in the terminal's font.
+% sgt quotes shell words with a backtick and an apostrophe, and both have to
+% print as the terminal prints them rather than as a matched curly pair.
+\begingroup
+\catcode`\'=\active \catcode`\`=\active
+\gdef\sgtupquotes{\catcode39=\active \catcode96=\active
+  \def'{\textquotesingle}\def`{\textasciigrave}}
+\endgroup
+\newenvironment{out}
+  {\par\addvspace{1.0ex}\begingroup
+   \ttfamily\fontsize{6.9}{8.5}\selectfont\raggedright
+   \setlength{\parindent}{0pt}%
+   \sgtupquotes
+   \begin{list}{}{\setlength{\leftmargin}{2.0mm}\setlength{\rightmargin}{0pt}%
+                  \setlength{\itemindent}{0pt}\setlength{\labelsep}{0pt}%
+                  \setlength{\labelwidth}{0pt}\setlength{\topsep}{0pt}%
+                  \setlength{\partopsep}{0pt}\setlength{\parsep}{0pt}%
+                  \setlength{\itemsep}{0pt}}%
+   \item[]}
+  {\end{list}\endgroup\addvspace{1.0ex}}
+\newcommand{\ttdot}{\textrm{\,\textperiodcentered\,}}
+\newcommand{\ttdisc}{\textrm{\textbullet}}
+\newcommand{\ttok}{\textrm{$\checkmark$}}
+\newcommand{\ttundo}{\textrm{$\curvearrowleft$}}
+\newcommand{\ttnew}{\textrm{$\circ$}}
+\newcommand{\ttfull}{\textcolor{sgtInk}{\rule[-0.04ex]{0.62ex}{1.0ex}}\hspace{0.32ex}}
+\newcommand{\ttempty}{\textcolor{sgtGrey!45}{\rule[-0.04ex]{0.62ex}{1.0ex}}\hspace{0.32ex}}
+\newcommand{\ttwarn}{\tikz[baseline=-0.3mm]{%
+  \draw[line width=0.35pt, color=sgtInk] (0,0)--(1.35mm,0)--(0.675mm,1.25mm)--cycle;}}
+\newcommand{\ttfork}{\textrm{$\pitchfork$}}
+\newcommand{\ttleft}{\textrm{$\blacktriangleleft$}}
+\newcommand{\ttright}{\textrm{$\blacktriangleright$}}
+\newcommand{\ttarrow}{\textrm{$\rightarrow$}}
+\newcommand{\ttrule}{\textcolor{sgtGrey}{\rule[0.45ex]{1.6ex}{0.35pt}}}
+% the terminal draws its tree with box-drawing characters no font in this
+% document has, so each one is a pair of rules at the same weight
+\newcommand{\ttvert}{\tikz[baseline=0pt]{%
+  \draw[line width=0.3pt, color=sgtGrey] (0,-1.2mm) -- (0,2.1mm);}}
+\newcommand{\ttbranch}{\tikz[baseline=0pt]{%
+  \draw[line width=0.3pt, color=sgtGrey] (0,-1.2mm) -- (0,2.1mm);
+  \draw[line width=0.3pt, color=sgtGrey] (0,0.55mm) -- (1.7mm,0.55mm);}\hspace{0.25mm}}
+\newcommand{\ttlast}{\tikz[baseline=0pt]{%
+  \draw[line width=0.3pt, color=sgtGrey] (0,2.1mm) -- (0,0.55mm) -- (1.7mm,0.55mm);}%
+  \hspace{0.25mm}}
+
+% --- geometry --------------------------------------------------------------
+\newlength{\opsz}\setlength{\opsz}{1.15mm}
+
+\tikzset{
+  rail/.style        = {line width=1.5pt, color=#1!22, line cap=round},
+  rail/.default      = sgtGrey,
+  raildim/.style     = {line width=1.5pt, color=sgtGrey!18, line cap=round},
+  commitcol/.style   = {line width=0.35pt, color=sgtGrey!55, densely dotted},
+  nowrule/.style     = {line width=0.6pt, color=sgtInk!70},
+  dep/.style         = {line width=0.35pt, color=sgtGrey!70,
+                        -{Straight Barb[length=1.1mm,width=1.1mm]}},
+  card/.style        = {rounded corners=0.6mm, line width=0.4pt},
+  note/.style        = {font=\sffamily\fontsize{5.6}{6.4}\selectfont, color=sgtInk!75,
+                        inner sep=0.3mm},
+  lbl/.style         = {font=\sffamily\fontsize{6.2}{7}\selectfont, color=sgtInk!85,
+                        inner sep=0.3mm},
+  hd/.style          = {font=\sffamily\bfseries\fontsize{6.6}{7.4}\selectfont,
+                        color=sgtInk, inner sep=0.3mm},
+}
+
+% --- op glyphs -------------------------------------------------------------
+% Five kinds, told apart by shape so they survive greyscale printing.
+% add: filled square.  extend: filled square with an open left edge.
+% rework: filled disc.  prune: hollow square with a slash.  move: right triangle.
+\newcommand{\opadd}[3]{\fill[#3] ($(#1,#2)+(-\opsz,-\opsz)$) rectangle ($(#1,#2)+(\opsz,\opsz)$);}
+\newcommand{\opext}[3]{%
+  \fill[#3] ($(#1,#2)+(-\opsz,-\opsz)$) rectangle ($(#1,#2)+(\opsz,\opsz)$);
+  \fill[sgtPaper] ($(#1,#2)+(-\opsz,-0.42mm)$) rectangle ($(#1,#2)+(-0.28mm,0.42mm)$);}
+\newcommand{\oprew}[3]{\fill[#3] (#1,#2) circle (1.32mm);}
+\newcommand{\opprune}[3]{%
+  \draw[#3, line width=0.45pt, fill=sgtPaper]
+    ($(#1,#2)+(-\opsz,-\opsz)$) rectangle ($(#1,#2)+(\opsz,\opsz)$);
+  \draw[#3, line width=0.45pt] ($(#1,#2)+(-0.8mm,-0.8mm)$) -- ($(#1,#2)+(0.8mm,0.8mm)$);}
+\newcommand{\opmove}[3]{%
+  \fill[#3] ($(#1,#2)+(-\opsz,-1.25mm)$) -- ($(#1,#2)+(-\opsz,1.25mm)$)
+            -- ($(#1,#2)+(1.45mm,0)$) -- cycle;}
+\newcommand{\opghost}[3]{%
+  \draw[#3, draw opacity=0.55, line width=0.45pt, densely dotted, fill=sgtPaper]
+    ($(#1,#2)+(-\opsz,-\opsz)$) rectangle ($(#1,#2)+(\opsz,\opsz)$);}
+% a checkpoint: a tick that crosses the rail
+\newcommand{\ckpt}[3]{\draw[#3, line width=0.55pt] (#1,{#2-1.55}) -- (#1,{#2+1.55});}
+
+% --- diff hunk stripe, for drawing a git commit as the thing it is ---------
+% \hunk{x}{y}{width}{color}
+\newcommand{\hunk}[4]{\fill[#4!85, rounded corners=0.25mm] (#1,#2) rectangle ($(#1,#2)+(#3,0.85mm)$);}
+
+% ---------------------------------------------------------------------------
+% Operation thumbnails. Each is 12mm wide and sits on the text baseline, so
+% the same picture can head a paragraph in the walkthrough and appear in the
+% grid in Section 5. Every thumbnail shows the state before the command on the
+% left and the state after it on the right.
+% ---------------------------------------------------------------------------
+\newenvironment{thumb}%
+  {\begin{tikzpicture}[baseline=-0.6mm, x=1mm, y=1mm, line cap=round]}%
+  {\end{tikzpicture}}
+
+\newcommand{\thumbarrow}{\draw[-{Straight Barb[length=0.8mm,width=0.9mm]},
+   line width=0.3pt, color=sgtGrey] (5.6,0) -- (7.0,0);}
+
+% save: edits sitting in the working files (dotted) become recorded ops, and
+% the moment the developer looked at them is marked with a checkpoint tick.
+\newcommand{\thsave}{\begin{thumb}
+  \draw[rail=fCache] (0,0) -- (5.0,0);
+  \opadd{1.0}{0}{fCache}\opghost{3.0}{0}{fCache}\opghost{4.6}{0}{fCache}
+  \thumbarrow
+  \draw[rail=fCache] (7.6,0) -- (12.6,0);
+  \opadd{8.6}{0}{fCache}\opadd{10.2}{0}{fCache}\opadd{11.8}{0}{fCache}
+  \ckpt{12.5}{0}{fCache}
+\end{thumb}}
+
+\newcommand{\threvert}{\begin{thumb}
+  \draw[rail=fCache] (0,0) -- (5,0);
+  \opadd{1.2}{0}{fCache}\opadd{2.6}{0}{fCache}\opadd{4.0}{0}{fCache}
+  \thumbarrow
+  \draw[rail=fCache] (7.6,0) -- (12.6,0);
+  \opadd{8.8}{0}{fCache}\opghost{10.2}{0}{fCache}\opghost{11.6}{0}{fCache}
+\end{thumb}}
+
+\newcommand{\threstore}{\begin{thumb}
+  \draw[rail=fCache] (0,0) -- (5,0);
+  \opadd{1.2}{0}{fCache}\opghost{2.6}{0}{fCache}\opghost{4.0}{0}{fCache}
+  \thumbarrow
+  \draw[rail=fCache] (7.6,0) -- (12.6,0);
+  \opadd{8.8}{0}{fCache}\opadd{10.2}{0}{fCache}\opadd{11.6}{0}{fCache}
+\end{thumb}}
+
+\newcommand{\thfork}{\begin{thumb}
+  \draw[rail=fCache] (0,0) -- (3.4,0); \opadd{1.6}{0}{fCache}
+  \draw[raildim] (3.4,0) -- (5.0,1.6); \draw[raildim] (3.4,0) -- (5.0,-1.6);
+  \opadd{5.6}{1.6}{fCache} \opadd{5.6}{-1.6}{fIdx}
+  \node[note] at (8.0,0) {\fmini{?}};
+  \draw[rail=fCache] (9.4,0) -- (12.6,0); \oprew{11.0}{0}{fCache}
+\end{thumb}}
+
+\newcommand{\thdiff}{\begin{thumb}
+  \draw[rail=fCache] (0,0) -- (5,0);
+  \opadd{1.2}{0}{fCache}\opadd{3.0}{0}{fCache}
+  \draw[rail=fRate] (7.6,0) -- (12.6,0);
+  \opadd{8.8}{0}{fRate}\opadd{10.4}{0}{fCache}\opadd{12.0}{0}{fRate}
+  \draw[line width=0.3pt, color=sgtGrey] (6.3,-1.8) -- (6.3,1.8);
+\end{thumb}}
+
+% show: an edit on a rail, and the request it was filed under, read back out
+\newcommand{\thwhy}{\begin{thumb}
+  \draw[rail=fCache] (0,0) -- (6.6,0);
+  \opadd{1.2}{0}{fCache}\opadd{3.2}{0}{fCache}\opadd{5.2}{0}{fCache}
+  \thumbarrow
+  \draw[fCache!60, line width=0.35pt, fill=sgtPaper, rounded corners=0.4mm]
+    (7.8,-1.7) rectangle (12.6,1.7);
+  \fill[fCache!40] (8.5,0.35) rectangle (11.9,0.75);
+  \fill[fCache!40] (8.5,-0.75) rectangle (11.1,-0.35);
+\end{thumb}}
+
+\newcommand{\thplan}{\begin{thumb}
+  \draw[nowrule] (6.0,-2.4) -- (6.0,2.4);
+  \fill[sgtWash] (6.0,-2.4) rectangle (12.6,2.4);
+  \draw[rail=fExport] (0,0) -- (6.0,0); \opadd{1.6}{0}{fExport}\opadd{4.0}{0}{fExport}
+  \draw[raildim] (6.0,0) -- (12.6,0);
+  \opghost{8.2}{0}{fExport}\opghost{10.6}{0}{fExport}
+\end{thumb}}
+
+\newcommand{\thckpt}{\begin{thumb}
+  \draw[rail=fRetry] (0,0) -- (12.6,0);
+  \opadd{1.4}{0}{fRetry}\opadd{2.8}{0}{fRetry}
+  \ckpt{4.2}{0}{fRetry}
+  \opadd{5.6}{0}{fRetry}\opext{7.0}{0}{fRetry}
+  \ckpt{8.4}{0}{fRetry}
+  \opadd{9.8}{0}{fRetry}\oprew{11.4}{0}{fRetry}
+\end{thumb}}
+
+\newcommand{\thswitch}{\begin{thumb}
+  \draw[rail=fRate] (0,1.5) -- (5.4,1.5); \opadd{1.6}{1.5}{fRate}\opadd{3.6}{1.5}{fRate}
+  \draw[raildim] (0,-1.5) -- (5.4,-1.5); \opghost{1.6}{-1.5}{fCache}\opghost{3.6}{-1.5}{fCache}
+  \thumbarrow
+  \draw[raildim] (7.6,1.5) -- (12.6,1.5); \opghost{9.0}{1.5}{fRate}\opghost{11.0}{1.5}{fRate}
+  \draw[rail=fCache] (7.6,-1.5) -- (12.6,-1.5); \opadd{9.0}{-1.5}{fCache}\opadd{11.0}{-1.5}{fCache}
+\end{thumb}}
+
+% propose land --subset: one of two finished features crosses the line into the
+% shared branch, and the other stays behind on the developer's side of it.
+\newcommand{\thsubset}{\begin{thumb}
+  \draw[rail=fRate] (0,1.6) -- (7.2,1.6);
+  \opadd{1.4}{1.6}{fRate}\opadd{3.4}{1.6}{fRate}
+  \draw[rail=fCache] (0,-1.6) -- (5.0,-1.6);
+  \opadd{1.4}{-1.6}{fCache}\opadd{3.4}{-1.6}{fCache}
+  \draw[nowrule] (8.4,-2.8) -- (8.4,2.8);
+  \draw[rail=fRate] (8.4,1.6) -- (12.6,1.6);
+  \opadd{9.8}{1.6}{fRate}\opadd{11.6}{1.6}{fRate}
+\end{thumb}}
+
+% ---------------------------------------------------------------------------
+% Text macros
+% ---------------------------------------------------------------------------
+\newcommand{\sgt}{\textsf{sgt}}

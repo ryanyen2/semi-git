@@ -196,6 +196,13 @@ try {
     lanes[0] && lanes[0].querySelectorAll(".glane-swatch").length === 1
       && lanes[0].querySelectorAll(".gcar-wrap").length > 0
       && lanes[0].querySelectorAll(".gbar-count").length === 1);
+  // One lane, one "big event". Equal-sized chapters are the common case, and promoting every car that
+  // ties the lane maximum drew a lane's worth of centered tags on top of each other -- an unreadable
+  // smear above the strip -- and brightened the whole row as if every chapter were the notable one.
+  const maxTags = Math.max(0, ...lanes.map((n) => n.querySelectorAll(".gcar-tag").length));
+  const maxBig = Math.max(0, ...lanes.map((n) => n.querySelectorAll(".gcar-big-rect").length));
+  check("at most one big-event tag per lane", maxTags <= 1, `${maxTags} on the busiest lane`);
+  check("at most one big-event car per lane", maxBig <= 1, `${maxBig} on the busiest lane`);
 
   // Selecting a feature: simulate a click on the first feature lane -> inspector populates.
   const featureLane = lanes.find((n) => n.getAttribute("data-id") && n.getAttribute("data-id").startsWith("f-"));
@@ -311,6 +318,27 @@ try {
       byId.rail.querySelectorAll(".forecast-band").length === 0 &&
       byId.rail.querySelectorAll(".now-rule").length === 0);
   }
+
+  // ── Pane measurement: never bake a layout for a pane that isn't there ────────────────────────
+  // A hidden or collapsed webview measures 0x0. Drawing then locks the timeline into its 320px floor
+  // in the corner of what is really a wide pane -- the "squeezed to the side" report -- and it stays
+  // there for as long as nothing forces a reflow. The draw has to be skipped instead: the last good
+  // SVG stays up, and the pane reflows to full width the moment it is measurable again.
+  console.log("\npane measurement:");
+  const idle = { type: "state", compose: { ...compose, save_preview: null, plan: { sessions: [] } } };
+  const wideW = Number(byId.rail.querySelector("svg").getAttribute("width"));
+  check("a wide pane draws at the pane width", wideW === 900, String(wideW));
+  PANE_W = 0;
+  feed(idle);
+  const hidden = byId.rail.querySelector("svg");
+  check("a 0-width (hidden) pane is not redrawn at the 320px floor",
+    !!hidden && Number(hidden.getAttribute("width")) === 900,
+    hidden ? hidden.getAttribute("width") : "no svg");
+  PANE_W = 1200;
+  feed(idle);
+  const backW = Number(byId.rail.querySelector("svg").getAttribute("width"));
+  check("a measurable pane reflows to its full width", backW === 1200, String(backW));
+  PANE_W = 900;
 
   console.log(failures === 0 ? "\nSMOKE OK" : `\nSMOKE FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);

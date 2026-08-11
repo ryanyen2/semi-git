@@ -1,0 +1,207 @@
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Programming by request}
+
+Studies of programming with a language model are four years old, and the unit of
+work they measure changed inside that span. Barke et al.\ watched 20 programmers
+and found them using the model
+in two ways, finishing a line they had already planned, or asking for a starting
+point in code they did not yet know how to write~\cite{barke2023}. Vaithilingam
+et al.\ found that 24 participants using Copilot did not complete tasks faster
+and still preferred to keep it on, because it gave them a draft to work
+from~\cite{vaithilingam2022}. In both studies the developer accepted a line or a
+block of code. Four years later the benchmark that organises the field
+gives a model a natural language issue report from a real repository and scores
+it on whether the repository's own tests pass afterwards~\cite{jimenez2024}, and
+the systems built to score well on it edit several files in a
+loop~\cite{yang2024}. The unit a developer hands over has gone from a line to a
+paragraph of English, and the code that comes back is correspondingly larger.
+
+All of this work studies the minutes around acceptance, asking whether the code
+is correct~\cite{perry2023}, whether the developer can tell that it is
+correct~\cite{vasconcelos2025}, and whether they trust
+it~\cite{liang2024,nguyen2024}, and it stops once the developer has said yes.
+A week later that same developer wants to remove the caching they asked
+for and keep the rate limiting they asked for in the same hour, and removing one
+and keeping the other is a version control operation. We know of
+no study of what happens to agent-written code after it is committed, and the
+tools it is committed with were designed for a workflow in which the person
+committing wrote the lines.
+
+\subsection{What a version control system agrees to record}
+
+Git records a version as a snapshot of the whole working tree, and each commit
+names its parents plus a tree of file contents addressed by hash~\cite{git2026}.
+Verifying that a history has not been altered is then a matter of rehashing it,
+and a merge is computed on demand from a common ancestor, so no operation in git
+has to reason about how two edits interact. We would insist on both of those
+properties in anything we built. Pérez De Rosso and Jackson analysed git's concepts against the
+purposes users bring to them and found several places where a concept serves a
+purpose users do not have, the staging area and detached \cmd{HEAD} among them.
+Their redesign, Gitless, removes
+both~\cite{perezderosso2013,perezderosso2016}. The commit survives their
+redesign untouched, and it should, because it serves a purpose users do have. The
+commit is the smallest thing git can address, so any operation over less than a
+commit works by having the developer point at lines, which is what
+\cmd{git add -p} and \cmd{git rebase -i} are for. Under git's original constraints this is the
+cheapest correct design available. The person running \cmd{git add -p} in 2005
+had typed the lines minutes earlier, so the decomposition was already in their
+head, and recording it in the repository would have meant maintaining a second
+structure that could disagree with the first. Asking the developer at commit time
+is free when the developer knows.
+
+Darcs takes the other option and records a version as a patch that adds and
+removes lines in a stated context~\cite{roundy2009}. Patches that do not depend
+on each other commute, so a user can pull the third patch in a series without the
+first two, and the theory behind this has been formalised more than
+once~\cite{jacobson2009,mimram2013}. Pijul reimplements it on a data structure
+designed to make the operations fast~\cite{pijul2024}. A Darcs user who pulls one
+patch onto another branch moves the patch that was recorded, along with the
+dependencies it names. Git's cherry-pick reapplies a diff in a context it was not
+written against and produces a second commit with a second hash, so the same work
+has two identities and a later rebase has to be told which of them the developer
+meant. Darcs works out what a patch depends on from the lines the patch touches,
+so a dependency that leaves no trace in the text goes unrecorded. When an agent
+adds a \sym{Retry} class in a new
+file and edits \sym{api.py::handle} to call it, the two patches share no line, so
+nothing in the record says that pulling the second without the first yields a
+file referring to a name that does not exist. Darcs is explicit about this and
+offers a way to declare a dependency by hand. We would have made the same call in
+2003. Computing a dependency between two functions requires parsing the language,
+and a version control system that parses is a version control system that works
+for some languages and not others. That is a price Darcs declined to pay and one
+we do pay, in the form of a system that reads Python, TypeScript and TSX and
+treats a Go file as an opaque blob.
+
+Jujutsu and Mercurial both add a record of history's own history. Jujutsu gives
+each change an identifier separate from its commit hash, so rewriting a commit
+produces a new commit id while ``the change ID generally remains the
+same''~\cite{jjglossary2026}, and a change with more than one visible commit is
+called divergent. Conflicts are recorded in commits so that no command fails
+because of them, and rewriting a commit automatically rebases its
+descendants~\cite{jujutsu2026}. Mercurial's changeset evolution records
+obsolescence markers, stored apart from changeset data, that say which changeset
+superseded which, and the wiki describes the result as ``a history of changeset
+modifications that is orthogonal to the repository history of file
+modifications''~\cite{mercurial2026}. Both designs let a developer say ``the
+change I was working on yesterday'' after five rebases and be understood, and
+both let two people rewrite the same region of history and have the disagreement
+recorded, so the resolution is a decision somebody makes on purpose. \sgt{}'s treatment of two
+competing versions of one function is the same construction, and we take
+Jujutsu's divergent change and Mercurial's content-divergent changeset as
+evidence that recording the disagreement is the right response to it. We part
+company on what receives the durable identity. In both systems it is a commit, so
+the identity is exactly as coarse as the commit, and after a developer squashes a
+two-hour agent session into one commit, one change id covers all three requests
+and nothing smaller has a name. Peritext makes the same choice outside version
+control, giving formatting marks in collaborative rich text their own
+representation, because a record whose unit is the character gets the boundary of
+a bold span wrong when two people edit it at once~\cite{litt2022,kleppmann2019}.
+Choosing a unit of record is choosing which questions the record can answer.
+
+\subsection{Recovering a decomposition after the fact}
+
+A commit that serves several purposes at once is a known problem, and its
+consequences have been measured. Herzig and Zeller examined the histories of five open
+source Java projects, found changes addressing more than one concern throughout
+them, and showed that separating those changes alters which files a defect
+prediction model identifies as the most likely to contain
+bugs~\cite{herzig2013,herzig2016}. The untangling tools built after that
+finding partition a diff using definition and use relationships
+between the changed statements~\cite{barnett2015}, use the fine-grained edit
+events an IDE can record~\cite{dias2015}, build a dependency graph across the
+versions a commit spans~\cite{partachi2020}, or present a partition to the
+developer for correction~\cite{shen2021,tao2015}, and they are evaluated on
+whether they reproduce a grouping that a human labelled. Every one of them is
+solving a harder problem than \sgt{} solves, because they run after the
+information is gone. The developer who typed three sentences into an agent stated
+the boundary out loud before any of the code existed, and the only reason it is
+absent from the repository is that nothing wrote it down. We have not improved on
+their inference, and we do not have to, because the constraint this whole line of
+work was designed around has loosened.
+
+\sgt{} does depend on two results from this literature. Keeping a function's
+identity when it is renamed or moved is the problem that refactoring detection
+and tree differencing address~\cite{tsantalis2018,falleri2014,fluri2007}, and it
+is the weakest link in our implementation, since a rename we fail to detect
+appears as one function removed and another added. Grouping edits into features
+is a clustering over which functions change together and which call each other,
+which is the signal the co-change mining literature
+established~\cite{zimmermann2004,ying2004,kim2005,godfrey2005}, resolved with a
+community detection algorithm~\cite{traag2019,traag2011}. Both are inferences,
+and Section~\ref{sec:design} states what a developer does when they are wrong.
+
+\subsection{Histories the editor keeps}
+
+A second tradition puts the record in the editor and asks nothing of the
+developer. Azurite stores a programmer's editing operations at a finer grain than
+any commit and lets them undo one past edit while keeping the edits made after
+it~\cite{yoon2015,yoon2013}, which is worth building because backtracking is
+frequent enough to be part of ordinary programming~\cite{yoon2014}. Variolite
+lets a data scientist wrap a region of code as a variant and switch between
+variants in place, and Kery et al.\ built it after finding that people doing
+exploratory work avoid version control for exactly that
+work~\cite{kery2017}. Related systems keep alternative program versions side by
+side~\cite{hartmann2008,terry2004}, replay a document's editing
+history~\cite{grossman2010}, version at the grain of a single
+experiment~\cite{mikami2017}, and help a person clean up a notebook after the
+fact~\cite{kery2018,head2019}. In all of these systems the record is a byproduct
+of working and the developer is never asked to prepare it, and \sgt{} keeps that
+commitment. All of these systems stop at the boundary of one
+machine. The history lives in the editor's own store, so a colleague, a build,
+and a code review never see it, and the unit is a single edit event, so a set
+of related edits still has no name a person can use. \sgt{} pays for crossing
+that boundary by writing its record into the git repository as files committed
+with the code, and Section~\ref{sec:design} describes what that costs when a
+colleague who has not installed \sgt{} commits to the same branch.
+
+\subsection{Layers over git built for the way people work now}
+
+The tools developers reach for today accept git's storage and add a layer above
+it. GitButler keeps several branches applied to one working directory at once,
+draws each as a vertical lane with its own staging area, and lets the developer
+drag a change into the lane it belongs to~\cite{gitbutler2026}. A developer
+should not have to decide which branch a piece of work belongs to before starting
+it, because that decision is easiest once the work exists, and we agree with
+GitButler completely on this. GitButler assigns an individual file change to a
+lane, so it cannot express the case at the centre of
+Figure~\ref{fig:two-records}, where three requests all edited
+\sym{api.py::handle} and no assignment of \sym{api.py} to one lane is correct.
+Graphite and GitHub's stacked pull requests take the ordered series as their
+unit. A stack is a sequence of changes in which each one targets the layer below
+it, and the tooling keeps the chain consistent, rebasing and retargeting the
+higher layers when a lower one merges and landing every unmerged layer beneath
+the topmost ready one in a single
+operation~\cite{graphite2026,githubstacked2026}. A reviewer cannot read one large
+change with the care they can give to each of five small ones, and stacking is
+the right answer to that. Graphite's guide also states the precondition plainly, saying
+that developers must understand how to break down their work into small,
+incremental changes, and every command the tool offers operates on a
+decomposition the developer has already performed. The agent session is the case where that
+decomposition exists in the developer's request history and nowhere in the code.
+
+The closest system to ours is sem, which parses about 32 languages with
+tree-sitter and reports which functions, methods and classes a commit changed,
+resolving an entity's identity across versions in three passes, by exact
+identifier, by a structural hash that ignores whitespace and comments, and by
+token overlap above 80\%~\cite{sem2026}. Its commands answer questions about
+entities. \cmd{sem impact} lists an entity's dependencies, dependents and tests,
+\cmd{sem log} surfaces which entities change most often and which change
+together, and \cmd{sem context} assembles a bundle about an entity for a model
+within a token budget. sem keeps all of this in a derived SQLite cache outside
+the repository, under the operating system's cache directory, and that placement
+is the design decision we want to draw attention to. It makes sem safe to adopt and safe to
+abandon, gives entity-level answers about a history recorded years before sem
+existed, and requires agreement from nobody else on the team. It also
+bounds what sem can offer, because a record any teammate's ordinary commit can
+silently invalidate cannot be the record an operation acts on, and there is
+nowhere to write the outcome down. Every sem command therefore reports, and none
+of them changes state.
+A developer learns from \cmd{sem diff} that \sym{get\_cached} changed and then
+removes it with a line-level tool. \sgt{} commits its record to the repository in
+order to act on it, and we pay for that in two places. A colleague
+without \sgt{} installed can merge code and leave the record describing a state
+that no longer exists, and a record that operations depend on has to be repaired
+when it is wrong. Sections~\ref{sec:design} and~\ref{sec:walkthrough} are largely
+about how a developer notices that gap and closes it.

@@ -1,0 +1,99 @@
+% The fork rule: one function, two versions, and who decides. Prints as
+% Figure 4. Single column, drawn beside Section 4.3. Same rails, glyphs and palette as
+% Figures 1 to 4. The instance is the one the walkthrough reaches in 5.5.
+\newcommand{\FigForkCaption}{Two people change \protect\sym{api.py::handle} from
+the version both of them last saved, one taking three lines off the top of it and
+one adding a line to the logging block at its end. Git's merge of the two succeeds
+and prints nothing, and nobody has run the function it produces in that
+state. \sgt{} records both versions, includes neither, and names the function, which
+is the only refusal in \sgt{} that can stop work that would have been correct.}
+
+\newcommand{\FigForkDescription}{Three bands. The top band shows one recorded
+version of a function splitting into two, one change removing three lines at the
+top of the function and one adding a line at the bottom, with the two resulting
+function bodies drawn side by side. The middle band shows git's result, a single
+function body with the top lines gone and the bottom line added, marked as never
+run. The bottom band shows sgt's result, both versions drawn as dotted outlines to
+mean neither is included, and one solid version after the developer writes the
+merge and the test command passes.}
+
+\begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
+
+% one function body. #1 x, #2 y of top edge, #3 mode: t / b / a
+% t = the three lines at the top are gone.  b = a line added at the bottom.
+\newcommand{\fbody}[3]{%
+  \draw[card, color=sgtGrey!45, fill=sgtPaper] (#1,{#2-9.4}) rectangle ({#1+13},#2);
+  \foreach \yy in {-1.4,-2.6,-3.8,-5.0,-6.2,-7.4,-8.6}
+    {\fill[sgtGrey!25] ({#1+1.3},{#2+\yy-0.3}) rectangle ({#1+9.4},{#2+\yy+0.15});}
+  \if#3b\else
+    \fill[sgtPaper] ({#1+0.9},{#2-4.4}) rectangle ({#1+12.1},{#2-0.9});
+    \draw[fCache, line width=0.3pt, densely dotted]
+      ({#1+1.3},{#2-4.3}) rectangle ({#1+11.2},{#2-1.0});
+  \fi
+  \if#3t\else
+    \fill[fIdx] ({#1+1.3},{#2-8.9}) rectangle ({#1+11.2},{#2-8.45});
+  \fi}
+
+% ================= band 1: where the two versions come from ==================
+\node[hd, anchor=west] at (0,44.4)
+  {\fsym{api.py::handle}: ONE SAVED VERSION IN, TWO OUT};
+
+\draw[rail=sgtGrey] (1,37.4) -- (9.5,37.4);
+\opext{5.4}{37.4}{sgtGrey}
+
+\draw[raildim] (9.5,37.4) -- (15.5,40.4);
+\draw[raildim] (9.5,37.4) -- (15.5,34.4);
+\draw[rail=fCache] (15.5,40.4) -- (23.5,40.4); \oprew{19.5}{40.4}{fCache}
+\draw[rail=fIdx]   (15.5,34.4) -- (23.5,34.4); \opext{19.5}{34.4}{fIdx}
+
+\node[anchor=west, text width=25mm, align=left, inner sep=0, text=fCache,
+      font=\sffamily\fontsize{5.4}{6.2}\selectfont] at (25,40.6)
+  {\textbf{A} the cache revert takes 3 lines off the top};
+\node[anchor=west, text width=25mm, align=left, inner sep=0, text=fIdx,
+      font=\sffamily\fontsize{5.4}{6.2}\selectfont] at (25,34.6)
+  {\textbf{B} a colleague logs a request id at the end};
+
+\fbody{55.5}{43.4}{t}
+\fbody{69.5}{43.4}{b}
+\node[note, anchor=north, text=fCache] at (62.0,33.6) {A};
+\node[note, anchor=north, text=fIdx]   at (76.0,33.6) {B};
+
+% ========================= band 2: what git does =============================
+\draw[color=sgtGrey!30, line width=0.3pt] (0,31.4) -- (84,31.4);
+\node[hd, anchor=west] at (0,29.2) {WHAT GIT DOES};
+
+\node[anchor=north west, text width=45mm, align=left, inner sep=0, text=sgtInk!85,
+      font=\sffamily\fontsize{5.6}{6.6}\selectfont] at (0,26.6)
+  {The two changes share no line, so the merge succeeds and prints nothing. The
+   function now runs without the cache lookup and writes the new log line, and no
+   test run anywhere has covered it that way.};
+
+\fbody{55.5}{26.6}{a}
+\draw[color=fExport, line width=0.35pt]
+  (69.2,26.6) -- (69.9,26.6) -- (69.9,17.2) -- (69.2,17.2);
+\node[anchor=west, text width=12mm, align=left, inner sep=0, text=fExport,
+      font=\sffamily\fontsize{5.2}{5.9}\selectfont] at (70.7,21.9)
+  {a state nobody ran};
+
+% ========================= band 3: what sgt does =============================
+\draw[color=sgtGrey!30, line width=0.3pt] (0,15.4) -- (84,15.4);
+\node[hd, anchor=west] at (0,13.2)
+  {WHAT \sgt{} DOES: \ttfamily\fontsize{5.8}{6.6}\selectfont sgt resolve
+   api.py::handle};
+
+\draw[raildim] (1,7.0) -- (8,9.4); \opghost{5.4}{9.4}{fCache}
+\draw[raildim] (1,7.0) -- (8,4.6); \opghost{5.4}{4.6}{fIdx}
+\node[anchor=west, text width=24mm, align=left, inner sep=0, text=sgtInk!80,
+      font=\sffamily\fontsize{5.4}{6.2}\selectfont] at (9.8,7.0)
+  {both recorded,\\neither included};
+
+\draw[-{Straight Barb[length=0.9mm,width=1.0mm]}, line width=0.3pt, color=sgtGrey]
+  (35.0,7.0) -- (38.4,7.0);
+
+\draw[rail=sgtGrey] (40.4,7.0) -- (48.4,7.0); \oprew{44.4}{7.0}{sgtInk!70}
+\node[anchor=west, text width=32mm, align=left, inner sep=0, text=sgtInk!85,
+      font=\sffamily\fontsize{5.4}{6.2}\selectfont] at (50.2,8.6)
+  {the version the developer wrote,\\included once the project's test\\command
+   passes};
+
+\end{tikzpicture}

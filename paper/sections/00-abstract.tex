@@ -1,0 +1,26 @@
+\begin{abstract}
+A developer asks a coding agent for three things in one hour, and fourteen
+functions in five files come back changed. The developer stated each request in
+one sentence of English, and the two commits that arrive hold all three requests
+interleaved with a rename the agent made on its own initiative. Git addresses a
+history by lines and by commits, so a developer who wants one of those three
+requests out of it has to name the lines that request produced, and after an
+agent wrote the code the developer cannot name them. The unit of record and the
+unit of thought have come apart.
+
+We present \sgt{}, a version control system that records a change as one edit to
+one function, files each edit under the request it was made for, and keeps the
+whole record inside an ordinary git repository. A developer names a request to
+remove it, put it back, compare two attempts at it, or carry it to another
+branch, and the code that other requests contributed to the same files stays
+where it is. Every byte of code in the working files came from the developer or
+their agent, and \sgt{} reads that code rather than writing any of it.
+
+The design costs the developer three things and we state them at the front. Two
+edits to the same function from the same starting point are recorded as
+competing versions that a person decides between, including the pair at opposite
+ends of a fifty line function that git would have merged without comment. The
+grouping of edits into named features is inferred from which functions change
+together, so a person corrects it. Code in a language \sgt{} does not parse is
+versioned whole, at the grain git already uses.
+\end{abstract}

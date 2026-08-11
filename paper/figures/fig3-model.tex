@@ -1,0 +1,273 @@
+% Figure 3. The whole model in one picture: what a save writes, what a version
+% is, and where the bytes in your files come from. Same session as Figure 1.
+\newcommand{\FigThreeCaption}{What one save writes down, what a version is, and
+where the bytes in a file come from. A save writes
+one record per changed function and files the records under a guess at the request
+they served, which the developer corrects with one command (left). A version is
+the set of those records, so taking out the price cache is subtracting six records
+from eighteen, and two rules decide which sets are allowed (middle). The files are
+rebuilt from the set with the text between functions kept exactly, so the same set
+always produces the same bytes (right). Two kinds of mark in the right-hand column
+are the two consequences \sgt{} reports about this revert and does not act on. The hollow
+triangle on \protect\fsym{api.py::handle} means the retry policy edited that
+function after the cache did, so \sgt{} took the cache's lines back out of the
+current text and the developer's test suite decides whether the result stands. The
+open circles are three functions that still call
+\protect\fsym{cache.py::get\_cached}, which \sgt{} names and leaves alone.
+\protect\fsym{db.py::query} is the one function that goes back to text it had
+earlier in the day.}
+
+\newcommand{\FigThreeDescription}{Three panels. The left panel shows a terminal
+transcript of one save command, followed by the three feature groups the save
+landed in, one of them newly created and unnamed, and then a card listing the
+five fields one edit record holds. The middle panel lists the fourteen functions
+this session changed, grouped by file, with the edit marks for each on a short
+rail, in two columns. The left column is the set as it stands and the right
+column is the same list after the price cache has been reverted, where the cache
+edits are drawn as dotted outlines, one file is marked as removed, one function is
+marked with a hollow triangle, and three functions are marked with an open circle.
+The right panel draws the file
+api.py twice as a vertical stack of bands, once before and once after, where
+coloured bands are function bodies and grey bands are the text between them,
+which is identical in both.}
+
+\begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
+
+\node[hd, anchor=west] at (0,78)   {1\quad WHAT A SAVE WRITES};
+\node[hd, anchor=west] at (52,78)  {2\quad WHAT A VERSION IS};
+\node[hd, anchor=west] at (117,78) {3\quad WHAT IS IN YOUR FILES};
+\draw[color=sgtGrey!40, line width=0.3pt] (0,76.5) -- (176,76.5);
+\draw[color=sgtGrey!30, line width=0.3pt] (49.5,11) -- (49.5,76.5);
+\draw[color=sgtGrey!30, line width=0.3pt] (114,11) -- (114,76.5);
+\draw[color=sgtGrey!40, line width=0.3pt] (0,9.6) -- (176,9.6);
+
+% ==================== panel 1: what a save writes =========================
+\node[anchor=north west, align=left, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.2}{7}\selectfont] at (0,74.6)
+  {\$ sgt save -m "retry the upstream call\\
+   \hphantom{\$ sgt save -m "}when it returns a 5xx"\\
+   \ \ save 7f10de\ \ 6 edits};
+
+\oprew{1.3}{62.2}{fRetry}
+\node[anchor=north west, align=left, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.2}{6.6}\selectfont] at (3.4,63.2)
+  {\textcolor{fRetry}{new feature} (7c02b4d1)\ \ 3 edits\\
+   retry.py::Retry\ \ retry.py::\_backoff\\
+   api.py::handle\\
+   unnamed. name it with\\
+   sgt feature rename 7c02b4d1 "retry policy"};
+
+\oprew{1.3}{45.6}{fCache}
+\node[anchor=north west, align=left, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.2}{6.6}\selectfont] at (3.4,46.6)
+  {\textcolor{fCache}{price cache} (001f73c2)\ \ 2 edits\\
+   cache.py::get\_cached\ \ cache.py::\_ttl};
+
+\oprew{1.3}{39.4}{sgtGrey}
+\node[anchor=north west, align=left, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.2}{6.6}\selectfont] at (3.4,40.4)
+  {\textcolor{sgtGrey}{row accessors} (9d20b18a)\ \ 1 edit\\
+   util.py::audit};
+
+% one record, in full
+\draw[card, color=sgtGrey!45, fill=sgtPaper] (0,14.6) rectangle (47,34.2);
+\fill[fRetry] (0,31.6) rectangle (47,34.2);
+\node[anchor=west, inner sep=0, text=sgtPaper,
+      font=\ttfamily\fontsize{5.2}{6}\selectfont] at (1.2,32.9) {edit 4b1c9f28};
+\node[anchor=north west, align=left, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.2}{6.9}\selectfont] at (1.2,30.6)
+  {function\ \ \ \ api.py::handle\\
+   kind\ \ \ \ \ \ \ \ extended\\
+   started at\ \ 9ac7e1\\
+   produced\ \ \ \ b41c08\\
+   built on\ \ \ \ retry.py::Retry};
+
+% ==================== panel 2: what a version is ==========================
+\node[anchor=north west, align=left, text width=61mm, inner sep=0, text=sgtInk!85,
+      font=\sffamily\fontsize{5.6}{6.6}\selectfont] at (52,74.8)
+  {\textbf{rule 1}\ \ no edit without the edits it was built on.\ \ \ \
+   \textbf{rule 2}\ \ one live version of each function.};
+
+\node[anchor=north west, align=left, inner sep=0, text=sgtInk,
+      font=\sffamily\bfseries\fontsize{5.6}{6.4}\selectfont] at (52,68.6)
+  {THE SET NOW};
+\node[anchor=north west, inner sep=0, text=sgtGrey,
+      font=\sffamily\fontsize{5.2}{6}\selectfont] at (52,66.0)
+  {18 edits, 14 functions};
+\node[anchor=north west, align=left, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.4}{6.2}\selectfont] at (84,68.6)
+  {\$ sgt revert "price cache"};
+\node[anchor=north west, inner sep=0, text=sgtGrey,
+      font=\sffamily\fontsize{5.2}{6}\selectfont] at (84,66.0)
+  {12 edits, 12 functions};
+
+% #1 x, #2 y, #3 file name
+\newcommand{\FTfile}[3]{\node[anchor=north west, inner sep=0, text=sgtInk!65,
+  font=\sffamily\bfseries\fontsize{5.2}{6}\selectfont] at (#1,#2) {#3};}
+% #1 x, #2 y, #3 symbol name, #4 colour
+\newcommand{\FTsym}[4]{\node[anchor=north west, inner sep=0, text=#4,
+  font=\ttfamily\fontsize{5.2}{6}\selectfont] at (#1,#2) {#3};}
+% a hollow up-triangle: this version was re-drafted, and the tests decide
+\newcommand{\FTredraft}[2]{\draw[sgtInk!85, line width=0.4pt, fill=sgtPaper]
+  ({#1-0.95},{#2-0.85}) -- ({#1+0.95},{#2-0.85}) -- (#1,{#2+1.0}) -- cycle;}
+% an open circle: this function still calls something the revert removed
+\newcommand{\FTcalls}[2]{\draw[sgtInk!85, line width=0.4pt, fill=sgtPaper]
+  (#1,#2) circle (0.85);}
+% #1 x of rail start, #2 y of rail
+\newcommand{\FTrail}[3]{\draw[rail=#3] (#1,#2) -- ({#1+9},#2);}
+\newcommand{\FTraildim}[2]{\draw[raildim] (#1,#2) -- ({#1+9},#2);}
+
+% ---- left column: the set as it stands
+\FTfile{52}{63.6}{api.py}
+\FTsym{54}{60.8}{handle}{sgtInk}
+  \FTrail{69.5}{59.9}{fRetry}
+  \opext{70.6}{59.9}{fRate}\opext{74.0}{59.9}{fCache}\opext{77.4}{59.9}{fRetry}
+\FTsym{54}{58.0}{\_bucket}{sgtInk}
+  \FTrail{69.5}{57.1}{fRate}\opadd{70.6}{57.1}{fRate}
+\FTsym{54}{55.2}{\_key}{sgtInk}
+  \FTrail{69.5}{54.3}{fRate}\opadd{70.6}{54.3}{fRate}
+\FTsym{54}{52.4}{\_window}{sgtInk}
+  \FTrail{69.5}{51.5}{fRate}\opadd{70.6}{51.5}{fRate}
+\FTsym{54}{49.6}{export\_row}{sgtInk}
+  \FTrail{69.5}{48.7}{sgtGrey}\opext{70.6}{48.7}{sgtGrey}
+\FTfile{52}{46.8}{cache.py}
+\FTsym{54}{44.0}{get\_cached}{sgtInk}
+  \FTrail{69.5}{43.1}{fCache}
+  \opadd{70.6}{43.1}{fCache}\oprew{74.0}{43.1}{fCache}
+\FTsym{54}{41.2}{\_ttl}{sgtInk}
+  \FTrail{69.5}{40.3}{fCache}
+  \opadd{70.6}{40.3}{fCache}\opext{74.0}{40.3}{fCache}
+\FTfile{52}{38.4}{db.py}
+\FTsym{54}{35.6}{query}{sgtInk}
+  \FTrail{69.5}{34.7}{fCache}\opext{70.6}{34.7}{fCache}
+\FTsym{54}{32.8}{fetch\_row}{sgtInk}
+  \FTrail{69.5}{31.9}{sgtGrey}\opmove{70.6}{31.9}{sgtGrey}
+\FTfile{52}{30.0}{retry.py}
+\FTsym{54}{27.2}{Retry}{sgtInk}
+  \FTrail{69.5}{26.3}{fRetry}\opadd{70.6}{26.3}{fRetry}
+\FTsym{54}{24.4}{\_backoff}{sgtInk}
+  \FTrail{69.5}{23.5}{fRetry}\opadd{70.6}{23.5}{fRetry}
+\FTfile{52}{21.6}{util.py}
+\FTsym{54}{18.8}{load\_row}{sgtInk}
+  \FTrail{69.5}{17.9}{sgtGrey}\opext{70.6}{17.9}{sgtGrey}
+\FTsym{54}{16.0}{save\_row}{sgtInk}
+  \FTrail{69.5}{15.1}{sgtGrey}\opext{70.6}{15.1}{sgtGrey}
+\FTsym{54}{13.2}{audit}{sgtInk}
+  \FTrail{69.5}{12.3}{sgtGrey}\opext{70.6}{12.3}{sgtGrey}
+
+% ---- right column: the same list, six edits subtracted
+\FTfile{84}{63.6}{api.py}
+\FTsym{86}{60.8}{handle}{sgtInk}
+  \FTrail{101.5}{59.9}{fRetry}
+  \opext{102.6}{59.9}{fRate}\opghost{106.0}{59.9}{fCache}\opext{109.4}{59.9}{fRetry}
+  \FTredraft{112.6}{59.9}
+\FTsym{86}{58.0}{\_bucket}{sgtInk}
+  \FTrail{101.5}{57.1}{fRate}\opadd{102.6}{57.1}{fRate}
+\FTsym{86}{55.2}{\_key}{sgtInk}
+  \FTrail{101.5}{54.3}{fRate}\opadd{102.6}{54.3}{fRate}
+\FTsym{86}{52.4}{\_window}{sgtInk}
+  \FTrail{101.5}{51.5}{fRate}\opadd{102.6}{51.5}{fRate}
+\FTsym{86}{49.6}{export\_row}{sgtInk}
+  \FTrail{101.5}{48.7}{sgtGrey}\opext{102.6}{48.7}{sgtGrey}
+  \FTcalls{112.6}{48.7}
+\FTfile{84}{46.8}{cache.py}
+\node[anchor=east, inner sep=0, text=sgtGrey,
+      font=\sffamily\itshape\fontsize{5}{5.8}\selectfont] at (113.5,46.0)
+  {file removed};
+\FTsym{86}{44.0}{get\_cached}{sgtGrey!80}
+  \FTraildim{101.5}{43.1}
+  \opghost{102.6}{43.1}{fCache}\opghost{106.0}{43.1}{fCache}
+\FTsym{86}{41.2}{\_ttl}{sgtGrey!80}
+  \FTraildim{101.5}{40.3}
+  \opghost{102.6}{40.3}{fCache}\opghost{106.0}{40.3}{fCache}
+\FTfile{84}{38.4}{db.py}
+\FTsym{86}{35.6}{query}{sgtInk}
+  \draw[raildim] (101.5,34.7) -- (104.0,34.7);\opghost{102.6}{34.7}{fCache}
+  \node[anchor=east, inner sep=0, text=sgtGrey,
+        font=\sffamily\itshape\fontsize{5}{5.8}\selectfont] at (113.5,34.7)
+    {back to 14:02};
+\FTsym{86}{32.8}{fetch\_row}{sgtInk}
+  \FTrail{101.5}{31.9}{sgtGrey}\opmove{102.6}{31.9}{sgtGrey}
+\FTfile{84}{30.0}{retry.py}
+\FTsym{86}{27.2}{Retry}{sgtInk}
+  \FTrail{101.5}{26.3}{fRetry}\opadd{102.6}{26.3}{fRetry}
+\FTsym{86}{24.4}{\_backoff}{sgtInk}
+  \FTrail{101.5}{23.5}{fRetry}\opadd{102.6}{23.5}{fRetry}
+\FTfile{84}{21.6}{util.py}
+\FTsym{86}{18.8}{load\_row}{sgtInk}
+  \FTrail{101.5}{17.9}{sgtGrey}\opext{102.6}{17.9}{sgtGrey}
+  \FTcalls{112.6}{17.9}
+\FTsym{86}{16.0}{save\_row}{sgtInk}
+  \FTrail{101.5}{15.1}{sgtGrey}\opext{102.6}{15.1}{sgtGrey}
+  \FTcalls{112.6}{15.1}
+\FTsym{86}{13.2}{audit}{sgtInk}
+  \FTrail{101.5}{12.3}{sgtGrey}\opext{102.6}{12.3}{sgtGrey}
+
+% ==================== panel 3: what is in your files ======================
+\node[anchor=north west, text width=59mm, align=left, inner sep=0, text=sgtInk!85,
+      font=\sffamily\fontsize{5.6}{6.6}\selectfont] at (117,74.8)
+  {\sgt{} writes a file by putting each live version back in place and keeping
+   every character between them.};
+
+% #1 x left, #2 y bottom, #3 height, #4 colour, #5 label
+\newcommand{\FTband}[5]{%
+  \fill[#4!30, rounded corners=0.4mm] ({#1+0.6},#2) rectangle ({#1+25.4},{#2+#3});
+  \node[anchor=west, inner sep=0, text=sgtInk!85,
+        font=\ttfamily\fontsize{5}{5.8}\selectfont] at ({#1+2.2},{#2+#3/2}) {#5};}
+% #1 x left, #2 y bottom, #3 height: text sgt keeps verbatim
+\newcommand{\FTgap}[3]{%
+  \fill[sgtGrey!12] ({#1+0.6},#2) rectangle ({#1+25.4},{#2+#3});
+  \foreach \i in {0,1,2} {\fill[sgtGrey!45] ({#1+2.2},{#2+#3-1.1-\i*1.1})
+     rectangle ({#1+2.2+13-\i*3.2},{#2+#3-0.65-\i*1.1});}}
+
+\node[anchor=south west, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.4}{6}\selectfont] at (117,68.6) {api.py};
+\node[anchor=south west, inner sep=0, text=sgtInk,
+      font=\ttfamily\fontsize{5.4}{6}\selectfont] at (148,68.6) {api.py};
+\node[anchor=south east, inner sep=0, text=sgtGrey,
+      font=\sffamily\fontsize{5}{5.8}\selectfont] at (143,68.6) {before};
+\node[anchor=south east, inner sep=0, text=sgtGrey,
+      font=\sffamily\fontsize{5}{5.8}\selectfont] at (174,68.6) {after};
+
+\foreach \x in {117,148} {
+  \draw[card, color=sgtGrey!45, fill=sgtPaper] (\x,20.5) rectangle ({\x+26},67.5);
+  \FTgap{\x}{63.6}{3.4}
+  \FTband{\x}{58.4}{4.6}{fRate}{\_bucket}
+  \FTband{\x}{53.4}{4.6}{fRate}{\_key}
+  \FTband{\x}{48.4}{4.6}{fRate}{\_window}
+  \FTgap{\x}{44.6}{3.4}
+  \FTgap{\x}{30.0}{3.4}
+  \FTband{\x}{21.4}{8.2}{sgtGrey}{export\_row}
+}
+% handle: one version, with a bar saying which requests contributed to it
+\FTband{117}{34.0}{10.2}{fRetry}{handle}
+\fill[fRate]  (117.6,34.0) rectangle (118.7,37.4);
+\fill[fCache] (117.6,37.4) rectangle (118.7,40.8);
+\fill[fRetry] (117.6,40.8) rectangle (118.7,44.2);
+\FTband{148}{34.0}{10.2}{fRetry}{handle}
+\fill[fRate]  (148.6,34.0) rectangle (149.7,39.1);
+\fill[fRetry] (148.6,39.1) rectangle (149.7,44.2);
+\FTredraft{171.6}{39.1}
+
+\node[anchor=north west, text width=59mm, align=left, inner sep=0, text=sgtInk!85,
+      font=\sffamily\fontsize{5.6}{6.6}\selectfont] at (117,19.0)
+  {The grey bands are the imports, the comments, and the blank lines, which \sgt{}
+   keeps and never rewrites. The bar left of \fsym{handle} names the requests that
+   contributed to the version in the file.};
+
+% ==================== bottom: what each one buys ==========================
+\node[anchor=north west, text width=47mm, align=left, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (0,8.4)
+  {Every field was read out of the files, and the sentence at the top is all the
+   developer typed. No diff was sorted by hand at any point.};
+\node[anchor=north west, text width=61mm, align=left, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (52,8.4)
+  {Each of \cmd{revert}, \cmd{restore}, \cmd{diff} and \cmd{switch} is one
+   subtraction or one union over this list, so \sgt{} can show the resulting files
+   before writing any of them.};
+\node[anchor=north west, text width=59mm, align=left, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (117,8.4)
+  {A file is a rebuild from a set. Revert the cache twice and restore it once and
+   the bytes match the file that was there before any of it.};
+
+\end{tikzpicture}

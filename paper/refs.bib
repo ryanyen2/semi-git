@@ -1,0 +1,768 @@
+%% ---------------------------------------------------------------------------
+%% Version control: conceptual design and usability
+%% ---------------------------------------------------------------------------
+
+@inproceedings{perezderosso2013,
+  author    = {Perez De Rosso, Santiago and Jackson, Daniel},
+  title     = {What's wrong with git? A conceptual design analysis},
+  booktitle = {Proceedings of the 2013 ACM International Symposium on New Ideas, New Paradigms, and Reflections on Programming \& Software (Onward!)},
+  year      = {2013},
+  pages     = {37--52},
+  publisher = {ACM},
+  doi       = {10.1145/2509578.2509584}
+}
+
+@inproceedings{perezderosso2016,
+  author    = {Perez De Rosso, Santiago and Jackson, Daniel},
+  title     = {Purposes, concepts, misfits, and a redesign of git},
+  booktitle = {Proceedings of the 2016 ACM SIGPLAN International Conference on Object-Oriented Programming, Systems, Languages, and Applications (OOPSLA)},
+  year      = {2016},
+  pages     = {292--310},
+  publisher = {ACM},
+  doi       = {10.1145/2983990.2984018}
+}
+
+@book{jackson2021,
+  author    = {Jackson, Daniel},
+  title     = {The Essence of Software: Why Concepts Matter for Great Design},
+  year      = {2021},
+  publisher = {Princeton University Press}
+}
+
+@article{church2014,
+  author    = {Church, Luke and Söderberg, Emma and Elango, Bhargava},
+  title     = {A case of computational thinking: The subtle effect of hidden dependencies on the user experience of version control},
+  journal   = {Proceedings of the 25th Annual Workshop of the Psychology of Programming Interest Group (PPIG)},
+  year      = {2014}
+}
+
+@inproceedings{codoban2015,
+  author    = {Codoban, Mihai and Ragavan, Sruti Srinivasa and Dig, Danny and Bailey, Brian},
+  title     = {Software history under the lens: A study on why and how developers examine it},
+  booktitle = {Proceedings of the 2015 IEEE International Conference on Software Maintenance and Evolution (ICSME)},
+  year      = {2015},
+  pages     = {1--10},
+  doi       = {10.1109/ICSM.2015.7332446}
+}
+
+@article{thimbleby1988,
+  author  = {Thimbleby, Harold},
+  title   = {Delaying commitment},
+  journal = {IEEE Software},
+  volume  = {5},
+  number  = {3},
+  pages   = {78--86},
+  year    = {1988},
+  doi     = {10.1109/52.2027}
+}
+
+@article{green1996,
+  author  = {Green, Thomas R. G. and Petre, Marian},
+  title   = {Usability analysis of visual programming environments: A `cognitive dimensions' framework},
+  journal = {Journal of Visual Languages and Computing},
+  volume  = {7},
+  number  = {2},
+  pages   = {131--174},
+  year    = {1996},
+  doi     = {10.1006/jvlc.1996.0009}
+}
+
+@incollection{blackwell2003,
+  author    = {Blackwell, Alan F. and Green, Thomas R. G.},
+  title     = {Notational systems: The Cognitive Dimensions of Notations framework},
+  booktitle = {HCI Models, Theories, and Frameworks: Toward a Multidisciplinary Science},
+  editor    = {Carroll, John M.},
+  publisher = {Morgan Kaufmann},
+  year      = {2003},
+  pages     = {103--134}
+}
+
+%% ---------------------------------------------------------------------------
+%% Patch-based and operation-based version control
+%% ---------------------------------------------------------------------------
+
+@article{roundy2009,
+  author  = {Roundy, David},
+  title   = {Darcs: Distributed version management in Haskell},
+  journal = {Proceedings of the 2005 ACM SIGPLAN Workshop on Haskell},
+  year    = {2005},
+  pages   = {1--4},
+  doi     = {10.1145/1088348.1088349}
+}
+
+@article{jacobson2009,
+  author  = {Jacobson, Judah},
+  title   = {A formalization of Darcs patch theory using inverse semigroups},
+  journal = {Computational and Applied Mathematics Reports, University of California, Los Angeles},
+  year    = {2009},
+  note    = {CAM report 09-83}
+}
+
+@article{mimram2013,
+  author  = {Mimram, Samuel and Di Giusto, Cinzia},
+  title   = {A categorical theory of patches},
+  journal = {Electronic Notes in Theoretical Computer Science},
+  volume  = {298},
+  pages   = {283--307},
+  year    = {2013},
+  doi     = {10.1016/j.entcs.2013.09.018}
+}
+
+@misc{pijul2024,
+  author       = {Meunier, Pierre-Étienne and Becker, Florent},
+  title        = {The Pijul manual},
+  year         = {2024},
+  howpublished = {\url{https://pijul.org/manual/}},
+  note         = {Accessed 2026}
+}
+
+@misc{jujutsu2026,
+  author       = {von Zweigbergk, Martin and {the Jujutsu contributors}},
+  title        = {Jujutsu documentation: Comparison with Git},
+  year         = {2026},
+  howpublished = {\url{http://docs.jj-vcs.dev/latest/git-comparison/}},
+  note         = {Accessed August 2026}
+}
+
+@misc{jjglossary2026,
+  author       = {von Zweigbergk, Martin and {the Jujutsu contributors}},
+  title        = {Jujutsu documentation: Glossary},
+  year         = {2026},
+  howpublished = {\url{http://docs.jj-vcs.dev/latest/glossary/}},
+  note         = {Accessed August 2026}
+}
+
+@misc{mercurial2026,
+  author       = {{The Mercurial contributors}},
+  title        = {Mercurial wiki: Changeset evolution},
+  year         = {2026},
+  howpublished = {\url{https://wiki.mercurial-scm.org/ChangesetEvolution}},
+  note         = {Accessed August 2026}
+}
+
+@misc{git2026,
+  author       = {Torvalds, Linus and Hamano, Junio C. and {the Git contributors}},
+  title        = {Git: Distributed version control system},
+  year         = {2026},
+  howpublished = {\url{https://git-scm.com/}},
+  note         = {Accessed 2026}
+}
+
+@inproceedings{shapiro2011,
+  author    = {Shapiro, Marc and Preguiça, Nuno and Baquero, Carlos and Zawirski, Marek},
+  title     = {Conflict-free replicated data types},
+  booktitle = {Proceedings of the 13th International Symposium on Stabilization, Safety, and Security of Distributed Systems (SSS)},
+  year      = {2011},
+  pages     = {386--400},
+  doi       = {10.1007/978-3-642-24550-3_29}
+}
+
+@inproceedings{kleppmann2019,
+  author    = {Kleppmann, Martin and Gomes, Victor B. F. and Mulligan, Dominic P. and Beresford, Alastair R.},
+  title     = {Interleaving anomalies in collaborative text editors},
+  booktitle = {Proceedings of the 6th Workshop on Principles and Practice of Consistency for Distributed Data (PaPoC)},
+  year      = {2019},
+  pages     = {1--7},
+  doi       = {10.1145/3301419.3323972}
+}
+
+@article{litt2022,
+  author  = {Litt, Geoffrey and Lim, Sarah and Kleppmann, Martin and van Hardenberg, Peter},
+  title   = {Peritext: A CRDT for collaborative rich text editing},
+  journal = {Proceedings of the ACM on Human-Computer Interaction},
+  volume  = {6},
+  number  = {CSCW2},
+  pages   = {1--29},
+  year    = {2022},
+  doi     = {10.1145/3555644}
+}
+
+%% ---------------------------------------------------------------------------
+%% Tangled changes, commit decomposition, commit quality
+%% ---------------------------------------------------------------------------
+
+@inproceedings{herzig2013,
+  author    = {Herzig, Kim and Zeller, Andreas},
+  title     = {The impact of tangled code changes},
+  booktitle = {Proceedings of the 10th Working Conference on Mining Software Repositories (MSR)},
+  year      = {2013},
+  pages     = {121--130},
+  doi       = {10.1109/MSR.2013.6624018}
+}
+
+@article{herzig2016,
+  author  = {Herzig, Kim and Just, Sascha and Zeller, Andreas},
+  title   = {The impact of tangled code changes on defect prediction models},
+  journal = {Empirical Software Engineering},
+  volume  = {21},
+  number  = {2},
+  pages   = {303--336},
+  year    = {2016},
+  doi     = {10.1007/s10664-015-9376-6}
+}
+
+@inproceedings{barnett2015,
+  author    = {Barnett, Mike and Bird, Christian and Brunet, João and Lahiri, Shuvendu K.},
+  title     = {Helping developers help themselves: Automatic decomposition of code review changesets},
+  booktitle = {Proceedings of the 37th International Conference on Software Engineering (ICSE)},
+  year      = {2015},
+  pages     = {134--144},
+  doi       = {10.1109/ICSE.2015.35}
+}
+
+@inproceedings{tao2015,
+  author    = {Tao, Yida and Kim, Sunghun},
+  title     = {Partitioning composite code changes to facilitate code review},
+  booktitle = {Proceedings of the 12th Working Conference on Mining Software Repositories (MSR)},
+  year      = {2015},
+  pages     = {180--190},
+  doi       = {10.1109/MSR.2015.24}
+}
+
+@inproceedings{dias2015,
+  author    = {Dias, Martín and Bacchelli, Alberto and Gousios, Georgios and Cassou, Damien and Ducasse, Stéphane},
+  title     = {Untangling fine-grained code changes},
+  booktitle = {Proceedings of the 22nd IEEE International Conference on Software Analysis, Evolution, and Reengineering (SANER)},
+  year      = {2015},
+  pages     = {341--350},
+  doi       = {10.1109/SANER.2015.7081844}
+}
+
+@inproceedings{shen2021,
+  author    = {Shen, Bo and Zhang, Wei and Kästner, Christian and Zhao, Haiyan and Wei, Zhao and Liang, Guangtai and Jin, Zhi},
+  title     = {SmartCommit: A graph-based interactive assistant for activity-oriented commits},
+  booktitle = {Proceedings of the 29th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE)},
+  year      = {2021},
+  pages     = {379--390},
+  doi       = {10.1145/3468264.3468551}
+}
+
+@inproceedings{partachi2020,
+  author    = {Pârțachi, Profir-Petru and Dash, Santanu Kumar and Treude, Christoph and Barr, Earl T.},
+  title     = {Flexeme: Untangling commits using lexical flows},
+  booktitle = {Proceedings of the 28th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE)},
+  year      = {2020},
+  pages     = {63--74},
+  doi       = {10.1145/3368089.3409693}
+}
+
+@inproceedings{wang2019,
+  author    = {Wang, Min and Lin, Zeqi and Zou, Yanzhen and Xie, Bing},
+  title     = {CoRA: Decomposing and describing tangled code changes for reviewer},
+  booktitle = {Proceedings of the 34th IEEE/ACM International Conference on Automated Software Engineering (ASE)},
+  year      = {2019},
+  pages     = {1050--1061},
+  doi       = {10.1109/ASE.2019.00101}
+}
+
+@inproceedings{tian2022,
+  author    = {Tian, Yingchen and Zhang, Yuxia and Stol, Klaas-Jan and Jiang, Lin and Liu, Hui},
+  title     = {What makes a good commit message?},
+  booktitle = {Proceedings of the 44th International Conference on Software Engineering (ICSE)},
+  year      = {2022},
+  pages     = {2389--2401},
+  doi       = {10.1145/3510003.3510205}
+}
+
+@inproceedings{buse2010,
+  author    = {Buse, Raymond P. L. and Weimer, Westley R.},
+  title     = {Automatically documenting program changes},
+  booktitle = {Proceedings of the 25th IEEE/ACM International Conference on Automated Software Engineering (ASE)},
+  year      = {2010},
+  pages     = {33--42},
+  doi       = {10.1145/1858996.1859005}
+}
+
+@inproceedings{hattori2008,
+  author    = {Hattori, Lile P. and Lanza, Michele},
+  title     = {On the nature of commits},
+  booktitle = {Proceedings of the 23rd IEEE/ACM International Conference on Automated Software Engineering (ASE) Workshops},
+  year      = {2008},
+  pages     = {63--71},
+  doi       = {10.1109/ASEW.2008.4686322}
+}
+
+%% ---------------------------------------------------------------------------
+%% Program comprehension, code navigation, task context
+%% ---------------------------------------------------------------------------
+
+@article{ko2006,
+  author  = {Ko, Andrew J. and Myers, Brad A. and Coblenz, Michael J. and Aung, Htet Htet},
+  title   = {An exploratory study of how developers seek, relate, and collect relevant information during software maintenance tasks},
+  journal = {IEEE Transactions on Software Engineering},
+  volume  = {32},
+  number  = {12},
+  pages   = {971--987},
+  year    = {2006},
+  doi     = {10.1109/TSE.2006.116}
+}
+
+@article{sillito2008,
+  author  = {Sillito, Jonathan and Murphy, Gail C. and De Volder, Kris},
+  title   = {Asking and answering questions during a programming change task},
+  journal = {IEEE Transactions on Software Engineering},
+  volume  = {34},
+  number  = {4},
+  pages   = {434--451},
+  year    = {2008},
+  doi     = {10.1109/TSE.2008.26}
+}
+
+@inproceedings{latoza2010,
+  author    = {LaToza, Thomas D. and Myers, Brad A.},
+  title     = {Hard-to-answer questions about code},
+  booktitle = {Evaluation and Usability of Programming Languages and Tools (PLATEAU)},
+  year      = {2010},
+  pages     = {1--6},
+  doi       = {10.1145/1937117.1937125}
+}
+
+@article{maalej2014,
+  author  = {Maalej, Walid and Tiarks, Rebecca and Roehm, Tobias and Koschke, Rainer},
+  title   = {On the comprehension of program comprehension},
+  journal = {ACM Transactions on Software Engineering and Methodology},
+  volume  = {23},
+  number  = {4},
+  pages   = {1--37},
+  year    = {2014},
+  doi     = {10.1145/2622669}
+}
+
+@article{xia2018,
+  author  = {Xia, Xin and Bao, Lingfeng and Lo, David and Xing, Zhenchang and Hassan, Ahmed E. and Li, Shanping},
+  title   = {Measuring program comprehension: A large-scale field study with professionals},
+  journal = {IEEE Transactions on Software Engineering},
+  volume  = {44},
+  number  = {10},
+  pages   = {951--976},
+  year    = {2018},
+  doi     = {10.1109/TSE.2017.2734091}
+}
+
+@inproceedings{kersten2006,
+  author    = {Kersten, Mik and Murphy, Gail C.},
+  title     = {Using task context to improve programmer productivity},
+  booktitle = {Proceedings of the 14th ACM SIGSOFT International Symposium on Foundations of Software Engineering (FSE)},
+  year      = {2006},
+  pages     = {1--11},
+  doi       = {10.1145/1181775.1181777}
+}
+
+@article{dit2013,
+  author  = {Dit, Bogdan and Revelle, Meghan and Gethers, Malcom and Poshyvanyk, Denys},
+  title   = {Feature location in source code: A taxonomy and survey},
+  journal = {Journal of Software: Evolution and Process},
+  volume  = {25},
+  number  = {1},
+  pages   = {53--95},
+  year    = {2013},
+  doi     = {10.1002/smr.567}
+}
+
+@inproceedings{biggerstaff1993,
+  author    = {Biggerstaff, Ted J. and Mitbander, Bharat G. and Webster, Dallas},
+  title     = {The concept assignment problem in program understanding},
+  booktitle = {Proceedings of the 15th International Conference on Software Engineering (ICSE)},
+  year      = {1993},
+  pages     = {482--498},
+  doi       = {10.1109/ICSE.1993.346017}
+}
+
+%% ---------------------------------------------------------------------------
+%% Change history mining, identity, co-change
+%% ---------------------------------------------------------------------------
+
+@inproceedings{zimmermann2004,
+  author    = {Zimmermann, Thomas and Weißgerber, Peter and Diehl, Stephan and Zeller, Andreas},
+  title     = {Mining version histories to guide software changes},
+  booktitle = {Proceedings of the 26th International Conference on Software Engineering (ICSE)},
+  year      = {2004},
+  pages     = {563--572},
+  doi       = {10.1109/ICSE.2004.1317478}
+}
+
+@article{ying2004,
+  author  = {Ying, Annie T. T. and Murphy, Gail C. and Ng, Raymond and Chu-Carroll, Mark C.},
+  title   = {Predicting source code changes by mining change history},
+  journal = {IEEE Transactions on Software Engineering},
+  volume  = {30},
+  number  = {9},
+  pages   = {574--586},
+  year    = {2004},
+  doi     = {10.1109/TSE.2004.52}
+}
+
+@article{godfrey2005,
+  author  = {Godfrey, Michael W. and Zou, Lijie},
+  title   = {Using origin analysis to detect merging and splitting of source code entities},
+  journal = {IEEE Transactions on Software Engineering},
+  volume  = {31},
+  number  = {2},
+  pages   = {166--181},
+  year    = {2005},
+  doi     = {10.1109/TSE.2005.28}
+}
+
+@inproceedings{kim2005,
+  author    = {Kim, Sunghun and Pan, Kai and Whitehead, E. James},
+  title     = {When functions change their names: Automatic detection of origin relationships},
+  booktitle = {Proceedings of the 12th Working Conference on Reverse Engineering (WCRE)},
+  year      = {2005},
+  pages     = {143--152},
+  doi       = {10.1109/WCRE.2005.33}
+}
+
+@inproceedings{tsantalis2018,
+  author    = {Tsantalis, Nikolaos and Mansouri, Matin and Eshkevari, Laleh M. and Mazinanian, Davood and Dig, Danny},
+  title     = {Accurate and efficient refactoring detection in commit history},
+  booktitle = {Proceedings of the 40th International Conference on Software Engineering (ICSE)},
+  year      = {2018},
+  pages     = {483--494},
+  doi       = {10.1145/3180155.3180206}
+}
+
+@inproceedings{falleri2014,
+  author    = {Falleri, Jean-Rémy and Morandat, Floréal and Blanc, Xavier and Martinez, Matias and Monperrus, Martin},
+  title     = {Fine-grained and accurate source code differencing},
+  booktitle = {Proceedings of the 29th ACM/IEEE International Conference on Automated Software Engineering (ASE)},
+  year      = {2014},
+  pages     = {313--324},
+  doi       = {10.1145/2642937.2642982}
+}
+
+@article{fluri2007,
+  author  = {Fluri, Beat and Würsch, Michael and Pinzger, Martin and Gall, Harald C.},
+  title   = {Change distilling: Tree differencing for fine-grained source code change extraction},
+  journal = {IEEE Transactions on Software Engineering},
+  volume  = {33},
+  number  = {11},
+  pages   = {725--743},
+  year    = {2007},
+  doi     = {10.1109/TSE.2007.70731}
+}
+
+@article{traag2019,
+  author  = {Traag, V. A. and Waltman, L. and van Eck, N. J.},
+  title   = {From Louvain to Leiden: Guaranteeing well-connected communities},
+  journal = {Scientific Reports},
+  volume  = {9},
+  pages   = {5233},
+  year    = {2019},
+  doi     = {10.1038/s41598-019-41695-z}
+}
+
+@article{traag2011,
+  author  = {Traag, V. A. and Van Dooren, P. and Nesterov, Y.},
+  title   = {Narrow scope for resolution-limit-free community detection},
+  journal = {Physical Review E},
+  volume  = {84},
+  pages   = {016114},
+  year    = {2011},
+  doi     = {10.1103/PhysRevE.84.016114}
+}
+
+@misc{treesitter,
+  author       = {Brunsfeld, Max and {the tree-sitter contributors}},
+  title        = {tree-sitter: An incremental parsing system for programming tools},
+  year         = {2026},
+  howpublished = {\url{https://tree-sitter.github.io/}},
+  note         = {Accessed 2026}
+}
+
+%% ---------------------------------------------------------------------------
+%% Programming with language models and coding agents
+%% ---------------------------------------------------------------------------
+
+@article{chen2021,
+  author  = {Chen, Mark and Tworek, Jerry and Jun, Heewoo and Yuan, Qiming and Pinto, Henrique Ponde de Oliveira and Kaplan, Jared and others},
+  title   = {Evaluating large language models trained on code},
+  journal = {arXiv preprint arXiv:2107.03374},
+  year    = {2021}
+}
+
+@article{barke2023,
+  author  = {Barke, Shraddha and James, Michael B. and Polikarpova, Nadia},
+  title   = {Grounded Copilot: How programmers interact with code-generating models},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {7},
+  number  = {OOPSLA1},
+  pages   = {85--111},
+  year    = {2023},
+  doi     = {10.1145/3586030}
+}
+
+@inproceedings{vaithilingam2022,
+  author    = {Vaithilingam, Priyan and Zhang, Tianyi and Glassman, Elena L.},
+  title     = {Expectation vs. experience: Evaluating the usability of code generation tools powered by large language models},
+  booktitle = {CHI Conference on Human Factors in Computing Systems Extended Abstracts},
+  year      = {2022},
+  pages     = {1--7},
+  doi       = {10.1145/3491101.3519665}
+}
+
+@inproceedings{liang2024,
+  author    = {Liang, Jenny T. and Yang, Chenyang and Myers, Brad A.},
+  title     = {A large-scale survey on the usability of AI programming assistants: Successes and challenges},
+  booktitle = {Proceedings of the 46th IEEE/ACM International Conference on Software Engineering (ICSE)},
+  year      = {2024},
+  pages     = {1--13},
+  doi       = {10.1145/3597503.3608128}
+}
+
+@inproceedings{sarkar2022,
+  author    = {Sarkar, Advait and Gordon, Andrew D. and Negreanu, Carina and Poelitz, Christian and Ragavan, Sruti Srinivasa and Zorn, Ben},
+  title     = {What is it like to program with artificial intelligence?},
+  booktitle = {Proceedings of the 33rd Annual Workshop of the Psychology of Programming Interest Group (PPIG)},
+  year      = {2022}
+}
+
+@inproceedings{ross2023,
+  author    = {Ross, Steven I. and Martinez, Fernando and Houde, Stephanie and Muller, Michael and Weisz, Justin D.},
+  title     = {The programmer's assistant: Conversational interaction with a large language model for software development},
+  booktitle = {Proceedings of the 28th International Conference on Intelligent User Interfaces (IUI)},
+  year      = {2023},
+  pages     = {491--514},
+  doi       = {10.1145/3581641.3584037}
+}
+
+@article{mozannar2024,
+  author  = {Mozannar, Hussein and Chen, Valerie and Alsobay, Mohammed and Das, Subhro and Zhao, Sebastian and Wei, Dennis and Nagireddy, Manish and Sattigeri, Prasanna and Talwalkar, Ameet and Sontag, David},
+  title   = {The RealHumanEval: Evaluating large language models' abilities to support programmers},
+  journal = {arXiv preprint arXiv:2404.02806},
+  year    = {2024}
+}
+
+@inproceedings{jimenez2024,
+  author    = {Jimenez, Carlos E. and Yang, John and Wettig, Alexander and Yao, Shunyu and Pei, Kexin and Press, Ofir and Narasimhan, Karthik},
+  title     = {SWE-bench: Can language models resolve real-world GitHub issues?},
+  booktitle = {Proceedings of the 12th International Conference on Learning Representations (ICLR)},
+  year      = {2024}
+}
+
+@inproceedings{yang2024,
+  author    = {Yang, John and Jimenez, Carlos E. and Wettig, Alexander and Lieret, Kilian and Yao, Shunyu and Narasimhan, Karthik and Press, Ofir},
+  title     = {SWE-agent: Agent-computer interfaces enable automated software engineering},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2024}
+}
+
+@article{cui2025,
+  author  = {Cui, Zheyuan (Kevin) and Demirer, Mert and Jaffe, Sonia and Musolff, Leon and Peng, Sida and Salz, Tobias},
+  title   = {The effects of generative AI on high-skilled work: Evidence from three field experiments with software developers},
+  journal = {SSRN Electronic Journal},
+  year    = {2025},
+  doi     = {10.2139/ssrn.4945566}
+}
+
+@inproceedings{perry2023,
+  author    = {Perry, Neil and Srivastava, Megha and Kumar, Deepak and Boneh, Dan},
+  title     = {Do users write more insecure code with AI assistants?},
+  booktitle = {Proceedings of the 2023 ACM SIGSAC Conference on Computer and Communications Security (CCS)},
+  year      = {2023},
+  pages     = {2785--2799},
+  doi       = {10.1145/3576915.3623157}
+}
+
+@inproceedings{vasconcelos2025,
+  author    = {Vasconcelos, Helena and Bansal, Gagan and Fourney, Adam and Liao, Q. Vera and Wortman Vaughan, Jennifer},
+  title     = {Generation probabilities are not enough: Uncertainty highlighting in AI code completions},
+  booktitle = {ACM Transactions on Computer-Human Interaction},
+  year      = {2025},
+  doi       = {10.1145/3702320}
+}
+
+@inproceedings{nguyen2024,
+  author    = {Cheng, Ruijia and Wang, Ruotong and Zimmermann, Thomas and Ford, Denae},
+  title     = {``It would work for me too'': How online communities shape software developers' trust in AI-powered code generation tools},
+  booktitle = {ACM Transactions on Interactive Intelligent Systems},
+  year      = {2024},
+  doi       = {10.1145/3651990}
+}
+
+%% ---------------------------------------------------------------------------
+%% Exploratory programming, selective undo, informal versioning
+%% ---------------------------------------------------------------------------
+
+@inproceedings{yoon2015,
+  author    = {Yoon, YoungSeok and Myers, Brad A.},
+  title     = {Supporting selective undo in a code editor},
+  booktitle = {Proceedings of the 37th International Conference on Software Engineering (ICSE)},
+  year      = {2015},
+  pages     = {223--233},
+  doi       = {10.1109/ICSE.2015.43}
+}
+
+@inproceedings{yoon2014,
+  author    = {Yoon, YoungSeok and Myers, Brad A.},
+  title     = {A longitudinal study of programmers' backtracking},
+  booktitle = {Proceedings of the 2014 IEEE Symposium on Visual Languages and Human-Centric Computing (VL/HCC)},
+  year      = {2014},
+  pages     = {101--108},
+  doi       = {10.1109/VLHCC.2014.6883030}
+}
+
+@inproceedings{yoon2013,
+  author    = {Yoon, YoungSeok and Myers, Brad A. and Koo, Sebon},
+  title     = {Visualization of fine-grained code change history},
+  booktitle = {Proceedings of the 2013 IEEE Symposium on Visual Languages and Human-Centric Computing (VL/HCC)},
+  year      = {2013},
+  pages     = {119--126},
+  doi       = {10.1109/VLHCC.2013.6645254}
+}
+
+@inproceedings{mikami2017,
+  author    = {Mikami, Hiroaki and Sakamoto, Daisuke and Igarashi, Takeo},
+  title     = {Micro-versioning tool to support experimentation in exploratory programming},
+  booktitle = {Proceedings of the 2017 CHI Conference on Human Factors in Computing Systems},
+  year      = {2017},
+  pages     = {6208--6219},
+  doi       = {10.1145/3025453.3025597}
+}
+
+@article{heander2026,
+  author  = {Heander, Lars and Sergeyuk, Agnia and Zakharov, Ilya and others},
+  title   = {Trust-calibrated code review: A participatory design study of review workflows for LLM-generated multi-file changes},
+  journal = {arXiv preprint},
+  year    = {2026}
+}
+
+@inproceedings{kery2017,
+  author    = {Kery, Mary Beth and Horvath, Amber and Myers, Brad A.},
+  title     = {Variolite: Supporting exploratory programming by data scientists},
+  booktitle = {Proceedings of the 2017 CHI Conference on Human Factors in Computing Systems},
+  year      = {2017},
+  pages     = {1265--1276},
+  doi       = {10.1145/3025453.3025626}
+}
+
+@inproceedings{kery2018,
+  author    = {Kery, Mary Beth and Radensky, Marissa and Arya, Mahima and John, Bonnie E. and Myers, Brad A.},
+  title     = {The story in the notebook: Exploratory data science using a literate programming tool},
+  booktitle = {Proceedings of the 2018 CHI Conference on Human Factors in Computing Systems},
+  year      = {2018},
+  pages     = {1--11},
+  doi       = {10.1145/3173574.3173748}
+}
+
+@inproceedings{head2019,
+  author    = {Head, Andrew and Hohman, Fred and Barik, Titus and Drucker, Steven M. and DeLine, Robert},
+  title     = {Managing messes in computational notebooks},
+  booktitle = {Proceedings of the 2019 CHI Conference on Human Factors in Computing Systems},
+  year      = {2019},
+  pages     = {1--12},
+  doi       = {10.1145/3290605.3300776}
+}
+
+@inproceedings{hartmann2008,
+  author    = {Hartmann, Björn and Yu, Loren and Allison, Abel and Yang, Yeonsoo and Klemmer, Scott R.},
+  title     = {Design as exploration: Creating interface alternatives through parallel authoring and runtime tuning},
+  booktitle = {Proceedings of the 21st Annual ACM Symposium on User Interface Software and Technology (UIST)},
+  year      = {2008},
+  pages     = {91--100},
+  doi       = {10.1145/1449715.1449732}
+}
+
+@inproceedings{terry2004,
+  author    = {Terry, Michael and Mynatt, Elizabeth D. and Nakakoji, Kumiyo and Yamamoto, Yasuhiro},
+  title     = {Variation in element and action: Supporting simultaneous development of alternative solutions},
+  booktitle = {Proceedings of the 2004 CHI Conference on Human Factors in Computing Systems},
+  year      = {2004},
+  pages     = {711--718},
+  doi       = {10.1145/985692.985782}
+}
+
+@inproceedings{grossman2010,
+  author    = {Grossman, Tovi and Matejka, Justin and Fitzmaurice, George},
+  title     = {Chronicle: Capture, exploration, and playback of document workflow histories},
+  booktitle = {Proceedings of the 23rd Annual ACM Symposium on User Interface Software and Technology (UIST)},
+  year      = {2010},
+  pages     = {143--152},
+  doi       = {10.1145/1866029.1866054}
+}
+
+%% ---------------------------------------------------------------------------
+%% Collaboration, merge conflicts, review
+%% ---------------------------------------------------------------------------
+
+@article{nelson2019,
+  author  = {Nelson, Nicholas and Brindescu, Caius and McKee, Shane and Sarma, Anita and Dig, Danny},
+  title   = {The life-cycle of merge conflicts: Processes, barriers, and strategies},
+  journal = {Empirical Software Engineering},
+  volume  = {24},
+  number  = {5},
+  pages   = {2863--2906},
+  year    = {2019},
+  doi     = {10.1007/s10664-018-9674-x}
+}
+
+@inproceedings{brindescu2020,
+  author    = {Brindescu, Caius and Ahmed, Iftekhar and Leano, Rafael and Sarma, Anita},
+  title     = {Planning for untangling: Predicting the difficulty of merge conflicts},
+  booktitle = {Proceedings of the 42nd International Conference on Software Engineering (ICSE)},
+  year      = {2020},
+  pages     = {801--811},
+  doi       = {10.1145/3377811.3380344}
+}
+
+@inproceedings{guimaraes2012,
+  author    = {Guimarães, Mário Luís and Silva, António Rito},
+  title     = {Improving early detection of software merge conflicts},
+  booktitle = {Proceedings of the 34th International Conference on Software Engineering (ICSE)},
+  year      = {2012},
+  pages     = {342--352},
+  doi       = {10.1109/ICSE.2012.6227180}
+}
+
+@article{bacchelli2013,
+  author    = {Bacchelli, Alberto and Bird, Christian},
+  title     = {Expectations, outcomes, and challenges of modern code review},
+  booktitle = {Proceedings of the 35th International Conference on Software Engineering (ICSE)},
+  year      = {2013},
+  pages     = {712--721},
+  doi       = {10.1109/ICSE.2013.6606617}
+}
+
+@inproceedings{rigby2013,
+  author    = {Rigby, Peter C. and Bird, Christian},
+  title     = {Convergent contemporary software peer review practices},
+  booktitle = {Proceedings of the 2013 9th Joint Meeting on Foundations of Software Engineering (ESEC/FSE)},
+  year      = {2013},
+  pages     = {202--212},
+  doi       = {10.1145/2491411.2491444}
+}
+
+%% ---------------------------------------------------------------------------
+%% Tools built for the current workflow (non-archival)
+%% ---------------------------------------------------------------------------
+
+@misc{gitbutler2026,
+  author       = {{GitButler}},
+  title        = {GitButler documentation: Parallel branches},
+  year         = {2026},
+  howpublished = {\url{https://docs.gitbutler.com/features/virtual-branches/virtual-branches}},
+  note         = {Accessed 2026}
+}
+
+@misc{graphite2026,
+  author       = {{Graphite}},
+  title        = {Stacked diffs and how to use them},
+  year         = {2026},
+  howpublished = {\url{https://graphite.com/guides/stacked-diffs}},
+  note         = {Accessed 2026}
+}
+
+@misc{githubstacked2026,
+  author       = {{GitHub}},
+  title        = {Stacked pull requests are now in public preview},
+  year         = {2026},
+  howpublished = {\url{https://github.blog/changelog/2026-07-30-stacked-pull-requests-are-now-in-public-preview/}},
+  note         = {Accessed 2026}
+}
+
+@misc{sem2026,
+  author       = {{Ataraxy Labs}},
+  title        = {sem: Semantic version control built on Git},
+  year         = {2026},
+  howpublished = {\url{https://github.com/ataraxy-labs/sem}},
+  note         = {Accessed 2026}
+}
