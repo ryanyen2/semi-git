@@ -21,6 +21,9 @@ classifiers = [
 # optional in any real sense.
 dependencies = [
     "openai>=1.40",
+    # Six modules import pydantic directly. It arrives anyway as an `openai` dependency, but relying
+    # on that means a future openai release could drop it and break us with no version to point at.
+    "pydantic>=2",
     "tree-sitter>=0.25",
     "tree-sitter-python>=0.25",
     "tree-sitter-typescript>=0.23",
@@ -38,7 +41,9 @@ sgt = "sgt.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6.100"]
-tui = ["textual>=0.60"]
+# `sgt.tui.consequence` imports both, and the CLI imports that module lazily so the pane stays
+# optional. `rich` is listed even though `textual` pulls it in, because the code imports it by name.
+tui = ["textual>=0.60", "rich>=13"]
 
 [build-system]
 requires = ["setuptools>=77"]
