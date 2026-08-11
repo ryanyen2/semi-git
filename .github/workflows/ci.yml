@@ -28,8 +28,11 @@ jobs:
           git config --global user.name "semi-git CI"
           git config --global init.defaultBranch main
 
+      # `tui` too: the consequence-pane tests exercise a real CLI path (`sgt resolve` on a tty), so
+      # skipping them locally-only would hide exactly the kind of undeclared import that first
+      # turned this job red.
       - name: Install
-        run: uv sync --python ${{ matrix.python-version }} --extra dev
+        run: uv sync --python ${{ matrix.python-version }} --extra dev --extra tui
 
       - name: Run tests
         run: uv run --python ${{ matrix.python-version }} pytest -q
