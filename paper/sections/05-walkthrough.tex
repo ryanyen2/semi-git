@@ -38,8 +38,8 @@ have no names yet, because \sgt{} writes records when the developer saves and wo
 out the names when the developer next reads, and a name costs a language model call
 that has no business running while somebody is mid-session. The warning is the one
 line here that resembles what git asks for, and \sgt{} printed it after the save was
-already written. The developer read it, agreed the sitting had been mixed, and carried on,
-which is the case Section~\ref{sec:scenarios} opened with.
+already written. The developer read it, agreed the sitting had been mixed, and
+carried on, and Section~\ref{sec:scenarios} opened with exactly that case.
 
 The second save at 15:20 covered the retry policy and a rework of the cache the
 agent made while adding the retry. By then the first save's groups had names, so its echo listed
@@ -57,7 +57,7 @@ Row Accessors (9d20b18a) \ttdot{} 5 symbol(s)
 \noindent
 Three of the four names are what the developer would have written. The fourth is
 the agent's unrequested rename, named from the code because the developer never
-said anything about that part of the work, which is the failure
+said anything about that part of the work, the failure
 Section~\ref{sec:names} predicts. It is also the only one of the four whose name
 nobody needs, so nobody corrected it.
 
@@ -138,10 +138,10 @@ apply this revert? [y/N]
 
 \noindent
 The retry policy edited \sym{api.py::handle} after the cache had edited it, so
-that function keeps the retry work and loses the cache's three lines, which is
-how removing a week old request leaves a change made yesterday in place. Two
-functions existed only for the cache
-and go away with it, which empties \sym{cache.py} and removes the file, and
+that function keeps the retry work and loses the cache's three lines, and a
+request made a week ago comes out from under a change made yesterday. Two
+functions existed only for the cache and come out with it, which empties
+\sym{cache.py} and removes the file, and
 \sym{db.py::query} loses the parameter the cache added and goes back to the text it
 had at 14:02. The three functions in the last line are row accessors the agent
 rewrote during its rename, and it pointed all three at \sym{get\_cached} while it
@@ -152,9 +152,9 @@ question about the recorded edits.
 
 The developer answered \cmd{y} and ran the test suite. It failed in the three
 places the report named and nowhere else, and the repair was deleting the cache
-lookup from each of them. A revert can be taken back exactly, and that property is
-why we build every one of these operations as set arithmetic, so the developer
-tested it.
+lookup from each of them. \sgt{} builds every one of these operations as set
+arithmetic so that a revert can be taken back exactly, and the developer tested
+that claim before trusting it.
 
 \begin{out}
 \$ sgt restore "Price Cache"\\
@@ -163,9 +163,10 @@ tested it.
 \end{out}
 
 \noindent
-Putting the cache back produced the same bytes that were in the files before the
-revert, and it kept the three call site repairs the developer had made in between, because
-both directions are set arithmetic over the same records and neither one reapplies
+Putting the cache back returned \sym{cache.py}, \sym{db.py::query}, and
+\sym{api.py::handle} to the bytes they held before the revert, and it left the
+three call site repairs the developer had made in between alone, because a restore
+adds records to the set and rebuilds the files from the result without reapplying
 a patch. They had wanted the cache gone, so they reverted it a second time, and
 that run printed the same three consequence lines as the first.
 
@@ -187,8 +188,7 @@ call as a dependency while writing it.
 
 \noindent
 The developer asked to move one group and \sgt{} named the group that has to come
-with it, which is the fifth operation from
-Section~\ref{sec:scenarios}. The record of the call to \sym{api.py::\_bucket} was
+with it, the fourth operation Section~\ref{sec:scenarios} asked for. The record of the call to \sym{api.py::\_bucket} was
 written at the moment the export code was saved, and \sgt{} reads it now to answer
 a question nobody was thinking about then. Git would have taken the cherry-pick and
 the release branch would have failed to import.
@@ -221,14 +221,14 @@ adding a request identifier to every outbound log line. The developer syncs.
 \noindent
 That last line names \cmd{sgt merge-op}, which takes two edit identifiers and is
 not the command a person should be reaching for. \cmd{sgt log} in the same state
-prints \cmd{api.py::handle \ttarrow{} sgt resolve api.py::handle}, which is the
-command to use. Two
-commands telling the developer different things to type is an inconsistency we
-have not cleaned up. The two
+prints the command a person should type,
+\cmd{api.py::handle \ttarrow{} sgt resolve api.py::handle}. Two commands telling
+the developer different things to type is an inconsistency we have not cleaned up.
+The two
 versions of \sym{api.py::handle} are the one the cache revert produced, three lines
 shorter at the top where the cache lookup had been, and the colleague's, one line
 longer inside the logging block at the end. No line is common to the two changes,
-so git merges them without comment, which is the case
+so git merges them without comment, the case
 Figure~\ref{fig:fork} draws. \sgt{} prints them beside each other and asks.
 
 \begin{out}
@@ -242,9 +242,9 @@ The developer picked \cmd{e}, merged the two by hand in about thirty seconds, an
 \sgt{} ran the project's test command before including the result. We are not going
 to claim the textual merge would have been wrong here. It would most likely have
 been right, and \sgt{} charged thirty seconds and one interruption to establish
-that. The case we designed for is the one where the merge is wrong, where one edit
-adds an early return and the other edit's new code sits below it, and the test run
-that would have caught it happens on a branch nobody has pushed yet. A developer
+that. We designed for the case where the merge is wrong, one edit adding an early
+return and the other edit's new code sitting below it, and the test run that would
+have caught it happening on a branch nobody has pushed yet. A developer
 who merges often and reads carefully is paying us for a certainty they already had.
 
 \subsection{What this cost}
@@ -254,12 +254,13 @@ not make for them. They decided the export endpoint should ship without the retr
 policy, they decided how the two versions of \sym{api.py::handle} should read, and
 they decided that the three functions still calling the cache should lose that
 call and keep the rest of the agent's rename. All three are decisions about the
-code, which is where we wanted them.
+code itself, and none of the three is a question about which lines belong in which
+commit.
 
 The developer paid for those three decisions in three places. One group of five
 edits carries a name derived from the code, because nobody said anything about
 that part of the work. The revert left \sym{api.py::handle} holding text nobody
-had read, so their test suite is what decided the revert had worked. The fork
+had read, so their test suite decided whether the revert had worked. The fork
 stopped them on a merge that was probably fine. The second and third of those are direct consequences of
 Section~\ref{sec:sets} and Section~\ref{sec:fork}, and on a repository this size we
 would choose both again. On a repository where twenty people edit the same

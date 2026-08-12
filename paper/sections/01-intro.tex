@@ -1,37 +1,38 @@
 \section{Introduction}
 
-A developer working with a coding agent describes the change they want in a
-sentence or two of English, and the agent writes the code. When a developer on
-one of our projects asked for a price lookup to be cached because it had become
-slow, the agent added a cache module, gave the database query a parameter for how
-long a cached price stays good, changed the request handler to consult the cache
-before the database, and chose the names of the three new functions. Over the
-following hour that developer made two more requests, and while carrying out the
-third the agent revised two of the functions it had written for the second.
-Barke et al.\ describe programmers in this mode reading what comes back for the
-shape they expected rather than line by line~\cite{barke2023}, and among 410
-developers surveyed by Liang et al., understanding and trusting generated code
-was one of the most frequently reported difficulties~\cite{liang2024}. The three
-sentences the developer typed stayed in the chat window, and what entered the
-repository was eighteen changes to fourteen functions in five files.
+When a developer works through a coding agent, the change they want and the code
+that implements it become two separate descriptions, and the developer authors
+only the first one. A developer on one of our projects asked for a price lookup to
+be cached because it had become slow, and the agent added a cache module, gave the
+database query a parameter for how long a cached price stays good, changed the
+request handler to consult the cache before the database, and chose the names of
+the three new functions. Over the following hour that developer made two more
+requests, and while carrying out the third the agent revised two of the functions
+it had written for the second. Barke et al.\ describe programmers in this mode
+accepting what comes back after a glance that confirms its shape matches what they
+asked for~\cite{barke2023}, and among 410 developers surveyed by Liang et al.,
+understanding and trusting generated code was one of the most frequently reported
+difficulties~\cite{liang2024}. The three sentences the developer typed stayed in
+the chat window, and what entered the repository was eighteen changes to fourteen
+functions in five files.
 
-A week later the developer wants the caching gone, and to ask for that they have
-to state it in the terms their version control system understands, all of which
-are lines and commits. Git records a version as a snapshot of the whole working
-tree~\cite{git2026}, Darcs and Pijul record it as a patch that adds and removes
-lines in a stated context~\cite{roundy2009,pijul2024}, and under either design
-the smallest thing a history can name is a line in a file. \cmd{git revert} takes
-back one commit, \cmd{git cherry-pick} moves one commit, and a branch points at
-one commit. The caching the developer asked for is six changes to four functions
-in three files, spread across the two commits that hour produced, and neither
-commit holds only those six. Herzig and Zeller found changes serving several
-unrelated purposes throughout the histories of five open source Java
-projects~\cite{herzig2013,hattori2008}, and a decade of work on separating such
-changes after the fact follows from that
-observation~\cite{barnett2015,tao2015,dias2015,partachi2020,shen2021}.
+A week later that developer wants the caching gone, and the request has to be
+restated in whatever terms their version control system understands. Those terms
+are lines and commits, in every system in wide use. Git records a version as a
+snapshot of the whole working tree~\cite{git2026}, Darcs and Pijul record it as a
+patch that adds and removes lines in a stated context~\cite{roundy2009,pijul2024},
+and under either design the smallest thing a history can name is a line in a file,
+so \cmd{git revert} takes back one commit, \cmd{git cherry-pick} moves one commit,
+and a branch points at one commit. The caching is six changes to four functions in
+three files, spread across the two commits that hour produced, and neither commit
+holds only those six. Commits that carry work for more than one purpose are
+ordinary. Herzig and Zeller found them throughout the histories of five open
+source Java projects~\cite{herzig2013,hattori2008}, and the tools built since to
+separate them are scored on whether they recover a grouping a person supplied by
+hand~\cite{barnett2015,tao2015,dias2015,partachi2020,shen2021}.
 
-Separating them by hand means deciding, for each of the fifteen hunks in those
-two commits, whether it belongs to the caching, to the rate limiting the
+Separating the caching out by hand means deciding, for each of the fifteen hunks
+in those two commits, whether it belongs to the caching, to the rate limiting the
 developer asked for half an hour before the caching, to the retry policy they
 asked for half an hour after it, or to a rename the agent performed without being
 asked. Six of the fifteen turn out to be the caching, and the developer then
@@ -39,32 +40,33 @@ splits both commits so those six stand alone, reverses them, and checks that no
 function they kept calls a function they just deleted. Biggerstaff et al.\ called
 the task of recovering which functions implement a named concern the concept
 assignment problem~\cite{biggerstaff1993}, and the feature location literature
-exists because reading code to answer it is expensive~\cite{dit2013}. Xia et al.\
-instrumented professional developers and found that roughly 58\% of their working
-time went to understanding code~\cite{xia2018}.
+that followed measures how much of a program a developer has to read before they
+can answer one such question~\cite{dit2013}. Xia et al.\ instrumented professional
+developers and found that roughly 58\% of their working time went to understanding
+code~\cite{xia2018}.
 
-For as long as developers wrote the lines themselves this work was cheap, because
-the person doing it remembered writing the code, so the history only had to
-remind them of a decomposition they already held in their
-head~\cite{ko2006,sillito2008}. An agent leaves the developer nothing to
-remember. The developer holds the sentence they typed, which stated
-the boundary of the change exactly, in their own words, before any of the code
-existed, and which no version control system records. The unit a developer
-decides in and the unit their repository records no longer match.
+For as long as developers wrote the lines themselves this recovery was cheap. The
+person doing it remembered writing the code, so the history had only to remind
+them of a decomposition they already held~\cite{ko2006,sillito2008}. A developer
+who directed an agent never wrote those lines and remembers nothing about
+them. They hold instead the sentence they typed,
+which stated the boundary of the change exactly, in their own words, before any of
+the code existed, and which no version control system records. The unit a
+developer decides in and the unit their repository records have come apart.
 
-The answer a careful maintainer will give to all of this is discipline at commit
-time. Commit small, commit often, stage hunk by hunk with \cmd{git add -p}, and
-each request ends up with a commit of its own. We have asked contributors on our
-own projects for exactly this and have held ourselves to it, and it works. It
-asks the developer to know, at the moment of committing, which lines serve which
-purpose, and an agent session is exactly the case where they do
-not. When fourteen changed functions come back and the
-developer's own contribution was three sentences of English, staging hunk by hunk
-means reading the whole diff to reconstruct a boundary the agent held and never
-wrote down. Thimbleby argued that a system should let a person defer a decision
-until they hold the information the decision needs~\cite{thimbleby1988}. Commit
-hygiene asks for the decision first, and that was affordable for twenty years
-because the person deciding had just typed the lines.
+A careful maintainer will answer all of this with commit hygiene: commit small,
+commit often, stage hunk by hunk with \cmd{git add -p}, and each request ends up
+with a commit of its own. We have asked contributors on our own projects for
+exactly this and have held ourselves to it, and it works whenever the developer
+knows at the moment of committing which lines serve which purpose. In an agent
+session the developer does not know that. When fourteen changed functions come back
+and the developer's own contribution was three sentences of English, staging hunk
+by hunk means reading the whole diff to reconstruct a boundary the agent held and
+never wrote down. Thimbleby argued that a notation should let a person defer a
+decision until they hold the information the decision
+needs~\cite{thimbleby1988}. Commit hygiene asks for the decision first, and that
+stayed affordable for twenty years because the person deciding had just typed the
+lines.
 
 We present \sgt{}, a version control system that records a change as one edit to
 one function and files each edit under the request it was made for. The developer
@@ -77,19 +79,19 @@ into the repository and commits them with the code, so a colleague who has not
 installed \sgt{} pulls an ordinary git history.
 Figure~\ref{fig:two-records} shows the hour described above under both records.
 
-Recording at that grain turns the operations the developer already wanted into
-commands they can type. \cmd{sgt revert "price cache"} removes the six edits filed
-under the price cache and names every function where later work had built on
-them, and the rate limiting in the same file is byte for byte what it was.
-\cmd{sgt show cache.py::get\_cached} reports which request that function came
+Recording at that grain gives each of the operations the developer already wanted
+a command whose argument is a name. \cmd{sgt revert "price cache"} removes the six
+edits filed under the price cache and names every function where later work had
+built on them, and the rate limiting in the same file is byte for byte what it
+was. \cmd{sgt show cache.py::get\_cached} reports which request that function came
 from, which save reworked it, and how many edits would come out along with it.
 When the developer decides a week later that the cache was needed after all,
 \cmd{sgt restore} puts the same six edits back, and a database index a colleague
 added in the meantime is still there, because it was never in the set that came
 out. None of these commands asks the developer to look at a hunk.
 
-This design costs the developer three things, and we would
-state them here rather than in a limitations section at the end. Two edits to the
+This design costs the developer three things, and we state them here, at the
+front, where a developer meets them. Two edits to the
 same function made from the same starting point are recorded as two competing
 versions and a person has to decide which one survives, including the case of two
 edits at opposite ends of a fifty line function that touch no common line and

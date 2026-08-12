@@ -11,7 +11,7 @@ point in code they did not yet know how to write~\cite{barke2023}. Vaithilingam
 et al.\ found that 24 participants using Copilot did not complete tasks faster
 and still preferred to keep it on, because it gave them a draft to work
 from~\cite{vaithilingam2022}. In both studies the developer accepted a line or a
-block of code. Four years later the benchmark that organises the field
+block of code. Four years later SWE-bench
 gives a model a natural language issue report from a real repository and scores
 it on whether the repository's own tests pass afterwards~\cite{jimenez2024}, and
 the systems built to score well on it edit several files in a
@@ -43,9 +43,9 @@ Their redesign, Gitless, removes
 both~\cite{perezderosso2013,perezderosso2016}. The commit survives their
 redesign untouched, and it should, because it serves a purpose users do have. The
 commit is the smallest thing git can address, so any operation over less than a
-commit works by having the developer point at lines, which is what
-\cmd{git add -p} and \cmd{git rebase -i} are for. Under git's original constraints this is the
-cheapest correct design available. The person running \cmd{git add -p} in 2005
+commit works by having the developer point at lines, and \cmd{git add -p} and
+\cmd{git rebase -i} are the tools for pointing. Under git's original constraints
+this is the cheapest correct design available. The person running \cmd{git add -p} in 2005
 had typed the lines minutes earlier, so the decomposition was already in their
 head, and recording it in the repository would have meant maintaining a second
 structure that could disagree with the first. Asking the developer at commit time
@@ -98,15 +98,16 @@ and nothing smaller has a name. Peritext makes the same choice outside version
 control, giving formatting marks in collaborative rich text their own
 representation, because a record whose unit is the character gets the boundary of
 a bold span wrong when two people edit it at once~\cite{litt2022,kleppmann2019}.
-Choosing a unit of record is choosing which questions the record can answer.
+Whichever unit a system gives a durable identity to fixes the smallest question
+its history can answer, and in Jujutsu and Mercurial that question is about a
+commit.
 
 \subsection{Recovering a decomposition after the fact}
 
-A commit that serves several purposes at once is a known problem, and its
-consequences have been measured. Herzig and Zeller examined the histories of five open
-source Java projects, found changes addressing more than one concern throughout
-them, and showed that separating those changes alters which files a defect
-prediction model identifies as the most likely to contain
+Commits that address more than one concern distort the tools built from a
+history. Herzig and Zeller examined five open source Java projects, found such
+commits throughout them, and showed that separating those changes alters which
+files a defect prediction model identifies as the most likely to contain
 bugs~\cite{herzig2013,herzig2016}. The untangling tools built after that
 finding partition a diff using definition and use relationships
 between the changed statements~\cite{barnett2015}, use the fine-grained edit
@@ -127,9 +128,10 @@ and tree differencing address~\cite{tsantalis2018,falleri2014,fluri2007}, and it
 is the weakest link in our implementation, since a rename we fail to detect
 appears as one function removed and another added. Grouping edits into features
 is a clustering over which functions change together and which call each other,
-which is the signal the co-change mining literature
-established~\cite{zimmermann2004,ying2004,kim2005,godfrey2005}, resolved with a
-community detection algorithm~\cite{traag2019,traag2011}. Both are inferences,
+and the co-change mining literature established both halves of that
+signal~\cite{zimmermann2004,ying2004,kim2005,godfrey2005}. We resolve the
+resulting graph with a community detection
+algorithm~\cite{traag2019,traag2011}. Both are inferences,
 and Section~\ref{sec:design} states what a developer does when they are wrong.
 
 \subsection{Histories the editor keeps}
@@ -137,8 +139,9 @@ and Section~\ref{sec:design} states what a developer does when they are wrong.
 A second tradition puts the record in the editor and asks nothing of the
 developer. Azurite stores a programmer's editing operations at a finer grain than
 any commit and lets them undo one past edit while keeping the edits made after
-it~\cite{yoon2015,yoon2013}, which is worth building because backtracking is
-frequent enough to be part of ordinary programming~\cite{yoon2014}. Variolite
+it~\cite{yoon2015,yoon2013}, and Yoon and Myers measured how often programmers
+undo and redo their way back to an earlier state, finding that they do it often
+enough for it to count as an ordinary part of editing~\cite{yoon2014}. Variolite
 lets a data scientist wrap a region of code as a variant and switch between
 variants in place, and Kery et al.\ built it after finding that people doing
 exploratory work avoid version control for exactly that
@@ -178,7 +181,7 @@ change with the care they can give to each of five small ones, and stacking is
 the right answer to that. Graphite's guide also states the precondition plainly, saying
 that developers must understand how to break down their work into small,
 incremental changes, and every command the tool offers operates on a
-decomposition the developer has already performed. The agent session is the case where that
+decomposition the developer has already performed. In an agent session that
 decomposition exists in the developer's request history and nowhere in the code.
 
 The closest system to ours is sem, which parses about 32 languages with
@@ -191,9 +194,9 @@ entities. \cmd{sem impact} lists an entity's dependencies, dependents and tests,
 together, and \cmd{sem context} assembles a bundle about an entity for a model
 within a token budget. sem keeps all of this in a derived SQLite cache outside
 the repository, under the operating system's cache directory, and that placement
-is the design decision we want to draw attention to. It makes sem safe to adopt and safe to
+buys sem three things. It makes sem safe to adopt and safe to
 abandon, gives entity-level answers about a history recorded years before sem
-existed, and requires agreement from nobody else on the team. It also
+existed, and requires agreement from nobody else on the team. The placement also
 bounds what sem can offer, because a record any teammate's ordinary commit can
 silently invalidate cannot be the record an operation acts on, and there is
 nowhere to write the outcome down. Every sem command therefore reports, and none

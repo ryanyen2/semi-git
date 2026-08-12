@@ -8,7 +8,7 @@
 \citation{roundy2009,pijul2024}
 \citation{herzig2013,hattori2008}
 \citation{barnett2015,tao2015,dias2015,partachi2020,shen2021}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces One hour of work with a coding agent, and the two records it leaves behind. The developer asked for three things and got a fourth (left). Git kept two commits whose fifteen hunks interleave all four requests (middle). The colours in that panel are ours, and git holds no record of which request produced which hunk, so a developer taking one request back out has to decide for each hunk whether it belongs to that request. \textsf  {sgt}{} recorded one edit per function and filed each under the request it came from (right), so the caching work is a set of six edits with a name, and the one function both the rate limiter and the cache touched is visible as such.}}{1}{figure.caption.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces One hour with a coding agent, recorded two ways. The developer stated three requests and the agent made a fourth change nobody asked for. Git stored two commits whose fifteen hunks interleave all four, and the colours in that panel are ours, since git holds no record of which request produced which hunk. \textsf  {sgt}{} stored one edit per changed function under the request it came from, so the caching is six edits with a name.}}{1}{figure.caption.1}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
 \newlabel{fig:two-records}{{1}{1}{\FigOneCaption }{figure.caption.1}{}}
 \@writefile{toc}{\contentsline {section}{Abstract}{1}{section*.2}\protected@file@percent }
@@ -68,11 +68,12 @@
 \citation{codoban2015}
 \citation{latoza2010}
 \citation{brindescu2020}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces One hour of work with a coding agent, recorded four ways, with the same request removed from each. The unit a system records decides which sets a developer can name, and every row here is a design we think is correct for the constraints it was built under. Git and Darcs both bottom out at a line, so removing the caching means selecting lines. Jujutsu and Mercurial add a durable identity above the line, and it is the identity of a commit, so a squashed session carries one identity for all three requests. \textsf  {sgt}{} records one edit per function together with the request it was made for, which is the same information the developer supplied and never wrote down.}}{5}{figure.caption.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces One hour of work with a coding agent, recorded four ways, with the same request removed from each. The unit a system records decides which sets a developer can name. Git and Darcs both bottom out at a line, so removing the caching means selecting lines. Jujutsu and Mercurial add a durable identity above the line, and that identity belongs to a commit, so a squashed session carries one identity for all three requests. \textsf  {sgt}{} records one edit per function together with the request it was made for. The developer supplied that request and never wrote it down.}}{5}{figure.caption.5}\protected@file@percent }
 \newlabel{fig:granularity}{{2}{5}{\FigTwoCaption }{figure.caption.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}``Change the rate limiter I built yesterday''}{5}{subsection.3.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.3}``Take the caching back out and leave the rest alone''}{5}{subsection.3.3}\protected@file@percent }
-\citation{bacchelli2013,rigby2013}
+\citation{rigby2013}
+\citation{bacchelli2013}
 \citation{church2014}
 \citation{biggerstaff1993,dit2013}
 \citation{treesitter}
@@ -85,23 +86,23 @@
 \newlabel{sec:grain}{{4.1}{6}{One edit to one function, filed under the request}{subsection.4.1}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}A version is a set of edits, and the files are rebuilt from it}{6}{subsection.4.2}\protected@file@percent }
 \newlabel{sec:sets}{{4.2}{6}{A version is a set of edits, and the files are rebuilt from it}{subsection.4.2}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces What one save writes down, what a version is, and where the bytes in a file come from. A save writes one record per changed function and files the records under a guess at the request they served, which the developer corrects with one command (left). A version is the set of those records, so taking out the price cache is subtracting six records from eighteen, and two rules decide which sets are allowed (middle). The files are rebuilt from the set with the text between functions kept exactly, so the same set always produces the same bytes (right). Two kinds of mark in the right-hand column are the two consequences \textsf  {sgt}{} reports about this revert and does not act on. The hollow triangle on \fsym {api.py::handle} means the retry policy edited that function after the cache did, so \textsf  {sgt}{} took the cache's lines back out of the current text and the developer's test suite decides whether the result stands. The open circles are three functions that still call \fsym {cache.py::get\_cached}, which \textsf  {sgt}{} names and leaves alone. \fsym {db.py::query} is the one function that goes back to text it had earlier in the day.}}{7}{figure.caption.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces What one save writes down, what a version is, and where the bytes in a file come from. A save writes one record per changed function under a guess at the request it served, and one command corrects the guess (1). A version is the set of those records, so taking out the price cache subtracts six records from eighteen (2). The files are rebuilt from that set with the text between functions kept exactly (3). Where the cache's lines had to be subtracted from a function later work also edited, the developer's test suite decides whether the result stands.}}{7}{figure.caption.6}\protected@file@percent }
 \newlabel{fig:model}{{3}{7}{\FigThreeCaption }{figure.caption.6}{}}
 \citation{zimmermann2004,ying2004}
 \citation{traag2019}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Two people change \sym {api.py::handle} from the version both of them last saved, one taking three lines off the top of it and one adding a line to the logging block at its end. Git's merge of the two succeeds and prints nothing, and nobody has run the function it produces in that state. \textsf  {sgt}{} records both versions, includes neither, and names the function, which is the only refusal in \textsf  {sgt}{} that can stop work that would have been correct.}}{8}{figure.caption.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Two people change \fsym {api.py::handle} from the same saved version, one cutting three lines from the top of it and one adding a line forty lines below. Git merges the two and prints nothing, and nobody has run the function in the state the merge produces. \textsf  {sgt}{} records both versions, includes neither, and names the function. Of everything \textsf  {sgt}{} refuses, only this refusal can stop work that would have been correct.}}{8}{figure.caption.7}\protected@file@percent }
 \newlabel{fig:fork}{{4}{8}{\FigForkCaption }{figure.caption.7}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Two versions of one function, and a person decides}{8}{subsection.4.3}\protected@file@percent }
 \newlabel{sec:fork}{{4.3}{8}{Two versions of one function, and a person decides}{subsection.4.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.4}The names are inferred, and correcting one moves labels only}{8}{subsection.4.4}\protected@file@percent }
 \newlabel{sec:names}{{4.4}{8}{The names are inferred, and correcting one moves labels only}{subsection.4.4}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.5}What \textsf  {sgt}{} will not do}{8}{subsection.4.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}The five operations, and what a developer types}{9}{subsection.4.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}From the five operations to the commands a developer types}{9}{subsection.4.6}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {5}One Repository, Five Sittings}{9}{section.5}\protected@file@percent }
 \newlabel{sec:walkthrough}{{5}{9}{One Repository, Five Sittings}{section.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Monday, 14:02 to 15:20: two saves and four names}{9}{subsection.5.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Thursday: changing the rate limiter}{9}{subsection.5.2}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces The ten operations, each drawn as the set before the command and the set after it. One line is one request and the marks on it are the edits filed under it, as in Figure\nonbreakingspace \ref {fig:two-records}, and a dotted outline is an edit the version no longer includes. No operation takes a hash. Every argument is a sentence the developer wrote, a branch name, or a function name. The right-hand column says what each operation costs, and we put it beside the command because a developer meets these costs on the first day.}}{10}{figure.caption.8}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces The ten operations, grouped by what each one does to the recorded set. Every thumbnail reads left to right, the set before the command and the set after it, in the marks and colours of Figure\nonbreakingspace \ref {fig:two-records}. No operation takes a hash, and every argument is a sentence the developer wrote, a branch name, or a function name. The cost of each operation sits beside it because a developer meets these costs in the first week.}}{10}{figure.caption.8}\protected@file@percent }
 \newlabel{fig:operations}{{5}{10}{\FigFourCaption }{figure.caption.8}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.3}The following Monday: taking the cache out}{10}{subsection.5.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Wednesday: shipping the export fix alone}{11}{subsection.5.4}\protected@file@percent }
@@ -117,14 +118,13 @@
 \citation{guimaraes2012}
 \bibstyle{ACM-Reference-Format}
 \bibdata{refs}
-\bibcite{sem2026}{{1}{2026}{{Ataraxy Labs}}{{}}}
-\bibcite{bacchelli2013}{{2}{2013}{{Bacchelli and Bird}}{{}}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Where a function loses its history}{12}{subsection.7.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Fifty-six files we cannot rebuild}{12}{subsection.7.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.4}The gate nobody switched on}{12}{subsection.7.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.5}Who should turn the fork rule off}{12}{subsection.7.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.6}The record the agent already had}{12}{subsection.7.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{References}{12}{section*.10}\protected@file@percent }
+\bibcite{sem2026}{{1}{2026}{{Ataraxy Labs}}{{}}}
+\bibcite{bacchelli2013}{{2}{2013}{{Bacchelli and Bird}}{{}}}
 \bibcite{barke2023}{{3}{2023}{{Barke et~al\mbox  {.}}}{{}}}
 \bibcite{barnett2015}{{4}{2015}{{Barnett et~al\mbox  {.}}}{{}}}
 \bibcite{biggerstaff1993}{{5}{1993}{{Biggerstaff et~al\mbox  {.}}}{{}}}
@@ -166,6 +166,7 @@
 \bibcite{perezderosso2013}{{41}{2013}{{Perez De~Rosso and Jackson}}{{}}}
 \bibcite{perezderosso2016}{{42}{2016}{{Perez De~Rosso and Jackson}}{{}}}
 \bibcite{perry2023}{{43}{2023}{{Perry et~al\mbox  {.}}}{{}}}
+\@writefile{toc}{\contentsline {section}{References}{13}{section*.10}\protected@file@percent }
 \bibcite{partachi2020}{{44}{2020}{{Pârțachi et~al\mbox  {.}}}{{}}}
 \bibcite{rigby2013}{{45}{2013}{{Rigby and Bird}}{{}}}
 \bibcite{roundy2009}{{46}{2005}{{Roundy}}{{}}}

@@ -32,6 +32,14 @@
 \definecolor{fRetry}{HTML}{6A4A9E}  % retry policy
 \definecolor{fExport}{HTML}{A83252} % export
 \definecolor{fIdx}{HTML}{3A6EA5}    % database index (colleague's work)
+% Each request colour has a wash used for fills behind text, so a coloured
+% region and a coloured mark can sit next to each other without competing.
+\definecolor{wRate}{HTML}{FAEEE1}
+\definecolor{wCache}{HTML}{E3F0EE}
+\definecolor{wRetry}{HTML}{ECE7F5}
+\definecolor{wExport}{HTML}{F8E7EB}
+\definecolor{wIdx}{HTML}{E6EDF5}
+\definecolor{wGrey}{HTML}{EEEFF0}
 
 % --- type ------------------------------------------------------------------
 \newcommand{\cmd}[1]{\texttt{\small #1}}
@@ -147,6 +155,70 @@
 % --- diff hunk stripe, for drawing a git commit as the thing it is ---------
 % \hunk{x}{y}{width}{color}
 \newcommand{\hunk}[4]{\fill[#4!85, rounded corners=0.25mm] (#1,#2) rectangle ($(#1,#2)+(#3,0.85mm)$);}
+
+% ---------------------------------------------------------------------------
+% Shared figure devices. Four of them, reused in every figure, so a reader who
+% works out what a tab or a hand means in Figure 1 never has to work it out
+% again. All of them assume a picture with x=1mm, y=1mm.
+% ---------------------------------------------------------------------------
+
+% (1) A panel: a rounded card lifted off the page by a soft offset shadow, with
+% a coloured tab straddling its top-left corner that names it.
+% \panel{x}{y}{width}{height}{colour}{TAB TEXT}
+\newcommand{\panel}[6]{%
+  \fill[sgtInk!8, rounded corners=1.2mm]
+    ({#1+0.55},{#2-0.55}) rectangle ({#1+#3+0.55},{#2+#4-0.55});
+  \fill[sgtPaper, rounded corners=1.2mm] (#1,#2) rectangle ({#1+#3},{#2+#4});
+  \draw[rounded corners=1.2mm, line width=0.3pt, color=sgtInk!15]
+    (#1,#2) rectangle ({#1+#3},{#2+#4});
+  \node[anchor=south west, inner xsep=1.15mm, inner ysep=0.6mm, fill=#5,
+        rounded corners=0.55mm, text=white,
+        font=\sffamily\bfseries\fontsize{5.3}{6}\selectfont]
+    at ({#1+1.3},{#2+#4-1.25}) {#6};}
+
+% A panel with no tab, for a region that needs the card shape without a name.
+\newcommand{\plainpanel}[5]{%
+  \fill[sgtInk!8, rounded corners=1.2mm]
+    ({#1+0.55},{#2-0.55}) rectangle ({#1+#3+0.55},{#2+#4-0.55});
+  \fill[#5, rounded corners=1.2mm] (#1,#2) rectangle ({#1+#3},{#2+#4});
+  \draw[rounded corners=1.2mm, line width=0.3pt, color=sgtInk!15]
+    (#1,#2) rectangle ({#1+#3},{#2+#4});}
+
+% (2) Who wrote it. The developer writes the request and the agent writes the
+% code, and that split is the paper's subject, so it gets a mark of its own.
+% \whodev{x}{y}{colour}   \whoagent{x}{y}{colour}
+\newcommand{\whodev}[3]{%
+  \fill[#3] (#1,{#2+0.52}) circle (0.5);
+  \begin{scope}
+    \clip ({#1-1.05},{#2-1.1}) rectangle ({#1+1.05},{#2-0.16});
+    \fill[#3] (#1,{#2-0.2}) circle (0.9);
+  \end{scope}}
+\newcommand{\whoagent}[3]{%
+  \draw[color=#3, line width=0.26pt] (#1,{#2+1.28}) -- (#1,{#2+0.92});
+  \fill[#3] (#1,{#2+1.38}) circle (0.14);
+  \fill[#3, rounded corners=0.24mm]
+    ({#1-0.82},{#2-0.72}) rectangle ({#1+0.82},{#2+0.92});
+  \fill[sgtPaper] ({#1-0.4},{#2+0.24}) circle (0.155);
+  \fill[sgtPaper] ({#1+0.4},{#2+0.24}) circle (0.155);
+  \fill[sgtPaper] ({#1-0.38},{#2-0.32}) rectangle ({#1+0.38},{#2-0.2});}
+
+% (3) An annotation: a thin curved leader from the thing to a short label.
+% \annot{from x}{from y}{to x}{to y}{bend}{colour}
+\newcommand{\annot}[6]{%
+  \draw[color=#6!70, line width=0.32pt, bend left=#5,
+        -{Straight Barb[length=0.85mm,width=0.9mm]}] (#1,#2) to (#3,#4);}
+\tikzset{
+  acc/.style     = {font=\sffamily\bfseries\fontsize{5.4}{6.2}\selectfont,
+                    color=#1, inner sep=0.3mm},
+  acc/.default   = sgtInk,
+  tag/.style     = {font=\sffamily\fontsize{5.2}{6}\selectfont, inner xsep=0.7mm,
+                    inner ysep=0.35mm, rounded corners=0.4mm},
+}
+
+% (4) A highlighted span inside a line of code, the way an editor shows one.
+% \hispan{x}{y}{width}{wash colour}
+\newcommand{\hispan}[4]{%
+  \fill[#4, rounded corners=0.3mm] (#1,{#2-0.75}) rectangle ({#1+#3},{#2+1.25});}
 
 % ---------------------------------------------------------------------------
 % Operation thumbnails. Each is 12mm wide and sits on the text baseline, so

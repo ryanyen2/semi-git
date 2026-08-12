@@ -1,72 +1,102 @@
-% Every operation sgt offers, the state change it makes, and its bill.
+% Every operation sgt offers, grouped by what it does to the recorded set, with
+% the state before and after each command and what each one costs.
 % Prints as Figure 5, after the fork figure in Section 4.3.
-% Each thumbnail reads left to right: the set before the command, then after.
-\newcommand{\FigFourCaption}{The ten operations, each drawn as the set before the
-command and the set after it. One line is one request and the marks on it are the
-edits filed under it, as in
-Figure~\ref{fig:two-records}, and a dotted outline is an edit the version no
-longer includes. No operation takes a hash. Every argument is a sentence the
-developer wrote, a branch name, or a function name. The right-hand column says
-what each operation costs, and we put it beside the command because a developer
-meets these costs on the first day.}
+\newcommand{\FigFourCaption}{The ten operations, grouped by what each one does to
+the recorded set. Every thumbnail reads left to right, the set before the command
+and the set after it, in the marks and colours of
+Figure~\ref{fig:two-records}. No operation takes a hash, and every argument is a
+sentence the developer wrote, a branch name, or a function name. The cost of each
+operation sits beside it because a developer meets these costs in the first
+week.}
 
-\newcommand{\FigFourDescription}{A ten row table. Each row has a small diagram, a
-command, a sentence saying what the command does for the developer, and a
-sentence saying what it costs. Each diagram draws one horizontal line per request
-with a mark on it for every edit filed under that request, as in Figure 1, and a
-dotted outline is an edit the version no longer includes.}
+\newcommand{\FigFourDescription}{Three panels, one per group of operations. The
+first panel holds the two operations that write records, the second holds the
+three that only read them, and the third holds the five that change which
+records a version includes. Each row carries a small diagram of the set before
+and after the command, the command itself, one sentence saying what the developer
+gets, and one sentence in a grey band on the right saying what the operation
+costs. Each diagram draws one horizontal line per request with a mark for every
+edit filed under that request, as in Figure 1, and a dotted outline is an edit
+the version no longer includes.}
 
-\newcommand{\opsrow}[4]{%
-  \raisebox{0.2ex}{#1} & \cmd{#2} & #3 & #4 \\[0.7ex]}
+\begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
+% narrow ragged columns, so break a line early rather than hyphenate a word
+\hyphenpenalty=10000 \exhyphenpenalty=10000
 
-{\footnotesize
-\setlength{\tabcolsep}{2.4mm}
-\begin{tabular}{@{}p{14mm}p{40mm}p{51mm}p{50mm}@{}}
-\toprule
-& \textbf{command} & \textbf{what the developer gets} & \textbf{what it costs} \\
-\midrule
-\opsrow{\thsave}{sgt save -m "..."}
+\node[hd, anchor=west] at (19,104.6)    {COMMAND};
+\node[hd, anchor=west] at (53,104.6)    {WHAT THE DEVELOPER GETS};
+\node[hd, anchor=west] at (115.5,104.6) {WHAT IT COSTS};
+
+% one group of operations. The cost column gets a band of its own on the right,
+% the same band Figure 2 uses, so the reader can read that column straight down.
+% #1 y, #2 height, #3 tab colour, #4 tab text
+\newcommand{\opgroup}[4]{%
+  \panel{0}{#1}{176}{#2}{#3}{#4}
+  \fill[wGrey, rounded corners=0.8mm] (112.5,{#1+1.2}) rectangle (174.6,{#1+#2-1.2});}
+
+% #1 y of the first text line, #2 thumbnail, #3 command, #4 gets, #5 costs
+\newcommand{\oprow}[5]{%
+  \node[inner sep=0] at (10,{#1-2.1}) {#2};
+  \node[anchor=north west, text width=32mm, align=left, inner sep=0, text=sgtInk,
+        font=\ttfamily\fontsize{5.6}{6.6}\selectfont] at (19,#1) {#3};
+  \node[anchor=north west, text width=55mm, align=left, inner sep=0, text=sgtInk!85,
+        font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (53,#1) {#4};
+  \node[anchor=north west, text width=56mm, align=left, inner sep=0, text=sgtInk!85,
+        font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (115.5,#1) {#5};}
+
+% =================== what writes records ==================================
+\opgroup{79}{21}{sgtInk}{WHAT WRITES RECORDS}
+
+\oprow{95.4}{\thsave}{sgt save -m "..."}
   {One record per changed function, filed under a name for the request.}
-  {The grouping is a guess. When it is wrong the developer moves labels, and no
-   recorded edit changes.}
-\opsrow{\thwhy}{sgt show api.py::handle}
-  {The request this function came from, the saves that touched it, and how many
-   edits removing it would take along.}
-  {The answer is exactly as good as the grouping behind it.}
-\opsrow{\threvert}{sgt revert "price cache"}
-  {The named set subtracted from the version, with every function it changes
-   named before anything is applied.}
-  {A function later work also edited has the set's lines subtracted from its
-   current text, and the developer's tests decide whether the result stands.}
-\opsrow{\threstore}{sgt restore "price cache"}
-  {The same set back, byte for byte, with everything added since left alone.}
-  {Refused when putting it back would leave two versions of one function live,
-   and the refusal prints edit identifiers with no function name attached.}
-\opsrow{\thdiff}{sgt diff main feat/export}
-  {The edits each version has that the other does not, in both directions.}
-  {It answers in functions, so seeing which lines moved still means opening the
-   file.}
-\opsrow{\thswitch}{sgt switch feat/export}
-  {The working files rebuilt from that branch's set.}
-  {Refused on unsaved edits, because \sgt{} has nowhere to put them yet.}
-\opsrow{\thckpt}{sgt intent list}
-  {Each feature cut into the stretches of work done on it, each with a name like
-   \cmd{rate limiting@2} that the other commands accept.}
-  {The cuts come from a language model reading the saves, so a stretch can start
-   one save too early.}
-\opsrow{\thfork}{sgt resolve api.py::handle}
-  {The two competing versions of the function side by side, and whichever one the
-   developer picks or writes is included once the project's test command passes.}
-  {Two edits at opposite ends of one function are also competing versions, and
-   git would have merged them without asking.}
-\opsrow{\thplan}{sgt plan intake "..."}
+  {The grouping is a guess. Correcting it moves labels and changes no recorded
+   edit.}
+\oprow{87.0}{\thplan}{sgt plan intake "..."}
   {A name for work that does not exist yet, which the next save matches itself
    against.}
   {A plan that predicts whole files matches nothing. It has to name functions.}
-\opsrow{\thsubset}{sgt propose land --subset "export"}
+
+% =================== what only reads them =================================
+\opgroup{48}{29}{sgtGrey}{WHAT ONLY READS THEM}
+
+\oprow{72.4}{\thwhy}{sgt show api.py::handle}
+  {The request this function came from, the saves that touched it, and how much
+   other work removing it takes along.}
+  {The answer is exactly as good as the grouping behind it.}
+\oprow{64.0}{\thdiff}{sgt diff main feat/export}
+  {The edits each version has that the other does not, in both directions.}
+  {It answers in functions, so seeing which lines moved still means opening the
+   file.}
+\oprow{55.6}{\thckpt}{sgt intent list}
+  {Each feature cut into the stretches of work done on it, each with a name like
+   {\ttfamily rate limiting@2} the other commands accept.}
+  {A language model places the cuts by reading the saves, so a stretch can start
+   one save too early.}
+
+% ============ what changes which records a version includes ===============
+\opgroup{0}{46}{sgtInk}{WHAT CHANGES WHICH RECORDS A VERSION INCLUDES}
+
+\oprow{41.4}{\threvert}{sgt revert "price cache"}
+  {The named set subtracted from the version, with every function it changes
+   named before anything is applied.}
+  {A function later work also edited gets the set's lines subtracted from its
+   current text, and the tests decide.}
+\oprow{33.0}{\threstore}{sgt restore "price cache"}
+  {The same set back, byte for byte, with everything added since left alone.}
+  {Refused when putting the set back would leave two versions of one function
+   live, and the refusal prints edit identifiers with no function name.}
+\oprow{24.6}{\thswitch}{sgt switch feat/export}
+  {The working files rebuilt from that branch's set.}
+  {Refused on unsaved edits, because \sgt{} has nowhere to put them yet.}
+\oprow{16.2}{\thfork}{sgt resolve api.py::handle}
+  {The two competing versions side by side, and whichever one the developer
+   picks or writes is included once the project's test command passes.}
+  {Two edits at opposite ends of one function are also competing versions, and
+   git would have merged them without asking.}
+\oprow{7.8}{\thsubset}{sgt propose land --subset "export"}
   {One finished feature sent to the shared branch, with the unfinished one left
    behind.}
   {Two functions that sit next to each other in one file can lose the blank line
    between them.}
-\bottomrule
-\end{tabular}}
+
+\end{tikzpicture}

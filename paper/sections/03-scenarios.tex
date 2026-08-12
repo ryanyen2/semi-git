@@ -27,16 +27,16 @@ history that existed for twenty-nine minutes and that nobody ever ran the test
 suite against, and it files the agent's rework of the cache under the retry
 commit, because the agent did that rework while adding the retry. Committing once
 at the end produces a single commit holding all three requests and the rename,
-which is the state Figure~\ref{fig:two-records} shows. Staging hunk by hunk
+and Figure~\ref{fig:two-records} shows that state. Staging hunk by hunk
 produces four clean commits and asks the developer to decide, for each of fifteen
 hunks, which of those four purposes it serves. Green and Petre named these two
 costs premature commitment, where a notation forces a decision before the
 information the decision needs is available, and viscosity, the resistance a
 notation puts up once the decision turns out to be
 wrong~\cite{green1996,blackwell2003}. Git asks for the decomposition at the moment
-of writing, which in a session driven by requests is a moment when the boundary
-does exist and the agent is the only party holding it, and the developer's cost of
-recovering it grows with every later request that touches the same functions.
+of writing. In a session driven by requests the boundary does exist at that
+moment and only the agent holds it, and the developer's cost of recovering it
+grows with every later request that touches the same functions.
 
 \smallskip\noindent\emph{The operation.} Record the boundary the developer already stated, without
 asking them to state it a second time in a different notation.
@@ -71,11 +71,11 @@ nine hunks belonging to three other purposes. One of the six adds a parameter to
 \sym{db.py::query} and another passes it from \sym{api.py::handle}, and three
 functions the rename rewrote afterwards call a helper the caching introduced.
 \cmd{git revert} takes back a whole commit, so reverting either of these two
-removes work the developer is keeping. The path that works is to check out both
-commits, select the six hunks by hand, reverse them, and then confirm that
+removes work the developer is keeping. The developer checks out both
+commits, selects the six hunks by hand, reverses them, and then confirms that
 removing the parameter did not break \sym{handle} and that the three functions
-the rename rewrote no longer call \sym{get\_cached}. That confirmation is
-where the time goes, because the record contains no statement that the
+the rename rewrote no longer call \sym{get\_cached}. The confirmation takes
+the time, because the record contains no statement that the
 \sym{db.py::query} signature and the \sym{handle} call site were changed for the
 same reason. Brindescu et al.\ found that the difficulty of resolving a conflict
 is predictable from properties of the change, and that how far the change reaches
@@ -98,26 +98,29 @@ if more export work arrives before the release. Darcs solves the part of this
 problem that is about lines, because a Darcs patch carries the dependencies it
 was recorded with and moving it involves no reapplication
 (Section~\ref{sec:related}). The export code calls a helper introduced by one of
-the unfinished features, and that call is the dependency that decides this case.
-No line-level record states it, so the developer finds out when the release
-branch fails to import.
+the unfinished features. No line-level record states that call, so the developer
+finds out when the release branch fails to import.
 
 \smallskip\noindent\emph{The operation.} Carry a named set of edits and its dependencies to another
 branch, and be told before the operation which dependencies would come along.
 
 \subsection{``Let someone review the rate limiter while I keep building on it''}
 
-Code review research has converged on small, focused changes, and that finding is
-why stacked pull requests exist~\cite{bacchelli2013,rigby2013}. The rate limiter was finished at 14:30 and
+Rigby and Bird found that review practices across many projects converge on
+frequent review of small changes~\cite{rigby2013}, and Bacchelli and Bird found
+that reviewers name understanding the change as their main
+difficulty~\cite{bacchelli2013}. Stacked pull requests exist so that a developer
+can keep each reviewed change small while the work continues on top of it. The
+rate limiter was finished at 14:30 and
 the caching that followed calls \sym{api.py::\_bucket}, so the two form a
 stack of two layers with the rate limiter underneath. Submitting them that way
 required the rate limiter to be on its own branch at 14:30, which required
 knowing at 14:30 that the caching would build on it. Graphite and GitHub's
 stacked pull requests automate every step after that decision, including
 rebasing the upper layer when a reviewer asks for a change to the lower one
-(Section~\ref{sec:related}). The decision itself belongs to the developer, it is
-made before the work exists, and an agent session is the case where the layering
-becomes visible only once both layers are written. Church et al.\ call this a
+(Section~\ref{sec:related}). The decision itself belongs to the developer and has
+to be made before the work exists, and in an agent session the layering becomes
+visible only once both layers are written. Church et al.\ call this a
 hidden dependency, a relationship the system relies on that the notation does not
 show, and they make the point about version control
 specifically~\cite{church2014}.
@@ -128,11 +131,10 @@ layer while continuing to work on the layer above it.
 \subsection{What the five have in common}
 
 Every one of these five operations takes a set of edits as its argument, and the
-purpose those edits served is what identifies the set. Git expresses a set of
+developer identifies that set by the purpose the edits served. Git expresses a set of
 lines, a set of files, and a set of commits, and a developer can build all five
 operations out of those three. The price of building them is recovering a
-decomposition that nobody recorded, which the untangling literature
-has been measuring for a decade, and which stayed affordable for as long as the
-person doing the recovery was the person who had written the code.
+decomposition that nobody recorded, and that recovery stayed affordable for as
+long as the person doing it was the person who had written the code.
 Section~\ref{sec:design} describes what we changed so that a developer can type
 the argument these five operations want.
