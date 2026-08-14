@@ -55,6 +55,9 @@
           "slugify.py::slugify"
         ],
         "op_count": 6,
+        "own_symbols": [
+          "slugify.py::slugify"
+        ],
         "parent": null,
         "sessions": [],
         "size": 3,

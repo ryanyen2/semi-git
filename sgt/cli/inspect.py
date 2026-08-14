@@ -9,6 +9,7 @@ before reading (R9)."""
 from __future__ import annotations
 
 import argparse as _dep
+import sys
 
 from ._common import _add_view_flags, _emit_json, _fail
 
@@ -544,6 +545,14 @@ def _print_map_tree(view: dict) -> None:
     leaves = [n["id"] for n in view["nodes"] if not n["children"]]
     prefix_len = _min_unique_prefixes(leaves)
 
+    def live(n: dict) -> list:
+        """What this feature's own ops touch -- the same set `sgt show` counts. `members` is the
+        clustering's assignment, which prints `Section Waitlist · 5 symbol(s)` for a feature
+        `sgt show` reports as `0 symbols in 0 files` and whose revert removes nothing: two
+        surfaces disagreeing about one id, with the wrong one on the map a reader picks a revert
+        target from."""
+        return n.get("own_symbols", n["members"])
+
     def handle(nid: str) -> str:
         body = nid[2:] if nid.startswith("f-") else nid
         k = max(3, prefix_len.get(nid, 8) - (2 if nid.startswith("f-") else 0))
@@ -552,7 +561,7 @@ def _print_map_tree(view: dict) -> None:
     def is_visible(nid: str) -> bool:
         n = by_id[nid]
         if not n["children"]:
-            return bool(n["members"])
+            return bool(live(n))
         return any(is_visible(c) for c in n["children"])
 
     def visit(nid: str, depth: int) -> None:
@@ -560,7 +569,7 @@ def _print_map_tree(view: dict) -> None:
         if n["children"]:
             print(f"{'  ' * depth}{n['label']}")
         else:
-            print(f"{'  ' * depth}{n['label']} ({handle(nid)}) · {len(n['members'])} symbol(s)")
+            print(f"{'  ' * depth}{n['label']} ({handle(nid)}) · {len(live(n))} symbol(s)")
         for child in n["children"]:
             if is_visible(child):
                 visit(child, depth + 1)
@@ -568,7 +577,7 @@ def _print_map_tree(view: dict) -> None:
     for root in view["roots"]:
         if is_visible(root):
             visit(root, 0)
-    shown = sum(1 for n in view["nodes"] if not n["children"] and n["members"])
+    shown = sum(1 for n in view["nodes"] if not n["children"] and live(n))
     print(f"{shown} feature(s)")
 
 
@@ -617,7 +626,10 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
         # ambiguity. `_map_staleness` only says *what* is missing, which is the part worth reading.
         if not cached_map_is_current(repo):
             line = f" ({_map_staleness(repo) or 'new edits'} not shown yet — `sgt log --refresh`)"
-            print(f"\x1b[2m{line}\x1b[0m" if color else line)
+            # stderr, not stdout: a person still reads it, but `--json` stays parseable. It used to
+            # print above the `{`, so `sgt log --json | jq` failed on any repo with unmined edits --
+            # which is every freshly cloned or copied one, i.e. an agent's first contact.
+            print(f"\x1b[2m{line}\x1b[0m" if color else line, file=sys.stderr)
         return mv
 
     from sgt.core.lens import get
@@ -626,7 +638,8 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     from sgt.lens.map import build_map
 
     if color:
-        print("\x1b[2m refreshing: mining edits + naming features and checkpoints…\x1b[0m")
+        print("\x1b[2m refreshing: mining edits + naming features and checkpoints…\x1b[0m",
+              file=sys.stderr)
     get(repo)  # mine-on-contact (R9)
     build_map(repo, rebuild=rebuild)  # feature tree + labels (the "what exists" layer)
     build_segments(repo)     # per-feature checkpoints (the "what I did, in chapters" layer)

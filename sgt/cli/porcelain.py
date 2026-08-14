@@ -609,6 +609,14 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
             if resolve_plan:
                 print(f"      hollow: {', '.join(h[:12] for h in e['hollow_ids'])}")
                 print(f"      op:     {', '.join(o[:12] for o in e['op_ids'])}")
+                # The executable form, ids filled in. Printing only the group under a heading that
+                # repeats "run `sgt save --resolve-plan`" makes this a closed loop: the user has
+                # just run that command, and the `--confirm-*` flags that actually settle the group
+                # are named nowhere in the output. Confirming the whole group is the common case,
+                # and the ids are right here, so hand over the line rather than the vocabulary.
+                confirm = " ".join(f"--confirm-hollow {h[:12]}" for h in e["hollow_ids"])
+                confirm += " " + " ".join(f"--confirm-op {o[:12]}" for o in e["op_ids"])
+                print(f"      settle it:  sgt save --resolve-plan {confirm}")
         if plan["drift_op_ids"]:
             print(f"  drift: {', '.join(o[:12] for o in plan['drift_op_ids'])}")
         for sid in plan.get("auto_closed", []):

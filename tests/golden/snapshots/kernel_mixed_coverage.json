@@ -45,6 +45,12 @@
           "util.py::helper"
         ],
         "op_count": 10,
+        "own_symbols": [
+          "config.yaml",
+          "notes.md",
+          "pkg.py::compute",
+          "util.py::helper"
+        ],
         "parent": null,
         "sessions": [],
         "size": 8,

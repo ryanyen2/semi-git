@@ -262,6 +262,15 @@ def plan_move(repo: str | Path, op_refs: list[str], target_id: str) -> MovePrevi
         return MovePreview(False, message="no feature tree; run `sgt log --refresh`")
     nodes = result["nodes"]
     if _leaf(nodes, target_id) is None:
+        # Accept the same selectors every other surface prints -- the short handle and the label,
+        # not just the full 64-hex id. `plan_merge` already does this; `move`/`split` did not, so
+        # `regroup split "Time Slots"` and `regroup split 044954f3` both failed with "not a leaf
+        # feature" while the id the tree, `show`, `--focus` and every `next:` footer show is the
+        # short one. A pilot participant found the full hash by hand to get past it.
+        _resolved = resolve_feature(repo, target_id)
+        if _resolved is not None:
+            target_id = _resolved[1]
+    if _leaf(nodes, target_id) is None:
         return MovePreview(False, target_id=target_id, message=f"{target_id!r} is not a leaf feature")
     resolved: list[str] = []
     for ref in op_refs:
@@ -416,6 +425,11 @@ def plan_split(repo: str | Path, feature_id: str) -> SplitPreview:
     if result is None:
         return SplitPreview(False, feature_id, message="no feature tree; run `sgt log --refresh`")
     node = _leaf(result["nodes"], feature_id)
+    if node is None:  # same short-handle/label acceptance as `merge` (see `plan_move`)
+        _resolved = resolve_feature(repo, feature_id)
+        if _resolved is not None:
+            feature_id = _resolved[1]
+            node = _leaf(result["nodes"], feature_id)
     if node is None:
         return SplitPreview(False, feature_id, message=f"{feature_id!r} is not a leaf feature")
     if len(node["members"]) < 2:

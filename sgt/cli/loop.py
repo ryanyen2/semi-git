@@ -18,7 +18,11 @@ _STATUS_ICON = {"pending": "○", "matched": "●"}
 
 def register(subs, parent) -> None:
     pl = subs.add_parser("plan", parents=[parent])
-    pl.add_argument("rest", nargs="*")
+    pl.add_argument("rest", nargs="*", metavar="intake|status|abandon|adopt|done",
+                    help="intake \"<what you are about to build>\" — record the plan and let sgt "
+                         "predict which features it lands in; status — how much of it has landed; "
+                         "abandon — drop it. A save that can't match a step reports it; "
+                         "`sgt save --resolve-plan` then prints the line that settles it.")
     # Only meaningful for `plan intake`: the drafting Claude Code session id, so a stalled plan can
     # be resumed directly with `claude --resume <id>`. Registered as a real optional so argparse
     # doesn't reject the leading `--` before it reaches `rest`.
