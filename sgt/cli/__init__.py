@@ -208,7 +208,38 @@ def main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except _CLIExit as e:
         return e.code
-    return args.func(args)
+    try:
+        return args.func(args)
+    except AssertionError:
+        # A fired assert is a broken invariant in our own code, not a condition a user can act
+        # on, so the traceback is the useful output and swallowing it would hide a real bug.
+        raise
+    except Exception as e:  # noqa: BLE001 -- the outermost boundary; nothing above it prints
+        return _fatal(e)
+
+
+def _fatal(exc: Exception) -> int:
+    """Turn an escaped exception into a sentence. Every verb here reads or writes a git repo, so
+    the most common way to reach this is running sgt somewhere that isn't one -- which used to end
+    in a `GitError` traceback out of `rev-parse`, the least useful thing to show someone in their
+    first minute with the tool. Anything else still prints its type and message rather than 30
+    lines of stack; `SGT_TRACEBACK=1` brings the stack back for debugging."""
+    import os
+    import sys
+    import traceback
+
+    if os.environ.get("SGT_TRACEBACK"):
+        traceback.print_exc()
+        return 1
+    text = str(exc)
+    if "not a git repository" in text:
+        print("✗ this isn't a git repository. cd into your project first, or run `git init` "
+              "then `sgt init` to start tracking one.", file=sys.stderr)
+        return 1
+    print(f"✗ {type(exc).__name__}: {text}", file=sys.stderr)
+    print("  if this looks like a bug, re-run with SGT_TRACEBACK=1 and send the output.",
+          file=sys.stderr)
+    return 1
 
 
 def _version() -> int:
