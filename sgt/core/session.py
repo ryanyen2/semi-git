@@ -254,6 +254,10 @@ def gc(repo, force: bool = False) -> tuple[str, ...]:
             gb.worktree_remove(s.scratch, force=True)
         except GitError:
             pass
+        try:
+            gb.delete_branch(s.branch)  # the worktree's own branch goes with it
+        except GitError:
+            pass
         del sessions[s.name]
         reaped.append(s.name)
     _save(repo, sessions)

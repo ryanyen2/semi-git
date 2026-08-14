@@ -22,8 +22,10 @@ _USAGE = ("usage: sgt session start <name> [--base <branch>] [--task <text>] | "
 
 def register(subs, parent) -> None:
     p = subs.add_parser("session", parents=[parent])
-    p.add_argument("sub", nargs="?")
-    p.add_argument("name", nargs="?")
+    p.add_argument("sub", nargs="?", metavar="start|status|land|gc",
+                   help="start <name> — a named scratch worktree on its own branch; status — "
+                        "what is in flight; land — merge it back; gc — reap a finished one")
+    p.add_argument("name", nargs="?", metavar="<name>", help="the session name")
     p.add_argument("--base")
     p.add_argument("--task")
     p.add_argument("--watch", action="store_true")

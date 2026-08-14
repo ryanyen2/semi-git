@@ -503,7 +503,21 @@ def _ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
 
     chains: dict[str, list[str]] = {}
     for sym, steps in next_step.items():
-        op_id = steps[None]  # the chain head -- downward-closure guarantees it's in the ideal
+        head = None
+        if None not in steps:
+            # A downward-closed ideal always carries the birth, but `plan_restore` deliberately
+            # widens resolution to the whole store when the reduced source parks a symbol's chain,
+            # and a store slice can start mid-chain -- a ghost whose birth was excluded by an
+            # earlier revert. Fall back to the op no other op in this slice feeds: the same walk,
+            # started at the earliest link actually present, instead of a bare KeyError out of a
+            # daily-spine verb. Ambiguity is resolved by sorting, so the order stays deterministic;
+            # legality is still the verb layer's to refuse (`Ideal.from_ops`), never this read's.
+            produced = {by_id[o].footprint[sym][1] for o in steps.values()}
+            roots = sorted(b for b in steps if b not in produced)
+            if not roots:
+                continue
+            head = roots[0]
+        op_id = steps[head]
         seq = [op_id]
         visited = {op_id}
         after = by_id[op_id].footprint[sym][1]

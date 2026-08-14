@@ -111,11 +111,19 @@ def graph_layout(
     for r in sorted(map_view.get("roots") or []):
         visit(r)
 
-    # Aggregate ops -> op count + first/last commit + the sorted commit list. Drop lanes with no ops.
+    # Aggregate ops -> op count + first/last commit + the sorted commit list. Drop lanes with no ops,
+    # and lanes whose feature holds no symbols of its own: a cluster whose ops touch only the
+    # residue/anchor sentinels is not a feature anyone can act on -- it draws a full lane, answers
+    # `sgt show` with "0 symbols in 0 files", and reverting it removes nothing. A pilot participant
+    # read one of those rows ("Section Waitlist") as the waitlist and reverted it, which silently
+    # did nothing while the live waitlist sat in a feature this filter had crowded off the map.
+    # Same "drop what has nothing to show" rule `_print_map_tree` applies, on the same set.
     lanes = []
     for v in visible:
         commits = [op["commit_index"] for leaf in v["leaves"] for op in ops_by_feature.get(leaf, [])]
         if not commits:
+            continue
+        if not any(by_id.get(leaf, {}).get("own_symbols", ("?",)) for leaf in v["leaves"]):
             continue
         commits.sort()
         lanes.append({

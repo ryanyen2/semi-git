@@ -1197,6 +1197,22 @@ def map_view(repo) -> dict:
     from sgt.lens.tree import _authored_leaf_claims
     authored_claims = _authored_leaf_claims(nodes, load_authored(repo))
 
+    # `members` is what the clustering assigned to a node, which is not the same question as "what
+    # does this feature's own work touch" -- and `sgt show` answers the second one (`_show_footprint`:
+    # the feature's ops' footprints, minus the residue/anchor sentinels). The two disagree hard on
+    # husks: `Section Waitlist` carries 5 members but its single op touches only sentinels, so the
+    # tree printed `· 5 symbol(s)` next to a `sgt show` reading `0 symbols in 0 files` whose revert
+    # removes nothing. A pilot participant picked that row to "remove the waitlist" off the map.
+    # Computed the same way here so every surface reports one number per feature.
+    own_symbols: dict[str, set[str]] = {}
+    for op_id, leaf in op_leaf.items():
+        op = by_id.get(op_id)
+        if op is None:
+            continue
+        own_symbols.setdefault(leaf, set()).update(
+            s for s in op.footprint if "__residue__" not in s and "__anchor__" not in s
+        )
+
     def _emit(nid: str, nd: dict) -> dict:
         # A node id is a content hash (`f-`/`af-`), never a name -- it must never reach a surface as
         # a label. A properly built tree labels every node (`tree.label_tree`), but a tree persisted
@@ -1214,6 +1230,7 @@ def map_view(repo) -> dict:
             "children": sorted(canonical_children(nid)),
             "size": nd["size"],
             "members": list(nd.get("members", [])),
+            "own_symbols": sorted(own_symbols.get(nid, ())),
             "op_count": op_count(nid),
             "dir": nd.get("dir", ""),
             "why": nd.get("why", ""),
@@ -2774,13 +2791,18 @@ def _show_next(found, consequences: dict) -> list[dict]:
     steps: list[dict] = []
 
     if found.kind == "feature":
-        steps.append({"cmd": f"sgt log --focus {token}", "why": "its checkpoints, oldest to newest"})
-        steps.append({"cmd": f"sgt intent show {token}", "why": "what each checkpoint was for"})
+        # `sgt log --focus` prints each checkpoint with its label and message, which is the answer
+        # to "what was each of these for". `sgt intent show` used to be offered here and always
+        # failed: it resolves a COMMIT, and what it is handed here is a feature id, so it exits 1
+        # with "no theme or commit found in the intent overlay" -- the exact silent-no-op this
+        # function's own docstring rules out, on the most-read footer in the tool.
+        steps.append({"cmd": f"sgt log --focus {token}",
+                      "why": "its checkpoints, oldest to newest, and what each was for"})
         steps.append({"cmd": f'sgt feature rename {token} "<name>"',
                       "why": "if the generated label doesn't match what this is"})
     elif found.kind == "checkpoint":
         feature = found.feature_id or ""
-        steps.append({"cmd": f"sgt intent show {feature[2:10] if feature.startswith('f-') else token}",
+        steps.append({"cmd": f"sgt log --focus {feature[2:10] if feature.startswith('f-') else token}",
                       "why": "this checkpoint in the context of its feature"})
     elif found.kind == "symbol":
         file = found.target.partition("::")[0]

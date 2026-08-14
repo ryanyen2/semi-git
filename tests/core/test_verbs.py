@@ -18,6 +18,7 @@ from sgt.core import session as session_mod
 from sgt.core import verbs
 from sgt.core.fold import code
 from sgt.core.lens import get
+from sgt.core.op import make_op
 from sgt.core.order import is_valid_ideal
 from sgt.core.store import Store
 from sgt.store.gitbind import init_store
@@ -417,3 +418,78 @@ def test_default_revert_subtracts_cleanly_and_keeps_interleaved_later_work(tmp_p
     assert "def wl" not in text
     assert "wl()" not in text
     assert "c()" in text and "def c_helper" in text and "b()" in text
+
+
+def test_revert_regrounds_the_layout_facts_of_symbols_it_keeps():
+    """The fold splices a file as `entity + its residue gap` in anchor order and synthesizes no
+    separators of its own, so a kept entity whose layout facts died with the removal renders
+    glued to its neighbour (`    passdef find_section(...)`, a SyntaxError) and, with no anchor,
+    drops into the sorted end-of-file fallback. A removal that owns the save which first recorded
+    a file's partition strips exactly those facts off symbols it never meant to touch, so the
+    subtraction has to re-ground them.
+
+    Drives `_repair_layout` directly: the frontiers below are the shape the tracer found on the
+    study repo -- `a` and `c` still live, their residue and anchor chains gone with the removal,
+    `b` removed from between them.
+    """
+    from sgt.core.subtract import _ANCHOR_FIRST, _repair_layout
+
+    path = "m.py"
+
+    def mk(sym: str, image: bytes):
+        return make_op({sym: (None, f"v-{sym}")}, {sym: image})
+
+    entities = {name: mk(f"{path}::{name}", f"def {name}():\n    return 0".encode())
+                for name in ("a", "b", "c")}
+    residues = {name: mk(f"{path}::__residue__::{name}", b"\n\n\n") for name in ("a", "b", "c")}
+    anchors = {
+        "a": mk(f"{path}::__anchor__::a", _ANCHOR_FIRST.encode()),
+        "b": mk(f"{path}::__anchor__::b", b"a"),
+        "c": mk(f"{path}::__anchor__::c", b"b"),
+    }
+    every = [*entities.values(), *residues.values(), *anchors.values()]
+    by_id = {op.id: op for op in every}
+    pre = {next(iter(op.footprint)): op.id for op in every}
+
+    # After the removal: `b` is gone, `a` and `c` survive -- but the removal owned their layout
+    # chains, so only the two entity symbols are left live.
+    live_after = {f"{path}::a": entities["a"].id, f"{path}::c": entities["c"].id}
+
+    repairs = _repair_layout(path, pre, live_after, lambda oid: by_id[oid].images, by_id, "F")
+    emitted = {next(iter(op.footprint)): op.images[next(iter(op.footprint))] for op in repairs}
+
+    # Both survivors get their recorded gap back -- verbatim, never invented.
+    assert emitted[f"{path}::__residue__::a"] == b"\n\n\n"
+    assert emitted[f"{path}::__residue__::c"] == b"\n\n\n"
+    # `a` is still first; `c`'s anchor named the removed `b`, so it re-points to the nearest
+    # surviving predecessor rather than falling into the fold's sorted fallback.
+    assert emitted[f"{path}::__anchor__::a"] == _ANCHOR_FIRST.encode()
+    assert emitted[f"{path}::__anchor__::c"] == b"a"
+    # Nothing is re-grounded for the entity the removal actually took.
+    assert not any(sym.endswith("::b") for sym in emitted)
+
+
+def test_repair_layout_is_a_no_op_when_the_removal_left_the_partition_intact():
+    """The repair only fires where facts are missing or point at removed code -- a removal that
+    leaves a file's layout alone must mint no ops, or every revert would churn the residue chain
+    and ungroundthe next save's mined rework."""
+    from sgt.core.subtract import _ANCHOR_FIRST, _repair_layout
+
+    path = "m.py"
+
+    def mk(sym: str, image: bytes):
+        return make_op({sym: (None, f"v-{sym}")}, {sym: image})
+
+    every = {
+        f"{path}::a": mk(f"{path}::a", b"def a():\n    return 0"),
+        f"{path}::b": mk(f"{path}::b", b"def b():\n    return 1"),
+        f"{path}::__residue__::a": mk(f"{path}::__residue__::a", b"\n\n\n"),
+        f"{path}::__residue__::b": mk(f"{path}::__residue__::b", b"\n"),
+        f"{path}::__anchor__::a": mk(f"{path}::__anchor__::a", _ANCHOR_FIRST.encode()),
+        f"{path}::__anchor__::b": mk(f"{path}::__anchor__::b", b"a"),
+    }
+    by_id = {op.id: op for op in every.values()}
+    frontier = {sym: op.id for sym, op in every.items()}
+
+    assert _repair_layout(path, frontier, dict(frontier),
+                          lambda oid: by_id[oid].images, by_id, "F") == []

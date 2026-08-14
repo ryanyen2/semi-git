@@ -7,7 +7,7 @@ advance -- kept apart from `commit` precisely so "land" only ever means one thin
 
 from __future__ import annotations
 
-from ._common import _emit_json
+from ._common import _emit_json, _fail_json
 
 
 def register(subs, parent) -> None:
@@ -217,11 +217,18 @@ def _fulfill(repo: str, draft_id: str | None, from_tree: bool, as_json: bool) ->
     if not draft_id:
         print("usage: sgt fulfill <draft-id> --from-tree")
         return 2
+    from sgt.core.lens import DirtyWorkingTreeError
+
     try:
         candidate = rewrite.fulfill(repo, draft_id, from_tree=from_tree)
     except rewrite.RewriteError as e:
         print(f"✗ {e}")
         return 1
+    except DirtyWorkingTreeError as e:
+        # A refusal, not a crash: this verb writes the candidate over the working tree, so the
+        # guard fires on exactly the case where someone has unsaved work. The message already
+        # names the files and the remedy (`sgt/core/rewrite.py::stage`).
+        return _fail_json(str(e), as_json)
     if as_json:
         return _emit_json({"ok": True, "op_ids": sorted(candidate.op_ids)})
     print(f"✓ staged {len(candidate.op_ids)} op(s) to the working tree (uncommitted) — "
