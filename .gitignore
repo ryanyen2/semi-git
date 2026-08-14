@@ -45,7 +45,7 @@ uv.lock
 papers/
 .DS_Store
 review/
-study/
+# study/
 allinone.md
 docs/plans/
 docs/design/
