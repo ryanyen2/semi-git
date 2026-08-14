@@ -309,7 +309,7 @@ def _help() -> int:
         "\n"
         "  groupings:\n"
         "  sgt feature <cmd>           author/re-cut features: regroup (merge/split/move),\n"
-        "                              rename, select, why\n"
+        "                              rename, select   (`why` is the top-level `sgt why <sel>`)\n"
         "  sgt advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n"
         "                              resync (recover after a git history rewrite), ops, state,\n"
         "                              oracle, after, fold, preview, tiers, identity, migrate,\n"

@@ -405,3 +405,29 @@ def test_reduce_to_ideal_memo_is_sound_when_the_op_universe_shrinks():
     shrunk = order.reduce_to_ideal(ids, [add])
     assert shrunk == frozenset({add.id})             # NOT the cached {add, mod}
     assert is_valid_ideal([add], shrunk)             # constructible against the shrunk universe
+
+
+def test_ordered_chains_walks_a_slice_that_starts_mid_chain():
+    """`_ordered_chains` used to index `steps[None]` on the assumption that any set it is handed
+    is downward-closed and so carries the symbol's birth. `plan_restore` breaks that on purpose:
+    when the reduced source has parked a symbol's chain it widens resolution to the whole store,
+    and that slice can start mid-chain -- a ghost whose birth an earlier revert excluded. That
+    raised a bare `KeyError: None` out of `sgt restore`, one of the daily-spine verbs.
+    """
+    from sgt.core.order import _ordered_chains
+
+    sym = "a.py::foo"
+    ops = _chain(sym, 4)
+    headless = [op.id for op in ops[1:]]  # the birth is gone; v0->v1 is now the earliest link
+
+    chains = _ordered_chains(headless, ops)
+
+    assert chains[sym] == headless, "the walk should start at the earliest link present"
+
+
+def test_ordered_chains_is_unchanged_for_a_proper_downward_closed_ideal():
+    sym = "a.py::foo"
+    ops = _chain(sym, 4)
+    from sgt.core.order import _ordered_chains
+
+    assert _ordered_chains([op.id for op in ops], ops)[sym] == [op.id for op in ops]

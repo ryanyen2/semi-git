@@ -669,6 +669,37 @@ def stage(
     lens.get(repo)  # absorb any pre-existing dirty tree / foreign commit first (R9)
     store = Store(repo)
     candidate, fulfilled = build_candidate(repo, draft, images, from_tree=from_tree)
+
+    # Same refusal `put()` makes, for the same reason: this writes the candidate over the working
+    # tree, so a path whose on-disk bytes are uncommitted *and* differ from what the candidate
+    # materializes is someone's unsaved work. `stage` writes through `_write_working_tree`
+    # directly, so it skipped the guard entirely -- a pilot participant ran the
+    # `sgt fulfill <draft> --from-tree` line the tool itself printed and lost their uncommitted
+    # edits, with deleted code restored on top, under a `✓`.
+    #
+    # Checked here, BEFORE the ops are stored and the hollows unlinked, so a refusal leaves the
+    # draft exactly as it was and re-runnable. (Checking after consuming the hollows makes the
+    # refusal itself destructive: the draft survives but its hollows are gone, and the retry the
+    # message asks for dies with "hollow not found".) `code` is given the fulfilled ops
+    # explicitly rather than reading them back from the store, since they are not in it yet.
+    from sgt.store.gitbind import GitBinding
+
+    ops = store.all_ops() + list(fulfilled.values())
+    materialized = code(candidate, ops)
+    # Scoped the way `put()`'s own delta guard is scoped: a path this draft authors is *expected*
+    # to be dirty -- `--from-tree` reads the hollow's image out of exactly those uncommitted bytes,
+    # so flagging them would refuse the normal flow. Everything else the fold rewrites is not this
+    # edit's business, and that is where the loss happened: the participant's uncommitted work sat
+    # in files the draft never touched.
+    authored = {sym.split("::", 1)[0] for op in fulfilled.values() for sym in op.footprint}
+    conflicts = lens._dirty_conflicts(repo, GitBinding(repo), materialized) - authored
+    if conflicts:
+        raise lens.DirtyWorkingTreeError(
+            f"fulfill would overwrite uncommitted changes: {sorted(conflicts)} "
+            f"-- record them with `sgt save`, or commit / `git restore` those files, then re-run "
+            f"(the draft is untouched; nothing has been staged)"
+        )
+
     for op in fulfilled.values():
         store.add(op)
     for hollow_id in draft.hollow_ids:
@@ -677,8 +708,6 @@ def stage(
     # The staged bytes (working tree) and the staged record must move together (R5): a crash
     # between them would leave a dirty tree with no record, or a record for bytes never written.
     # Ops were added above, before this section, so `Store.add`'s lock never nests here.
-    ops = store.all_ops()
-    materialized = code(candidate, ops)
     with locked_section(repo):
         lens._write_working_tree(repo, materialized, ops)
         _save_staged(repo, candidate, draft.verb, draft.target)
