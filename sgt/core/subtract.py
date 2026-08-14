@@ -34,8 +34,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from sgt.core import order
-from sgt.core.mine import _content_version, _positional_version
-from sgt.core.op import BOTTOM, Op, make_op
+from sgt.core.mine import _ANCHOR_FIRST, _content_version, _positional_version
+from sgt.core.op import BOTTOM, Op, is_bottom, make_op
 from sgt.core.patch import merge3
 from sgt.core.store import Store
 
@@ -76,6 +76,100 @@ def _semantic_closure(target_ids, blast, by_id, declared_dependents_of) -> set[s
                 removal.add(oid)
                 changed = True
     return removal
+
+
+def _repair_layout(
+    path: str, pre_frontier, live_after: dict[str, str], images_of, by_id, tag: str,
+) -> list[Op]:
+    """Re-ground the layout facts of entities the removal *keeps*.
+
+    The fold reconstructs a file as a verbatim byte partition -- each live top-level entity's
+    image followed by that entity's own residue gap, ordered by anchor facts -- and synthesizes
+    zero bytes of its own (`sgt.core.fold`). So a live entity whose residue or anchor died with
+    the removal has no separator and no place: the fold concatenates it straight onto its
+    neighbour (`    passdef find_section(...)`, a SyntaxError) and, with no anchor, drops it into
+    the sorted end-of-file fallback.
+
+    That happens whenever the target owns the save that first recorded the file's partition: those
+    layout chains are upward-closed inside the removal and get excluded, while the entities
+    themselves survive on later ops. `sym in born` above deliberately bottoms the artifacts of
+    entities being *removed*; this is its counterpart for the ones being kept. Anchors are also
+    re-pointed when they name an entity that is no longer live, since a dead predecessor sends the
+    fold down the same fallback.
+
+    Returns rebirth/rework ops carrying the *recorded* images -- no bytes are invented here
+    either; only the anchor's predecessor marker (pure metadata, never file content) is rewritten.
+    """
+    def _entities(frontier) -> set[str]:
+        out = set()
+        for sym in frontier:
+            head, sep, name = sym.partition("::")
+            if head != path or not sep or "::__" in sym or "." in name or not name:
+                continue
+            op = by_id[frontier[sym]]
+            if not is_bottom(op.footprint[sym][1]):
+                out.add(name)
+        return out
+
+    kept = _entities(live_after)
+    if not kept:
+        return []
+
+    # Pre-removal document order, from the anchor chain the fold itself walks.
+    successor: dict[str | None, str] = {}
+    for sym, op_id in pre_frontier.items():
+        if not sym.startswith(f"{path}::__anchor__::"):
+            continue
+        name = sym.split("::__anchor__::", 1)[1]
+        marker = (images_of(op_id).get(sym) or b"").decode("utf-8", "replace")
+        successor[None if marker == _ANCHOR_FIRST else marker] = name
+    order_pre: list[str] = []
+    seen: set[str] = set()
+    cur = successor.get(None)
+    while cur is not None and cur not in seen:
+        seen.add(cur)
+        order_pre.append(cur)
+        cur = successor.get(cur)
+    for name in sorted(_entities(pre_frontier) - seen):
+        order_pre.append(name)
+
+    repairs: list[Op] = []
+
+    def _emit(sym: str, image: bytes) -> None:
+        tip = live_after.get(sym)
+        before = by_id[tip].footprint[sym][1] if tip is not None else None
+        after_v = _positional_version(sym, _content_version(image))
+        if before == after_v:
+            return
+        repairs.append(make_op(
+            {sym: (before, after_v)}, {sym: image},
+            kind="rework" if before is not None else "touched",
+            intent=f"revert {tag}: keep {sym.split('::')[-1]}'s place in {path}",
+        ))
+
+    predecessor: str | None = None
+    for name in order_pre:
+        if name not in kept:
+            continue
+
+        residue = f"{path}::__residue__::{name}"
+        if residue not in live_after:
+            prior = pre_frontier.get(residue)
+            if prior is not None:
+                image = images_of(prior).get(residue) or b""
+                if image:
+                    _emit(residue, image)
+
+        anchor = f"{path}::__anchor__::{name}"
+        want = (predecessor or _ANCHOR_FIRST).encode("utf-8")
+        tip = live_after.get(anchor)
+        have = (images_of(tip).get(anchor) if tip is not None else None)
+        if have != want:
+            _emit(anchor, want)
+
+        predecessor = name
+
+    return repairs
 
 
 def plan_subtraction(
@@ -239,6 +333,29 @@ def plan_subtraction(
         for sym in post_frontier:
             if sym.split("::", 1)[0] in touched_files:
                 _flag_if_naming_removed(sym)
+
+    # Keep the fold's layout invariant: every entity still live needs a live residue gap and an
+    # anchor naming a live predecessor. The removal can strip both off symbols it never intended
+    # to touch (their layout chains are upward-closed inside it), and the fold synthesizes no
+    # separators of its own, so without this the materialized file loses its line breaks.
+    all_by_id = dict(by_id)
+    all_by_id.update({op.id: op for op in new_ops})
+
+    def _images_any(op_id: str) -> dict[str, bytes | None]:
+        op = all_by_id[op_id]
+        if op.images:
+            return op.images
+        stored = store.get(op_id)
+        return stored.images if stored is not None else {}
+
+    pre_frontier = order.frontier(live, ops)
+    live_after = order.frontier(survivors | {op.id for op in new_ops}, ops + new_ops)
+    layout_paths = {sym.split("::", 1)[0] for oid in removal
+                    for sym in by_id[oid].footprint if "::" in sym}
+    for layout_path in sorted(layout_paths):
+        new_ops.extend(
+            _repair_layout(layout_path, pre_frontier, live_after, _images_any, all_by_id, tag)
+        )
 
     after = frozenset(survivors | {op.id for op in new_ops})
     return SubtractionPlan(

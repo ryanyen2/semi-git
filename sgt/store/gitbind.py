@@ -1205,6 +1205,15 @@ class GitBinding:
             args.append("--force")
         self._git(*args, str(path))
 
+    def delete_branch(self, branch: str) -> None:
+        """`git branch -D <branch>` -- unconditional, because the only caller (`session gc`) has
+        already decided the branch is disposable: it refuses to reap a session with unlanded
+        commits unless `--force` was passed, and it force-removes the worktree either way. `-d`
+        would refuse here on any branch git still considers unmerged, which is most landed
+        sessions, and leave the ref behind -- `gc` used to say "reaped session" while
+        `sgt-session/<name>` stayed in `git branch` forever."""
+        self._git("branch", "-D", branch)
+
     # -- land: off-ref commit construction + branch-record CAS (plan U23, C9) ----------------
     def write_tree(self) -> str:
         """The tree object id of the current index (`git write-tree`). `land` stages its

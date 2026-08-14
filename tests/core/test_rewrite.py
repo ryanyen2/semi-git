@@ -1044,3 +1044,48 @@ def test_edit_stale_stage_is_refused_like_other_rewrites(tmp_path):
         assert "stale" in str(e) and "m.py" in str(e)
     rewrite.unstage(repo)
     assert rewrite.staged_candidate(repo) is None
+
+
+def test_fulfill_refuses_to_overwrite_uncommitted_work_and_stays_retryable(tmp_path):
+    """`stage` writes the candidate over the working tree through `_write_working_tree`, which
+    bypasses `put()` -- so it used to clobber uncommitted edits silently, under a `✓`. It now makes
+    the same refusal `put()` makes.
+
+    The refusal must also be non-destructive: checked before the ops are stored and the hollows
+    unlinked, so the retry its own message asks for still works. Checking after consuming them
+    leaves the draft registered but hollow-less, and the retry dies with "hollow not found" --
+    a refusal that breaks the thing it refused to touch.
+    """
+    from sgt.core.lens import DirtyWorkingTreeError
+
+    repo = tmp_path / "repo"
+    gb, helper_op, _callers = _helper_with_three_callers(repo)
+    (repo / "other.py").write_text("def mine():\n    return 'saved'\n", encoding="utf-8")
+    gb.commit_all("add other.py")
+    get(repo)
+    committed = (repo / "other.py").read_bytes()
+
+    draft = rewrite.edit_op(repo, helper_op.id)
+    edited = "def helper():\n    return 1  # tidy\n"
+    for i in (1, 2, 3):
+        edited += f"\n\ndef u{i}():\n    return helper() + {i}\n"
+    (repo / "m.py").write_text(edited, encoding="utf-8")
+
+    # Unsaved work on a tracked path the fold covers.
+    (repo / "other.py").write_text("def mine():\n    return 'in progress'\n", encoding="utf-8")
+    in_progress = (repo / "other.py").read_bytes()
+
+    try:
+        rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+        assert False, "expected a dirty-tree refusal"
+    except DirtyWorkingTreeError as e:
+        assert "other.py" in str(e)
+
+    assert (repo / "other.py").read_bytes() == in_progress, "the refusal must not touch the work"
+    assert rewrite.staged_candidate(repo) is None
+    assert rewrite.resolve_draft(repo, draft.draft_id) is not None, "draft must survive the refusal"
+
+    # One of the remedies the message names (`git restore`), then the retry it promises.
+    (repo / "other.py").write_bytes(committed)
+    candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
+    assert candidate.op_ids

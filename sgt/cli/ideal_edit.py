@@ -111,6 +111,26 @@ def _cmd_revert(args) -> int:
         keep = None if args.keep is None else frozenset(
             tok for tok in (t.strip() for t in args.keep.split(",")) if tok
         )
+        if not args.yes and not args.as_json:
+            # Every other revert shape previews and applies only on `--yes`, and that is what the
+            # tutorial teaches. This one used to mutate on sight: it writes continuation hollows
+            # into the store and registers a draft before printing anything. A pilot participant
+            # added the flag while still deciding whether to use it, got a `✓` and a draft id, and
+            # was then handed a `sgt fulfill` command that rewrote six files. A flag must not be
+            # able to turn a preview into an action.
+            #
+            # `--json` keeps applying immediately, like every other verb here: it is the machine
+            # contract VS Code and the MCP server depend on, and a caller passing it is not a
+            # person who mistook a flag for a dry run.
+            print("  `--keep-dependents` drafts a continuation hollow per kept dependent and "
+                  "records them in sgt's state.")
+            print("  It does not edit your files, but it is a mutation and it cannot be previewed "
+                  "in this shape.")
+            print(f"\n  not applied. to go ahead:  sgt revert {' '.join(args.ref)} "
+                  f"--keep-dependents --yes")
+            print("  to see what a plain removal would do instead, drop the flag:  "
+                  f"sgt revert {' '.join(args.ref)}")
+            return 2
         return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json, keep=keep)
     return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes,
                              take_dependents=args.take_dependents)

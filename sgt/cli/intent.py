@@ -34,8 +34,12 @@ _USAGE = ("usage: sgt intent list [--json] | "
 
 def register(subs, parent) -> None:
     p = subs.add_parser("intent", parents=[parent])
-    p.add_argument("sub", nargs="?")
-    p.add_argument("target", nargs="?")
+    p.add_argument("sub", nargs="?", metavar="list|show|build",
+                   help="list — every feature's checkpoints; show <commit-sha> — what one "
+                        "commit was for (a COMMIT, not a feature id); build — (re)cut "
+                        "checkpoints from the current graph")
+    p.add_argument("target", nargs="?", metavar="<commit|feature>",
+                   help="the commit sha (`show`) or feature id/label (`list`, `build --recut`)")
     p.add_argument("rest", nargs="*")  # the new label words for `relabel`
     p.add_argument("--subset", nargs="*")
     p.add_argument("--recut", metavar="FEATURE",
