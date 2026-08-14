@@ -1,12 +1,7 @@
 \section{Introduction}
 
-When a developer works through a coding agent, the change they want and the code
-that implements it become two separate descriptions, and the developer authors
-only the first one. A developer on one of our projects asked for a price lookup to
-be cached because it had become slow, and the agent added a cache module, gave the
-database query a parameter for how long a cached price stays good, changed the
-request handler to consult the cache before the database, and chose the names of
-the three new functions. Over the following hour that developer made two more
+When a developer works through a coding agent, the change they want and the code that implements it become two separate descriptions, and the developer authorsonly the first one. A developer on one of our projects asked for a price lookup to be cached because it had become slow, and the agent added a cache module, gave the database query a parameter for how long a cached price stays good, changed the
+request handler to consult the cache before the database, and chose the names of the three new functions. Over the following hour that developer made two more
 requests, and while carrying out the third the agent revised two of the functions
 it had written for the second. Barke et al.\ describe programmers in this mode
 accepting what comes back after a glance that confirms its shape matches what they
@@ -20,7 +15,7 @@ A week later that developer wants the caching gone, and the request has to be
 restated in whatever terms their version control system understands. Those terms
 are lines and commits, in every system in wide use. Git records a version as a
 snapshot of the whole working tree~\cite{git2026}, Darcs and Pijul record it as a
-patch that adds and removes lines in a stated context~\cite{roundy2009,pijul2024},
+patch that adds and removes lines in a stated context~\cite{roundy2005,pijul2024},
 and under either design the smallest thing a history can name is a line in a file,
 so \cmd{git revert} takes back one commit, \cmd{git cherry-pick} moves one commit,
 and a branch points at one commit. The caching is six changes to four functions in
@@ -41,22 +36,38 @@ function they kept calls a function they just deleted. Biggerstaff et al.\ calle
 the task of recovering which functions implement a named concern the concept
 assignment problem~\cite{biggerstaff1993}, and the feature location literature
 that followed measures how much of a program a developer has to read before they
-can answer one such question~\cite{dit2013}. Xia et al.\ instrumented professional
-developers and found that roughly 58\% of their working time went to understanding
-code~\cite{xia2018}.
+can answer one such question~\cite{dit2013,maalej2014}. Xia et al.\ instrumented
+professional developers and found that roughly 58\% of their working time went to
+understanding code~\cite{xia2018}.
 
 For as long as developers wrote the lines themselves this recovery was cheap. The
 person doing it remembered writing the code, so the history had only to remind
-them of a decomposition they already held~\cite{ko2006,sillito2008}. A developer
-who directed an agent never wrote those lines and remembers nothing about
-them. They hold instead the sentence they typed,
-which stated the boundary of the change exactly, in their own words, before any of
-the code existed, and which no version control system records. The unit a
-developer decides in and the unit their repository records have come apart.
+them of a decomposition they already held~\cite{ko2006,sillito2008}. Version
+control systems that record at the grain of a method were built during those years
+and several are still available, and almost nobody adopted one, which we read as
+evidence that the grain was never the constraint that
+mattered~\cite{hata2011,higo2020,chucarroll2002}. Naur argued
+that a program text and its documentation are insufficient carriers of the theory
+a programmer builds while writing it, and that the continued modification of a
+large program therefore depends on a group of programmers in close and continuous
+contact with it~\cite{naur1985}. A developer who directs an agent stands outside
+that group from the first minute. They did not write the lines, they remember
+nothing about them, and the theory Naur describes was held, for as long as it was
+held at all, by something that discards it when the session ends.
+
+What that developer does hold is the sentence they typed, which named the boundary
+of the change exactly, in their own words, before any of the code existed, and
+which no version control system records. A history, we think, should be regarded as
+a record of what its author asked for, with the text those requests produced as the
+secondary product. Getting this unit wrong does not put an operation out of a
+developer's reach. It makes them pay for the operation in reading, every time they
+want it, and it teaches them to call ordinary difficulty what is a property of
+their notation.
 
 A careful maintainer will answer all of this with commit hygiene: commit small,
 commit often, stage hunk by hunk with \cmd{git add -p}, and each request ends up
-with a commit of its own. We have asked contributors on our own projects for
+with a commit of its own, a discipline the community has studied carefully enough
+to have opinions about what a good commit message contains~\cite{tian2022}. We have asked contributors on our own projects for
 exactly this and have held ourselves to it, and it works whenever the developer
 knows at the moment of committing which lines serve which purpose. In an agent
 session the developer does not know that. When fourteen changed functions come back
@@ -64,9 +75,8 @@ and the developer's own contribution was three sentences of English, staging hun
 by hunk means reading the whole diff to reconstruct a boundary the agent held and
 never wrote down. Thimbleby argued that a notation should let a person defer a
 decision until they hold the information the decision
-needs~\cite{thimbleby1988}. Commit hygiene asks for the decision first, and that
-stayed affordable for twenty years because the person deciding had just typed the
-lines.
+needs~\cite{thimbleby1988}. Commit hygiene asks for the decision first, which was
+affordable for twenty years because the information arrived with the authorship.
 
 We present \sgt{}, a version control system that records a change as one edit to
 one function and files each edit under the request it was made for. The developer
@@ -90,8 +100,8 @@ When the developer decides a week later that the cache was needed after all,
 added in the meantime is still there, because it was never in the set that came
 out. None of these commands asks the developer to look at a hunk.
 
-This design costs the developer three things, and we state them here, at the
-front, where a developer meets them. Two edits to the
+This design costs the developer three things, all three of which they meet in the
+first hour rather than in some later edge case. Two edits to the
 same function made from the same starting point are recorded as two competing
 versions and a person has to decide which one survives, including the case of two
 edits at opposite ends of a fifty line function that touch no common line and
@@ -110,8 +120,12 @@ records, one attempted operation at a time
 (Section~\ref{sec:scenarios}), following the style of conceptual analysis Pérez
 De Rosso and Jackson applied to git
 itself~\cite{perezderosso2013,perezderosso2016}. We describe \sgt{}'s design as
-four commitments and say what each one buys and what it costs
-(Section~\ref{sec:design}). We run the whole set of operations on one repository
-and give the reasoning behind each command (Section~\ref{sec:walkthrough}). We
-report what we have learned from \sgt{} tracking its own development, and where
-the design breaks down (Sections~\ref{sec:study} and~\ref{sec:discussion}).
+four commitments, say what each one buys and what it costs, and run the whole set
+of operations on one repository with the reasoning behind each command
+(Sections~\ref{sec:design} and~\ref{sec:walkthrough}). We
+state which observation would show each of our claims to be wrong, and fix the
+design of the study that would produce it before we hold its results
+(Section~\ref{sec:study}). We report what fifty-seven days of \sgt{} tracking its
+own development has taught us about where the design breaks down, which is the
+one part of this paper whose numbers are real today
+(Section~\ref{sec:discussion}).

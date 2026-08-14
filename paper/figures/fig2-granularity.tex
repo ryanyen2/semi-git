@@ -1,33 +1,35 @@
 % Figure 2. The same hour of work in four records, and what one operation costs
 % in each. Same session as Figure 1, same colours, same glyphs.
-\newcommand{\FigTwoCaption}{One hour of work with a coding agent, recorded four
-ways, with the same request removed from each. The unit a system records decides
-which sets a developer can name. Git and Darcs both bottom out at a line, so
-removing the caching means selecting lines. Jujutsu and Mercurial add a durable
-identity above the line, and that identity belongs to a commit, so a squashed
-session carries one identity for all three requests. \sgt{} records one edit per
-function together with the request it was made for. The developer supplied that
-request and never wrote it down.}
+\newcommand{\FigTwoCaption}{One hour of work, recorded five ways, with the same
+request taken back out of each. The fourth row already records at the grain of a
+method and still cannot answer the question, which is why we read the missing thing
+as the name of the request rather than the size of the unit.}
 
-\newcommand{\FigTwoDescription}{A four row comparison. Each row is a card named
+\newcommand{\FigTwoDescription}{A five row comparison. Each row is a card named
 after a version control system, drawing the same one hour agent session in that
 system's units, with the unit of record stated on the left and the cost of
 removing the caching request on the right. The git row draws two commit boxes
 filled with coloured diff stripes of four different colours mixed together. The
-Darcs and Pijul row draws nine patch tokens in a line with arcs above joining the
-patches that share lines, and one dashed arc below joining two patches that depend
-on each other through a function call, marked as not recorded. The Jujutsu and
-Mercurial row draws one box of mixed stripes, an arrow, and a second box of the
-same mixed stripes, labelled with the same change identifier and two different
-commit hashes. The sgt row draws four labelled horizontal lines, one per request,
-each carrying a mark for every edit filed under that request.}
+Darcs and Pijul row draws eleven patch tokens in a line, six of them coloured for
+the caching request, with plain arcs above joining the patches that share lines and
+the same arc drawn dotted below, joining two patches that depend on each other
+through a function call, marked as not recorded. The Jujutsu and
+Mercurial row draws one box holding the same seven stripes as the second git
+commit, an arrow labelled rewritten, and a second box holding those stripes with
+one of them longer, both boxes labelled with the same change identifier and two
+different commit hashes. The Historage and FinerGit row draws the same two commits as lists
+of method file paths, each preceded by a colour chip naming the request its change
+came from, and the handle method is the one entry preceded by two chips, because
+that single file holds changes made for two different requests. The sgt row draws four labelled horizontal
+lines, one per request, each carrying a mark for every edit filed under that
+request.}
 
 \begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
 
 % ------------------------------- headers ---------------------------------
-\node[hd, anchor=west] at (2,79.5)   {UNIT OF RECORD};
-\node[hd, anchor=west] at (30,79.5)  {THE SAME HOUR OF WORK, RECORDED FOUR WAYS};
-\node[hd, anchor=west] at (117,79.5) {TAKING THE CACHING BACK OUT};
+\node[hd, anchor=west] at (2,95.5)   {UNIT OF RECORD};
+\node[hd, anchor=west] at (30,95.5)  {THE SAME HOUR OF WORK, RECORDED FIVE WAYS};
+\node[hd, anchor=west] at (117,95.5) {TAKING THE CACHING BACK OUT};
 
 % Every row is one card. The cost of the operation gets a band of its own on
 % the right, so the reader can read that column straight down.
@@ -42,6 +44,10 @@ each carrying a mark for every edit filed under that request.}
 \newcommand{\rowcost}[2]{%
   \node[anchor=north west, text width=55.5mm, align=left, inner sep=0, text=sgtInk!85,
         font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (116.5,#1) {#2};}
+
+% The four systems that do not name a request are drawn as one block, lifted to
+% make room for the fine-grained row that sits directly above sgt.
+\begin{scope}[yshift=16mm]
 
 % =============================== git =====================================
 \cmprow{55}{19}{sgtGrey}{GIT}
@@ -74,46 +80,105 @@ each carrying a mark for every edit filed under that request.}
   parameter that a caller in another patch still passes, and no recorded
   dependency says so, because the two patches share no line.}
 
+% Six of the eleven are the caching, the same six the git row above draws as six
+% hunks of fifteen and the sgt row below draws as six edits. That row rewards a
+% reader who counts, so this one has to survive being counted too.
 % #1 x centre, #2 colour
 \newcommand{\patchtok}[2]{%
   \draw[card, color=#2!85, fill=#2!30, line width=0.35pt]
-    ({#1-3.6},44.4) rectangle ({#1+3.6},47.4);}
-\patchtok{34}{fRate}\patchtok{42.5}{fRate}\patchtok{51}{fCache}\patchtok{59.5}{fCache}
-\patchtok{68}{fCache}\patchtok{76.5}{sgtGrey}\patchtok{85}{fRetry}\patchtok{93.5}{fRetry}
-\patchtok{102}{fCache}
+    ({#1-3.3},44.4) rectangle ({#1+3.3},47.4);}
+\patchtok{33}{fRate}\patchtok{40.5}{fRate}\patchtok{48}{fCache}\patchtok{55.5}{fCache}
+\patchtok{63}{fCache}\patchtok{70.5}{sgtGrey}\patchtok{78}{fRetry}\patchtok{85.5}{fRetry}
+\patchtok{93}{fCache}\patchtok{100.5}{fCache}\patchtok{108}{fCache}
 
-\draw[dep] (59.5,47.7) .. controls (63,50.2) and (98.5,50.2) .. (102,47.7);
-\draw[dep] (51,47.7) .. controls (54.5,49.7) and (90,49.7) .. (93.5,47.7);
-\draw[dep] (68,47.7) .. controls (70,49.2) and (74.5,49.2) .. (76.5,47.7);
-\node[acc=sgtInk!70, anchor=south] at (85,50.2) {patches that share lines};
+% Arrowless, because sharing a line is a relation that holds both ways, and the
+% arrowhead is spent in this figure on the one arrow that does mean a direction,
+% the rewrite in the row below.
+\draw[share] (48,47.7) .. controls (51.5,50.2) and (97,50.2) .. (100.5,47.7);
+\draw[share] (55.5,47.7) .. controls (59,49.7) and (82,49.7) .. (85.5,47.7);
+\draw[share] (63,47.7) .. controls (65,49.2) and (68.5,49.2) .. (70.5,47.7);
+\node[acc=sgtInk!70, anchor=south] at (76,50.2) {patches that share lines};
+% The same arc, dotted: one shape, and the reader reads solid against dotted as
+% recorded against not recorded without being told.
 \draw[color=sgtGrey!85, line width=0.35pt, densely dotted]
-  (51,44.1) .. controls (56.0,41.3) and (63.0,41.3) .. (68,44.1);
-\node[acc=sgtInk!70, anchor=north] at (59.5,42.1)
+  (48,44.1) .. controls (53.0,41.3) and (58.0,41.3) .. (63,44.1);
+\node[acc=sgtInk!70, anchor=north] at (55.5,42.1)
   {\fsym{handle} calls \fsym{query}. Not recorded.};
 
 % ======================= Jujutsu and Mercurial ===========================
 \cmprow{18}{15.5}{sgtGrey}{JUJUTSU, MERCURIAL}
 \rowunit{31.1}{a commit whose identity survives being rewritten.}
-\rowcost{31.1}{The sitting is one change with one identifier, so the caching has
-  no identifier of its own. Split the commit by selecting lines to give the
-  caching one.}
+\rowcost{31.1}{This one change holds the retry policy, two edits to the caching,
+  and the rename, so the caching has no identifier of its own. Split the change by
+  selecting lines to give it one.}
 
-\newcommand{\jjbox}[2]{%
+% These are the stripes of commit 7f10de from the git row, in the same order and
+% at the same widths, because the box carries that commit's hash and a reader who
+% looks up at the git row should find the same seven hunks there. Reusing the
+% hash and redrawing the contents would make the two rows different hours.
+% #1 x, #2 label, #3 width of the caching stripe the second box grew
+\newcommand{\jjbox}[3]{%
   \draw[card, color=sgtInk!18, fill=white] (#1,20.0) rectangle ({#1+30},30.3);
-  \hunk{{#1+2.4}}{28.7}{14}{fRate}\hunk{{#1+2.4}}{27.35}{11}{fCache}
-  \hunk{{#1+2.4}}{26.0}{19}{fCache}\hunk{{#1+2.4}}{24.65}{16}{fRetry}
-  \hunk{{#1+2.4}}{23.3}{22}{fCache}\hunk{{#1+2.4}}{21.95}{12}{sgtGrey}
-  \hunk{{#1+2.4}}{20.6}{17}{fRetry}
+  \hunk{{#1+2.4}}{28.7}{13}{fRetry}\hunk{{#1+2.4}}{27.35}{#3}{fCache}
+  \hunk{{#1+2.4}}{26.0}{21}{fRetry}\hunk{{#1+2.4}}{24.65}{15}{fRetry}
+  \hunk{{#1+2.4}}{23.3}{19}{fRetry}\hunk{{#1+2.4}}{21.95}{10}{fCache}
+  \hunk{{#1+2.4}}{20.6}{16}{sgtGrey}
   \node[anchor=south west, inner sep=0, text=sgtInk!80,
         font=\ttfamily\fontsize{5.2}{6}\selectfont] at (#1,30.7) {#2};}
-\jjbox{30}{kxryzmot / 7f10de}
-\jjbox{66}{kxryzmot / a19c4b}
+% One stripe is longer on the right, because an arrow labelled `rewritten' between
+% two identical boxes gives the reader nothing to have been rewritten.
+\jjbox{30}{kxryzmot / 7f10de}{18}
+\jjbox{66}{kxryzmot / a19c4b}{24}
 \draw[dep] (60.8,25.2) -- (64.6,25.2);
 \node[note, anchor=south, text=sgtGrey] at (62.7,25.9) {rewritten};
 \annot{98.9}{28.2}{96.6}{30.2}{20}{sgtInk}
 \node[anchor=north west, text width=13mm, align=left, inner sep=0, text=sgtInk!70,
       font=\sffamily\fontsize{5.2}{6}\selectfont] at (99.2,29.0)
   {three requests,\\one identifier};
+
+\end{scope}
+
+% ======================= Historage, FinerGit =============================
+% The grain is already a method here. Drawing it directly above sgt is the
+% argument: the unit gets finer and the request still has no name.
+\cmprow{18}{15.5}{sgtGrey}{HISTORAGE, FINERGIT}
+\rowunit{31.1}{a snapshot of the tree, in which every method is a file of its own.}
+\rowcost{31.1}{Choose whole methods instead of hunks, which is easier, and is as
+  far as a finer grain gets you. Both commits still hold all three requests, and
+  nothing in the tree says which of these methods the caching is.}
+
+% One entry per method-file. Each chip is one request, and every name starts at
+% the same x, so the file that carries two chips is the only thing in the row
+% that looks different, which is the whole point of drawing this row.
+% #1 x, #2 y, #3 x-offset for this chip, #4 colour
+\newcommand{\mchip}[4]{%
+  \fill[#4, rounded corners=0.25mm]
+    ({#1+#3},{#2-0.6}) rectangle ({#1+#3+1.6},{#2+1.0});}
+\newcommand{\mname}[3]{%
+  \node[anchor=west, inner sep=0, text=sgtInk!80,
+        font=\ttfamily\fontsize{4.9}{5.6}\selectfont] at ({#1+4.9},{#2+0.2}) {#3};}
+\newcommand{\mfile}[4]{\mchip{#1}{#2}{0}{#3}\mname{#1}{#2}{#4}}
+\newcommand{\mfiletwo}[5]{%
+  \mchip{#1}{#2}{0}{#3}\mchip{#1}{#2}{2.3}{#4}\mname{#1}{#2}{#5}}
+
+\node[acc=sgtInk!70, anchor=south west] at (30,30.7)
+  {every method is a file, and \fsym{handle} is one file holding two requests};
+
+\draw[card, color=sgtInk!18, fill=white] (30,20.0) rectangle (68,30.3);
+\node[anchor=north east, inner sep=0, text=sgtGrey,
+      font=\ttfamily\fontsize{5}{5.6}\selectfont] at (67.2,29.9) {c39ab2};
+\mfiletwo{32.4}{27.2}{fRate}{fCache}{api.py/handle}
+\mfile{32.4}{25.0}{fRate}{api.py/\_bucket}
+\mfile{32.4}{22.8}{fCache}{cache.py/get\_cached}
+\mfile{32.4}{20.6}{fCache}{db.py/query}
+
+\draw[card, color=sgtInk!18, fill=white] (72,20.0) rectangle (110,30.3);
+\node[anchor=north east, inner sep=0, text=sgtGrey,
+      font=\ttfamily\fontsize{5}{5.6}\selectfont] at (109.2,29.9) {7f10de};
+\mfiletwo{74.4}{27.2}{fRetry}{fCache}{api.py/handle}
+\mfile{74.4}{25.0}{fRetry}{retry.py/\_backoff}
+\mfile{74.4}{22.8}{fCache}{cache.py/get\_cached}
+\mfile{74.4}{20.6}{sgtGrey}{db.py/fetch\_row}
 
 % ================================= sgt ===================================
 \cmprow{0}{17}{sgtInk}{\textsf{sgt}}
@@ -124,8 +189,8 @@ each carrying a mark for every edit filed under that request.}
   {\$ sgt revert "price cache"};
 \node[anchor=north west, text width=55.5mm, align=left, inner sep=0, text=sgtInk!85,
       font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (116.5,10.2)
-  {6 edits, 4 functions, 3 files. The 4 edits recorded as built on top of them
-   are named before anything is removed.};
+  {6 edits, 4 functions, 3 files. The functions it subtracts from, and the ones
+   left calling code it removed, are named before anything is applied.};
 
 \draw[commitcol] (56,2.2) -- (56,14.0);
 \draw[commitcol] (86,2.2) -- (86,14.0);

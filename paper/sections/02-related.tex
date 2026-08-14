@@ -10,8 +10,9 @@ in two ways, finishing a line they had already planned, or asking for a starting
 point in code they did not yet know how to write~\cite{barke2023}. Vaithilingam
 et al.\ found that 24 participants using Copilot did not complete tasks faster
 and still preferred to keep it on, because it gave them a draft to work
-from~\cite{vaithilingam2022}. In both studies the developer accepted a line or a
-block of code. Four years later SWE-bench
+from~\cite{vaithilingam2022}, and Sarkar et al.\ collected what the experience
+felt like from the developer's side~\cite{sarkar2022}. In both studies the
+developer accepted a line or a block of code. Four years later SWE-bench
 gives a model a natural language issue report from a real repository and scores
 it on whether the repository's own tests pass afterwards~\cite{jimenez2024}, and
 the systems built to score well on it edit several files in a
@@ -20,39 +21,45 @@ paragraph of English, and the code that comes back is correspondingly larger.
 
 All of this work studies the minutes around acceptance, asking whether the code
 is correct~\cite{perry2023}, whether the developer can tell that it is
-correct~\cite{vasconcelos2025}, and whether they trust
-it~\cite{liang2024,nguyen2024}, and it stops once the developer has said yes.
+correct~\cite{vasconcelos2025}, whether they trust
+it~\cite{liang2024,cheng2024}, and how much faster they
+finish~\cite{mozannar2024,cui2025}, and it stops once the developer has said yes.
 A week later that same developer wants to remove the caching they asked
 for and keep the rate limiting they asked for in the same hour, and removing one
 and keeping the other is a version control operation. We know of
-no study of what happens to agent-written code after it is committed, and the
-tools it is committed with were designed for a workflow in which the person
-committing wrote the lines.
+no study of what happens to agent-written code after it is committed. Acceptance is
+where this literature's outcome measures end, so none of them can say what the code
+costs to own, and the cost of owning it is what a version control system is for.
 
 \subsection{What a version control system agrees to record}
 
 Git records a version as a snapshot of the whole working tree, and each commit
 names its parents plus a tree of file contents addressed by hash~\cite{git2026}.
 Verifying that a history has not been altered is then a matter of rehashing it,
-and a merge is computed on demand from a common ancestor, so no operation in git
-has to reason about how two edits interact. We would insist on both of those
-properties in anything we built. Pérez De Rosso and Jackson analysed git's concepts against the
+and a merge is computed on demand from a common ancestor, so nothing in the
+repository has to say what happened when two edits met. We keep the first of
+those properties and give up the second on purpose. \sgt{} addresses its records
+by their contents, so checking that a record has not been altered is still a
+matter of rehashing it; but when two edits to one function descend from the same
+parent, \sgt{} records that they did rather than computing what the pair amounts
+to, and Section~\ref{sec:fork} says why a system whose unit is a function cannot
+afford to derive that answer.
+Pérez De Rosso and Jackson analysed git's concepts against the
 purposes users bring to them and found several places where a concept serves a
 purpose users do not have, the staging area and detached \cmd{HEAD} among them.
 Their redesign, Gitless, removes
-both~\cite{perezderosso2013,perezderosso2016}. The commit survives their
+both~\cite{perezderosso2013,perezderosso2016,jackson2021}. The commit survives their
 redesign untouched, and it should, because it serves a purpose users do have. The
 commit is the smallest thing git can address, so any operation over less than a
 commit works by having the developer point at lines, and \cmd{git add -p} and
 \cmd{git rebase -i} are the tools for pointing. Under git's original constraints
-this is the cheapest correct design available. The person running \cmd{git add -p} in 2005
-had typed the lines minutes earlier, so the decomposition was already in their
-head, and recording it in the repository would have meant maintaining a second
-structure that could disagree with the first. Asking the developer at commit time
-is free when the developer knows.
+this is the cheapest correct design available, because the person running
+\cmd{git add -p} in 2005 had typed the lines minutes earlier and writing their
+decomposition into the repository would have meant maintaining a second structure
+that could disagree with the first.
 
 Darcs takes the other option and records a version as a patch that adds and
-removes lines in a stated context~\cite{roundy2009}. Patches that do not depend
+removes lines in a stated context~\cite{roundy2005}. Patches that do not depend
 on each other commute, so a user can pull the third patch in a series without the
 first two, and the theory behind this has been formalised more than
 once~\cite{jacobson2009,mimram2013}. Pijul reimplements it on a data structure
@@ -67,12 +74,10 @@ adds a \sym{Retry} class in a new
 file and edits \sym{api.py::handle} to call it, the two patches share no line, so
 nothing in the record says that pulling the second without the first yields a
 file referring to a name that does not exist. Darcs is explicit about this and
-offers a way to declare a dependency by hand. We would have made the same call in
-2003. Computing a dependency between two functions requires parsing the language,
-and a version control system that parses is a version control system that works
-for some languages and not others. That is a price Darcs declined to pay and one
-we do pay, in the form of a system that reads Python, TypeScript and TSX and
-treats a Go file as an opaque blob.
+offers a way to declare a dependency by hand, and we would have made the same call
+in 2003, because computing a dependency between two functions requires parsing the
+language and a system that parses works for some languages and not for others.
+Darcs declined that price and we pay it.
 
 Jujutsu and Mercurial both add a record of history's own history. Jujutsu gives
 each change an identifier separate from its commit hash, so rewriting a commit
@@ -98,9 +103,63 @@ and nothing smaller has a name. Peritext makes the same choice outside version
 control, giving formatting marks in collaborative rich text their own
 representation, because a record whose unit is the character gets the boundary of
 a bold span wrong when two people edit it at once~\cite{litt2022,kleppmann2019}.
-Whichever unit a system gives a durable identity to fixes the smallest question
-its history can answer, and in Jujutsu and Mercurial that question is about a
-commit.
+Figure~\ref{fig:granularity} puts these records beside each other.
+
+\subsection{Version control that already knew about functions}
+\label{sec:priorfine}
+
+Recording a version at the grain of a function has been built before, more than
+once, and the reason none of it displaced the commit is the reason we think it can
+now. Historage rewrites a Java repository so that every method sits in a file of
+its own, at which point git's existing machinery gives each method a history of
+its own~\cite{hata2011}, and FinerGit refines the file format so that git's rename
+detection keeps working when a method moves~\cite{higo2020}. Stellation and Coven
+made the fine-grained unit the thing the repository stores rather than a
+transformation applied to it, so a developer could check out a single method and a
+team could see which methods their colleagues had
+open~\cite{chucarroll2002,chucarroll2000}. MolhadoRef settled the problem
+Section~\ref{sec:identity} reports as our weakest link, by having the development
+environment record each refactoring as the developer performed it, so a rename
+entered the history as an operation instead of arriving as something a later tool
+had to guess at~\cite{dig2007}. Mylyn recorded, for each task a developer worked
+on, the set of program elements they touched while working on it, and used that set
+to decide what the environment showed them~\cite{kersten2006}. All of this existed
+at least fifteen years before the first coding agent and all of it worked. Historage
+and FinerGit are in use today as instruments for mining software histories, which is
+research reading a repository from the outside, and a working programmer choosing
+what to run on Monday morning uses none of it.
+
+We do not read that as a failure of engineering, because a finer grain buys a
+developer only what they cannot already supply for themselves, and until recently
+they could supply all of it. Whoever wanted the caching out of a 2010 repository
+had written the caching, so a system that told them which methods it touched was
+performing work they had already done, and the price of being told was a repository
+their colleagues could not clone with plain git. What has changed is not the value
+of the grain but the identity of the author, and a record that was redundant while
+the developer wrote the lines is the only surviving copy of the decomposition once
+they have stopped writing them. Mylyn's task context and \sgt{}'s named group of
+edits are the same object built for two different situations, and the difference is
+that Mylyn watched a developer's attention move through code that developer was
+writing, whereas the attention \sgt{} reconstructs belonged to a process that has
+already exited.
+
+The merge question in this literature was approached from the end opposite to ours.
+Horwitz, Prins and Reps showed that two versions of a program can be integrated
+automatically when a semantic analysis proves the changes do not interfere, and
+that it is the analysis which licenses the guarantee~\cite{horwitz1989}. Apel et
+al.'s semistructured merge parses a file far enough to see that two edits landed in
+different methods, and resolves a large share of what a line-based merge reports as
+a conflict~\cite{apel2011}. Lippe and van Oosterom argued for merging the
+operations rather than the states~\cite{lippe1992}, Zeller and Snelting put the
+area on a formal footing by treating a version as a set with a logic over it, which
+is the construction Section~\ref{sec:sets} uses~\cite{zeller1997}, and the
+distributed systems literature arrived at the same shape from another direction in
+the conflict-free replicated data types~\cite{shapiro2011}. \sgt{} goes the other
+way from the first two deliberately. Where semistructured merge combines two edits
+to one method as soon as it can see they touch different lines, \sgt{} stops and
+asks a person, and Section~\ref{sec:fork} makes that argument where the rule is
+stated while Section~\ref{sec:forkoff} concedes that a repository with one person
+in it is the wrong place to have tested it.
 
 \subsection{Recovering a decomposition after the fact}
 
@@ -113,14 +172,24 @@ finding partition a diff using definition and use relationships
 between the changed statements~\cite{barnett2015}, use the fine-grained edit
 events an IDE can record~\cite{dias2015}, build a dependency graph across the
 versions a commit spans~\cite{partachi2020}, or present a partition to the
-developer for correction~\cite{shen2021,tao2015}, and they are evaluated on
-whether they reproduce a grouping that a human labelled. Every one of them is
-solving a harder problem than \sgt{} solves, because they run after the
-information is gone. The developer who typed three sentences into an agent stated
-the boundary out loud before any of the code existed, and the only reason it is
-absent from the repository is that nothing wrote it down. We have not improved on
-their inference, and we do not have to, because the constraint this whole line of
-work was designed around has loosened.
+developer for correction~\cite{shen2021,tao2015,wang2019}, and they are evaluated on
+whether they reproduce a grouping that a human labelled. Two of those designs
+anticipate the move we make. Dias et al.\ read the edit events an IDE records
+while the developer is still typing, and Shen et al.\ put a partition in front of
+the developer and let them fix it, which is the arrangement Section~\ref{sec:names}
+adopts. What none of them could assume is a statement of the boundary written down
+before the code existed, because in 2015 no such statement existed to be had, and
+the strength of their inference is a measure of how much they had to recover
+without one.
+
+That is the loosened constraint, and it is worth being exact about what it buys us,
+because \sgt{} performs the same inference they do. The grouping in
+Section~\ref{sec:names} is a clustering over co-change and call structure, and it
+is no better than theirs; we would expect it to be worse, since it has to finish
+while a developer waits. What has changed is not the quality of the inference but
+what the inference is for. Their partition has to be right, because it is the
+answer. Ours has to be close enough that a name attaches to the right set, and the
+developer who reads a wrong name fixes it with a rename that moves no code.
 
 \sgt{} does depend on two results from this literature. Keeping a function's
 identity when it is renamed or moved is the problem that refactoring detection
@@ -203,8 +272,11 @@ nowhere to write the outcome down. Every sem command therefore reports, and none
 of them changes state.
 A developer learns from \cmd{sem diff} that \sym{get\_cached} changed and then
 removes it with a line-level tool. \sgt{} commits its record to the repository in
-order to act on it, and we pay for that in two places. A colleague
-without \sgt{} installed can merge code and leave the record describing a state
-that no longer exists, and a record that operations depend on has to be repaired
-when it is wrong. Sections~\ref{sec:design} and~\ref{sec:walkthrough} are largely
-about how a developer notices that gap and closes it.
+order to act on it, and we pay for that in two places. A record that operations
+depend on has to be repaired when it is wrong, which
+Section~\ref{sec:unreproducible} reports the current cost of, and everybody who
+pulls the repository now carries a record they did not ask for, which
+Section~\ref{sec:colleague} works through from the point of view of the three
+people who never installed \sgt{}. sem chose the safer of the two placements and we
+think we chose the more useful one, and the honest form of that sentence is that we
+have taken on an obligation sem does not have.

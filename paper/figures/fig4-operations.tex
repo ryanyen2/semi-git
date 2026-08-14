@@ -1,16 +1,14 @@
 % Every operation sgt offers, grouped by what it does to the recorded set, with
 % the state before and after each command and what each one costs.
 % Prints as Figure 5, after the fork figure in Section 4.3.
-\newcommand{\FigFourCaption}{The ten operations, grouped by what each one does to
-the recorded set. Every thumbnail reads left to right, the set before the command
-and the set after it, in the marks and colours of
-Figure~\ref{fig:two-records}. No operation takes a hash, and every argument is a
-sentence the developer wrote, a branch name, or a function name. The cost of each
-operation sits beside it because a developer meets these costs in the first
-week.}
+\newcommand{\FigFourCaption}{The nine operations that act on the record, grouped
+by what each one does to it. One command writes records and the other eight read
+them or change which of them a version includes, and no argument anywhere in the
+figure is a hash or a line number: every one of them is a request the developer
+named, a branch, or a function.}
 
 \newcommand{\FigFourDescription}{Three panels, one per group of operations. The
-first panel holds the two operations that write records, the second holds the
+first panel holds the single operation that writes records, the second holds the
 three that only read them, and the third holds the five that change which
 records a version includes. Each row carries a small diagram of the set before
 and after the command, the command itself, one sentence saying what the developer
@@ -23,6 +21,10 @@ the version no longer includes.}
 % narrow ragged columns, so break a line early rather than hyphenate a word
 \hyphenpenalty=10000 \exhyphenpenalty=10000
 
+% the thumbnails carry the before/after convention, so the column says so itself
+\node[anchor=west, inner sep=0, text=sgtInk!60,
+      font=\sffamily\fontsize{5.0}{5.8}\selectfont] at (3.4,104.6)
+  {before \ttarrow{} after};
 \node[hd, anchor=west] at (19,104.6)    {COMMAND};
 \node[hd, anchor=west] at (53,104.6)    {WHAT THE DEVELOPER GETS};
 \node[hd, anchor=west] at (115.5,104.6) {WHAT IT COSTS};
@@ -45,55 +47,57 @@ the version no longer includes.}
         font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (115.5,#1) {#5};}
 
 % =================== what writes records ==================================
-\opgroup{79}{21}{sgtInk}{WHAT WRITES RECORDS}
+% One row, and the group holding one row is the point: the developer types one
+% command to add to the record, and everything else in the figure decides what
+% that record is read for or what a version does with it.
+\opgroup{86.4}{13.6}{sgtInk}{WHAT WRITES RECORDS}
 
-\oprow{95.4}{\thsave}{sgt save -m "..."}
-  {One record per changed function, filed under a name for the request.}
+% Centred in its panel rather than hung from the top of it, so that the space
+% around the one row reads as emphasis and not as a row somebody took out.
+\oprow{94.3}{\thsave}{sgt save -m "..."}
+  {One record per changed function, filed under a name for the request. The only
+   command that adds to the record.}
   {The grouping is a guess. Correcting it moves labels and changes no recorded
    edit.}
-\oprow{87.0}{\thplan}{sgt plan intake "..."}
-  {A name for work that does not exist yet, which the next save matches itself
-   against.}
-  {A plan that predicts whole files matches nothing. It has to name functions.}
 
 % =================== what only reads them =================================
-\opgroup{48}{29}{sgtGrey}{WHAT ONLY READS THEM}
+\opgroup{55.4}{29}{sgtGrey}{WHAT ONLY READS THEM}
 
-\oprow{72.4}{\thwhy}{sgt show api.py::handle}
+\oprow{79.8}{\thwhy}{sgt show api.py::handle}
   {The request this function came from, the saves that touched it, and how much
    other work removing it takes along.}
   {The answer is exactly as good as the grouping behind it.}
-\oprow{64.0}{\thdiff}{sgt diff main feat/export}
+\oprow{71.4}{\thdiff}{sgt diff main feat/export}
   {The edits each version has that the other does not, in both directions.}
   {It answers in functions, so seeing which lines moved still means opening the
    file.}
-\oprow{55.6}{\thckpt}{sgt intent list}
+\oprow{63.0}{\thckpt}{sgt intent list}
   {Each feature cut into the stretches of work done on it, each with a name like
    {\ttfamily rate limiting@2} the other commands accept.}
   {A language model places the cuts by reading the saves, so a stretch can start
    one save too early.}
 
 % ============ what changes which records a version includes ===============
-\opgroup{0}{46}{sgtInk}{WHAT CHANGES WHICH RECORDS A VERSION INCLUDES}
+\opgroup{7.4}{46}{sgtInk}{WHAT CHANGES WHICH RECORDS A VERSION INCLUDES}
 
-\oprow{41.4}{\threvert}{sgt revert "price cache"}
+\oprow{48.8}{\threvert}{sgt revert "price cache"}
   {The named set subtracted from the version, with every function it changes
    named before anything is applied.}
   {A function later work also edited gets the set's lines subtracted from its
    current text, and the tests decide.}
-\oprow{33.0}{\threstore}{sgt restore "price cache"}
+\oprow{40.4}{\threstore}{sgt restore "price cache"}
   {The same set back, byte for byte, with everything added since left alone.}
   {Refused when putting the set back would leave two versions of one function
    live, and the refusal prints edit identifiers with no function name.}
-\oprow{24.6}{\thswitch}{sgt switch feat/export}
+\oprow{32.0}{\thswitch}{sgt switch feat/export}
   {The working files rebuilt from that branch's set.}
   {Refused on unsaved edits, because \sgt{} has nowhere to put them yet.}
-\oprow{16.2}{\thfork}{sgt resolve api.py::handle}
+\oprow{23.6}{\thfork}{sgt resolve api.py::handle}
   {The two competing versions side by side, and whichever one the developer
    picks or writes is included once the project's test command passes.}
   {Two edits at opposite ends of one function are also competing versions, and
    git would have merged them without asking.}
-\oprow{7.8}{\thsubset}{sgt propose land --subset "export"}
+\oprow{15.2}{\thsubset}{sgt propose land --subset "export"}
   {One finished feature sent to the shared branch, with the unfinished one left
    behind.}
   {Two functions that sit next to each other in one file can lose the blank line

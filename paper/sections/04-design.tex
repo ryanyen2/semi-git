@@ -11,10 +11,8 @@
 
 A version control system's unit of record decides which questions a developer can
 put to their own history. \sgt{} records one edit per changed function and files
-it under the request the edit was made for, and the four commitments in this
-section are the consequences of that one choice. We state each commitment with its
-price attached, because a developer meets all four prices in the first hour of
-use.
+it under the request the edit was made for, and the commitments in this section are
+the consequences of that one choice, each stated with the price it carries.
 Figure~\ref{fig:model} shows the first two at work on the sitting from
 Figure~\ref{fig:two-records}.
 
@@ -93,7 +91,7 @@ now keeps the later edits and subtracts the reverted feature's lines from the
 current text of the shared function with a three-way merge, the same operation
 git performs when it merges a text file. The version of \sym{api.py::handle} that
 Figure~\ref{fig:model} leaves in the file is produced that way, and the hollow
-triangle beside it in that figure is how \sgt{} says so. The old behaviour is
+diamond beside it in that figure is how \sgt{} says so. The old behaviour is
 still available as \cmd{revert --take-dependents}, and its help text says what it
 removes.
 
@@ -106,7 +104,7 @@ edit)} with the function named. When a function \sgt{} is keeping still calls a
 function the revert removed, it prints \cmd{still references removed code (fix
 or revert separately)}. Both of these are reports and neither stops the revert.
 \sgt{} prints a warning and carries on wherever carrying on is possible. Running
-\cmd{sgt log --summary} in our own repository today prints \cmd{279 file(s) on
+\cmd{sgt log --summary} in our own repository today prints \cmd{299 file(s) on
 disk differ from the recorded state\ttdash `sgt save` absorbs them}, and every
 command still works while that is true. The cost of the default is that after the
 merge the shared function is text the developer has not read, and their test suite
@@ -126,9 +124,9 @@ willing to go on the developer's behalf.
 \end{figure}
 
 When two edits change the same function from the same starting version, \sgt{}
-records both, includes neither, and asks the developer. Of the four commitments
-this one costs the most goodwill in the first week, so we want to be precise about
-whose behaviour we are departing from and why theirs is right.
+records both, includes neither, and asks the developer. This is the commitment that
+costs the most goodwill in the first week, so we want to be precise about whose
+behaviour we are departing from and why theirs is right.
 
 Git merges text and knows nothing about what a function is, and a system that has
 to work on every text file in every language anyone will ever write can afford to
@@ -169,15 +167,26 @@ of \sgt{} that guesses. Functions that changed in the same saves and that refer 
 one another are grouped together, using the change coupling signal established by
 Zimmermann et al.\ and Ying et al.~\cite{zimmermann2004,ying2004} and a community
 detection method over the resulting graph~\cite{traag2019}. A language model then
-reads the saves in a group and writes the label. Membership is computed from the
+reads the saves in a group and writes the label, which is the descendant of a task
+attempted before language models existed, when Buse and Weimer generated a
+description of a change out of the change itself~\cite{buse2010}. Membership is computed from the
 code and the label is written from the words, and those two steps fail in
 different ways, so we treat them separately.
 
 We considered asking the developer to confirm the grouping at save time and
 decided against it, because answering that question takes the same knowledge
-commit hygiene takes.
-A developer who could reliably answer it could also have staged the hunks. We
-care instead about what a wrong guess costs, and correcting one moves labels and
+commit hygiene takes, and a developer who could reliably answer it could also have
+staged the hunks. Shipman and Marshall collected the reasons people abandon
+systems that ask them to formalise their own work, premature structure among them,
+and the design they arrived at has the system propose a structure that its user may
+accept, modify, reject, or leave alone, in place of a system that demands one
+before the work is understood~\cite{shipman1999}. That is the arrangement here, and
+we are applying it under easier conditions than the ones they wrote about. The
+structure their systems tried to elicit was tacit, so a user asked to state it had
+first to work out what they thought. The structure \sgt{} recovers was said out
+loud, in a request, before any of the code existed, and the only reason it needs
+recovering at all is that nothing wrote it down. What matters, then, is not whether
+the guess is right but what a wrong one costs, and correcting one moves labels and
 touches no recorded edit.
 \cmd{sgt feature rename 001f73c2 "price cache"} renames a group whose
 identifier stays what it was, \cmd{sgt feature regroup} moves functions between
@@ -228,20 +237,21 @@ finds wrong it reports, and then it proceeds.
   \label{fig:operations}
 \end{figure*}
 
-Figure~\ref{fig:operations} lists every operation \sgt{} offers with its cost
-beside it. The five operations Section~\ref{sec:scenarios} ended on map onto them
-directly. Recording a boundary without declaring it is \cmd{sgt save -m}, run
+Figure~\ref{fig:operations} sets out the nine operations that act on the record,
+each with its cost beside it, and the five operations
+Section~\ref{sec:scenarios} ended on map onto them directly. The rest of what a
+developer types is housekeeping around those nine, \cmd{sgt init} to begin,
+\cmd{sgt log} and \cmd{sgt sync} to see where things stand, and the
+\cmd{sgt feature rename} of Section~\ref{sec:names} to correct a name, and none
+of them changes which edits a version includes. Recording a boundary without declaring it is \cmd{sgt save -m}, run
 whenever the developer feels like running it, since the grouping is recovered
 afterwards from the code. Seeing the work one request produced is
-\cmd{sgt show "rate limiting"} for every function it covers and
-\cmd{sgt show "rate limiting@1"} for the second stretch of work on it alone, with
-the edits that stretch made and what removing only that stretch would take with it.
-Removing a named set is \cmd{sgt revert "price cache"},
-which prints its consequences first. Carrying a named set to another branch is
-\cmd{sgt propose land --subset "export"}, which declines a subset that omits a
-group another chosen group depends on and names the group that is missing.
-Discovering the layering is reading the recorded dependencies, since the cache
-edits record that they were built on \sym{api.py::\_bucket} and therefore on the
-rate limiter, so the developer has at any later moment the fact they needed at
-14:30 and did not have.
+\cmd{sgt show "rate limiting"}, or \cmd{sgt show "rate limiting@1"} for one stretch
+of work on it alone. Removing a named set is \cmd{sgt revert "price cache"}, and
+carrying one to another branch is \cmd{sgt propose land --subset "export"}, which
+declines a subset that omits a group another chosen group depends on and names the
+group that is missing. Discovering the layering needs no command at all, because
+the cache edits record that they were built on \sym{api.py::\_bucket} and therefore
+on the rate limiter, so the developer has at any later moment the fact they needed
+at 14:30 and did not have.
 Section~\ref{sec:walkthrough} runs these in order on one repository.

@@ -7,8 +7,9 @@ Figure~\ref{fig:two-records} draws. We assembled the sequence from sessions we r
 while building \sgt{} so that one repository contains the five operations
 Section~\ref{sec:scenarios} asked for, in that order, followed by the one case
 where \sgt{} stops and asks. Every command below runs and every block of output
-came out of \sgt{} as it is today. Output lines too wide for this column are wrapped onto a second
-line and are otherwise unchanged. Read the sequence for which decisions the
+came out of \sgt{} as it is today. Output lines too wide for this column are
+wrapped, at the \ttdot{} separators where a line offers a list of alternatives,
+and are otherwise unchanged. Read the sequence for which decisions the
 developer is asked to make, and when in the work they arrive.
 
 \subsection{Monday, 14:02 to 15:20: two saves and four names}
@@ -73,17 +74,20 @@ feature 4a1c9e02~~"Rate Limiting"\\
 ~~symbols~~~~~~api.py::\_bucket, api.py::\_key, api.py::\_window,\\
 ~~~~~~~~~~~~~~api.py::handle\\
 ~~saves~~~~~~~~c39ab2f~~rate limiting and a price cache on quotes\\
-~~reverting this removes 11 edits \ttdash{} 7 of them work built on top
+~~reverting this removes 4 edits
 \end{out}
 
 \noindent
 The four functions are the answer to the question that took four runs of
 \cmd{git log -L} in Section~\ref{sec:scenarios}, and nothing here required the
-developer to guess that four was the right number of places to look. The developer
-did not ask for the last line of that output and read it anyway, and it says
-that seven later edits are recorded as built on this rate limiting, so a sliding
-window is a change underneath work that already depends on it, and the developer
-knows that before opening the file.
+developer to guess that four was the right number of places to look. What this
+output does not say is that the price cache calls \sym{api.py::\_bucket} and
+therefore sits on top of the rate limiter, so a sliding window is a change
+underneath work that already depends on it. The record holds that fact, because
+the cache's edits name the functions they refer to, and \cmd{show} does not print
+it. The developer finds it out on Wednesday instead, when \cmd{propose land}
+refuses a subset for that reason, and a \cmd{show} that printed it here would
+have cost us one line.
 
 The agent rewrites \sym{api.py::\_window} and \sym{api.py::\_bucket} and leaves the
 other two functions alone, and the developer saves, naming the group this time
@@ -106,10 +110,11 @@ work on it, and \cmd{sgt log --focus 4a1c9e02} names both.
 \begin{out}
 \ttdisc{} Rate Limiting~~4a1c9e02~~\ttdot{}~~2 checkpoint(s)\\[0.35ex]
 ~~~[0\ttfull\ttfull\ttfull]~~4a1c9e02@0~~:rate-limiting~~Rate Limiting\\
-~~~(1\ttfull\ttfull\ttempty)~~4a1c9e02@1~~:sliding-window~~Sliding Window\\[0.35ex]
-~operate:~~sgt revert 4a1c9e02:sliding-window\\
-~~~~~~~~~~(one checkpoint, by name)~~\ttdot{}\\
-~~~~~~~~~~sgt revert 4a1c9e02~~(whole feature)
+~~~[1\ttfull\ttfull\ttempty]~~4a1c9e02@1~~:sliding-window~~Sliding Window\\[0.35ex]
+~operate:\\
+~~~~sgt revert 4a1c9e02:sliding-window~~(one checkpoint, by name)\\
+~~~~sgt revert 4a1c9e02~~(whole feature)\\
+~~~~sgt revert 4a1c9e02@1~~(by index)
 \end{out}
 
 \noindent
@@ -117,7 +122,10 @@ The developer never asked for these two stretches. \sgt{} cut the work where the
 words changed, which in this repository is where one request ended and the next
 began, and either half is addressable on its own, so
 \cmd{sgt revert "Rate Limiting:sliding-window"} takes Thursday's work off and
-leaves Monday's four edits in place. The last two lines exist because we watched
+leaves Monday's four edits in place. The bar beside each name puts that
+checkpoint's edits in their place in the history, read left to right, with a middle
+dot where a span of the history holds none of them, so the terminal spends four
+characters on the encoding Figure~\ref{fig:two-records} spends a panel on. The last three lines exist because we watched
 people on our own team discover that a stretch of work had a name and then stop,
 not knowing which command would accept it.
 
@@ -215,16 +223,19 @@ adding a request identifier to every outbound log line. The developer syncs.
 ~~~~+7 op(s)\\
 ~~~~\ttwarn{} 1 OPEN FORK(S) \ttdash{} forked symbol(s) sit at the common\\
 ~~~~~~ancestor until resolved:\\
-~~~~~~api.py::handle: sgt merge-op 3c91ab02 8ee14d77
+~~~~~~api.py::handle \ttarrow{} sgt resolve api.py::handle
 \end{out}
 
 \noindent
-That last line names \cmd{sgt merge-op}, which takes two edit identifiers and is
-not the command a person should be reaching for. \cmd{sgt log} in the same state
-prints the command a person should type,
-\cmd{api.py::handle \ttarrow{} sgt resolve api.py::handle}. Two commands telling
-the developer different things to type is an inconsistency we have not cleaned up.
-The two
+The remedy is printed as a function name because that is what the developer knows
+about the situation. Underneath it there is a command that takes the two edge
+identifiers directly, \cmd{sgt advanced merge-op 3c91ab02 8ee14d77}, and for the
+first several months of this system's life that was the line the fork warning
+printed, on the reasoning that it named the two things precisely. A developer who
+reads it learns that two records are in conflict and still has to work out which
+function they are in. Deriving the function's name and printing that instead is a
+one-line change we made late, and it is the clearest instance in this repository of
+a report that was accurate and useless. The two
 versions of \sym{api.py::handle} are the one the cache revert produced, three lines
 shorter at the top where the cache lookup had been, and the colleague's, one line
 longer inside the logging block at the end. No line is common to the two changes,

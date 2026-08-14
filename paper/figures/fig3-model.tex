@@ -1,13 +1,9 @@
 % Figure 3. The whole model in one picture: what a save writes, what a version
 % is, and where the bytes in your files come from. Same session as Figure 1.
 \newcommand{\FigThreeCaption}{What one save writes down, what a version is, and
-where the bytes in a file come from. A save writes one record per changed function
-under a guess at the request it served, and one command corrects the guess (1). A
-version is the set of those records, so taking out the price cache subtracts six
-records from eighteen (2). The files are rebuilt from that set with the text
-between functions kept exactly (3). Where the cache's lines had to be subtracted
-from a function later work also edited, the developer's test suite decides whether
-the result stands.}
+where the bytes in a file come from. Every operation in this paper is arithmetic
+on the set in the middle panel, and the right panel is what that arithmetic does
+to a file the developer has open.}
 
 \newcommand{\FigThreeDescription}{Three panels. The left panel shows a terminal
 transcript of one save command, followed by the three feature groups the save
@@ -17,7 +13,8 @@ this session changed, grouped by file, with the edit marks for each on a short
 rail, in two columns. The left column is the set as it stands and the right
 column is the same list after the price cache has been reverted, where the cache
 edits are drawn as dotted outlines, one file is marked as removed, one function is
-marked with a hollow triangle, and three functions are marked with an open circle.
+marked with a hollow diamond, and three functions are marked with a hollow diamond
+crossed by a slash.
 The right panel draws the file api.py twice as a vertical stack of bands, once
 before and once after, where coloured bands are function bodies and grey bands are
 the text between them, which is identical in both.}
@@ -103,12 +100,18 @@ the text between them, which is identical in both.}
 % #1 x, #2 y, #3 symbol name, #4 colour
 \newcommand{\FTsym}[4]{\node[anchor=north west, inner sep=0, text=#4,
   font=\ttfamily\fontsize{5.2}{6}\selectfont] at (#1,#2) {#3};}
-% a hollow up-triangle: sgt took lines out of shared code, the tests decide
-\newcommand{\FTredraft}[2]{\draw[sgtInk!85, line width=0.4pt, fill=white]
-  ({#1-0.95},{#2-0.85}) -- ({#1+0.95},{#2-0.85}) -- (#1,{#2+1.0}) -- cycle;}
-% an open circle: this function still calls something the revert removed
-\newcommand{\FTcalls}[2]{\draw[sgtInk!85, line width=0.4pt, fill=white]
-  (#1,#2) circle (0.85);}
+% Two marks in the gutter, both hollow diamonds, because they are the two things
+% sgt says about a row rather than two more kinds of edit. The op glyphs are
+% filled and every one of their five shapes is already spoken for, so a hollow
+% diamond cannot be mistaken for one. The slash carries the same sense here that
+% it carries anywhere: the thing on the other end of that call is gone.
+\newcommand{\FTdia}[2]{\draw[sgtInk!85, line width=0.4pt, fill=white]
+  ({#1-1.05},#2) -- (#1,{#2+1.15}) -- ({#1+1.05},#2) -- (#1,{#2-1.15}) -- cycle;}
+% sgt took lines out of shared code, and the tests decide whether it was right
+\newcommand{\FTredraft}[2]{\FTdia{#1}{#2}}
+% this function still calls something the revert removed
+\newcommand{\FTcalls}[2]{\FTdia{#1}{#2}%
+  \draw[sgtInk!85, line width=0.4pt] ({#1-0.48},{#2-0.52}) -- ({#1+0.48},{#2+0.52});}
 \newcommand{\FTrail}[4]{\draw[rail=#3] (#1,#2) -- ({#1+#4},#2);}
 \newcommand{\FTraildim}[3]{\draw[raildim] (#1,#2) -- ({#1+#3},#2);}
 \newcommand{\FTnote}[3]{\node[anchor=east, inner sep=0, text=sgtGrey,

@@ -91,7 +91,14 @@
 \newcommand{\ttundo}{\textrm{$\curvearrowleft$}}
 \newcommand{\ttnew}{\textrm{$\circ$}}
 \newcommand{\ttfull}{\textcolor{sgtInk}{\rule[-0.04ex]{0.62ex}{1.0ex}}\hspace{0.32ex}}
-\newcommand{\ttempty}{\textcolor{sgtGrey!45}{\rule[-0.04ex]{0.62ex}{1.0ex}}\hspace{0.32ex}}
+% A column of the history in which a checkpoint has no edits at all. sgt prints a
+% middle dot there rather than a space, so a bar is as wide as the history and not
+% as wide as the checkpoint, and two checkpoints' bars can be read against each
+% other. Set in a box of the block's own width so that they line up.
+% Raised to the blocks' own centre: they run from -0.04ex to 0.96ex, and a period
+% centred on the x-height sits visibly below that.
+\newcommand{\ttempty}{\makebox[0.62ex][c]{%
+  \raisebox{0.2ex}{\textcolor{sgtGrey!70}{\textrm{\textperiodcentered}}}}\hspace{0.32ex}}
 \newcommand{\ttwarn}{\tikz[baseline=-0.3mm]{%
   \draw[line width=0.35pt, color=sgtInk] (0,0)--(1.35mm,0)--(0.675mm,1.25mm)--cycle;}}
 \newcommand{\ttfork}{\textrm{$\pitchfork$}}
@@ -111,7 +118,13 @@
   \hspace{0.25mm}}
 
 % --- geometry --------------------------------------------------------------
+% One op glyph is 2\opsz across, and the thumbnails at the end of this file
+% redeclare all three of these at about three fifths the size, because a
+% thumbnail packs its marks closer together than a full page figure does and at
+% full size the neighbours touch and read as one bar rather than three edits.
 \newlength{\opsz}\setlength{\opsz}{1.15mm}
+\newlength{\oprad}\setlength{\oprad}{1.32mm}
+\newcommand{\ckpth}{1.55}
 
 \tikzset{
   rail/.style        = {line width=1.5pt, color=#1!22, line cap=round},
@@ -121,6 +134,11 @@
   nowrule/.style     = {line width=0.6pt, color=sgtInk!70},
   dep/.style         = {line width=0.35pt, color=sgtGrey!70,
                         -{Straight Barb[length=1.1mm,width=1.1mm]}},
+  % An arrowhead in these figures means a direction, so a relation that holds
+  % equally both ways is drawn without one. Figure 2 pairs this with the same arc
+  % dotted, and the reader then has one shape whose solid form is a relation the
+  % system recorded and whose dotted form is one it did not.
+  share/.style       = {line width=0.35pt, color=sgtGrey!70},
   card/.style        = {rounded corners=0.6mm, line width=0.4pt},
   note/.style        = {font=\sffamily\fontsize{5.6}{6.4}\selectfont, color=sgtInk!75,
                         inner sep=0.3mm},
@@ -138,7 +156,7 @@
 \newcommand{\opext}[3]{%
   \fill[#3] ($(#1,#2)+(-\opsz,-\opsz)$) rectangle ($(#1,#2)+(\opsz,\opsz)$);
   \fill[sgtPaper] ($(#1,#2)+(-\opsz,-0.42mm)$) rectangle ($(#1,#2)+(-0.28mm,0.42mm)$);}
-\newcommand{\oprew}[3]{\fill[#3] (#1,#2) circle (1.32mm);}
+\newcommand{\oprew}[3]{\fill[#3] (#1,#2) circle (\oprad);}
 \newcommand{\opprune}[3]{%
   \draw[#3, line width=0.45pt, fill=sgtPaper]
     ($(#1,#2)+(-\opsz,-\opsz)$) rectangle ($(#1,#2)+(\opsz,\opsz)$);
@@ -150,7 +168,7 @@
   \draw[#3, draw opacity=0.55, line width=0.45pt, densely dotted, fill=sgtPaper]
     ($(#1,#2)+(-\opsz,-\opsz)$) rectangle ($(#1,#2)+(\opsz,\opsz)$);}
 % a checkpoint: a tick that crosses the rail
-\newcommand{\ckpt}[3]{\draw[#3, line width=0.55pt] (#1,{#2-1.55}) -- (#1,{#2+1.55});}
+\newcommand{\ckpt}[3]{\draw[#3, line width=0.55pt] (#1,{#2-\ckpth}) -- (#1,{#2+\ckpth});}
 
 % --- diff hunk stripe, for drawing a git commit as the thing it is ---------
 % \hunk{x}{y}{width}{color}
@@ -226,8 +244,15 @@
 % grid in Section 5. Every thumbnail shows the state before the command on the
 % left and the state after it on the right.
 % ---------------------------------------------------------------------------
+% A thumbnail is 12.6mm wide and has to hold three marks on each side of an
+% arrow, so the marks are drawn at three fifths the size they take on a full
+% page. What survives the reduction is the silhouette, which is what tells one
+% kind of edit from another, and what the reduction buys is a gap of four
+% tenths of a millimetre between neighbours, so three edits look like three.
 \newenvironment{thumb}%
-  {\begin{tikzpicture}[baseline=-0.6mm, x=1mm, y=1mm, line cap=round]}%
+  {\begin{tikzpicture}[baseline=-0.6mm, x=1mm, y=1mm, line cap=round]%
+   \setlength{\opsz}{0.7mm}\setlength{\oprad}{0.8mm}%
+   \renewcommand{\ckpth}{0.94}}%
   {\end{tikzpicture}}
 
 \newcommand{\thumbarrow}{\draw[-{Straight Barb[length=0.8mm,width=0.9mm]},
@@ -237,27 +262,30 @@
 % the moment the developer looked at them is marked with a checkpoint tick.
 \newcommand{\thsave}{\begin{thumb}
   \draw[rail=fCache] (0,0) -- (5.0,0);
-  \opadd{1.0}{0}{fCache}\opghost{3.0}{0}{fCache}\opghost{4.6}{0}{fCache}
+  \opadd{1.0}{0}{fCache}\opghost{2.8}{0}{fCache}\opghost{4.6}{0}{fCache}
   \thumbarrow
-  \draw[rail=fCache] (7.6,0) -- (12.6,0);
-  \opadd{8.6}{0}{fCache}\opadd{10.2}{0}{fCache}\opadd{11.8}{0}{fCache}
-  \ckpt{12.5}{0}{fCache}
+  \draw[rail=fCache] (7.6,0) -- (12.9,0);
+  \opadd{8.3}{0}{fCache}\opadd{10.1}{0}{fCache}\opadd{11.9}{0}{fCache}
+  \ckpt{12.9}{0}{fCache}
 \end{thumb}}
 
 \newcommand{\threvert}{\begin{thumb}
   \draw[rail=fCache] (0,0) -- (5,0);
-  \opadd{1.2}{0}{fCache}\opadd{2.6}{0}{fCache}\opadd{4.0}{0}{fCache}
+  \opadd{1.0}{0}{fCache}\opadd{2.8}{0}{fCache}\opadd{4.6}{0}{fCache}
   \thumbarrow
-  \draw[rail=fCache] (7.6,0) -- (12.6,0);
-  \opadd{8.8}{0}{fCache}\opghost{10.2}{0}{fCache}\opghost{11.6}{0}{fCache}
+  \draw[rail=fCache] (7.6,0) -- (12.8,0);
+  \opadd{8.4}{0}{fCache}\opghost{10.4}{0}{fCache}\opghost{12.4}{0}{fCache}
 \end{thumb}}
 
+% A dotted outline spends its gap on its own stroke, so two ghosts side by side
+% need a wider pitch than two filled squares do before they stop reading as one
+% box with a line down the middle.
 \newcommand{\threstore}{\begin{thumb}
   \draw[rail=fCache] (0,0) -- (5,0);
-  \opadd{1.2}{0}{fCache}\opghost{2.6}{0}{fCache}\opghost{4.0}{0}{fCache}
+  \opadd{0.6}{0}{fCache}\opghost{2.6}{0}{fCache}\opghost{4.6}{0}{fCache}
   \thumbarrow
   \draw[rail=fCache] (7.6,0) -- (12.6,0);
-  \opadd{8.8}{0}{fCache}\opadd{10.2}{0}{fCache}\opadd{11.6}{0}{fCache}
+  \opadd{8.4}{0}{fCache}\opadd{10.2}{0}{fCache}\opadd{12.0}{0}{fCache}
 \end{thumb}}
 
 \newcommand{\thfork}{\begin{thumb}
@@ -272,7 +300,7 @@
   \draw[rail=fCache] (0,0) -- (5,0);
   \opadd{1.2}{0}{fCache}\opadd{3.0}{0}{fCache}
   \draw[rail=fRate] (7.6,0) -- (12.6,0);
-  \opadd{8.8}{0}{fRate}\opadd{10.4}{0}{fCache}\opadd{12.0}{0}{fRate}
+  \opadd{8.6}{0}{fRate}\opadd{10.4}{0}{fCache}\opadd{12.2}{0}{fRate}
   \draw[line width=0.3pt, color=sgtGrey] (6.3,-1.8) -- (6.3,1.8);
 \end{thumb}}
 
@@ -287,21 +315,15 @@
   \fill[fCache!40] (8.5,-0.75) rectangle (11.1,-0.35);
 \end{thumb}}
 
-\newcommand{\thplan}{\begin{thumb}
-  \draw[nowrule] (6.0,-2.4) -- (6.0,2.4);
-  \fill[sgtWash] (6.0,-2.4) rectangle (12.6,2.4);
-  \draw[rail=fExport] (0,0) -- (6.0,0); \opadd{1.6}{0}{fExport}\opadd{4.0}{0}{fExport}
-  \draw[raildim] (6.0,0) -- (12.6,0);
-  \opghost{8.2}{0}{fExport}\opghost{10.6}{0}{fExport}
-\end{thumb}}
-
+% intent list: one feature's rail, and the cut that divides the edits made in one
+% stretch of work from the edits made in the next. The gap at the cut is twice
+% the gap between two edits inside a stretch, so the two runs read as two runs
+% before the reader has taken in anything else about the row.
 \newcommand{\thckpt}{\begin{thumb}
-  \draw[rail=fRetry] (0,0) -- (12.6,0);
-  \opadd{1.4}{0}{fRetry}\opadd{2.8}{0}{fRetry}
-  \ckpt{4.2}{0}{fRetry}
-  \opadd{5.6}{0}{fRetry}\opext{7.0}{0}{fRetry}
-  \ckpt{8.4}{0}{fRetry}
-  \opadd{9.8}{0}{fRetry}\oprew{11.4}{0}{fRetry}
+  \draw[rail=fRetry] (0,0) -- (12.0,0);
+  \opadd{0.9}{0}{fRetry}\opadd{2.7}{0}{fRetry}\opadd{4.5}{0}{fRetry}
+  \ckpt{6.0}{0}{fRetry}
+  \opadd{7.5}{0}{fRetry}\opadd{9.3}{0}{fRetry}\opadd{11.1}{0}{fRetry}
 \end{thumb}}
 
 \newcommand{\thswitch}{\begin{thumb}

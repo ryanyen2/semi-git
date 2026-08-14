@@ -1,12 +1,10 @@
 % The fork rule: one function, two versions, and who decides. Prints as
 % Figure 4, single column, beside Section 4.3. Same panels, glyphs and palette
 % as Figures 1 to 3. The instance is the one the walkthrough reaches in 5.5.
-\newcommand{\FigForkCaption}{Two people change \protect\fsym{api.py::handle}
-from the same saved version, one cutting three lines from the top of it and one
-adding a line forty lines below. Git merges the two and prints nothing, and
-nobody has run the function in the state the merge produces. \sgt{} records both
-versions, includes neither, and names the function. Of everything \sgt{} refuses,
-only this refusal can stop work that would have been correct.}
+\newcommand{\FigForkCaption}{Two edits to one function from the same saved
+version, forty lines apart. Git produces a state nobody ran and \sgt{} produces a
+question, and of everything \sgt{} refuses this is the only refusal that can stop
+work which would have been correct.}
 
 \newcommand{\FigForkDescription}{Three stacked panels. The top panel shows one
 recorded version of a function splitting into two, one change removing three
@@ -14,9 +12,11 @@ lines at the top of the function and one adding a line at the bottom, each
 marked with a small figure of a person, with the two resulting function bodies
 drawn side by side. The middle panel shows git's result, a single function body
 with the top lines gone and the bottom line added, annotated as a state nobody
-ran. The bottom panel shows sgt's result, both versions drawn as dotted outlines
-to mean neither is included, and one solid version after the developer writes
-the merge and the test command passes.}
+ran. The bottom panel shows sgt's result: the transcript of the resolve command
+and the question it asks, both versions drawn as dotted outlines to mean neither
+is included, and the function body the developer merged by hand, which holds the
+same removed lines and the same added line as the body git produced and is
+annotated as a state a person read.}
 
 \begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
 
@@ -79,26 +79,42 @@ the merge and the test command passes.}
   {a state nobody ran};
 
 % ===================== 3: what sgt produces ==========================
-\panel{0}{0}{84}{16}{sgtInk}{3\ \ WHAT \textsf{sgt} PRODUCES}
+% The body drawn here is the one the developer hand-merged, and it holds the
+% same three deleted lines and the same added log line as the body in panel 2.
+% Drawing the two identically is the point: on this instance sgt bought no
+% different bytes, and what it bought was somebody having read them. Panel 3's
+% thumbnail therefore sits in the same column as panels 1 and 2, and its
+% annotation sits at the same height as panel 2's, so the two can be read
+% against each other without reading a word of the caption.
+\panel{0}{-2.5}{84}{18.5}{sgtInk}{3\ \ WHAT \textsf{sgt} PRODUCES}
 
 \node[anchor=north west, inner sep=0, text=sgtInk,
-      font=\ttfamily\fontsize{5.6}{6.4}\selectfont] at (2.2,11.6)
+      font=\ttfamily\fontsize{5.6}{6.4}\selectfont] at (2.2,13.9)
   {\$ sgt resolve api.py::handle};
+\node[anchor=north west, inner sep=0, text=sgtInk!62,
+      font=\ttfamily\fontsize{5.4}{6.2}\selectfont] at (2.2,10.2)
+  {pick [l]eft / [r]ight / [e]dit / [q]uit:};
 
-\draw[raildim] (2.4,5.6) -- (6.0,7.8);
-\draw[raildim] (2.4,5.6) -- (6.0,3.4);
-\draw[raildim] (6.0,7.8) -- (11.6,7.8); \opghost{8.8}{7.8}{fCache}
-\draw[raildim] (6.0,3.4) -- (11.6,3.4); \opghost{8.8}{3.4}{fIdx}
+\draw[raildim] (2.4,3.2) -- (6.0,5.4);
+\draw[raildim] (2.4,3.2) -- (6.0,1.0);
+\draw[raildim] (6.0,5.4) -- (11.6,5.4); \opghost{8.8}{5.4}{fCache}
+\draw[raildim] (6.0,1.0) -- (11.6,1.0); \opghost{8.8}{1.0}{fIdx}
 \node[anchor=west, text width=20mm, align=left, inner sep=0, text=sgtInk!80,
-      font=\sffamily\fontsize{5.4}{6.2}\selectfont] at (13.4,5.6)
+      font=\sffamily\fontsize{5.4}{6.2}\selectfont] at (13.4,3.2)
   {both recorded,\\neither included};
 
 \draw[-{Straight Barb[length=0.9mm,width=1.0mm]}, line width=0.35pt, color=sgtGrey]
-  (35.0,5.6) -- (38.6,5.6);
-\draw[rail=sgtInk] (40.6,5.6) -- (47.6,5.6); \oprew{44.1}{5.6}{sgtInk!70}
-\whodev{50.4}{5.6}{sgtInk!70}
-\node[anchor=west, text width=29mm, align=left, inner sep=0, text=sgtInk!85,
-      font=\sffamily\fontsize{5.4}{6.2}\selectfont] at (53.0,5.6)
-  {the version the developer wrote, included once the tests pass};
+  (36.4,3.2) -- (40.6,3.2);
+
+\fbody{53.0}{12.6}{a}
+\fbodytag{53.0}{12.6}{sgtInk}{A+B, BY HAND}
+% Panel 2 needs a leader to reach its label. Here the who-mark stands between
+% the body and the label and does that job itself, which is also the claim.
+\whodev{67.6}{7.9}{sgtInk!70}
+\node[anchor=west, text width=13.5mm, align=left, inner sep=0, text=sgtInk,
+      font=\sffamily\bfseries\fontsize{5.4}{6.2}\selectfont] at (69.8,7.9)
+  {a state\\a person read};
+\node[acc=sgtGrey, anchor=north west] at (53.0,2.4)
+  {thirty seconds, and the tests ran};
 
 \end{tikzpicture}

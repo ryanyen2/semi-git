@@ -1,33 +1,49 @@
 \section{Where the Design Breaks}
 \label{sec:discussion}
 
-Every number in this section comes from running \sgt{} on the repository that
-contains \sgt{}, today, with the command a user would run. We have been the
-heaviest users of this system for eight months, and we would want to know about
-the six limits below before adopting it.
+Every number in this section comes from one run of the command a user would run,
+on the repository that contains \sgt{}, at a single commit. We took them together
+rather than as we needed them, because the repository is still being worked on and
+a set of counts gathered over a week is a set of counts of nothing. That repository holds
+fifty-seven days and three hundred and forty-six commits of daily use by the
+person who wrote the system, which is long enough to have found the limits below
+and not long enough to have found the ones that need a year, and we say which is
+which where we can tell.
 
 \subsection{Most of a repository is not functions}
+\label{sec:coverage}
 
-\cmd{sgt log --summary} prints \cmd{371 file(s), 6781 symbol(s), 154 feature(s),
-27\% entity coverage}. That last figure is the fraction of recorded files with any
-function-level record at all, so roughly three quarters of this repository is
-recorded as whole files, at the grain git already offers. The files in that three
-quarters are Markdown, JSON, HTML, and lock files. Every operation in
-Section~\ref{sec:design} runs on them and none of them gets sharper than
-\cmd{git revert} would be.
+\cmd{sgt log --summary} prints \cmd{396 file(s), 6821 symbol(s), 154 feature(s),
+25\% entity coverage}. We printed that last figure for months and it is the wrong
+figure, because its denominator is every file \sgt{} has a record for and its
+numerator counts only the ones whose records name functions. Markdown holds no
+functions at any grain, so a repository with a lot of documentation in it reads as
+though \sgt{} were failing at its one job.
 
-How much of that three quarters is a limit of our implementation depends on the
-file. Markdown, JSON, and lock files hold no functions at any grain. Go and Rust
-do, and a tree-sitter grammar plus a decision about which node kinds count as a
-function is a day of work per language, so we would take both tomorrow.
-With every language parsed, a repository whose interesting change is four lines of
-a deployment configuration still has no function for the developer's name to be
-filed under, and git's grain is the correct grain for that change. We say
-this plainly because calling the design language-independent would be false, and a
-reader deciding whether to adopt \sgt{} should start by counting how much of their
-repository is code.
+Counting the records themselves says something different. This store holds
+records for 534 files, more than the 396 on disk today because a record outlives
+the file it was read from, and of those 534, 381 carry function-level records and
+153 are recorded whole. The whole-file set is 82 Markdown files, 19 JSON, 15 \LaTeX{}, 13
+HTML, and a scattering of CSS, SVG, and configuration, and it contains no Python
+and no TypeScript. Every file in a language \sgt{} parses has a function-level
+record. The design's coverage of code is complete and its coverage of a repository
+is a quarter, and those two sentences are about different things.
+
+So the limit here is not the parser, and saying it was let us describe a property
+of software repositories as though it were a defect we could fix. Go and Rust have
+functions, a tree-sitter grammar plus a decision about which node kinds count as
+one is a day of work per language, and we would take both tomorrow. It would not
+move the quarter much. Three quarters of this repository is prose, configuration,
+and generated files, that ratio is ordinary, and a change to four lines of a
+deployment manifest has no function for the developer's request to be filed under
+no matter how many grammars we ship. Every operation in Section~\ref{sec:design}
+still runs on those files, at git's grain, and none of them gets sharper than
+\cmd{git revert} would be. A reader deciding whether to adopt \sgt{} should ask how
+much of the work they need to take apart happens inside functions, which is a
+different question from how much of their repository is code.
 
 \subsection{Where a function loses its history}
+\label{sec:identity}
 
 Section~\ref{sec:grain} claims a record survives a rename, and that claim rests on
 a matcher with a threshold in it. \sgt{} links a function across a commit first by
@@ -48,23 +64,27 @@ token count because it runs on every save and has to finish while the developer 
 waiting. Lowering the threshold would link functions that merely resemble each
 other, and a wrong link is the worse failure, because it files one function's edits
 under another function's name and gives the developer no reason to doubt the
-answer. \cmd{sgt identity join} states the link by hand. Using it requires the
+answer. \cmd{sgt advanced identity join} states the link by hand. Using it requires the
 developer to notice that a function's history restarted, and they installed
 \sgt{} so that they would not have to notice things of that kind.
 
 \subsection{Fifty-six files we cannot rebuild}
+\label{sec:unreproducible}
 
 The same command reports 56 files whose bytes on disk no valid set of records can
-produce. \sgt{} keeps every one of them, prints the count, names the first five,
+produce. The denominator is the 381 files whose records name functions and not the
+534 the store holds, because a file recorded whole holds its own bytes and cannot
+fail to come back, so one function-level file in seven does not rebuild.
+\sgt{} keeps every one of them, prints the count, names the first five,
 and points at \cmd{sgt advanced fsck --tree}. Nothing was deleted and nothing was
 quietly wrong, because \sgt{} reports what it cannot do and then carries on
 (Section~\ref{sec:sets}). The developer loses the record for those files. A revert of a group that touched
 one of them leaves the file as it is, and \cmd{sgt show} on a function inside it
 answers from an incomplete chain.
 
-We have not tracked down what put all 56 in that state. This repository has been
-mined by five successive versions of our miner, and some of these files are the
-residue of our own format changes. A developer adopting \sgt{} on a repository with
+We have not tracked down what put all 56 in that state. This store holds records
+written by five different versions of our miner in fifty-seven days, and some of
+these files are the residue of our own format changes. A developer adopting \sgt{} on a repository with
 two years of history should expect a number of this kind on the first run, and
 should read it as work the design has not finished.
 
@@ -76,37 +96,84 @@ before \sgt{} will include it. The summary above also prints
 means the developer picks a version and \sgt{} takes their word for it, because
 nobody ever pointed \sgt{} at our test runner.
 
-That one line of output is the most uncomfortable in this section, and we have kept
-it here because the failure it describes generalises past our repository.
-A safety property a developer has to configure is
-a safety property most repositories will not have, so our strongest claim about
-forks holds only where somebody did that setup, and our own repository is evidence
-that fewer people do it than we assumed. The fix needs no
-research, because \sgt{} could find the test command the project already uses and
-offer it during \cmd{sgt init}, and making the developer ask for it was the wrong
-default.
+A safety property a developer has to configure is a safety property most
+repositories will not have, so the strongest claim in Section~\ref{sec:fork} holds
+only where somebody did that setup, and the person who wrote the rule did not do it
+in the repository where the rule runs every day. The fix needs no research, since
+\sgt{} could find the test command the project already uses and offer it during
+\cmd{sgt init}, and making the developer ask for it was the wrong default.
+
+\subsection{What a colleague sees}
+\label{sec:colleague}
+
+Because the records are files in the repository, everyone who pulls the repository
+gets them whether they asked for them or not, and this section works through what
+that means for three people who are not the developer running \sgt{}: a colleague
+who has never installed it, a colleague who installed a different version of it,
+and the reviewer of a pull request.
+
+The one we worried about most turned out to be the easy case. A colleague who has
+never heard of \sgt{} commits ordinary code, and the next \cmd{sgt sync} mines
+their commits into function-level records on contact, the same way \sgt{} mined the
+history that existed before it was installed. Their edits arrive at the right
+grain, they group with the work they belong to, and nothing has to be repaired. What
+does not arrive is the request, because there was no request to capture: their
+records carry no sentence, so the name for their group is drawn from their commit
+subjects, and where one subject accounts for most of a group \sgt{} uses that
+subject as the name. A colleague who writes \cmd{fix tests} and \cmd{wip} gets a
+group named from the code instead, which is the same failure
+Section~\ref{sec:names} describes for a save with no message. So the grain
+\sgt{} recovers from anybody and the request only from somebody who was running it,
+and a team that half-adopts \sgt{} gets a history that is half named.
+
+The harder case is a colleague who does install it, and runs a different version.
+The identifier of an edit is computed from its content together with the version of
+the miner that read it, so two versions of \sgt{} mint different identifiers for
+the same edit, and a sync across that gap would quietly alias records that mean
+different things. \sgt{} refuses the whole union instead and prints what to do.
+That refusal is correct and it is also the cost we are least able to speak to,
+because Section~\ref{sec:unreproducible} reports five miner versions inside
+fifty-seven days and every one of those transitions would have stopped a
+collaborator. It stopped nobody, since there was nobody to stop, and a design
+decision that a solo repository charges nothing for is a decision that repository
+cannot evaluate.
+
+The third case is the reviewer, and here we have no answer at all. A pull request
+that carries \sgt{} records shows them as what they are on disk, a few hundred JSON
+files whose names are hashes, and no reviewer reads that. They review the code, as
+they should, and how anybody should read a large model-written change spanning many
+files is an open question being studied on its own~\cite{heander2026}. But it means the record that makes \cmd{revert} work is not part of
+what anybody approved, so a resolution one developer reasoned through and a label
+another corrected both enter the shared branch unexamined. Section~\ref{sec:fork}
+argues that a fork should be settled by a person on the ground that a silent merge
+inside one function surfaces later as somebody else's bug. On a team, the person who
+settles it is still one person, and the review that would have caught them being
+wrong reads a diff their decision does not appear in.
 
 \subsection{Who should turn the fork rule off}
+\label{sec:forkoff}
 
-We designed the fork rule for a repository with three contributors, where a merge
-nobody reviewed turns into a bug three days later and the person who finds it is
-the person who wrote both sides of it. On a repository where twenty people edit the
-same functions every day, the same rule produces a queue of decisions nobody has
-time to work through, and we expect that team would switch it off and take the
-textual merge. \sgt{} also stops a developer for nothing at all in one
-case. Deleting a function and adding it back with byte-identical content on two
-branches produces two versions from one parent, and \sgt{} reports a disagreement
-between two pieces of text that agree exactly.
+This repository's history carries three git identities and one human being behind
+all of them, so every merge \sgt{} has ever seen had the same person on both sides
+of it. That is the condition the fork rule was designed for and the only condition
+it has been tested under, and it is the condition in which the rule is most
+obviously right, because the person a fork stops is the person who wrote both
+versions and can therefore answer it in seconds. It is also the condition in
+which the rule is cheapest, and we should not draw a conclusion about teams from
+it. On a repository where twenty people edit the same functions every day, the
+same rule produces a queue of decisions whose two sides were written by people who
+have not spoken, and Nelson et al.'s account of how teams work through merge
+conflicts describes the barriers a queue of that kind meets~\cite{nelson2019}. We
+expect that team would switch the rule off and take the textual merge. Our evidence cannot tell them not to.
 
 The setting we would build applies git's rule at the grain of a function, merging
 when the two edits changed no overlapping lines and asking when they did.
 Guimarães and Silva argue for telling a developer about a divergence while both
 sides are still being written~\cite{guimaraes2012}, and that setting would let
 \sgt{} do it without stopping anybody. We have not built it, because we cannot yet
-tell a reader which of the two should be the default. Our answer comes from
-repositories with three contributors and a shared understanding of the code, and it
-is the part of this design that a study of larger teams would most usefully
-overturn.
+tell a reader which of the two should be the default, and the repository we would
+have tested it on has one person in it. This is the part of the design that a
+study of larger teams would most usefully overturn.
 
 \subsection{The record the agent already had}
 
@@ -117,12 +184,44 @@ functions it changed, would make the inference in Section~\ref{sec:names}
 unnecessary, and it would fix the case in Section~\ref{sec:walkthrough} where a
 rename nobody asked for got a name derived from the code.
 
-We did not build that, because we are unwilling to let \sgt{} depend on any
-particular agent. Reading the working files works with any agent, any editor, and a
-developer typing by hand, and it keeps working when a vendor changes an output
-format. A record the agent writes works only while that agent is in use, and
-a developer who switched agents mid-project would find their history split into a
-part with stated groupings and a part with inferred ones. We would take both
-sources, with the files as the one \sgt{} trusts and the agent's account as a hint
-that improves a label. We do not know which of the two should be authoritative,
-and we would put that question to a reader of this paper before any other.
+Half of that record we do take, and the half we take is the half a vendor cannot
+spoil. Where the developer's agent is Claude Code, \sgt{} installs a hook on
+prompt submission and stores every sentence the developer typed, with its time, so
+the words that named the work are on disk before any code exists and \cmd{sgt now}
+answers with what was asked for rather than with a count of edits. That is twenty
+lines and one vendor's hook interface, and the same twenty lines have to be
+written again for the next agent, which is the price we decided we could pay,
+because what they capture is the developer's own English and a change of vendor
+cannot make yesterday's sentence wrong.
+
+The half we do not take is the agent's account of which functions each request
+touched, and the reason is that a record of that kind is a claim about the files
+which we would have to either trust or check. Trusting it puts the correctness of
+a revert inside a transcript nobody validated against the code. Checking it means
+reading the files and computing the answer, at which point we did not need the
+account. What the agent's account would improve is the label, which is the part of
+\sgt{} that is allowed to be wrong, and improving a label is worth a hint and not
+worth a dependency. So the split we have arrived at is that membership is read
+from code and names are read from words, and the words come from the hook where
+there is a hook and from the save message where there is not. What we do not know
+is whether an agent's account of its own edits is accurate enough to move
+membership too, and that is the measurement we would ask a reader of this paper to
+make before any other.
+
+\subsection*{Open science}
+
+\sgt{} is open source, and the repository it versions is the repository that
+implements it, so the artefact and the evidence in this section are the same
+object: a reader can clone it, check out the commit the artefact names, run
+\cmd{sgt log --summary}, and read every number in this section off the output. Run
+at a later commit the counts will have moved, since the repository is the working
+one. The study in
+Section~\ref{sec:eval-study} has not been run, and we will register its design,
+its measures, and the thresholds in Table~\ref{tab:measures} before recruiting, so
+that the first row remains the first row after we have seen the data. The two
+repositories the study uses, the transcripts that produced them, and the
+correctness script will be released with the results. No human-subjects data
+exists yet; the study will be submitted for ethics review before any participant
+is approached, and its only recorded data will be screen activity, task outcomes,
+and interview audio from consenting professional developers, with no personal
+data beyond what consent and compensation require.
