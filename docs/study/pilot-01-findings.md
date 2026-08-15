@@ -452,7 +452,7 @@ the tool's own suggested next action is to name the corpses. `init repo` also ac
 absorbing `enrollment.py::enroll` and `pytest.ini`. Proposed: a save whose footprint for a symbol
 is a deletion should not found a feature; deletions belong to the feature the symbol was leaving.
 
-### O11 (PARTLY FIXED) — the plan matcher misses, and its recovery route was a dead end
+### O11 (FIXED) — the plan matcher misses, and its recovery route was a dead end
 
 P0 never exercised `sgt plan`: `sgt plan --help` documents its positional arguments as `rest` and
 lists no subcommands, so they could not learn it existed in any usable form and said so. Since the
@@ -511,16 +511,42 @@ the line the tool now prints resolves all three steps against the nine ops and c
 (`✓ confirmed 3 hollow(s) matched to 9 op(s)`, then `(no active plan sessions)`). What was broken
 was discoverability, not the mechanism.
 
-What remains open is the matcher itself: **auto-matching still reports 0/3** for work that
-implements the plan sentence for sentence, so every plan-tracked save lands in the manual
-confirmation path. That is a quality problem in the step<->op matcher, not a dead end.
+**Second correction (2026-08-14): the matcher is fixed.** The remaining half of O11 — auto-matching
+returning nothing for work that implements its own plan — was not a scoring problem in the
+step<->op join. The join was finding the work. The grouping was throwing it away.
 
-Two consequences for the study. First, S5's sgt mechanism ("agent plan loop plus `sgt session`") is
-not reachable: P0 could not find the loop, and it would not have closed for them if they had.
-Second, and larger: **RQ4 asks how intent-aligned history changes the way developers direct and
-check an agent.** The instrument for that is the plan loop. As it stands, an agent that states its
-intent and then does exactly what it said gets `0/3 step(s) matched`, so the recorded intent and
-the recorded work do not connect — which is the one thing the thesis claims they do.
+Candidate step<->op edges were union-found into transitive clusters, and a cluster holding more than
+one step never auto-confirms (`sgt/cli/porcelain.py::_fold_plan_matches` takes only single-step
+groups; the rest wait for `save --resolve-plan`). One save routinely emits a coarse op carrying two
+steps' *disjoint* work — here, one op held `enrollment.py::swap` and both functions of
+`tests/test_swap.py` — and that single shared op chained the steps into one blob. Nothing about
+which step was built was in doubt; the tool asked anyway, and every step stayed pending.
+
+Reproduced end to end on a repo built to the shape above: three steps, implemented exactly, gave
+one 2-step group plus one 1-step group — `1/3 matched`, the same defect as the pilot's `0/3` at a
+different arity. Two changes in `sgt/loop/match.py`:
+
+- Each step now carries the ops that matched **it**, not its cluster's. Steps are grouped as one
+  ambiguous n:m match only when they *compete* — their predictions share a match key, so no
+  evidence tells them apart. Two steps predicting the same symbol still group (and still route to
+  `--resolve-plan`); two steps sharing only an op do not. The same repro now reports three
+  single-step groups, the save auto-confirms all three, and `sgt plan status` reads `3/3`.
+- A bare-file prediction is resolved against the files really touched (standing finding 7): the
+  decomposer writes `cli.py`, the repo path is `coursecraft/cli.py`, and joined as strings those
+  never met — the step was unmatchable *and* its work read as drift, permanently. An ambiguous
+  basename (two `cli.py` under different packages) is left unresolved rather than guessed.
+
+Also fixed alongside: confirming one op against two steps used to overwrite its own row in
+`plan_matches.json`, so the op's recorded intent named only whichever step was confirmed last.
+
+Tests: four in `tests/loop/test_match.py` (including the competition guard and the ambiguous
+basename), one in `tests/test_cli.py` at the save surface. All verified to fail without the change.
+
+One consequence for the study stands. S5's sgt mechanism ("agent plan loop plus `sgt session`") was
+not reachable for P0 for a different reason — they could not find the loop at all (F9 fixes the
+`--help` half of that). **RQ4 asks how intent-aligned history changes the way developers direct and
+check an agent**, and the plan loop is its instrument; an agent that states its intent and does what
+it said now has that recorded as fulfilment rather than as drift.
 
 ## 5. What S2 actually costs when the tool works
 
@@ -579,10 +605,8 @@ Done since this document was first written:
 
 Still open before participant 1:
 
-8. **The plan matcher.** The loop closes now (F8), but auto-matching still returns
-   `0/3 step(s) matched` for work implementing its own plan, so every plan-tracked save lands in
-   manual confirmation. Either the matcher improves, or RQ4 is rescoped to what it supports and the
-   paper says so.
+8. ~~**The plan matcher.**~~ Fixed 2026-08-14, see O11 below. A plan built as stated now
+   auto-confirms every step, so RQ4 keeps its instrument and does not need rescoping.
 9. **Pilot the git condition.** In progress. Until it runs we don't know whether the requests are
    doable in 45 minutes without sgt, which is half the comparison.
 10. **Pilot task set B.** confplan has never been run by anyone. Its being equivalent to

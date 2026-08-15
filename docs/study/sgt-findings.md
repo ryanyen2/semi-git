@@ -41,8 +41,10 @@ the way a participant or their agent would. Fixed entries name the fix; open ent
    segment `f-xxxx@n`) is discoverable only by reading internals.
 6. Bare `sgt save --resolve-plan` re-prints the ambiguity with no next step; the
    `--confirm-hollow/--confirm-op` form exists but nothing in the output names it.
-7. Plan intake sometimes predicts bare filenames (`cli.py`) instead of repo paths
-   (`coursecraft/cli.py`); those steps can never match and surface as permanent drift.
+7. (FIXED 2026-08-14, with the matcher below.) Plan intake sometimes predicts bare filenames
+   (`cli.py`) instead of repo paths (`coursecraft/cli.py`); those steps could never match and
+   surfaced as permanent drift. A predicted path that names no touched file now resolves to the one
+   touched file whose path ends in it; an ambiguous basename is left unresolved rather than guessed.
 8. (Corrected 2026-08-09, later the same day: CLI revert consistently previews and requires
    `--yes` in every shape; the earlier "inconsistent gating" reading was wrong. The python-level
    `verbs.revert` applies directly, which is a library-vs-CLI difference, not a CLI bug.)
@@ -203,11 +205,37 @@ one place to look.
   worktree and record.
 - **Finding 6 (`save --resolve-plan` dead end) — fixed.** It now prints the
   `--confirm-hollow/--confirm-op` line with the ids filled in; running it closes the plan session.
-  The remaining problem there is the matcher, which reports 0/3 on work implementing its own plan.
+  The remaining problem there was the matcher, which reported 0/3 on work implementing its own
+  plan — fixed separately, below.
 - Also fixed, from the same pass: `plan`/`intent`/`session` now document their subcommands
   (participants abandoned two verbs because `--help` taught nothing); `sgt show`'s `next:` footer
   no longer suggests `sgt intent show <feature-id>`, which always failed; the top-level help no
   longer advertises `sgt feature why`, which does not exist.
+
+## FIXED 2026-08-14: the plan matcher (pilot 01, O11) and finding 7
+
+A plan built exactly as stated reported `0/3 step(s) matched`. The step<->op join was not at fault —
+it found the work. The *grouping* discarded it: candidate edges were union-found into transitive
+clusters, and a cluster holding more than one step never auto-confirms. One coarse save op carrying
+two steps' disjoint work (`enrollment.py::swap` plus both functions of `tests/test_swap.py`) chained
+those steps into a single blob, so a build with nothing ambiguous about it was reported ambiguous.
+Reproduced end to end at `1/3` before the fix. In `sgt/loop/match.py`:
+
+- A step carries the ops that matched *it*, not its cluster's. Steps become one n:m group only when
+  they **compete** — their predictions share a match key. Two steps predicting the same symbol still
+  group and still route to `save --resolve-plan`; two steps that merely share an op do not. Also
+  ends finding 9's over-claim by construction: a step can no longer absorb its neighbour's ops.
+- Bare-file predictions resolve against the files really touched (finding 7 above), in both the
+  matcher and `session_coverage`.
+- `confirm_match` merges `plan_matches.json` rather than overwriting, so an op fulfilling two steps
+  records both instead of only the last one confirmed.
+
+Tests: four in `tests/loop/test_match.py`, one in `tests/test_cli.py`; all fail without the change.
+
+Still open in the same area: a step whose `predicted_footprint` is empty can never match, and its
+work reads as drift. That is the offline path — `_fallback_decompose` cannot guess symbols — so it
+bites whenever the LLM decomposer is unavailable *mid-session*, e.g. the OpenAI key expires. Nothing
+guesses a match there, deliberately, but reporting the work as unplanned drift is still wrong.
 
 ## Test-suite defect found while verifying the above
 
