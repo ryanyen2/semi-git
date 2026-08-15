@@ -5,11 +5,13 @@ call from a read view (`sgt.api.plan_view`) on every request. For every active s
 since that session's `baseline_op_ids` are candidate matches for its still-pending steps;
 footprint-overlap (the overlap coefficient -- see `_overlap` for why it is *not* Jaccard -- over a
 two-level match-key join: `_step_keys` predicts at the granularity the planner stated (a qualname,
-file dropped as the planner's guess; or a bare file, matched on file scope) and `_op_keys` indexes
-each real op at both granularities so either prediction finds it) at or above `THRESHOLD` is a
-candidate edge, and candidate edges union-find
-into n:m groups -- naturally producing the "one
-commit fulfills two steps" or "two commits fulfill one step" shapes. An op that's new to a session
+file dropped as the planner's guess; or a bare file, matched on file scope -- resolved against the
+files really touched, see `_resolve_file_keys`) and `_op_keys` indexes each real op at both
+granularities so either prediction finds it) at or above `THRESHOLD` is a candidate edge. Each step
+carries the ops that matched *it*, and two steps are reported as ONE n:m group only when they
+compete -- their predictions share a key, so no evidence tells them apart. That still produces the
+"two commits fulfill one step" shape (one step, several ops) and the "one commit fulfills two steps"
+shape (the op appears under each step it covers). An op that's new to a session
 but joins no group at all is drift *for that session* -- unless it is pure ordering/positioning
 metadata (a standalone anchor or residue op, see `_is_ordering_only`), which is the companion of
 some save's content op and never counts as unplanned work on its own; an op counts as global drift only if it's
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from itertools import combinations
 from pathlib import Path
 
 from sgt import state
@@ -192,6 +195,42 @@ def _step_keys(footprint) -> frozenset[str]:
     return frozenset(keys)
 
 
+def _resolve_file_paths(paths: frozenset[str], touched: frozenset[str]) -> frozenset[str]:
+    """Re-point a predicted file path at the real repo path it named relative to.
+
+    A plan is written in the words of the plan text -- "add `cmd_swap` to `cli.py`" -- while the
+    file is `coursecraft/cli.py`. Joined as strings those never meet, so such a step could not be
+    matched *or* covered no matter what was built: it was permanently unmatched work AND permanent
+    drift (the study ledger's finding 7). A prediction that names no touched file is re-pointed at
+    the one touched file whose path ends in it.
+
+    Only when that file is unique: two `cli.py` under different packages make the prediction
+    genuinely unresolvable, and picking one would credit a step with another package's work, so an
+    ambiguous basename is left exactly as the planner wrote it -- unmatched, which is honest."""
+    out = set()
+    for path in paths:
+        if path not in touched:
+            candidates = [f for f in touched if f.endswith("/" + path)]
+            if len(candidates) == 1:
+                path = candidates[0]
+        out.add(path)
+    return frozenset(out)
+
+
+def _resolve_file_keys(keys: frozenset[str], touched: frozenset[str]) -> frozenset[str]:
+    """`_resolve_file_paths` over the ``file:``-namespaced half of a step's match keys."""
+    files = _resolve_file_paths(frozenset(k[5:] for k in keys if k.startswith("file:")), touched)
+    return frozenset(k for k in keys if not k.startswith("file:")) | {"file:" + f for f in files}
+
+
+def _touched_files(ops) -> frozenset[str]:
+    """Every file the candidate ops touch -- the universe `_resolve_file_paths` re-points into."""
+    return frozenset(
+        _file_of(sym) for op in ops for sym in op.footprint
+        if not sym.startswith("__plan__::")
+    )
+
+
 def _predicted_files(footprint) -> frozenset[str]:
     """Every file a plan step's prediction names (``__plan__::`` sentinels dropped) -- the
     *file-scope* evidence key for the looser "did the work land here at all?" question that
@@ -244,34 +283,41 @@ def compute_checkpoint(repo: str | Path) -> CheckpointResult:
         pending_steps = [s for s in rec["steps"] if s["status"] == "pending"]
         hollows = {s["hollow_id"]: store.get_hollow(s["hollow_id"]) for s in pending_steps}
 
-        uf = _UnionFind()
-        edge_ops: set[str] = set()
-        edge_hollows: set[str] = set()
+        touched = _touched_files(new_ops)
+        op_keys = {op.id: _op_keys(op.footprint) for op in new_ops}
+        step_keys: dict[str, frozenset[str]] = {}
+        edges: dict[str, set[str]] = {}  # hollow -> the ops that matched IT, not its cluster's
         for hollow_id, hollow in hollows.items():
             if hollow is None:
                 continue
-            step_syms = _step_keys(hollow.footprint)
-            for op in new_ops:
-                if _overlap(step_syms, _op_keys(op.footprint)) >= THRESHOLD:
-                    uf.union(f"h:{hollow_id}", f"o:{op.id}")
-                    edge_hollows.add(hollow_id)
-                    edge_ops.add(op.id)
+            keys = _resolve_file_keys(_step_keys(hollow.footprint), touched)
+            hit = {op_id for op_id, real in op_keys.items() if _overlap(keys, real) >= THRESHOLD}
+            if hit:
+                step_keys[hollow_id], edges[hollow_id] = keys, hit
 
-        clusters: dict[str, dict[str, set]] = {}
-        for h in edge_hollows:
-            clusters.setdefault(uf.find(f"h:{h}"), {"hollows": set(), "ops": set()})["hollows"].add(h)
-        for o in edge_ops:
-            clusters.setdefault(uf.find(f"o:{o}"), {"hollows": set(), "ops": set()})["ops"].add(o)
+        # Steps are grouped only when they COMPETE: sharing a predicted key means the same evidence
+        # answers for both, so no op can be attributed to one of them. Sharing merely an *op* does
+        # not -- a single coarse save op routinely carries two steps' disjoint work (the function
+        # and its tests), and chaining those two steps together through it made a plan built exactly
+        # as stated read as one ambiguous n:m blob that nothing auto-confirmed (pilot O11's `0/3`).
+        uf = _UnionFind()  # over hollows alone now -- ops no longer join anything to anything
+        for a, b in combinations(sorted(edges), 2):
+            if step_keys[a] & step_keys[b]:
+                uf.union(a, b)
 
-        for cluster in clusters.values():
-            if not cluster["hollows"] or not cluster["ops"]:
-                continue
+        clusters: dict[str, set[str]] = {}
+        for hollow_id in edges:
+            clusters.setdefault(uf.find(hollow_id), set()).add(hollow_id)
+
+        edge_ops = {op_id for hit in edges.values() for op_id in hit}
+        for hollow_ids in clusters.values():
+            cluster_ops = {op_id for h in hollow_ids for op_id in edges[h]}
             groups.append(CheckpointGroup(
                 session_id=session_id,
-                hollow_ids=tuple(sorted(cluster["hollows"])),
-                op_ids=tuple(sorted(cluster["ops"])),
+                hollow_ids=tuple(sorted(hollow_ids)),
+                op_ids=tuple(sorted(cluster_ops)),
             ))
-            matched_op_ids.update(cluster["ops"])
+            matched_op_ids.update(cluster_ops)
 
         # Drift is *unplanned work*, not bookkeeping: an op made purely of positional/ordering
         # metadata (residue gap-bytes or a per-entity anchor) did no nameable behavioral work of
@@ -322,11 +368,13 @@ def session_coverage(repo: str | Path) -> dict:
             if op.id in baseline or _is_ordering_only(op.footprint):
                 continue
             new_op_files.update(_file_of(sym) for sym in op.footprint)
+        touched = frozenset(new_op_files)
 
         pending_cov = []
         for step in (s for s in rec["steps"] if s["status"] == "pending"):
             hollow = store.get_hollow(step["hollow_id"])
             files = _predicted_files(hollow.footprint) if hollow else frozenset()
+            files = _resolve_file_paths(files, touched)
             hit = sorted(files & new_op_files)
             if hit:
                 covered, reason = True, (f"edits landed in {hit[0]} since the plan started "
@@ -373,10 +421,19 @@ def confirm_match(repo: str | Path, session_id: str, hollow_ids: list[str], op_i
             record["status"] = "completed"
         _save_sessions(repo, sessions)
 
+    # Merged, not overwritten: one coarse op can fulfil two steps that predicted different work, and
+    # the save's fold confirms those groups one after the other. Assigning here named only whichever
+    # step was confirmed last, so the op's own record contradicted the steps' `matched_op_ids`.
     matches = _load_matches(repo)
-    intent = "; ".join(titles)
     for op_id in op_ids:
-        matches[op_id] = {"session_id": session_id, "hollow_ids": sorted(hollow_ids), "intent": intent}
+        prior = matches.get(op_id)
+        if prior is not None and prior.get("session_id") == session_id:
+            hollows = sorted(set(prior["hollow_ids"]) | set(hollow_ids))
+            reasons = [t for t in prior.get("intent", "").split("; ") if t] + titles
+        else:
+            hollows, reasons = sorted(hollow_ids), titles
+        matches[op_id] = {"session_id": session_id, "hollow_ids": hollows,
+                          "intent": "; ".join(dict.fromkeys(reasons))}
     _save_matches(repo, matches)
 
     for hollow_id in hollow_ids:
