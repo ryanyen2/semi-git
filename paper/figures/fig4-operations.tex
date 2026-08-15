@@ -2,29 +2,35 @@
 % the state before and after each command and what each one costs.
 % Prints as Figure 5, after the fork figure in Section 4.3.
 \newcommand{\FigFourCaption}{The nine operations that act on the record, grouped
-by what each one does to it. One command writes records and the other eight read
-them or change which of them a version includes, and no argument anywhere in the
-figure is a hash or a line number: every one of them is a request the developer
-named, a branch, or a function.}
+by what each one does to it. One command writes records, three only read them, and
+five change which of them a version includes.}
 
 \newcommand{\FigFourDescription}{Three panels, one per group of operations. The
 first panel holds the single operation that writes records, the second holds the
 three that only read them, and the third holds the five that change which
-records a version includes. Each row carries a small diagram of the set before
-and after the command, the command itself, one sentence saying what the developer
-gets, and one sentence in a grey band on the right saying what the operation
-costs. Each diagram draws one horizontal line per request with a mark for every
-edit filed under that request, as in Figure 1, and a dotted outline is an edit
-the version no longer includes.}
+records a version includes. Each row carries a small diagram of the recorded set,
+showing what the command leaves where it changes anything, the command itself, one
+sentence saying what the developer gets, and one sentence in a grey band on the
+right saying what the operation costs. Each diagram draws one horizontal line per
+request with a mark for every edit filed under that request, as in Figure 1, and a
+dotted outline is an edit the version no longer includes. In the three rows whose
+argument is the name of a request, that name is set in the colour of the rail its own
+diagram draws. A line under the last panel states that no argument in the command
+column is a hash or a line number, and that each is a request somebody named, a
+branch, or a function.}
 
 \begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
 % narrow ragged columns, so break a line early rather than hyphenate a word
 \hyphenpenalty=10000 \exhyphenpenalty=10000
 
-% the thumbnails carry the before/after convention, so the column says so itself
+% The one thing a reader cannot infer about these pictures is that they are of the
+% recorded set and not of the files, so that is what the column header says. It used
+% to promise `before -> after', which the three read-only rows cannot keep: an
+% operation that changes nothing has no after, and the middle panel not drawing one
+% is the argument that reports do not change state, made by the encoding.
 \node[anchor=west, inner sep=0, text=sgtInk!60,
       font=\sffamily\fontsize{5.0}{5.8}\selectfont] at (3.4,104.6)
-  {before \ttarrow{} after};
+  {the recorded set};
 \node[hd, anchor=west] at (19,104.6)    {COMMAND};
 \node[hd, anchor=west] at (53,104.6)    {WHAT THE DEVELOPER GETS};
 \node[hd, anchor=west] at (115.5,104.6) {WHAT IT COSTS};
@@ -64,9 +70,10 @@ the version no longer includes.}
 \opgroup{55.4}{29}{sgtGrey}{WHAT ONLY READS THEM}
 
 \oprow{79.8}{\thwhy}{sgt show api.py::handle}
-  {The request this function came from, the saves that touched it, and how much
-   other work removing it takes along.}
-  {The answer is exactly as good as the grouping behind it.}
+  {The request this function came from, the saves that touched it, and how many
+   edits removing that request would take out.}
+  {The answer is exactly as good as the grouping behind it, and it does not say
+   what the request was built on.}
 \oprow{71.4}{\thdiff}{sgt diff main feat/export}
   {The edits each version has that the other does not, in both directions.}
   {It answers in functions, so seeing which lines moved still means opening the
@@ -80,12 +87,16 @@ the version no longer includes.}
 % ============ what changes which records a version includes ===============
 \opgroup{7.4}{46}{sgtInk}{WHAT CHANGES WHICH RECORDS A VERSION INCLUDES}
 
-\oprow{48.8}{\threvert}{sgt revert "price cache"}
+% In these three rows the argument is a request name, and it is set in the colour of
+% the rail the row's own thumbnail draws, so the picture on the left and the word the
+% developer types are visibly the same thing. The other six rows take a function or a
+% branch, which have no colour, and that is the sorting the bottom line names.
+\oprow{48.8}{\threvert}{sgt revert \textcolor{fCache}{"price cache"}}
   {The named set subtracted from the version, with every function it changes
    named before anything is applied.}
   {A function later work also edited gets the set's lines subtracted from its
    current text, and the tests decide.}
-\oprow{40.4}{\threstore}{sgt restore "price cache"}
+\oprow{40.4}{\threstore}{sgt restore \textcolor{fCache}{"price cache"}}
   {The same set back, byte for byte, with everything added since left alone.}
   {Refused when putting the set back would leave two versions of one function
    live, and the refusal prints edit identifiers with no function name.}
@@ -97,10 +108,25 @@ the version no longer includes.}
    picks or writes is included once the project's test command passes.}
   {Two edits at opposite ends of one function are also competing versions, and
    git would have merged them without asking.}
-\oprow{15.2}{\thsubset}{sgt propose land --subset "export"}
+\oprow{15.2}{\thsubset}{sgt propose land --subset \textcolor{fExport}{"export"}}
   {One finished feature sent to the shared branch, with the unfinished one left
    behind.}
   {Two functions that sit next to each other in one file can lose the blank line
    between them.}
+
+% A key for the two marks the thumbnails are built out of. Figure 1 keys the whole
+% vocabulary, and this figure repeats the two that carry every row here, so a reader
+% who opens the paper at this page can read the thumbnails without turning back.
+\newcommand{\opkey}[3]{\node[anchor=west, inner sep=0, text=sgtInk!65,
+  font=\sffamily\fontsize{5.0}{5.8}\selectfont] at ({#1+2.2},#2) {#3};}
+\opadd{3.4}{3.6}{sgtInk!55}\opkey{3.4}{3.6}{an edit the version includes}
+\opghost{47.0}{3.6}{sgtInk!55}\opkey{47.0}{3.6}{an edit it does not}
+% The claim this figure exists to make, put where a reader who has just read nine
+% commands arrives at it. It was the second half of the caption, where nothing in
+% the COMMAND column marked the evidence for it.
+\node[anchor=west, inner sep=0, text=sgtInk!85,
+      font=\sffamily\fontsize{5.0}{5.8}\selectfont] at (85.0,3.6)
+  {No argument here is a hash or a line number: each is a request somebody named, a
+   branch, or a function.};
 
 \end{tikzpicture}

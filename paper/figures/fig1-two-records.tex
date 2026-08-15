@@ -8,13 +8,16 @@ requests a developer typed to a coding agent, each marked with a small figure of
 person, and below them one change the agent made without being asked, marked with
 a small figure of a robot. Each request has its own colour. The middle panel shows
 two git commits drawn as cards containing file names with coloured diff hunks
-under each, and hunks of every colour are mixed together inside both commits. The
+under each, and each commit holds hunks of three different colours, so two
+requests and the unrequested change are mixed together inside each of them. The
 right panel shows four horizontal rails, one per request, with square, circular and
 triangular marks placed along each rail under the commit in which that edit
 happened. Three marks on three different rails are ringed to show that all three
 edited the same function. A strip along the bottom asks the same task of both
 records: taking the caching back out means finding six of the fifteen hunks by hand
-under git, and one named command under sgt.}
+under git, and one named command under sgt. The request's name is set in its own
+colour both where the task is stated and inside the sgt command, because they are the
+same words.}
 
 \begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
 
@@ -155,9 +158,12 @@ under git, and one named command under sgt.}
 % ===================== the same task, of both records =====================
 \plainpanel{0}{0}{174}{12.6}{wGrey}
 
+% The request is named in its own colour here and again in the command on the right,
+% because those are the same words and the reader typing them is the whole argument.
+% The middle column has no name to colour, which is the thing git does not store.
 \node[anchor=north west, text width=32mm, align=left, inner sep=0, text=sgtInk,
       font=\sffamily\bfseries\fontsize{6.0}{7.0}\selectfont] at (2.2,10.6)
-  {A week later, the price cache has to come back out.};
+  {A week later, the \textcolor{fCache}{price cache} has to come back out.};
 
 \node[anchor=north west, text width=59mm, align=left, inner sep=0, text=sgtInk!85,
       font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (41.2,10.6)
@@ -166,7 +172,7 @@ under git, and one named command under sgt.}
 
 \node[anchor=north west, inner sep=0, text=sgtInk,
       font=\ttfamily\fontsize{5.9}{7}\selectfont] at (107.2,10.6)
-  {\$ sgt revert "price cache"};
+  {\$ sgt revert \textcolor{fCache}{"price cache"}};
 \node[anchor=north west, inner sep=0, text=sgtInk!75,
       font=\sffamily\fontsize{5.5}{6.5}\selectfont] at (107.2,6.6)
   {6 edits, 4 functions, 3 files, one name};

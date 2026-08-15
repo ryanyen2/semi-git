@@ -1,39 +1,36 @@
 \begin{abstract}
-A developer who works through a coding agent describes a change in English and
-receives code, so the description that defines the change and the lines that
-implement it are written by different parties. One developer asked for three
-things in an hour and fourteen functions in five files came back changed, in two
-commits that hold all three requests interleaved with a rename the agent made on
-its own initiative. Git addresses a history by lines and by commits, so a
-developer who wants one of those three requests out of it has to name the lines
-that request produced, and after an agent wrote the code the developer cannot
-name them. The unit of record and the unit of thought have come apart. A history
-should record what its author asked for and treat the resulting text as the
-secondary product, which is the reverse of what every system in wide use does.
+A version control system records the lines a developer wrote, on the reasonable
+assumption that whoever wrote them knows when and how and why they changed. A
+developer working through a coding agent did not write them. One developer asked
+for three things in an hour, and fourteen functions in five files came back
+changed, in two commits that between them hold all three requests interleaved with
+a rename the agent made on its own initiative. A week later they wanted one of the
+three taken back out. What that developer holds is a theory of their codebase pitched
+at the level of the things they asked for, the caching and the rate limit and the
+retry policy, and what git can address is a line inside a commit. The description
+that named the change exactly, in the developer's own words and before any of the
+code existed, is the one thing no version control system keeps.
 
-We present \sgt{}, a version control system that records a change as one edit to
-one function, files each edit under the request it was made for, and keeps the
-whole record inside an ordinary git repository. A developer names a request to
-remove it, put it back, or carry it to another
-branch, and the code that other requests contributed to the same files stays
-where it is. \sgt{} reads code and does not write it, with one exception it
-reports every time: removing a request from a function that later work also
-changed subtracts the request's lines from the current text, and the developer's
-tests decide whether that was right.
+We present \sgt{}, which records a change as one edit to one function, files each
+edit under the request it was made for, and keeps the whole record inside an
+ordinary git repository. A developer names a request to remove it, put it back, or
+carry it to another branch, and the code that other requests contributed to the
+same files stays where it is. \sgt{} reads code and does not write it, with one
+exception it reports every time: removing a request from a function that later
+work also changed subtracts the request's lines from the current text, and the
+developer's tests decide whether that was right.
 
-The design costs the developer three things. Two
-edits to the same function from the same starting point are recorded as
-competing versions that a person decides between, including the pair at opposite
-ends of a fifty line function that git would have merged without comment. The
-grouping of edits into named features is inferred from which functions change
-together, so a person corrects it. Code in a language \sgt{} does not parse is
-versioned whole, at the grain git already uses.
-
-\sgt{} has versioned its own construction for fifty-seven days and three hundred
-and forty-six commits, and that is where the limits we report come from: a
-quarter of the repository is not code, fifty-six files no set of records
-reproduces, and a safety gate nobody configured. The study of whether a developer
-gets these operations right more often with \sgt{} than without it is designed and
-not yet run, and we state which of its measures would count against us before we
-have seen any of them.
+The design costs three things, and we took each cost over a failure we thought
+worse. Two edits to one
+function from the same starting point are recorded as competing versions that a
+person decides between, including the pair at opposite ends of a fifty line
+function that git would have merged without comment; the grouping of edits into
+named requests is inferred, so a person corrects it; and code in a language
+\sgt{} does not parse is versioned whole, at the grain git already uses. \sgt{}
+has versioned its own construction for fifty-seven days and three hundred and
+forty-six commits, which is where the limits we report come from: nearly three files
+in ten hold no function for a request to be filed under, fifty-six files no
+set of records reproduces, and a safety gate nobody configured. The study of whether a developer gets these operations
+right more often with \sgt{} than without it is designed and not yet run, and we
+say which of its measures would count against us before we have seen any of them.
 \end{abstract}

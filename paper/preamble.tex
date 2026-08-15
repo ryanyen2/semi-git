@@ -326,24 +326,30 @@
   \opadd{7.5}{0}{fRetry}\opadd{9.3}{0}{fRetry}\opadd{11.1}{0}{fRetry}
 \end{thumb}}
 
+% The destination branch is feat/export, so the rail that comes live is the export
+% colour. Colour carries the request throughout this paper, and a switch row drawn
+% in the caching colour would say the developer switched to the caching.
 \newcommand{\thswitch}{\begin{thumb}
   \draw[rail=fRate] (0,1.5) -- (5.4,1.5); \opadd{1.6}{1.5}{fRate}\opadd{3.6}{1.5}{fRate}
-  \draw[raildim] (0,-1.5) -- (5.4,-1.5); \opghost{1.6}{-1.5}{fCache}\opghost{3.6}{-1.5}{fCache}
+  \draw[raildim] (0,-1.5) -- (5.4,-1.5); \opghost{1.6}{-1.5}{fExport}\opghost{3.6}{-1.5}{fExport}
   \thumbarrow
   \draw[raildim] (7.6,1.5) -- (12.6,1.5); \opghost{9.0}{1.5}{fRate}\opghost{11.0}{1.5}{fRate}
-  \draw[rail=fCache] (7.6,-1.5) -- (12.6,-1.5); \opadd{9.0}{-1.5}{fCache}\opadd{11.0}{-1.5}{fCache}
+  \draw[rail=fExport] (7.6,-1.5) -- (12.6,-1.5); \opadd{9.0}{-1.5}{fExport}\opadd{11.0}{-1.5}{fExport}
 \end{thumb}}
 
 % propose land --subset: one of two finished features crosses the line into the
 % shared branch, and the other stays behind on the developer's side of it.
+% The named subset is the export, so the rail that crosses is the export colour and
+% the shorter rail left behind is the half-finished retry policy, which is the pair
+% Section 5.4 walks through. The rail lengths carry finished against unfinished.
 \newcommand{\thsubset}{\begin{thumb}
-  \draw[rail=fRate] (0,1.6) -- (7.2,1.6);
-  \opadd{1.4}{1.6}{fRate}\opadd{3.4}{1.6}{fRate}
-  \draw[rail=fCache] (0,-1.6) -- (5.0,-1.6);
-  \opadd{1.4}{-1.6}{fCache}\opadd{3.4}{-1.6}{fCache}
+  \draw[rail=fExport] (0,1.6) -- (7.2,1.6);
+  \opadd{1.4}{1.6}{fExport}\opadd{3.4}{1.6}{fExport}
+  \draw[rail=fRetry] (0,-1.6) -- (5.0,-1.6);
+  \opadd{1.4}{-1.6}{fRetry}\opadd{3.4}{-1.6}{fRetry}
   \draw[nowrule] (8.4,-2.8) -- (8.4,2.8);
-  \draw[rail=fRate] (8.4,1.6) -- (12.6,1.6);
-  \opadd{9.8}{1.6}{fRate}\opadd{11.6}{1.6}{fRate}
+  \draw[rail=fExport] (8.4,1.6) -- (12.6,1.6);
+  \opadd{9.8}{1.6}{fExport}\opadd{11.6}{1.6}{fExport}
 \end{thumb}}
 
 % ---------------------------------------------------------------------------

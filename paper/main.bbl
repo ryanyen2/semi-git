@@ -2,7 +2,7 @@
 %%% Do NOT edit. File created by BibTeX with style
 %%% ACM-Reference-Format-Journals [18-Jan-2012].
 
-\begin{thebibliography}{90}
+\begin{thebibliography}{82}
 
 %%% ====================================================================
 %%% NOTE TO THE USER: you can override these defaults by providing
@@ -123,19 +123,6 @@
   \bibfield{editor}{\bibinfo{person}{John~M. Carroll}} (Ed.).
   \bibinfo{publisher}{Morgan Kaufmann}, \bibinfo{pages}{103--134}.
 \newblock
-
-
-\bibitem[Brindescu et~al\mbox{.}(2020)]%
-        {brindescu2020}
-\bibfield{author}{\bibinfo{person}{Caius Brindescu}, \bibinfo{person}{Iftekhar
-  Ahmed}, \bibinfo{person}{Rafael Leano}, {and} \bibinfo{person}{Anita Sarma}.}
-  \bibinfo{year}{2020}\natexlab{}.
-\newblock \showarticletitle{Planning for untangling: Predicting the difficulty
-  of merge conflicts}. In \bibinfo{booktitle}{\emph{Proceedings of the 42nd
-  International Conference on Software Engineering (ICSE)}}.
-  \bibinfo{pages}{801--811}.
-\newblock
-\href{https://doi.org/10.1145/3377811.3380344}{doi:\nolinkurl{10.1145/3377811.3380344}}
 
 
 \bibitem[Brunsfeld and {the tree-sitter contributors}(2026)]%
@@ -278,6 +265,17 @@
 \href{https://doi.org/10.1002/smr.567}{doi:\nolinkurl{10.1002/smr.567}}
 
 
+\bibitem[Drosos and Sarkar(2025)]%
+        {sarkar2025}
+\bibfield{author}{\bibinfo{person}{Ian Drosos} {and} \bibinfo{person}{Advait
+  Sarkar}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Vibe coding: Programming through conversation with
+  artificial intelligence}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2506.23253}}
+  (\bibinfo{year}{2025}).
+\newblock
+
+
 \bibitem[Falleri et~al\mbox{.}(2014)]%
         {falleri2014}
 \bibfield{author}{\bibinfo{person}{Jean-Rémy Falleri},
@@ -315,6 +313,20 @@
   \bibinfo{howpublished}{\url{https://docs.gitbutler.com/features/virtual-branches/virtual-branches}}.
 \newblock
 \shownote{Accessed 2026}.
+\newblock
+
+
+\bibitem[{GitClear}(2025)]%
+        {gitclear2025}
+\bibfield{author}{\bibinfo{person}{{GitClear}}.}
+  \bibinfo{year}{2025}\natexlab{}.
+\newblock \bibinfo{title}{AI copilot code quality: 2025 look back at 12 months
+  of data}.
+\newblock
+  \bibinfo{howpublished}{\url{https://www.gitclear.com/ai_assistant_code_quality_2025_research}}.
+\newblock
+\shownote{211 million changed lines of code authored January 2020 to December
+  2024}.
 \newblock
 
 
@@ -417,18 +429,6 @@
 \newblock
 
 
-\bibitem[Hattori and Lanza(2008)]%
-        {hattori2008}
-\bibfield{author}{\bibinfo{person}{Lile~P. Hattori} {and}
-  \bibinfo{person}{Michele Lanza}.} \bibinfo{year}{2008}\natexlab{}.
-\newblock \showarticletitle{On the nature of commits}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 23rd IEEE/ACM International
-  Conference on Automated Software Engineering (ASE) Workshops}}.
-  \bibinfo{pages}{63--71}.
-\newblock
-\href{https://doi.org/10.1109/ASEW.2008.4686322}{doi:\nolinkurl{10.1109/ASEW.2008.4686322}}
-
-
 \bibitem[Head et~al\mbox{.}(2019)]%
         {head2019}
 \bibfield{author}{\bibinfo{person}{Andrew Head}, \bibinfo{person}{Fred Hohman},
@@ -495,16 +495,6 @@
 \newblock \bibinfo{journal}{\emph{ACM Transactions on Programming Languages and
   Systems}} \bibinfo{volume}{11}, \bibinfo{number}{3} (\bibinfo{year}{1989}),
   \bibinfo{pages}{345--387}.
-\newblock
-
-
-\bibitem[Jackson(2021)]%
-        {jackson2021}
-\bibfield{author}{\bibinfo{person}{Daniel Jackson}.}
-  \bibinfo{year}{2021}\natexlab{}.
-\newblock \bibinfo{booktitle}{\emph{The Essence of Software: Why Concepts
-  Matter for Great Design}}.
-\newblock \bibinfo{publisher}{Princeton University Press}.
 \newblock
 
 
@@ -583,19 +573,6 @@
 \href{https://doi.org/10.1109/WCRE.2005.33}{doi:\nolinkurl{10.1109/WCRE.2005.33}}
 
 
-\bibitem[Kleppmann et~al\mbox{.}(2019)]%
-        {kleppmann2019}
-\bibfield{author}{\bibinfo{person}{Martin Kleppmann}, \bibinfo{person}{Victor
-  B.~F. Gomes}, \bibinfo{person}{Dominic~P. Mulligan}, {and}
-  \bibinfo{person}{Alastair~R. Beresford}.} \bibinfo{year}{2019}\natexlab{}.
-\newblock \showarticletitle{Interleaving anomalies in collaborative text
-  editors}. In \bibinfo{booktitle}{\emph{Proceedings of the 6th Workshop on
-  Principles and Practice of Consistency for Distributed Data (PaPoC)}}.
-  \bibinfo{pages}{1--7}.
-\newblock
-\href{https://doi.org/10.1145/3301419.3323972}{doi:\nolinkurl{10.1145/3301419.3323972}}
-
-
 \bibitem[Ko et~al\mbox{.}(2006)]%
         {ko2006}
 \bibfield{author}{\bibinfo{person}{Andrew~J. Ko}, \bibinfo{person}{Brad~A.
@@ -642,33 +619,6 @@
   \bibinfo{booktitle}{\emph{Proceedings of the Fifth ACM SIGSOFT Symposium on
   Software Development Environments (SDE)}}. \bibinfo{pages}{78--87}.
 \newblock
-
-
-\bibitem[Litt et~al\mbox{.}(2022)]%
-        {litt2022}
-\bibfield{author}{\bibinfo{person}{Geoffrey Litt}, \bibinfo{person}{Sarah Lim},
-  \bibinfo{person}{Martin Kleppmann}, {and} \bibinfo{person}{Peter van
-  Hardenberg}.} \bibinfo{year}{2022}\natexlab{}.
-\newblock \showarticletitle{Peritext: A CRDT for collaborative rich text
-  editing}.
-\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Human-Computer
-  Interaction}} \bibinfo{volume}{6}, \bibinfo{number}{CSCW2}
-  (\bibinfo{year}{2022}), \bibinfo{pages}{1--29}.
-\newblock
-\href{https://doi.org/10.1145/3555644}{doi:\nolinkurl{10.1145/3555644}}
-
-
-\bibitem[Maalej et~al\mbox{.}(2014)]%
-        {maalej2014}
-\bibfield{author}{\bibinfo{person}{Walid Maalej}, \bibinfo{person}{Rebecca
-  Tiarks}, \bibinfo{person}{Tobias Roehm}, {and} \bibinfo{person}{Rainer
-  Koschke}.} \bibinfo{year}{2014}\natexlab{}.
-\newblock \showarticletitle{On the comprehension of program comprehension}.
-\newblock \bibinfo{journal}{\emph{ACM Transactions on Software Engineering and
-  Methodology}} \bibinfo{volume}{23}, \bibinfo{number}{4}
-  (\bibinfo{year}{2014}), \bibinfo{pages}{1--37}.
-\newblock
-\href{https://doi.org/10.1145/2622669}{doi:\nolinkurl{10.1145/2622669}}
 
 
 \bibitem[Meunier and Becker(2024)]%
@@ -836,19 +786,6 @@
 \newblock
 
 
-\bibitem[Shapiro et~al\mbox{.}(2011)]%
-        {shapiro2011}
-\bibfield{author}{\bibinfo{person}{Marc Shapiro}, \bibinfo{person}{Nuno
-  Preguiça}, \bibinfo{person}{Carlos Baquero}, {and} \bibinfo{person}{Marek
-  Zawirski}.} \bibinfo{year}{2011}\natexlab{}.
-\newblock \showarticletitle{Conflict-free replicated data types}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 13th International Symposium on
-  Stabilization, Safety, and Security of Distributed Systems (SSS)}}.
-  \bibinfo{pages}{386--400}.
-\newblock
-\href{https://doi.org/10.1007/978-3-642-24550-3_29}{doi:\nolinkurl{10.1007/978-3-642-24550-3_29}}
-
-
 \bibitem[Shen et~al\mbox{.}(2021)]%
         {shen2021}
 \bibfield{author}{\bibinfo{person}{Bo Shen}, \bibinfo{person}{Wei Zhang},
@@ -877,18 +814,17 @@
 \newblock
 
 
-\bibitem[Sillito et~al\mbox{.}(2008)]%
-        {sillito2008}
-\bibfield{author}{\bibinfo{person}{Jonathan Sillito}, \bibinfo{person}{Gail~C.
-  Murphy}, {and} \bibinfo{person}{Kris De~Volder}.}
-  \bibinfo{year}{2008}\natexlab{}.
-\newblock \showarticletitle{Asking and answering questions during a programming
-  change task}.
-\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}}
-  \bibinfo{volume}{34}, \bibinfo{number}{4} (\bibinfo{year}{2008}),
-  \bibinfo{pages}{434--451}.
+\bibitem[Tang et~al\mbox{.}(2024)]%
+        {tang2024}
+\bibfield{author}{\bibinfo{person}{Ningzhi Tang}, \bibinfo{person}{Meng Chen},
+  \bibinfo{person}{Zheng Ning}, \bibinfo{person}{Aakash Bansal},
+  \bibinfo{person}{Yu Huang}, \bibinfo{person}{Collin McMillan}, {and}
+  \bibinfo{person}{Toby Jia-Jun Li}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Developer behaviors in validating and repairing
+  LLM-generated code using IDE and eye tracking}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the 2024 IEEE Symposium on Visual
+  Languages and Human-Centric Computing (VL/HCC)}}. \bibinfo{pages}{40--46}.
 \newblock
-\href{https://doi.org/10.1109/TSE.2008.26}{doi:\nolinkurl{10.1109/TSE.2008.26}}
 
 
 \bibitem[Tao and Kim(2015)]%
@@ -926,29 +862,6 @@
 \newblock
 \shownote{Accessed August 2026}.
 \newblock
-
-
-\bibitem[Thimbleby(1988)]%
-        {thimbleby1988}
-\bibfield{author}{\bibinfo{person}{Harold Thimbleby}.}
-  \bibinfo{year}{1988}\natexlab{}.
-\newblock \showarticletitle{Delaying commitment}.
-\newblock \bibinfo{journal}{\emph{IEEE Software}} \bibinfo{volume}{5},
-  \bibinfo{number}{3} (\bibinfo{year}{1988}), \bibinfo{pages}{78--86}.
-\newblock
-\href{https://doi.org/10.1109/52.2027}{doi:\nolinkurl{10.1109/52.2027}}
-
-
-\bibitem[Tian et~al\mbox{.}(2022)]%
-        {tian2022}
-\bibfield{author}{\bibinfo{person}{Yingchen Tian}, \bibinfo{person}{Yuxia
-  Zhang}, \bibinfo{person}{Klaas-Jan Stol}, \bibinfo{person}{Lin Jiang}, {and}
-  \bibinfo{person}{Hui Liu}.} \bibinfo{year}{2022}\natexlab{}.
-\newblock \showarticletitle{What makes a good commit message?}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 44th International Conference on
-  Software Engineering (ICSE)}}. \bibinfo{pages}{2389--2401}.
-\newblock
-\href{https://doi.org/10.1145/3510003.3510205}{doi:\nolinkurl{10.1145/3510003.3510205}}
 
 
 \bibitem[Torvalds et~al\mbox{.}(2026)]%
@@ -1066,21 +979,6 @@
   \bibinfo{pages}{1050--1061}.
 \newblock
 \href{https://doi.org/10.1109/ASE.2019.00101}{doi:\nolinkurl{10.1109/ASE.2019.00101}}
-
-
-\bibitem[Xia et~al\mbox{.}(2018)]%
-        {xia2018}
-\bibfield{author}{\bibinfo{person}{Xin Xia}, \bibinfo{person}{Lingfeng Bao},
-  \bibinfo{person}{David Lo}, \bibinfo{person}{Zhenchang Xing},
-  \bibinfo{person}{Ahmed~E. Hassan}, {and} \bibinfo{person}{Shanping Li}.}
-  \bibinfo{year}{2018}\natexlab{}.
-\newblock \showarticletitle{Measuring program comprehension: A large-scale
-  field study with professionals}.
-\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}}
-  \bibinfo{volume}{44}, \bibinfo{number}{10} (\bibinfo{year}{2018}),
-  \bibinfo{pages}{951--976}.
-\newblock
-\href{https://doi.org/10.1109/TSE.2017.2734091}{doi:\nolinkurl{10.1109/TSE.2017.2734091}}
 
 
 \bibitem[Yang et~al\mbox{.}(2024)]%

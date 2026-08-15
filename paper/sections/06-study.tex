@@ -11,12 +11,16 @@ against sessions where somebody happened to write the requests down. A developer
 either gets more of these operations right with \sgt{} than without it, or does
 not, and that is a question about people. The first has a procedure and a number we
 can print today, the second is under way on a corpus we are still assembling, and
-the third is designed and not yet run.
+the third is designed and not yet run. Underneath all three, \sgt{} has been the
+version control for its own repository since the day it first ran, which is where
+every number in Section~\ref{sec:discussion} comes from and why the two prices
+Section~\ref{sec:design} states most flatly are the two that cost us something
+before they cost anybody else.
 
 \smallskip\noindent\emph{Not one number in this section comes from that third
-study.} The measure that decides the argument is not the one a reader would expect
-us to lead with, and naming it before the data exists is the only way to be
-believed about it afterwards.
+study.} The measure that decides the argument is not the time a task takes but the
+errors a participant does not notice, and naming that before the data exists is the
+only way to be believed about it afterwards.
 
 \subsection{The rebuild has to be exact}
 \label{sec:eval-exact}
@@ -28,27 +32,24 @@ measurement whose failure would end the work rather than qualify it, so it goes
 first and it is the only one we insist on before adoption.
 
 The procedure follows the shape of the claim. We walk a repository's history one
-commit at a time, mine each commit into records, rebuild every file from the set
-of records that commit's state implies, and compare the result against the blob
-git holds, byte for byte. A repository passes at a commit only if every file
-matches; a single differing byte in a single file is a failure at that commit, and
-we will report the fraction of files that rebuild rather than an average over
-repositories, because a developer cares whether their file comes back and not
-whether most files do. The corpus is open source Python and TypeScript
-repositories chosen for length of history rather than for anything else. We are
-still assembling it and have not run it, so the only number this procedure has
-produced so far comes from our own repository, which is the hardest case available
-to us because records written by five different versions of our miner sit in it and
-the version counter now stands at eight.
+commit at a time, mine each commit into records, rebuild every file from the set of
+records that commit's state implies, and compare the result against the blob git
+holds, byte for byte. A repository passes at a commit only if every file matches, so a
+single differing byte in a single file is a failure at that commit, and we will report
+the fraction of files that rebuild rather than an average over repositories, because a
+developer cares whether their file comes back and not whether most files do. The
+corpus is open source Python and TypeScript repositories chosen for length of history
+and nothing else, and we are still assembling it, so the only number this procedure has
+produced comes from our own repository, which is the hardest case available to us
+because records written by five different versions of our miner sit in it.
 
-That number is fifty-six files that no valid set of records reproduces, which is
-one in seven of the files whose records name functions, and
-Section~\ref{sec:unreproducible} gives that denominator and says what is in the
-fifty-six. What we do not know is whether fifty-six is the
-cost of our own format changes or the cost of the design. Five miner versions
-leaving records in fifty-seven days is a rate no adopter will ever match, so the
-corpus run is how we intend to separate the two, since a repository \sgt{} has
-never touched before cannot have our migrations in it.
+That number is fifty-six files that no valid set of records reproduces, one in seven of
+the files whose records name functions, and Section~\ref{sec:unreproducible} gives that
+denominator and says what is in the fifty-six. What we do not know is whether
+fifty-six is the cost of our own format changes or the cost of the design, and since
+five miner versions in fifty-seven days is a rate no adopter will ever match, the
+corpus run is how we intend to separate the two: a repository \sgt{} has never touched
+cannot have our migrations in it.
 
 \subsection{Whether the grouping matches what was asked for}
 
@@ -60,23 +61,21 @@ the good reason that its authors had nothing better to compare against
 (Section~\ref{sec:related}). The question is whether the set that comes back when
 a developer names one request is the set of edits that request produced.
 
-That question needs a corpus where the requests were recorded, which agent
-sessions now supply as a matter of course, since the transcript of a session names
-each request and the files the agent touched while carrying it out. We mine each
-repository without reading any transcript, derive a reference grouping from the
-transcripts alone, and then ask two things of every request in the session. How
-much of what that request produced comes back when the developer names it, and how
-much else comes with it. Those two quantities are the two ways a revert
-disappoints the person who ran it. The first is the edit the revert missed and
-left sitting in the file, and the second is the edit belonging to a different
-request that the revert carried off with it. They fail
-asymmetrically, and the second is worse, because a developer who is handed too
-little notices when the code still runs the way it did and a developer who is
-handed too much has already lost work they meant to keep.
+That question needs a corpus where the requests were recorded, which agent sessions
+now supply as a matter of course, since the transcript of a session names each request
+and the files the agent touched while carrying it out. We mine each repository without
+reading any transcript, derive a reference grouping from the transcripts alone, and
+then ask two things of every request in the session: how much of what that request
+produced comes back when the developer names it, and how much else comes with it.
+Those are the two ways a revert disappoints the person who ran it, the edit it missed
+and left sitting in the file, and the edit belonging to a different request that it
+carried off as well. They fail asymmetrically, and the second is worse, because a
+developer who is handed too little notices when the code still runs the way it did and
+a developer who is handed too much has already lost work they meant to keep.
 
 We expect the shared helper to be where this measurement goes wrong, because
-Section~\ref{sec:names} predicts it and two months of daily use have not stopped
-it happening. An argument parser or a logging function that changes in nearly every
+Section~\ref{sec:names} predicts it and fifty-seven days of daily use have not
+stopped it happening. An argument parser or a logging function that changes in nearly every
 save is coupled to everything by the signal the clustering reads, and it draws
 otherwise unrelated requests into one group. If most of the disagreement between
 our grouping and the transcripts turns out to sit on functions of that kind, then
@@ -88,6 +87,7 @@ time, which is the design we argued against in Section~\ref{sec:names} and would
 have to argue for.
 
 \subsection{Three requests, a transcript, and code nobody in the room wrote}
+\label{sec:eval-study}
 
 \begin{table*}[t]
   \centering
@@ -141,12 +141,12 @@ have to argue for.
   \end{tabular}
 \end{table*}
 
-\label{sec:eval-study}
 The study puts a developer in the position the paper is about, which means giving
 them a repository whose code they did not write and the three sentences that
 caused it. Each participant receives a five thousand line Python service, a
-transcript of the session that produced its most recent hour of work, and a
-request to take one of the three things in that transcript back out. This is the
+transcript of the session that produced its most recent hour of work, and three
+tasks, each of which names one request from that transcript and asks for it to be
+moved or removed without disturbing the other two. This is the
 state of the developer in Section~\ref{sec:scenarios} a week later, and it is also
 the state of the developer who picks up a colleague's branch on a Monday, and it
 is the only arrangement we found in which every participant knows exactly as much
@@ -178,17 +178,15 @@ this paper is about, because a participant who removes the caching and quietly
 takes half the retry policy with it has produced a repository that passes its own
 tests.
 
-Table~\ref{tab:measures} lists what we measure and what each measure would have to
-show for the design to be wrong. The first row is the one that matters, and it is
-worth saying plainly why. A developer who spends an extra twenty minutes
-untangling a commit by hand has lost twenty minutes, and a developer who
-submits a repository they believe is clean and that still calls a function they
-deleted has lost something they will not find until the release branch fails to
-import. Hand untangling fails silently, and a design whose whole argument is that
-the developer no longer holds the decomposition has to be measured against silent
-failure rather than against the clock. We collect time because a reader would
-want it and because a tool that is correct and unbearably slow is not adopted, and
-we would not publish a time difference as the finding.
+The first row of Table~\ref{tab:measures} is the one that matters, because a
+developer who spends an extra twenty minutes untangling a commit by hand has lost
+twenty minutes, while a developer who submits a repository they believe is clean and
+that still calls a function they deleted has lost something they will not find until
+the release branch fails to import. Hand untangling fails silently, and a design whose
+whole argument is that the developer no longer holds the decomposition has to be
+measured against silent failure rather than against the clock. We collect time because
+a reader would want it and because a tool that is correct and unbearably slow is not
+adopted, and we would not publish a time difference as the finding.
 
 The last two rows of Table~\ref{tab:measures} measure the prices we stated in
 Section~\ref{sec:design} rather than the benefits, and they are there because a
@@ -196,21 +194,6 @@ study that measures only what a design buys is a study that cannot be wrong. A
 fork stops the developer and a wrong label makes them type a rename, both of which
 are countable inside the session, and both have a threshold past which we would
 change the design rather than defend it.
-
-\subsection{Fifty-seven days on one repository}
-
-Alongside those three, \sgt{} has recorded its own construction, which is the only
-evidence any of this holds up past an afternoon. The system has been the
-version control for its own repository since it first ran, across fifty-seven days
-and three hundred and forty-six commits, so every commitment in
-Section~\ref{sec:design} has been paid for daily, and two of the design
-decisions in this paper exist because a default we shipped removed work we wanted
-to keep. Fifty-seven days is enough to find a default that destroys work and not
-enough to find what a format decision costs after a year, and
-Section~\ref{sec:discussion} reports that evidence, including a safety
-gate nobody configured and a coverage figure of twenty-five
-percent. It is the one part of the evaluation whose numbers are real today. We
-put it there rather than here because everything it has to say is a limit.
 
 \subsection{What none of this would tell us}
 

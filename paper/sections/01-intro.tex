@@ -1,131 +1,132 @@
 \section{Introduction}
 
-When a developer works through a coding agent, the change they want and the code that implements it become two separate descriptions, and the developer authorsonly the first one. A developer on one of our projects asked for a price lookup to be cached because it had become slow, and the agent added a cache module, gave the database query a parameter for how long a cached price stays good, changed the
-request handler to consult the cache before the database, and chose the names of the three new functions. Over the following hour that developer made two more
-requests, and while carrying out the third the agent revised two of the functions
-it had written for the second. Barke et al.\ describe programmers in this mode
-accepting what comes back after a glance that confirms its shape matches what they
-asked for~\cite{barke2023}, and among 410 developers surveyed by Liang et al.,
-understanding and trusting generated code was one of the most frequently reported
-difficulties~\cite{liang2024}. The three sentences the developer typed stayed in
-the chat window, and what entered the repository was eighteen changes to fourteen
-functions in five files.
+A version control system should record the changes made by a developer in a way
+that is both revisitable and reversible. Most of them therefore record the
+artefact the programmer wrote, lines of code, throughout the development life
+cycle, whether by recording snapshots of the codebase~\cite{git2026} or a
+sequence of changes to those lines~\cite{roundy2005,pijul2024}. This is a
+reasonable design choice, because code is authored by the developer, who
+possesses at least a rough idea of when, how, and why it was
+changed~\cite{naur1985,ko2006}. With the practice of the last few years of
+writing code through large language models, where developers specify prompts in
+natural language in a much vaguer form and the model translates them into a
+series of code edits~\cite{sarkar2025}, we question whether this design choice
+still holds.
 
-A week later that developer wants the caching gone, and the request has to be
-restated in whatever terms their version control system understands. Those terms
-are lines and commits, in every system in wide use. Git records a version as a
-snapshot of the whole working tree~\cite{git2026}, Darcs and Pijul record it as a
-patch that adds and removes lines in a stated context~\cite{roundy2005,pijul2024},
-and under either design the smallest thing a history can name is a line in a file,
-so \cmd{git revert} takes back one commit, \cmd{git cherry-pick} moves one commit,
-and a branch points at one commit. The caching is six changes to four functions in
-three files, spread across the two commits that hour produced, and neither commit
-holds only those six. Commits that carry work for more than one purpose are
-ordinary. Herzig and Zeller found them throughout the histories of five open
-source Java projects~\cite{herzig2013,hattori2008}, and the tools built since to
-separate them are scored on whether they recover a grouping a person supplied by
-hand~\cite{barnett2015,tao2015,dias2015,partachi2020,shen2021}.
+In practice we find three places where the design philosophy of current version
+control systems misfits the new workflow. First, the codebase is highly iterated.
+Models make prototyping very easy, and tools like Lovable, Bolt.new, v0, and
+Replit generate an entire codebase from a single prompt, marketed on the premise
+that what they produce is finished software, which is arguably only true when that
+software has no bugs and is tolerably aligned with what the developer was
+imagining. We do not claim that writing code will be automated away in the near
+future, but this reflects how capable models are at generating large chunks of
+code across files, through the features of the software, iterating over interface
+components, and so on, and what matters is no longer where a line of code was but
+what the version of the feature was two turns ago. Across 211 million changed
+lines authored between 2020 and 2024, the share associated with refactoring,
+which is to say lines being moved into a better position rather than written
+afresh, fell from a quarter in 2021 to under a tenth in 2024, while over those
+same three years copied lines rose from 8.3\% to 12.3\% and overtook moved lines
+for the first time~\cite{gitclear2025}, so a
+line is now replaced faster than it settles into a position worth recording.
 
-Separating the caching out by hand means deciding, for each of the fifteen hunks
-in those two commits, whether it belongs to the caching, to the rate limiting the
-developer asked for half an hour before the caching, to the retry policy they
-asked for half an hour after it, or to a rename the agent performed without being
-asked. Six of the fifteen turn out to be the caching, and the developer then
-splits both commits so those six stand alone, reverses them, and checks that no
-function they kept calls a function they just deleted. Biggerstaff et al.\ called
-the task of recovering which functions implement a named concern the concept
-assignment problem~\cite{biggerstaff1993}, and the feature location literature
-that followed measures how much of a program a developer has to read before they
-can answer one such question~\cite{dit2013,maalej2014}. Xia et al.\ instrumented
-professional developers and found that roughly 58\% of their working time went to
-understanding code~\cite{xia2018}.
+Second, prompts in natural language are underspecified and lack the detail that
+code carries~\cite{sarkar2025}. This means there will always be large chunks of
+code carrying logic that the model inferred during implementation and that the
+developer only becomes aware of reactively. Barke et al.\ describe programmers in
+this mode reading what comes back for the shape they expected rather than line by
+line~\cite{barke2023}, Tang et al.\ found that developers often do not notice
+which code a model wrote, and delete and rewrite it rather than repair it when
+something is wrong~\cite{tang2024}, and among 410 developers surveyed by Liang et
+al., understanding and trusting generated code was one of the most frequently
+reported difficulties~\cite{liang2024}. Version control over code that never
+existed in the developer's memory loses the purpose of version control, which is
+that a programmer can trace back to the version they desired, because a history
+can only be searched with the words that person already has.
 
-For as long as developers wrote the lines themselves this recovery was cheap. The
-person doing it remembered writing the code, so the history had only to remind
-them of a decomposition they already held~\cite{ko2006,sillito2008}. Version
-control systems that record at the grain of a method were built during those years
-and several are still available, and almost nobody adopted one, which we read as
-evidence that the grain was never the constraint that
-mattered~\cite{hata2011,higo2020,chucarroll2002}. Naur argued
-that a program text and its documentation are insufficient carriers of the theory
-a programmer builds while writing it, and that the continued modification of a
-large program therefore depends on a group of programmers in close and continuous
-contact with it~\cite{naur1985}. A developer who directs an agent stands outside
-that group from the first minute. They did not write the lines, they remember
-nothing about them, and the theory Naur describes was held, for as long as it was
-held at all, by something that discards it when the session ends.
+Third, prompts are mostly constituted by what the programmer desires to do,
+rather than, as they once were, by specifying the location of files and the target
+of interest for the change. In that sense, developers are constructing their
+theory about the codebase~\cite{naur1985} at the level of what a feature of the
+software is, the components in the interface, the policy for retries, the stages
+in the pipeline, none of which currently serves as the unit a version control
+system records. This is the level the comprehension literature has always found
+people working at: Biggerstaff et al.\ called recovering which functions
+implement a named concern the concept assignment problem~\cite{biggerstaff1993},
+and the feature location field exists because answering it by reading code is
+expensive~\cite{dit2013}. The commit is the closest thing a version control
+system offers and it is not the same unit, since Herzig and Zeller found changes
+serving several unrelated purposes throughout the histories of five open source
+Java projects~\cite{herzig2013}, and an agent session produces exactly that,
+because a commit ends where the developer stopped to type a command and a request
+ends somewhere else.
 
-What that developer does hold is the sentence they typed, which named the boundary
-of the change exactly, in their own words, before any of the code existed, and
-which no version control system records. A history, we think, should be regarded as
-a record of what its author asked for, with the text those requests produced as the
-secondary product. Getting this unit wrong does not put an operation out of a
-developer's reach. It makes them pay for the operation in reading, every time they
-want it, and it teaches them to call ordinary difficulty what is a property of
-their notation.
+We thus describe a new version control system, which we designed to version
+control the highly iterated codebase at the more semantic level of the feature,
+where each version of the code is a set of edits filed across those features.
+Instead of version controlling the line of code, we parse each file into its
+functions and classes~\cite{treesitter} and record one edit per changed function,
+where each edit names the function, the version it started from, the version it
+produced, and the other functions the new code refers to. We then group those
+functions into features from which ones changed in the same save, which ones call
+one another, and where they
+sit~\cite{zimmermann2004,ying2004,traag2019}, and label each group with the words
+the developer and the agent used while the work was happening. A version is then
+a set of these edits held to two rules, that no edit is included without the edits
+it was built on and that each function has one included version, and the files on
+disk are rebuilt by writing out the included version of every function and
+leaving the text between them alone.
 
-A careful maintainer will answer all of this with commit hygiene: commit small,
-commit often, stage hunk by hunk with \cmd{git add -p}, and each request ends up
-with a commit of its own, a discipline the community has studied carefully enough
-to have opinions about what a good commit message contains~\cite{tian2022}. We have asked contributors on our own projects for
-exactly this and have held ourselves to it, and it works whenever the developer
-knows at the moment of committing which lines serve which purpose. In an agent
-session the developer does not know that. When fourteen changed functions come back
-and the developer's own contribution was three sentences of English, staging hunk
-by hunk means reading the whole diff to reconstruct a boundary the agent held and
-never wrote down. Thimbleby argued that a notation should let a person defer a
-decision until they hold the information the decision
-needs~\cite{thimbleby1988}. Commit hygiene asks for the decision first, which was
-affordable for twenty years because the information arrived with the authorship.
+For example, a service that answers price quotes for a trading dashboard has a
+handler, a database layer, and a set of row accessors. On Monday the developer
+prompts \cmd{cache the price lookup, it takes 400ms and the price barely moves},
+and the agent writes \sym{cache.py::get\_cached} and \sym{cache.py::\_ttl}, gives
+\sym{db.py::query} a parameter for how long a cached price stays good so the cache
+can pass one through, and changes \sym{api.py::handle} to consult the cache before
+the database. That is four edits to four functions in three files, and the two in
+\sym{cache.py} share no line with the one in \sym{api.py}, yet all four are filed
+under one name. Over the next two days two further prompts change
+\sym{api.py::handle} again, one adding a rate limit and one adding a retry policy,
+and while it is adding the retry the agent goes back and reworks two of the cache's
+own functions, which brings the price cache to six edits. A colleague adds a metric
+for quote latency. Three weeks later the developer
+finds the dashboard showing a price sixty seconds stale, so they type
+\cmd{sgt revert "price cache"}. \sgt{} prints the six edits that would come out,
+names \sym{api.py::handle} as the one function where later work was built on
+something being removed, shows the text each change would produce, and asks before
+touching anything. The rate limit and the retry policy stay, because their edits
+are still included; the colleague's metric stays, because it was never in the set
+coming out; and the parameter leaves both \sym{db.py::query} and
+\sym{api.py::handle}, because both were in it. When the developer decides a week
+later that the cache was worth keeping after all, \cmd{sgt restore} returns the
+files byte for byte, because putting the six edits back is the same set arithmetic
+as taking them out and nothing is replayed as a patch.
+Figure~\ref{fig:two-records} draws these three requests arriving in a single
+sitting, under both records, and Section~\ref{sec:walkthrough} follows this
+repository through five sittings.
 
-We present \sgt{}, a version control system that records a change as one edit to
-one function and files each edit under the request it was made for. The developer
-keeps the editor and the agent they already use, and \sgt{} reads what those two
-leave in the files, so nothing about how the developer works has to change. A
-save turns the pending changes into one record per changed function, and each
-record names the function it changed, the version it started from, the version it
-produced, and the other functions it was built on. \sgt{} writes those records
-into the repository and commits them with the code, so a colleague who has not
-installed \sgt{} pulls an ordinary git history.
-Figure~\ref{fig:two-records} shows the hour described above under both records.
+Three prices are paid for this, all of them in the first hour of use rather than
+in some later edge case. Two edits to the same function made from the same
+starting point are recorded as competing versions that a person has to decide
+between, including the pair at opposite ends of a fifty line function that touch
+no common line and that git would have merged without comment. The grouping of
+edits into named requests is inferred, so it is a guess and it will sometimes be
+wrong, and correcting it costs the developer a rename, a merge, or a split, none
+of which moves a recorded edit. \sgt{} reads Python, TypeScript, and TSX and
+versions every other file whole, at the grain git already uses, so a repository
+whose interesting logic is written in Go gets nothing from \sgt{} today.
 
-Recording at that grain gives each of the operations the developer already wanted
-a command whose argument is a name. \cmd{sgt revert "price cache"} removes the six
-edits filed under the price cache and names every function where later work had
-built on them, and the rate limiting in the same file is byte for byte what it
-was. \cmd{sgt show cache.py::get\_cached} reports which request that function came
-from, which save reworked it, and how many edits would come out along with it.
-When the developer decides a week later that the cache was needed after all,
-\cmd{sgt restore} puts the same six edits back, and a database index a colleague
-added in the meantime is still there, because it was never in the set that came
-out. None of these commands asks the developer to look at a hunk.
-
-This design costs the developer three things, all three of which they meet in the
-first hour rather than in some later edge case. Two edits to the
-same function made from the same starting point are recorded as two competing
-versions and a person has to decide which one survives, including the case of two
-edits at opposite ends of a fifty line function that touch no common line and
-that git would merge without comment. The grouping of edits into named requests
-is inferred from which functions change together and which call each other, so it
-is a guess and it will sometimes be wrong, and correcting it costs the developer a
-rename, a merge, or a split, all three of which move labels and leave every
-recorded edit alone. \sgt{} reads Python, TypeScript, and
-TSX with tree-sitter~\cite{treesitter} and versions every other file whole, at
-the grain git already uses, so a repository whose interesting logic is written in
-Go gets nothing from \sgt{} today.
-
-This paper makes four contributions. We characterise the mismatch between the
-unit a developer using an agent decides in and the unit a version control system
-records, one attempted operation at a time
-(Section~\ref{sec:scenarios}), following the style of conceptual analysis Pérez
-De Rosso and Jackson applied to git
+The paper makes four contributions. We characterise the mismatch between the unit
+a developer using an agent decides in and the unit a version control system
+records, one attempted operation at a time (Section~\ref{sec:scenarios}), in the
+style of conceptual analysis Pérez De Rosso and Jackson applied to git
 itself~\cite{perezderosso2013,perezderosso2016}. We describe \sgt{}'s design as
 four commitments, say what each one buys and what it costs, and run the whole set
-of operations on one repository with the reasoning behind each command
-(Sections~\ref{sec:design} and~\ref{sec:walkthrough}). We
-state which observation would show each of our claims to be wrong, and fix the
-design of the study that would produce it before we hold its results
-(Section~\ref{sec:study}). We report what fifty-seven days of \sgt{} tracking its
-own development has taught us about where the design breaks down, which is the
-one part of this paper whose numbers are real today
+of operations on one repository (Sections~\ref{sec:design}
+and~\ref{sec:walkthrough}). We state which observation would show each of our
+claims to be wrong, and fix the design of the study that would produce it before
+we hold its results (Section~\ref{sec:study}). We report what fifty-seven days of
+\sgt{} versioning its own construction has taught us about where the design
+breaks down, which is the one part of this paper whose numbers are real today
 (Section~\ref{sec:discussion}).

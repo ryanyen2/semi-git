@@ -2,8 +2,8 @@
 % in each. Same session as Figure 1, same colours, same glyphs.
 \newcommand{\FigTwoCaption}{One hour of work, recorded five ways, with the same
 request taken back out of each. The fourth row already records at the grain of a
-method and still cannot answer the question, which is why we read the missing thing
-as the name of the request rather than the size of the unit.}
+method and still cannot say which of those methods the caching is, which is why we
+read what is missing as the name of the request and not the size of the unit.}
 
 \newcommand{\FigTwoDescription}{A five row comparison. Each row is a card named
 after a version control system, drawing the same one hour agent session in that
@@ -21,8 +21,10 @@ different commit hashes. The Historage and FinerGit row draws the same two commi
 of method file paths, each preceded by a colour chip naming the request its change
 came from, and the handle method is the one entry preceded by two chips, because
 that single file holds changes made for two different requests. The sgt row draws four labelled horizontal
-lines, one per request, each carrying a mark for every edit filed under that
-request.}
+lines, one for each of the three requests and one for the change nobody asked for,
+each carrying a mark for every edit filed under it. The one command in that row's
+right hand column names the caching request, set in the same colour as the line it
+names.}
 
 \begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
 
@@ -134,7 +136,7 @@ request.}
 \annot{98.9}{28.2}{96.6}{30.2}{20}{sgtInk}
 \node[anchor=north west, text width=13mm, align=left, inner sep=0, text=sgtInk!70,
       font=\sffamily\fontsize{5.2}{6}\selectfont] at (99.2,29.0)
-  {three requests,\\one identifier};
+  {two requests\\and a rename,\\one identifier};
 
 \end{scope}
 
@@ -144,8 +146,8 @@ request.}
 \cmprow{18}{15.5}{sgtGrey}{HISTORAGE, FINERGIT}
 \rowunit{31.1}{a snapshot of the tree, in which every method is a file of its own.}
 \rowcost{31.1}{Choose whole methods instead of hunks, which is easier, and is as
-  far as a finer grain gets you. Both commits still hold all three requests, and
-  nothing in the tree says which of these methods the caching is.}
+  far as a finer grain gets you. Each commit still mixes two requests with the
+  rename, and nothing in the tree says which of these methods the caching is.}
 
 % One entry per method-file. Each chip is one request, and every name starts at
 % the same x, so the file that carries two chips is the only thing in the row
@@ -186,7 +188,7 @@ request.}
   for.}
 \node[anchor=north west, inner sep=0, text=sgtInk,
       font=\ttfamily\fontsize{5.9}{7}\selectfont] at (116.5,14.0)
-  {\$ sgt revert "price cache"};
+  {\$ sgt revert \textcolor{fCache}{"price cache"}};
 \node[anchor=north west, text width=55.5mm, align=left, inner sep=0, text=sgtInk!85,
       font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (116.5,10.2)
   {6 edits, 4 functions, 3 files. The functions it subtracts from, and the ones
@@ -212,7 +214,6 @@ request.}
 \opadd{86.5}{5.8}{fRetry}\opadd{89.9}{5.8}{fRetry}\opext{93.3}{5.8}{fRetry}
 \ckpt{96.2}{5.8}{fRetry}
 \srail{2.6}{row accessors}{sgtGrey}
-\whoagent{30.0}{2.6}{sgtGrey}
 \opmove{56.5}{2.6}{sgtGrey}\opext{59.9}{2.6}{sgtGrey}\opext{63.3}{2.6}{sgtGrey}
 \opext{66.7}{2.6}{sgtGrey}\opext{86.5}{2.6}{sgtGrey}
 

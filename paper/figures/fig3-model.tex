@@ -17,7 +17,10 @@ marked with a hollow diamond, and three functions are marked with a hollow diamo
 crossed by a slash.
 The right panel draws the file api.py twice as a vertical stack of bands, once
 before and once after, where coloured bands are function bodies and grey bands are
-the text between them, which is identical in both.}
+the text between them, which is identical in both. The band for the handle
+function carries a narrow strip divided into one slot per request that wrote it,
+three slots before the revert and, after it, the same two slots at the same size
+with the third left empty and outlined in dots.}
 
 \begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
 
@@ -89,10 +92,10 @@ the text between them, which is identical in both.}
   {18 edits, 14 functions};
 \node[anchor=north west, inner sep=0, text=sgtInk,
       font=\ttfamily\fontsize{5.4}{6.2}\selectfont] at (82,68.6)
-  {\$ sgt revert "price cache"};
+  {\$ sgt revert \textcolor{fCache}{"price cache"}};
 \node[anchor=north west, inner sep=0, text=sgtGrey,
       font=\sffamily\fontsize{5.2}{6}\selectfont] at (82,66.1)
-  {12 edits, 12 functions};
+  {12 edits, 11 functions};
 
 % #1 x, #2 y, #3 file name
 \newcommand{\FTfile}[3]{\node[anchor=north west, inner sep=0, text=sgtInk!65,
@@ -231,20 +234,28 @@ the text between them, which is identical in both.}
   \FTgap{\x}{33.5}{3.4}
   \FTband{\x}{24.9}{8.2}{sgtGrey}{export\_row}
 }
-% handle: one version, with a bar saying which requests contributed to it
+% handle: one version, with a bar saying which requests contributed to it. The
+% bar runs in file order, so the cache's slot is the top one, those being the
+% three lines Figure~4 draws coming off the top of this same function. After the
+% revert that slot is empty and outlined dotted, and the two that remain keep the
+% size they had, because a revert takes one contribution out of a function and
+% does not enlarge the ones left behind.
 \FTband{118.5}{37.5}{10.2}{fRetry}{handle}
 \fill[fRate]  (119.1,37.5) rectangle (120.2,40.9);
-\fill[fCache] (119.1,40.9) rectangle (120.2,44.3);
-\fill[fRetry] (119.1,44.3) rectangle (120.2,47.7);
+\fill[fRetry] (119.1,40.9) rectangle (120.2,44.3);
+\fill[fCache] (119.1,44.3) rectangle (120.2,47.7);
 \FTband{147.5}{37.5}{10.2}{fRetry}{handle}
-\fill[fRate]  (148.1,37.5) rectangle (149.2,42.6);
-\fill[fRetry] (148.1,42.6) rectangle (149.2,47.7);
-\FTredraft{171.1}{42.6}
+\fill[fRate]  (148.1,37.5) rectangle (149.2,40.9);
+\fill[fRetry] (148.1,40.9) rectangle (149.2,44.3);
+\fill[white, rounded corners=0.4mm]  (148.1,44.3) rectangle (150.2,47.7);
+\draw[fCache, line width=0.3pt, densely dotted, rounded corners=0.4mm]
+  (148.1,44.3) rectangle (150.2,47.7);
+\FTredraft{171.1}{46.0}
 
 % legend for the two kinds of band, inside the panel that uses them
 \fill[fRate]  (118.5,19.4) rectangle (119.6,20.5);
-\fill[fCache] (118.5,20.5) rectangle (119.6,21.6);
-\fill[fRetry] (118.5,21.6) rectangle (119.6,22.7);
+\fill[fRetry] (118.5,20.5) rectangle (119.6,21.6);
+\fill[fCache] (118.5,21.6) rectangle (119.6,22.7);
 \node[anchor=west, inner sep=0, text=sgtInk!75,
       font=\sffamily\fontsize{5.1}{5.9}\selectfont] at (121.0,21.0)
   {the requests that wrote the version in the file};
@@ -256,12 +267,18 @@ the text between them, which is identical in both.}
   {imports, comments and blank lines, kept exactly};
 
 % ==================== bottom: three short readings ========================
-\plainpanel{0}{0}{176}{11}{wGrey}
+% Grown downwards, not upwards: the top edge stays at 11 so the two cells to the
+% right keep the heights they were placed at.
+\plainpanel{0}{-1.6}{176}{12.6}{wGrey}
 
-\node[anchor=north west, text width=44mm, align=left, inner sep=0, text=sgtInk,
+% Panel 1 names the three requests this save wrote, which leaves the orange in
+% panel 2 unnamed anywhere in this figure. Naming it here also says the thing the
+% two panels are for: panel 1 is one save and panel 2 is all of them.
+\node[anchor=north west, text width=48mm, align=left, inner sep=0, text=sgtInk,
       font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (2.2,8.8)
   {Every field came out of the working files. The developer typed one sentence and
-   corrected one name.};
+   corrected one name. Panel 2 also holds orange, the rate limiting an earlier save
+   wrote, because a version is every save so far.};
 
 \FTredraft{53.0}{7.4}
 \node[anchor=west, inner sep=0, text=sgtInk,
@@ -274,7 +291,8 @@ the text between them, which is identical in both.}
 
 \node[anchor=north west, text width=57mm, align=left, inner sep=0, text=sgtInk,
       font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (118.0,8.8)
-  {Revert the cache twice and restore it once, and the bytes match the file that
-   was there before any of it.};
+  {The grey bands hold the same bytes in both, and \fsym{handle} comes back as one
+   body with one request's lines gone from it, because the file is written out from
+   the set and not patched.};
 
 \end{tikzpicture}

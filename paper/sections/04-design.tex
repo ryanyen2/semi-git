@@ -10,107 +10,100 @@
 \end{figure*}
 
 A version control system's unit of record decides which questions a developer can
-put to their own history. \sgt{} records one edit per changed function and files
-it under the request the edit was made for, and the commitments in this section are
-the consequences of that one choice, each stated with the price it carries.
-Figure~\ref{fig:model} shows the first two at work on the sitting from
-Figure~\ref{fig:two-records}.
+put to their own history, and the questions a developer actually has are the ones
+their understanding of the codebase produces, so the unit should be the one that
+understanding is already organised around. \sgt{} records one edit per changed function
+and files it under the request the edit was made for. This section states that
+commitment and the three that follow from it, each with the price it carries.
+Figure~\ref{fig:model} shows the first two of them at work on the sitting from
+Figure~\ref{fig:two-records}: what one save writes down, and what a version is.
 
 \subsection{One edit to one function, filed under the request}
 \label{sec:grain}
 
-A save reads the working files, compares them against the last recorded state,
-and writes one record per changed function. Each record names the function, the
-version of it the edit started from, the version it produced, and the other
-functions the new code refers to. The developer supplies one sentence,
-\cmd{sgt save -m "retry the upstream call when it returns a 5xx"}, and \sgt{}
-reads everything else out of the files, so a record can be no more wrong than the
-code it was read from.
+A save reads the working files, compares them against the last recorded state, and
+writes one record per changed function, naming the function, the version of it the
+edit started from, the version it produced, and the other functions the new code
+refers to. The developer supplies one sentence,
+\cmd{sgt save -m "retry the upstream call when it returns a 5xx"}, and \sgt{} reads
+everything else out of the files, so a record can be no more wrong than the code it
+was read from.
 
-We chose the function as the unit because the line and the commit both fail on
-the same ordinary case. The price cache in Figure~\ref{fig:model}
-added a parameter to \sym{db.py::query} and passed a matching argument from
-\sym{api.py::handle}. Those two changes share no line and no file. A record that
-bottoms out at a line has nowhere to write down that the two were made for one
-reason, so the developer who removes the cache a week
-later learns about the second one when the import fails. A record whose unit is
-the commit holds whatever was pending when the developer typed the command, which
-in Figure~\ref{fig:two-records} is three requests and a rename the agent did on
-its own initiative, divided across two commits by the clock. A function is the
-smallest thing that both the developer and the agent name out loud while the work
-is happening, and the feature location literature works at that same unit for a
-related reason, since the code that serves one concern is a set of functions
-scattered across files~\cite{biggerstaff1993,dit2013}.
+We chose the function as the unit because the line and the commit both fail on the
+same ordinary case. The price cache in Figure~\ref{fig:model} added a parameter to
+\sym{db.py::query} and passed a matching argument from \sym{api.py::handle}, and
+those two changes share no line and no file, so a record that bottoms out at a line
+has nowhere to write down that they were made for one reason and the developer who
+removes the cache a week later learns about the second one when the import fails. A
+record whose unit is the commit holds whatever was pending when the developer typed
+the command, which in Figure~\ref{fig:two-records} is three requests and a rename
+the agent did on its own initiative, divided across two commits by the clock. A
+function is the smallest thing that both the developer and the agent name out loud
+while the work is happening, and the feature location literature works at that same
+unit because the code serving one concern is a set of functions scattered across
+files~\cite{biggerstaff1993,dit2013}.
 
 \sgt{} finds functions in Python, TypeScript, and TSX with
-tree-sitter~\cite{treesitter} and records every other file as its whole content,
-at the grain git already offers, so a repository whose interesting logic is in Go
-gets one record per file and none of the operations below becomes any sharper than
-the ones git offers today. Within
-the three parsed languages, a function can be smaller than a purpose. The rename
-in Figure~\ref{fig:two-records} moved \sym{db.py::fetch} to \sym{fetch\_row} and
-updated four call sites, and \sgt{} writes five records for what the developer
-thinks of as one action. Those five records are one named group, so the mismatch
-shows up only when a developer reads the edit list underneath the name. A
-function can also be larger than a purpose, which happens when two requests
-change opposite ends of one fifty line function, and
-Section~\ref{sec:fork} describes what \sgt{} does then.
+tree-sitter~\cite{treesitter} and records every other file as its whole content, at
+the grain git already offers, so nothing below gets any sharper on a file it cannot
+parse. Within the three parsed languages a function can be smaller than a purpose: the rename in
+Figure~\ref{fig:two-records} moved \sym{db.py::fetch} to \sym{fetch\_row} and
+updated four call sites, so \sgt{} writes five records for what the developer thinks
+of as one action, and because those five are one named group the mismatch shows up
+only when somebody reads the edit list underneath the name. A function can also be
+larger than a purpose, which happens when two requests change opposite ends of one
+fifty line function, and Section~\ref{sec:fork} describes what \sgt{} does then.
 
 \subsection{A version is a set of edits, and the files are rebuilt from it}
 \label{sec:sets}
 
-Two rules decide which sets are versions. No edit is included without the edits
-it was built on, and each function has one included version. \sgt{} rebuilds each
-file by writing out the included version of every function it contains and
-keeping the text between functions exactly as it was, which produces the bytes
-that are checked out. The middle panel of Figure~\ref{fig:model} is one such set
-before and after a revert, and the right panel is the file each set produces.
+Two rules decide which sets are versions. No edit is included without the edits it
+was built on, and each function has one included version. \sgt{} rebuilds each file
+by writing out the included version of every function it contains and keeping the
+text between functions exactly as it was, which produces the bytes that are checked
+out. The middle panel of Figure~\ref{fig:model} is one such set before and after a
+revert, and the right panel is the file each set produces.
 
 Because a version is a set, \cmd{revert}, \cmd{restore}, \cmd{diff}, and
 \cmd{switch} all take a set and return a set, and two properties follow that a
-developer can check on their own repository. Reverting the price cache and then restoring it produces
-a file byte-identical to the one that was there before either command ran, because
-both operations are set arithmetic over the same records and neither reapplies a
-patch. Each of the four can also be shown in full before it happens, because
-working out the resulting files takes no more than rebuilding them from the
-proposed set. \cmd{sgt revert "price cache"} draws the twelve edits that would
-remain, names the functions whose text would change, and then asks
+developer can check on their own repository. Reverting the price cache and then
+restoring it produces a file byte-identical to the one that was there before either
+command ran, because both operations are set arithmetic over the same records and
+neither reapplies a patch. Each of the four can also be shown in full before it
+happens, since working out the resulting files takes no more than rebuilding them
+from the proposed set: \cmd{sgt revert "price cache"} draws the twelve edits that
+would remain, names the functions whose text would change, and asks
 \cmd{apply this revert? [y/N]}. Run with no terminal attached it prints the same
 preview and declines, so a revert nobody watched does not happen.
 
-Three requests wrote \sym{api.py::handle}, and in Figure~\ref{fig:model} it
-carries an edit from the rate limiter, one from the cache, and one from the retry
-policy, in that order. Removing the cache's edit
-under the first rule alone means removing everything recorded above it in that
-function, and the retry policy is above it. We shipped that behaviour first. On a
-history where features interleave inside a shared function it removed a later
-feature in order to remove an earlier one, with a preview that counted edits and
-therefore looked reasonable, and we changed the default in August 2026 after it
-emptied a test repository we were using for exactly this measurement. The default
-now keeps the later edits and subtracts the reverted feature's lines from the
-current text of the shared function with a three-way merge, the same operation
-git performs when it merges a text file. The version of \sym{api.py::handle} that
-Figure~\ref{fig:model} leaves in the file is produced that way, and the hollow
-diamond beside it in that figure is how \sgt{} says so. The old behaviour is
-still available as \cmd{revert --take-dependents}, and its help text says what it
+Three requests wrote \sym{api.py::handle}, and in Figure~\ref{fig:model} it carries
+an edit from the rate limiter, one from the cache, and one from the retry policy, in
+that order. Removing the cache's edit under the first rule alone means removing
+everything recorded above it in that function, and the retry policy is above it. We
+shipped that behaviour first, and on a history where features interleave inside a
+shared function it removed a later feature in order to remove an earlier one, with a
+preview that counted the edits coming out and never said which features they belonged
+to, until it emptied a test repository we were using for exactly this measurement and
+we changed the default in August 2026. The default now keeps the later edits and subtracts the reverted
+feature's lines from the current text of the shared function with a three-way merge,
+the same operation git performs when it merges a text file. The version of
+\sym{api.py::handle} that Figure~\ref{fig:model} leaves in the file is produced that
+way, and the hollow diamond beside it is how \sgt{} says so. The old behaviour
+remains available as \cmd{revert --take-dependents}, and its help text says what it
 removes.
 
-That three-way merge is the only place \sgt{} changes text that no person wrote,
-so \sgt{} names every function it changes that way and every function it decided
-to leave alone. When the subtraction
-overlaps a line a later edit changed, \sgt{} leaves the function exactly as it is
-and prints \cmd{kept unchanged (the removal overlaps later edits\ttdash needs your
-edit)} with the function named. When a function \sgt{} is keeping still calls a
-function the revert removed, it prints \cmd{still references removed code (fix
-or revert separately)}. Both of these are reports and neither stops the revert.
-\sgt{} prints a warning and carries on wherever carrying on is possible. Running
-\cmd{sgt log --summary} in our own repository today prints \cmd{299 file(s) on
-disk differ from the recorded state\ttdash `sgt save` absorbs them}, and every
-command still works while that is true. The cost of the default is that after the
-merge the shared function is text the developer has not read, and their test suite
-decides whether the revert was correct. We think that is the right place for the
-decision, and naming the function before the revert runs is as far as we are
-willing to go on the developer's behalf.
+That three-way merge is the only place \sgt{} changes text that no person wrote, so
+\sgt{} names every function it changes that way and every function it decided to
+leave alone. When the subtraction overlaps a line a later edit changed, \sgt{} leaves
+the function exactly as it is and prints \cmd{kept unchanged (the removal overlaps
+later edits\ttdash needs your edit)} with the function named, and when a function
+\sgt{} is keeping still calls a function the revert removed, it prints
+\cmd{still references removed code (fix or revert separately)}. Both are reports and
+neither stops the revert, because the alternative is a command that refuses to
+finish over a consequence the developer may already intend. The cost of the default is
+that after the merge the shared function is text the developer has not read, and
+their test suite decides whether the revert was correct. Naming the function before
+the revert runs is as far as we are willing to go on the developer's behalf.
 
 \subsection{Two versions of one function, and a person decides}
 \label{sec:fork}
@@ -130,102 +123,98 @@ behaviour we are departing from and why theirs is right.
 
 Git merges text and knows nothing about what a function is, and a system that has
 to work on every text file in every language anyone will ever write can afford to
-know nothing else. \cmd{git merge} is useful on a Makefile for that reason. In the case
-Figure~\ref{fig:fork} draws, two people had last
-saved the same version of \sym{api.py::handle}. One of them reverted a caching
-feature, which took the cache lookup out of the first three lines of that function,
-and the other added a request identifier to the logging block at the end of it,
-forty lines away, with no line in common. Git merges the two without comment, and
-the function that comes out of the merge has never been run in that state by
-anybody. \sgt{} sees one function with two versions from one parent, names
-it, and stops. \cmd{sgt resolve api.py::handle} prints the two versions beside
-each other and asks \cmd{pick [l]eft / [r]ight / [e]dit / [q]uit}, where the third
-choice opens the file in the developer's editor and the fourth leaves the fork
-open. Whatever they write has to pass the project's test command before \sgt{}
-will include it. Where no test command is configured the developer supplies the
-verdict with \cmd{--override pass} and a \cmd{--reason}, and the reason and their
-name are recorded beside the resolution, so the next person to read that function
-finds out why it looks the way it does.
+know nothing else, which is why \cmd{git merge} is useful on a Makefile. In the case
+Figure~\ref{fig:fork} draws, two people had last saved the same version of
+\sym{api.py::handle}, one of them reverted a caching feature, which took the cache
+lookup out of the first three lines, and the other added a request identifier to the
+logging block forty lines away, with no line in common. Git merges the two without
+comment, and the function that comes out has never been run in that state by
+anybody. \sgt{} sees one function with two versions from one parent, names it, and
+stops. \cmd{sgt resolve api.py::handle} prints the two versions beside each other
+and asks \cmd{pick [l]eft / [r]ight / [e]dit / [q]uit}, where the third choice opens
+the file in the developer's editor and the fourth leaves the fork open, and whatever
+they write has to pass the project's test command before \sgt{} will include it.
+Where no test command is configured the developer supplies the verdict with
+\cmd{--override pass} and a \cmd{--reason}, and the reason and their name are
+recorded beside the resolution, so the next person to read that function finds out
+why it looks the way it does.
 
-A developer pays for this by being stopped in cases where the merge would have
-been fine, and in one of those cases \sgt{} stops for nothing at all. Deleting a function and adding
-it back with byte-identical content in two places produces two versions from one
-parent, and \sgt{} treats content that agrees exactly as a disagreement. Our
-position is that the cost of
-being asked is bounded and visible at the moment it is paid, and the cost of a
-silent textual merge inside one function is a failure that surfaces later
-somewhere else. We hold that loosely. A developer who merges thirty branches a
-day would reasonably weigh the two the other way, and for them the current design
-is worse.
+A developer pays for this by being stopped in cases where the merge would have been
+fine, and in one of those cases \sgt{} stops for nothing at all, since deleting a
+function and adding it back with byte-identical content in two places produces two
+versions from one parent and \sgt{} treats content that agrees exactly as a
+disagreement. Our position is that the cost of being asked is bounded and visible at
+the moment it is paid, and the cost of a silent textual merge inside one function is
+a failure that surfaces later somewhere else. We hold that loosely, because a
+developer who merges thirty branches a day would reasonably weigh the two the other
+way, and for them the current design is worse.
 
 \subsection{The names are inferred, and correcting one moves labels only}
 \label{sec:names}
 
 Every figure in this paper labels a group of edits with a name like
-\emph{price cache}, and those names are the part
-of \sgt{} that guesses. Functions that changed in the same saves and that refer to
-one another are grouped together, using the change coupling signal established by
-Zimmermann et al.\ and Ying et al.~\cite{zimmermann2004,ying2004} and a community
-detection method over the resulting graph~\cite{traag2019}. A language model then
-reads the saves in a group and writes the label, which is the descendant of a task
-attempted before language models existed, when Buse and Weimer generated a
-description of a change out of the change itself~\cite{buse2010}. Membership is computed from the
-code and the label is written from the words, and those two steps fail in
-different ways, so we treat them separately.
+\emph{price cache}, and those names are the part of \sgt{} that guesses. Functions
+that changed in the same saves and that refer to one another are grouped together,
+using the change coupling signal established by Zimmermann et al.\ and Ying et
+al.~\cite{zimmermann2004,ying2004} and a community detection method over the
+resulting graph~\cite{traag2019}. A language model then reads the saves in a group
+and writes the label, which is the descendant of a task attempted before language
+models existed, when Buse and Weimer generated a description of a change out of the
+change itself~\cite{buse2010}. Membership is computed from the code and the label is
+written from the words, and those two steps fail in different ways, so we treat them
+separately.
 
-We considered asking the developer to confirm the grouping at save time and
-decided against it, because answering that question takes the same knowledge
-commit hygiene takes, and a developer who could reliably answer it could also have
-staged the hunks. Shipman and Marshall collected the reasons people abandon
-systems that ask them to formalise their own work, premature structure among them,
-and the design they arrived at has the system propose a structure that its user may
-accept, modify, reject, or leave alone, in place of a system that demands one
-before the work is understood~\cite{shipman1999}. That is the arrangement here, and
-we are applying it under easier conditions than the ones they wrote about. The
-structure their systems tried to elicit was tacit, so a user asked to state it had
-first to work out what they thought. The structure \sgt{} recovers was said out
-loud, in a request, before any of the code existed, and the only reason it needs
-recovering at all is that nothing wrote it down. What matters, then, is not whether
-the guess is right but what a wrong one costs, and correcting one moves labels and
-touches no recorded edit.
-\cmd{sgt feature rename 001f73c2 "price cache"} renames a group whose
+We considered asking the developer to confirm the grouping at save time and decided
+against it, because answering that question takes the same knowledge commit hygiene
+takes, and a developer who could reliably answer it could also have staged the
+hunks. Shipman and Marshall collected the reasons people abandon systems that ask
+them to formalise their own work, premature structure among them, and the design
+they arrived at has the system propose a structure that its user may accept, modify,
+reject, or leave alone~\cite{shipman1999}. That is the arrangement here, and we are
+applying it under easier conditions than the ones they wrote about. The structure
+their systems tried to elicit was tacit, so a user asked to state it had first to
+work out what they thought, where the structure \sgt{} recovers was said out loud,
+in a request, before any of the code existed, and the only reason it needs recovering
+is that nothing wrote it down. What matters is therefore not whether the guess is
+right but what a wrong one costs, and correcting one moves labels and touches no
+recorded edit. \cmd{sgt feature rename 001f73c2 "price cache"} renames a group whose
 identifier stays what it was, \cmd{sgt feature regroup} moves functions between
 groups, and \cmd{sgt save --as "price cache"} files a new save into a group that
 already exists. Because identifiers survive all three, a revert written down in a
-code review comment last month still removes the same edits after somebody
-renames the group today.
+code review comment last month still removes the same edits after somebody renames
+the group today.
 
 Two failures show up often enough that a reader will hit them. A function that
 everything calls, an argument parser or a logging helper, changes in nearly every
-save and pulls otherwise unrelated work into one group, and the fix is a regroup
-the developer has to notice they need. A save with no message gives the language
-model less to read, and \sgt{} says so at the time, printing \cmd{· no words
-captured} under the save it just wrote. The label on a group summarises what the
-developer said about the work, so a developer who says nothing gets a name derived
-from the code alone.
+save and pulls otherwise unrelated work into one group, and the fix is a regroup the
+developer has to notice they need. A save with no message gives the language model
+less to read, and \sgt{} says so at the time, printing \cmd{· no words captured}
+under the save it just wrote, because the label summarises what the developer said
+about the work and a developer who says nothing gets a name derived from the code
+alone.
 
 \subsection{What \sgt{} will not do}
 
 \sgt{} writes no code of its own. Every byte in the working files came from the
 developer or their agent, apart from the three-way merge splice in
-Section~\ref{sec:sets}, which reports every case it cannot perform cleanly. We
-have been asked more than once during this work why \sgt{} does not hand the
-shared function to a language model and have it redrafted after a revert, and our
-answer is that a version control system whose output nobody wrote is a version
-control system nobody can audit.
+Section~\ref{sec:sets}, which reports every case it cannot perform cleanly. We have
+been asked more than once during this work why \sgt{} does not hand the shared
+function to a language model and have it redrafted after a revert, and our answer is
+that a version control system whose output nobody wrote is a version control system
+nobody can audit.
 
-\sgt{} also does not stand between a developer and git. The records are files
-under \cmd{.sgt/} committed alongside the code, \cmd{sgt git <args>} passes
-through to git untouched, and a colleague who has never installed \sgt{} clones an
-ordinary repository with an ordinary history, and there is no server and no
-background process. Two of \sgt{}'s commands refuse to run. \cmd{switch} stops when there are
-unsaved edits, because \sgt{} has nowhere to put them, and it names the files and
-prints \cmd{record them with `sgt save', or commit / `git restore' those files,
-then re-run}. \cmd{restore} stops when putting a set back would leave two versions
-of one function live, and there its message names the edits by identifier. The
-function whose two versions caused the refusal goes unnamed, which is a rough edge
-we have not fixed. Everything else \sgt{}
-finds wrong it reports, and then it proceeds.
+\sgt{} also does not stand between a developer and git. The records are files under
+\cmd{.sgt/} committed alongside the code, \cmd{sgt git <args>} passes through to git
+untouched, a colleague who has never installed \sgt{} clones an ordinary repository
+with an ordinary history, and there is no server and no background process. Two
+commands refuse to run: \cmd{switch} stops when there are unsaved edits, because
+\sgt{} has nowhere to put them, and names the files and prints \cmd{record them with
+`sgt save', or commit / `git restore' those files, then re-run}; \cmd{restore} stops
+when putting a set back would leave two versions of one function live, and there its
+message names the edits by identifier while the function whose two versions caused
+the refusal goes unnamed, which is the rough edge Section~\ref{sec:walkthrough}
+reports us fixing in the fork warning and not here. Everything else
+\sgt{} finds wrong it reports, and then it proceeds.
 
 \subsection{From the five operations to the commands a developer types}
 
@@ -238,20 +227,24 @@ finds wrong it reports, and then it proceeds.
 \end{figure*}
 
 Figure~\ref{fig:operations} sets out the nine operations that act on the record,
-each with its cost beside it, and the five operations
-Section~\ref{sec:scenarios} ended on map onto them directly. The rest of what a
-developer types is housekeeping around those nine, \cmd{sgt init} to begin,
+each with its cost beside it, and the five operations Section~\ref{sec:scenarios}
+ended on are four commands and one thing that needs no command. Recording a
+boundary without declaring it is
+\cmd{sgt save -m}, run whenever the developer feels like running it, since the
+grouping is recovered afterwards from the code. Seeing the work one request produced
+is \cmd{sgt show "rate limiting"}, or \cmd{sgt show "rate limiting@1"} for one
+stretch of work on it alone. Removing a named set is
+\cmd{sgt revert "price cache"}, and carrying one to another branch is
+\cmd{sgt propose land --subset "export"}, which declines a subset that omits a group
+another chosen group depends on and names the group that is missing. Each of those
+four takes as its argument a phrase somebody used while the work was happening, so
+the recovery Section~\ref{sec:scenarios} priced is not made cheaper but is never
+performed. Discovering the
+layering needs no command at all, because the cache edits record that they were
+built on \sym{api.py::\_bucket} and therefore on the rate limiter, so the developer
+has at any later moment the fact they needed at 14:30 and did not have. The rest of
+what a developer types is housekeeping around those nine, \cmd{sgt init} to begin,
 \cmd{sgt log} and \cmd{sgt sync} to see where things stand, and the
-\cmd{sgt feature rename} of Section~\ref{sec:names} to correct a name, and none
-of them changes which edits a version includes. Recording a boundary without declaring it is \cmd{sgt save -m}, run
-whenever the developer feels like running it, since the grouping is recovered
-afterwards from the code. Seeing the work one request produced is
-\cmd{sgt show "rate limiting"}, or \cmd{sgt show "rate limiting@1"} for one stretch
-of work on it alone. Removing a named set is \cmd{sgt revert "price cache"}, and
-carrying one to another branch is \cmd{sgt propose land --subset "export"}, which
-declines a subset that omits a group another chosen group depends on and names the
-group that is missing. Discovering the layering needs no command at all, because
-the cache edits record that they were built on \sym{api.py::\_bucket} and therefore
-on the rate limiter, so the developer has at any later moment the fact they needed
-at 14:30 and did not have.
-Section~\ref{sec:walkthrough} runs these in order on one repository.
+\cmd{sgt feature rename} of Section~\ref{sec:names} to correct a name, none of which
+changes which edits a version includes. Section~\ref{sec:walkthrough} runs these in
+order on one repository.

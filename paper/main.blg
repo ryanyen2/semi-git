@@ -21,8 +21,6 @@ Warning--empty address in barnett2015
 Warning--empty publisher in biggerstaff1993
 Warning--empty address in biggerstaff1993
 Warning--empty address in blackwell2003
-Warning--empty publisher in brindescu2020
-Warning--empty address in brindescu2020
 Warning--empty publisher in buse2010
 Warning--empty address in buse2010
 Warning--no number and no volume in cheng2024
@@ -42,6 +40,8 @@ Warning--empty publisher in dias2015
 Warning--empty address in dias2015
 Warning--empty publisher in dig2007
 Warning--empty address in dig2007
+Warning--no number and no volume in sarkar2025
+Warning--page numbers missing in both pages and numpages fields in sarkar2025
 Warning--empty publisher in falleri2014
 Warning--empty address in falleri2014
 Warning--empty publisher in grossman2010
@@ -52,15 +52,12 @@ Warning--empty publisher in hartmann2008
 Warning--empty address in hartmann2008
 Warning--empty publisher in hata2011
 Warning--empty address in hata2011
-Warning--empty publisher in hattori2008
-Warning--empty address in hattori2008
 Warning--empty publisher in head2019
 Warning--empty address in head2019
 Warning--no number and no volume in heander2026
 Warning--page numbers missing in both pages and numpages fields in heander2026
 Warning--empty publisher in herzig2013
 Warning--empty address in herzig2013
-Warning--empty address in jackson2021
 Warning--no number and no volume in jacobson2009
 Warning--page numbers missing in both pages and numpages fields in jacobson2009
 Warning--empty publisher in jimenez2024
@@ -74,8 +71,6 @@ Warning--empty publisher in kery2018
 Warning--empty address in kery2018
 Warning--empty publisher in kim2005
 Warning--empty address in kim2005
-Warning--empty publisher in kleppmann2019
-Warning--empty address in kleppmann2019
 Warning--empty publisher in latoza2010
 Warning--empty address in latoza2010
 Warning--empty publisher in liang2024
@@ -99,16 +94,14 @@ Warning--empty address in roundy2005
 Warning--empty publisher in sarkar2022
 Warning--empty address in sarkar2022
 Warning--page numbers missing in both pages and numpages fields in sarkar2022
-Warning--empty publisher in shapiro2011
-Warning--empty address in shapiro2011
 Warning--empty publisher in shen2021
 Warning--empty address in shen2021
+Warning--empty publisher in tang2024
+Warning--empty address in tang2024
 Warning--empty publisher in tao2015
 Warning--empty address in tao2015
 Warning--empty publisher in terry2004
 Warning--empty address in terry2004
-Warning--empty publisher in tian2022
-Warning--empty address in tian2022
 Warning--empty publisher in tsantalis2018
 Warning--empty address in tsantalis2018
 Warning--empty publisher in vaithilingam2022
@@ -128,45 +121,45 @@ Warning--empty publisher in yoon2013
 Warning--empty address in yoon2013
 Warning--empty publisher in zimmermann2004
 Warning--empty address in zimmermann2004
-You've used 90 entries,
+You've used 82 entries,
             6273 wiz_defined-function locations,
-            2045 strings with 37564 characters,
-and the built_in function-call counts, 104880 in all, are:
-= -- 13124
-> -- 3187
+            1993 strings with 36058 characters,
+and the built_in function-call counts, 94868 in all, are:
+= -- 11766
+> -- 2905
 < -- 0
-+ -- 1097
-- -- 1115
-* -- 7245
-:= -- 9806
-add.period$ -- 460
-call.type$ -- 90
-change.case$ -- 651
-chr.to.int$ -- 89
-cite$ -- 206
-duplicate$ -- 9650
-empty$ -- 6735
-format.name$ -- 1434
-if$ -- 25658
++ -- 1003
+- -- 1027
+* -- 6523
+:= -- 8911
+add.period$ -- 420
+call.type$ -- 82
+change.case$ -- 591
+chr.to.int$ -- 81
+cite$ -- 191
+duplicate$ -- 8747
+empty$ -- 6106
+format.name$ -- 1318
+if$ -- 23135
 int.to.chr$ -- 3
 int.to.str$ -- 1
-missing$ -- 365
-newline$ -- 793
-num.names$ -- 631
-pop$ -- 3930
+missing$ -- 327
+newline$ -- 725
+num.names$ -- 575
+pop$ -- 3585
 preamble$ -- 1
-purify$ -- 1369
+purify$ -- 1245
 quote$ -- 0
-skip$ -- 3590
+skip$ -- 3267
 stack$ -- 0
-substring$ -- 7951
-swap$ -- 920
+substring$ -- 7121
+swap$ -- 822
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 2287
-warning$ -- 116
-while$ -- 611
+type$ -- 2118
+warning$ -- 109
+while$ -- 556
 width$ -- 0
-write$ -- 1765
-(There were 116 warnings)
+write$ -- 1607
+(There were 109 warnings)
