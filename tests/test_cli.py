@@ -542,9 +542,10 @@ def test_fmt_age_is_coarse():
     assert _fmt_age(2 * 86400) == "2d ago"
 
 
-def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1"):
-    """A one-step active plan session predicting `a.py::foo`, its baseline being the current op set.
-    Returns the session's single hollow id."""
+def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1",
+                       symbol: str = "a.py::foo"):
+    """A pending step in an active plan session predicting `symbol`, the baseline being the current
+    op set. Appends to the session if it already exists. Returns the step's hollow id."""
     from pathlib import Path
 
     from sgt.core.op import make_op
@@ -552,9 +553,10 @@ def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1
 
     store = Store(tmp_path)
     baseline = sorted(op.id for op in store.all_ops())
-    footprint = {"a.py::foo": (None, plan_mod._PENDING),
+    title = f"touch {symbol.split('::')[-1]}"
+    footprint = {symbol: (None, plan_mod._PENDING),
                  f"__plan__::{session}::{hollow_id_suffix}": (None, plan_mod._PENDING)}
-    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
+    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent=title)
     store.add_hollow(hollow)
     table = plan_mod._load_sessions(Path(tmp_path))
     table.setdefault(session, {
@@ -562,7 +564,7 @@ def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1
         "baseline_op_ids": baseline, "steps": [],
     })
     table[session]["steps"].append({
-        "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
+        "hollow_id": hollow.id, "title": title, "predicted_footprint": [symbol],
         "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
     })
     plan_mod._save_sessions(Path(tmp_path), table)
@@ -594,6 +596,32 @@ def test_save_auto_confirms_a_single_plan_step(tmp_path, capsys, monkeypatch):
     table = plan_mod._load_sessions(tmp_path)
     assert table["s1"]["status"] == "completed"
     assert table["s1"]["steps"][0]["status"] == "matched"
+
+
+def test_save_auto_confirms_every_step_of_a_plan_built_as_stated(tmp_path, capsys, monkeypatch):
+    """The pilot's `0/3` at the surface it was seen on (pilot-01-findings O11). Two steps naming
+    different work, one save that does both: each step is its own match, so the save confirms both
+    and the plan closes. Sharing a save -- or a single op inside it -- is not ambiguity; only two
+    steps predicting the same work are, and that path is the test below."""
+    from sgt.loop import plan as plan_mod
+
+    monkeypatch.setattr(plan_mod, "get_client", _no_client)
+    _seed(tmp_path, 1)
+    _seed_pending_step(tmp_path, plan_mod, "step0", symbol="a.py::foo")
+    _seed_pending_step(tmp_path, plan_mod, "step1", symbol="b.py::bar")
+
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
+    capsys.readouterr()
+    assert _in(tmp_path, ["save", "-m", "touch foo and bar", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert len(out["plan"]["auto_confirmed"]) == 2
+    assert not out["plan"]["ambiguous"]
+    assert not out["plan"]["drift_op_ids"]
+
+    table = plan_mod._load_sessions(tmp_path)
+    assert [s["status"] for s in table["s1"]["steps"]] == ["matched", "matched"]
+    assert table["s1"]["status"] == "completed"
 
 
 def test_save_resolve_plan_settles_an_ambiguous_match(tmp_path, capsys, monkeypatch):

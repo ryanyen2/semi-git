@@ -87,7 +87,8 @@ Not ready, and needed before participant 1:
   given.
 - A pilot on the second project. Nobody has run confplan.
 
-One known tool limit to decide about: sgt can record a plan and check work
-against it, which is how we planned to study the fourth question. It currently
-matches none of the steps for work that implements the plan exactly. Either that
-improves, or the fourth question gets narrowed and the paper says so.
+The tool limit that threatened the fourth question is fixed. sgt can record a
+plan and check work against it, and it used to match none of the steps for work
+that implemented the plan exactly, which would have forced the question to be
+narrowed. It now matches every step of a plan built as stated. See O11 in
+`pilot-01-findings.md`.

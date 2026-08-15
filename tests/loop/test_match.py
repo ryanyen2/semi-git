@@ -59,6 +59,56 @@ def test_compute_checkpoint_groups_two_steps_matched_by_one_op(tmp_path):
     assert result.drift_op_ids == ()
 
 
+def test_steps_sharing_one_op_but_predicting_different_work_each_stand_alone(tmp_path):
+    """The pilot's `0/3` (pilot-01-findings O11). Three steps, built sentence for sentence, and one
+    coarse save op carries two of them (the swap function AND the tests land in a single op). The
+    steps predict *disjoint* work, so nothing about which step was built is in doubt -- yet a
+    transitive cluster chained them through the op they share and reported the whole thing as an
+    ambiguous n:m group, which nothing auto-confirms. Each step must stand as its own match; the
+    shared op belongs to both, because it genuinely did both."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [
+        ("implement swap logic", ["coursecraft/enrollment.py::swap"]),
+        ("wire the swap command", ["coursecraft/cli.py::cmd_swap", "coursecraft/cli.py::build_parser"]),
+        ("add swap tests", ["tests/test_swap.py"]),
+    ])
+    coarse = store.add(_op({"coursecraft/enrollment.py::swap": "v1",
+                            "tests/test_swap.py::test_swap_happy": "v1",
+                            "tests/test_swap.py::test_swap_rollback": "v1"}))
+    cmd = store.add(_op({"coursecraft/cli.py::cmd_swap": "v1"}))
+    parser = store.add(_op({"coursecraft/cli.py::build_parser": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert [len(g.hollow_ids) for g in result.matches] == [1, 1, 1]
+    by_ops = {g.hollow_ids[0]: g.op_ids for g in result.matches}
+    assert sorted(by_ops.values()) == sorted([
+        (coarse.id,),                          # implement swap logic
+        tuple(sorted((cmd.id, parser.id))),    # wire the swap command
+        (coarse.id,),                          # add swap tests -- the same op, fulfilling both
+    ])
+    assert result.drift_op_ids == ()
+
+
+def test_steps_predicting_the_same_work_stay_one_ambiguous_group(tmp_path):
+    """The converse, and the reason grouping exists at all: two steps that predict the *same*
+    symbol compete for the same evidence. One op touching it cannot be attributed to either on its
+    own, so they stay one group -- which does not auto-confirm, and `save --resolve-plan` settles
+    it. Only steps whose predictions are disjoint split apart."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [
+        ("rename the enroll guard", ["a.py::foo"]),
+        ("tighten the enroll guard", ["a.py::foo"]),
+    ])
+    op = store.add(_op({"a.py::foo": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert len(result.matches) == 1
+    assert len(result.matches[0].hollow_ids) == 2
+    assert result.matches[0].op_ids == (op.id,)
+
+
 def test_compute_checkpoint_flags_unpredicted_op_as_drift(tmp_path):
     store = Store(tmp_path)
     _seed_session(tmp_path, "s1", set(), [("step touches x", ["x.py::foo"])])
@@ -133,6 +183,34 @@ def test_file_level_step_prediction_matches_symbol_level_ops_in_that_file(tmp_pa
     assert len(result.matches) == 1
     assert result.matches[0].op_ids == (op.id,)
     assert result.drift_op_ids == ()
+
+
+def test_bare_file_prediction_matches_the_repo_path_it_named_relative_to(tmp_path):
+    """The decomposer routinely names a file the way the plan text does (`cli.py`) for what lives
+    at `coursecraft/cli.py`. Joining those two strings exactly never matches, so the step was
+    unmatchable *and* its work read as drift, permanently -- the step never had a chance to be
+    wrong, it simply could not be right. The basename resolves against the files actually touched."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("wire the swap command", ["cli.py"])])
+    op = store.add(_op({"coursecraft/cli.py::cmd_swap": "v1"}))
+
+    result = match_mod.compute_checkpoint(tmp_path)
+
+    assert len(result.matches) == 1
+    assert result.matches[0].op_ids == (op.id,)
+    assert result.drift_op_ids == ()
+
+
+def test_bare_file_prediction_stays_unmatched_when_the_basename_is_not_unique(tmp_path):
+    """The resolution above is only sound while the basename names ONE touched file. Two `cli.py`
+    under different packages make the prediction genuinely unresolvable, and guessing one would
+    credit a step with another package's work -- so it matches neither."""
+    store = Store(tmp_path)
+    _seed_session(tmp_path, "s1", set(), [("wire the swap command", ["cli.py"])])
+    store.add(_op({"coursecraft/cli.py::cmd_swap": "v1"}))
+    store.add(_op({"confplan/cli.py::cmd_swap": "v1"}))
+
+    assert match_mod.compute_checkpoint(tmp_path).matches == ()
 
 
 def test_file_level_prediction_does_not_match_ops_in_other_files(tmp_path):
@@ -236,6 +314,26 @@ def test_confirm_match_completing_every_step_marks_the_session_completed(tmp_pat
     match_mod.confirm_match(tmp_path, "s1", [steps[1]["hollow_id"]], [op_b.id])
     assert "s1" not in plan_mod.active_sessions(tmp_path)  # last step matched -> completed
     assert plan_mod._load_sessions(tmp_path)["s1"]["status"] == "completed"
+
+
+def test_confirming_one_op_against_two_steps_records_both(tmp_path):
+    """A coarse op can fulfil two steps that predicted different work (see the pilot shape above),
+    and the save's fold confirms those two groups one after the other. The second confirm used to
+    overwrite the first in `plan_matches.json`, so the op's recorded intent named only whichever
+    step happened to be confirmed last -- the reverse index lied about work the op really did."""
+    store = Store(tmp_path)
+    steps = _seed_session(tmp_path, "s1", set(), [
+        ("implement swap logic", ["enrollment.py::swap"]),
+        ("add swap tests", ["tests/test_swap.py"]),
+    ])
+    op = store.add(_op({"enrollment.py::swap": "v1", "tests/test_swap.py::test_swap": "v1"}))
+
+    match_mod.confirm_match(tmp_path, "s1", [steps[0]["hollow_id"]], [op.id])
+    match_mod.confirm_match(tmp_path, "s1", [steps[1]["hollow_id"]], [op.id])
+
+    record = match_mod.recorded_matches(tmp_path)[op.id]
+    assert record["hollow_ids"] == sorted(s["hollow_id"] for s in steps)
+    assert record["intent"] == "implement swap logic; add swap tests"
 
 
 def test_confirmed_match_never_resurfaces_as_drift(tmp_path):
