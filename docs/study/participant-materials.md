@@ -2,7 +2,19 @@
 
 Facilitator's copy. Has the answers in it, so don't screen share it.
 
-Participant handouts are in `materials/`. Hand them over as they are.
+The study now runs from a website, and the parts of this page that were about
+mechanics have moved: `running-the-study.md` is the operator's manual, and
+`protocol.md` fixes every question and measure. What is still here is what the
+website cannot do for you: what to say, what to watch for, and what the right
+answers are.
+
+The console does the rest. It holds the clocks, records the answers, applies the
+rubrics you see below, checks the summary against the episode list, and keeps
+the interview notes. The answer keys below are also in
+`docs/study/answer-key.json`, which is loaded into the console once so the right
+answer appears beside each request while you score it.
+
+Participant handouts are in `materials/`, and the website renders the same text.
 
 ## The short version
 
@@ -15,14 +27,14 @@ Participant handouts are in `materials/`. Hand them over as they are.
 
 ## Before they arrive
 
-On a machine you control:
+Normally: send their link a day early and let the website walk them through
+consent, background and setup. See `running-the-study.md` §2.
+
+On a machine you control, for an in-person session:
 
 ```bash
 scripts/setup-study-session.sh p07 sgt coursecraft
 ```
-
-On their own laptop, see `remote-setup.md`. Send the bundle a day early so a
-slow download doesn't eat the session.
 
 The script makes a fresh copy, builds the test environment, refuses to hand over
 a copy whose tests don't pass, and for sgt installs the exact build we are
@@ -175,6 +187,12 @@ a checkpoint yet, so they may not finish the naming half.
 - Revoke the API key if you issued one. See `remote-setup.md`.
 
 ## Analysis
+
+The console collects all of this and exports it. **Results → Compute from data**
+builds the analysis from the raw event stream and gives you the three figures
+plus three CSVs: one row per participant per condition for the mixed models, one
+row per request, and the coded action stream. See `protocol.md` §7 for the models
+and `running-the-study.md` §5 for the buttons.
 
 Per participant, per half, you should have:
 

@@ -1063,7 +1063,7 @@ def render_graph_lines(
                          f"{future}")
             # The chapter in the user's own words (intent-ledger P1 zoom): the words captured for the
             # commits this chapter covers, so "the history answers in my own words" is literally on
-            # screen. Up to three, ellipsized; `sgt feature why <sha>` shows the full text + the
+            # screen. Up to three, ellipsized; `sgt why <sha>` shows the full text + the
             # `claude --resume` handle. Silent when nothing was captured (never a guessed reason).
             words = car.get("words", [])
             for w in words[:3]:

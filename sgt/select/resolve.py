@@ -39,18 +39,19 @@ class Selection:
     `symbol` selection, the whole segment/feature op-set for a `checkpoint`/`feature` -- so callers
     can treat every kind uniformly and only branch on `kind` for wording."""
 
-    kind: str  # "checkpoint" | "feature" | "op" | "symbol"
+    kind: str  # "checkpoint" | "feature" | "op" | "symbol" | "save"
     target: str  # the token exactly as the user typed it
     op_ids: frozenset[str]
     feature_id: str | None = None
     label: str | None = None
+    sha: str | None = None  # `save` only: the full commit sha the token resolved to
 
     @property
     def is_group(self) -> bool:
-        """True when the token names a *set* the user thinks of as one thing (a feature or a
-        checkpoint) rather than a single edit -- the distinction that decides whether a consequence
-        preview should be phrased per-op or per-feature."""
-        return self.kind in ("checkpoint", "feature")
+        """True when the token names a *set* the user thinks of as one thing (a feature, a
+        checkpoint, or a save) rather than a single edit -- the distinction that decides whether a
+        consequence preview should be phrased per-op or per-feature."""
+        return self.kind in ("checkpoint", "feature", "save")
 
 
 def is_checkpoint_shaped(target: str) -> bool:
@@ -74,14 +75,21 @@ def is_handle_shaped(target: str) -> bool:
 def identify(repo: str | Path, target: str) -> Selection | None:
     """Resolve `target` to a `Selection`, or `None` when no deterministic rung claims it.
 
-    Ladder (same precedence as `revert`/`restore`):
+    Ladder (same precedence as `revert`/`restore`, plus one rung they don't have):
 
     1. checkpoint spec (`f-ab12@3`, `f-ab12:add-retry`)
-    2. handle-shaped token -> feature first, then the op whose hex it shadows
+    2. handle-shaped token -> feature first, then the op whose hex it shadows, then the *save*
+       (commit) it names
     3. otherwise -> op / symbol first, then an exact feature *label*
 
-    `None` means "no id, symbol, feature, or checkpoint by this name" -- the caller decides whether
-    to fall through to an NL rung (`revert`) or to explain and stop (`show`).
+    The save rung is last of the hex rungs and is the only place this ladder claims a token
+    `revert`/`restore` would not, which is why it goes last: every token that resolved before still
+    resolves to the same thing. It exists because a commit sha is the id `sgt log` prints in its own
+    id column, so it is the single most likely token to be pasted back -- and rejecting it made
+    `sgt show` fail six times out of ten in the pilot, sending the participant back to plain git.
+
+    `None` means "no id, symbol, feature, checkpoint, or save by this name" -- the caller decides
+    whether to fall through to an NL rung (`revert`) or to explain and stop (`show`).
     """
     target = target.strip()
     if not target:
@@ -95,7 +103,7 @@ def identify(repo: str | Path, target: str) -> Selection | None:
         # contains a colon still gets its feature/op rungs.
 
     if is_handle_shaped(target):
-        return _feature(repo, target) or _op(repo, target)
+        return _feature(repo, target) or _op(repo, target) or _save(repo, target)
     return _op(repo, target) or _feature(repo, target)
 
 
@@ -139,6 +147,32 @@ def _op(repo: str | Path, target: str) -> Selection | None:
     is_symbol = target in order.frontier(ideal.op_ids, ops)
     return Selection(kind="symbol" if is_symbol else "op", target=target,
                      op_ids=frozenset({op_id}), feature_id=_owning_feature(repo, [op_id]))
+
+
+def _save(repo: str | Path, target: str) -> Selection | None:
+    """A commit sha, full or a unique prefix -- the id `sgt log` prints beside every row.
+
+    `sgt log`'s id column *is* the 7-char commit sha, so "the id sgt just printed at me" and "a
+    token `show` accepts" were different sets, which is the one thing this view promises they are
+    not. The covered ops come from `intent.group.atoms` -- the same commit->ops partition `sgt why
+    <sha>` reads -- so the two verbs can never disagree about what a save contains.
+
+    `None` when the token matches no commit, matches more than one (a longer prefix disambiguates),
+    or names a commit sgt recorded no edits for -- an atom always has at least one op, so an empty
+    selection can't be built here. The caller explains; guessing which commit was meant is exactly
+    the kind of plausible-but-wrong answer an inspect verb must not give."""
+    from sgt.intent import group
+
+    if target.startswith("f-"):
+        return None  # a feature handle, and no sha starts with `f-`: don't pay for a history walk
+    hits = [a for a in group.atoms(repo)
+            if a.commit_sha != group.UNWITNESSED and a.commit_sha.startswith(target)]
+    if len(hits) != 1:
+        return None
+    atom = hits[0]
+    return Selection(kind="save", target=target, op_ids=atom.op_ids,
+                     feature_id=_owning_feature(repo, atom.op_ids),
+                     label=atom.subject, sha=atom.commit_sha)
 
 
 def _owning_feature(repo: str | Path, op_ids) -> str | None:
