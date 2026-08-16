@@ -24,6 +24,11 @@
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       },
       {
+        "comment": "Bundles keep their filename across rebuilds -- deliberately, because the download link on the participant's setup page is fixed and a versioned name would leak which condition they are in. So the name cannot carry the cache key and revalidation has to. On the default hour, rebuilding a bundle mid-study means a participant can be handed an hour-old tool with nothing on screen to say so.",
+        "source": "/bundles/**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
+      },
+      {
         "source": "**",
         "headers": [
           {
