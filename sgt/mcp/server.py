@@ -287,8 +287,8 @@ def tool_show(repo_path: str, args: dict) -> dict:
     """`sgt show`: two readings of "show me this", chosen by whether a point in time was named.
 
     Without `at`, `sel` is an id -- a feature handle, a checkpoint, an op id, a `file::name` symbol,
-    a path -- and the answer is what it covers, how much a revert would remove (including the work
-    built on top), and the commands that apply. With `at`, `sel` is a file and the answer is its
+    a path, a save id -- and the answer is what it covers, how much a revert would remove (including
+    the work built on top), and the commands that apply. With `at`, `sel` is a file and the answer is its
     content as it was at that frontier, or the list of what existed there when `sel` is omitted.
 
     One tool because a caller holds one intent (point at a thing, see it), and `at` is the same time
@@ -426,7 +426,8 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
     ),
     "sgt_show": (
         "Show me this thing. With `sel` alone it explains an id — a feature handle, a `feature@n` "
-        "checkpoint, an op id, a `file::name` symbol, a path — reporting what it covers, how many "
+        "checkpoint, an op id, a `file::name` symbol, a path, or a save id (the commit sha `sgt "
+        "log` prints in its id column) — reporting what it covers, how many "
         "edits a revert would remove (and how many of those are work built on top), and which "
         "commands apply. Use it before proposing a revert so you can state the consequence. Add "
         "`at` to read the past instead: `sel` is then a file and you get its content as it was at "

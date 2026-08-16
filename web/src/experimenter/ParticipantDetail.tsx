@@ -1,0 +1,1073 @@
+import { useEffect, useMemo, useState } from 'react'
+import { doc, setDoc, addDoc, collection, orderBy } from 'firebase/firestore'
+import { db } from '../lib/firebase'
+import { isPilot, patchParticipant, useLiveCollection, useLiveDoc } from '../lib/db'
+import type {
+  EventDoc,
+  GroundTruth,
+  Half,
+  Participant,
+  RequestDoc,
+  ResponseDoc,
+  ScoringDoc,
+} from '../lib/types'
+import { REQUESTS, requestById } from '../study/tasks'
+import { HLAC, QUIZ, instrumentById } from '../study/instruments'
+import { gitExpertise, susScore, tlxScore } from '../lib/stats'
+import { analyzeParticipant } from '../analysis/pipeline'
+import { Callout, Empty, Tabs, fmtAgo, fmtDuration } from '../ui/bits'
+import { CATEGORY_COLOR } from '../charts/theme'
+import { CATEGORY_LABEL } from '../study/taxonomy'
+import { downloadCsv, downloadJson } from '../lib/svgExport'
+
+type DetailTab = 'overview' | 'requests' | 'answers' | 'theory' | 'interview' | 'telemetry'
+
+const PROBES = [
+  { id: 'wish', label: 'What did you wish you could ask the history?', note: 'Ask this BEFORE they compare the setups.' },
+  { id: 'trust', label: 'What did you trust, and what did you check?' },
+  { id: 'lost', label: 'Where were you lost?' },
+  { id: 'hidden', label: 'What did the history hide, and what did it show?' },
+  { id: 'delegate', label: 'How did you decide what to hand to the assistant?' },
+]
+
+export function ParticipantDetail({
+  pid,
+  onClose,
+  adminEmail,
+}: {
+  pid: string
+  onClose: () => void
+  adminEmail: string
+}) {
+  const [tab, setTab] = useState<DetailTab>('overview')
+  const { data: participant } = useLiveDoc<Participant>(['participants', pid])
+  const { data: responses } = useLiveCollection<ResponseDoc & { id: string }>([
+    'participants',
+    pid,
+    'responses',
+  ])
+  const { data: requests } = useLiveCollection<RequestDoc & { id: string }>([
+    'participants',
+    pid,
+    'requests',
+  ])
+  const { data: scoring } = useLiveCollection<Record<string, unknown> & { id: string }>([
+    'participants',
+    pid,
+    'scoring',
+  ])
+  const { data: truth } = useLiveDoc<GroundTruth>(['study', 'groundTruth'])
+
+  if (!participant) return <Empty>Loading</Empty>
+
+  return (
+    <div className="stack loose">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <button className="btn sm ghost" onClick={onClose}>
+            ← All participants
+          </button>
+          <h1 style={{ margin: '0.35rem 0 0' }}>
+            {participant.label}
+            {isPilot(participant) && (
+              <span className="badge warn" style={{ marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+                pilot
+              </span>
+            )}
+          </h1>
+          <div className="small muted">
+            group {participant.group} · {participant.blocks[0].condition}/
+            {participant.blocks[0].project} then {participant.blocks[1].condition}/
+            {participant.blocks[1].project}
+            {participant.email ? ` · ${participant.email}` : ''}
+          </div>
+        </div>
+        <div className="row tight">
+          {participant.claimedUid && (
+            <button
+              className="btn sm"
+              title="Let them open the link again from a different browser."
+              onClick={() => {
+                // A cleared cache, a second laptop, or a private window all
+                // look identical to a second person taking the link. The guard
+                // has to stay strict, so the facilitator gets the release
+                // valve instead: it is one click here, versus a lost session.
+                if (confirm(`Release ${participant.label}'s link so it can be opened again?`)) {
+                  void patchParticipant(pid, { claimedUid: null })
+                }
+              }}
+            >
+              Release link
+            </button>
+          )}
+          {/* This sits where the eye goes looking for a status badge, and it
+              used to write the moment you touched it. A facilitator in the
+              pilot clicked it expecting a read-only history display and
+              silently marked a participant excluded — one click, no
+              confirmation, no label saying it was editable. Dropping someone
+              from a twelve-person study by accident is not a recoverable
+              mistake if nobody notices. */}
+          <label className="row tight small muted" style={{ gap: '0.35rem' }}>
+            status
+            <select
+              value={participant.status}
+              onChange={(e) => {
+                const next = e.target.value as Participant['status']
+                const drops = next === 'withdrawn' || next === 'excluded'
+                if (
+                  drops &&
+                  !confirm(
+                    `Mark ${participant.label} as ${next}? They are removed from the analysis. ` +
+                      'Their data is kept and you can change this back.',
+                  )
+                ) {
+                  return
+                }
+                void patchParticipant(pid, { status: next })
+              }}
+              style={{ width: 'auto' }}
+            >
+              {['created', 'claimed', 'consented', 'in-progress', 'completed', 'withdrawn', 'excluded'].map(
+                (s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <Tabs<DetailTab>
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'overview', label: 'Overview' },
+          { id: 'requests', label: 'Requests & scoring' },
+          { id: 'answers', label: 'Questionnaires' },
+          { id: 'theory', label: 'Quiz & summary' },
+          { id: 'interview', label: 'Interview' },
+          { id: 'telemetry', label: 'Telemetry' },
+        ]}
+      />
+
+      {tab === 'overview' && (
+        <Overview participant={participant} responses={responses ?? []} requests={requests ?? []} />
+      )}
+      {tab === 'requests' && (
+        <RequestScoring
+          pid={pid}
+          requests={requests ?? []}
+          scoring={scoring ?? []}
+          truth={truth}
+          adminEmail={adminEmail}
+        />
+      )}
+      {tab === 'answers' && <Answers responses={responses ?? []} participant={participant} />}
+      {tab === 'theory' && (
+        <TheoryScoring
+          pid={pid}
+          participant={participant}
+          responses={responses ?? []}
+          scoring={scoring ?? []}
+          truth={truth}
+          adminEmail={adminEmail}
+        />
+      )}
+      {tab === 'interview' && <Interview pid={pid} adminEmail={adminEmail} />}
+      {tab === 'telemetry' && (
+        <Telemetry pid={pid} participant={participant} requests={requests ?? []} responses={responses ?? []} scoring={scoring ?? []} />
+      )}
+    </div>
+  )
+}
+
+function Overview({
+  participant,
+  responses,
+  requests,
+}: {
+  participant: Participant
+  responses: Array<ResponseDoc & { id: string }>
+  requests: Array<RequestDoc & { id: string }>
+}) {
+  const background = responses.find((r) => r.id === 'background')?.values
+  const consent = responses.find((r) => r.id === 'consent')?.values
+  return (
+    <div className="grid-2">
+      <div className="card">
+        <h2>Session</h2>
+        <dl className="kv">
+          <dt>Started</dt>
+          <dd>{participant.startedAt ? new Date(participant.startedAt).toLocaleString() : '—'}</dd>
+          <dt>Consented</dt>
+          <dd>{participant.consentAt ? new Date(participant.consentAt).toLocaleString() : '—'}</dd>
+          <dt>Finished</dt>
+          <dd>{participant.completedAt ? new Date(participant.completedAt).toLocaleString() : '—'}</dd>
+          <dt>Last seen</dt>
+          <dd>{fmtAgo(participant.lastSeenAt)}</dd>
+          <dt>Current step</dt>
+          <dd>{participant.currentStep}</dd>
+          <dt>Requests opened</dt>
+          <dd>
+            {requests.filter((r) => r.openedAt).length} of {REQUESTS.length * 2}
+          </dd>
+          <dt>Quotes allowed</dt>
+          <dd>{consent?.quotes === true ? 'yes' : 'no'}</dd>
+        </dl>
+      </div>
+      <div className="card">
+        <h2>Background</h2>
+        {background ? (
+          <dl className="kv">
+            <dt>Years coding</dt>
+            <dd>{String(background.yearsCoding ?? '—')}</dd>
+            <dt>Years git</dt>
+            <dd>{String(background.yearsGit ?? '—')}</dd>
+            <dt>Git expertise</dt>
+            <dd>{gitExpertise(background) ?? '—'} / 24</dd>
+            <dt>Agent tools</dt>
+            <dd>{Array.isArray(background.agentTools) ? background.agentTools.join(', ') : '—'}</dd>
+            <dt>Assistant use</dt>
+            <dd>{String(background.agentFrequency ?? '—')}</dd>
+            <dt>AI share of shipped code</dt>
+            <dd>{String(background.aiShare ?? '—')}%</dd>
+            <dt>Languages</dt>
+            <dd>{String(background.languages ?? '—')}</dd>
+            <dt>Prior sgt</dt>
+            <dd>{String(background.priorSgt ?? '—')}</dd>
+          </dl>
+        ) : (
+          <Empty>Not answered yet</Empty>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RequestScoring({
+  pid,
+  requests,
+  scoring,
+  truth,
+  adminEmail,
+}: {
+  pid: string
+  requests: Array<RequestDoc & { id: string }>
+  scoring: Array<Record<string, unknown> & { id: string }>
+  truth: GroundTruth | null
+  adminEmail: string
+}) {
+  const opened = requests.filter((r) => r.openedAt).sort((a, b) => (a.openedAt ?? 0) - (b.openedAt ?? 0))
+  if (opened.length === 0) return <Empty>No requests opened yet</Empty>
+
+  return (
+    <div className="stack">
+      {!truth && (
+        <Callout kind="warn" title="No answer key loaded">
+          Load the ground-truth file under <strong>Setup</strong> and the right answer appears beside
+          each request instead of having to be looked up in the build log.
+        </Callout>
+      )}
+      <RepoOutcome pid={pid} />
+      {opened.map((r) => (
+        <RequestCard
+          key={r.id}
+          pid={pid}
+          req={r}
+          existing={scoring.find((s) => s.id === r.id) as unknown as ScoringDoc | undefined}
+          truth={truth}
+          adminEmail={adminEmail}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * What the participant actually did to the code.
+ *
+ * Four of the six requests are judged by the state of the repository, and until
+ * this existed the scoring screen offered only an empty box asking for a
+ * script's output — with no way to obtain a copy of their repository at all.
+ * The facilitator in the pilot could not score four of six requests, and only
+ * found the script's name by reading source. This is the thing they said they
+ * most expected to be here.
+ */
+function RepoOutcome({ pid }: { pid: string }) {
+  const { data: events } = useLiveCollection<EventDoc>(
+    ['participants', pid, 'events'],
+    orderBy('ts', 'desc'),
+  )
+  const snapshots = (events ?? []).filter((e) => e.kind === 'repo' && e.name === 'outcome')
+  const latest = snapshots[0]
+
+  if (!latest) {
+    return (
+      <Callout kind="warn" title="No picture of their code yet">
+        Their machine sends a summary of what has changed in the project every time it syncs. If
+        nothing appears once they are working, the upload is not running — check the Live tab.
+      </Callout>
+    )
+  }
+
+  const extra = (latest.extra ?? {}) as Record<string, unknown>
+  const tests = typeof extra.tests === 'string' ? extra.tests : null
+  const files = typeof extra.files === 'string' ? extra.files : ''
+  const testsBad = tests ? /fail|error/i.test(tests) : false
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>What they did to the code</h2>
+        <span className="badge outline">
+          as of {fmtAgo(latest.ts)}
+          {typeof extra.head === 'string' ? ` · at ${extra.head}` : ''}
+        </span>
+      </div>
+      <p className="small muted">
+        Changes against <code>{String(extra.baseline ?? 'the starting point')}</code>. This is the
+        evidence for requests scored on the state of the code.
+      </p>
+
+      {tests && (
+        <div className={`card ${testsBad ? 'bad' : ''}`} style={{ padding: '0.6rem 0.9rem' }}>
+          <span className="tiny muted">Test suite</span>
+          <div className="mono small">{tests}</div>
+        </div>
+      )}
+
+      <pre style={{ marginTop: '0.75rem', maxHeight: '18rem' }}>{latest.text || 'no changes'}</pre>
+
+      {files && (
+        <details>
+          <summary className="small muted" style={{ cursor: 'pointer' }}>
+            Which files, and how
+          </summary>
+          <pre style={{ marginTop: '0.5rem', maxHeight: '16rem' }}>{files}</pre>
+        </details>
+      )}
+
+      {typeof extra.uncommitted === 'number' && extra.uncommitted > 0 && (
+        <p className="small" style={{ color: 'var(--warn)' }}>
+          {String(extra.uncommitted)} file(s) changed but not committed at that moment.
+        </p>
+      )}
+
+      {snapshots.length > 1 && (
+        <p className="tiny faint">
+          {snapshots.length} snapshots recorded; showing the most recent. Earlier ones are in the
+          Telemetry tab.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function RequestCard({
+  pid,
+  req,
+  existing,
+  truth,
+  adminEmail,
+}: {
+  pid: string
+  req: RequestDoc & { id: string }
+  existing: ScoringDoc | undefined
+  truth: GroundTruth | null
+  adminEmail: string
+}) {
+  const spec = requestById(req.requestId)
+  const rubric = truth?.rubrics?.[req.requestId] ?? []
+  const outOf = rubric.reduce((n, x) => n + x.points, 0) || 2
+  const [checks, setChecks] = useState<Record<string, boolean>>(existing?.rubric ?? {})
+  const [damage, setDamage] = useState<string>(
+    existing?.collateralDamage != null ? String(existing.collateralDamage) : '',
+  )
+  const [outcome, setOutcome] = useState(existing?.outcome ?? '')
+  const [scorer, setScorer] = useState(existing?.scorerOutput ?? '')
+  const [note, setNote] = useState(existing?.note ?? '')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    setChecks(existing?.rubric ?? {})
+    setDamage(existing?.collateralDamage != null ? String(existing.collateralDamage) : '')
+    setOutcome(existing?.outcome ?? '')
+    setScorer(existing?.scorerOutput ?? '')
+    setNote(existing?.note ?? '')
+  }, [existing?.scoredAt])
+
+  const score = rubric.reduce((n, x) => n + (checks[x.id] ? x.points : 0), 0)
+  const key = truth?.requestKeys?.[req.requestId]?.[req.project]
+
+  async function save() {
+    await setDoc(doc(db, 'participants', pid, 'scoring', req.id), {
+      requestId: req.requestId,
+      half: req.half,
+      score: rubric.length ? score : null,
+      outOf: rubric.length ? outOf : null,
+      collateralDamage: damage === '' ? null : Number(damage),
+      outcome: outcome || null,
+      scorerOutput: scorer,
+      rubric: checks,
+      scoredBy: adminEmail,
+      scoredAt: Date.now(),
+      note,
+    } satisfies ScoringDoc)
+    setSaved(true)
+    window.setTimeout(() => setSaved(false), 1500)
+  }
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div className="eyebrow">
+            half {req.half} · {req.condition} · {req.project}
+          </div>
+          <h2 style={{ margin: 0 }}>
+            {req.requestId.toUpperCase()} {spec.title[req.project]}
+          </h2>
+          <div className="small muted">
+            {fmtDuration(req.activeMs || req.elapsedMs)} active
+            {req.hitCap && <span className="badge warn" style={{ marginLeft: '0.4rem' }}>hit cap</span>}
+            {req.selfReport && (
+              <span className="badge outline" style={{ marginLeft: '0.4rem' }}>{req.selfReport}</span>
+            )}
+            {req.confidence != null && <> · confidence {req.confidence}</>}
+            {(req.pauses ?? []).length > 0 && <> · {req.pauses.length} pause(s)</>}
+          </div>
+        </div>
+        {rubric.length > 0 && (
+          <div className="center">
+            <div className="timer" style={{ fontSize: '1.4rem' }}>
+              {score}/{outOf}
+            </div>
+            <div className="tiny muted">rubric</div>
+          </div>
+        )}
+      </div>
+
+      {req.answer && (
+        <div className="card soft" style={{ marginTop: '1rem' }}>
+          <div className="tiny muted">Their answer</div>
+          <div style={{ whiteSpace: 'pre-wrap' }}>{req.answer}</div>
+        </div>
+      )}
+
+      {key && (
+        <div className="card accent" style={{ marginTop: '0.75rem' }}>
+          <div className="tiny muted">Ground truth</div>
+          <div className="mono small">{key}</div>
+        </div>
+      )}
+
+      {rubric.length > 0 && (
+        <div className="stack tight" style={{ marginTop: '1rem' }}>
+          {rubric.map((r) => (
+            <label key={r.id} className={`check${checks[r.id] ? ' on' : ''}`}>
+              <input
+                type="checkbox"
+                checked={!!checks[r.id]}
+                onChange={(e) => setChecks({ ...checks, [r.id]: e.target.checked })}
+              />
+              <span>
+                {r.label} <span className="tiny muted">({r.points})</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {(req.requestId === 'r2' || req.requestId === 'r3' || req.requestId === 'r4') && (
+        <div className="grid-2" style={{ marginTop: '1rem' }}>
+          <div>
+            <div className="field-label">Collateral damage</div>
+            <div className="field-help">Tests failing outside the target feature.</div>
+            <input type="number" min={0} value={damage} onChange={(e) => setDamage(e.target.value)} />
+          </div>
+          <div>
+            <div className="field-label">Outcome</div>
+            <select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
+              <option value="">—</option>
+              <option value="target">Target gone, everything else passes</option>
+              <option value="collateral">Something else broke</option>
+              <option value="not-removed">Target still there</option>
+              <option value="wont-start">Tests pass but the app will not start</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: '1rem' }}>
+        <div className="field-label">Scorer output</div>
+        <div className="field-help">
+          Paste <code>score_study_repo.py</code> verbatim. Kept as evidence behind the number.
+        </div>
+        <textarea
+          className="mono"
+          style={{ fontSize: '0.8rem' }}
+          value={scorer}
+          onChange={(e) => setScorer(e.target.value)}
+          placeholder="python3 scripts/score_study_repo.py ..."
+        />
+      </div>
+
+      <div style={{ marginTop: '0.75rem' }}>
+        <div className="field-label">Notes</div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} style={{ minHeight: '4rem' }} />
+      </div>
+
+      <div className="row" style={{ marginTop: '1rem' }}>
+        <button className="btn primary" onClick={() => void save()}>
+          Save scoring
+        </button>
+        {saved && <span className="savechip"><span className="dot good" /> saved</span>}
+        {existing?.scoredAt && (
+          <span className="small muted">
+            last scored {fmtAgo(existing.scoredAt)} by {existing.scoredBy}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Answers({
+  responses,
+  participant,
+}: {
+  responses: Array<ResponseDoc & { id: string }>
+  participant: Participant
+}) {
+  const halves: Half[] = [1, 2]
+  return (
+    <div className="stack">
+      {halves.map((h) => {
+        const block = participant.blocks[h - 1]
+        const tlx = responses.find((r) => r.id === `tlx-h${h}`)?.values
+        const sus = responses.find((r) => r.id === `sus-h${h}`)?.values
+        const hlac = responses.find((r) => r.id === `hlac-h${h}`)?.values
+        return (
+          <div className="card" key={h}>
+            <h2>
+              Half {h} · {block.condition} · {block.project}
+            </h2>
+            <div className="grid-3">
+              <div className="card soft">
+                <div className="tiny muted">NASA-TLX (raw)</div>
+                <div className="timer" style={{ fontSize: '1.4rem' }}>
+                  {tlx ? (tlxScore(tlx)?.toFixed(1) ?? '—') : '—'}
+                </div>
+              </div>
+              <div className="card soft">
+                <div className="tiny muted">SUS</div>
+                <div className="timer" style={{ fontSize: '1.4rem' }}>
+                  {sus ? (susScore(sus)?.toFixed(1) ?? '—') : '—'}
+                </div>
+                <div className="tiny faint">average is 68</div>
+              </div>
+              <div className="card soft">
+                <div className="tiny muted">HLAC mean (recoded)</div>
+                <div className="timer" style={{ fontSize: '1.4rem' }}>
+                  {hlac ? hlacMean(hlac)?.toFixed(2) ?? '—' : '—'}
+                </div>
+              </div>
+            </div>
+            {hlac && (
+              <table className="table" style={{ marginTop: '1rem' }}>
+                <tbody>
+                  {HLAC.items.map((it) => (
+                    <tr key={it.id}>
+                      <td className="small">{it.shortLabel}</td>
+                      <td className="tabular" style={{ width: '4rem' }}>
+                        {typeof hlac[it.id] === 'number' ? String(hlac[it.id]) : '—'}
+                        {it.reverse && <span className="tiny faint"> rev</span>}
+                      </td>
+                      <td className="small muted">{it.label}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )
+      })}
+      <PreferenceCard responses={responses} />
+    </div>
+  )
+}
+
+function hlacMean(values: Record<string, unknown>): number | null {
+  const nums: number[] = []
+  for (const it of HLAC.items) {
+    const v = values[it.id]
+    if (typeof v !== 'number') continue
+    nums.push(it.reverse ? 8 - v : v)
+  }
+  return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
+}
+
+function PreferenceCard({ responses }: { responses: Array<ResponseDoc & { id: string }> }) {
+  const pref = responses.find((r) => r.id === 'preference')
+  const instrument = instrumentById('preference')!
+  if (!pref) return null
+  return (
+    <div className="card">
+      <h2>Preference</h2>
+      <dl className="kv">
+        {instrument.items.map((it) => {
+          const v = pref.values[it.id]
+          if (v == null || v === '') return null
+          return (
+            <div key={it.id} style={{ display: 'contents' }}>
+              <dt>{it.label}</dt>
+              <dd style={{ whiteSpace: 'pre-wrap' }}>{String(v)}</dd>
+            </div>
+          )
+        })}
+      </dl>
+    </div>
+  )
+}
+
+function TheoryScoring({
+  pid,
+  participant,
+  responses,
+  scoring,
+  truth,
+  adminEmail,
+}: {
+  pid: string
+  participant: Participant
+  responses: Array<ResponseDoc & { id: string }>
+  scoring: Array<Record<string, unknown> & { id: string }>
+  truth: GroundTruth | null
+  adminEmail: string
+}) {
+  const halves: Half[] = [1, 2]
+  const anything = responses.some((r) => r.id.startsWith('quiz-') || r.id.startsWith('summary-'))
+  if (!anything) {
+    // A blank page reads as broken rather than as empty, and a facilitator
+    // checking mid-session cannot tell which.
+    return (
+      <Callout kind="soft" title="Nothing to grade yet">
+        The five questions and the summary task come after each half. This fills in as soon as they
+        submit them.
+      </Callout>
+    )
+  }
+  return (
+    <div className="stack">
+      {halves.map((h) => (
+        <div key={h} className="stack">
+          <QuizGrader
+            pid={pid}
+            half={h}
+            project={participant.blocks[h - 1].project}
+            values={responses.find((r) => r.id === `quiz-h${h}`)?.values ?? null}
+            existing={scoring.find((s) => s.id === `quiz-h${h}`) as { correct?: Record<string, boolean> } | undefined}
+            truth={truth}
+            adminEmail={adminEmail}
+          />
+          <SummaryGrader
+            pid={pid}
+            half={h}
+            project={participant.blocks[h - 1].project}
+            text={String(responses.find((r) => r.id === `summary-h${h}`)?.values?.story ?? '')}
+            existing={
+              scoring.find((s) => s.id === `summary-h${h}`) as
+                | { covered?: string[]; causalLinks?: number; misconceptions?: number }
+                | undefined
+            }
+            truth={truth}
+            adminEmail={adminEmail}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function QuizGrader({
+  pid,
+  half,
+  project,
+  values,
+  existing,
+  truth,
+  adminEmail,
+}: {
+  pid: string
+  half: Half
+  project: 'coursecraft' | 'confplan'
+  values: Record<string, unknown> | null
+  existing: { correct?: Record<string, boolean> } | undefined
+  truth: GroundTruth | null
+  adminEmail: string
+}) {
+  const [correct, setCorrect] = useState<Record<string, boolean>>(existing?.correct ?? {})
+  useEffect(() => setCorrect(existing?.correct ?? {}), [existing])
+  const items = QUIZ.items.filter((i) => !i.id.endsWith('_conf'))
+  if (!values) return null
+
+  async function save(next: Record<string, boolean>) {
+    setCorrect(next)
+    await setDoc(doc(db, 'participants', pid, 'scoring', `quiz-h${half}`), {
+      half,
+      correct: next,
+      coderId: adminEmail,
+      scoredAt: Date.now(),
+    })
+  }
+
+  const total = Object.values(correct).filter(Boolean).length
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>Quiz, half {half}</h2>
+        <div className="timer" style={{ fontSize: '1.3rem' }}>
+          {total}/{items.length}
+        </div>
+      </div>
+      {items.map((it) => {
+        const answer = String(values[it.id] ?? '')
+        const conf = values[`${it.id}_conf`]
+        const key = truth?.quizAnswers?.[it.id]
+        return (
+          <div key={it.id} className="field">
+            <div className="field-label">{it.label}</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{answer || <span className="faint">no answer</span>}</div>
+            <div className="tiny muted">confidence {conf == null ? '—' : String(conf)}</div>
+            {key && (
+              <div className="tiny" style={{ color: 'var(--accent)' }}>
+                key: {key[project]}
+                {key.accepts?.length ? ` (also accepts: ${key.accepts.join('; ')})` : ''}
+              </div>
+            )}
+            <div className="btn-group" style={{ marginTop: '0.35rem' }}>
+              <button
+                className={`btn sm${correct[it.id] === true ? ' on' : ''}`}
+                onClick={() => void save({ ...correct, [it.id]: true })}
+              >
+                Correct
+              </button>
+              <button
+                className={`btn sm${correct[it.id] === false ? ' on' : ''}`}
+                onClick={() => void save({ ...correct, [it.id]: false })}
+              >
+                Wrong
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SummaryGrader({
+  pid,
+  half,
+  project,
+  text,
+  existing,
+  truth,
+  adminEmail,
+}: {
+  pid: string
+  half: Half
+  project: 'coursecraft' | 'confplan'
+  text: string
+  existing: { covered?: string[]; causalLinks?: number; misconceptions?: number } | undefined
+  truth: GroundTruth | null
+  adminEmail: string
+}) {
+  const [covered, setCovered] = useState<string[]>(existing?.covered ?? [])
+  const [causal, setCausal] = useState(existing?.causalLinks ?? 0)
+  const [misc, setMisc] = useState(existing?.misconceptions ?? 0)
+  const [note, setNote] = useState('')
+  useEffect(() => {
+    setCovered(existing?.covered ?? [])
+    setCausal(existing?.causalLinks ?? 0)
+    setMisc(existing?.misconceptions ?? 0)
+  }, [existing])
+
+  const episodes = truth?.episodes ?? []
+  if (!text) return null
+
+  async function save(next?: Partial<{ covered: string[]; causalLinks: number; misconceptions: number }>) {
+    const payload = {
+      half,
+      covered: next?.covered ?? covered,
+      causalLinks: next?.causalLinks ?? causal,
+      misconceptions: next?.misconceptions ?? misc,
+      coderId: adminEmail,
+      scoredAt: Date.now(),
+      note,
+    }
+    await setDoc(doc(db, 'participants', pid, 'scoring', `summary-h${half}`), payload)
+  }
+
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>Summary, half {half}</h2>
+        <div className="row tight">
+          <span className="badge accent">{covered.length} covered</span>
+          <span className="badge outline">{causal} causal</span>
+          <span className="badge bad">{misc} wrong</span>
+        </div>
+      </div>
+
+      <div className="card soft" style={{ margin: '0.75rem 0', whiteSpace: 'pre-wrap' }}>{text}</div>
+
+      {episodes.length === 0 ? (
+        <Callout kind="warn">Load the ground-truth file under Setup to get the episode checklist.</Callout>
+      ) : (
+        <div className="stack tight">
+          <div className="tiny muted">Tick every episode they mentioned.</div>
+          <div className="grid-2">
+            {episodes.map((ep) => {
+              const on = covered.includes(ep.id)
+              return (
+                <label key={ep.id} className={`check${on ? ' on' : ''}`} style={{ padding: '0.35rem 0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() => {
+                      const next = on ? covered.filter((x) => x !== ep.id) : [...covered, ep.id]
+                      setCovered(next)
+                      void save({ covered: next })
+                    }}
+                  />
+                  <span className="small">
+                    <strong>{ep.id}</strong> {ep[project]}
+                    <span className="tiny faint"> · {ep.shape}</span>
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="grid-2" style={{ marginTop: '1rem' }}>
+        <div>
+          <div className="field-label">Causal links stated correctly</div>
+          <input
+            type="number"
+            min={0}
+            value={causal}
+            onChange={(e) => setCausal(Number(e.target.value))}
+            onBlur={() => void save()}
+          />
+        </div>
+        <div>
+          <div className="field-label">Confident claims that are false</div>
+          <input
+            type="number"
+            min={0}
+            value={misc}
+            onChange={(e) => setMisc(Number(e.target.value))}
+            onBlur={() => void save()}
+          />
+        </div>
+      </div>
+      <div style={{ marginTop: '0.75rem' }}>
+        <div className="field-label">Coder note</div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} style={{ minHeight: '3.5rem' }} onBlur={() => void save()} />
+      </div>
+    </div>
+  )
+}
+
+function Interview({ pid, adminEmail }: { pid: string; adminEmail: string }) {
+  const { data: notes } = useLiveCollection<{ id: string; probeId: string; ts: number; text: string }>(
+    ['participants', pid, 'notes'],
+    orderBy('ts'),
+  )
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+
+  async function add(probeId: string) {
+    const text = (drafts[probeId] ?? '').trim()
+    if (!text) return
+    await addDoc(collection(db, 'participants', pid, 'notes'), {
+      probeId,
+      text,
+      ts: Date.now(),
+      by: adminEmail,
+    })
+    setDrafts({ ...drafts, [probeId]: '' })
+  }
+
+  return (
+    <div className="stack">
+      <Callout kind="accent" title="Ask the first probe before they compare the setups">
+        Both pilots answered it with something close to what sgt does, one of them from inside the
+        git half. That is worth protecting from contamination.
+      </Callout>
+      {PROBES.map((probe) => (
+        <div className="card" key={probe.id}>
+          <h3 style={{ marginBottom: '0.25rem' }}>{probe.label}</h3>
+          {probe.note && <div className="tiny" style={{ color: 'var(--warn)' }}>{probe.note}</div>}
+          <div className="stack tight" style={{ margin: '0.75rem 0' }}>
+            {(notes ?? [])
+              .filter((n) => n.probeId === probe.id)
+              .map((n) => (
+                <div key={n.id} className="card soft" style={{ padding: '0.5rem 0.75rem' }}>
+                  <div className="tiny faint">{new Date(n.ts).toLocaleTimeString()}</div>
+                  <div className="small" style={{ whiteSpace: 'pre-wrap' }}>{n.text}</div>
+                </div>
+              ))}
+          </div>
+          <textarea
+            value={drafts[probe.id] ?? ''}
+            placeholder="Type what they said. Enter with cmd/ctrl to save."
+            style={{ minHeight: '4rem' }}
+            onChange={(e) => setDrafts({ ...drafts, [probe.id]: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void add(probe.id)
+            }}
+          />
+          <button className="btn sm" style={{ marginTop: '0.5rem' }} onClick={() => void add(probe.id)}>
+            Save note
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Telemetry({
+  pid,
+  participant,
+  requests,
+  responses,
+  scoring,
+}: {
+  pid: string
+  participant: Participant
+  requests: Array<RequestDoc & { id: string }>
+  responses: Array<ResponseDoc & { id: string }>
+  scoring: Array<Record<string, unknown> & { id: string }>
+}) {
+  const { data: events } = useLiveCollection<EventDoc>(['participants', pid, 'events'], orderBy('ts'))
+
+  const analysis = useMemo(() => {
+    if (!events) return null
+    return analyzeParticipant({ participant, responses, requests, events, scoring })
+  }, [events, participant, responses, requests, scoring])
+
+  if (!events) return <Empty>Loading telemetry</Empty>
+  if (events.length === 0)
+    return (
+      <Callout kind="warn" title="Nothing has arrived from their machine">
+        Either the setup script was never run with their code, or the sync has not managed to
+        upload. The local log in the study folder is the record of truth and can be collected by
+        hand.
+      </Callout>
+    )
+
+  return (
+    <div className="stack">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="small muted">{events.length.toLocaleString()} raw events</div>
+        <div className="row tight">
+          <button className="btn sm" onClick={() => downloadJson(events, `${participant.label}-events.json`)}>
+            Export raw JSON
+          </button>
+          <button
+            className="btn sm"
+            onClick={() =>
+              downloadCsv(
+                (analysis?.events ?? []).map((e) => ({
+                  ts: new Date(e.ts).toISOString(),
+                  request: e.requestId ?? '',
+                  category: e.category,
+                  kind: e.kind,
+                  name: e.name ?? '',
+                  text: (e.text ?? '').slice(0, 500),
+                })),
+                `${participant.label}-actions.csv`,
+              )
+            }
+          >
+            Export coded CSV
+          </button>
+        </div>
+      </div>
+
+      {analysis && (
+        <div className="card flush">
+          <div className="scroll-x">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>Active</th>
+                  <th>Prompts</th>
+                  <th>Specificity</th>
+                  <th>Verify ratio</th>
+                  <th>To first op</th>
+                  <th>Wrong turns</th>
+                  <th>Mix</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analysis.requests.map((m) => (
+                  <tr key={`${m.requestId}-${m.half}`}>
+                    <td>
+                      <strong>{m.requestId}</strong>
+                      <div className="tiny muted">{m.condition}</div>
+                    </td>
+                    <td className="tabular">{fmtDuration(m.activeMs)}</td>
+                    <td className="tabular">{m.prompts}</td>
+                    <td className="tabular">
+                      {m.meanSpecificity == null ? '—' : m.meanSpecificity.toFixed(2)}
+                    </td>
+                    <td className="tabular">
+                      {m.verificationRatio == null ? '—' : m.verificationRatio.toFixed(2)}
+                    </td>
+                    <td className="tabular">
+                      {m.timeToFirstHistoryOpMs == null ? '—' : fmtDuration(m.timeToFirstHistoryOpMs)}
+                    </td>
+                    <td className="tabular">{m.wrongTurns}</td>
+                    <td style={{ minWidth: '11rem' }}>
+                      <MixBar counts={m.counts} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MixBar({ counts }: { counts: Record<string, number> }) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0)
+  if (total === 0) return <span className="tiny faint">no actions</span>
+  return (
+    <div className="row tight" style={{ gap: 0, height: 12, borderRadius: 3, overflow: 'hidden' }}>
+      {Object.entries(counts)
+        .filter(([, n]) => n > 0)
+        .map(([c, n]) => (
+          <div
+            key={c}
+            title={`${CATEGORY_LABEL[c as keyof typeof CATEGORY_LABEL]}: ${n}`}
+            style={{
+              width: `${(n / total) * 100}%`,
+              height: '100%',
+              background: CATEGORY_COLOR[c as keyof typeof CATEGORY_COLOR],
+            }}
+          />
+        ))}
+    </div>
+  )
+}

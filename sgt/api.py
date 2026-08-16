@@ -2607,9 +2607,10 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
     Every other view is organized around a *question* the user already knows how to ask (history,
     attribution, forks). This one is organized around the opposite situation: the user is holding an
     opaque token -- a `f-` handle off a graph node, a bare hex off `--ops`, a `f-x:slug` checkpoint,
-    a symbol off a blame line -- and does not yet know which question applies, let alone which verb
-    takes it. Before this, answering "what is `f-00573aa`?" required knowing its *type* first in
-    order to pick between `feature why`, `intent show`, and `advanced state`, which is backwards.
+    a symbol off a blame line, a commit sha off `sgt log`'s id column -- and does not yet know which
+    question applies, let alone which verb takes it. Before this, answering "what is `f-00573aa`?"
+    required knowing its *type* first in order to pick between `why`, `intent show`, and
+    `advanced state`, which is backwards.
 
     Four things, in the order a user needs them:
 
@@ -2626,16 +2627,38 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
     change what it is describing. A token the deterministic ladder can't claim comes back
     `ok: False` with the places to look, rather than an LLM's guess about what was probably meant.
 
-    It also deliberately does not re-derive *why* -- attribution and rationale belong to
-    `sgt feature why`, which `next` points at. Two views answering "why" would drift apart."""
+    It also deliberately does not re-derive *why* -- attribution and rationale belong to `sgt why`,
+    which `next` points at. Two views answering "why" would drift apart."""
+    import re
+
     from sgt.core import verbs as core_verbs
     from sgt.select import resolve as select_resolve
 
     found = select_resolve.identify(repo, target)
     if found is None:
+        # A commit-shaped token that got *here* has already been through the save rung, so the one
+        # thing left to say is why that rung didn't claim it -- three different situations that all
+        # produce the same refusal, and the user can only act on the difference. The flat "not a
+        # known feature, checkpoint, op, or symbol" is what dead-ended this verb six times out of
+        # ten in the pilot, and it named none of them.
+        looks_like_commit = bool(re.fullmatch(r"[0-9a-f]{4,40}", target.strip()))
+        if looks_like_commit:
+            return {
+                "ok": False, "target": target, "kind": None,
+                "message": (
+                    f"{target!r} looks like a commit, but no save here matches it: either it is "
+                    "not a commit in this repo, or it is a prefix matching more than one (type a "
+                    "few more characters), or sgt recorded no edits for it."
+                ),
+                "next": [
+                    {"cmd": "sgt log", "why": "the saves, each with the id this view accepts"},
+                    {"cmd": f"sgt why {target}", "why": "the words recorded for a commit, if it is one"},
+                    {"cmd": f"git show {target}", "why": "if what you actually wanted was the commit itself"},
+                ],
+            }
         return {
             "ok": False, "target": target, "kind": None,
-            "message": f"{target!r} is not a known feature, checkpoint, op, or symbol",
+            "message": f"{target!r} is not a known feature, checkpoint, op, symbol, or save",
             "next": [
                 {"cmd": "sgt log", "why": "browse what you did, newest first"},
                 {"cmd": "sgt log --tree", "why": "the feature tree, with each feature's handle"},
@@ -2654,8 +2677,11 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
         # `id` is canonical and unambiguous (for machines and for copy-out); `handle` is the short
         # form the graph gutter already prints, which is what the suggested commands use -- a 64-char
         # id in a `next:` line wraps the terminal and makes the whole block unreadable. Both resolve
-        # identically: `resolve_feature` accepts the bare-hex prefix.
-        "id": found.feature_id if found.kind == "feature" else (found.label or target),
+        # identically: `resolve_feature` accepts the bare-hex prefix. For a save the pair is the
+        # same shape -- full sha as the canonical id, the 7-char one `sgt log` printed as the handle.
+        "id": (found.feature_id if found.kind == "feature"
+               else found.sha if found.kind == "save"
+               else (found.label or target)),
         "handle": _show_handle(found),
         "label": found.label,
         "feature": _show_feature_ref(repo, found),
@@ -2681,12 +2707,15 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
 def _show_handle(found) -> str:
     """The short token to put in a suggested command: for a feature, the 8-char bare hex the graph
     gutter prints (`f-00573aa…` -> `00573aaf`), so `show` hands back the same string the user saw
-    there; for an op, the same 8-char truncation `--ops` shows; otherwise the token as typed."""
+    there; for an op, the same 8-char truncation `--ops` shows; for a save, the 7-char sha `sgt log`
+    prints in its id column; otherwise the token as typed."""
     if found.kind == "feature" and found.feature_id:
         fid = found.feature_id
         return fid[2:10] if fid.startswith("f-") else fid[:8]
     if found.kind == "op":
         return next(iter(sorted(found.op_ids)))[:8]
+    if found.kind == "save" and found.sha:
+        return found.sha[:7]
     return found.target
 
 
@@ -2804,6 +2833,18 @@ def _show_next(found, consequences: dict) -> list[dict]:
         feature = found.feature_id or ""
         steps.append({"cmd": f"sgt log --focus {feature[2:10] if feature.startswith('f-') else token}",
                       "why": "this checkpoint in the context of its feature"})
+    elif found.kind == "save":
+        # `sgt why <sha>` is the commit-scoped selector (the words the user wrote for this save and
+        # the chat it came from); `git show` is where the line-by-line diff lives, and saying so is
+        # better than implying sgt has its own copy.
+        steps.append({"cmd": f"sgt why {token}",
+                      "why": "the words recorded for this save, and the chat it came from"})
+        steps.append({"cmd": f"git show {token}",
+                      "why": "the line-by-line diff — sgt does not duplicate it"})
+        if found.feature_id:
+            fid = found.feature_id
+            steps.append({"cmd": f"sgt log --focus {fid[2:10] if fid.startswith('f-') else fid[:8]}",
+                          "why": "the checkpoints around this save — the units revert takes"})
     elif found.kind == "symbol":
         file = found.target.partition("::")[0]
         steps.append({"cmd": f"sgt advanced blame {file}", "why": "who set each symbol in this file"})
@@ -2815,8 +2856,12 @@ def _show_next(found, consequences: dict) -> list[dict]:
                       "why": "why this edit is grouped where it is, and the recorded reason"})
 
     # The revert offer comes last and states its cost, so the consequence is read before the verb is
-    # copied. Omitted entirely when nothing here is live -- a revert would be a no-op.
-    if consequences.get("live_op_count"):
+    # copied. Omitted entirely when nothing here is live -- a revert would be a no-op -- and for a
+    # save, because `sgt revert` does not take a commit sha: its ladder is checkpoint/op/symbol/
+    # feature, so `sgt revert <sha>` answers "no feature matches handle". The cost line above is
+    # still true and worth reading (it is how entangled this save is), and `log --focus` is the
+    # route from it to a unit revert *does* take, so the number is not a dead end.
+    if consequences.get("live_op_count") and found.kind != "save":
         removes, dependents = consequences["removes"], consequences["dependents"]
         cost = f"removes {removes} edit" + ("s" if removes != 1 else "")
         if dependents:
