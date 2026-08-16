@@ -1,7 +1,9 @@
 # The study, in one page
 
-Read this first. Then `participant-materials.md` if you are running sessions,
-`remote-setup.md` if the participant is on their own laptop.
+Read this first. Then `running-the-study.md`, which is the operator's manual for
+the website the study now runs on. `protocol.md` fixes every question, scale and
+figure; `participant-materials.md` keeps the facilitator's script and the answer
+keys.
 
 ## What we are asking
 
@@ -49,22 +51,28 @@ removed, and a refactor that quietly broke something.
 | File | For |
 |---|---|
 | `README.md` | This page |
-| `participant-materials.md` | Running a session, scoring, analysis |
-| `remote-setup.md` | Their laptop, API keys, Claude Code |
-| `materials/` | The handouts participants read |
+| `protocol.md` | Every question, scale, measure and figure, fixed |
+| `running-the-study.md` | The operator's manual for the website |
+| `participant-materials.md` | Facilitator's script and the answer keys |
+| `answer-key.json` | Loaded into the console; ground truth for scoring |
+| `remote-setup.md` | Their laptop, keys, Claude Code |
+| `materials/` | The handouts, also rendered by the website |
 | `testbed-spec.md` | How the two projects were built |
 | `build-log-*.md` | Ground truth for each project |
 | `pilot-01-findings.md` | First pilot, sgt half |
 | `pilot-02-findings.md` | Second pilot, git half |
 | `sgt-findings.md` | Running list of known tool problems |
 
-Scripts live in `scripts/` at the repository root:
+The website is in `web/`. The participant's bundle is in
+`scripts/study-bundle/`. Scripts live in `scripts/`:
 
 | Script | Does |
 |---|---|
+| `make-study-bundle.sh` | Builds one of the four bundles |
+| `make-practice-repo.sh` | Builds the throwaway warm-up repository |
 | `setup-study-session.sh` | Prepares one workspace on a machine you control |
-| `make-study-bundle.sh` | Builds a bundle for a remote participant |
 | `score_study_repo.py` | Scores the removal request |
+| `study-bundle/tests/test_telemetry.py` | Checks the recording path end to end |
 
 ## State of play
 
@@ -73,15 +81,24 @@ Ready:
 - Both projects, in both conditions, tests passing.
 - Setup and bundling, with the tool build pinned and recorded.
 - Scoring for requests 1, 2, 3 and 4.
-- Handouts and this guide.
+- Handouts, this guide, and the confplan task sheet.
 - Two pilots run, one per setup, which found twelve tool defects and four
   problems in the study design. All are fixed.
+- The website: consent, background, per-request timing, all four
+  questionnaires, the quiz, the summary task, live monitoring, scoring, and the
+  three paper figures with SVG export.
+- The participant bundle: one command to set up, an assistant profile isolated
+  from the participant's own account and billing, prompt and command recording,
+  and an upload path that cannot lose or double-count anything.
+- Tests: 57 in `web/` covering the security rules, the analysis and the
+  figures, and 29 covering the recording path end to end.
 
 Not ready, and needed before participant 1:
 
-- Consent form, background questionnaire, workload and usability
-  questionnaires. Described, not built.
-- Ethics approval, and pre-registration of the questions and measures.
+- Ethics approval, and pre-registration on OSF. `protocol.md` is the
+  pre-registration text.
+- Bundles built and uploaded, and their links pasted into the console.
+- Session API keys issued, capped, and entered into the console.
 - A pilot with an actual person. Both pilots so far were AI agents, which find
   defects well and tell you nothing about whether a human finishes in the time
   given.
