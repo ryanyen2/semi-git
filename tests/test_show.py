@@ -28,6 +28,16 @@ def _feature(result):
     return next(iter(result["nodes"]))
 
 
+def _a_logged_save_id(repo) -> str:
+    """One id string exactly as `sgt log` prints it in its id column -- taken from the projection
+    the renderer reads, so what is under test is the token the user was actually shown."""
+    from sgt.api import grid_view, map_view
+    from sgt.tui.graph import episode_rail_layout, episodes
+
+    rows = episode_rail_layout(episodes(map_view(repo), grid_view(repo)))["rows"]
+    return next(row["sha"][:7] for row in rows if row.get("sha"))
+
+
 # -- safety ------------------------------------------------------------------------------------
 
 
@@ -174,14 +184,26 @@ def test_every_suggested_command_is_a_real_dispatchable_verb(tmp_path):
     commands in the skills and docs, rather than a parser walk of its own. This test previously had
     one, and it shared the blind spot the docs checker had: an unknown *subcommand* was treated as a
     positional argument, so when `why` was promoted out of the `feature` grouping this test kept
-    passing while `show_view` went on suggesting `sgt feature why`."""
+    passing while `show_view` went on suggesting `sgt feature why`.
+
+    It had a second blind spot, of the same kind: no target here was ever commit-shaped, so the
+    branch that answers a commit sha was the one branch whose suggestions nothing checked -- and
+    `sgt feature why` came back in it, unnoticed, for exactly that reason. Both a *resolving* sha
+    (the save rung) and a non-resolving one (the explain-and-stop path) are covered now."""
     from scripts.check_docs_commands import unrunnable
 
     repo, result = _repo(tmp_path)
-    targets = [_feature(result), "a.py::foo", "README.md", "nonsense-token"]
+    targets = [_feature(result), "a.py::foo", "README.md", "nonsense-token",
+               _a_logged_save_id(repo), "deadbee"]
     seen = 0
     for target in targets:
         for step in api.show_view(repo, target)["next"]:
+            # `git show` is the one non-sgt command `show` points at, and deliberately: the
+            # line-by-line diff lives in git and claiming otherwise would be the lie. It is checked
+            # by running it for real in `test_a_save_id_from_the_log_is_shown_as_a_save`.
+            if not step["cmd"].startswith("sgt "):
+                assert step["cmd"].startswith("git show "), f"unexpected foreign cmd {step['cmd']!r}"
+                continue
             reason = unrunnable(step["cmd"])
             assert reason is None, f"suggested {step['cmd']!r}: {reason}"
             seen += 1
@@ -261,3 +283,65 @@ def test_affected_symbols_are_capped_with_an_honest_count(tmp_path):
     assert cons["affected_symbol_count"] >= len(cons["affected_symbols"])
     # The magnitude is always present regardless of the cap.
     assert isinstance(cons["removes"], int) and isinstance(cons["dependents"], int)
+
+
+# -- saves -------------------------------------------------------------------------------------
+
+
+def test_a_save_id_from_the_log_is_shown_as_a_save(tmp_path):
+    """The id column of `sgt log` is the 7-char commit sha, so it is the token most likely to be
+    typed back into `show` -- and the one that used to resolve to nothing. In the pilot that
+    dead-ended the primary read verb six times out of ten and sent the participant back to plain
+    git, in the sgt condition.
+
+    Also runs the suggested `git show` for real: it is the one non-sgt command `show` offers, so
+    `unrunnable` cannot vouch for it and nothing else would notice it rotting."""
+    import subprocess
+
+    repo, _result = _repo(tmp_path)
+    token = _a_logged_save_id(repo)
+
+    view = api.show_view(repo, token)
+    assert view["ok"], view.get("message")
+    assert view["kind"] == "save"
+    # The handle is the string the log printed, so the header reads as being about the thing the
+    # user typed; the id is the full sha, which is what a machine or a copy-out needs.
+    assert view["handle"] == token
+    assert view["id"].startswith(token) and len(view["id"]) == 40
+    assert view["label"], "a save's label is its commit subject"
+    assert view["op_count"] >= 1
+
+    git_show = next(s["cmd"] for s in view["next"] if s["cmd"].startswith("git show "))
+    assert subprocess.run(git_show.split(), cwd=repo, capture_output=True).returncode == 0
+
+
+def test_a_save_is_not_offered_a_revert_that_revert_cannot_take(tmp_path):
+    """`sgt revert`'s ladder is checkpoint/op/symbol/feature -- it does not take a commit sha, and
+    answers `no feature matches handle` for one. So the revert offer, which every other live
+    selection gets, must be withheld here.
+
+    The second half is what keeps this honest: it asserts revert really does still reject the sha.
+    If revert ever learns saves, this test fails and says to put the offer back, rather than
+    quietly leaving `show` less useful than the tool it describes."""
+    from sgt.lens.verbs import resolve_feature
+
+    repo, _result = _repo(tmp_path)
+    token = _a_logged_save_id(repo)
+
+    view = api.show_view(repo, token)
+    assert view["consequences"]["live_op_count"], "precondition: this save is live"
+    assert not [s for s in view["next"] if s["cmd"].startswith("sgt revert")]
+    assert resolve_feature(repo, token) is None, "revert now takes a sha -- restore the offer"
+
+
+def test_a_commit_shaped_miss_says_which_of_the_three_things_went_wrong(tmp_path):
+    """A commit-shaped token that reaches the refusal has already been past the save rung, so the
+    only useful thing left to say is why it wasn't claimed. `not a known feature, checkpoint, op,
+    or symbol` named none of the three and was the message the pilot participant hit."""
+    repo, _result = _repo(tmp_path)
+
+    view = api.show_view(repo, "deadbee")
+    assert not view["ok"]
+    assert "not a commit in this repo" in view["message"]
+    assert "more than one" in view["message"]
+    assert "recorded no edits" in view["message"]

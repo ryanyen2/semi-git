@@ -155,3 +155,83 @@ def test_identify_matches_the_revert_ladders_reading_of_the_same_token(tmp_path)
     ladder_sees_a_feature = resolve_feature(repo, fid) is not None
     found = sel.identify(repo, fid)
     assert ladder_sees_a_feature == (found is not None and found.kind == "feature")
+
+
+# -- the save rung -----------------------------------------------------------------------------
+
+
+def _logged_save_ids(repo) -> list[str]:
+    """The id strings `sgt log` actually prints in its id column, taken from the projection the
+    renderer reads (`render_save_list_lines` prints `row["sha"][:7]`). Going through the renderer's
+    own source rather than `git log` is the point: what must resolve is the token the user was
+    shown, not a token that happens to be a commit."""
+    from sgt.api import grid_view, map_view
+    from sgt.tui.graph import episode_rail_layout, episodes
+
+    rows = episode_rail_layout(episodes(map_view(repo), grid_view(repo)))["rows"]
+    return [row["sha"][:7] for row in rows if row.get("sha")]
+
+
+def test_a_save_id_from_the_log_resolves_to_that_save(tmp_path):
+    """The rung's whole reason to exist. `sgt log`'s id column is the 7-char commit sha, so it is the
+    single most likely token to be typed back -- and before this it resolved to nothing, which sent
+    the pilot participant back to plain git *while in the sgt condition*."""
+    repo = _repo(tmp_path)
+    printed = _logged_save_ids(repo)
+    assert printed, "fixture prints no save ids -- the test would prove nothing"
+
+    for token in printed:
+        found = sel.identify(repo, token)
+        assert found is not None, f"`sgt log` printed {token!r} and `identify` rejected it"
+        assert found.kind == "save"
+        assert found.sha.startswith(token)
+        assert found.op_ids, "a save with no ops should not have been built at all"
+        assert found.is_group
+
+
+def test_a_save_covers_exactly_the_ops_that_commit_carried(tmp_path):
+    """`show` and `sgt why <sha>` must never disagree about what a save contains, so both read the
+    same `intent.group.atoms` partition. Pinned against that partition directly."""
+    from sgt.intent import group
+
+    repo = _repo(tmp_path)
+    token = _logged_save_ids(repo)[0]
+    atom = next(a for a in group.atoms(repo) if a.commit_sha.startswith(token))
+
+    found = sel.identify(repo, token)
+    assert found.op_ids == atom.op_ids
+    assert found.label == atom.subject
+
+
+def test_a_commit_that_carried_no_ops_is_not_claimed_as_a_save(tmp_path):
+    """The rung reports only what sgt actually recorded. A commit with no ops has no atom, so it
+    stays unresolved and the caller explains -- rather than a `save` with an empty extent, which
+    would read as "sgt knows about this and it is empty".
+
+    The barren commit is *made* here rather than looked for: every commit in the corpus carries ops,
+    so a search-and-skip version of this test passed without ever reaching the assertion."""
+    import subprocess
+
+    from sgt.intent import group
+
+    repo = _repo(tmp_path)
+    subprocess.run(["git", "commit", "--allow-empty", "-q", "-m", "no edits here"],
+                   cwd=repo, check=True)
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                         capture_output=True, text=True, check=True).stdout.strip()
+    get(repo)  # mine it, so this is "sgt looked and found nothing", not "sgt never looked"
+
+    assert sha not in {a.commit_sha for a in group.atoms(repo)}, "precondition: no ops in it"
+    assert sel.identify(repo, sha[:7]) is None
+    assert sel.identify(repo, sha) is None
+
+
+def test_a_feature_handle_still_wins_over_the_save_rung(tmp_path):
+    """The save rung is last, so every token that resolved before this change resolves to the same
+    thing. A feature handle is bare hex too, and it must keep meaning the feature."""
+    repo = _repo(tmp_path)
+    result = lensmap.build_map(repo)
+    fid = next(iter(result["nodes"]))
+
+    found = sel.identify(repo, fid)
+    assert found is not None and found.kind == "feature"

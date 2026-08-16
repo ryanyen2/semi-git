@@ -1,125 +1,105 @@
 # Remote sessions: their laptop, keys, Claude Code
 
-For when the participant runs on their own machine over a video call.
+For when the participant runs on their own machine over a video call, which is
+now the normal case.
+
+Most of what used to be on this page is done by the website and the setup
+script. `running-the-study.md` is the operator's manual. This page is what is
+left: what to screen for at recruitment, and what the isolation actually
+guarantees, because that is what you will be asked.
 
 ## What they need
 
-- macOS or Linux. Windows is only supported through WSL, so screen it out at
-  recruitment.
-- git.
-- A video call with screen sharing they can give you control of, or at least
-  share.
-- Nothing else. Their Python version does not matter, see below.
+- macOS or Linux. Windows only through WSL, so screen it out at recruitment.
+- git and curl.
+- A video call with screen sharing.
+- Nothing else. Their Python version does not matter, and neither does whether
+  they already have Claude Code.
 
 ## Their Python does not matter
 
 `uv` downloads its own Python, so a laptop with Python 3.8, or none at all,
-works. The install script fetches 3.12 and uses only that. Do not ask them to
+works. The setup script fetches 3.12 and uses only that. Do not ask them to
 install or upgrade Python, and do not let them "fix" their system Python for
 this.
 
+## Their AI assistant account is not used
+
+This is the part participants ask about, and the answer should be exact.
+
+- The assistant runs with `CLAUDE_CONFIG_DIR` pointed at `.claude-study` inside
+  the study folder. Its whole config tree lives there: settings, session
+  history, project state. Their own `~/.claude` is not read and not written.
+- Authentication goes through an `apiKeyHelper` inside that folder, which
+  returns the key we issued. Their subscription is not touched, and they are
+  never asked to approve a key, because `ANTHROPIC_API_KEY` is deliberately not
+  set: setting it would make Claude Code prompt them once to approve it, which
+  is friction with no benefit.
+- The session shell unsets `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`, so a
+  key of their own that happens to be in their environment cannot be picked up
+  and billed to them.
+- `DISABLE_AUTOUPDATER` is on, so the assistant cannot upgrade itself between
+  participant three and participant four. The version is part of the condition.
+- `study-cleanup` removes the profile and the key at the end.
+
+If they ask what is recorded: the prompts they send, the tool calls the
+assistant makes, and the commands they run inside the session shell, along with
+exit codes and timings. Nothing outside the study folder. Nothing before or
+after the session. It is on the consent page in those words.
+
+## API keys
+
+Issue keys **for the study**, cap their spend, and revoke them the day the
+sessions end. Enter them once in the console under **Setup → Session keys**.
+
+The participant never sees or pastes a key. The setup script fetches the pair
+for their session using the code from their study page. That is deliberate: a
+key that has to be copied by hand is a key that ends up in the wrong window.
+
+The keys are readable by anything holding a participant link, which is the price
+of that. It is why they must be study keys with a hard cap, and why the roster
+has a per-participant **Revoke** button. Pressing it marks them revoked and
+clears them from the participant's record; revoke them at the provider too.
+
 ## A day before
 
-Build one bundle per half:
-
-```bash
-scripts/make-study-bundle.sh p07 sgt coursecraft
-```
-
-That produces `~/study/bundles/p07.tgz`, about 3 MB. It holds the project copy,
-the handouts, and a wheel of the exact sgt build we are testing. It does not
-hold an API key.
-
-Send it and this message:
-
-> Before our session, please unpack the attached file somewhere easy to find,
-> then run `install/setup.sh` inside it. It takes a few minutes and downloads
-> its own Python, so it won't touch anything else on your machine. It should
-> finish by printing "38 passed". Tell me if it doesn't and we'll sort it out
-> before the session rather than during it.
+Send the link and the message in `running-the-study.md` §2. They do consent,
+background and setup on their own, and you watch it land in **Live**.
 
 Everything slow is already done in the bundle, including the history view
 refresh, so their first command in the session is fast.
 
-## API keys
+## Ten minutes before
 
-The sgt half needs an OpenAI key for the plain English commands. The git half
-needs no key.
+The setup checklist on their page is the check. If it is green, they are ready.
+If it is not, that is the conversation to have now rather than at minute four of
+the first request.
 
-- Issue a key for the study, not your personal one.
-- Cap its spend. A session uses a few cents.
-- Send it at the start of the session, not with the bundle, over the call rather
-  than by email.
-- Have them paste it into `work/.env` as one line:
-  `OPENAI_API_KEY=sk-...`
-- Revoke it the moment the session ends. Put this on your end of session
-  checklist, because a key that lives in twelve people's home directories is a
-  key you no longer control.
-
-If it is missing or wrong, sgt still runs. Features get short generic names and
-plain English selections stop working, which changes what you are measuring, so
-check it before you start:
-
-```bash
-cd work && ../bin/sgt log --refresh
-```
-
-Real names in the output mean the key works.
-
-## Claude Code
-
-Both halves need an assistant, and it has to be the same one for everybody.
-
-Give each participant an Anthropic API key for the session:
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-claude
-```
-
-Same rules as the other key. Issue it for the study, cap it, send it at the
-start, revoke it at the end.
-
-Do not share a personal Claude account login. Accounts are per person, sharing
-one breaks Anthropic's terms, and it puts your own history and billing on
-someone else's laptop. If you would rather not issue keys at all, the
-alternative is asking participants to use their own Claude account and
-reimbursing them, but then the assistant's model and settings vary between
-people, and you have to record which version each person had.
-
-Whichever route you take, write down for each participant which model answered
-them. It is part of the condition.
-
-## Ten minutes before the session
-
-Ask them to share their screen and check, in order:
-
-- `cd` into the unpacked folder, then `ls`. They should see `work`, `tasks.md`,
-  `tutorial.md`.
-- `cd work && .venv/bin/python -m pytest -q` prints 38 passed.
-- sgt half only: `../bin/sgt now` prints a short summary.
-- `claude` starts and answers "hello".
-- Their editor is open on `work/`.
-
-Then hand over `00-welcome.md`.
+Then ask them to share their screen and open `./bin/study-shell`.
 
 ## Things that go wrong
 
-- **`sgt: command not found`.** They are typing `sgt`. It is `./bin/sgt` from
-  the folder, or `../bin/sgt` from inside `work/`. Tell them once, at the start.
-- **"this isn't a git repository".** They are outside `work/`. `cd work`.
-- **`uv: command not found` after install.** Their shell hasn't picked it up.
-  `export PATH="$HOME/.local/bin:$PATH"`, or a new terminal tab.
-- **Tests fail during setup.** Do not run the session. Rebuild the bundle and
-  check it yourself first.
-- **The tool is slow on first use.** It shouldn't be, because the bundle is
-  pre-refreshed. If it is, their copy didn't come from the bundle.
-- **They wedge the project.** Note the time, have them unpack a spare bundle,
-  skip to the next request, and mark that request stopped by a tool failure.
-  Always have one spare bundle per condition ready.
+- **`claude: command not found`.** Their shell has not picked up
+  `~/.local/bin`. New terminal tab, then `./bin/study-shell`.
+- **`uv: command not found` after install.** Same cause, same fix.
+- **`sgt: command not found`.** They are outside the session shell. Everything
+  for the study runs inside `./bin/study-shell`.
+- **"this isn't a git repository".** They are outside `work/`. `study-work`.
+- **The setup script refuses to run.** Read what it says. If it says the folder
+  is not one they are assigned, they have the wrong bundle: send the right one
+  rather than overriding it. A session run from the wrong folder looks perfectly
+  normal and is unusable.
+- **Their link will not reopen.** Cleared cache, second browser, private window.
+  Open their record in the console and press **Release link**.
+- **Nothing arrives from their machine.** Their local log is complete either
+  way. Ask them to run `study-sync --verbose` and read the error; if it cannot
+  be fixed during the session, collect `telemetry/events.jsonl` afterwards.
+- **They wedge the project.** Pause the clock with reason "tool failure", have
+  them unpack a spare copy, skip to the next request. Keep one spare bundle per
+  condition ready.
 
 ## After the session
 
-- Revoke both keys.
-- Ask them to send `notes/` and the assistant transcript, then delete the folder.
-- Confirm they deleted it. The projects get reused with other participants.
+- Revoke both keys, in the console and at the provider.
+- Check **Hand over your data** shows both halves delivered.
+- Confirm they ran `study-cleanup`. The projects get reused.

@@ -77,7 +77,7 @@ Four scored subtasks per block, one stretch subtask if time remains. About 45 mi
 
 | Subtask | Cap | Targets | Baseline mechanism | sgt mechanism |
 |---|---|---|---|---|
-| S1 provenance | 7 min | E8 tangle: "search behavior changed around when date entry got lenient; what work changed search and what else rode along?" | log, blame, diff reading | `sgt show`, `sgt log`, `sgt feature why` |
+| S1 provenance | 7 min | E8 tangle: "search behavior changed around when date entry got lenient; what work changed search and what else rode along?" | log, blame, diff reading | `sgt show` (accepts the save id `sgt log` prints), `sgt log`, `sgt why` |
 | S2 entangled removal | 15 min | remove waitlist (E11) and its machinery; keep E13 fix, E15 export, everything else green | revert/rebase across interleaved commits | `sgt show f-waitlist` (impact count), `sgt revert` |
 | S3 selective restore | (in S2 cap) | bring back plain join-waitlist without promotion or notifications | cherry-pick archaeology | `sgt restore <sel>` |
 | S4 regression repair | 10 min | E17: back-to-back sections now conflict; restore old boundary behavior, keep the rest of the refactor | bisect or log reading, manual partial revert | `sgt intent` rewind, `sgt revert f@n`, or symbol restore with `at` |

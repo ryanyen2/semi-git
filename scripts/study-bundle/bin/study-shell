@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# The session shell. Everything for the study runs in here.
+#
+# It exists so that three things are true at once and stay true for the whole
+# session: the assistant runs from a profile inside this folder on a key we
+# issued, the commands the participant types are recorded, and their own machine
+# is left exactly as it was. Anything run outside this shell is untracked and,
+# for the assistant, would fall back to their own account.
+set -euo pipefail
+
+STUDY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+[ -f "$STUDY_HOME/study.env" ] && . "$STUDY_HOME/study.env"
+: "${STUDY_PY:=$STUDY_HOME/work/.venv/bin/python}"
+
+export STUDY_HOME STUDY_PY
+export STUDY_CODE="${STUDY_CODE:-}"
+export STUDY_SHIM_DIR="$STUDY_HOME/bin/shims"
+export CLAUDE_CONFIG_DIR="$STUDY_HOME/.claude-study"
+
+# Their key must not be picked up. The assistant authenticates through the
+# apiKeyHelper in the isolated profile, so nothing here is billed to them.
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL || true
+
+export PATH="$STUDY_SHIM_DIR:$STUDY_HOME/bin:$STUDY_HOME/work/.venv/bin:$PATH"
+
+if [ ! -x "$STUDY_PY" ]; then
+    echo "The project environment is missing. Run install/setup.sh first." >&2
+    exit 1
+fi
+
+# A background pusher, so the facilitator is never more than twenty seconds
+# behind. It dies with the shell.
+if [ -n "$STUDY_CODE" ]; then
+    "$STUDY_HOME/bin/study-sync" --daemon >/dev/null 2>&1 &
+    SYNC_PID=$!
+    trap 'kill "$SYNC_PID" 2>/dev/null || true; "$STUDY_HOME/bin/study-sync" --quiet >/dev/null 2>&1 || true' EXIT
+fi
+
+RC="$(mktemp "${TMPDIR:-/tmp}/study-rc.XXXXXX")"
+cat > "$RC" <<RCFILE
+# Deliberately not your own shell config. Aliases and wrappers differ from
+# person to person, and a session where one participant's \`git\` is really
+# something else is a session we cannot compare with anyone's.
+export PS1='study \W \$ '
+export HISTFILE="$STUDY_HOME/telemetry/shell-history"
+export HISTSIZE=10000
+export EDITOR="\${EDITOR:-nano}"
+
+study-practice() {
+    if [ -d "$STUDY_HOME/practice" ]; then
+        cd "$STUDY_HOME/practice" && echo "Practice copy. Nothing here counts. cd \\\$STUDY_HOME/work when you are ready."
+    else
+        echo "No practice copy in this bundle."
+    fi
+}
+
+study-work() { cd "$STUDY_HOME/work"; }
+
+cd "$STUDY_HOME/work"
+
+echo
+echo "Session shell. The project is in \\\$(pwd)."
+echo
+echo "  claude            the assistant, on our key and our profile"
+echo "  study-practice    the throwaway warm-up copy"
+echo "  study-work        back to the real project"
+echo "  study-doctor      re-run the setup checks"
+echo "  study-sync        push what has been recorded so far"
+echo
+echo "Leave this shell open for the whole half. Type exit when the half is done."
+echo
+RCFILE
+
+trap 'rm -f "$RC"' RETURN 2>/dev/null || true
+exec bash --noprofile --rcfile "$RC" -i
