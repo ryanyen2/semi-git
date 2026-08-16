@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParticipant } from '../ParticipantApp'
 import {
+  draftKey,
   markRequestBoundary,
   openRequest,
   patchRequest,
+  readDraft,
   requestDocId,
+  useFlushOnHide,
   useLiveCollection,
+  writeDraft,
 } from '../../lib/db'
 import type { PauseInterval, RequestDoc, RequestId } from '../../lib/types'
 import { blockFor, type Step } from '../../study/flow'
@@ -358,9 +362,30 @@ function AnswerBox({
   doc: RequestDoc | undefined
   wantsConfidence: boolean
 }) {
+  // A crash-safe mirror, keyed to this request. The questionnaires have had one
+  // since the start; this box did not, and it is the worse thing to lose: a
+  // scored answer written while reading code cannot be reconstructed by asking
+  // the participant again, and a rating they no longer hold cannot be re-felt.
+  const key = draftKey(pid, 'answer', `${request}-h${half}`)
   const [answer, setAnswer] = useState(doc?.answer ?? '')
   const [confidence, setConfidence] = useState<number | null>(doc?.confidence ?? null)
   const [dirty, setDirty] = useState(false)
+
+  // Recover a draft the server never received -- the browser died between a
+  // keystroke and the debounce. Only when it is strictly newer than what came
+  // back, so a stale draft from a previous attempt cannot resurrect itself over
+  // a real submitted answer.
+  useEffect(() => {
+    const local = readDraft<{ answer: string; confidence: number | null }>(key)
+    if (!local) return
+    const remoteAt = doc?.submittedAt ?? 0
+    if (local.at <= remoteAt || !local.value.answer) return
+    if (local.value.answer === (doc?.answer ?? '')) return
+    setAnswer(local.value.answer)
+    setConfidence(local.value.confidence)
+    setDirty(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
 
   // Adopt the stored value only while the box is untouched, so a slow snapshot
   // cannot overwrite something the participant is in the middle of typing.
@@ -372,19 +397,16 @@ function AnswerBox({
 
   useEffect(() => {
     if (!dirty) return
+    writeDraft(key, { answer, confidence })
     const t = window.setTimeout(() => {
       void patchRequest(pid, request, half, { answer, confidence })
     }, 600)
     return () => window.clearTimeout(t)
-  }, [answer, confidence, dirty, pid, request, half])
+  }, [answer, confidence, dirty, pid, request, half, key])
 
-  useEffect(() => {
-    const flush = () => {
-      if (dirty) void patchRequest(pid, request, half, { answer, confidence })
-    }
-    window.addEventListener('pagehide', flush)
-    return () => window.removeEventListener('pagehide', flush)
-  }, [dirty, answer, confidence, pid, request, half])
+  useFlushOnHide(() => {
+    if (dirty) void patchRequest(pid, request, half, { answer, confidence })
+  })
 
   return (
     <div className="stack tight" style={{ marginTop: '0.75rem' }}>

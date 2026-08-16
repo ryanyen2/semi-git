@@ -7,8 +7,8 @@
 
 | 誰 | 網址 |
 |---|---|
-| 主持人（你） | `https://sem-git.web.app/admin` |
-| 受試者 | `https://sem-git.web.app/p/<他的 code>` |
+| 主持人（你） | `https://sem-git.firebaseapp.com/admin` |
+| 受試者 | `https://sem-git.firebaseapp.com/p/<他的 code>` |
 
 ---
 
@@ -67,29 +67,33 @@ consent 說明書、四個 bundle 下載連結。
 ⚠️ **bundle 檔名不能出現 `sgt`**。受試者看得到網址，看到就破功了。
 （現在的檔名是 `study-coursecraft-a.tgz` / `-b.tgz`，a/b 不透露哪個是哪個。）
 
-### 5. 建 bundle（四個）
+### 5. 建 bundle + 發佈（一個指令）
 
 ```bash
-scripts/make-study-bundle.sh git coursecraft
-scripts/make-study-bundle.sh sgt coursecraft
-scripts/make-study-bundle.sh git confplan
-scripts/make-study-bundle.sh sgt confplan
+scripts/publish-study.sh
 ```
 
-只有四個，不是每人一個。「這個人是哪一輪、他的 key 是什麼」是安裝腳本用他的 code
-去線上抓的，所以 bundle 可以重複用。
+這一個指令會：建四個 bundle → 建網站 → 上線 → **回頭抓線上的檔案比對大小**，
+確認participants 現在下載到的就是剛剛建的東西。
+
+> ⚠️ **常見誤解，很重要：**
+> `npm run build && firebase deploy` **不會**重建 bundle。
+> `npm run build` 建的是**網站**；bundle 是四個獨立的 `.tgz`，
+> deploy 只是順手把 `web/public/bundles/` 裡「已經存在」的檔案一起送上去。
+>
+> 所以如果你改了 sgt 然後只跑 deploy → **網站是新的，受試者下載到的工具是舊的**，
+> 而且畫面上完全看不出來。`publish-study.sh` 就是為了讓這件事不可能發生。
+
+只有四個 bundle，不是每人一個。「這個人是哪一輪、他的 key 是什麼」是安裝腳本用他的
+code 去線上抓的，所以 bundle 可以重複用。
 
 建的時候會自動：跑測試（沒過就拒絕出貨）、預熱 sgt 的歷史檢視（受試者第一個指令才不會卡）、
 附一個**跟兩個正式專案都不一樣**的練習用 repo。
 
-⚠️ **建 bundle 之前一定要先 commit。** 否則版本會被標成 `-dirty`，
-之後就無法回答「P07 跑的是哪一版」。
+⚠️ **有未 commit 的改動時，這個指令會直接拒絕執行** ——
+否則 bundle 裡的版本會標成 `-dirty`，之後就無法回答「P07 跑的是哪一版」。
 
-發佈：
-
-```bash
-cd web && npm run build && firebase deploy --only hosting
-```
+只改了網站文字、不想重建 bundle → `scripts/publish-study.sh --site`。
 
 ### 6. 建 12 位受試者
 
@@ -155,6 +159,23 @@ Claude Code profile、API key、**以及一次真的呼叫 AI**。
 | 中途被打斷 / 出事 | 請他按 **Pause the clock** 並選原因。分析用的是實際作業時間。 |
 | 連結打不開了 | 清了快取 / 換瀏覽器 / 無痕視窗都會被鎖（防止一個連結兩個人用）。開他的紀錄 → **Release link**。 |
 | 有指令失敗 | Live 卡片上會直接顯示紅色的失敗指令（這是 pilot 03 之後才加的） |
+| 要讓某人**重來** | 名冊每一列都有 **Reset**：清掉他做過的所有東西，但**連結和條件順序不變**（這是維持平衡的關鍵），回到第一步。 |
+| 建錯了要**刪掉** | 同一列的 **Delete**：連人帶資料整個移除，連結失效。 |
+
+> Reset / Delete 兩個都會先**數出將要刪掉什麼**（例如「1 responses, 5 events, 1 scoring」）再要你確認。
+> 兩個在**任何狀態**下都能用 —— 舊版只有 `created` 狀態能刪，所以一個已經 `consented` 的
+> 測試帳號會完全刪不掉。
+>
+> 要一次清空（正式開始前清測試資料）→ 展開 **Danger zone**，
+> 有「只刪 pilot」「只刪正式受試者」「全刪」三個選項。
+
+### 資料會不會掉？
+
+不會。問卷答案、任務答案、訪談筆記都是**每打一個字就存到瀏覽器**，
+再用 debounce 寫進資料庫 —— 關分頁、重整、當機、斷網，最多掉最後一個字。
+
+唯一「不會自動寫進資料庫」的是**評分**：評分是判斷，半套的 rubric 不應該進資料。
+它會存在你這台瀏覽器裡，下次打開那一題時問你要不要還原。
 
 主持人這邊沒變的事：**過一半**和**剩兩分鐘**要報時；常講「我們在測這兩套工具，不是在測你」；
 讓他持續講出他在想什麼（think aloud）。
