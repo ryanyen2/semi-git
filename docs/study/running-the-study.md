@@ -59,14 +59,25 @@ protocol number, the consent information sheet, and four bundle download URLs.
 Name the bundle files neutrally. The participant sees the URL, and a filename
 with `sgt` in it tells them which setup is the new one.
 
-### Build the four bundles
+### Build the four bundles and publish
 
 ```bash
-scripts/make-study-bundle.sh git coursecraft
-scripts/make-study-bundle.sh sgt coursecraft
-scripts/make-study-bundle.sh git confplan
-scripts/make-study-bundle.sh sgt confplan
+scripts/publish-study.sh
 ```
+
+Builds the four bundles, builds the site, deploys, then fetches each bundle back
+off the live site and checks its size against the file it just built.
+
+**`npm run build && firebase deploy` does not rebuild the bundles.** It builds
+the *website*; the bundles are separate artefacts the deploy copies out of
+`web/public/bundles/` because they happen to live in the static directory. Change
+sgt, deploy, and you get a fresh site handing out the previous tool, with nothing
+on screen to say so. That is what this script exists to prevent, and it refuses
+to run at all on a dirty tree, because a wheel built from uncommitted code is a
+build no one can name afterwards.
+
+Use `--site` when you have only changed the website, and `--dry-run` to build
+without publishing.
 
 Four, not one per participant. Everything specific to a person -- which half
 they are on and the keys for their session -- is fetched by the setup script
@@ -136,6 +147,24 @@ to a tool failure with no record of how long the recovery took.
 **A locked-out link.** If they clear their cache, switch browsers, or open a
 private window, their link refuses to reopen. That is deliberate, and stops one
 link being used by two people. Open their record and press **Release link**.
+
+**Starting someone over.** Each roster row has **Reset** and **Delete**, at any
+status. Reset wipes everything they did — responses, requests, events, devices,
+keys, scores, notes — and puts them back at step one with the *same link and the
+same condition order*, which is what keeps the cohort balanced. Delete removes
+the person entirely. Both count what they are about to destroy and say so before
+you confirm.
+
+Reset is almost always the one you want: a pilot you are running again, a
+session abandoned halfway, someone who has to reschedule. Delete is for a record
+created by mistake.
+
+**Nothing is lost by leaving the site.** Questionnaire answers, request answers
+and interview notes are mirrored into the browser on every keystroke and written
+through on a debounce, so a closed tab, a refresh, a crash or a dropped network
+costs at most the last keystroke. Unsaved *scoring* is kept locally but never
+written through — a half-finished rubric must not enter the data — and is
+offered back the next time you open that request.
 
 ---
 

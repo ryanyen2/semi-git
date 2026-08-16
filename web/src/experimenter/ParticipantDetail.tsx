@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { doc, setDoc, addDoc, collection, orderBy } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { isPilot, patchParticipant, useLiveCollection, useLiveDoc } from '../lib/db'
+import {
+  clearDraft,
+  draftKey,
+  isPilot,
+  patchParticipant,
+  readDraft,
+  useFlushOnHide,
+  useLiveCollection,
+  useLiveDoc,
+  writeDraft,
+} from '../lib/db'
 import type {
   EventDoc,
   GroundTruth,
@@ -398,6 +408,24 @@ function RequestCard({
     setNote(existing?.note ?? '')
   }, [existing?.scoredAt])
 
+  // Unsaved scoring is kept locally, not written through.
+  //
+  // A score is a judgement, and half a judgement must not enter the record --
+  // auto-saving would put a partial rubric in the data and make "scored" mean
+  // two different things. But losing a pasted scorer output because a tab
+  // closed is pure waste, so the in-progress form is mirrored to this browser
+  // and offered back, while Save stays the only thing that records a score.
+  const draft = draftKey(pid, 'scoring', req.id)
+  const [recovered, setRecovered] = useState<null | Record<string, unknown>>(null)
+  useEffect(() => {
+    const local = readDraft<Record<string, unknown>>(draft)
+    if (local && local.at > (existing?.scoredAt ?? 0)) setRecovered(local.value)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, existing?.scoredAt])
+  useEffect(() => {
+    writeDraft(draft, { checks, damage, outcome, scorer, note })
+  }, [draft, checks, damage, outcome, scorer, note])
+
   const score = rubric.reduce((n, x) => n + (checks[x.id] ? x.points : 0), 0)
   const key = truth?.requestKeys?.[req.requestId]?.[req.project]
 
@@ -415,6 +443,8 @@ function RequestCard({
       scoredAt: Date.now(),
       note,
     } satisfies ScoringDoc)
+    clearDraft(draft) // the record now holds it; a leftover draft would offer to "recover" it
+    setRecovered(null)
     setSaved(true)
     window.setTimeout(() => setSaved(false), 1500)
   }
@@ -448,6 +478,39 @@ function RequestCard({
           </div>
         )}
       </div>
+
+      {recovered && (
+        <Callout kind="warn" title="Unsaved scoring from this browser">
+          <p className="small">
+            You typed this here and never pressed Save. It is offered rather than applied, because
+            it may be older than what is on screen.
+          </p>
+          <div className="row tight">
+            <button
+              className="btn sm"
+              onClick={() => {
+                setChecks((recovered.checks as Record<string, boolean>) ?? {})
+                setDamage(String(recovered.damage ?? ''))
+                setOutcome(String(recovered.outcome ?? ''))
+                setScorer(String(recovered.scorer ?? ''))
+                setNote(String(recovered.note ?? ''))
+                setRecovered(null)
+              }}
+            >
+              Restore it
+            </button>
+            <button
+              className="btn sm ghost"
+              onClick={() => {
+                clearDraft(draft)
+                setRecovered(null)
+              }}
+            >
+              Discard
+            </button>
+          </div>
+        </Callout>
+      )}
 
       {req.answer && (
         <div className="card soft" style={{ marginTop: '1rem' }}>
@@ -782,22 +845,28 @@ function SummaryGrader({
   half: Half
   project: 'coursecraft' | 'confplan'
   text: string
-  existing: { covered?: string[]; causalLinks?: number; misconceptions?: number } | undefined
+  existing:
+    | { covered?: string[]; causalLinks?: number; misconceptions?: number; note?: string }
+    | undefined
   truth: GroundTruth | null
   adminEmail: string
 }) {
   const [covered, setCovered] = useState<string[]>(existing?.covered ?? [])
   const [causal, setCausal] = useState(existing?.causalLinks ?? 0)
   const [misc, setMisc] = useState(existing?.misconceptions ?? 0)
-  const [note, setNote] = useState('')
+  // `note` was written on every save and never read back, so reopening this tab
+  // showed an empty box over a stored note -- and the next checkbox tick, which
+  // saves immediately, wrote that emptiness over it. Silent, and only findable
+  // by looking in Firestore.
+  const [note, setNote] = useState(existing?.note ?? '')
   useEffect(() => {
     setCovered(existing?.covered ?? [])
     setCausal(existing?.causalLinks ?? 0)
     setMisc(existing?.misconceptions ?? 0)
+    setNote(existing?.note ?? '')
   }, [existing])
 
   const episodes = truth?.episodes ?? []
-  if (!text) return null
 
   async function save(next?: Partial<{ covered: string[]; causalLinks: number; misconceptions: number }>) {
     const payload = {
@@ -811,6 +880,16 @@ function SummaryGrader({
     }
     await setDoc(doc(db, 'participants', pid, 'scoring', `summary-h${half}`), payload)
   }
+
+  // Above the early return: a hook after a conditional `return` runs on some
+  // renders and not others, which React forbids. It also guards nothing when
+  // it does not run -- and `!text` is exactly the state a grader is in while
+  // waiting for a summary to arrive.
+  useFlushOnHide(() => {
+    if (text) void save()
+  })
+
+  if (!text) return null
 
   return (
     <div className="card">
@@ -879,7 +958,14 @@ function SummaryGrader({
       </div>
       <div style={{ marginTop: '0.75rem' }}>
         <div className="field-label">Coder note</div>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} style={{ minHeight: '3.5rem' }} onBlur={() => void save()} />
+        {/* Saves on blur, and again if the tab goes away while it still has
+            focus -- which is exactly when a coder closes the laptop. */}
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          style={{ minHeight: '3.5rem' }}
+          onBlur={() => void save()}
+        />
       </div>
     </div>
   )
@@ -890,7 +976,20 @@ function Interview({ pid, adminEmail }: { pid: string; adminEmail: string }) {
     ['participants', pid, 'notes'],
     orderBy('ts'),
   )
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  // Unsaved probe answers were React state and nothing else: a facilitator
+  // typing what a participant is saying, mid-sentence, lost the lot to a
+  // refresh or a closed tab. Nothing else in the study records that answer --
+  // there is no telemetry for a conversation -- so it is the one thing here
+  // that genuinely cannot be reconstructed afterwards.
+  const key = draftKey(pid, 'interview')
+  const [drafts, setDrafts] = useState<Record<string, string>>(
+    () => readDraft<Record<string, string>>(key)?.value ?? {},
+  )
+
+  function edit(next: Record<string, string>) {
+    setDrafts(next)
+    writeDraft(key, next)
+  }
 
   async function add(probeId: string) {
     const text = (drafts[probeId] ?? '').trim()
@@ -901,7 +1000,9 @@ function Interview({ pid, adminEmail }: { pid: string; adminEmail: string }) {
       ts: Date.now(),
       by: adminEmail,
     })
-    setDrafts({ ...drafts, [probeId]: '' })
+    // Cleared only after the write lands, so a failed save leaves the text on
+    // screen rather than swallowing it.
+    edit({ ...drafts, [probeId]: '' })
   }
 
   return (
@@ -928,7 +1029,7 @@ function Interview({ pid, adminEmail }: { pid: string; adminEmail: string }) {
             value={drafts[probe.id] ?? ''}
             placeholder="Type what they said. Enter with cmd/ctrl to save."
             style={{ minHeight: '4rem' }}
-            onChange={(e) => setDrafts({ ...drafts, [probe.id]: e.target.value })}
+            onChange={(e) => edit({ ...drafts, [probe.id]: e.target.value })}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void add(probe.id)
             }}
