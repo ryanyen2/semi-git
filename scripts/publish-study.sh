@@ -70,21 +70,35 @@ echo "==> Publishing."
 
 echo
 echo "==> Checking what is actually being served."
+# Retried, because the edge takes a few seconds to pick up a new file and the
+# first read after a deploy legitimately returns the previous one. Without the
+# retry this check cried wolf on its own first run, and a check that is usually
+# wrong is worse than no check -- it is the alarm you learn to ignore.
 ok=1
 for name in study-coursecraft-a study-coursecraft-b study-confplan-a study-confplan-b; do
     local_size=$(wc -c < "web/public/bundles/$name.tgz" | tr -d ' ')
-    served=$(curl -s -o /dev/null -w "%{http_code} %{size_download}" \
-        "https://sem-git.web.app/bundles/$name.tgz")
-    code="${served%% *}"; size="${served##* }"
+    for attempt in 1 2 3 4 5 6; do
+        served=$(curl -s -H 'Cache-Control: no-cache' -o /dev/null \
+            -w "%{http_code} %{size_download}" "https://sem-git.web.app/bundles/$name.tgz")
+        code="${served%% *}"; size="${served##* }"
+        [ "$code" = "200" ] && [ "$size" = "$local_size" ] && break
+        sleep 5
+    done
     if [ "$code" = "200" ] && [ "$size" = "$local_size" ]; then
         printf "    %-24s ok (%s bytes)\n" "$name" "$size"
     else
-        printf "    %-24s MISMATCH: served %s/%s bytes, local %s\n" \
+        printf "    %-24s STALE: served %s/%s bytes, built %s\n" \
             "$name" "$code" "$size" "$local_size"
         ok=0
     fi
 done
 
-[ "$ok" -eq 1 ] || { echo; echo "A bundle on the site is not the one just built."; exit 1; }
+if [ "$ok" -ne 1 ]; then
+    echo
+    echo "A bundle on the site is not the one just built, after 30 seconds of retrying."
+    echo "Do not hand out links until this resolves: a participant downloading now"
+    echo "would get a different build from the one this run recorded."
+    exit 1
+fi
 echo
 echo "Published. Participants downloading now get exactly what was just built."
