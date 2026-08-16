@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
-import { doc, orderBy, setDoc, deleteDoc } from 'firebase/firestore'
+import { doc, orderBy, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import {
   PILOT_ORDINAL_BASE,
   createCohort,
+  deleteParticipantDeep,
   isPilot,
+  participantFootprint,
   patchParticipant,
+  resetParticipant,
   useLiveCollection,
   useLiveDoc,
 } from '../lib/db'
@@ -47,14 +50,6 @@ export function Roster({ onOpen }: { onOpen: (pid: string) => void }) {
     for (const p of rows) byGroup.set(p.group, (byGroup.get(p.group) ?? 0) + 1)
     return [1, 2, 3, 4].map((g) => ({ group: g, n: byGroup.get(g) ?? 0 }))
   }, [rows])
-  // A real record stops being deletable the moment it is opened, because after
-  // that it is the only thing tying a person to their data. A pilot has no
-  // person and nothing downstream, so it stays deletable for good.
-  const deletable = useMemo(
-    () => all.filter((p) => isPilot(p) || p.status === 'created'),
-    [all],
-  )
-
   async function create(n: number, studyId: StudyId = 'main') {
     setBusy(true)
     try {
@@ -163,11 +158,14 @@ export function Roster({ onOpen }: { onOpen: (pid: string) => void }) {
           </summary>
           <div className="card bad" style={{ marginTop: '0.75rem' }}>
             <p className="small">
-              Deleting a participant removes their record but not their responses, requests or
-              events, which live in subcollections. For a <strong>real</strong> participant this is
-              offered only before their session starts — after that the record is the only thing
-              tying those subcollections to a person. A <strong>pilot</strong> can be deleted at any
-              time, because nothing downstream reads it.
+              <strong>Reset</strong> and <strong>Delete</strong> for one participant live on their
+              own row, where you can see who you are acting on. This is the bulk version, for
+              clearing test data before the study starts.
+            </p>
+            <p className="small">
+              Both remove everything underneath a participant — responses, requests, events,
+              devices, keys, scores and notes — not just the record. There is no undo and no
+              export first.
             </p>
             <label className="check" style={{ border: 0, background: 'none', padding: 0 }}>
               <input
@@ -175,26 +173,9 @@ export function Roster({ onOpen }: { onOpen: (pid: string) => void }) {
                 checked={confirmReset}
                 onChange={(e) => setConfirmReset(e.target.checked)}
               />
-              <span className="small">I understand, show the delete buttons</span>
+              <span className="small">I understand, show the bulk actions</span>
             </label>
-            {confirmReset && (
-              <div className="row tight" style={{ marginTop: '0.75rem' }}>
-                {deletable.map((p) => (
-                  <button
-                    key={p.code}
-                    className="btn sm danger"
-                    onClick={() => void deleteDoc(doc(db, 'participants', p.code))}
-                  >
-                    Delete {p.label}
-                  </button>
-                ))}
-                {deletable.length === 0 && (
-                  <span className="small muted">
-                    Nothing is deletable: every record has been opened and none is a pilot.
-                  </span>
-                )}
-              </div>
-            )}
+            {confirmReset && <BulkPurge all={all} rows={rows} pilots={pilots} />}
           </div>
         </details>
       )}
@@ -332,10 +313,185 @@ function Row({
         )}
       </td>
       <td>
-        <button className="btn sm" onClick={() => onOpen(p.code)}>
-          Open
-        </button>
+        <div className="row tight">
+          <button className="btn sm" onClick={() => onOpen(p.code)}>
+            Open
+          </button>
+          <RowActions p={p} />
+        </div>
       </td>
     </tr>
+  )
+}
+
+/**
+ * Reset and Delete for one participant, on their own row.
+ *
+ * They were in a bulk "danger zone" gated on `status === 'created'`, which
+ * meant the moment somebody opened their link they became untouchable -- so
+ * P13, a test record that had reached `consented`, could not be cleared at all
+ * and looked like the roster was hardcoded to twelve. Two changes: every record
+ * is actionable whatever its status, and the action names the person and states
+ * what it will destroy before it does it.
+ */
+function RowActions({ p }: { p: Participant & { id: string } }) {
+  const [pending, setPending] = useState<null | 'reset' | 'delete'>(null)
+  const [footprint, setFootprint] = useState<Record<string, number> | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function arm(kind: 'reset' | 'delete') {
+    setPending(kind)
+    setFootprint(null)
+    // Counted at confirm time, not on render: this is one read per
+    // subcollection per participant, and doing it for every row on every
+    // roster paint would be a dozen reads a second for a number nobody is
+    // looking at yet.
+    setFootprint(await participantFootprint(p.code))
+  }
+
+  async function go() {
+    setBusy(true)
+    try {
+      if (pending === 'reset') await resetParticipant(p.code)
+      else await deleteParticipantDeep(p.code)
+      setPending(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!pending) {
+    return (
+      <>
+        <button
+          className="btn sm"
+          title={`Wipe ${p.label}'s data but keep their link and their condition order`}
+          onClick={() => void arm('reset')}
+        >
+          Reset
+        </button>
+        <button
+          className="btn sm danger"
+          title={`Remove ${p.label} and everything underneath them`}
+          onClick={() => void arm('delete')}
+        >
+          Delete
+        </button>
+      </>
+    )
+  }
+
+  const total = footprint ? Object.values(footprint).reduce((a, b) => a + b, 0) : null
+  const detail = footprint
+    ? Object.entries(footprint).map(([k, n]) => `${n} ${k}`).join(', ')
+    : 'counting…'
+
+  return (
+    <div className="stack tight" style={{ minWidth: '15rem' }}>
+      <span className="small">
+        {pending === 'reset' ? (
+          <>
+            Reset <strong>{p.label}</strong> to step one. Their link and condition order stay;
+            everything they did is deleted.
+          </>
+        ) : (
+          <>
+            Delete <strong>{p.label}</strong> entirely. Their link stops working.
+          </>
+        )}
+      </span>
+      <span className="tiny faint">
+        {total === 0 ? 'Nothing recorded yet.' : `This destroys: ${detail}.`}
+      </span>
+      <div className="row tight">
+        <button className="btn sm danger" disabled={busy || footprint === null} onClick={() => void go()}>
+          {busy ? 'Working' : pending === 'reset' ? `Reset ${p.label}` : `Delete ${p.label}`}
+        </button>
+        <button className="btn sm" disabled={busy} onClick={() => setPending(null)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Clearing test data before the study starts -- the bulk case the per-row
+ * buttons make tedious. Deliberately offers "pilots only" first: that is the
+ * safe, common intent, and putting it beside "everything" makes the difference
+ * visible at the moment of choosing rather than in a sentence above.
+ */
+function BulkPurge({
+  all,
+  rows,
+  pilots,
+}: {
+  all: (Participant & { id: string })[]
+  rows: (Participant & { id: string })[]
+  pilots: (Participant & { id: string })[]
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  const [armed, setArmed] = useState<string | null>(null)
+
+  async function purge(label: string, targets: (Participant & { id: string })[]) {
+    setBusy(label)
+    setDone(null)
+    try {
+      let removed = 0
+      // Sequential, not Promise.all: each participant is many batched writes,
+      // and firing a dozen of those at once is how you get the client
+      // rate-limited halfway through a delete with no record of where it got to.
+      for (const p of targets) removed += await deleteParticipantDeep(p.code)
+      setDone(`Deleted ${targets.length} participant(s) and ${removed} sub-document(s).`)
+      setArmed(null)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const options: [string, (Participant & { id: string })[]][] = [
+    ['pilots', pilots],
+    ['real participants', rows],
+    ['everyone', all],
+  ]
+
+  return (
+    <div className="stack tight" style={{ marginTop: '0.75rem' }}>
+      <div className="row tight">
+        {options.map(([label, targets]) => (
+          <button
+            key={label}
+            className="btn sm danger"
+            disabled={busy !== null || targets.length === 0}
+            onClick={() => setArmed(armed === label ? null : label)}
+          >
+            Delete all {label} ({targets.length})
+          </button>
+        ))}
+      </div>
+      {armed && (
+        <div className="row tight">
+          <span className="small">
+            Permanently delete{' '}
+            <strong>
+              {options.find(([l]) => l === armed)?.[1].length} {armed}
+            </strong>{' '}
+            and everything underneath them?
+          </span>
+          <button
+            className="btn sm danger"
+            disabled={busy !== null}
+            onClick={() => void purge(armed, options.find(([l]) => l === armed)?.[1] ?? [])}
+          >
+            {busy ? 'Deleting' : 'Yes, delete'}
+          </button>
+          <button className="btn sm" disabled={busy !== null} onClick={() => setArmed(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
+      {done && <span className="small">{done}</span>}
+    </div>
   )
 }
