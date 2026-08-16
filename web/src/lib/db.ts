@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -218,6 +219,85 @@ export async function patchParticipant(pid: string, patch: Partial<Participant>)
   await updateDoc(participantRef(pid), { ...patch, updatedAt: Date.now() } as DocumentData)
 }
 
+/**
+ * Every subcollection hanging off a participant. Named in one place because a
+ * delete that misses one leaves orphans nothing can reach: the record is the
+ * only path to them, so once it is gone they are invisible *and* undeletable
+ * from this console forever.
+ */
+export const PARTICIPANT_SUBCOLLECTIONS = [
+  'responses', 'requests', 'events', 'devices', 'secrets', 'scoring', 'notes',
+] as const
+
+/** What a participant is carrying, so a destructive action can state it first. */
+export async function participantFootprint(pid: string): Promise<Record<string, number>> {
+  const counts = await Promise.all(
+    PARTICIPANT_SUBCOLLECTIONS.map(async (name) => {
+      // A missing subcollection reads as empty, not as an error.
+      const snap = await getDocs(collection(db, 'participants', pid, name)).catch(() => null)
+      return [name, snap ? snap.size : 0] as const
+    }),
+  )
+  return Object.fromEntries(counts.filter(([, n]) => n > 0))
+}
+
+async function purgeSubcollections(pid: string): Promise<number> {
+  let removed = 0
+  for (const name of PARTICIPANT_SUBCOLLECTIONS) {
+    const snap = await getDocs(collection(db, 'participants', pid, name)).catch(() => null)
+    if (!snap || snap.empty) continue
+    // Batched in chunks: Firestore caps a batch at 500 writes, and a session
+    // routinely produces more events than that -- pilot 03 recorded 339 from
+    // one participant, and a real one on a bad day will exceed the cap.
+    const docs = snap.docs
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = writeBatch(db)
+      for (const d of docs.slice(i, i + 400)) batch.delete(d.ref)
+      await batch.commit()
+      removed += Math.min(400, docs.length - i)
+    }
+  }
+  return removed
+}
+
+/**
+ * Wipe a participant's data but keep the person: same code, same link, same
+ * counterbalancing assignment, back at step one.
+ *
+ * This is the action that was missing. Deleting was the only recovery offered,
+ * and it is the wrong one for every case that actually happens -- a pilot you
+ * want to run again, a session abandoned halfway, a participant who has to
+ * reschedule. Those all want the assignment kept (it is what makes the cohort
+ * balanced) and the data gone.
+ */
+export async function resetParticipant(pid: string): Promise<number> {
+  const removed = await purgeSubcollections(pid)
+  await updateDoc(participantRef(pid), {
+    status: 'created',
+    currentStep: 'welcome',
+    stepState: {},
+    claimedUid: null,
+    claimedAt: null,
+    startedAt: null,
+    consentAt: null,
+    completedAt: null,
+    lastSeenAt: null,
+    updatedAt: Date.now(),
+  } as DocumentData)
+  return removed
+}
+
+/**
+ * Remove a participant and everything underneath them. Subcollections go
+ * first: if the record went first and the purge then failed, the leftovers
+ * would be unreachable.
+ */
+export async function deleteParticipantDeep(pid: string): Promise<number> {
+  const removed = await purgeSubcollections(pid)
+  await deleteDoc(participantRef(pid))
+  return removed
+}
+
 export async function setStep(pid: string, stepId: string): Promise<void> {
   await patchParticipant(pid, { currentStep: stepId, lastSeenAt: Date.now() })
 }
@@ -232,23 +312,76 @@ export async function setStatus(pid: string, status: ParticipantStatus): Promise
 
 type Values = ResponseDoc['values']
 
-const mirrorKey = (pid: string, docId: string) => `sgt-study/${pid}/${docId}`
+/**
+ * A crash-safe local mirror of whatever is currently typed.
+ *
+ * Firestore's own offline cache already survives a refresh or a dropped
+ * network, so this is not about those. It is about the two cases the cache
+ * cannot help with: the browser dying between a keystroke and the debounce
+ * firing, and a `pagehide` that never arrives (a force-quit, an OS kill, a
+ * crashed tab). Every keystroke lands here synchronously, so the worst case is
+ * one keystroke rather than one answer.
+ */
+export function draftKey(...parts: string[]): string {
+  return ['sgt-study', ...parts].join('/')
+}
 
-function readMirror(pid: string, docId: string): { values: Values; at: number } | null {
+export function readDraft<T>(key: string): { value: T; at: number } | null {
   try {
-    const raw = localStorage.getItem(mirrorKey(pid, docId))
+    const raw = localStorage.getItem(key)
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
   }
 }
 
-function writeMirror(pid: string, docId: string, values: Values) {
+export function writeDraft<T>(key: string, value: T) {
   try {
-    localStorage.setItem(mirrorKey(pid, docId), JSON.stringify({ values, at: Date.now() }))
+    localStorage.setItem(key, JSON.stringify({ value, at: Date.now() }))
   } catch {
     /* a full or disabled localStorage must not break the session */
   }
+}
+
+export function clearDraft(key: string) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    /* nothing to do; a stale draft is discarded on next load by its timestamp */
+  }
+}
+
+/**
+ * Run `flush` when the page is going away.
+ *
+ * Both events, deliberately. `pagehide` is the reliable one on desktop; on
+ * mobile and on tab-switch it is often never delivered at all, and
+ * `visibilitychange` is what fires instead. Registering only one loses work on
+ * whichever platform it is not.
+ */
+export function useFlushOnHide(flush: () => void) {
+  const latest = useRef(flush)
+  latest.current = flush
+  useEffect(() => {
+    const run = () => latest.current()
+    window.addEventListener('pagehide', run)
+    document.addEventListener('visibilitychange', run)
+    return () => {
+      window.removeEventListener('pagehide', run)
+      document.removeEventListener('visibilitychange', run)
+    }
+  }, [])
+}
+
+const mirrorKey = (pid: string, docId: string) => draftKey(pid, docId)
+
+function readMirror(pid: string, docId: string): { values: Values; at: number } | null {
+  const hit = readDraft<Values>(mirrorKey(pid, docId))
+  return hit ? { values: hit.value, at: hit.at } : null
+}
+
+function writeMirror(pid: string, docId: string, values: Values) {
+  writeDraft(mirrorKey(pid, docId), values)
 }
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
