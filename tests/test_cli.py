@@ -892,6 +892,11 @@ def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
         "status",  # alias of `log --summary` (same handler, cannot drift)
         "why",  # selector-scoped, not feature-scoped: `sgt why <sha>` is its most-reached form
         "show",  # "show me this thing": an id, or a file + `--at` for how it was
+        # `find` is the way in when you do not hold an id at all. Every other
+        # verb here takes one, which assumes you already know what the thing is
+        # called -- the assumption that fails for exactly the person the tool is
+        # for, someone reading history they did not write.
+        "find",
         "plan",  # checkpoint/drift folded into `save` (U12)
         "feature", "advanced",
         "sync", "land", "push", "propose", "session", "init", "mcp",

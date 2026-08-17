@@ -17,7 +17,13 @@ from pathlib import Path
 
 from sgt import state
 
-DEFAULT_MODEL = "gpt-5.4-mini"
+# Every graph-reasoning path shares this tier, and the labeler alone fires once
+# per leaf and subsystem on the `sgt log --refresh` hot path, so the default is
+# chosen for cost. `gpt-5.6-luna` takes the same `responses.parse` +
+# `text_format` + `reasoning={"effort": ...}` shape every call site already
+# sends; its accepted efforts are none/low/medium/high/xhigh/max, so the pinned
+# `low` is valid (it rejects `minimal`, which nothing here sends).
+DEFAULT_MODEL = "gpt-5.6-luna"
 
 # The OpenAI SDK's `responses.parse` re-serializes the endpoint's raw response (pydantic
 # `model_dump`) to hand structured output back. When SGT_MODEL is a Claude model served through a

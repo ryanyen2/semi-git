@@ -17,9 +17,15 @@ const CHECK_LABELS: Array<[string, string]> = [
   ['tool', 'History tool ready'],
   ['warm', 'History view already loaded'],
   ['tool_key', 'History tool key in place'],
+  ['tool_key_live', 'History tool key actually works'],
   ['assistant_profile', 'Assistant using the session profile, not yours'],
+  ['assistant_model', 'Assistant pinned to the study model'],
   ['assistant_key', 'Assistant key in place'],
   ['assistant_ping', 'Assistant answered a test message'],
+  ['assistant_model_live', 'Assistant answered on the study model'],
+  ['editor', 'Editor ready'],
+  ['editor_extension', 'Editor history view installed'],
+  ['editor_toolset', 'Editor set up the same as the other half'],
   ['telemetry', 'Session logging is uploading'],
 ]
 
@@ -80,7 +86,9 @@ export function SetupStep({ step }: { step: Step }) {
 
       <div className="card">
         <h2>1. Download the folder for this half</h2>
-        <p className="small muted">About 3 MB. Put it somewhere you can find in a terminal.</p>
+        <p className="small muted">
+          A few megabytes. Put it somewhere you can find in a terminal.
+        </p>
         <a className="btn primary" href={bundleUrl} download>
           Download
         </a>
@@ -146,8 +154,14 @@ export function SetupStep({ step }: { step: Step }) {
           </p>
           <Copyable text="./bin/study-shell" />
           <p className="small muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
-            Inside it, <code>claude</code> starts the assistant, <code>study-practice</code> opens
-            the warm-up copy, and the project itself is in <code>work/</code>.
+            Inside it, <code>claude</code> starts the assistant, <code>study-code</code> opens the
+            project in the editor, <code>study-practice</code> opens the warm-up copy, and the
+            project itself is in <code>work/</code>.
+          </p>
+          <p className="small muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+            Please open the editor with <code>study-code</code> rather than your own. It uses a
+            separate profile inside this folder, so your own editor, extensions and settings are
+            left exactly as they are.
           </p>
         </div>
       )}

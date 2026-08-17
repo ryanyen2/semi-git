@@ -43,7 +43,17 @@ HOOK_EVENTS = [
 TOOL_EVENTS = {"PreToolUse", "PostToolUse", "PostToolUseFailure"}
 
 
-def build_settings(study_home: Path, python: str) -> dict:
+# What the assistant runs as, when the study has not said otherwise. The model
+# is part of the condition: two participants on different models are not two
+# runs of the same study, and the difference would be invisible afterwards.
+DEFAULT_MODEL = "claude-sonnet-5"
+
+# What the history tool names features with. Cheap on purpose: it fires once per
+# feature on every refresh, and the study rebuilds the graph for every bundle.
+SGT_MODEL = "gpt-5.6-luna"
+
+
+def build_settings(study_home: Path, python: str, model: str = DEFAULT_MODEL) -> dict:
     hook_script = str(study_home / "telemetry" / "hook.py")
     hooks: dict[str, list] = {}
     for event in HOOK_EVENTS:
@@ -68,11 +78,17 @@ def build_settings(study_home: Path, python: str) -> dict:
         "apiKeyHelper": str(study_home / ".claude-study" / "api-key.sh"),
         "hooks": hooks,
         "theme": "light",
+        # Pinned in two places on purpose. `model` is what the assistant starts
+        # on; `ANTHROPIC_MODEL` is what it falls back to if a future version
+        # reads the setting differently. Neither can be changed from inside the
+        # session without it showing up in the settings file we ship.
+        "model": model,
         "env": {
             # The version is part of the condition. An assistant that upgraded
             # itself between participant three and participant four would be a
             # confound nobody could reconstruct afterwards.
             "DISABLE_AUTOUPDATER": "1",
+            "ANTHROPIC_MODEL": model,
         },
     }
 
@@ -147,8 +163,9 @@ def main() -> int:
     helper.chmod(0o700)
 
     python = str(study_home / "work" / ".venv" / "bin" / "python")
+    model = str(secrets.get("claudeModel") or "").strip() or DEFAULT_MODEL
     (profile / "settings.json").write_text(
-        json.dumps(build_settings(study_home, python), indent=2) + "\n"
+        json.dumps(build_settings(study_home, python, model), indent=2) + "\n"
     )
 
     # Skip the first-run walkthrough. The participant has ten minutes of
@@ -165,9 +182,16 @@ def main() -> int:
     claude_json.write_text(json.dumps(existing, indent=2) + "\n")
 
     # --- the key sgt needs --------------------------------------------------
+    #
+    # The model is pinned here for the same reason the assistant's is: it names
+    # every feature the participant reads, and two halves labelled by two
+    # different models are not two runs of one study. Written next to the key so
+    # the tool cannot pick up whatever a machine happens to default to.
     if expected_condition == "sgt" and openai_key:
         env_file = study_home / "work" / ".env"
-        env_file.write_text(f"OPENAI_API_KEY={openai_key}\n")
+        env_file.write_text(
+            f"OPENAI_API_KEY={openai_key}\nSGT_MODEL={SGT_MODEL}\n"
+        )
         env_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     # --- what the shell and the shims need ---------------------------------
@@ -187,7 +211,8 @@ def main() -> int:
     client.append(
         "session",
         name="provisioned",
-        text=f"half {expected_half}, {expected_condition}, {expected_project}",
+        text=f"half {expected_half}, {expected_condition}, {expected_project}, {model}",
+        model=model,
     )
 
     label = participant.get("label") or code[:6]

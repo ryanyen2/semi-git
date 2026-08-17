@@ -108,7 +108,7 @@ export function ParticipantApp() {
                 indistinguishable from a real one -- same flow, same bundle --
                 and would be found only in the analysis, afterwards. */}
             {isPilot(participant) && (
-              <span className="badge warn" title="Rehearsal session — not part of the study">
+              <span className="badge warn" title="Rehearsal session — jump to any step from the rail">
                 rehearsal
               </span>
             )}
@@ -118,7 +118,12 @@ export function ParticipantApp() {
           </div>
         </header>
         <div className="layout">
-          <Rail currentStep={step.id} />
+          {/* Rehearsal links only. A real participant must not be able to skip
+              a questionnaire, and the rail is the one control on every page. */}
+          <Rail
+            currentStep={step.id}
+            onJump={isPilot(participant) ? (id) => void ctx.goTo(id) : undefined}
+          />
           <main>
             <StepBody stepId={step.id} />
           </main>

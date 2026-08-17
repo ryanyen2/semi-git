@@ -41,8 +41,43 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       store.onDidChange(() => void this.pushState()),
       // Identity colors are theme-aware (color.ts's OKLCH lightness shifts light<->dark), so a
       // theme switch needs the rail's node colors recomputed -- same trigger blame.ts uses.
-      vscode.window.onDidChangeActiveColorTheme(() => void this.pushState())
+      vscode.window.onDidChangeActiveColorTheme(() => void this.pushState()),
+      this.watchAgentActions()
     );
+  }
+
+  /**
+   * Paint what an agent is doing, while it does it.
+   *
+   * The rail already knows how to show the consequence of a revert or a restore
+   * before it happens -- that is the hover preview. It just had no way to hear
+   * about one it did not start. The MCP server writes the verb and target to
+   * `.sgt/local/pending_action.json` around every ideal-edit tool call, so an
+   * agent asked to "take the waitlist out" produces the same ghost paint the
+   * participant would have got by hovering it themselves.
+   *
+   * Watching a file rather than holding a socket, because the agent and the
+   * editor are separate processes that start and stop independently, and a
+   * missed hint is worth nothing while a wedged connection would cost the rail.
+   */
+  private watchAgentActions(): vscode.Disposable {
+    const watcher = vscode.workspace.createFileSystemWatcher("**/.sgt/local/pending_action.json");
+    const read = async (uri: vscode.Uri) => {
+      try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
+        const action = JSON.parse(raw) as { verb?: string; ref?: string; state?: string; ts?: number };
+        if (!action.verb || !action.ref) return;
+        // A note left by a previous session is not news. The rail should never
+        // open showing a revert somebody's agent ran yesterday.
+        if (typeof action.ts === "number" && Date.now() - action.ts > 60_000) return;
+        void this.view?.webview.postMessage({ type: "agentAction", ...action });
+      } catch {
+        // A half-written file: the next event carries the whole thing.
+      }
+    };
+    watcher.onDidCreate(read);
+    watcher.onDidChange(read);
+    return watcher;
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -92,6 +127,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         <span class="plans-label">Plans 0/0</span>
       </button>
       <span id="driftChip" class="drift-chip" hidden></span>
+    </div>
+    <div class="tb-zone tb-find">
+      <input id="findBox" class="find-box" type="search" spellcheck="false"
+             placeholder="find… e.g. the thing that formats dates"
+             title="describe what you are looking for; Enter to search, Esc to clear" />
+      <div id="findResults" class="find-results" hidden></div>
     </div>
     <div id="titlebarActions" class="titlebar-actions">
       <button id="inspectorToggle" title="Hide detail panel">◧</button>
@@ -210,6 +251,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "requestFold":
         await this.requestFold(msg.featureId, msg.ref, msg.seq);
         return;
+      case "find":
+        await this.find(msg.query, msg.seq);
+        return;
       case "scrubPlayhead":
         await this.scrubPlayhead(msg.commitIndex, msg.seq);
         return;
@@ -302,7 +346,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     let done = 0;
     for (const ref of refs) {
       try {
-        await this.store.sgt.mutate(["revert", ref]);
+        await this.store.sgt.confirmedMutate(["revert", ref]);
         done++;
       } catch (e: any) {
         this.store.invalidate();
@@ -331,7 +375,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     try {
-      await this.store.sgt.mutate(["revert", ref]);
+      await this.store.sgt.confirmedMutate(["revert", ref]);
       vscode.window.showInformationMessage(`Rewound checkpoint "${label}".`);
     } catch (e: any) {
       vscode.window.showWarningMessage(`Could not rewind "${label}": ${e.message}`);
@@ -607,6 +651,22 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       });
     } catch (e: any) {
       void this.view?.webview.postMessage({ type: "foldResult", seq, featureId, error: e.message });
+    }
+  }
+
+  /**
+   * `sgt find`, from the box in the title bar.
+   *
+   * Report-only, and slow enough to want a sequence number: the semantic rung
+   * embeds the query, so a fast typist can have three of these in flight and
+   * the second one must not paint over the third.
+   */
+  private async find(query: string, seq: number): Promise<void> {
+    try {
+      const view = await this.store.sgt.find(String(query || ""));
+      void this.view?.webview.postMessage({ type: "findResult", seq, ...view });
+    } catch (e: any) {
+      void this.view?.webview.postMessage({ type: "findResult", seq, ok: false, hits: [], message: e.message });
     }
   }
 

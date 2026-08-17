@@ -25,6 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import client  # noqa: E402
+import shim  # noqa: E402
 
 DAEMON_INTERVAL = 20
 
@@ -34,9 +35,24 @@ def resolve_code(explicit: str | None) -> str | None:
 
 
 def _git(args: list[str], cwd, timeout: int = 20) -> str:
+    """Run git without appearing in the log as if a participant had run it.
+
+    This function is called every twenty seconds by the daemon. Through the
+    PATH shim that produced 450 of the 476 command events in the first pilot
+    log, all of them the instrument watching itself. Two guards: skip the shim
+    when resolving the binary, and tell the shim to stay quiet in case some
+    other path reaches it anyway.
+    """
+    env = dict(os.environ)
+    env["STUDY_NO_LOG"] = "1"
     try:
         out = subprocess.run(
-            ["git", *args], cwd=str(cwd), capture_output=True, text=True, timeout=timeout
+            [shim.resolve("git") or "git", *args],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
         )
         return out.stdout.strip()
     except Exception:

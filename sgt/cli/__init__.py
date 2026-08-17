@@ -67,7 +67,11 @@ _VERBS = {
     # `show` is the read half of visiting a past state: sgt could always reconstruct `code(I)` at an
     # arbitrary frontier, and only the workbench's playhead ever displayed it. Reading an old version
     # of a file is a daily question, so it answers at the top level, like `git show <rev>:<path>`.
-    "switch", "diff", "intent", "now", "status", "why", "show",
+    # `find` is top-level for the same reason `why` is: it answers a question
+    # asked in words, not in identifiers. Every other way into the graph needs
+    # you to already know a name for the thing you are looking for, which is
+    # exactly what someone arriving at an unfamiliar repository does not have.
+    "switch", "diff", "intent", "now", "status", "why", "show", "find",
     # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
     "plan",
     # groupings

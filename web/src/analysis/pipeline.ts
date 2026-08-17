@@ -51,6 +51,21 @@ export interface CategorizedEvent {
   half: Half | null
   condition: Condition | null
   inferred?: boolean
+  /** Where the action happened: the terminal, the editor, or the assistant. */
+  surface: Surface
+}
+
+/**
+ * `terminal` is the default for anything recorded before the editor was part
+ * of the study, and for any source that does not say.
+ */
+export type Surface = 'terminal' | 'editor' | 'agent'
+
+function surfaceOf(ev: EventDoc): Surface {
+  const raw = ev.extra?.surface
+  if (raw === 'editor' || raw === 'agent' || raw === 'terminal') return raw
+  if (ev.kind === 'tool' || ev.kind === 'prompt' || ev.extra?.agent === true) return 'agent'
+  return 'terminal'
 }
 
 export interface RequestMetrics {
@@ -63,6 +78,8 @@ export interface RequestMetrics {
   selfReport: RequestDoc['selfReport']
   confidence: number | null
   counts: Record<Category, number>
+  /** How many of those actions happened in each place. */
+  surfaces: Record<Surface, number>
   sequence: Category[]
   prompts: number
   meanPromptChars: number
@@ -214,11 +231,37 @@ function dropDoubleCountedBashEvents(sorted: EventDoc[]): EventDoc[] {
   })
 }
 
+const HOVER_WINDOW_MS = 2_000
+
+/**
+ * Collapse a run of identical reads the editor made in quick succession.
+ *
+ * Both editor extensions preview on hover: moving across a feature in the
+ * workbench rail emits `sgt advanced preview revert <feature>`, and moving
+ * across a blame annotation emits a `git log`, several times a second. One
+ * pass over a list is one look, not nine. Applied to the editor only, and only
+ * to identical text, because the same command typed twice in a terminal is
+ * somebody deciding to run it twice.
+ */
+function collapseHoverRepeats(sorted: EventDoc[]): EventDoc[] {
+  const lastSeen = new Map<string, number>()
+  return sorted.filter((ev) => {
+    if (ev.kind !== 'command' || ev.extra?.surface !== 'editor') return true
+    const key = normalizeCommand(ev.text)
+    if (!key) return true
+    const previous = lastSeen.get(key)
+    lastSeen.set(key, ev.ts)
+    return previous == null || ev.ts - previous > HOVER_WINDOW_MS
+  })
+}
+
 function analyzeEvents(
   events: EventDoc[],
   windows: Window[],
 ): { categorized: CategorizedEvent[]; unassigned: number } {
-  const sorted = dropDoubleCountedBashEvents([...events].sort((a, b) => a.ts - b.ts))
+  const sorted = collapseHoverRepeats(
+    dropDoubleCountedBashEvents([...events].sort((a, b) => a.ts - b.ts)),
+  )
   const out: CategorizedEvent[] = []
   let unassigned = 0
 
@@ -227,6 +270,13 @@ function analyzeEvents(
   let editSinceTreeChange = false
 
   for (const ev of sorted) {
+    // An editor keeps its own views in step by running git on a timer. Those
+    // are the editor's moves, not the participant's, and there are hundreds of
+    // them in an hour: counting them would swamp every sequence measure here.
+    // They stay in the raw stream, which is what "the editor was open" is read
+    // from.
+    if (ev.extra?.auto === true) continue
+
     const w = windowAt(windows, ev.ts)
 
     // A repo snapshot whose tree moved with no assistant edit to account for it
@@ -249,6 +299,7 @@ function analyzeEvents(
           half: w.half,
           condition: w.condition,
           inferred: true,
+          surface: 'terminal',
         })
         ctx.dirtySinceCheck = true
       }
@@ -283,6 +334,7 @@ function analyzeEvents(
       requestId: w.requestId,
       half: w.half,
       condition: w.condition,
+      surface: surfaceOf(ev),
     })
   }
 
@@ -299,6 +351,13 @@ function metricsFor(
   const mine = events.filter((e) => e.requestId === req.requestId && e.half === req.half)
   const counts = ZERO_COUNTS()
   for (const e of mine) counts[e.category]++
+
+  // Where the work happened. Both conditions now offer the same three places to
+  // work -- a terminal, an editor view, and the assistant -- so "did they read
+  // history in the editor or in the shell" is a question about the person, not
+  // about which condition they were in.
+  const surfaces: Record<Surface, number> = { terminal: 0, editor: 0, agent: 0 }
+  for (const e of mine) surfaces[e.surface]++
 
   const prompts = mine.filter((e) => e.category === 'prompt')
   const promptChars = prompts.map((p) => (p.text ?? '').length)
@@ -331,6 +390,7 @@ function metricsFor(
     selfReport: req.selfReport,
     confidence: req.confidence,
     counts,
+    surfaces,
     sequence: mine.map((e) => e.category),
     prompts: prompts.length,
     meanPromptChars: promptChars.length
