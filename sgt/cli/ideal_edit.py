@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from sgt.select import resolve as select_resolve
 
@@ -183,6 +184,11 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             print(line)
         for line in _subtraction_report(preview):
             print(line)
+        # Computed before apply, on purpose: apply journals this restore's own
+        # entry, and the gap walk would find that entry instead of the revert.
+        gap_lines = _restore_gap_report(repo, preview) if preview.verb == "restore" else []
+        for line in gap_lines:
+            print(line)
         if not yes:
             if not sys.stdin.isatty():
                 print("\n  not applied — this was the preview. re-run with --yes to apply.")
@@ -202,8 +208,11 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
               f"{len(preview.added)} added. (`sgt undo` reverses this.)")
         for line in _subtraction_report(preview):
             print(line)
+        for line in gap_lines:
+            print(line)
         return 0
 
+    gap = _restore_gap(repo, preview) if preview.ok and preview.verb == "restore" else None
     if preview.ok:
         try:
             verbs.apply(repo, preview)
@@ -219,9 +228,98 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         "kept_conflicts": list(getattr(preview, "kept_conflicts", ())),
         "broken_references": list(getattr(preview, "broken_references", ())),
     }
+    if gap:
+        # Machine consumers (the extension, MCP) get the same warning the
+        # terminal prints: what the earlier revert removed that this restore
+        # leaves removed. Omitted when there is no gap.
+        view["restore_gap"] = gap
     if extra:
         view = {**view, **extra}
     return _emit_json(view) if as_json else _print_verb_view(view)
+
+
+def _restore_gap(repo: str, preview) -> dict | None:
+    """What this restore did NOT bring back, when it follows a revert.
+
+    Revert and restore are not inverses, though every natural reading of the two
+    words says they are. Revert removes a target *and everything built on it* --
+    which can include ops that belong to other features -- while restore brings
+    back the target and what it needs, and nothing else. The gap is real work
+    that stays gone: reverting "Enrollment Drop" removed `enrollment.drop` as a
+    dependent from the *other* drop feature, and restoring "Enrollment Drop"
+    then printed a bare ✓ while the function every kept test calls was still
+    missing. This is that gap, computed from the journal the undo stack already
+    keeps (a revert's entry holds its before/after sets), plus the one command
+    that actually is the revert's inverse.
+    """
+    from sgt.core import oplog
+
+    try:
+        key = oplog._ref_key(Path(repo))
+        events = oplog.load(repo).get(key, []) if key else []
+    except Exception:
+        return None
+
+    for event in reversed(events):
+        prior = set(event.get("ideal") or ())
+        result = set(event.get("result") or ())
+        removed = prior - result
+        introduced = result - prior
+        if not removed and not introduced:
+            continue
+
+        after = set(preview.after_ids)
+        # Two ways a revert takes something out. Dropping the op outright:
+        # caught by the op still being absent. Splicing it out of shared code:
+        # the revert *introduces* a subtraction op, and the symbol is still
+        # subtracted exactly when that op is still the tip of its chain after
+        # the restore -- which is why the first version of this check, a bare
+        # removed-minus-after diff, reported nothing on the very repro that
+        # motivated it.
+        still_gone = removed - after
+        surviving_splices = introduced & after
+        if surviving_splices:
+            from sgt.core import opindex, order
+
+            ops = opindex.index_ops(Path(repo))
+            tips = set(order.frontier(frozenset(after), ops).values())
+            surviving_splices &= tips
+        still = frozenset(still_gone | surviving_splices)
+        if not still:
+            return None
+        try:
+            from sgt.core import opindex as _oi
+
+            by_id = {op.id: op for op in _oi.index_ops(Path(repo))}
+            # Splice footprints name layout entities (`file::__anchor__::name`);
+            # collapse the infix so the report says `file::name`, the spelling
+            # every other line in this tool uses.
+            names = set()
+            for oid in still:
+                op = by_id.get(oid)
+                for sym in op.footprint if op else ():
+                    for infix in ("::__anchor__::", "::__residue__::"):
+                        sym = sym.replace(infix, "::")
+                    if "__" not in sym:
+                        names.add(sym)
+            symbols = sorted(names)
+        except Exception:
+            symbols = []
+        return {"still_removed_op_count": len(still), "still_removed_symbols": symbols}
+    return None
+
+
+def _restore_gap_report(repo: str, preview) -> list[str]:
+    gap = _restore_gap(repo, preview)
+    if not gap:
+        return []
+    symbols = gap["still_removed_symbols"]
+    shown = ", ".join(symbols[:6]) + (f" +{len(symbols) - 6} more" if len(symbols) > 6 else "")
+    return [
+        f"  ⚠ the earlier revert also removed {gap['still_removed_op_count']} op(s) this restore"
+        f" does not bring back{': ' + shown if shown else ''}",
+        "    `sgt undo` reverses that revert whole, if that is what you meant.",
+    ]
 
 
 def _subtraction_report(preview) -> list[str]:
@@ -403,7 +501,17 @@ def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
         import json
 
         cands = [{"ref": body(nid)[:8], "label": nodes[nid].get("label", nid)} for nid in hits]
-        print(json.dumps({"ok": False, "verb": cmd, "target": target, "candidates": cands}, indent=2))
+        # `message` carries the same explanation the human path prints. Every UI
+        # consumer shows `view.message || <generic>`, so a refusal without one
+        # surfaces as "Cannot revert X." with no reason -- a dead end in exactly
+        # the surface that cannot fall through to a terminal's stdout.
+        message = (
+            f"{target!r} is an ambiguous handle; candidates listed"
+            if hits
+            else f"no feature matches handle {target!r} -- it may be stale; refresh the view"
+        )
+        print(json.dumps({"ok": False, "verb": cmd, "target": target, "message": message,
+                          "candidates": cands}, indent=2))
         return 2
     if not hits:
         print(f"? [{cmd}] no feature matches handle {target!r} -- run `sgt log --map` to see the handles.")

@@ -35,15 +35,36 @@ function toggle(key: string): void {
   c.update(key, !cur, vscode.ConfigurationTarget.Workspace);
 }
 
+/**
+ * Surface a mutation's report without losing its warnings.
+ *
+ * The report's first line says what happened; any ⚠ lines after it say what did
+ * NOT happen -- a restore that leaves the earlier revert's collateral removed
+ * prints one, and truncating to line one silently dropped it. A caveat the CLI
+ * thought worth a ⚠ outranks the success line here, because a toast is the only
+ * part of this a person reliably reads.
+ */
+function showMutationReport(report: string): void {
+  const lines = report.trim().split("\n").map((l) => l.trim()).filter(Boolean);
+  const caveat = lines.filter((l) => l.startsWith("⚠")).pop();
+  if (caveat) {
+    vscode.window.showWarningMessage(caveat);
+    return;
+  }
+  vscode.window.showInformationMessage(lines[0] || "Done.");
+}
+
 async function applyMutation(store: Store, args: string[], confirmMsg: string): Promise<void> {
   const ok = await vscode.window.showWarningMessage(confirmMsg, { modal: true }, "Apply");
   if (ok !== "Apply") {
     return;
   }
   try {
-    const report = await store.sgt.mutate(args);
+    // The modal above is the confirmation, so the CLI must not go looking for
+    // another one it has no terminal to ask on.
+    const report = await store.sgt.confirmedMutate(args);
     store.invalidate();
-    vscode.window.showInformationMessage(report.trim().split("\n")[0] || "Done.");
+    showMutationReport(report);
   } catch (e: any) {
     vscode.window.showErrorMessage(e.message);
   }
@@ -114,7 +135,7 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
   try {
     const report = await store.sgt.revertKeep(sel, keep);
     store.invalidate();
-    vscode.window.showInformationMessage(report.trim().split("\n")[0] || "Done.");
+    showMutationReport(report);
   } catch (e: any) {
     vscode.window.showErrorMessage(e.message);
   }

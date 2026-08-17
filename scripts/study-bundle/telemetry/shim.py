@@ -26,10 +26,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import client  # noqa: E402
 
-# Repo snapshots are taken around commands that could move the tree, so the
+# Repo snapshots are taken after commands that could move the tree, so the
 # analysis can tell an edit the participant made by hand from one the assistant
-# made. Cheap enough to run on every one of these.
-SNAPSHOT_AFTER = {"git", "sgt"}
+# made. A snapshot costs two extra git processes, so it is not worth taking
+# after a read. With an editor open, reads are most of the traffic: the pilot
+# log holds 376 snapshots for 26 real commands.
+GIT_WRITES = {
+    "add", "am", "apply", "bisect", "branch", "checkout", "cherry-pick", "clean",
+    "commit", "fetch", "filter-branch", "filter-repo", "gc", "init", "merge", "mv",
+    "notes", "pull", "rebase", "replace", "reset", "restore", "revert", "rm",
+    "sparse-checkout", "stash", "submodule", "switch", "tag", "update-index",
+    "update-ref", "worktree",
+}
+SGT_READS = {
+    "log", "now", "status", "show", "why", "recall", "diff", "map", "blame",
+    "explain", "drift", "feature", "sessions", "help",
+}
+
+# Commands an editor runs on its own, to keep its own views in step. They are
+# not moves the participant made, and counting them as such would swamp every
+# sequence measure the study has. Recorded, so "the editor was live" stays
+# visible, but flagged.
+EDITOR_POLL = {
+    "status", "ls-files", "rev-parse", "config", "for-each-ref", "symbolic-ref",
+    "show-ref", "check-ignore", "check-attr", "merge-base", "remote", "version",
+    "cat-file", "ls-tree", "var",
+}
 
 
 def is_a_shim(path: Path) -> bool:
@@ -62,6 +84,15 @@ def resolve(name: str) -> str | None:
         if is_a_shim(candidate):
             continue
         return str(candidate)
+
+    # PATH is not always the study's. An editor started from the Dock inherits
+    # the login shell's environment, and `sgt` lives in a virtualenv only the
+    # session shell knows about. Without this fallback the wrapper would report
+    # "command not found" for a tool that is installed two directories away,
+    # and the participant would conclude the tool is broken.
+    fallback = client.study_home() / "bin" / name
+    if fallback.is_file() and os.access(fallback, os.X_OK) and not is_a_shim(fallback):
+        return str(fallback)
     return None
 
 
@@ -116,6 +147,86 @@ def tree_hash() -> str | None:
 
         basis = (head.stdout.strip() + "\n" + "\n".join(sorted(lines))).encode()
         return hashlib.sha256(basis).hexdigest()[:16]
+    except Exception:
+        return None
+
+
+def subcommand(args: list[str]) -> str:
+    """The first word that is not a flag. `git -c foo=bar status` is a status."""
+    skip_value = False
+    for arg in args:
+        if skip_value:
+            skip_value = False
+            continue
+        if arg == "-c" or arg == "-C":
+            skip_value = True
+            continue
+        if arg.startswith("-"):
+            continue
+        return arg
+    return ""
+
+
+def moves_the_tree(name: str, sub: str) -> bool:
+    if name == "git":
+        return sub in GIT_WRITES
+    if name == "sgt":
+        return sub not in SGT_READS
+    return False
+
+
+SNAPSHOT_EVERY_SECONDS = 30
+
+
+def should_snapshot(name: str, sub: str, auto: bool) -> bool:
+    """Always after something that can move the tree; otherwise at most twice a
+    minute.
+
+    A snapshot is how a hand edit is inferred: the tree moved and no assistant
+    edit accounts for it. So they cannot only follow writes, or an edit made by
+    hand and never committed would never be seen. But they cost two git
+    processes, and an open editor runs dozens of reads a minute, so the ones
+    that ride along with a read are rate-limited and the editor's own polling
+    never triggers one.
+    """
+    if moves_the_tree(name, sub):
+        return True
+    if auto:
+        return False
+    try:
+        last = float(client.read_state().get("lastSnapshotAt") or 0)
+        if time.time() - last < SNAPSHOT_EVERY_SECONDS:
+            return False
+        client.write_state({"lastSnapshotAt": time.time()})
+        return True
+    except Exception:
+        return False
+
+
+def surface() -> str:
+    """Where this command was run: the terminal, the editor, or the assistant.
+
+    The launchers say so in the environment rather than the analysis guessing
+    from argv later. Guessing works until it doesn't: `git log` typed in a
+    terminal and `git log` run by an editor view are the same string, and the
+    difference between them is the whole point of adding an editor to the study.
+    """
+    if os.environ.get("CLAUDECODE"):
+        return "agent"
+    return os.environ.get("STUDY_SURFACE") or "terminal"
+
+
+def parent_name() -> str | None:
+    """The command that spawned us, so an editor's own terminal is separable
+    from the editor's views -- both inherit the same environment."""
+    try:
+        out = subprocess.run(
+            ["ps", "-o", "comm=", "-p", str(os.getppid())],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return (out.stdout.strip().rsplit("/", 1)[-1] or None) if out.returncode == 0 else None
     except Exception:
         return None
 
@@ -183,8 +294,13 @@ def main() -> int:
     # The child owns the terminal, including Ctrl-C. If the parent died first we
     # would lose the exit code, which is the thing we came for.
     previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    # Anything this command starts is that command's business, not a move the
+    # participant made. The wrapper reads this and steps aside, so a nested call
+    # is neither recorded nor slowed.
+    child_env = dict(os.environ)
+    child_env["STUDY_PARENT_TOOL"] = name
     try:
-        code = subprocess.call([real, *args])
+        code = subprocess.call([real, *args], env=child_env)
     except KeyboardInterrupt:
         code = 130
     except Exception as exc:
@@ -194,13 +310,32 @@ def main() -> int:
         signal.signal(signal.SIGINT, previous)
 
     duration = int((time.time() - started) * 1000)
+
+    # The instrument must not appear in its own measurements. `study-sync` runs
+    # git to work out what the participant has changed, and it inherits this
+    # PATH, so before this guard existed those calls were recorded as if the
+    # participant had typed them: 450 of the 476 command events in the first
+    # pilot log were the sync daemon looking at the repo every twenty seconds.
+    if os.environ.get("STUDY_NO_LOG"):
+        return code
+
     maybe_sync()
     try:
         # Commands the assistant runs arrive here too, because it inherits this
         # PATH. Marking them lets the analysis tell "they typed it" from "they
         # asked for it", and lets the pipeline fold each one together with the
         # matching hook record rather than counting it twice.
-        via_agent = bool(os.environ.get("CLAUDECODE"))
+        where = surface()
+        sub = subcommand(args)
+        # Machine, not participant. Either the editor keeping its own views in
+        # step, or an extension working out which Python this project uses --
+        # opening a file in the git arm installed the Python extension pack,
+        # which then probed the interpreter a dozen times. A participant who
+        # wants to run Python does it in a terminal, and that arrives here as
+        # `terminal`.
+        polling = where == "editor" and (
+            (name == "git" and sub in EDITOR_POLL) or name in ("python", "python3")
+        )
         client.append(
             "command",
             name=name,
@@ -209,10 +344,13 @@ def main() -> int:
             ok=(code == 0),
             durationMs=duration,
             cwd=os.getcwd(),
-            agent=via_agent,
+            agent=(where == "agent"),
+            surface=where,
+            parent=parent_name(),
+            auto=polling or None,
             sessionId=os.environ.get("CLAUDE_CODE_SESSION_ID"),
         )
-        if name in SNAPSHOT_AFTER:
+        if should_snapshot(name, sub, auto=polling):
             digest = tree_hash()
             if digest:
                 client.append("repo", name="tree", treeHash=digest)

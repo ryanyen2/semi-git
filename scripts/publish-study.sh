@@ -32,10 +32,11 @@ done
 cd "$ROOT"
 
 if [ "$SITE_ONLY" -eq 0 ]; then
-    # The wheel is built from the working tree, so a dirty tree ships code that
-    # is not any commit. The bundle records it as `-dirty`, which is honest but
-    # useless: "which build did participant 7 run" then has no answer.
-    if [ -n "$(git status --porcelain -- sgt/ pyproject.toml)" ]; then
+    # The wheel and the editor extension are both built from the working tree,
+    # so a dirty tree ships code that is not any commit. The bundle records it
+    # as `-dirty`, which is honest but useless: "which build did participant 7
+    # run" then has no answer.
+    if [ -n "$(git status --porcelain -- sgt/ pyproject.toml editor/vscode/)" ]; then
         echo "Refusing: sgt has uncommitted changes, so the wheel would not be any commit."
         echo "Commit first, or pass --site if you only meant to publish the website."
         exit 1

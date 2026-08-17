@@ -107,6 +107,29 @@ function subcommand(parts: string[], from: number): string {
   return ''
 }
 
+// sgt files its rarer verbs under groups, so the first word after `sgt` is
+// often the drawer rather than the verb: `feature regroup split` is a split,
+// `advanced fold` is a fold. Reading only the first word filed every split,
+// merge, move and rename made from the editor under `feature`, which the table
+// below calls inspection -- the one category a history operation must not land
+// in, since time-to-first-history-operation is measured from it.
+const SGT_GROUPS = /^(advanced|feature|regroup|plan|intent|oracle)$/
+
+function sgtVerb(parts: string[]): { verb: string; preview: boolean } {
+  let preview = false
+  for (let i = 1; i < parts.length; i++) {
+    const word = parts[i]
+    if (word.startsWith('-')) continue
+    if (SGT_GROUPS.test(word)) continue
+    if (word === 'preview') {
+      preview = true
+      continue
+    }
+    return { verb: word, preview }
+  }
+  return { verb: '', preview }
+}
+
 function classifyShell(text: string | null, ctx: ClassifyContext): Category | null {
   const parts = words(text)
   if (parts.length === 0) return null
@@ -128,13 +151,21 @@ function classifyShell(text: string | null, ctx: ClassifyContext): Category | nu
   }
 
   if (bin === 'sgt') {
-    const sub = subcommand(parts, 1)
+    const { verb, preview } = sgtVerb(parts)
     const rest = parts.slice(1).join(' ')
-    if (sub === 'restore' && ctx.lastOpFailed) return 'recover'
-    if (SGT_VERIFY.test(sub)) return 'verify'
-    if (SGT_HISTORY.test(sub)) return 'history_op'
-    if (SGT_INSPECT.test(sub)) return 'inspect'
-    if (SGT_ORIENT.test(sub)) return /--refresh/.test(rest) ? 'orient' : 'orient'
+
+    // The editor extension reads through `--json` and mutates without it, and
+    // anything called `preview` reports without writing. Both look exactly like
+    // the operation they are describing: hovering a feature in the workbench
+    // emits `sgt advanced preview revert <feature> --json`, and counting that
+    // as a revert would say people operated on history when they moved a mouse.
+    const reportOnly = preview || /(^|\s)--json(\s|$)/.test(rest)
+
+    if (verb === 'restore' && ctx.lastOpFailed && !reportOnly) return 'recover'
+    if (SGT_VERIFY.test(verb)) return 'verify'
+    if (SGT_HISTORY.test(verb)) return reportOnly ? 'inspect' : 'history_op'
+    if (SGT_INSPECT.test(verb)) return 'inspect'
+    if (SGT_ORIENT.test(verb)) return 'orient'
     return 'inspect'
   }
 

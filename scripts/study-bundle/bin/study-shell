@@ -17,16 +17,41 @@ export STUDY_HOME STUDY_PY
 export STUDY_CODE="${STUDY_CODE:-}"
 export STUDY_SHIM_DIR="$STUDY_HOME/bin/shims"
 export CLAUDE_CONFIG_DIR="$STUDY_HOME/.claude-study"
+# Where a command was run. The editor's launcher says `editor`; anything that
+# inherits this shell is a command somebody typed.
+export STUDY_SURFACE=terminal
 
 # Their key must not be picked up. The assistant authenticates through the
 # apiKeyHelper in the isolated profile, so nothing here is billed to them.
+#
+# `OPENAI_*` belongs on this list for the same reason and was missing from it.
+# The history tool resolves its credential with "a key exported in the shell
+# always wins over .env" -- a deliberate rule, and the wrong one here: a
+# participant who happens to export their own key would have had it used for
+# every label and every search, billed to them, while the key we issued sat
+# unused in `work/.env` and the setup page still showed green.
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL || true
+unset OPENAI_API_KEY OPENAI_BASE_URL || true
 
 export PATH="$STUDY_SHIM_DIR:$STUDY_HOME/bin:$STUDY_HOME/work/.venv/bin:$PATH"
 
 if [ ! -x "$STUDY_PY" ]; then
     echo "The project environment is missing. Run install/setup.sh first." >&2
     exit 1
+fi
+
+# Without a key, Claude Code does not fail -- it offers to sign in, and the
+# obliging thing to do is sign in with your own account. That bills the
+# participant, runs a model the study did not choose, and looks exactly like a
+# normal session afterwards. Say so before they reach that screen.
+if [ ! -s "$STUDY_HOME/.claude-study/api-key" ]; then
+    echo
+    echo "  No assistant key was issued for this session."
+    echo
+    echo "  If you start the assistant it will ask you to sign in. Please do not:"
+    echo "  it would use your own account, and we cannot use that session."
+    echo "  Tell your facilitator, then run install/setup.sh again with your code."
+    echo
 fi
 
 # A background pusher, so the facilitator is never more than twenty seconds
@@ -63,6 +88,7 @@ echo
 echo "Session shell. The project is in \\\$(pwd)."
 echo
 echo "  claude            the assistant, on our key and our profile"
+echo "  study-code        open the project in the editor"
 echo "  study-practice    the throwaway warm-up copy"
 echo "  study-work        back to the real project"
 echo "  study-doctor      re-run the setup checks"

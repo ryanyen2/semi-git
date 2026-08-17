@@ -182,6 +182,15 @@ def main() -> int:
     check("hooks cover prompts and tools", {"UserPromptSubmit", "PreToolUse", "Stop"} <= set(settings["hooks"]))
     check("hooks are async so nothing blocks a session", settings["hooks"]["Stop"][0]["hooks"][0]["async"] is True)
     check("the assistant will not silently upgrade mid-study", settings["env"]["DISABLE_AUTOUPDATER"] == "1")
+    # The model is part of the condition. It is issued per participant and has
+    # to arrive in the profile, or two halves of one study ran on two models
+    # with nothing in the data saying which.
+    check(
+        "the model the study issued is the one pinned",
+        settings.get("model") == "claude-sonnet-5"
+        and settings["env"].get("ANTHROPIC_MODEL") == "claude-sonnet-5",
+        json.dumps({"model": settings.get("model"), "env": settings.get("env")}),
+    )
 
     # The check that matters most: the wrong bundle must be refused.
     (home / "study.json").write_text(

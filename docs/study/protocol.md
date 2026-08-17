@@ -86,6 +86,58 @@ early, and a cohort that is balanced only at n=12 is unanalyzable at n=9.
 Condition is never named to the participant. The site says "Setup A" and
 "Setup B", assigned per half, and never says which one is ours.
 
+### What each condition is, exactly
+
+A condition is a way of reading and changing history, not a command line. Both
+halves therefore offer the same three places to work, and the participant
+chooses freely among them:
+
+| | git condition | sgt condition |
+|---|---|---|
+| Terminal | `git` | `sgt`, with `git` still available beneath it |
+| Editor | VS Code Source Control, Timeline, and GitLens 19.0.1 | VS Code, with the semi-git extension |
+| Assistant | Claude Code, pinned model, same in both halves | same, plus sgt's MCP tools and skills |
+
+The assistant's reach is part of the condition, not scenery. Both halves are
+told to use it for anything, and the fifth request asks for two implementations
+explicitly, so most work will be done through it. In the git half the assistant
+already knows git well and needs nothing installed. In the sgt half it gets the
+MCP server and the three bundled skills, which is what `sgt init --agent`
+installs for any user of the tool. Without them the sgt condition would be
+measured with the half of the product that faces agents switched off, and the
+comparison would be "a tool the assistant knows" against "a tool it must guess
+at" rather than one between two ways of recording history.
+
+Two models are pinned per session, not one. The assistant runs on
+`claude-sonnet-5`, and sgt's own labeller and search run on `gpt-5.6-luna`,
+written into the project's `.env` at setup. The second matters as much as the
+first: every feature name a participant reads in the sgt condition was written
+by that model, so a session that silently fell back to a different one — or to
+the deterministic offline names, which is what a dead key produces — is not
+comparable with the others. Both are checked before the session starts, by
+making a real call rather than by looking for a key.
+
+GitLens is in the git condition deliberately. Comparing an editor extension
+against a bare terminal would measure the presence of a graphical view rather
+than the representation underneath it, and GitLens is how people actually read
+git history in an editor. Both extensions travel inside the bundle at a fixed
+version, so every participant ran the same software and the version is recorded
+in `study.json`.
+
+The editor runs from a profile inside the study folder, opened with
+`study-code`. Its `git.path` and `sgt.path` point at the same recording
+wrappers the shell uses, so a click in a history view is recorded exactly like a
+typed command and is distinguishable from one.
+
+Everything else about the editor is held identical. Both profiles get the same
+pinned Python tooling — the Python extension, Pylance, debugpy and
+python-envs — installed at setup rather than left to the editor to offer. In the
+first editor rehearsal the git arm finished with 198 MB of Python tooling and the
+sgt arm with none, purely because one half led the participant to open a `.py`
+file first. Go-to-definition and type inference in one arm and not the other is
+not a difference between two ways of recording history. The setup check fails on
+anything missing or anything extra.
+
 ## 4. What the participant does, step by step
 
 The site is the participant's only surface. Each step writes to Firestore on
@@ -286,8 +338,34 @@ because every event carries a content-addressed id.
 | Agent tool calls | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` hooks | tool name, command, file, success |
 | Agent turn boundaries | `SessionStart` / `Stop` / `SessionEnd` hooks | turn latency, turns per request |
 | Participant's own commands | PATH shims for `git`, `sgt`, `pytest`, `python` | argv, exit code, duration |
+| Editor actions | the same wrappers, reached through `git.path` and `sgt.path` | argv of every read or change a view made |
 | Repo state | `git rev-parse` + test run at each request boundary | tree hash, tests passing |
 | Heartbeat | 30-second ping | liveness on the experimenter's screen |
+
+Every command carries the surface it came from: `terminal`, `editor`, or
+`agent`. The launchers set it, rather than the analysis inferring it later, because
+`git log` typed in a shell and `git log` run by a history view are the same
+string and the difference between them is why the editor is in the study.
+
+Four things the instrument itself does are kept out of the participant's record.
+An editor's own periodic polling, and an extension working out which Python the
+project uses, are recorded and flagged `auto`, and the analysis drops them. The
+git the sync daemon runs to see what has changed, and the question the setup
+check asks the assistant to prove the key works, are not recorded at all.
+
+A command run by another recorded command is not recorded either, and the
+wrapper steps aside before starting Python so the nested call costs nothing.
+This matters more in one condition than the other: `sgt` shells out to git about
+five times per command, so without it a two-minute editor session produced 136
+git calls against 28 sgt calls, which reads as "they mostly used git" in the
+condition where they mostly used sgt. It also removed a one-sided timing
+penalty, since only the tool that spawns subprocesses was paying for them.
+
+None of this was true for the first pilot. 450 of its 476 command events were
+the sync daemon looking at the repository every twenty seconds, and one of its
+two prompts was the setup check's own "Reply with exactly: ok". A session cannot
+be re-run, so an instrument that records itself is not something the analysis can
+undo afterwards.
 
 Hooks run with `async: true`, so telemetry cannot make the participant's
 assistant feel slow, and a broken hook cannot block a session.
@@ -296,6 +374,16 @@ assistant feel slow, and a broken hook cannot block a session.
 
 Raw events are classified into nine categories. Everything downstream, including
 the n-gram analysis, works on this alphabet.
+
+Two rules exist because the editor reaches the same CLI through verbs a
+terminal rarely uses. A grouped verb is filed under the verb and not the group,
+so `feature regroup split` is an operation rather than an inspection. And a
+report is filed as an inspection: anything named `preview`, and anything the
+extension asked for with `--json`, which is how it reads. Hovering a feature in
+the workbench emits `advanced preview revert <feature> --json` several times a
+second, and counting those as reverts would report that somebody operated on
+history when they moved a mouse across a list. Identical editor reads within two
+seconds of each other collapse to one for the same reason.
 
 | Category | Includes |
 |---|---|

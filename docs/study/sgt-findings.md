@@ -194,6 +194,50 @@ one place to look.
     use a 64-hex subject, so `git log --oneline` is too. The README promises "an ordinary git
     repo"; a colleague who does not use sgt inherits this.
 
+## Open bugs found by the first editor rehearsal (2026-08-16)
+
+21. **FIXED. Every revert and restore from the editor failed after the user clicked Apply.** The
+    extension ran `sgt revert <sel>` with no `--yes`. `ideal_edit.py:186` prints the preview and
+    returns **2** when stdin is not a terminal, which is every call from an extension, and
+    `execFile` reports a non-zero exit as a failure. So the modal appeared, the participant
+    confirmed, and the editor showed `Command failed: ... sgt revert f-5a0c...` having changed
+    nothing. Finding 8 recorded the same exit-2 behaviour and concluded it was "a library-vs-CLI
+    difference, not a CLI bug" — true, and nobody then checked the third caller. Fixed by
+    `Sgt.confirmedMutate`, used by the five call sites that mutate after their own modal
+    (`commands.ts` revert/restore, `sgt.ts` revertKeep, `workbench.ts` ×2). This blocked R2, R3,
+    R4 and R5 in the sgt condition's editor half.
+
+22a. **`sgt restore <feature>` after `sgt revert <feature>` is not a round trip, and said
+    nothing about it.** Live repro on the study repo: revert "Enrollment Drop" (its upset
+    pulls in `enrollment.drop`, which belongs to the *other* drop feature, "Drop
+    Enrollment"), then restore "Enrollment Drop" — ✓, 11 ops added, and `enrollment.drop`
+    still missing; `1 failed, 35 passed` before and after the restore, 38 at baseline.
+    Structural: revert takes `I \\ ↑X` (dependents from other features included), restore
+    takes `I ∪ ↓X` (the target's needs only), and ↑X ⊄ ↓X. R3 is exactly this flow.
+    MITIGATED, not fixed: revert and restore now print (and return, as `restore_gap` in
+    JSON/MCP) what the earlier revert removed that the restore leaves removed, naming the
+    symbols, with `sgt undo` as the actual inverse. Detection walks the undo journal and
+    has to treat both removal shapes: dropped op ids (absent from the ideal) and
+    subtraction splices (introduced by the revert and still the symbol's frontier tip).
+    Tests: `tests/cli/test_restore_gap.py`. The kernel-level question — should feature
+    restore optionally take the matching revert's op-set — stays open.
+
+22b. **Two small UI-surface fixes from the same sweep.** A handle that resolves to no
+    feature returned JSON with `candidates` but no `message`, so the extension showed
+    "Cannot revert X." with no reason (the terminal path explains itself); the JSON now
+    carries the same message. And `sgt find` indexed subsystem nodes, so "waitlist" ranked
+    the whole-repo root (its `why` mentions everything) above the waitlist features —
+    unactionable by every verb; the index is leaf-features-only now.
+
+22. **A revert can leave a file that will not import, which takes the whole suite down.**
+    Reverting `f-5a0c1336` ("Waitlist Promotion · test_promotion.py", 1 edit) left
+    `tests/test_promotion.py` beginning `@pytest.fixture` with the `import pytest` gone, so pytest
+    aborted during collection: `1 error`, no tests run at all. The participant's stated safety net
+    reports nothing about the 38 tests that are still fine. Related to finding 4 but a different
+    symptom — not a file that outlives its ops, a file left depending on an op that went.
+    `sgt undo` recovers completely (verified: `✓ undo 452f902 — 1 op(s) restored`, then 38 passed),
+    and the tutorial teaches `undo`, so a participant is not stranded.
+
 ## FIXED 2026-08-13 (pilot 01, second pass): findings 15, 19, and the plan-loop dead end
 
 - **15 (`fulfill --from-tree` data loss) — fixed.** `stage` now makes the same

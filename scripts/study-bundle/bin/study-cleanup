@@ -26,6 +26,7 @@ echo "  $STUDY_HOME/work          the project"
 echo "  $STUDY_HOME/practice      the warm-up copy"
 echo "  $STUDY_HOME/toolenv       the tool it installed"
 echo "  $STUDY_HOME/.claude-study the assistant profile and the session key"
+echo "  $STUDY_HOME/.vscode-study the editor profile and its extension"
 echo
 echo "It keeps the log of what you did, which has already been delivered."
 echo
@@ -36,7 +37,8 @@ if [ "$answer" != "yes" ]; then
     exit 0
 fi
 
-rm -rf "$STUDY_HOME/work" "$STUDY_HOME/practice" "$STUDY_HOME/toolenv" "$STUDY_HOME/.claude-study"
+rm -rf "$STUDY_HOME/work" "$STUDY_HOME/practice" "$STUDY_HOME/toolenv" \
+       "$STUDY_HOME/.claude-study" "$STUDY_HOME/.vscode-study"
 rm -f "$STUDY_HOME/study.env"
 
 echo
