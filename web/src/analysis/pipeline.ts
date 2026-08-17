@@ -26,7 +26,7 @@ import {
   type ClassifyContext,
   type Specificity,
 } from '../study/taxonomy'
-import { gitExpertise, susScore, tlxScore } from '../lib/stats'
+import { gitExpertise, tlxScore, umuxLiteScore } from '../lib/stats'
 
 export interface CategorizedEvent {
   id: string
@@ -99,7 +99,7 @@ export interface HalfSummary {
   condition: Condition
   project: Project
   tlx: number | null
-  sus: number | null
+  umux: number | null
   hlac: Record<string, number>
   quizScore: number | null
   quizConfidence: number | null
@@ -449,7 +449,7 @@ function halfSummary(
     condition,
     project,
     tlx: find('tlx') ? tlxScore(find('tlx')!) : null,
-    sus: find('sus') ? susScore(find('sus')!) : null,
+    umux: find('umux') ? umuxLiteScore(find('umux')!) : null,
     hlac,
     quizScore,
     quizConfidence: confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : null,

@@ -1102,3 +1102,20 @@ input[type='range'] {
 .markdown th {
   background: var(--bg-soft);
 }
+
+/* A block heading inside a questionnaire. Grouped items get read; an
+   undifferentiated column of near-identical rows gets straight-lined. */
+.form-section {
+  margin: 1.9rem 0 0.4rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.82rem;
+  font-weight: 660;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.form-section:first-child {
+  margin-top: 0;
+}

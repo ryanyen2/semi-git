@@ -172,7 +172,7 @@ export function demoDataset(seed = 4242): Dataset {
       }
 
       const hlac: Record<string, number> = {}
-      for (const item of HLAC.items) {
+      for (const item of HLAC.items.filter((i) => i.type === 'likert')) {
         const better = clamp(Math.round(4.1 + (sgt ? 1.35 : 0) + ability * 0.5 + gauss()), 1, 7)
         hlac[item.id] = item.reverse ? 8 - better : better
       }
@@ -182,7 +182,7 @@ export function demoDataset(seed = 4242): Dataset {
         condition: block.condition,
         project: block.project,
         tlx: clamp(58 - lift * 11 - ability * 3 + gauss() * 9, 5, 100),
-        sus: clamp(64 + (sgt ? 10 : 0) + ability * 4 + gauss() * 9, 10, 100),
+        umux: clamp(64 + (sgt ? 10 : 0) + ability * 4 + gauss() * 9, 10, 100),
         hlac,
         quizScore: clamp(Math.round(2.6 + (sgt ? 1.0 : 0) + ability + gauss() * 0.8), 0, 5),
         quizConfidence: clamp(Math.round(58 + (sgt ? 8 : 0) + gauss() * 12), 0, 100),

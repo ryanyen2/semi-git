@@ -19,6 +19,8 @@ export type ItemType =
   | 'grid'
   | 'tlx'
   | 'statement'
+  /** A block heading inside a questionnaire. Carries no answer. */
+  | 'section'
 
 export interface Option {
   value: string
@@ -265,99 +267,117 @@ const tlxItem = (
 
 export const TLX: Instrument = {
   id: 'tlx',
-  version: 'tlx-v1',
+  version: 'tlx-v2',
   title: 'How that felt',
   perHalf: true,
   estimateMin: 2,
+  // Raw TLX: six subscales, unweighted, on the instrument's own 21-point scale.
+  // Not on the seven points the rest of this questionnaire uses -- a coarser
+  // scale does not blur TLX, it changes its shape, moving frustration onto the
+  // physical subscale and splitting effort across two.
+  //
+  // The block names the requests rather than "the half you just finished",
+  // because TLX measures the load of a bounded task and returns something else
+  // when pointed at an hour of mixed activity.
   intro:
-    'Six sliders about the half you just finished. Answer quickly, first instinct. There is no good or bad score.',
+    'Six sliders about the requests you just worked through. Answer quickly, first instinct. There is no good or bad score.',
   items: [
+    // Each subscale carries its published definition, not just its name. The
+    // six correlate strongly enough in interactive work that a participant
+    // reading only the short label answers several of them alike.
     tlxItem(
       'mental',
       'Mental demand',
-      'How much thinking, deciding, looking and remembering did it take?',
+      'How much mental and perceptual activity was required? Thinking, deciding, looking, ' +
+        'remembering, searching. Was the task easy or demanding, simple or complex?',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'physical',
       'Physical demand',
-      'How much physical activity did it take? For desk work this is usually low, and that is fine.',
+      'How much physical activity was required? Typing, clicking, moving around. For desk work ' +
+        'this is usually low, and that is a normal answer.',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'temporal',
       'Temporal demand',
-      'How much time pressure did you feel?',
+      'How much time pressure did you feel because of the rate at which things happened? Was the ' +
+        'pace slow and leisurely, or rapid and frantic?',
       ['Very low', 'Very high'],
     ),
+    // Presented failure-to-perfect, the direction the words are read in, and
+    // reversed exactly once in `tlxScore`. It was previously presented
+    // perfect-to-failure AND reversed in scoring, so a participant who felt
+    // they had done perfectly contributed the maximum possible workload.
     tlxItem(
       'performance',
       'Performance',
-      'How successful were you at what you were asked to do?',
-      ['Perfect', 'Failure'],
+      'How successful were you in doing what you were asked to do? How satisfied were you with ' +
+        'how you did?',
+      ['Failure', 'Perfect'],
       true,
     ),
     tlxItem(
       'effort',
       'Effort',
-      'How hard did you have to work to get to the level of performance you reached?',
+      'How hard did you have to work, mentally and physically, to reach the level of performance ' +
+        'you reached?',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'frustration',
       'Frustration',
-      'How irritated, stressed or annoyed did you feel?',
+      'How insecure, discouraged, irritated, stressed or annoyed did you feel, as against secure, ' +
+        'content, relaxed and complacent?',
       ['Very low', 'Very high'],
     ),
   ],
 }
 
 // ---------------------------------------------------------------------------
-// SUS
+// UMUX-Lite
 // ---------------------------------------------------------------------------
+//
+// Two items, on their published seven points, replacing the ten-item SUS.
+//
+// The referent is filled in as "the setup you just used" rather than left as
+// "this system". Both halves run the same assistant in the same editor on the
+// same kind of project; an unqualified "system" would have been answered about
+// different objects by different participants, and the difference between the
+// halves is the entire measurement.
+//
+// Reported raw on 0-100 by the published formula. Deliberately NOT converted to
+// a SUS-equivalent: that regression was fitted to particular corpora, and a
+// within-participant difference gains nothing from the transformation while
+// inheriting its error.
 
-const susItem = (id: string, label: string, reverse: boolean): Item => ({
+const umuxItem = (id: string, label: string, serves: string): Item => ({
   id,
   type: 'likert',
   label,
-  reverse,
+  serves,
   required: true,
   min: 1,
-  max: 5,
+  max: 7,
   anchors: ['Strongly disagree', 'Strongly agree'],
 })
 
-export const SUS: Instrument = {
-  id: 'sus',
-  version: 'sus-v1',
+export const UMUX_LITE: Instrument = {
+  id: 'umux',
+  version: 'umux-lite-v1',
   title: 'This setup',
   perHalf: true,
-  estimateMin: 3,
+  estimateMin: 1,
   intro:
-    'Ten quick statements about the setup you just used. Rate each one on how much you agree. If you are unsure, pick the middle.',
+    'Two statements about the setup you just used for those requests. Rate how much you agree.',
   items: [
-    susItem('s1', 'I think that I would like to use this setup frequently.', false),
-    susItem('s2', 'I found this setup unnecessarily complex.', true),
-    susItem('s3', 'I thought this setup was easy to use.', false),
-    susItem(
-      's4',
-      'I think that I would need the support of a technical person to be able to use this setup.',
-      true,
+    umuxItem(
+      'capability',
+      "This setup's capabilities meet my requirements.",
+      'usability / capability',
     ),
-    susItem('s5', 'I found the various functions in this setup were well integrated.', false),
-    susItem('s6', 'I thought there was too much inconsistency in this setup.', true),
-    susItem(
-      's7',
-      'I would imagine that most people would learn to use this setup very quickly.',
-      false,
-    ),
-    susItem('s8', 'I found this setup very awkward to use.', true),
-    susItem('s9', 'I felt very confident using this setup.', false),
-    susItem(
-      's10',
-      'I needed to learn a lot of things before I could get going with this setup.',
-      true,
-    ),
+    umuxItem('easy', 'This setup is easy to use.', 'usability / ease'),
   ],
 }
 
@@ -384,15 +404,31 @@ const hlacItem = (
   anchors: ['Strongly disagree', 'Strongly agree'],
 })
 
+const section = (id: string, label: string): Item => ({
+  id, type: 'section', label, required: false,
+})
+
 export const HLAC: Instrument = {
   id: 'hlac',
-  version: 'hlac-v1',
+  version: 'hlac-v2',
   title: 'Working with this project history',
   perHalf: true,
   estimateMin: 3,
+  // Likert-TYPE items grouped into ad-hoc composites, not a validated scale.
+  // Reported item by item, with the block mean as a summary rather than as a
+  // construct score, and with no internal-consistency coefficient: at three to
+  // four items and this sample size, a coefficient would lend an ad-hoc block
+  // the appearance of a validated one.
+  //
+  // Grouped under headings in a fixed order rather than randomized. An
+  // undifferentiated column of near-identical rows gets answered by pattern;
+  // headings are the cheapest guard against that, and they only work if the
+  // items that belong together sit together. The guard against straight-lining
+  // is the reverse-keyed items instead.
   intro:
-    'Ten statements about the half you just finished. Think about what it was actually like, not what you think it should have been like.',
+    'Statements about the requests you just worked through. Think about what it was actually like, not what you think it should have been like.',
   items: [
+    section('secFind', 'Finding your way around'),
     hlacItem('q1', 'Found when it changed', 'I could find when a behavior changed.', 'C1'),
     hlacItem('q2', 'Found why it changed', 'I could find out why a change was made.', 'C1'),
     hlacItem(
@@ -401,6 +437,15 @@ export const HLAC: Instrument = {
       'When I found a change, I could see what larger piece of work it belonged to.',
       'C1',
     ),
+    hlacItem(
+      'q11',
+      'Guessed at names',
+      'I had to guess at names or ids to find what I was looking for.',
+      'C1',
+      true,
+    ),
+
+    section('secChange', 'Changing things'),
     hlacItem(
       'q4',
       'Knew what else it would touch',
@@ -420,11 +465,28 @@ export const HLAC: Instrument = {
       'C2',
     ),
     hlacItem(
+      'q12',
+      'Surprised by the result',
+      'A change did something I had not expected.',
+      'C2',
+      true,
+    ),
+
+    section('secPicture', 'What you came away with'),
+    hlacItem(
       'q7',
       'Clear picture of the project',
       'I ended up with a clear picture of how this project got to where it is.',
       'C3',
     ),
+    hlacItem(
+      'q13',
+      'Would get back up to speed',
+      'If I came back to this project in a month, what is recorded would get me back up to speed.',
+      'C3',
+    ),
+
+    section('secAgent', 'Working with the assistant'),
     hlacItem(
       'q8',
       'Directed the assistant precisely',
@@ -437,11 +499,21 @@ export const HLAC: Instrument = {
       'I could check what the assistant did against what I asked for.',
       'Q4',
     ),
+    // An honesty valve. If a condition wins understanding, control and this,
+    // suspect acquiescence; if it wins the others while losing this, the story
+    // is "a cost paid knowingly" and the data reads as credible.
+    hlacItem(
+      'q14',
+      'Accepted unreviewed work',
+      'I accepted changes from the assistant that I had not really reviewed.',
+      'Q4',
+      true,
+    ),
     hlacItem(
       'q10',
       'Fought the tool',
       'I spent effort fighting the tool rather than doing the task.',
-      'attention check',
+      'straight-lining guard',
       true,
     ),
   ],
@@ -571,6 +643,59 @@ export const PREFERENCE: Instrument = {
       options: prefOptions,
       label: 'Overall, which setup would you rather work in?',
     },
+
+    // Discriminant scenarios. Two of these are jobs the plain setup should win:
+    // a typo in a repo you will never see again, and a script you are deleting
+    // tomorrow, are not jobs that reward reading history carefully. A
+    // participant who picks the same setup for all five is evidence of demand
+    // characteristics and is reported as such; differentiated answers are the
+    // credible signal.
+    {
+      id: 'scenarioTypo',
+      type: 'select',
+      required: true,
+      options: prefOptions,
+      serves: 'discriminant — plain git expected',
+      label: 'Fixing a typo in a repository you have never seen and will not see again',
+    },
+    {
+      id: 'scenarioThrowaway',
+      type: 'select',
+      required: true,
+      options: prefOptions,
+      serves: 'discriminant — plain git expected',
+      label: 'A throwaway script you will delete tomorrow',
+    },
+    {
+      id: 'scenarioOwn',
+      type: 'select',
+      required: true,
+      options: prefOptions,
+      serves: 'discriminant — sgt expected',
+      label: 'A codebase you will own for the next year',
+    },
+    {
+      id: 'scenarioOnboard',
+      type: 'select',
+      required: true,
+      options: prefOptions,
+      serves: 'discriminant — sgt expected',
+      label: 'Getting a new teammate up to speed on a codebase',
+    },
+    {
+      id: 'scenarioHotfix',
+      type: 'select',
+      required: true,
+      options: prefOptions,
+      serves: 'discriminant — open',
+      label: 'A production hotfix under time pressure',
+    },
+    {
+      id: 'scenarioWhy',
+      type: 'textarea',
+      required: true,
+      label: 'Pick one of those five and say in a line why you chose what you chose.',
+    },
     {
       id: 'wouldUseA',
       type: 'likert',
@@ -603,7 +728,7 @@ export const ALL_INSTRUMENTS: Instrument[] = [
   CONSENT,
   BACKGROUND,
   TLX,
-  SUS,
+  UMUX_LITE,
   HLAC,
   QUIZ,
   SUMMARY,

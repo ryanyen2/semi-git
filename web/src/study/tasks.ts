@@ -232,11 +232,17 @@ you kept.`,
       confplan: 'Clean up that tangled change',
     },
     body: {
+      // Asks for the separation only. It used to ask for "a clear name" too,
+      // and that half was scored -- but no sgt verb renames a checkpoint and
+      // `feature regroup move --to` requires an already-existing leaf feature
+      // (findings 17 and 18), so one condition could not earn the point at all.
+      // A rubric line that one arm cannot reach measures the tool's gap twice:
+      // once in the request that exposes it, and again as a lost point.
       coursecraft: `The change you looked at in request 1 bothers you. Two unrelated pieces of work
-landed as one unit. Separate them in the history so each one has a clear name.
+landed as one unit. Separate them in the history so each one stands on its own.
 Don't change any of the current code.`,
       confplan: `The change you looked at in request 1 bothers you. Two unrelated pieces of work
-landed as one unit. Separate them in the history so each one has a clear name.
+landed as one unit. Separate them in the history so each one stands on its own.
 Don't change any of the current code.`,
     },
   },

@@ -151,7 +151,7 @@ change, so a closed laptop loses nothing.
 | 4 | Setup, half 1 | — | live green check from the machine's own heartbeat |
 | 5 | Tutorial, half 1 | 10 min | `tutorialCompletedAt` |
 | 6 | Task block 1 (R1–R6) | 45 min | per-request timings, answers, confidence |
-| 7 | Post-block 1: TLX, SUS, HLAC, quiz, summary | 12 min | four response docs |
+| 7 | Post-block 1: TLX, UMUX-Lite, HLAC, quiz, summary | 12 min | four response docs |
 | 8 | Setup, half 2 | — | second heartbeat |
 | 9 | Tutorial, half 2 | 10 min | |
 | 10 | Task block 2 | 45 min | |
@@ -160,9 +160,11 @@ change, so a closed laptop loses nothing.
 | 13 | Data handover and debrief | — | final sync confirmation |
 
 About 125 minutes with breaks, against the design doc's 120. The extra time is
-the SUS and HLAC batteries moved to immediately after each half, which is where
-usability instruments belong: asking someone to rate setup A after they have
-spent 45 minutes in setup B measures memory, not experience.
+the usability and HLAC batteries moved to immediately after each half, which is
+where usability instruments belong: asking someone to rate setup A after they
+have spent 45 minutes in setup B measures memory, not experience. Replacing SUS
+with UMUX-Lite gave two minutes of that back, and spent four of them on the four
+new HLAC items.
 
 ### Timers
 
@@ -214,45 +216,124 @@ that goes into the models as a covariate. Self-rated expertise on a single
 1–7 scale correlates with confidence, not skill, which is why it is not asked.
 The last item is an exclusion check, not a covariate.
 
-### 5.3 NASA-TLX, raw (`tlx-v1`), after each half
+### 5.3 NASA-TLX, raw (`tlx-v2`), after each half
 
-Six standard subscales on the standard 21-point 0–100 scale, unweighted (raw
-TLX, per Hart's 2006 retrospective). Physical demand is retained even though it
-is uninformative for desk work, because dropping a subscale makes the total
-non-comparable with every other paper that reports raw TLX.
+Six subscales, unweighted (Raw TLX, per Hart's 2006 retrospective), on the
+instrument's own 21-point 0–100 scale rather than on the seven points the rest
+of the questionnaire uses. A coarser scale does not blur TLX, it changes its
+shape: frustration migrates onto the physical subscale and effort splits across
+two. Three implementation choices are stated here because their absence is the
+recurring source of incomparability between papers that all say "we used TLX".
 
 Mental demand · Physical demand · Temporal demand · Performance · Effort · Frustration.
 
-Performance is reverse-scored (anchored "perfect" to "failure") before totalling.
+Each subscale is shown with its full published definition, not only its name.
+The six correlate strongly enough in interactive work that a participant reading
+only a short label answers several of them alike.
 
-### 5.4 SUS (`sus-v1`), after each half
+Performance is presented **failure-to-perfect** — failure at the low end, perfect
+at the high — and reversed exactly once, in `tlxScore`, so that a higher number
+means higher workload on all six. Until 2026-08-17 it was presented
+perfect-to-failure *and* reversed in scoring, which meant a participant who felt
+they had done perfectly contributed the maximum possible workload. The item's
+anchors are asserted in `web/tests/analysis.test.ts` alongside the arithmetic,
+because either half alone is only half of the convention.
 
-The ten standard items, with "the system" replaced by "this setup". Scored the
-standard way to 0–100. Reported as a number, not plotted; SUS is a benchmark
-against the 68 average, and a ten-item Likert figure of it would waste the
-figure budget on an instrument that was never designed to be read item-wise.
+Physical demand is retained even though it is uninformative for desk work:
+dropping a subscale makes the total non-comparable with every other paper that
+reports raw TLX.
 
-### 5.5 History legibility and agent collaboration (`hlac-v1`), after each half
+The block names the requests, not the session. TLX measures the load of a bounded
+task and returns something else when pointed at an hour of mixed activity.
 
-Ten items, 7-point, strongly disagree (1) to strongly agree (7). This is the
-battery in Figure 1. Items were written to the claims, one construct per item,
-with one reverse-coded item to catch straight-lining.
+### 5.4 UMUX-Lite (`umux-lite-v1`), after each half
 
-| # | Short label (figure) | Statement |
-|---|---|---|
-| Q1 | Found when it changed | I could find when a behavior changed. |
-| Q2 | Found why it changed | I could find out why a change was made. |
-| Q3 | Saw the whole piece of work | When I found a change, I could see what larger piece of work it belonged to. |
-| Q4 | Knew what else it would touch | Before I changed anything, I could tell what else would be affected. |
-| Q5 | Removed a feature safely | I could take a feature out without worrying about breaking what came after it. |
-| Q6 | Recovered from mistakes | When something went wrong, I could get back to a good state. |
-| Q7 | Clear picture of the project | I ended up with a clear picture of how this project got to where it is. |
-| Q8 | Directed the assistant precisely | I could point the assistant at exactly the part of the history I meant. |
-| Q9 | Checked the assistant's work | I could check what the assistant did against what I asked for. |
-| Q10 | *(reverse)* Fought the tool | I spent effort fighting the tool rather than doing the task. |
+Two items on their published seven points, replacing the ten-item SUS this study
+carried until 2026-08-17.
 
-Q1–Q3 serve C1, Q4–Q6 serve C2, Q7 serves C3, Q8–Q9 serve Q4, Q10 is the
-attention check and the workload cross-reference.
+| # | Statement |
+|---|---|
+| U1 | This setup's capabilities meet my requirements. |
+| U2 | This setup is easy to use. |
+
+The bracketed referent is filled in as "this setup" rather than left as "this
+system". Both halves run the same assistant in the same editor on the same kind
+of project; an unqualified "system" would be answered about different objects by
+different participants, and the difference between the halves is the entire
+measurement.
+
+Reported raw on 0–100 by the published formula. **Not** converted to a
+SUS-equivalent: that regression was fitted to particular corpora, and a
+within-participant difference gains nothing from the transformation while
+inheriting its error. No claim is made that any absolute score is high or low —
+these instruments carry no norms for this kind of work and are not ratio
+measures, so only the difference between conditions on the task the instrument
+names is interpreted.
+
+The swap from SUS costs nothing this study was using. SUS is a benchmark against
+its 68 average, and this study never benchmarks: it reports a paired difference.
+Ten items twice per session bought one number that two items buy, and the eight
+extra rows were the ones most likely to be straight-lined.
+
+### 5.5 History legibility and agent collaboration (`hlac-v2`), after each half
+
+Fourteen items, 7-point, strongly disagree (1) to strongly agree (7), in four
+labelled blocks in a fixed order. This is the battery in Figure 1.
+
+These are **Likert-type items grouped into ad-hoc composites, not a validated
+scale**, and are reported as such: item by item, with the block mean given as a
+summary rather than as a construct score. No internal-consistency coefficient is
+reported for a two-to-four-item block at this sample size, where a coefficient
+would lend an ad-hoc block the appearance of a validated one.
+
+Seven points because reliability and validity fall off below five and gain little
+above seven, and because it matches the published instrument sitting beside it.
+
+**Finding your way around**
+
+| # | Short label (figure) | Statement | Serves |
+|---|---|---|---|
+| Q1 | Found when it changed | I could find when a behavior changed. | C1 |
+| Q2 | Found why it changed | I could find out why a change was made. | C1 |
+| Q3 | Saw the whole piece of work | When I found a change, I could see what larger piece of work it belonged to. | C1 |
+| Q11 | *(reverse)* Guessed at names | I had to guess at names or ids to find what I was looking for. | C1 |
+
+**Changing things**
+
+| # | Short label (figure) | Statement | Serves |
+|---|---|---|---|
+| Q4 | Knew what else it would touch | Before I changed anything, I could tell what else would be affected. | C2 |
+| Q5 | Removed a feature safely | I could take a feature out without worrying about breaking what came after it. | C2 |
+| Q6 | Recovered from mistakes | When something went wrong, I could get back to a good state. | C2 |
+| Q12 | *(reverse)* Surprised by the result | A change did something I had not expected. | C2 |
+
+**What you came away with**
+
+| # | Short label (figure) | Statement | Serves |
+|---|---|---|---|
+| Q7 | Clear picture of the project | I ended up with a clear picture of how this project got to where it is. | C3 |
+| Q13 | Would get back up to speed | If I came back to this project in a month, what is recorded would get me back up to speed. | C3 |
+
+**Working with the assistant**
+
+| # | Short label (figure) | Statement | Serves |
+|---|---|---|---|
+| Q8 | Directed the assistant precisely | I could point the assistant at exactly the part of the history I meant. | Q4 |
+| Q9 | Checked the assistant's work | I could check what the assistant did against what I asked for. | Q4 |
+| Q14 | *(reverse)* Accepted unreviewed work | I accepted changes from the assistant that I had not really reviewed. | Q4 |
+| Q10 | *(reverse)* Fought the tool | I spent effort fighting the tool rather than doing the task. | guard |
+
+Grouped under headings in a fixed order rather than randomized. An
+undifferentiated column of near-identical rows gets answered by pattern; the
+headings are the cheapest guard against that, and they only work if the items
+that belong together sit together. The guard against straight-lining is the four
+reverse-keyed items instead.
+
+**Q12 and Q14 are honesty valves.** If one condition wins everything *including*
+"nothing surprised me" and "I reviewed everything", suspect acquiescence. If it
+wins finding and changing while *losing* Q14 — people accepted more unreviewed
+work because the tool made accepting easy — the data reads as credible and the
+story is a cost paid knowingly. Either way it is reported.
 
 ### 5.6 Quiz (`quiz-v1`), after each half, project closed
 
@@ -431,19 +512,90 @@ figure rather than left implicit.
 
 ## 7. Analysis
 
-- Primary model per measure: linear mixed model, fixed effects condition, order
-  and project, random intercept per participant. Estimates, 95 percent CIs,
-  standardized effect sizes. Where residuals misbehave, Wilcoxon signed-rank on
-  participant means, or aligned rank transform for the factorial parts.
-- Counts (collateral damage, wrong turns) get the matching generalized model or
-  are reported descriptively with paired tests.
-- All intervals from a **studentized bootstrap**, 10,000 resamples, resampling
-  participants, not observations. The site computes these and shows the resample
-  count on every figure.
-- No p-value theater. Every quantitative difference in the paper is paired with
-  the coded recording that explains it.
-- Pre-register RQs, measures, and models on OSF before participant 1. This
-  document is the pre-registration text.
+### The unit of comparison
+
+Every participant works in both conditions in one sitting, one on each of two
+isomorphic projects, with condition order and project assignment fully crossed.
+Every outcome is therefore a **within-participant difference** (sgt minus git),
+which removes between-person variation in programming experience — variation
+that at n=12 would otherwise swamp anything the conditions did. A participant who
+completes only one half contributes no difference and is dropped from paired
+comparisons rather than imputed.
+
+### Which measures carry which weight
+
+Stated in advance so that a tertiary measure moving cannot be reported as if it
+were the finding.
+
+| Tier | Measures |
+|---|---|
+| Primary | Request scoring on R1–R4 (rubric points) and collateral damage from `score_study_repo.py` |
+| Secondary | Quiz and summary task — what the person could reconstruct with the project closed |
+| Tertiary | Self-report: TLX, UMUX-Lite, the HLAC block |
+| Descriptive | Telemetry: surfaces, sequences, prompt specificity, wrong turns, time to first history operation |
+
+Self-report is tertiary and is treated as such throughout. It is the tier most
+exposed to demand characteristics — the participant knows one setup is ours,
+whatever we call it on screen.
+
+### The estimate is the headline, not the test
+
+Every outcome is reported as a paired mean difference with a **95% bootstrap
+confidence interval**, resampling participants rather than observations, 10,000
+resamples, computed from a fixed seed so that a figure and its caption cannot
+drift apart. Intervals are plotted, not only tabulated.
+
+At a dozen pairs a p-value invites a binary reading the data cannot support,
+while the interval says the same thing and shows how little it pins down. Where a
+test is informative we use the **Wilcoxon signed-rank** test on paired differences
+with **matched-pairs rank-biserial** effect sizes, and an **exact McNemar** test
+for per-request binaries (solved / not solved, damage / none). These are reported
+alongside the intervals, never in place of them. Non-parametric is not a
+concession here: at these sample sizes it is frequently the more powerful choice.
+
+Questionnaire responses are additionally shown as **full distributions per item**.
+A cluster at the midpoint and a split between the extremes have the same mean and
+are not the same result.
+
+Composite scores summed across several items — the TLX average, the UMUX-Lite
+score, a rubric total — can defensibly take parametric treatment. Individual
+ordinal items do not get a metric model; that is the one point the ordinal-data
+literature does not divide on.
+
+### Families, and what we do not correct for
+
+Six families of comparison are named in advance: the four HLAC blocks, TLX, and
+UMUX-Lite. All six are reported whether or not they moved. No post-hoc correction
+is applied across them. At this sample size the substantive risk is selective
+reporting, and a correction addresses the wrong one while making an already
+underpowered study answer nothing at all.
+
+### Qualitative material
+
+Think-aloud recordings are treated as protocol data and analysed alongside a
+reflexive thematic analysis of the closing interviews. Navigation is hand-coded
+in both conditions with the same scheme, so that navigation stays a property of
+the person rather than of the instrumented tool. The recording that explains a
+number is reported beside it.
+
+### Pre-registration, and the limits of the claims
+
+Research questions, conditions, rubric wording, exclusion rules and planned
+comparisons are registered before the first participant. This document is that
+text.
+
+The study is **powered for large effects**, and we say so rather than treating a
+wide interval as evidence of absence. Workload and usability scores carry no
+norms for this kind of work and are not ratio measures, so we interpret only the
+difference between conditions on the task the instrument names, and make no claim
+that any absolute score is high or low.
+
+Two results are pre-committed as expected: R6 is where sgt should show its
+clearest advantage and is nonetheless optional and descriptive only; and the
+discriminant scenarios at the end of the session should come out **mixed**. If a
+participant picks the same setup for fixing a typo in a repo they will never see
+again *and* for a codebase they will own for a year, that is evidence of demand
+characteristics and is reported as such rather than as a preference.
 
 ## 8. The three figures
 
@@ -452,10 +604,12 @@ order, carry C1 through C3 and Q4.
 
 ### Figure 1. What the two setups felt like
 
-Diverging stacked Likert bars for the ten HLAC items, one panel per condition,
-counts printed inside the segments, plus a right-hand panel of paired mean
-differences with 95 percent studentized-bootstrap CIs. The reference is the
-standard form used for this kind of within-subject perception battery.
+Diverging stacked Likert bars for the fourteen HLAC items, grouped by their four
+blocks and with the reverse-keyed items marked, one panel per condition, counts
+printed inside the segments, plus a right-hand panel of paired mean differences
+with 95% bootstrap CIs. Item by item: the block mean appears as a summary line,
+not as a construct score, and no reliability coefficient is reported for blocks
+this short.
 
 It goes first because it is the only figure a reviewer can read in five seconds,
 and because perception is the claim most people will test against their own

@@ -2,54 +2,205 @@
   "version": "answer-key-v1",
   "_note": "Load this into the study console under Setup. It is deliberately not compiled into the website: a participant with devtools open must not be able to read the quiz answers out of the JavaScript. Sources: docs/study/testbed-spec.md and docs/study/build-log-*.md.",
   "episodes": [
-    { "id": "E1", "shape": "scaffold", "author": "agent", "coursecraft": "models (Course, Section, Student), JSON store, CLI skeleton", "confplan": "models (Talk, Session, Attendee), JSON store, CLI skeleton" },
-    { "id": "E2", "shape": "model feature", "author": "agent", "coursecraft": "rooms and weekly time-slot grid", "confplan": "rooms and two-day slot grid" },
-    { "id": "E3", "shape": "feature", "author": "human", "coursecraft": "add and list courses and sections", "confplan": "add and list talks and sessions" },
-    { "id": "E4", "shape": "feature", "author": "agent", "coursecraft": "student enrollment command", "confplan": "attendee registration command" },
-    { "id": "E5", "shape": "bugfix", "author": "human", "coursecraft": "id reuse after delete corrupts the store", "confplan": "id reuse after delete corrupts the store" },
-    { "id": "E6", "shape": "feature", "author": "human", "coursecraft": "section capacity limits", "confplan": "session capacity limits" },
-    { "id": "E7", "shape": "feature", "author": "agent", "coursecraft": "time-conflict detection on enroll", "confplan": "clash detection on register" },
-    { "id": "E8", "shape": "tangled save", "author": "human", "coursecraft": "course search and filter, plus an unrelated date-parsing fix in the same save", "confplan": "talk search and filter, plus the same unrelated fix" },
-    { "id": "E9", "shape": "feature", "author": "agent", "coursecraft": "prerequisite enforcement", "confplan": "series-dependency enforcement" },
-    { "id": "E10", "shape": "refactor", "author": "agent", "coursecraft": "extract storage into a repository class", "confplan": "extract storage into a repository class" },
-    { "id": "E11", "shape": "feature F", "author": "agent", "coursecraft": "waitlist: join when a section is full", "confplan": "waitlist: join when a session is full" },
-    { "id": "E12", "shape": "dependent of F", "author": "agent", "coursecraft": "auto-promotion when a seat frees", "confplan": "auto-promotion when a seat frees" },
-    { "id": "E13", "shape": "interleaved keeper fix", "author": "human", "coursecraft": "back-to-back slots wrongly flagged as conflicts", "confplan": "adjacent slots wrongly flagged as clashes" },
-    { "id": "E14", "shape": "feature touching F", "author": "agent", "coursecraft": "drop command, with a cascade that triggers promotion", "confplan": "unregister command, same cascade" },
-    { "id": "E15", "shape": "tangled keeper", "author": "human", "coursecraft": "timetable export (markdown and csv), co-saved with a small waitlist message fix", "confplan": "program export, co-saved with the same small fix" },
-    { "id": "E16", "shape": "abandoned experiment", "author": "agent", "coursecraft": "priority enrollment for seniors, then reverted", "confplan": "speaker-priority registration, then reverted" },
-    { "id": "E17", "shape": "regression refactor", "author": "agent", "coursecraft": "normalize slot comparison for cross-listed sections; silently makes boundary-touching slots overlap", "confplan": "normalize slot comparison across rooms; the same silent change" },
-    { "id": "E18", "shape": "feature", "author": "agent", "coursecraft": "instructor schedule view", "confplan": "speaker schedule view" },
-    { "id": "E19", "shape": "feature", "author": "human", "coursecraft": "enrollment statistics report", "confplan": "registration statistics report" },
-    { "id": "E20", "shape": "bugfix", "author": "human", "coursecraft": "export escaping bug", "confplan": "export escaping bug" },
-    { "id": "E21", "shape": "dependent of F", "author": "agent", "coursecraft": "waitlist notification digest built on promotion events", "confplan": "waitlist notification digest built on promotion events" },
-    { "id": "E22", "shape": "polish", "author": "human", "coursecraft": "README and CLI help text", "confplan": "README and CLI help text" }
+    {
+      "id": "E1",
+      "shape": "scaffold",
+      "author": "agent",
+      "coursecraft": "models (Course, Section, Student), JSON store, CLI skeleton",
+      "confplan": "models (Talk, Session, Attendee), JSON store, CLI skeleton"
+    },
+    {
+      "id": "E2",
+      "shape": "model feature",
+      "author": "agent",
+      "coursecraft": "rooms and weekly time-slot grid",
+      "confplan": "rooms and two-day slot grid"
+    },
+    {
+      "id": "E3",
+      "shape": "feature",
+      "author": "human",
+      "coursecraft": "add and list courses and sections",
+      "confplan": "add and list talks and sessions"
+    },
+    {
+      "id": "E4",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "student enrollment command",
+      "confplan": "attendee registration command"
+    },
+    {
+      "id": "E5",
+      "shape": "bugfix",
+      "author": "human",
+      "coursecraft": "id reuse after delete corrupts the store",
+      "confplan": "id reuse after delete corrupts the store"
+    },
+    {
+      "id": "E6",
+      "shape": "feature",
+      "author": "human",
+      "coursecraft": "section capacity limits",
+      "confplan": "session capacity limits"
+    },
+    {
+      "id": "E7",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "time-conflict detection on enroll",
+      "confplan": "clash detection on register"
+    },
+    {
+      "id": "E8",
+      "shape": "tangled save",
+      "author": "human",
+      "coursecraft": "course search and filter, plus an unrelated date-parsing fix in the same save",
+      "confplan": "talk search and filter, plus the same unrelated fix"
+    },
+    {
+      "id": "E9",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "prerequisite enforcement",
+      "confplan": "series-dependency enforcement"
+    },
+    {
+      "id": "E10",
+      "shape": "refactor",
+      "author": "agent",
+      "coursecraft": "extract storage into a repository class",
+      "confplan": "extract storage into a repository class"
+    },
+    {
+      "id": "E11",
+      "shape": "feature F",
+      "author": "agent",
+      "coursecraft": "waitlist: join when a section is full",
+      "confplan": "waitlist: join when a session is full"
+    },
+    {
+      "id": "E12",
+      "shape": "dependent of F",
+      "author": "agent",
+      "coursecraft": "auto-promotion when a seat frees",
+      "confplan": "auto-promotion when a seat frees"
+    },
+    {
+      "id": "E13",
+      "shape": "interleaved keeper fix",
+      "author": "human",
+      "coursecraft": "back-to-back slots wrongly flagged as conflicts",
+      "confplan": "adjacent slots wrongly flagged as clashes"
+    },
+    {
+      "id": "E14",
+      "shape": "feature touching F",
+      "author": "agent",
+      "coursecraft": "drop command, with a cascade that triggers promotion",
+      "confplan": "unregister command, same cascade"
+    },
+    {
+      "id": "E15",
+      "shape": "tangled keeper",
+      "author": "human",
+      "coursecraft": "timetable export (markdown and csv), co-saved with a small waitlist message fix",
+      "confplan": "program export, co-saved with the same small fix"
+    },
+    {
+      "id": "E16",
+      "shape": "abandoned experiment",
+      "author": "agent",
+      "coursecraft": "priority enrollment for seniors, then reverted",
+      "confplan": "speaker-priority registration, then reverted"
+    },
+    {
+      "id": "E17",
+      "shape": "regression refactor",
+      "author": "agent",
+      "coursecraft": "normalize slot comparison for cross-listed sections; silently makes boundary-touching slots overlap",
+      "confplan": "normalize slot comparison across rooms; the same silent change"
+    },
+    {
+      "id": "E18",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "instructor schedule view",
+      "confplan": "speaker schedule view"
+    },
+    {
+      "id": "E19",
+      "shape": "feature",
+      "author": "human",
+      "coursecraft": "enrollment statistics report",
+      "confplan": "registration statistics report"
+    },
+    {
+      "id": "E20",
+      "shape": "bugfix",
+      "author": "human",
+      "coursecraft": "export escaping bug",
+      "confplan": "export escaping bug"
+    },
+    {
+      "id": "E21",
+      "shape": "dependent of F",
+      "author": "agent",
+      "coursecraft": "waitlist notification digest built on promotion events",
+      "confplan": "waitlist notification digest built on promotion events"
+    },
+    {
+      "id": "E22",
+      "shape": "polish",
+      "author": "human",
+      "coursecraft": "README and CLI help text",
+      "confplan": "README and CLI help text"
+    }
   ],
   "quizAnswers": {
     "q1": {
       "coursecraft": "Priority enrollment for seniors (E16). Added, then reverted.",
       "confplan": "Speaker-priority registration (E16). Added, then reverted.",
-      "accepts": ["priority", "seniors", "speaker priority"]
+      "accepts": [
+        "priority",
+        "seniors",
+        "speaker priority"
+      ]
     },
     "q2": {
       "coursecraft": "Capacity limits (E6), then conflict detection (E7), then the waitlist (E11).",
       "confplan": "Capacity limits (E6), then clash detection (E7), then the waitlist (E11).",
-      "accepts": ["capacity"]
+      "accepts": [
+        "capacity"
+      ]
     },
     "q3": {
       "coursecraft": "No. An AI assistant did part of the work.",
       "confplan": "No. An AI assistant did part of the work.",
-      "accepts": ["no", "with an assistant", "AI helped"]
+      "accepts": [
+        "no",
+        "with an assistant",
+        "AI helped"
+      ]
     },
     "q4": {
       "coursecraft": "Any of: E5 id reuse after delete; E13 back-to-back slots wrongly flagged; E20 export escaping; E16 reverted outright.",
       "confplan": "Any of: E5 id reuse after delete; E13 adjacent slots wrongly flagged; E20 export escaping; E16 reverted outright.",
-      "accepts": ["id reuse", "back to back", "adjacent", "escaping", "priority revert"]
+      "accepts": [
+        "id reuse",
+        "back to back",
+        "adjacent",
+        "escaping",
+        "priority revert"
+      ]
     },
     "q5": {
       "coursecraft": "E8, the course-search change, which also carried an unrelated day-parsing fix.",
       "confplan": "E8, the talk-search change, which also carried an unrelated day-parsing fix.",
-      "accepts": ["search", "E8"]
+      "accepts": [
+        "search",
+        "E8"
+      ]
     }
   },
   "requestKeys": {
@@ -74,34 +225,77 @@
       "confplan": "No ground truth. Score the process: two separate attempts, one kept, the other removed cleanly, and a stated reason."
     },
     "r6": {
-      "coursecraft": "Separate E8 into search and the day-parsing fix. The working tree must be byte-identical afterwards; check with a tree hash or an empty diff.",
-      "confplan": "Separate E8 into search and the day-parsing fix. The working tree must be byte-identical afterwards; check with a tree hash or an empty diff."
+      "coursecraft": "Separate E8 into search and the day-parsing fix. The working tree must be byte-identical afterwards; check with a tree hash or an empty diff. NOT scored on naming: findings 17-18 -- no sgt verb renames a checkpoint and `regroup move --to` needs an existing leaf, so the naming point was unearnable in one condition and would have measured the tool's gap twice.",
+      "confplan": "Separate E8 into search and the day-parsing fix. The working tree must be byte-identical afterwards; check with a tree hash or an empty diff. NOT scored on naming: findings 17-18 -- no sgt verb renames a checkpoint and `regroup move --to` needs an existing leaf, so the naming point was unearnable in one condition and would have measured the tool's gap twice."
     }
   },
   "rubrics": {
     "r1": [
-      { "id": "found", "label": "Named the right change", "points": 1 },
-      { "id": "tangle", "label": "Saw that it holds two unrelated pieces of work", "points": 1 }
+      {
+        "id": "found",
+        "label": "Named the right change",
+        "points": 1
+      },
+      {
+        "id": "tangle",
+        "label": "Saw that it holds two unrelated pieces of work",
+        "points": 1
+      }
     ],
     "r2": [
-      { "id": "gone", "label": "Waitlist gone: joining, promotion and notices all removed", "points": 1 },
-      { "id": "intact", "label": "Everything else still passes, and the app still starts", "points": 1 }
+      {
+        "id": "gone",
+        "label": "Waitlist gone: joining, promotion and notices all removed",
+        "points": 1
+      },
+      {
+        "id": "intact",
+        "label": "Everything else still passes, and the app still starts",
+        "points": 1
+      }
     ],
     "r3": [
-      { "id": "drop", "label": "Dropping works again, with no promotion when a seat frees", "points": 1 }
+      {
+        "id": "drop",
+        "label": "Dropping works again, with no promotion when a seat frees",
+        "points": 1
+      }
     ],
     "r4": [
-      { "id": "cause", "label": "Identified the change that caused it", "points": 1 },
-      { "id": "fix", "label": "Restored back-to-back enrollment and kept the room audit working", "points": 1 }
+      {
+        "id": "cause",
+        "label": "Identified the change that caused it",
+        "points": 1
+      },
+      {
+        "id": "fix",
+        "label": "Restored back-to-back enrollment and kept the room audit working",
+        "points": 1
+      }
     ],
     "r5": [
-      { "id": "both", "label": "Built both alternatives as separate attempts", "points": 1 },
-      { "id": "discard", "label": "Kept one and removed the other cleanly, with a stated reason", "points": 1 }
+      {
+        "id": "both",
+        "label": "Built both alternatives as separate attempts",
+        "points": 1
+      },
+      {
+        "id": "discard",
+        "label": "Kept one and removed the other cleanly, with a stated reason",
+        "points": 1
+      }
     ],
     "r6": [
-      { "id": "split", "label": "The two pieces of work are separate in the history", "points": 1 },
-      { "id": "named", "label": "Each piece has a name that says what it is", "points": 1 },
-      { "id": "unchanged", "label": "The current code is unchanged", "points": 1 }
+      {
+        "id": "split",
+        "label": "The two pieces of work are separate in the history",
+        "points": 1
+      },
+      {
+        "id": "unchanged",
+        "label": "The current code is unchanged",
+        "points": 1
+      }
     ]
   }
 }
