@@ -1,180 +1,228 @@
 # Running the study
 
-Everything a facilitator touches, in the order they touch it.
+This is the step-by-step guide for facilitators, in the order you will need
+things. Everything here assumes you are using the study website.
 
-The study now runs from a website. The participant works through it from consent
-to debrief; the facilitator watches from a console; the participant's machine
-reports what happened by itself. Nobody reads a terminal aloud over a video call
-and nobody types a number into a spreadsheet during a session.
+The study runs from a website. The participant works through it from consent to
+debrief. The facilitator watches from a web console. The participant's machine
+reports what happened automatically. Nobody reads a terminal aloud over a video
+call, and nobody types numbers into a spreadsheet during a session.
 
-- Participant: `https://sem-git.web.app/p/<their code>`
-- Console: `https://sem-git.web.app/admin`
-- Code lives in `web/`, the participant bundle in `scripts/study-bundle/`.
+**Links:**
+
+- Participant page: `https://sem-git.web.app/p/<their code>`
+- Facilitator console: `https://sem-git.web.app/admin`
+- Website code: `web/`
+- Participant bundle code: `scripts/study-bundle/`
 
 ---
 
-## 1. Once, before participant one
+## 1. One-time setup (before participant one)
 
-### Sign in
+These steps only need to happen once, before you run any sessions.
 
-Open the console and sign in with Google. `ryanyen2@mit.edu` is named as the
-owner in `web/firestore.rules`, so there is nothing to set up. Add other
-experimenters from **Setup → Who else can see this console**; anyone added there
-can read every participant's data and the answer key.
+### Sign in to the console
+
+Open the console and sign in with Google. The account `ryanyen2@mit.edu` is
+listed as the owner in `web/firestore.rules`, so it works immediately with no
+extra setup. To give other experimenters access, go to **Setup → Who else can
+see this console**. Anyone you add can see all participant data and the answer
+key.
 
 ### Load the answer key
 
-**Setup → Answer key → Load answer key JSON**, and pick
+Go to **Setup → Answer key → Load answer key JSON** and select the file
 `docs/study/answer-key.json` from this repository.
 
-It holds the 22 episodes, the quiz answers, the request keys and the rubrics. It
-is stored where only signed-in experimenters can read it, and deliberately not
-compiled into the site: a participant with devtools open must not be able to
-read the quiz answers out of the JavaScript.
+The answer key contains 22 history episodes, quiz answers, request scoring
+rubrics, and ground-truth data. It is stored where only signed-in experimenters
+can read it. It is deliberately *not* compiled into the website JavaScript — a
+participant with browser developer tools open must not be able to read the quiz
+answers from the page source.
 
-Without it the console still works, but scoring means looking things up in the
-build logs by hand.
+The console still works without the answer key loaded, but scoring would mean
+looking things up in the build logs by hand.
 
-### Issue the session keys
+### Issue the session API keys
 
-**Setup → Session keys.** Three fields:
+Go to **Setup → Session keys**. There are three fields:
 
-- An Anthropic API key. Claude Code uses it, through a profile inside the study
-  folder.
-- An OpenAI API key. sgt uses it for plain-English selections and feature naming.
-- The model id, pinned for the whole study.
+- **Anthropic API key.** Claude Code (the AI assistant) uses this key. It runs
+  through a profile inside the study folder, not the participant's own account.
+- **OpenAI API key.** The sgt tool uses this for plain-English feature selection
+  and feature naming.
+- **Model ID.** The Claude model to use, pinned for the whole study so every
+  participant runs the same model.
 
-Issue keys **for this study**, with a hard spend cap. Never a personal key. They
-are readable by anything holding a participant link, which is the price of the
-setup script fetching them automatically so that nobody pastes a key by hand.
+**Important:** Issue keys specifically for this study, with a hard spend cap.
+Never use a personal key. The keys are readable by anything that has a
+participant link — that is the trade-off of having the setup script fetch them
+automatically so nobody has to paste a key by hand.
 
-Revoke them per participant from the Participants tab as each session ends, and
-revoke them at the provider too. The button here only marks them revoked.
+After each session, revoke the participant's keys from the **Participants** tab.
+Also revoke them at the API provider (Anthropic / OpenAI). The button in the
+console only marks them as revoked in our system.
 
-### Fill in the participant-facing settings
+### Fill in participant-facing settings
 
-**Setup → Participant-facing settings**: support email, compensation wording,
-protocol number, the consent information sheet, and four bundle download URLs.
+Go to **Setup → Participant-facing settings** and fill in:
 
-Name the bundle files neutrally. The participant sees the URL, and a filename
-with `sgt` in it tells them which setup is the new one.
+- Support email address
+- Compensation wording
+- Protocol number (from ethics approval)
+- Consent information sheet
+- Four bundle download URLs (one per condition-project combination)
 
-### Build the four bundles and publish
+When naming the bundle files, use neutral names. The participant can see the
+download URL, and a filename containing "sgt" would reveal which condition is
+the new tool.
+
+### Build the four bundles and deploy
+
+Run this command from the repository root:
 
 ```bash
 scripts/publish-study.sh
 ```
 
-Builds the four bundles, builds the site, deploys, then fetches each bundle back
-off the live site and checks its size against the file it just built.
+This script builds all four bundles (2 conditions × 2 projects), builds the
+website, deploys everything, then fetches each bundle back from the live site to
+verify its size matches what was just built.
 
-**`npm run build && firebase deploy` does not rebuild the bundles.** It builds
-the *website*; the bundles are separate artefacts the deploy copies out of
-`web/public/bundles/` because they happen to live in the static directory. Change
-sgt, deploy, and you get a fresh site handing out the previous tool, with nothing
-on screen to say so. That is what this script exists to prevent, and it refuses
-to run at all on a dirty tree, because a wheel built from uncommitted code is a
-build no one can name afterwards.
+**Why not just `npm run build && firebase deploy`?** That only rebuilds the
+*website*. The bundles are separate build artifacts that get copied from
+`web/public/bundles/` during deployment. If you change sgt and deploy without
+rebuilding the bundles, you get a fresh website handing out the *previous*
+version of the tool, with nothing on screen indicating the mismatch. The publish
+script exists to prevent this. It also refuses to run on a dirty git tree,
+because a wheel built from uncommitted code produces a build that cannot be
+identified later.
 
-Use `--site` when you have only changed the website, and `--dry-run` to build
-without publishing.
+Use `--site` when you have only changed the website (not sgt or the bundles).
+Use `--dry-run` to build everything without actually deploying.
 
-Four, not one per participant. Everything specific to a person -- which half
-they are on and the keys for their session -- is fetched by the setup script
-from their code. Each build refuses to ship a project whose tests do not pass,
-pre-warms the sgt history view so the participant's first command is fast, and
-includes a throwaway practice repository that is not one of the two study
-projects.
+There are four bundles total, not one per participant. Everything specific to a
+person — which condition they are in and the API keys for their session — is
+fetched by the setup script using their participant code. Each bundle build
+verifies the project's tests pass, pre-warms the sgt history view (so the
+participant's first command is fast), and includes a throwaway practice
+repository that is separate from the two study projects.
 
-Upload them somewhere with a stable link, then paste each link into the matching
-slot under Setup.
+After building, upload the bundles somewhere with stable download links, then
+paste each link into the matching slot under **Setup** in the console.
 
 ### Create the cohort
 
-**Participants → Create 12.**
+Go to **Participants → Create 12**.
 
-Twelve records, assigned round-robin across the four counterbalancing groups, so
-any prefix of the cohort is still balanced. If the study stops at eight, those
-eight are still two per group. Each gets a 24-character access code; the link is
-the only credential, so treat it as one.
+This creates twelve participant records, assigned round-robin across four
+counterbalancing groups. The round-robin assignment means any prefix of the
+cohort is still balanced — if the study stops at eight participants, those eight
+are still two per group. Each participant gets a 24-character access code. The
+link containing this code is the only credential, so treat it like a password.
 
-Type each participant's email into the roster as you recruit them, and copy their
-link to send.
+As you recruit participants, type each person's email into the roster and copy
+their link to send to them.
 
 ---
 
 ## 2. A day before each session
 
-Send them their link and this:
+Send the participant their link along with this message:
 
-> Before our session, please open this link and work through the first few pages:
-> a consent form, a few questions about your background, and a setup step that
-> installs everything on your machine. The setup takes a few minutes and
+> Before our session, please open this link and work through the first few
+> pages: a consent form, a few questions about your background, and a setup step
+> that installs everything on your machine. The setup takes a few minutes and
 > downloads its own Python, so it will not change anything else on your laptop.
 > Stop when you reach the practice page. If anything goes red, tell me rather
 > than trying to fix it, and we will sort it out before the session rather than
 > during it.
 
-You will see them arrive in **Live** as they go.
+You will see them appear in **Live** as they progress through the steps.
 
-The setup step ends with a checklist that fills in by itself: Python, the
-project's tests, the history tool, the assistant profile, the assistant key, and
-one real round trip to the assistant. That last check is the one that catches a
-key that is present but wrong, which is otherwise invisible until the session
-starts.
+The setup step ends with a checklist that fills in automatically. It checks:
+Python is installed, the project's tests pass, the history tool is working (in
+the sgt condition), the assistant profile is isolated, the assistant key is in
+place, and the assistant can actually answer a test message. That last check is
+the one that catches a key that looks valid but is not — something that would
+otherwise be invisible until the session starts.
 
 ---
 
 ## 3. During the session
 
-Keep **Live** open. It shows, per participant, which step they are on, the
-countdown on the request they have open, whether their browser is connected, and
-whether their machine is still reporting, with the last two dozen recorded
-actions.
+Keep **Live** open in the console. For each participant, it shows:
 
-If "their machine" goes red, ask them to check the session shell is still open
-and run `study-sync`. Their local log is safe either way; you are just flying
-blind until it reconnects.
+- Which step they are on
+- The countdown timer for their current request
+- Whether their browser is connected
+- Whether their machine is still reporting (with the last two dozen recorded
+  actions)
 
-What has not changed: call the time at halfway and at two minutes left, say "we
-are testing the setups, not you" often, and keep them talking. The site handles
-the clock, not the conversation.
+If the "machine reporting" indicator goes red, ask them to check that the
+session shell is still open and run `study-sync`. Their local log is safe
+regardless — you are just unable to see what they are doing until the connection
+comes back.
 
-**Pauses.** If you interrupt them, or something breaks, have them press *Pause
-the clock* and pick a reason. Analysis uses active time. Pilot 1 lost a request
-to a tool failure with no record of how long the recovery took.
+**General facilitation:** Call the time at halfway and again at two minutes left.
+Remind them often that "we are testing the setups, not you." Keep them talking
+out loud. The website handles the clock; you handle the conversation.
 
-**A locked-out link.** If they clear their cache, switch browsers, or open a
-private window, their link refuses to reopen. That is deliberate, and stops one
-link being used by two people. Open their record and press **Release link**.
+### Pausing the clock
 
-**Starting someone over.** Each roster row has **Reset** and **Delete**, at any
-status. Reset wipes everything they did — responses, requests, events, devices,
-keys, scores, notes — and puts them back at step one with the *same link and the
-same condition order*, which is what keeps the cohort balanced. Delete removes
-the person entirely. Both count what they are about to destroy and say so before
+If you need to interrupt them, or if something breaks, have them press **Pause
+the clock** and pick a reason from the list. The analysis uses active time only.
+In Pilot 1, a request was lost to a tool failure with no record of how long the
+recovery took — this is why the pause feature exists.
+
+### Locked-out links
+
+If a participant clears their browser cache, switches browsers, or opens a
+private/incognito window, their link will refuse to reopen. This is deliberate:
+it prevents one link from being used by two people. To fix it, open their record
+in the console and press **Release link**.
+
+### Starting someone over
+
+Each participant row in the roster has **Reset** and **Delete** buttons,
+available at any status.
+
+- **Reset** wipes everything the participant has done — responses, request data,
+  recorded events, device records, keys, scores, and notes — and puts them back
+  at step one. It keeps the *same link and the same condition order*, which
+  preserves the cohort's counterbalancing. This is almost always what you want:
+  for a pilot you are running again, a session abandoned halfway, or someone who
+  needs to reschedule.
+- **Delete** removes the participant record entirely. Use this only for records
+  created by mistake.
+
+Both buttons count what they are about to destroy and display the count before
 you confirm.
 
-Reset is almost always the one you want: a pilot you are running again, a
-session abandoned halfway, someone who has to reschedule. Delete is for a record
-created by mistake.
+### Nothing is lost by leaving the site
 
-**Nothing is lost by leaving the site.** Questionnaire answers, request answers
-and interview notes are mirrored into the browser on every keystroke and written
-through on a debounce, so a closed tab, a refresh, a crash or a dropped network
-costs at most the last keystroke. Unsaved *scoring* is kept locally but never
-written through — a half-finished rubric must not enter the data — and is
-offered back the next time you open that request.
+Questionnaire answers, request answers, and interview notes are saved to the
+browser on every keystroke and written to the server on a short delay (debounce).
+A closed tab, a page refresh, a browser crash, or a dropped network connection
+costs at most the last keystroke.
+
+The one exception: unsaved *scoring* work is kept locally in the browser but
+never written to the server automatically. This is intentional — a half-finished
+rubric must not enter the dataset. The next time you open that request, it
+offers to restore your in-progress scoring.
 
 ---
 
 ## 4. Scoring
 
-Open a participant, then **Requests & scoring**. Each request shows what they
-did, how long it took, whether they hit the cap, their own answer, and the
-ground truth beside it.
+Open a participant's record, then go to **Requests & scoring**. Each request
+shows what the participant did, how long it took, whether they hit the time cap,
+their answer, and the ground truth beside it.
 
-For requests 2, 3 and 4, run the scorer and paste its output in:
+### Automated scoring for requests 2, 3, and 4
+
+For these requests (which involve modifying code), run the scoring script and
+paste its output into the scoring field:
 
 ```bash
 python3 scripts/score_study_repo.py ~/study/p07/work \
@@ -183,162 +231,229 @@ python3 scripts/score_study_repo.py ~/study/p07/work \
     --expect-gone waitlist,notices
 ```
 
-The output is kept verbatim as the evidence behind the number. Record which of
-the four outcomes happened, including "tests pass but the app will not start",
-which is why the scorer starts the program at all.
+The script's output is kept verbatim as the evidence behind the score. Record
+which of the four possible outcomes happened. The outcomes include "tests pass
+but the application will not start" — which is why the scorer actually launches
+the program, not just runs the tests.
 
-**Quiz & summary** grades the five questions against the key and the summary
-against the 22-episode checklist. Three numbers come out of the summary:
-episodes covered, causal links stated correctly, and confident claims that are
-false. Coverage alone rewards listing; the three together separate remembering a
-list from having built a theory, which is the whole point of RQ3.
+### Quiz and summary scoring
 
-**Interview** holds the probes with timestamped notes. Ask the fourth probe --
-"what did you wish you could ask the history?" -- **before** they compare the
-setups. Both pilots answered it with something close to what sgt does, one of
-them from inside the git half, and that is worth protecting.
+The **Quiz & summary** section grades the five knowledge questions against the
+answer key and scores the summary against the 22-episode checklist.
 
-Two coders, 25 percent double-coded, negotiated agreement. See
-`docs/study/protocol.md` §5.7.
+Three numbers come out of the summary scoring:
+
+1. **Episodes covered** — how many of the 22 historical episodes the
+   participant mentioned.
+2. **Causal links stated correctly** — whether they connected cause and effect
+   accurately.
+3. **Confident claims that are false** — assertions they made with confidence
+   that are wrong.
+
+Coverage alone would reward simply listing things. The three measures together
+separate *remembering a list* from *having built a mental model* — which is the
+whole point of the third research question (RQ3: what understanding do they end
+up with?).
+
+### Interview scoring
+
+The **Interview** section holds the debrief probes with space for timestamped
+notes. Ask the fourth probe — "what did you wish you could ask the history?" —
+**before** they compare the two setups. In both pilots, participants answered
+this probe with something close to what sgt actually does, one of them from
+inside the git condition. That insight is worth protecting from contamination.
+
+Scoring uses two independent coders, with 25% of responses double-coded and
+disagreements resolved through negotiated agreement. See `protocol.md` §5.7 for
+the full procedure.
 
 ---
 
 ## 5. Results
 
-**Results → Compute from data** reads every participant's raw events and builds
-the analysis. Nothing is precomputed: the raw stream is the record, and every
-number is a pure function of it, so changing how a measure is defined is a code
-change and a recompute rather than a lost measurement.
+Go to **Results → Compute from data**. This reads every participant's raw event
+stream and builds the full analysis. Nothing is precomputed: the raw event
+stream is the permanent record, and every number is computed from it as a pure
+function. Changing how a measure is defined is a code change and a recompute,
+not a lost measurement.
 
-Three figures, each exporting to SVG at publication quality with fonts as text:
+### The three figures
 
-1. **What the two setups felt like.** The ten perception items as diverging
-   stacked bars, with paired mean differences and 95% studentized-bootstrap
-   intervals.
+Each figure can be exported to SVG at publication quality (with fonts rendered
+as text, not outlines):
+
+1. **What the two setups felt like.** The ten perception items (from NASA-TLX
+   and custom scales) shown as diverging stacked bars, with paired mean
+   differences and 95% studentized-bootstrap confidence intervals.
 2. **What people managed to do.** Paired estimation plots for the four scored
-   outcomes. Every participant is a line. Twelve slopes shown individually is
-   the honest way to plot twelve people.
-3. **How the work was done.** Where the time went across normalized request
-   time, plus the action bigrams that most distinguish the conditions by
-   weighted log-odds. This is the figure that answers "did they just use the AI
-   more".
+   outcomes. Every participant is a line connecting their score in each
+   condition. Showing all twelve slopes individually is the honest way to
+   visualize twelve people.
+3. **How the work was done.** Where time was spent across normalized request
+   time, plus the action bigrams (two-step sequences) that most distinguish the
+   two conditions, ranked by weighted log-odds ratio. This is the figure that
+   answers "did they just use the AI more, or did they actually work
+   differently?"
 
-Three CSV exports underneath: one row per participant per condition for the
-mixed models, one row per request, and the coded action stream for the
-qualitative pass.
+### Data exports
 
-**Show example data** fills every figure with a synthetic cohort of twelve. Use
-it to check the figures and the exports before the first session, not after.
+Three CSV exports are available underneath the figures:
+
+- One row per participant per condition — for the mixed-effects models
+- One row per request — for request-level analysis
+- The coded action stream — for the qualitative analysis pass
+
+### Testing with synthetic data
+
+**Show example data** fills every figure with a synthetic cohort of twelve
+participants. Use this to verify the figures and exports look correct *before*
+the first real session, not after.
 
 ---
 
 ## 6. Rehearsing
 
-Two ways, for two different questions.
+There are two ways to rehearse, for two different purposes.
 
-### A pilot record, on the real site
+### Option A: A pilot record on the real site
 
-**Participants → Add pilot.** You get `X01`, with a real link, real keys and the
-real bundle. It runs the identical flow. It is kept out of the analysis by a
-field on the record, not by a naming convention, so:
+Go to **Participants → Add pilot**. This creates a pilot participant (labeled
+`X01`, `X02`, etc.) with a real link, real API keys, and the real bundle. It
+runs the identical flow that a real participant sees.
 
-- It is absent from Results unless you explicitly tick *Include the pilot
-  records*, and ticking that puts a warning across the whole page.
-- It is absent from the cohort counts and from the group balance.
-- `Create 12` still produces exactly P01..P12 however many pilots you ran first.
-  Pilots number themselves separately (`X01`, `X02`) from their own ordinal band.
+Pilot records are kept separate from real data:
+
+- They are absent from **Results** unless you explicitly tick **Include the pilot
+  records**, which puts a warning banner across the whole page.
+- They are not counted in the cohort totals or group balance.
+- **Create 12** still produces exactly P01 through P12 regardless of how many
+  pilots you ran first. Pilots use their own numbering sequence (X01, X02).
 - The participant's own page shows a **rehearsal** badge on every step, so a
-  pilot link handed out by mistake is visible to them, not just to you.
-- It stays deletable after it has been opened, unlike a real record.
+  pilot link handed out by mistake is visible to the participant, not just to
+  you.
+- Pilot records remain deletable after they have been opened, unlike real
+  participant records.
 
-Use this to check the parts that only exist on the real site: Google sign-in, the
-live bundle download, the real keys reaching a real machine.
+Use pilot records to check the parts that only work on the live site: Google
+sign-in, live bundle downloads, and real API keys reaching a real machine.
 
-### Emulators, touching nothing
+### Option B: Local emulators (touches nothing)
+
+Run these three commands in separate terminal windows:
 
 ```bash
-# terminal 1
+# Terminal 1: Firestore emulator
 java -jar ~/.cache/firebase/emulators/cloud-firestore-emulator-v*.jar \
     --host=127.0.0.1 --port=8080
-# terminal 2
+
+# Terminal 2: Auth emulator
 firebase emulators:start --only auth --project sem-git
-# terminal 3
+
+# Terminal 3: Development server
 cd web && VITE_USE_EMULATOR=1 npm run dev
 ```
 
-Every page then carries an orange "Rehearsal mode" banner. Nothing reaches the
-real study, and there is nothing to clean up afterwards. Every rehearsal that
-has to be cleaned up is a chance to delete the wrong thing.
+Every page will show an orange "Rehearsal mode" banner. Nothing reaches the real
+study database, and there is nothing to clean up afterwards. (Every rehearsal
+that has to be cleaned up is a chance to accidentally delete the wrong thing.)
 
-Tests:
+To run the tests:
 
 ```bash
-cd web && npm test                                  # rules, analysis, figures
+cd web && npm test                                  # security rules, analysis, figures
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
-    python3 scripts/study-bundle/tests/test_telemetry.py   # the recording path
+    python3 scripts/study-bundle/tests/test_telemetry.py   # the recording pipeline
 ```
 
 ---
 
 ## 7. What the participant's machine records
 
-They run one command:
+### Setup
+
+The participant runs one command:
 
 ```bash
 bash install/setup.sh <their code>
 ```
 
-which installs its own Python, builds the project environment, installs the
-history tool where the condition has one, installs Claude Code if it is missing,
-fetches their assignment and keys, and runs the checks.
+This installs its own Python (via `uv`), builds the project environment,
+installs the history tool (in the sgt condition), installs Claude Code if it is
+not already present, fetches the participant's assignment and API keys from the
+study website, and runs the setup checks.
 
-Then everything happens inside `./bin/study-shell`, which:
+### The session shell
 
-- points Claude Code at a profile **inside the study folder**, so their own
-  account, settings and billing are never involved, and unsets any key of their
-  own that might be in the environment;
-- puts logging wrappers for `git`, `sgt`, `pytest` and `python` ahead of the
-  real ones, which record the command and the exit code and change nothing else;
-- runs a background sync so the console is never more than twenty seconds behind.
+After setup, everything happens inside `./bin/study-shell`. The session shell
+does three things:
 
-Claude Code hooks record prompts verbatim, tool calls, and turn boundaries. They
-run asynchronously, so telemetry cannot make the assistant feel slow, and a
-broken hook cannot block a session.
+1. **Isolates the AI assistant.** It points Claude Code at a profile *inside the
+   study folder*, so the participant's own account, settings, and billing are
+   never involved. It also unsets any API keys the participant might have in
+   their environment, so their own keys cannot be accidentally used and billed.
 
-The local log is the record of truth and upload is a copy. Every event is
-content-addressed and Firestore refuses to overwrite one that has landed, so
-running the sync five times uploads each event once.
+2. **Records commands.** It places logging wrappers for `git`, `sgt`, `pytest`,
+   and `python` ahead of the real binaries on `PATH`. These wrappers record the
+   command and its exit code, then pass everything through to the real program
+   unchanged.
 
-At the end: `study-sync --final`, then `study-cleanup`, which refuses to delete
-anything until everything has been delivered.
+3. **Syncs data in the background.** A background process pushes recorded events
+   to the study website every twenty seconds, so the facilitator's console stays
+   current.
+
+### What gets recorded
+
+Claude Code hooks record: the full text of every prompt the participant sends,
+every tool call the assistant makes, and turn boundaries. The hooks run
+asynchronously, so telemetry cannot make the assistant feel slow, and a broken
+hook cannot block a session.
+
+### Data integrity
+
+The local log file is the record of truth. Uploading to the website is a copy.
+Every event has a content-based ID, and the server (Firestore) refuses to
+overwrite an event that has already landed. Running the sync five times uploads
+each event exactly once.
+
+### End of session
+
+At the end of the session: run `study-sync --final`, then `study-cleanup`.
+The cleanup script refuses to delete anything until it has confirmed that
+everything has been delivered to the server.
 
 ### If a bundle is handed out wrong
 
-The setup script checks the folder against the participant's assignment and
-refuses to configure itself if they do not match. Working from the wrong folder
-produces a session that looks perfectly normal and is unusable, and it is only
-ever found during analysis.
+The setup script checks the bundle folder against the participant's assignment
+and refuses to configure itself if they do not match. A session run from the
+wrong bundle looks perfectly normal during the session but produces unusable
+data — and the mismatch is only discovered during analysis. This is why the
+check exists.
 
-### Things that still go wrong
+### Common problems and fixes
 
-- **`claude: command not found` after setup.** Their shell has not picked up
-  `~/.local/bin`. New terminal tab, then `./bin/study-shell`.
+- **`claude: command not found` after setup.** The participant's shell has not
+  picked up `~/.local/bin` where Claude Code was installed. Fix: open a new
+  terminal tab, then run `./bin/study-shell` again.
 - **`uv: command not found`.** Same cause, same fix.
 - **Tests fail during setup.** Do not run the session. Rebuild the bundle and
-  check it yourself first.
-- **They wedge the project.** Note the time, pause the clock with reason "tool
-  failure", have them unpack a spare copy, skip to the next request, and mark
-  that request stopped by a tool failure. Keep one spare bundle per condition
-  ready.
-- **Nothing arrives from their machine.** The log on their disk is complete.
-  Collect `telemetry/events.jsonl` by hand and it can be imported later.
+  test it yourself first.
+- **The participant wedges the project** (gets it into an unrecoverable state).
+  Note the time, pause the clock with reason "tool failure", have them unpack a
+  spare copy of the bundle, skip to the next request, and mark that request as
+  stopped by a tool failure. Keep one spare bundle per condition ready.
+- **Nothing arrives from their machine.** The log on their disk is complete
+  regardless. Collect the file `telemetry/events.jsonl` from their machine by
+  hand — it can be imported into the database later.
 
 ---
 
-## 8. End of session checklist
+## 8. End-of-session checklist
 
-- Revoke both keys, in the console and at the provider.
-- Confirm **Hand over your data** shows both halves delivered.
-- Confirm they ran `study-cleanup`. The projects get reused.
-- Save the screen recording against the participant label, not their name.
-- Score requests 1 and 4 while the session is fresh.
+- [ ] Revoke both API keys — in the console and at the provider (Anthropic /
+  OpenAI).
+- [ ] Confirm **Hand over your data** shows both halves as delivered.
+- [ ] Confirm the participant ran `study-cleanup`. The study projects may be
+  reused.
+- [ ] Save the screen recording under the participant's label (e.g., P07), not
+  their name.
+- [ ] Score requests 1 and 4 while the session is still fresh in your mind.

@@ -1,10 +1,10 @@
 # Practice: git
 
 Ten minutes on a practice project first. Ask anything now. Once the real
-requests start we can only answer questions about the requests.
+requests start, we can only answer questions about the requests themselves.
 
-You already know git. This is only to check that nothing on this machine is set
-up oddly, and to remind you what's available.
+You already know git. This practice round is only to check that nothing on
+this machine is set up oddly, and to remind you what is available.
 
 ## 1. Look around
 
@@ -28,8 +28,8 @@ git log -S "<some text>"
 git blame <file>
 ```
 
-`git log -S` finds commits where the number of times some text appears changed.
-It's the usual way to find when something arrived or disappeared.
+`git log -S` finds commits where the number of times a piece of text appears
+changed. It is the usual way to find when something arrived or disappeared.
 
 ## 4. Undo something
 
@@ -37,10 +37,11 @@ It's the usual way to find when something arrived or disappeared.
 git revert <commit>
 ```
 
-Makes a new commit that undoes an old one. It can conflict if later commits
-touched the same lines. Fix the conflict, or `git revert --abort`.
+This makes a new commit that undoes an old one. It can conflict if later
+commits touched the same lines. If that happens, fix the conflict or run
+`git revert --abort`.
 
-Branches, for trying something you might throw away:
+Branches are useful for trying something you might throw away:
 
 ```
 git checkout -b try-something
@@ -54,8 +55,8 @@ git branch -D try-something
 git help <command>
 ```
 
-Your assistant knows git well, so you can just ask it.
+Your assistant knows git well, so you can also just ask it.
 
 ## Before we start
 
-Tell us if any of that behaved differently from what you expected here.
+Tell us if any of the above behaved differently from what you expected.
