@@ -9,7 +9,8 @@ import type { EventDoc, Participant, RequestDoc } from '../src/lib/types'
 import { analyzeParticipant, buildDataset, conditionValue } from '../src/analysis/pipeline'
 import { compareNgrams, countNgrams, strips, timeProfile } from '../src/analysis/ngram'
 import { classify, promptSpecificity } from '../src/study/taxonomy'
-import { pairedEstimate, susScore, tlxScore, weightedLogOdds } from '../src/lib/stats'
+import { pairedEstimate, tlxScore, umuxLiteScore, weightedLogOdds } from '../src/lib/stats'
+import { TLX } from '../src/study/instruments'
 import { demoDataset } from '../src/analysis/demo'
 import { blocksForGroup } from '../src/study/flow'
 import { PILOT_ORDINAL_BASE, isPilot, participantIdentity } from '../src/lib/db'
@@ -280,20 +281,36 @@ describe('a hand edit is inferred, and marked as inferred', () => {
 })
 
 describe('instrument scoring', () => {
-  it('reverses the performance subscale before averaging the TLX', () => {
-    const values = { mental: 50, physical: 0, temporal: 50, performance: 100, effort: 50, frustration: 50 }
-    // performance 100 means "failure", so it contributes 0 to the workload mean.
-    expect(tlxScore(values)).toBeCloseTo((50 + 0 + 50 + 0 + 50 + 50) / 6)
+  // The performance slider runs Failure(0) -> Perfect(100), the direction the
+  // words are read in, and is reversed exactly once here so that every subscale
+  // points the same way: higher means more workload. This was wrong in both
+  // places at once -- the slider read Perfect(0) -> Failure(100) AND the score
+  // reversed it -- so a participant who felt they had done perfectly
+  // contributed the maximum. The item's anchors are asserted alongside the
+  // arithmetic, because either one alone is only half of the convention.
+  it('presents performance failure-to-perfect', () => {
+    const performance = TLX.items.find((i) => i.id === 'performance')!
+    expect(performance.anchors).toEqual(['Failure', 'Perfect'])
+  })
+
+  it('scores perfect performance as low workload, and failure as high', () => {
+    const flat = { mental: 50, physical: 0, temporal: 50, effort: 50, frustration: 50 }
+    // Perfect (100 on the slider) contributes 0 to the workload mean.
+    expect(tlxScore({ ...flat, performance: 100 })).toBeCloseTo((50 + 0 + 50 + 0 + 50 + 50) / 6)
+    // Failure (0 on the slider) contributes 100.
+    expect(tlxScore({ ...flat, performance: 0 })).toBeCloseTo((50 + 0 + 50 + 100 + 50 + 50) / 6)
+    // And the composite must move the right way between them.
+    expect(tlxScore({ ...flat, performance: 0 })!).toBeGreaterThan(
+      tlxScore({ ...flat, performance: 100 })!,
+    )
     expect(tlxScore({ mental: 50 })).toBeNull()
   })
 
-  it('scores SUS the standard way', () => {
-    const best: Record<string, number> = {}
-    for (let i = 1; i <= 10; i++) best[`s${i}`] = i % 2 === 1 ? 5 : 1
-    expect(susScore(best)).toBe(100)
-    const worst: Record<string, number> = {}
-    for (let i = 1; i <= 10; i++) worst[`s${i}`] = i % 2 === 1 ? 1 : 5
-    expect(susScore(worst)).toBe(0)
+  it('scores UMUX-Lite raw on 0 to 100', () => {
+    expect(umuxLiteScore({ capability: 7, easy: 7 })).toBe(100)
+    expect(umuxLiteScore({ capability: 1, easy: 1 })).toBe(0)
+    expect(umuxLiteScore({ capability: 4, easy: 4 })).toBe(50)
+    expect(umuxLiteScore({ capability: 7 })).toBeNull()
   })
 })
 
