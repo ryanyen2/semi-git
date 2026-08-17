@@ -274,15 +274,22 @@ export function tlxScore(values: Record<string, unknown>): number | null {
   return mean(nums)
 }
 
-/** SUS: odd items minus 1, even items 5 minus the value, summed times 2.5. */
-export function susScore(values: Record<string, unknown>): number | null {
-  let sum = 0
-  for (let i = 1; i <= 10; i++) {
-    const v = values[`s${i}`]
-    if (typeof v !== 'number') return null
-    sum += i % 2 === 1 ? v - 1 : 5 - v
-  }
-  return sum * 2.5
+/**
+ * UMUX-Lite, raw, 0 to 100.
+ *
+ * Two seven-point items, scored by the published formula: subtract 1 from each
+ * (so each runs 0-6), sum, and express as a percentage of 12.
+ *
+ * Deliberately not converted to a SUS-equivalent score. That regression was
+ * fitted to particular corpora, and the quantity this study reports is a
+ * within-participant difference between two setups, which gains nothing from
+ * the transformation while inheriting its error.
+ */
+export function umuxLiteScore(values: Record<string, unknown>): number | null {
+  const capability = values.capability
+  const easy = values.easy
+  if (typeof capability !== 'number' || typeof easy !== 'number') return null
+  return ((capability - 1 + (easy - 1)) / 12) * 100
 }
 
 /** Background git-verb grid, 0 to 24. */

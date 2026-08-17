@@ -231,6 +231,9 @@ function Field({
       case 'statement':
         return null
 
+      case 'section':
+        return null
+
       case 'checkbox':
         return (
           <label className={`check${value === true ? ' on' : ''}`}>
@@ -362,6 +365,13 @@ function Field({
         return <Grid item={item} values={values} setValue={setValue} disabled={disabled} />
     }
   })()
+
+  // A block heading, not a question. Grouping the items that belong together
+  // under a visible label is what stops a long column of near-identical rows
+  // being answered by pattern rather than by reading.
+  if (item.type === 'section') {
+    return <h3 className="form-section">{item.label}</h3>
+  }
 
   const showLabel = item.type !== 'checkbox'
 

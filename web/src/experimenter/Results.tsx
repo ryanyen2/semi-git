@@ -175,7 +175,7 @@ function Headline({ dataset }: { dataset: Dataset }) {
       measure('Quiz, out of 5', (p, c) => halfOf(p, c)?.quizScore ?? NaN),
       measure('Summary coverage, of 22', (p, c) => halfOf(p, c)?.summaryCoverage ?? NaN),
       measure('NASA-TLX', (p, c) => halfOf(p, c)?.tlx ?? NaN, '', false),
-      measure('SUS', (p, c) => halfOf(p, c)?.sus ?? NaN),
+      measure('UMUX-Lite', (p, c) => halfOf(p, c)?.umux ?? NaN),
       measure('Verification ratio', (p, c) =>
         conditionValue(p, c, (m) => m.verificationRatio, 'mean'),
       ),
@@ -306,11 +306,13 @@ function Figure1({ dataset }: { dataset: Dataset }) {
       id="fig1-perception"
       title="Figure 1 · What the two setups felt like"
       svgRef={ref}
-      caption="Perceived experience on ten 7-point items, one panel per condition, counts inside the segments. Reverse-coded items (marked ↺) are recoded so agreement always means better. Dots are paired mean differences, sgt minus git; bars are 95% intervals from a studentized bootstrap over participants."
+      caption="Perceived experience on fourteen 7-point items, one panel per condition, counts inside the segments. Likert-type items grouped into ad-hoc blocks, not a validated scale: read them item by item. Reverse-coded items (marked ↺) are recoded so agreement always means better. Dots are paired mean differences, sgt minus git; bars are 95% bootstrap intervals over participants."
     >
       <LikertDiverging
         ref={ref}
-        items={HLAC.items.map((i) => ({
+        // Section headings are layout, not questions: they carry no answer and
+        // would render as empty rows.
+        items={HLAC.items.filter((i) => i.type === 'likert').map((i) => ({
           id: i.id,
           label: `${i.id.toUpperCase()}: ${i.shortLabel}`,
           reverse: i.reverse,
@@ -486,7 +488,7 @@ function Exports({ dataset }: { dataset: Dataset }) {
                     verificationRatio: conditionValue(p, c, (m) => m.verificationRatio, 'mean'),
                     wrongTurns: conditionValue(p, c, (m) => m.wrongTurns, 'sum'),
                     tlx: h?.tlx ?? '',
-                    sus: h?.sus ?? '',
+                    umux: h?.umux ?? '',
                     quiz: h?.quizScore ?? '',
                     summaryCoverage: h?.summaryCoverage ?? '',
                     summaryCausal: h?.summaryCausal ?? '',

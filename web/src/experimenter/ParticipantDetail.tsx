@@ -23,7 +23,7 @@ import type {
 } from '../lib/types'
 import { REQUESTS, requestById } from '../study/tasks'
 import { HLAC, QUIZ, instrumentById } from '../study/instruments'
-import { gitExpertise, susScore, tlxScore } from '../lib/stats'
+import { gitExpertise, tlxScore, umuxLiteScore } from '../lib/stats'
 import { analyzeParticipant } from '../analysis/pipeline'
 import { Callout, Empty, Tabs, fmtAgo, fmtDuration } from '../ui/bits'
 import { CATEGORY_COLOR } from '../charts/theme'
@@ -680,7 +680,7 @@ function Answers({
       {halves.map((h) => {
         const block = participant.blocks[h - 1]
         const tlx = responses.find((r) => r.id === `tlx-h${h}`)?.values
-        const sus = responses.find((r) => r.id === `sus-h${h}`)?.values
+        const umux = responses.find((r) => r.id === `umux-h${h}`)?.values
         const hlac = responses.find((r) => r.id === `hlac-h${h}`)?.values
         return (
           <div className="card" key={h}>
@@ -695,9 +695,9 @@ function Answers({
                 </div>
               </div>
               <div className="card soft">
-                <div className="tiny muted">SUS</div>
+                <div className="tiny muted">UMUX-Lite</div>
                 <div className="timer" style={{ fontSize: '1.4rem' }}>
-                  {sus ? (susScore(sus)?.toFixed(1) ?? '—') : '—'}
+                  {umux ? (umuxLiteScore(umux)?.toFixed(1) ?? '—') : '—'}
                 </div>
                 <div className="tiny faint">average is 68</div>
               </div>
