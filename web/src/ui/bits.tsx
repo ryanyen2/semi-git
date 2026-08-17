@@ -93,7 +93,19 @@ export function Countdown({
   )
 }
 
-export function Rail({ currentStep }: { currentStep: string }) {
+/**
+ * `onJump` turns the rail into navigation instead of a progress display. It is
+ * passed only for rehearsal sessions: testing a change to the fourth request
+ * otherwise means filling in consent, a background form and two questionnaires
+ * first, every time, which is how a rehearsal stops happening.
+ */
+export function Rail({
+  currentStep,
+  onJump,
+}: {
+  currentStep: string
+  onJump?: (stepId: string) => void
+}) {
   const currentIdx = stepIndex(currentStep)
   return (
     <nav className="rail" aria-label="Progress">
@@ -103,11 +115,25 @@ export function Rail({ currentStep }: { currentStep: string }) {
           {STEPS.filter((s) => s.phase === phase).map((s) => {
             const idx = stepIndex(s.id)
             const cls = idx < currentIdx ? 'done' : idx === currentIdx ? 'now' : ''
+            if (!onJump) {
+              return (
+                <div key={s.id} className={`rail-step ${cls}`}>
+                  <span className="pip" />
+                  <span>{s.title}</span>
+                </div>
+              )
+            }
             return (
-              <div key={s.id} className={`rail-step ${cls}`}>
+              <button
+                key={s.id}
+                type="button"
+                className={`rail-step jump ${cls}`}
+                title={`Rehearsal: jump to ${s.title}`}
+                onClick={() => onJump(s.id)}
+              >
                 <span className="pip" />
                 <span>{s.title}</span>
-              </div>
+              </button>
             )
           })}
         </div>

@@ -120,6 +120,7 @@ export function demoDataset(seed = 4242): Dataset {
             requestId: rid,
             half: block.half,
             condition: block.condition,
+            surface: cat === 'prompt' ? 'agent' : rand() < 0.35 ? 'editor' : 'terminal',
           })
         })
 
@@ -140,6 +141,11 @@ export function demoDataset(seed = 4242): Dataset {
           selfReport: score >= 2 ? 'done' : score >= 1 ? 'partial' : 'gave-up',
           confidence: clamp(Math.round(55 + score * 12 + gauss() * 14), 0, 100),
           counts: c,
+          surfaces: {
+            terminal: Math.round(n * 0.45),
+            editor: Math.round(n * 0.25),
+            agent: c.prompt + c.agent_edit,
+          },
           sequence: seq,
           prompts: c.prompt,
           meanPromptChars: clamp(120 + gauss() * 40 + (sgt ? 18 : 0), 30, 400),

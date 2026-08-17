@@ -2010,6 +2010,150 @@ function episodeRailLayout(epView) {
     });
   }
 
+  // ─── Find ────────────────────────────────────────────────────────────────────────────────────
+  // Describe the thing; get the ids. Every other route into this graph needs a name you already
+  // know, which is the one thing someone reading unfamiliar history does not have. A hit is a
+  // starting point, not an action: clicking one reveals it on the rail and selects it, and every
+  // verb stays where it was. Search that could change something is search nobody runs.
+  let findSeq = 0;
+  let latestFindSeq = 0;
+
+  function initFind() {
+    const box = document.getElementById("findBox");
+    const results = document.getElementById("findResults");
+    if (!box || !results) return;
+
+    box.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") {
+        box.value = "";
+        results.hidden = true;
+        box.blur();
+        return;
+      }
+      if (ev.key !== "Enter") return;
+      const query = box.value.trim();
+      if (!query) {
+        results.hidden = true;
+        return;
+      }
+      const seq = ++findSeq;
+      latestFindSeq = seq;
+      results.hidden = false;
+      results.innerHTML = "<div class='find-note'>searching…</div>";
+      vscode.postMessage({ type: "find", query, seq });
+    });
+
+    document.addEventListener("click", (ev) => {
+      if (!results.hidden && !results.contains(ev.target) && ev.target !== box) results.hidden = true;
+    });
+  }
+
+  function renderFindResults(msg) {
+    const results = document.getElementById("findResults");
+    if (!results || msg.seq !== latestFindSeq) return; // a slower earlier query landing late
+    results.innerHTML = "";
+    const hits = msg.hits || [];
+    if (!hits.length) {
+      results.appendChild(el("div", "find-note", msg.message || "nothing matched"));
+      return;
+    }
+    for (const hit of hits) {
+      const row = el("div", "find-hit");
+      row.appendChild(el("span", "find-kind", hit.kind));
+      row.appendChild(el("span", "find-label", hit.label));
+      row.appendChild(el("span", "find-detail", hit.detail || ""));
+      row.addEventListener("click", () => {
+        results.hidden = true;
+        // Every hit that belongs somewhere takes you there; a save belongs to
+        // no single lane, so it selects nothing rather than guessing.
+        if (hit.feature) revealFeature(hit.feature);
+      });
+      results.appendChild(row);
+    }
+    // A word-overlap answer and a meaning answer look identical in a list, and only one of them
+    // means "there is nothing like this here" when it comes back short.
+    if (msg.mode === "lexical") {
+      results.appendChild(el("div", "find-note", "matched on words, not meaning"));
+    }
+  }
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  // An agent's revert or restore, painted as it happens.
+  //
+  // Deliberately the same paint as a hover: the participant should learn one
+  // vocabulary for "this is what that would do", not one for their own mouse and
+  // another for the assistant. The only additions are a line saying who asked,
+  // since nothing else on screen would say so, and a hold after the action
+  // finishes -- an agent's call returns in well under a second, and a paint that
+  // vanished that fast would be a flicker nobody could read.
+  let agentActionTimer = null;
+
+  function showAgentAction(msg) {
+    if (!msg || !msg.verb || !msg.ref) return;
+    if (agentActionTimer) {
+      clearTimeout(agentActionTimer);
+      agentActionTimer = null;
+    }
+    if (msg.state === "failed") {
+      clearGhosts();
+      setAgentBanner(null);
+      return;
+    }
+
+    setAgentBanner(
+      msg.state === "done"
+        ? `the assistant ${msg.emit ? "previewed" : "ran"} ${msg.verb} on ${shortRef(msg.ref)}`
+        : `the assistant is running ${msg.verb} on ${shortRef(msg.ref)}`
+    );
+    // Not `previewAndBlast(verb, [msg.ref])`: an agent's ref is often a label
+    // ("Waitlist Join"), and painting with the raw ref as the target id would
+    // leave the target lane unmarked and list it among its own collateral. The
+    // preview result carries the resolved feature id; paint with that.
+    requestPreview(msg.verb, [msg.ref], (res) => {
+      if (!res || !res.ok) return;
+      const resolved = res.target || msg.ref;
+      const focus = res.focus;
+      if (!armedVerb && focus && focus.nodes && focus.nodes.length) {
+        enterPreviewMode(focus, resolved);
+      } else {
+        paintClosure(classifyAffected(res, resolved));
+      }
+    });
+
+    if (msg.state === "done") {
+      agentActionTimer = setTimeout(() => {
+        clearGhosts();
+        setAgentBanner(null);
+        agentActionTimer = null;
+      }, 6000);
+    }
+  }
+
+  function shortRef(ref) {
+    return String(ref).startsWith("f-") ? String(ref).slice(0, 10) : String(ref);
+  }
+
+  function setAgentBanner(text) {
+    let el = document.getElementById("agent-banner");
+    if (!text) {
+      if (el) el.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "agent-banner";
+      el.className = "agent-banner";
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+  }
+
   // One non-interactive fold per selection (Phase 3): ask the host to fold the current
   // composition and hand back only the files under this feature's directory. Stale responses
   // (an older selection's fold landing after a newer one) are dropped by sequence number, same
@@ -3018,6 +3162,10 @@ function episodeRailLayout(epView) {
     } else if (msg.type === "compositionPreviewEnd") {
       compositionPreviewActive = null;
       renderInspector();
+    } else if (msg.type === "findResult") {
+      renderFindResults(msg);
+    } else if (msg.type === "agentAction") {
+      showAgentAction(msg);
     } else if (msg.type === "revealFeature") {
       revealFeature(msg.featureId);
     } else if (msg.type === "error") {
@@ -3070,6 +3218,7 @@ function episodeRailLayout(epView) {
   // reconcile. Without this the workbench comes back drawn for whatever size it was last visible at.
   document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleReflow(); });
 
+  initFind();
   vscode.postMessage({ type: "ready" });
   render();
 })();

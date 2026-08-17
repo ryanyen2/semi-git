@@ -28,6 +28,10 @@ import client  # noqa: E402
 
 EXPECTED_TESTS = 38
 PING_TIMEOUT = 75
+# The model the study runs on. A tripwire on purpose: changing which model the
+# assistant uses is a change to the condition, so it should require editing a
+# line that says so, not just a field in the console.
+EXPECTED_MODEL = "claude-sonnet-5"
 
 
 class Checks:
@@ -146,6 +150,30 @@ def main() -> int:
             else "missing, so plain-English commands will not work; tell your facilitator",
         )
 
+        # A key that is present and a key that works look identical from here,
+        # and the difference is invisible during a session: the tool falls back
+        # to deterministic labels and lexical search and says nothing. A
+        # participant would then rate a degraded tool, for a reason nobody could
+        # reconstruct afterwards. One real call is the only way to know.
+        if len(key) > 20 and not args.skip_ping:
+            rc, out = run(
+                [
+                    str(home / "toolenv" / "bin" / "python"), "-c",
+                    "import sys;from sgt.config import get_client;"
+                    "get_client(sys.argv[1]).embeddings.create("
+                    "model='text-embedding-3-small',input=['ping'],dimensions=256);"
+                    "print('ok')",
+                    str(home / "work"),
+                ],
+                timeout=90,
+            )
+            checks.add(
+                "tool_key_live",
+                rc == 0 and "ok" in out,
+                "answered" if rc == 0 and "ok" in out else out.strip().splitlines()[-1][:200]
+                if out.strip() else "no answer",
+            )
+
     # 7. The isolated assistant profile
     profile = home / ".claude-study"
     isolated = profile.exists() and (profile / "settings.json").exists()
@@ -153,6 +181,21 @@ def main() -> int:
         "assistant_profile",
         isolated,
         f"{profile}" if isolated else "missing; re-run install/setup.sh",
+    )
+
+    # 7b. On the model the study pinned. Two participants on different models
+    # are not two runs of the same study, and nothing in a session makes the
+    # difference visible, so it is checked here or not at all.
+    model = ""
+    if isolated:
+        try:
+            model = str(json.loads((profile / "settings.json").read_text()).get("model") or "")
+        except Exception:
+            model = ""
+    checks.add(
+        "assistant_model",
+        model.startswith(EXPECTED_MODEL),
+        model or "no model pinned; re-run install/setup.sh",
     )
 
     # 8. The key the assistant will use
@@ -175,28 +218,52 @@ def main() -> int:
         else:
             env = dict(os.environ)
             env["CLAUDE_CONFIG_DIR"] = str(profile)
+            # This question is the instrument's, not the participant's. The
+            # hooks in that profile record every prompt, and without this the
+            # check writes one into the log that nobody typed.
+            env["STUDY_NO_LOG"] = "1"
             # Their own key must not leak into the study session. Removing it
             # here is the difference between billing us and billing them.
             env.pop("ANTHROPIC_API_KEY", None)
             env.pop("ANTHROPIC_AUTH_TOKEN", None)
             started = time.time()
             try:
+                # JSON, because the reply alone cannot tell us which model
+                # produced it. `modelUsage` names the model that actually ran,
+                # which is the only way to catch a pinned model that was
+                # ignored -- a session that looks entirely normal and is not
+                # comparable with any other.
                 proc = subprocess.run(
-                    [claude, "-p", "Reply with exactly: ok"],
+                    [claude, "-p", "Reply with exactly: ok", "--output-format", "json"],
                     capture_output=True,
                     text=True,
                     timeout=PING_TIMEOUT,
                     env=env,
                     cwd=str(home),
                 )
-                answer = (proc.stdout or proc.stderr).strip().splitlines()
-                first = answer[0][:120] if answer else ""
-                ok = proc.returncode == 0 and "ok" in (proc.stdout or "").lower()
+                answered = ""
+                ran_on = ""
+                try:
+                    body = json.loads(proc.stdout)
+                    answered = str(body.get("result") or "")
+                    ran_on = ", ".join(body.get("modelUsage") or {})
+                except Exception:
+                    answered = (proc.stdout or "").strip()
+                ok = proc.returncode == 0 and "ok" in answered.lower()
+                first = (answered or proc.stderr or "").strip().splitlines()
                 checks.add(
                     "assistant_ping",
                     ok,
-                    f"answered in {time.time() - started:.0f}s" if ok else first or "no answer",
+                    f"answered in {time.time() - started:.0f}s"
+                    if ok
+                    else (first[0][:120] if first else "no answer"),
                 )
+                if ran_on:
+                    checks.add(
+                        "assistant_model_live",
+                        EXPECTED_MODEL in ran_on,
+                        ran_on,
+                    )
             except subprocess.TimeoutExpired:
                 # A wrong key does not fail fast, it retries. That is why this
                 # has a hard timeout rather than waiting for an error.
@@ -205,6 +272,79 @@ def main() -> int:
                     False,
                     f"no answer in {PING_TIMEOUT}s, which usually means the key is wrong",
                 )
+
+    # 9b. The editor, and the one extension this condition is allowed.
+    #
+    # Checked rather than assumed, because a missing editor is not visible in
+    # the shell: the session runs, the participant works entirely in the
+    # terminal, and half of what the study set out to compare is simply absent
+    # from that participant's data with nothing to mark it.
+    code_cli = shutil.which("code") or next(
+        (
+            p
+            for p in (
+                "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+                str(Path.home() / "Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"),
+                "/usr/share/code/bin/code",
+                "/snap/bin/code",
+            )
+            if os.access(p, os.X_OK)
+        ),
+        None,
+    )
+    if not code_cli:
+        checks.add("editor", False, "Visual Studio Code not found; tell your facilitator")
+        checks.add("editor_extension", False, "no editor")
+    else:
+        rc, out = run([code_cli, "--version"], timeout=60)
+        checks.add("editor", rc == 0, out.splitlines()[0] if out else "could not run")
+
+        profile = home / ".vscode-study"
+        rc, out = run(
+            [
+                code_cli,
+                "--user-data-dir", str(profile),
+                "--extensions-dir", str(profile / "extensions"),
+                "--list-extensions", "--show-versions",
+            ],
+            timeout=90,
+        )
+        installed = [line.strip() for line in out.splitlines() if "." in line and "@" in line]
+        wanted = "semi-git" if meta.get("condition") == "sgt" else "gitlens"
+        found = [x for x in installed if wanted in x.lower()]
+        checks.add(
+            "editor_extension",
+            bool(found),
+            ", ".join(found) if found else f"no {wanted} in the study profile; re-run install/setup.sh",
+        )
+
+        # The editor has to be the same in both halves, and it does not stay
+        # that way on its own: VS Code offers Python support the first time a
+        # .py file is opened, so one condition can finish with 198 MB of
+        # tooling the other never saw. Anything missing or anything extra is
+        # reported, because both directions break the comparison.
+        expected = [str(x).split("@")[0].lower() for x in (meta.get("editorExtensions") or [])]
+        if expected:
+            have = {x.split("@")[0].lower() for x in installed}
+            missing = [x for x in expected if x not in have]
+            extra = sorted(
+                x for x in have if x not in expected and wanted not in x
+            )
+            checks.add(
+                "editor_toolset",
+                not missing and not extra,
+                "the same in both halves"
+                if not missing and not extra
+                else "; ".join(
+                    filter(
+                        None,
+                        [
+                            f"missing: {', '.join(missing)}" if missing else "",
+                            f"unexpected: {', '.join(extra)}" if extra else "",
+                        ],
+                    )
+                ),
+            )
 
     # 10. Can we hear this machine at all?
     if not code:

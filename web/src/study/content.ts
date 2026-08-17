@@ -104,7 +104,19 @@ git checkout main
 git branch -D try-something
 \`\`\`
 
-## 5. Help
+## 5. The editor
+
+Open the project in the editor with \`study-code\`. It opens with GitLens
+installed, which is the usual way to read git history without leaving the
+editor:
+
+- The **Source Control** view in the sidebar, for what has changed and for committing.
+- **GitLens Inspect** and the **Commit Graph**, for reading history.
+- Blame text at the end of the line you are on, and **File History** on any file.
+
+Use the editor, the terminal, or both. Whatever you would normally do.
+
+## 6. Help
 
 \`\`\`
 git help <command>
@@ -154,6 +166,15 @@ sgt show <id>
 
 You get what it covers, what would come with it, and what you can do next.
 
+If you don't know what it's called, describe it:
+
+\`\`\`
+sgt find "the thing that formats dates"
+\`\`\`
+
+It ranks features, saves and symbols against your words and gives you the ids.
+There is a box for the same thing in the editor's toolbar.
+
 ## 4. Take something out
 
 \`\`\`
@@ -172,7 +193,25 @@ sgt undo              reverse the last thing sgt did
 
 Try it now: remove a function, read what it says it would do, do it, then undo it.
 
-## 5. Help
+## 5. The editor
+
+Open the project in the editor with \`study-code\`. There is a **semi-git** icon
+in the sidebar with the same information the commands print:
+
+- **Now** and **Features**, for where things stand and what work exists.
+- **Changes**, for what you have not saved yet.
+- The **Composition Workbench** panel, for seeing features against each other.
+- Feature blame at the end of the line you are on, from **Toggle Feature Blame**.
+
+Right-clicking a feature offers the same verbs as the commands, and preview
+first is still the rule.
+
+Your assistant can drive this tool too, not just the shell: ask it to look
+something up or to take something out, and the workbench paints what that would
+do to the graph while it happens. Use the editor, the terminal, the assistant,
+or all three. Whatever you would normally do.
+
+## 6. Help
 
 \`\`\`
 sgt --help
@@ -220,9 +259,9 @@ Once the tick is green:
 study-cleanup
 \`\`\`
 
-That removes the two project folders and the session's API keys from your machine. The projects get reused with other participants, so please do run it.
+That removes the two project folders, the session's API keys, and the editor profile it made, from your machine. The projects get reused with other participants, so please do run it.
 
-Your own AI assistant setup is untouched. Nothing was installed outside the study folder.
+Your own assistant and your own editor are untouched. Nothing was installed outside the study folder.
 `.trim()
 
 export const DEBRIEF_MD = `

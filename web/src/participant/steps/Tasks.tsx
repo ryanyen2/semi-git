@@ -25,6 +25,20 @@ const PAUSE_REASONS: Array<[PauseInterval['reason'], string]> = [
   ['other', 'Something else'],
 ]
 
+/**
+ * Copying the request text is refused unless the selection sits inside code.
+ *
+ * `user-select: none` already stops a mouse selection; this catches select-all
+ * and the keyboard. It is not a security control and does not need to be: the
+ * point is that pasting the request into the assistant should not be the
+ * easiest thing to do, not that it should be impossible.
+ */
+function blockProseCopy(e: React.ClipboardEvent) {
+  const node = window.getSelection()?.anchorNode
+  const el = node instanceof Element ? node : node?.parentElement
+  if (!el?.closest('code, pre')) e.preventDefault()
+}
+
 function pausedMsOf(doc: RequestDoc | undefined, now: number): number {
   if (!doc) return 0
   return (doc.pauses ?? []).reduce((n, p) => n + ((p.to ?? now) - p.from), 0)
@@ -87,7 +101,7 @@ export function TasksStep({ step }: { step: Step }) {
         <h1>The requests</h1>
       </div>
 
-      <div className="card soft">
+      <div className="card soft no-copy" onCopy={blockProseCopy}>
         <Markdown>{TASK_PREAMBLE(scenario.app, scenario.maintainer, scenario.blurb)}</Markdown>
         <div className="row small muted" style={{ justifyContent: 'space-between' }}>
           <span>
@@ -300,7 +314,9 @@ function TaskCardView({
         {card.requests.map((r, ri) => (
           <div key={r.id} style={{ marginTop: ri ? '1.5rem' : 0 }}>
             {card.requests.length > 1 && <h3>{r.title[project]}</h3>}
-            <Markdown>{r.body[project]}</Markdown>
+            <div className="no-copy" onCopy={blockProseCopy}>
+              <Markdown>{r.body[project]}</Markdown>
+            </div>
             {r.wantsAnswer && (
               <AnswerBox pid={pid} half={half} request={r.id} doc={docFor(r.id)} wantsConfidence={r.wantsConfidence} />
             )}

@@ -294,6 +294,25 @@ blockquote p:last-child {
   box-shadow: none;
 }
 
+/* The request wording cannot be selected, so it cannot be pasted into the
+   assistant whole. How a person states an intent in their own words is one of
+   the things being measured; a pasted request would replace that with our
+   wording, identically for everyone.
+
+   Code stays selectable. The requests quote real strings -- a time format, a
+   test command -- and searching the project for one of them is a legitimate
+   move we should not tax with retyping. */
+.no-copy {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.no-copy code,
+.no-copy pre {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* ---------- text helpers ---------- */
 
 .muted {
@@ -787,6 +806,21 @@ input[type='range'] {
   border-radius: 7px;
   color: var(--muted);
   line-height: 1.35;
+}
+
+/* The rehearsal rail. Same row, now a button. */
+.rail-step.jump {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-step.jump:hover {
+  background: var(--bg-soft);
+  color: var(--ink);
 }
 
 .rail-step .pip {
