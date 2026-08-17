@@ -18,6 +18,7 @@ const CHECK_LABELS: Array<[string, string]> = [
   ['warm', 'History view already loaded'],
   ['tool_key', 'History tool key in place'],
   ['tool_key_live', 'History tool key actually works'],
+  ['assistant_skill', 'Assistant skill installed'],
   ['assistant_profile', 'Assistant using the session profile, not yours'],
   ['assistant_model', 'Assistant pinned to the study model'],
   ['assistant_key', 'Assistant key in place'],
