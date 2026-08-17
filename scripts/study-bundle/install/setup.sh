@@ -134,6 +134,19 @@ PYEOF
 }
 HOOKS
     note "Done."
+else
+    # The half without a history tool. Its assistant still gets guidance, or the
+    # agent-half comparison is a guided tool against an unguided one. One skill,
+    # teaching git at the same depth the sgt half's skills teach sgt. Auto-found
+    # by Claude Code the same way, so the wiring matches; there is no MCP server
+    # and no intent hook here, because git ships neither and papering over that
+    # would be measuring something the git arm does not have.
+    if [ -d "$here/install/git-skills" ]; then
+        say "Wiring up the AI assistant"
+        mkdir -p "$here/work/.claude/skills"
+        cp -R "$here/install/git-skills/." "$here/work/.claude/skills/"
+        note "assistant wired up: $(find "$here/install/git-skills" -name SKILL.md | wc -l | tr -d ' ') skill(s)"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
