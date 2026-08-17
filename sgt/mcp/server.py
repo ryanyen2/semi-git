@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -116,28 +117,70 @@ def _verb_result(preview) -> dict:
     }
 
 
+def _verb_with_feature_fallback(repo_path: str, verb: str, ref: str, emit: bool) -> dict:
+    """An op or symbol first, then the feature of that name.
+
+    The CLI has resolved a feature id or label since U13; this tool did not, so
+    an agent asked to take a feature out got "neither an op-id in the ideal nor a
+    live symbol" for the id every other surface prints. There is no version of
+    this tool being useful without it: features are the unit the graph is drawn
+    in, and an agent that cannot name one falls back to editing files by hand,
+    which is the behaviour the tool exists to replace.
+    """
+    from sgt.core import verbs as core_verbs
+    from sgt.lens import verbs as lens_verbs
+
+    single = core_verbs.revert if verb == "revert" else core_verbs.restore
+    preview = single(repo_path, ref, emit=True)
+    if not preview.ok and lens_verbs.resolve_feature(repo_path, ref) is not None:
+        plan = (
+            lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
+        )
+        preview = plan(repo_path, ref)
+    gap = None
+    if verb == "restore" and preview.ok:
+        # Computed before apply: apply journals this restore's own entry, and
+        # the gap walk would find that instead of the revert it looks for.
+        from sgt.cli.ideal_edit import _restore_gap
+
+        gap = _restore_gap(repo_path, preview)
+    if preview.ok and not emit:
+        core_verbs.apply(repo_path, preview)
+    result = _verb_result(preview)
+    if verb == "restore" and preview.ok:
+        # The agent is the consumer most likely to read "✓ restore" as "the
+        # earlier revert is undone" and report success to a person. Say what
+        # stays removed, in the same shape the CLI's JSON carries.
+        if gap:
+            result["restore_gap"] = gap
+            result["message"] = (
+                (result.get("message") or "")
+                + f" note: {gap['still_removed_op_count']} op(s) the earlier revert removed stay"
+                  " removed; `sgt undo` reverses that revert whole."
+            ).strip()
+    return result
+
+
 def tool_revert(repo_path: str, args: dict) -> dict:
     """`I \\ ↑X`: remove an op and everything built on it. `emit=true` previews with no write."""
-    from sgt.core import verbs
     from sgt.core.lens import get
 
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
     get(repo_path)  # mine-on-contact before planning/applying the edit (R9)
-    return _verb_result(verbs.revert(repo_path, ref, emit=bool(args.get("emit", False))))
+    return _verb_with_feature_fallback(repo_path, "revert", ref, bool(args.get("emit", False)))
 
 
 def tool_restore(repo_path: str, args: dict) -> dict:
     """`I ∪ ↓X`: revert's inverse. `emit=true` previews with no write."""
-    from sgt.core import verbs
     from sgt.core.lens import get
 
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
     get(repo_path)
-    return _verb_result(verbs.restore(repo_path, ref, emit=bool(args.get("emit", False))))
+    return _verb_with_feature_fallback(repo_path, "restore", ref, bool(args.get("emit", False)))
 
 
 def tool_oracle_run(repo_path: str, args: dict) -> dict:
@@ -243,6 +286,18 @@ def tool_recall(repo_path: str, args: dict) -> dict:
 
     _get(repo_path)
     return recall(repo_path, list(args.get("symbols") or []))
+
+
+def tool_find(repo_path: str, args: dict) -> dict:
+    """Rank features, saves and symbols against a description (`sgt find`)."""
+    from sgt.core.lens import get as _get
+    from sgt.lens.search import search
+
+    query = (args.get("query") or "").strip()
+    if not query:
+        return {"error": "missing 'query'"}
+    _get(repo_path)
+    return search(repo_path, query, k=int(args.get("limit") or 8))
 
 
 def tool_drift(repo_path: str, args: dict) -> dict:
@@ -446,6 +501,16 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({}, []),
         tool_fsck,
     ),
+    "sgt_find": (
+        "Find something you can describe but cannot name: ranks features, saves and symbols "
+        "against a phrase like 'the thing that formats dates'. Use this before revert/restore "
+        "when you do not already hold an id. Report-only. The `mode` field says whether the "
+        "answer came from meaning ('semantic') or word overlap ('lexical').",
+        _schema({"query": {"type": "string", "description": "a description in plain words"},
+                 "limit": {"type": "integer", "description": "how many hits (default 8)"}},
+                ["query"]),
+        tool_find,
+    ),
     "sgt_revert": (
         "Remove a symbol-level edit and everything built on top of it from the current state. "
         "`ref` is an op-id, an op-id prefix, or a `file::name` symbol (resolves to its latest edit). "
@@ -540,12 +605,60 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
 }
 
 
+# Tools that change the ideal, mapped to the verb the editor previews. An agent
+# working through these is the one case where something moves in the graph with
+# nobody watching a terminal, so the editor is told before it happens.
+_ANNOUNCED = {"sgt_revert": "revert", "sgt_restore": "restore"}
+
+
+def _announce(repo_path: str, name: str, arguments: dict, state: str) -> None:
+    """Leave a note saying what is about to happen, for any editor watching.
+
+    Best-effort and silent: a tool call must never fail because a UI hint could
+    not be written. The file is a single small JSON object rather than an
+    append-only log because only the current action is ever interesting -- an
+    editor that missed one has missed it.
+    """
+    verb = _ANNOUNCED.get(name)
+    if verb is None:
+        return
+    try:
+        import time
+
+        path = Path(repo_path) / ".sgt" / "local"
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "pending_action.json").write_text(
+            json.dumps(
+                {
+                    "verb": verb,
+                    "ref": str(arguments.get("ref") or ""),
+                    "emit": bool(arguments.get("emit")),
+                    "state": state,
+                    "ts": int(time.time() * 1000),
+                    "source": "agent",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
 def call_tool(repo_path: str, name: str, arguments: dict | None) -> dict:
     """Dispatch a single tool call to its handler. Raises KeyError on an unknown tool."""
     if name not in TOOLS:
         raise KeyError(name)
     _, _, handler = TOOLS[name]
-    return handler(repo_path, arguments or {})
+    args = arguments or {}
+    _announce(repo_path, name, args, "running")
+    try:
+        result = handler(repo_path, args)
+    except Exception:
+        _announce(repo_path, name, args, "failed")
+        raise
+    _announce(repo_path, name, args, "done")
+    return result
 
 
 def _tool_defs() -> list[dict]:

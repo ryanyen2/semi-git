@@ -92,6 +92,15 @@ export interface SelectionView {
   hub: { symbol: string; pulled_op_count: number } | null;
 }
 
+/** `sgt find --json`. `mode` says which rung answered: meaning, or word overlap. */
+export interface FindView {
+  ok: boolean;
+  mode: "semantic" | "lexical" | "none";
+  query?: string;
+  message?: string;
+  hits: { kind: string; id: string; label: string; detail: string; score: number }[];
+}
+
 export interface BlameSpan {
   symbol: string;
   start_line: number; // 1-based inclusive

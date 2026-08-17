@@ -63,7 +63,11 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
                       # An agent could read the graph and edit code but record neither, so a human
                       # relayed every save by hand -- the back-and-forth between editor, terminal
                       # and agent that the graph exists to remove.
-                      "sgt_save"}
+                      "sgt_save",
+                      # Every other tool here needs an id the caller already holds. Without a way
+                      # in from a description, an agent asked to remove "the waitlist" had to
+                      # guess at symbols or read the whole graph to find one.
+                      "sgt_find"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):

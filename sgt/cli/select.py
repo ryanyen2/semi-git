@@ -23,6 +23,15 @@ def register(subs, parent) -> None:
     w.add_argument("--for", dest="for_feature")
     w.set_defaults(func=_cmd_why)
 
+    # Top level rather than under `advanced`, which is for maintenance and rare
+    # verbs. This is neither: it is the verb for the most ordinary situation
+    # there is, arriving somewhere new and not knowing what anything is called.
+    f = subs.add_parser("find", parents=[parent])
+    f.add_argument("query", nargs="+")
+    f.add_argument("--limit", type=int, default=8)
+    f.add_argument("--refresh", action="store_true", help="rebuild the index first")
+    f.set_defaults(func=_cmd_find)
+
 
 def _cmd_select(args) -> int:
     return _select(".", args.feature, args.as_json)
@@ -30,6 +39,34 @@ def _cmd_select(args) -> int:
 
 def _cmd_why(args) -> int:
     return _why(".", args.op, args.for_feature, args.as_json)
+
+
+def _cmd_find(args) -> int:
+    return _find(".", " ".join(args.query), args.limit, args.refresh, args.as_json)
+
+
+def _find(repo: str, query: str, limit: int, refresh: bool, as_json: bool) -> int:
+    """`sgt find "<phrase>" [--json]`: rank features, saves and symbols against a
+    description. Report-only, like everything else in this module."""
+    from sgt.lens.search import search
+
+    view = search(repo, query, k=limit, refresh=refresh)
+    if as_json:
+        return _emit_json(view)
+    if not view["hits"]:
+        return _fail(view.get("message") or f"nothing matched {query!r}")
+
+    kind_width = max(len(h["kind"]) for h in view["hits"])
+    for hit in view["hits"]:
+        print(f"  {hit['score']:.2f}  {hit['kind']:<{kind_width}}  {hit['label'][:64]}")
+        print(f"        {hit['id'][:16]}  {hit['detail'][:70]}")
+    if view["mode"] == "lexical":
+        # Say so. A word-overlap answer and a meaning answer look identical in a
+        # list, and only one of them is worth trusting when it returns nothing.
+        print("\n  (matched on words, not meaning — no working key for this repo)")
+    print("\n  next:")
+    print(f"    sgt show {view['hits'][0]['id'][:12]}      what it is, and what would come with it")
+    return 0
 
 
 def _select(repo: str, features: list[str], as_json: bool) -> int:

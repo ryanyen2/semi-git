@@ -24,6 +24,24 @@ STUDY_REPOS="${STUDY_REPOS:-$HOME/repos/sgt-study}"
 # bundle and handing out a link, and it fails silently when it is.
 OUT="${OUT:-$SGT_SOURCE/web/public/bundles}"
 BUNDLE_SRC="$SGT_SOURCE/scripts/study-bundle"
+# Pinned, and recorded in study.json. Which GitLens a participant had is a
+# question the paper has to be able to answer, and it ships a new version most
+# weeks.
+GITLENS_VERSION="${GITLENS_VERSION:-19.0.1}"
+
+# Installed into both conditions' editor profiles at setup, pinned.
+#
+# Not optional, and not left to the editor. VS Code offers to install Python
+# support the first time a .py file is opened, so whether a participant got
+# Pylance came down to whether their condition led them to open a file --
+# during the first editor rehearsal the git arm ended up with 198 MB of Python
+# tooling and the sgt arm with none. On a task about reading unfamiliar Python,
+# go-to-definition in one arm and not the other is not a difference between two
+# ways of recording history.
+#
+# Too big to ship inside a bundle, so they come from the marketplace during
+# setup, at fixed versions. The doctor fails if the set that lands is not this.
+EDITOR_EXTENSIONS='["ms-python.python@2026.4.0", "ms-python.vscode-pylance@2026.3.1", "ms-python.debugpy@2026.6.0", "ms-python.vscode-python-envs@1.36.0"]'
 
 if [ $# -ne 2 ]; then
     echo "usage: $0 <git|sgt> <coursecraft|confplan>" >&2
@@ -58,6 +76,14 @@ chmod +x "$staging/install/setup.sh" "$staging"/bin/study-*
 rm -f "$staging/work/.env"
 rm -rf "$staging/work/.venv" "$staging/telemetry/state.json" \
        "$staging/telemetry/events.jsonl" "$staging/telemetry/uploaded.txt"
+
+# Nor may anything that names this machine. The study projects are built here,
+# and an untracked `.claude/` picks up hooks pointing at an absolute path in
+# this checkout. On a participant's machine that path does not exist, so every
+# prompt in the sgt condition would fire a hook that fails, and the condition
+# would quietly lose the intent capture it depends on. The sgt bundles get this
+# file written back, against their own copy of the tool, during setup.
+rm -rf "$staging/work/.claude"
 
 echo "  Building the test environment."
 (
@@ -112,7 +138,74 @@ WRAPPER
     # Doing it here means every participant sees one stable set all session.
     echo "  Refreshing the history view. About thirty seconds."
     (cd "$staging/work" && "$staging/bin/sgt" log --refresh >/dev/null 2>&1 || true)
+
+    # The search index, embedded once here rather than on first use in a
+    # session. Built after the refresh so it indexes the feature set the
+    # participant will actually see, and checked rather than assumed: an index
+    # that fell back to word matching still answers, so nothing in a session
+    # would ever say that half of what `find` promises is missing.
+    # Built with this machine's key, taken from the source checkout's `.env`.
+    # The staged repo has no `.env` yet -- provisioning writes the participant's
+    # key at setup -- so without this the index is embedded with whatever the
+    # builder's shell happens to hold, which is how the first one shipped with
+    # no embeddings at all.
+    echo "  Building the search index."
+    embedded="$(
+        set -a
+        # shellcheck disable=SC1091
+        [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
+        set +a
+        "$staging/toolenv/bin/python" - <<PY
+from sgt.lens.search import build_index
+print("yes" if build_index("$staging/work")["embedded"] else "no")
+PY
+    )"
+    if [ "$embedded" != "yes" ]; then
+        echo
+        echo "  WARNING: the search index has no embeddings, so \`sgt find\` in this"
+        echo "  bundle will match on words rather than meaning. Usually a missing or"
+        echo "  out-of-credit OPENAI_API_KEY. Fix it and rebuild, or the sgt condition"
+        echo "  ships with half of its search."
+        echo
+    fi
 fi
+
+# ---------------------------------------------------------------------------
+# The editor extension for this condition
+# ---------------------------------------------------------------------------
+#
+# Both conditions get a graphical way to read history, or the comparison is
+# between a tool and a terminal rather than between two representations. In the
+# sgt condition that is this project's own extension; in the git condition it is
+# GitLens, which is what people actually use to read git history in an editor.
+#
+# Both travel inside the bundle at a fixed version. Installing from the
+# marketplace during a session would mean participant three and participant nine
+# ran different software, with nothing in the data saying so.
+
+echo "  Packaging the editor extension."
+if [ "$condition" = sgt ]; then
+    (cd "$SGT_SOURCE/editor/vscode" && npm run package >/dev/null 2>&1) \
+        || { echo "Could not build the extension." >&2; exit 1; }
+    (cd "$SGT_SOURCE/editor/vscode" && npx --no-install @vscode/vsce package \
+        --no-dependencies --allow-missing-repository -o "$staging/install/semi-git.vsix" >/dev/null 2>&1) \
+        || { echo "Could not package the extension. Is @vscode/vsce available?" >&2; exit 1; }
+    editor_ext="semi-git $(python3 -c 'import json;print(json.load(open("'"$SGT_SOURCE"'/editor/vscode/package.json"))["version"])')"
+else
+    cached="${GITLENS_VSIX_CACHE:-$HOME/.cache/study-bundles}/gitlens-$GITLENS_VERSION.vsix"
+    if [ ! -s "$cached" ]; then
+        mkdir -p "$(dirname "$cached")"
+        echo "  Fetching GitLens $GITLENS_VERSION."
+        curl -sSL -o "$cached.gz" \
+            "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/eamodio/vsextensions/gitlens/$GITLENS_VERSION/vspackage" \
+            || { echo "Could not download GitLens." >&2; exit 1; }
+        # The marketplace serves the package gzipped, whatever the extension says.
+        gunzip -c "$cached.gz" > "$cached" && rm -f "$cached.gz"
+    fi
+    cp "$cached" "$staging/install/gitlens.vsix"
+    editor_ext="gitlens $GITLENS_VERSION"
+fi
+echo "  $editor_ext"
 
 echo "  Building the practice copy."
 "$SGT_SOURCE/scripts/make-practice-repo.sh" "$staging/practice" "$condition" "$staging" >/dev/null
@@ -131,6 +224,8 @@ cat > "$staging/study.json" <<META
   "bundleVersion": "$(date +%Y%m%d)-$token",
   "toolVersion": "${tool_version:-}",
   "toolBuild": "${tool_build:-null}",
+  "editorExtension": "${editor_ext:-}",
+  "editorExtensions": $EDITOR_EXTENSIONS,
   "claudeVersion": "${claude_version:-}",
   "firestoreHost": "${STUDY_FIRESTORE_HOST:-}"
 }

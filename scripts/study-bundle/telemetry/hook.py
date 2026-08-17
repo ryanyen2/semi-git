@@ -17,6 +17,7 @@ version that renames a field costs us a label rather than the measurement.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -82,6 +83,18 @@ def describe_tool(name: str, tool_input: dict) -> tuple[str | None, list[str]]:
 
 def main() -> int:
     event_name = sys.argv[1] if len(sys.argv) > 1 else "Unknown"
+
+    # The setup check asks the assistant one question to prove the key works.
+    # That question ran through these hooks and was recorded as a prompt the
+    # participant had written -- "Reply with exactly: ok" sits in the first
+    # pilot's log as one of its two prompts. Before a session starts it only
+    # pads the raw stream, but the session shell offers `study-doctor` for
+    # re-running the checks, and a re-run mid-session would drop a fake prompt
+    # inside a request window, where prompt count, prompt length and prompt
+    # specificity are all measured.
+    if os.environ.get("STUDY_NO_LOG"):
+        return 0
+
     try:
         raw = sys.stdin.read()
     except Exception:

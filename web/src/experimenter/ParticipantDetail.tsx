@@ -270,6 +270,7 @@ function RequestScoring({
   adminEmail: string
 }) {
   const opened = requests.filter((r) => r.openedAt).sort((a, b) => (a.openedAt ?? 0) - (b.openedAt ?? 0))
+  const { data: events } = useLiveCollection<EventDoc>(['participants', pid, 'events'], orderBy('ts'))
   if (opened.length === 0) return <Empty>No requests opened yet</Empty>
 
   return (
@@ -286,12 +287,77 @@ function RequestScoring({
           key={r.id}
           pid={pid}
           req={r}
+          events={events ?? []}
           existing={scoring.find((s) => s.id === r.id) as unknown as ScoringDoc | undefined}
           truth={truth}
           adminEmail={adminEmail}
         />
       ))}
     </div>
+  )
+}
+
+/**
+ * How the request was actually carried out.
+ *
+ * Several requests can be finished in more than one way -- by rewriting the
+ * code, or by operating on the history -- and the finished repository often
+ * cannot tell you which happened. Request 6 is scored on the code being
+ * unchanged, and "did they use the history tool or just edit files and commit"
+ * is a question about the participant, not the repository. It is answerable
+ * only from what ran during the request, so it belongs next to the rubric.
+ */
+function HowItWasDone({ events, req }: { events: EventDoc[]; req: RequestDoc }) {
+  const from = req.openedAt ?? 0
+  const to = req.submittedAt ?? Date.now()
+
+  const mine = useMemo(
+    () =>
+      events.filter(
+        (e) =>
+          e.ts >= from &&
+          e.ts <= to &&
+          e.extra?.auto !== true &&
+          (e.kind === 'command' || e.kind === 'prompt' || e.kind === 'tool'),
+      ),
+    [events, from, to],
+  )
+
+  if (mine.length === 0) return null
+
+  const commands = mine.filter((e) => e.kind === 'command')
+  const tally = {
+    git: commands.filter((e) => e.name === 'git').length,
+    sgt: commands.filter((e) => e.name === 'sgt').length,
+    editor: commands.filter((e) => e.extra?.surface === 'editor').length,
+    assistant: mine.filter((e) => e.kind === 'tool' || e.extra?.surface === 'agent').length,
+    prompts: mine.filter((e) => e.kind === 'prompt').length,
+  }
+
+  return (
+    <details style={{ marginTop: '0.75rem' }}>
+      <summary className="small muted" style={{ cursor: 'pointer' }}>
+        How it was done — {tally.git} git, {tally.sgt} sgt, {tally.editor} in the editor,{' '}
+        {tally.assistant} by the assistant, {tally.prompts} prompt(s)
+      </summary>
+      <div className="stack tight" style={{ marginTop: '0.5rem', maxHeight: '18rem', overflowY: 'auto' }}>
+        {mine.map((e) => (
+          <div key={e.id} className="row tight" style={{ flexWrap: 'nowrap', alignItems: 'baseline' }}>
+            <span className="badge outline tiny">
+              {e.kind === 'prompt'
+                ? 'prompt'
+                : e.kind === 'tool'
+                  ? 'assistant'
+                  : String(e.extra?.surface ?? 'terminal')}
+            </span>
+            <span className="tiny mono" style={{ minWidth: 0, wordBreak: 'break-word' }}>
+              {(e.text ?? e.name ?? '').slice(0, 200)}
+            </span>
+            {e.ok === false && <span className="badge bad tiny">failed</span>}
+          </div>
+        ))}
+      </div>
+    </details>
   )
 }
 
@@ -378,12 +444,14 @@ function RepoOutcome({ pid }: { pid: string }) {
 function RequestCard({
   pid,
   req,
+  events,
   existing,
   truth,
   adminEmail,
 }: {
   pid: string
   req: RequestDoc & { id: string }
+  events: EventDoc[]
   existing: ScoringDoc | undefined
   truth: GroundTruth | null
   adminEmail: string
@@ -525,6 +593,8 @@ function RequestCard({
           <div className="mono small">{key}</div>
         </div>
       )}
+
+      <HowItWasDone events={events} req={req} />
 
       {rubric.length > 0 && (
         <div className="stack tight" style={{ marginTop: '1rem' }}>
