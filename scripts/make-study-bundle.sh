@@ -168,6 +168,16 @@ PY
         echo "  ships with half of its search."
         echo
     fi
+else
+    # The assistant's guidance for the half without a history tool. The sgt half
+    # ships three skills and an MCP server (installed at setup, above); with
+    # nothing here the git half would be plain Claude Code against git, and the
+    # agent-half comparison would be a guided tool against an unguided one rather
+    # than two tools. One skill, teaching git at the same depth: read history
+    # before changing it, add commits on top by default, and never rewrite shared
+    # history unasked. `setup.sh` copies it into `work/.claude/skills/`.
+    echo "  Packaging the assistant skill."
+    cp -R "$BUNDLE_SRC/git-skills" "$staging/install/git-skills"
 fi
 
 # ---------------------------------------------------------------------------

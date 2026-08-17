@@ -174,6 +174,19 @@ def main() -> int:
                 if out.strip() else "no answer",
             )
 
+    # 6b. The assistant's skill, in the condition without a tool. It is what the
+    # sgt half's skills and MCP server are for that half: without it the git half
+    # is plain Claude Code against git, and the agent-half comparison becomes a
+    # guided tool against an unguided one -- a difference nothing in a session
+    # makes visible, so it is checked here or not at all.
+    elif meta.get("condition") == "git":
+        skill = home / "work" / ".claude" / "skills" / "git-agent" / "SKILL.md"
+        checks.add(
+            "assistant_skill",
+            skill.exists(),
+            "installed" if skill.exists() else "missing; re-run install/setup.sh",
+        )
+
     # 7. The isolated assistant profile
     profile = home / ".claude-study"
     isolated = profile.exists() and (profile / "settings.json").exists()
