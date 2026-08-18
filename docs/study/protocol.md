@@ -509,7 +509,11 @@ Fourteen items on a 7-point Likert-type scale from strongly disagree (1) to
 strongly agree (7), organized in four labeled blocks in a fixed order, followed
 by two manipulation checks on their own five-point scales. The fourteen appear
 as Figure 1 in the paper; the two checks are reported separately and are not
-outcomes.
+outcomes. In the exported data they are the `check_` columns, kept apart from
+`hlac_` for the same reason they are kept out of the figure — and because
+averaging a five-point item into a block of seven-point ones, or plotting it on
+that block's axis, makes a check look like a finding and a neutral answer look
+like a negative one.
 
 These are **Likert-type items grouped into ad-hoc composites, not a validated
 psychometric scale**, and they are reported as such: item by item, with the

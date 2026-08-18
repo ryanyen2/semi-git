@@ -336,8 +336,12 @@ function Figure1({ dataset }: { dataset: Dataset }) {
       <LikertDiverging
         ref={ref}
         // Section headings are layout, not questions: they carry no answer and
-        // would render as empty rows.
-        items={HLAC.items.filter((i) => i.type === 'likert').map((i) => ({
+        // would render as empty rows. Manipulation checks are excluded for a
+        // different reason -- they are not what this block measures, and the
+        // realism check is a five-point item that would be drawn on this
+        // figure's seven-point axis, landing its neutral answer a bucket left
+        // of the midpoint and reading as systematically negative.
+        items={HLAC.items.filter((i) => i.type === 'likert' && !i.check).map((i) => ({
           id: i.id,
           label: `${i.id.toUpperCase()}: ${i.shortLabel}`,
           reverse: i.reverse,
@@ -525,6 +529,15 @@ function Exports({ dataset }: { dataset: Dataset }) {
                     umux: h?.umux ?? '',
                     ...Object.fromEntries(
                       Object.entries(h?.hlac ?? {}).map(([k, v]) => [`hlac_${k}`, v]),
+                    ),
+                    // The two manipulation checks. Prefixed apart from `hlac_`
+                    // because they are not that block's construct, and exported
+                    // rather than only plotted: whether the requests read as
+                    // realistic and whether the cap bound the same way in both
+                    // arms are answers to questions a reader will ask, not
+                    // figures.
+                    ...Object.fromEntries(
+                      Object.entries(h?.checks ?? {}).map(([k, v]) => [`check_${k}`, v]),
                     ),
                   }
                 }),

@@ -52,6 +52,17 @@ export interface Item {
   placeholder?: string
   /** Which claim or RQ this item serves. Shown in the dashboard, not to the participant. */
   serves?: string
+  /**
+   * Collected here for convenience, but not part of this instrument's construct.
+   *
+   * A manipulation check rides along on the questionnaire that happens to be in
+   * the right place in the flow; it is not one of the things that questionnaire
+   * measures. Anything that averages an instrument or plots it as a block has
+   * to leave these out, or it reports a check as if it were a finding -- and in
+   * the case of a five-point check inside a block of seven-point items, plots it
+   * on the wrong axis while doing so.
+   */
+  check?: boolean
 }
 
 export interface Instrument {
@@ -542,6 +553,7 @@ export const HLAC: Instrument = {
       id: 'realistic',
       type: 'likert',
       required: true,
+      check: true,
       min: 1,
       max: 5,
       shortLabel: 'Requests were realistic',
@@ -554,6 +566,7 @@ export const HLAC: Instrument = {
       id: 'timePressure',
       type: 'select',
       required: true,
+      check: true,
       serves: 'manipulation check — did the cap bind',
       label: 'How much time pressure did you feel?',
       help: 'About the clock specifically, not about how hard the work was.',

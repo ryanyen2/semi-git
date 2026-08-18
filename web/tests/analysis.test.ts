@@ -198,6 +198,35 @@ describe('per-request measures', () => {
     expect(a.requests[0].calibration).toBeCloseTo(0.7 - 2 / 3)
   })
 
+  it('keeps the manipulation checks out of HLAC and coerces the select to a number', () => {
+    // Both rode along on the HLAC block because that is where they fit in the
+    // flow, and both were being lost: `timePressure` is a select, so its five
+    // labelled options arrive as strings and a `typeof v === 'number'` filter
+    // dropped it entirely, and `realistic` is five-point, so averaging it into a
+    // block of seven-point items understates it.
+    const a = analyzeParticipant({
+      participant: participantDoc(),
+      responses: [
+        {
+          id: 'hlac-h1',
+          instrument: 'hlac',
+          version: 'hlac-v3',
+          half: 1,
+          condition: 'git',
+          submittedAt: T0,
+          values: { q1: 6, realistic: 4, timePressure: '2' },
+        } as never,
+      ],
+      requests: [],
+      events: [],
+      scoring: [],
+    })
+
+    const h = a.halves.find((x) => x.half === 1)!
+    expect(h.hlac).toEqual({ q1: 6 })
+    expect(h.checks).toEqual({ realistic: 4, timePressure: 2 })
+  })
+
   it('leaves them unscored when the participant answered nothing, rather than scoring zero', () => {
     // `choices` is seeded as `{}` the moment a request is opened, and `{}` is
     // truthy — so a participant who ran out of time having picked nothing used
