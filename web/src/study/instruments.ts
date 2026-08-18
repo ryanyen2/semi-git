@@ -267,7 +267,7 @@ const tlxItem = (
 
 export const TLX: Instrument = {
   id: 'tlx',
-  version: 'tlx-v2',
+  version: 'tlx-v3',
   title: 'How that felt',
   perHalf: true,
   estimateMin: 2,
@@ -280,28 +280,35 @@ export const TLX: Instrument = {
   // because TLX measures the load of a bounded task and returns something else
   // when pointed at an hour of mixed activity.
   intro:
-    'Six sliders about the requests you just worked through. Answer quickly, first instinct. There is no good or bad score.',
+    'Six scales about the requests you just worked through. Click anywhere on each line. Answer quickly, first instinct. There is no good or bad score.',
   items: [
-    // Each subscale carries its published definition, not just its name. The
-    // six correlate strongly enough in interactive work that a participant
-    // reading only the short label answers several of them alike.
+    // Each subscale carries its published name, its question and its published
+    // definition. The name alone is not enough: the six correlate strongly in
+    // interactive work, and a participant reading only "Mental demand" answers
+    // several of them alike. Name and question are joined by an em dash, which
+    // is where the renderer splits them.
     tlxItem(
       'mental',
-      'Mental demand',
+      'Mental demand — How mentally demanding was the task?',
       'How much mental and perceptual activity was required? Thinking, deciding, looking, ' +
         'remembering, searching. Was the task easy or demanding, simple or complex?',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'physical',
-      'Physical demand',
-      'How much physical activity was required? Typing, clicking, moving around. For desk work ' +
-        'this is usually low, and that is a normal answer.',
+      'Physical demand — How physically demanding was the task?',
+      // No "for desk work this is usually low, and that is a normal answer" here
+      // any more. It was meant kindly and it told the participant what to
+      // answer before they answered, on the one subscale where a floor effect
+      // is the expected result -- so it manufactured the very reading it was
+      // reassuring them about.
+      'How much physical activity was required? Typing, clicking, moving between windows. Was ' +
+        'the task easy or demanding, restful or laborious?',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'temporal',
-      'Temporal demand',
+      'Temporal demand — How hurried or rushed was the pace of the task?',
       'How much time pressure did you feel because of the rate at which things happened? Was the ' +
         'pace slow and leisurely, or rapid and frantic?',
       ['Very low', 'Very high'],
@@ -312,24 +319,23 @@ export const TLX: Instrument = {
     // they had done perfectly contributed the maximum possible workload.
     tlxItem(
       'performance',
-      'Performance',
-      'How successful were you in doing what you were asked to do? How satisfied were you with ' +
-        'how you did?',
+      'Performance — How successful were you in accomplishing what you were asked to do?',
+      'How satisfied were you with how you did? This is the one scale whose ends run the other ' +
+        'way, so read them.',
       ['Failure', 'Perfect'],
       true,
     ),
     tlxItem(
       'effort',
-      'Effort',
-      'How hard did you have to work, mentally and physically, to reach the level of performance ' +
+      'Effort — How hard did you have to work to accomplish your level of performance?',
+      'Mentally and physically, how hard did you have to work to reach the level of performance ' +
         'you reached?',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'frustration',
-      'Frustration',
-      'How insecure, discouraged, irritated, stressed or annoyed did you feel, as against secure, ' +
-        'content, relaxed and complacent?',
+      'Frustration — How insecure, discouraged, irritated, stressed and annoyed were you?',
+      'As against secure, content, relaxed and complacent.',
       ['Very low', 'Very high'],
     ),
   ],
@@ -410,7 +416,7 @@ const section = (id: string, label: string): Item => ({
 
 export const HLAC: Instrument = {
   id: 'hlac',
-  version: 'hlac-v2',
+  version: 'hlac-v3',
   title: 'Working with this project history',
   perHalf: true,
   estimateMin: 3,
@@ -516,186 +522,207 @@ export const HLAC: Instrument = {
       'straight-lining guard',
       true,
     ),
-  ],
-}
 
-// ---------------------------------------------------------------------------
-// Quiz. Free text plus confidence; grading happens in the dashboard against a
-// key that never reaches this bundle.
-// ---------------------------------------------------------------------------
-
-const quizItem = (id: string, label: string, help?: string): Item[] => [
-  { id, type: 'textarea', label, help, required: true, placeholder: 'A sentence is plenty.' },
-  {
-    id: `${id}_conf`,
-    type: 'slider',
-    label: 'How sure are you?',
-    min: 0,
-    max: 100,
-    step: 5,
-    required: true,
-    anchors: ['Guessing', 'Certain'],
-  },
-]
-
-export const QUIZ: Instrument = {
-  id: 'quiz',
-  version: 'quiz-v1',
-  title: 'Five questions, project closed',
-  perHalf: true,
-  estimateMin: 3,
-  intro:
-    'Close the project and your editor before you start. Answer from memory. Getting these wrong is expected and useful, so please do not go and look.',
-  items: [
-    ...quizItem('q1', 'Which feature was added and then deliberately removed?'),
-    ...quizItem(
-      'q2',
-      'Which of these came first: conflict detection, capacity limits, or the waitlist?',
-    ),
-    ...quizItem('q3', 'Did the previous maintainer work alone?'),
-    ...quizItem(
-      'q4',
-      'Name one change that was later corrected, and say what the correction was.',
-    ),
-    ...quizItem('q5', 'Which single change touched the most unrelated concerns?'),
-  ],
-}
-
-// ---------------------------------------------------------------------------
-// Summary task
-// ---------------------------------------------------------------------------
-
-export const SUMMARY: Instrument = {
-  id: 'summary',
-  version: 'summary-v1',
-  title: 'Tell the story',
-  perHalf: true,
-  estimateMin: 3,
-  intro:
-    'Three minutes, project still closed. Say it out loud as you type, so we have both. Bullet points are fine.',
-  items: [
+    // Two manipulation checks, not opinions about the setup.
+    //
+    // The paper claims the two projects are isomorphic and that the requests
+    // are the kind of thing that happens in real work. Both claims are
+    // currently made by construction and defended by argument, which is the
+    // first thing a reviewer pushes on. Two items per half turn each into
+    // something measured, and both have precedent: the closest two studies of
+    // history tools each ran one.
+    //
+    // The time-pressure item matters more than it looks. Every request here is
+    // capped, so "the cap bound harder in one condition" is a live alternative
+    // explanation for any difference in what people got done. Asked this way it
+    // becomes a number that can be checked rather than a threat to be argued
+    // away in the discussion.
+    section('secChecks', 'About the requests themselves'),
     {
-      id: 'story',
-      type: 'textarea',
+      id: 'realistic',
+      type: 'likert',
       required: true,
+      min: 1,
+      max: 5,
+      shortLabel: 'Requests were realistic',
+      serves: 'manipulation check — task realism',
+      anchors: ['Strongly disagree', 'Strongly agree'],
       label:
-        'Without looking at the project, tell the story of it. What was built, in what order, what went wrong, and what was undone?',
-      placeholder: 'Start anywhere.',
+        'These requests were realistic. I can see this situation happening in real development.',
+    },
+    {
+      id: 'timePressure',
+      type: 'select',
+      required: true,
+      serves: 'manipulation check — did the cap bind',
+      label: 'How much time pressure did you feel?',
+      help: 'About the clock specifically, not about how hard the work was.',
+      options: [
+        { value: '1', label: 'Too much. I could not cope, regardless of difficulty' },
+        { value: '2', label: 'A fair amount. I could have done better with more time' },
+        { value: '3', label: 'Not much. I had to hurry a bit, but it was fine' },
+        { value: '4', label: 'Very little. I was quite comfortable with the time' },
+        { value: '5', label: 'None at all' },
+      ],
     },
   ],
 }
+
+// The five-question recall quiz and the three-minute "tell the story" summary
+// used to sit here, one of each per half. Both are gone.
+//
+// They cost twelve minutes a session and asked the participant to write, from
+// memory, with the project closed, immediately after a block they had usually
+// just run out of time on. What came back was short, hedged and graded by hand
+// against a rubric, and the two conditions differed less on it than the graders
+// differed from each other. The measure they were meant to support -- what a
+// person carries away from a history -- is still there in the HLAC block's
+// "what you came away with" items, which cost thirty seconds and no writing.
+//
+// Removing them also removes the only reason the answer key had to ship a
+// `quizAnswers` block, and the only step that had to be locked after
+// submission.
 
 // ---------------------------------------------------------------------------
 // Preference and close
 // ---------------------------------------------------------------------------
 
+// Five points, not three. The midpoint stays -- "these were the same here" is a
+// real answer and a block that cannot record it cannot describe a tradeoff --
+// but at twelve participants the distance between "leaned that way" and "chose
+// that one" is most of the result, and a three-option select throws it away.
+//
+// Symmetric on purpose. The comparable published instruments all name the new
+// tool in the stem ("I found Gitless to be easier to use than Git"), which
+// anchors on it and leaves disagreement ambiguous between "the other one won"
+// and "no difference". Neither setup is named first here.
+//
+// Analysed by recoding to -2..+2 in the sgt-positive direction, whichever
+// letter sgt was for that participant, and reporting per item with its own n.
+// The midpoint is a substantive category, never dropped as missing -- deciding
+// that after seeing the data would be a forking path.
 const prefOptions: Option[] = [
-  { value: 'A', label: 'Setup A' },
-  { value: 'B', label: 'Setup B' },
+  { value: 'A2', label: 'A, clearly' },
+  { value: 'A1', label: 'A, slightly' },
   { value: 'none', label: 'No real difference' },
+  { value: 'B1', label: 'B, slightly' },
+  { value: 'B2', label: 'B, clearly' },
 ]
+
+const pref = (id: string, label: string, serves?: string): Item => ({
+  id, type: 'select', label, options: prefOptions, serves, required: true,
+})
 
 export const PREFERENCE: Instrument = {
   id: 'preference',
-  version: 'preference-v1',
+  version: 'preference-v2',
   title: 'Comparing the two setups',
   perHalf: false,
-  estimateMin: 6,
+  estimateMin: 5,
+  // Rewritten shorter, and closed.
+  //
+  // The v1 block ran eighteen items, five of which were required free-text
+  // "Why?" boxes sitting under a forced choice. It was the last thing in a
+  // two-hour session, and it read like it: by the third box the answers were
+  // "same reason as above". The reasons are now one multi-select, which is the
+  // thing those boxes were being mined for anyway, and the one open box left is
+  // optional.
+  //
+  // The choices name jobs the participant actually did in the six requests they
+  // saw, in outcome terms, never in tool terms -- "taking one piece of work out
+  // without breaking the rest", not "reverting a feature". A question phrased as
+  // a mechanism only one setup has is not a comparison, it is a leading
+  // question with a forced answer.
+  //
+  // "No real difference" is offered on every one and stays a real answer. The
+  // paper's argument is about a tradeoff, and a block that cannot record "these
+  // were the same here" cannot describe one.
   intro:
-    'Now that you have used both, which one would you rather have had for each kind of job? There is no expected answer and "no real difference" is a real answer.',
+    'Now that you have used both, which one would you rather have had for each kind of job? There is no expected answer, and "no real difference" is a real answer — some of these jobs may genuinely not differ, and we would rather have that than a guess.',
   items: [
+    // Which letter was which, on the page, at the moment they are asked to
+    // compare them. Every comparable published study named the two tools
+    // outright; we cannot, because naming them tells the participant which one
+    // is ours. The cost of that choice is that "Setup A" is an arbitrary token
+    // they last saw an hour ago, and this line is what we pay instead.
+    //
+    // Note for the writeup: A and B are assigned by order, so letter and order
+    // are perfectly confounded within a participant and recency favours B.
+    // Counterbalancing fixes that across the group, not inside one person.
     {
-      id: 'archFind',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      label: 'Finding when and why something changed',
+      id: 'reminder',
+      type: 'statement',
+      required: false,
+      label: 'Setup A was the one you used first. Setup B was the one you used second.',
     },
-    { id: 'archFindWhy', type: 'textarea', required: true, label: 'Why?', placeholder: 'One or two sentences.' },
+    section('secJobs', 'The jobs you just did'),
+    pref('jobWhatChanged', 'Working out when a behavior changed, and what caused it', 'C1'),
+    pref('jobWhatCameWith', 'Working out what else came along with a change', 'C1'),
+    pref('jobRemove', 'Taking one piece of work out without breaking the rest', 'C2'),
+    pref('jobPutBack', 'Putting back part of what you took out, after the fact', 'C2'),
+    pref('jobIntended', 'Being confident the result was what you intended', 'C2'),
+    pref('jobRecover', 'Getting back to a good state when something went wrong', 'C2'),
+    // Verification only. Directing the assistant is near-identical across the two
+    // arms -- same assistant, same prompts -- so half of the old wording was
+    // noise, and the two halves are known to come apart: in the closest
+    // published comparison 23 of 24 people called one tool more helpful while
+    // only 10 of 24 trusted its output more. The HLAC block already splits them
+    // into two items, so collapsing them here disagreed with our own battery.
+    pref('jobAgent', 'Checking what the AI assistant had actually done', 'Q4'),
+
     {
-      id: 'archRemove',
-      type: 'select',
+      id: 'reasons',
+      type: 'multi',
       required: true,
-      options: prefOptions,
-      label: 'Taking a feature out without breaking things',
-    },
-    { id: 'archRemoveWhy', type: 'textarea', required: true, label: 'Why?' },
-    {
-      id: 'archRegression',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      label: 'Finding what caused a regression',
-    },
-    { id: 'archRegressionWhy', type: 'textarea', required: true, label: 'Why?' },
-    {
-      id: 'archAgent',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      label: 'Working with the AI assistant',
-    },
-    { id: 'archAgentWhy', type: 'textarea', required: true, label: 'Why?' },
-    {
-      id: 'overall',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      label: 'Overall, which setup would you rather work in?',
+      label: 'What made the difference, wherever you felt one?',
+      help: 'Tick anything that applies. If nothing does, tick the last one.',
+      // Replaces five free-text "Why?" boxes. The options are the reasons
+      // pilots actually gave, in their words, plus the two that would be
+      // evidence against us: knowing the commands already, and not trusting
+      // what the tool did. An option list with no losing options is a leading
+      // question wearing a checkbox.
+      options: [
+        { value: 'preview', label: 'I could see what a change would do before doing it' },
+        { value: 'names', label: 'What things were called matched what I was looking for' },
+        { value: 'blast', label: 'I could tell what else would be affected' },
+        { value: 'whole', label: 'I could see the whole piece of work, not just the lines' },
+        { value: 'undoEasy', label: 'Undoing was easy' },
+        { value: 'undoTrust', label: 'I trusted what the undo had done' },
+        { value: 'check', label: "I could check the assistant's work against what I asked" },
+        { value: 'familiar', label: 'I already knew the commands, so I was faster' },
+        { value: 'predictable', label: 'I could predict exactly what it would do' },
+        { value: 'escape', label: 'When it went wrong I knew how to get out' },
+        { value: 'none', label: 'Nothing much — they felt about the same' },
+      ],
     },
 
-    // Discriminant scenarios. Two of these are jobs the plain setup should win:
-    // a typo in a repo you will never see again, and a script you are deleting
-    // tomorrow, are not jobs that reward reading history carefully. A
-    // participant who picks the same setup for all five is evidence of demand
-    // characteristics and is reported as such; differentiated answers are the
-    // credible signal.
-    {
-      id: 'scenarioTypo',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      serves: 'discriminant — plain git expected',
-      label: 'Fixing a typo in a repository you have never seen and will not see again',
-    },
-    {
-      id: 'scenarioThrowaway',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      serves: 'discriminant — plain git expected',
-      label: 'A throwaway script you will delete tomorrow',
-    },
-    {
-      id: 'scenarioOwn',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      serves: 'discriminant — sgt expected',
-      label: 'A codebase you will own for the next year',
-    },
-    {
-      id: 'scenarioOnboard',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      serves: 'discriminant — sgt expected',
-      label: 'Getting a new teammate up to speed on a codebase',
-    },
-    {
-      id: 'scenarioHotfix',
-      type: 'select',
-      required: true,
-      options: prefOptions,
-      serves: 'discriminant — open',
-      label: 'A production hotfix under time pressure',
-    },
-    {
-      id: 'scenarioWhy',
-      type: 'textarea',
-      required: true,
-      label: 'Pick one of those five and say in a line why you chose what you chose.',
-    },
+    section('secWhere', 'Where each one would earn its keep'),
+    // Two hypotheticals, pointing opposite ways: a repository you will never see
+    // again is not a job that rewards reading history carefully, and a codebase
+    // you will own for a year is. A participant who picks the same setup for
+    // both, having also picked it for all seven jobs above, is evidence of
+    // demand characteristics and is reported as such. Differentiated answers
+    // are the credible signal.
+    //
+    // A third, "a production hotfix under time pressure", was cut. Its own note
+    // recorded that we had no prediction for it, and an item nobody can be wrong
+    // about cannot discriminate -- it was costing a question to collect a shrug.
+    //
+    // These are the weakest items in the block and are kept deliberately few:
+    // each asks a person to forecast from thirty-five minutes of use, which the
+    // seven items above do not.
+    pref(
+      'scenarioThrowaway',
+      'A repository you have never seen and will not see again',
+      'discriminant — plain git expected',
+    ),
+    pref(
+      'scenarioOwn',
+      'A codebase you will own for the next year',
+      'discriminant — sgt expected',
+    ),
+    section('secOverall', 'Overall'),
+    pref('overall', 'Which setup would you rather work in?'),
     {
       id: 'wouldUseA',
       type: 'likert',
@@ -715,11 +742,31 @@ export const PREFERENCE: Instrument = {
       label: 'I would want Setup B on my own projects.',
     },
     {
+      id: 'cost',
+      type: 'multi',
+      required: true,
+      label: 'What would put you off using the one you preferred?',
+      help: 'The honest answer here is worth more to us than the one above.',
+      // Every tool study collects reasons to adopt. This one collects the price,
+      // because the finding is a tradeoff and a tradeoff with no cost recorded
+      // reads as advocacy.
+      options: [
+        { value: 'learn', label: 'Learning it' },
+        { value: 'trust', label: 'Not being sure what it had done' },
+        { value: 'slow', label: 'Waiting for it' },
+        { value: 'wrong', label: 'It grouped or named things in ways I disagreed with' },
+        { value: 'reconstruct', label: 'Having to piece together what happened from the messages' },
+        { value: 'team', label: 'Everyone else uses the other one' },
+        { value: 'escape', label: 'Not knowing how to get out when it went wrong' },
+        { value: 'nothing', label: 'Nothing — I would use it tomorrow' },
+      ],
+    },
+    {
       id: 'missing',
       type: 'textarea',
       required: false,
       label: 'Anything you wanted to ask the project history and could not?',
-      help: 'Answer this from what you remember wanting, not from what either tool offered.',
+      help: 'Optional. Answer from what you remember wanting, not from what either setup offered.',
     },
   ],
 }
@@ -730,8 +777,6 @@ export const ALL_INSTRUMENTS: Instrument[] = [
   TLX,
   UMUX_LITE,
   HLAC,
-  QUIZ,
-  SUMMARY,
   PREFERENCE,
 ]
 

@@ -1,4 +1,4 @@
-// The six requests, in both projects.
+// The three requests, in both projects.
 //
 // Wording is the participant's handout, verbatim. The confplan text is the
 // coursecraft text with the nouns swapped per the isomorphism map in
@@ -9,8 +9,39 @@
 // Nothing here names a git or an sgt verb. The request states a goal in product
 // terms and the participant chooses the mechanism, which is the whole point:
 // naming the verb would tell them which tool we expect them to reach for.
+//
+// Three requests, not six, and twenty minutes a half rather than forty-five.
+// The cut set was: a second regression-localization request, a build-two-
+// alternatives-and-discard-one request, and a history-surgery request. Pilots
+// ran out of time on all three, which produces a floor rather than a
+// measurement: a request nobody finishes in either condition cannot separate
+// the conditions. What is left is one question about the past and one change to
+// the present with a correction on top of it, which is the smallest set that
+// still exercises both claims. Finding the thing to change is most of the work
+// in the second request, so search is measured twice and paid for once.
 
 import type { Project, RequestId } from '../lib/types'
+
+/**
+ * One closed question with a fixed option list.
+ *
+ * Closed, not free text. Pilots wrote two or three sentences that had to be
+ * graded against a rubric by hand, under time pressure, at the exact moment
+ * they had just spent their budget -- so the answers were short, hedged and
+ * hard to score, and the writing itself became part of what we were measuring.
+ * A fixed list measures whether they found the answer, which is the thing the
+ * request is about.
+ *
+ * There is no `correct` field here on purpose. This file is compiled into the
+ * bundle the participant's browser downloads, so anything in it is readable
+ * from devtools. The key lives in docs/study/answer-key.json, which the
+ * experimenter loads into the console by hand.
+ */
+export interface ChoiceQuestion {
+  id: string
+  prompt: string
+  options: Record<Project, string[]>
+}
 
 export interface RequestSpec {
   id: RequestId
@@ -21,10 +52,12 @@ export interface RequestSpec {
   /** Minutes. Requests on the same card share the first one's cap. */
   capMin: number | null
   optional: boolean
-  /** Asks for a written answer. */
-  wantsAnswer: boolean
-  /** Asks for a confidence rating. */
+  /** Closed questions to answer. Empty for a pure coding request. */
+  choices: ChoiceQuestion[]
+  /** Asks for a confidence rating. Only meaningful alongside `choices`. */
   wantsConfidence: boolean
+  /** A worked example of the kind of question being asked. Shown in a callout. */
+  tip?: Record<Project, string>
   /** What the request is testing. Never shown to the participant. */
   archetype: string
   serves: string
@@ -58,9 +91,8 @@ export const REQUESTS: RequestSpec[] = [
   {
     id: 'r1',
     card: 'c1',
-    capMin: 7,
+    capMin: 5,
     optional: false,
-    wantsAnswer: true,
     wantsConfidence: true,
     archetype: 'provenance in a tangled commit',
     serves: 'RQ1 / C1',
@@ -73,28 +105,102 @@ export const REQUESTS: RequestSpec[] = [
 
 > Course search lists section times in a format I don't recognise, like
 > \`[Mon 09:00-10:30, Wed 13:00-14:30]\`. Around the same time the app started
-> accepting lowercase day names, like \`mon 09:00-10:30\`. Were those one change
-> or two? What was the actual piece of work, when did it land, and did anything
-> else come along with it?
+> accepting lowercase day names, like \`mon 09:00-10:30\`.
 
-Write two or three sentences answering the ticket.`,
+Go and find out what actually happened, then answer the three questions below.`,
       confplan: `A committee support ticket says this:
 
 > Talk search lists session times in a format I don't recognise, like
 > \`[Mon 09:00-10:30, Tue 13:00-14:30]\`. Around the same time the app started
-> accepting lowercase day names, like \`mon 09:00-10:30\`. Were those one change
-> or two? What was the actual piece of work, when did it land, and did anything
-> else come along with it?
+> accepting lowercase day names, like \`mon 09:00-10:30\`.
 
-Write two or three sentences answering the ticket.`,
+Go and find out what actually happened, then answer the three questions below.`,
     },
+    tip: {
+      coursecraft: `A ticket like this is really three questions. Someone reports that
+something looks different. You want to know **which piece of work** changed it,
+**when** that work landed, and **what else** the same piece of work touched on
+its way past — because the thing that broke is often not the thing the change
+was for.
+
+You do not have to answer in that order, and there is no expected route. Read
+the code, read the history, ask your assistant, or all three.`,
+      confplan: `A ticket like this is really three questions. Someone reports that
+something looks different. You want to know **which piece of work** changed it,
+**when** that work landed, and **what else** the same piece of work touched on
+its way past — because the thing that broke is often not the thing the change
+was for.
+
+You do not have to answer in that order, and there is no expected route. Read
+the code, read the history, ask your assistant, or all three.`,
+    },
+    choices: [
+      {
+        id: 'q1',
+        prompt: 'Were the two things in the ticket one piece of work, or two?',
+        options: {
+          coursecraft: [
+            'One piece of work. Both arrived together.',
+            'Two, days apart.',
+            'Two, on the same day.',
+            'I could not tell.',
+          ],
+          confplan: [
+            'One piece of work. Both arrived together.',
+            'Two, days apart.',
+            'Two, on the same day.',
+            'I could not tell.',
+          ],
+        },
+      },
+      {
+        id: 'q2',
+        prompt: 'When did it land?',
+        options: {
+          coursecraft: [
+            'The week of 29 June',
+            'The week of 6 July',
+            'The week of 20 July',
+            'The week of 3 August',
+            'I could not tell.',
+          ],
+          confplan: [
+            'The week of 29 June',
+            'The week of 6 July',
+            'The week of 20 July',
+            'The week of 3 August',
+            'I could not tell.',
+          ],
+        },
+      },
+      {
+        id: 'q3',
+        prompt: 'Did anything else come along with it that the change was not advertised as doing?',
+        options: {
+          coursecraft: [
+            'No, just the search command and its tests.',
+            'Yes — a change to how day names are read when a slot is parsed.',
+            'Yes — a change to how capacity limits are enforced.',
+            'Yes — a change to the export format.',
+            'I could not tell.',
+          ],
+          confplan: [
+            'No, just the search command and its tests.',
+            'Yes — a change to how day names are read when a slot is parsed.',
+            'Yes — a change to how capacity limits are enforced.',
+            'Yes — a change to the export format.',
+            'I could not tell.',
+          ],
+        },
+      },
+    ],
   },
   {
     id: 'r2',
     card: 'c2',
     capMin: 15,
     optional: false,
-    wantsAnswer: false,
+    choices: [],
     wantsConfidence: false,
     archetype: 'entangled removal',
     serves: 'RQ2 / C2',
@@ -126,13 +232,21 @@ and the room audit. Adjacent sessions are legal and must stay legal.
 The test suite is your safety net. When you think you are done, \`pytest -q\`
 should pass, except for the waitlist's own tests, which may be gone.`,
     },
+    tip: {
+      coursecraft: `Most of this request is finding the right thing, not removing it.
+The waitlist was not built in one go and other work landed on top of it, so the
+first job is working out how far it reaches.`,
+      confplan: `Most of this request is finding the right thing, not removing it.
+The waitlist was not built in one go and other work landed on top of it, so the
+first job is working out how far it reaches.`,
+    },
   },
   {
     id: 'r3',
     card: 'c2',
     capMin: null,
     optional: false,
-    wantsAnswer: false,
+    choices: [],
     wantsConfidence: false,
     archetype: 'correction under time pressure',
     serves: 'RQ2 / C2',
@@ -147,103 +261,6 @@ happening when a seat frees up.`,
       confplan: `One correction to the last request. Attendees must still be able to unregister
 from a session themselves. Bring the unregister command back, without any
 waitlist promotion happening when a seat frees up.`,
-    },
-  },
-  {
-    id: 'r4',
-    card: 'c3',
-    capMin: 10,
-    optional: false,
-    wantsAnswer: true,
-    wantsConfidence: true,
-    archetype: 'regression localization and repair',
-    serves: 'RQ1 + RQ2 / C1 + C2',
-    title: {
-      coursecraft: 'Back to back enrollment broke',
-      confplan: 'Back to back registration broke',
-    },
-    body: {
-      coursecraft: `Advisers report that since late July students can no longer enroll in back to
-back sections. If a student is in a section that runs 09:00 to 10:30, the app
-now refuses to enroll them in one that runs 10:30 to 12:00, and calls it a time
-conflict. It used to work, and there was even a fix that specifically made back
-to back sections legal.
-
-Find what changed it and restore the old behavior. Keep whatever else that
-change was doing. In particular the room audit has to keep working.`,
-      confplan: `Track chairs report that since late July attendees can no longer register for
-back to back sessions. If an attendee is in a session that runs 09:00 to 10:30,
-the app now refuses to register them for one that runs 10:30 to 12:00, and calls
-it a clash. It used to work, and there was even a fix that specifically made
-adjacent sessions legal.
-
-Find what changed it and restore the old behavior. Keep whatever else that
-change was doing. In particular the room audit has to keep working.`,
-    },
-  },
-  {
-    id: 'r5',
-    card: 'c4',
-    capMin: 12,
-    optional: true,
-    wantsAnswer: true,
-    wantsConfidence: false,
-    archetype: 'parallel alternatives, discard one',
-    serves: 'RQ4',
-    title: {
-      coursecraft: 'Two ways to swap',
-      confplan: 'Two ways to swap',
-    },
-    body: {
-      coursecraft: `Students want to swap between two sections of the same course in one step. There
-are two reasonable ways to build it.
-
-- Do the whole swap at once, and if the new section refuses the student, put
-  them back in the old one.
-- Drop the student first and hold their seat for a moment, then enroll them.
-
-Build both with your assistant, as two separate attempts. Then keep whichever
-one you prefer and get rid of the other cleanly. Tell us why you kept the one
-you kept.`,
-      confplan: `Attendees want to swap between two sessions of the same talk in one step. There
-are two reasonable ways to build it.
-
-- Do the whole swap at once, and if the new session refuses the attendee, put
-  them back in the old one.
-- Unregister the attendee first and hold their seat for a moment, then register
-  them.
-
-Build both with your assistant, as two separate attempts. Then keep whichever
-one you prefer and get rid of the other cleanly. Tell us why you kept the one
-you kept.`,
-    },
-  },
-  {
-    id: 'r6',
-    card: 'c5',
-    capMin: null,
-    optional: true,
-    wantsAnswer: false,
-    wantsConfidence: false,
-    archetype: 'history surgery, code unchanged',
-    serves: 'RQ2',
-    title: {
-      coursecraft: 'Clean up that tangled change',
-      confplan: 'Clean up that tangled change',
-    },
-    body: {
-      // Asks for the separation only. It used to ask for "a clear name" too,
-      // and that half was scored -- but no sgt verb renames a checkpoint and
-      // `feature regroup move --to` requires an already-existing leaf feature
-      // (findings 17 and 18), so one condition could not earn the point at all.
-      // A rubric line that one arm cannot reach measures the tool's gap twice:
-      // once in the request that exposes it, and again as a lost point.
-      coursecraft: `The change you looked at in request 1 bothers you. Two unrelated pieces of work
-landed as one unit. Separate them in the history so each one stands on its own.
-Don't change any of the current code.`,
-      confplan: `The change you looked at in request 1 bothers you. Two unrelated pieces of work
-landed as one unit. Separate them in the history so each one stands on its own.
-Don't change any of the current code.`,
     },
   },
 ]
@@ -283,4 +300,4 @@ export function taskCards(project: Project): TaskCard[] {
   })
 }
 
-export const BLOCK_CAP_MIN = 45
+export const BLOCK_CAP_MIN = 20

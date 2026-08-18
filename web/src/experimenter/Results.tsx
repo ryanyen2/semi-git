@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import { orderBy } from 'firebase/firestore'
-import { fetchParticipantBundle, isPilot, useLiveCollection } from '../lib/db'
-import type { Condition, Participant, RequestId } from '../lib/types'
-import { buildDataset, conditionValue, halfOf, type Dataset } from '../analysis/pipeline'
+import { fetchParticipantBundle, isPilot, useLiveCollection, useLiveDoc } from '../lib/db'
+import type { Condition, GroundTruth, Participant, RequestId } from '../lib/types'
+import { buildDataset, choiceKeyFrom, conditionValue, halfOf, type Dataset } from '../analysis/pipeline'
 import { compareNgrams, conditionTotals, strips, timeProfile } from '../analysis/ngram'
 import { demoDataset } from '../analysis/demo'
 import { HLAC } from '../study/instruments'
@@ -20,6 +20,10 @@ export function Results() {
     ['participants'],
     orderBy('ordinal'),
   )
+  // Request 1's questions are closed, so the right answer is a lookup rather
+  // than a judgement -- but the key lives in Firestore and not in the bundle,
+  // so it has to be fetched here before anything can be scored against it.
+  const { data: truth } = useLiveDoc<GroundTruth>(['study', 'groundTruth'])
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [demo, setDemo] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -52,7 +56,7 @@ export function Results() {
           }
         }),
       )
-      setDataset(buildDataset(bundles.filter((b) => b.participant)))
+      setDataset(buildDataset(bundles.filter((b) => b.participant), choiceKeyFrom(truth)))
     } finally {
       setLoading(false)
     }
@@ -103,6 +107,15 @@ export function Results() {
           Pilot records are in this computation. Everything below — every figure, every export — is
           a rehearsal of the analysis, not a result. Switch this off and recompute before anything
           here goes near the paper.
+        </Callout>
+      )}
+
+      {!demo && !truth && (
+        <Callout kind="warn" title="No answer key loaded">
+          Request 1 is scored from its three closed questions against{' '}
+          <code>docs/study/answer-key.json</code>. Without it those questions stay unscored — which
+          looks like an empty panel, not like an error. Load it under <strong>Setup</strong> and
+          recompute.
         </Callout>
       )}
 
@@ -163,8 +176,8 @@ function Headline({ dataset }: { dataset: Dataset }) {
     }
 
     return [
-      measure('Task score, all scored requests', (p, c) =>
-        conditionValue(p, c, (m) => m.score, 'sum', ['r1', 'r2', 'r3', 'r4']),
+      measure('Task score, r2 and r3', (p, c) =>
+        conditionValue(p, c, (m) => m.score, 'sum', ['r2', 'r3']),
       ),
       measure(
         'Collateral damage',
@@ -172,8 +185,20 @@ function Headline({ dataset }: { dataset: Dataset }) {
         'tests',
         false,
       ),
-      measure('Quiz, out of 5', (p, c) => halfOf(p, c)?.quizScore ?? NaN),
-      measure('Summary coverage, of 22', (p, c) => halfOf(p, c)?.summaryCoverage ?? NaN),
+      measure('Request 1, of 3', (p, c) =>
+        conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
+      ),
+      // Signed, not absolute: the interesting failure is being sure of a wrong
+      // answer, and an absolute error would score that the same as hedging a
+      // right one. Positive is overconfident, so lower is better here -- but a
+      // large negative number is not a success either, and the sign has to be
+      // read rather than taken from the badge.
+      measure(
+        'Overconfidence on request 1',
+        (p, c) => conditionValue(p, c, (m) => m.calibration, 'mean', ['r1']),
+        '',
+        false,
+      ),
       measure('NASA-TLX', (p, c) => halfOf(p, c)?.tlx ?? NaN, '', false),
       measure('UMUX-Lite', (p, c) => halfOf(p, c)?.umux ?? NaN),
       measure('Verification ratio', (p, c) =>
@@ -356,9 +381,16 @@ function Figure2({ dataset }: { dataset: Dataset }) {
       conditionValue(p, c, (m) => m.score, 'sum', rs)
 
     return [
-      build('r1', 'R1 provenance', 'find when, why, and what it belonged to', scoreOf(['r1']), true, [0, 2], 'rubric points'),
+      build(
+        'r1',
+        'R1 provenance',
+        'find when, why, and what it belonged to',
+        (p, c) => conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
+        true,
+        [0, 3],
+        'questions right',
+      ),
       build('r23', 'R2+R3 removal', 'take the waitlist out, keep drops', scoreOf(['r2', 'r3']), true, [0, 4], 'rubric points'),
-      build('r4', 'R4 regression', 'localize and repair', scoreOf(['r4']), true, [0, 2], 'rubric points'),
       build(
         'damage',
         'Collateral damage',
@@ -376,7 +408,7 @@ function Figure2({ dataset }: { dataset: Dataset }) {
       id="fig2-outcomes"
       title="Figure 2 · What people managed to do"
       svgRef={ref}
-      caption="Every participant appears twice, joined by a line. Thick bars are condition means. Below each panel, the paired mean difference with its bootstrap distribution and 95% studentized interval on its own axis, anchored at zero. Collateral damage is plotted with the axis inverted, so up is better in all four panels."
+      caption="Every participant appears twice, joined by a line. Thick bars are condition means. Below each panel, the paired mean difference with its bootstrap distribution and 95% studentized interval on its own axis, anchored at zero. Collateral damage is plotted with the axis inverted, so up is better in all three panels."
     >
       <PairedEstimation ref={ref} panels={panels} order={ORDER} />
     </FigureFrame>
@@ -480,7 +512,9 @@ function Exports({ dataset }: { dataset: Dataset }) {
                     order: p.firstCondition === c ? 'first' : 'second',
                     project: h?.project ?? '',
                     gitExpertise: p.gitExpertise ?? '',
-                    score: conditionValue(p, c, (m) => m.score, 'sum', ['r1', 'r2', 'r3', 'r4']),
+                    score: conditionValue(p, c, (m) => m.score, 'sum', ['r2', 'r3']),
+                    r1Correct: conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
+                    r1Calibration: conditionValue(p, c, (m) => m.calibration, 'mean', ['r1']),
                     collateralDamage: conditionValue(p, c, (m) => m.collateralDamage, 'sum'),
                     activeMs: conditionValue(p, c, (m) => m.activeMs, 'sum'),
                     prompts: conditionValue(p, c, (m) => m.prompts, 'sum'),
@@ -489,10 +523,6 @@ function Exports({ dataset }: { dataset: Dataset }) {
                     wrongTurns: conditionValue(p, c, (m) => m.wrongTurns, 'sum'),
                     tlx: h?.tlx ?? '',
                     umux: h?.umux ?? '',
-                    quiz: h?.quizScore ?? '',
-                    summaryCoverage: h?.summaryCoverage ?? '',
-                    summaryCausal: h?.summaryCausal ?? '',
-                    summaryMisconceptions: h?.summaryMisconceptions ?? '',
                     ...Object.fromEntries(
                       Object.entries(h?.hlac ?? {}).map(([k, v]) => [`hlac_${k}`, v]),
                     ),
@@ -523,6 +553,9 @@ function Exports({ dataset }: { dataset: Dataset }) {
                   confidence: m.confidence ?? '',
                   score: m.score ?? '',
                   outOf: m.outOf ?? '',
+                  choiceScore: m.choiceScore ?? '',
+                  choiceOutOf: m.choiceOutOf ?? '',
+                  calibration: m.calibration ?? '',
                   collateralDamage: m.collateralDamage ?? '',
                   prompts: m.prompts,
                   meanPromptChars: Math.round(m.meanPromptChars),

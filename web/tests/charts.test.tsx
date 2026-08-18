@@ -18,7 +18,7 @@ import { HLAC } from '../src/study/instruments'
 import { LikertDiverging, type LikertResponse } from '../src/charts/LikertDiverging'
 import { PairedEstimation, type PairedPanel } from '../src/charts/PairedEstimation'
 import { ProcessSignature } from '../src/charts/ProcessSignature'
-import type { Condition, RequestId } from '../src/lib/types'
+import type { Condition } from '../src/lib/types'
 
 const dataset = demoDataset()
 const ORDER: [Condition, Condition] = ['git', 'sgt']
@@ -101,29 +101,46 @@ describe('Figure 1, the perception battery', () => {
 })
 
 describe('Figure 2, the outcomes', () => {
-  const scoreOf = (rs: RequestId[]) => (p: (typeof dataset.participants)[number], c: Condition) =>
-    conditionValue(p, c, (m) => m.score, 'sum', rs)
+  // Each panel carries the measure it is drawn from, rather than the figure
+  // picking one by position. Panels come and go as the requests change, and an
+  // index-based picker goes on rendering a plausible figure out of the wrong
+  // column when they do.
+  type Picker = (p: (typeof dataset.participants)[number], c: Condition) => number
 
-  const panels: PairedPanel[] = [
-    { id: 'r1', title: 'R1 provenance', higherIsBetter: true, domain: [0, 2], values: [] },
-    { id: 'r23', title: 'R2+R3 removal', higherIsBetter: true, domain: [0, 4], values: [] },
-    { id: 'r4', title: 'R4 regression', higherIsBetter: true, domain: [0, 2], values: [] },
-    { id: 'damage', title: 'Collateral damage', higherIsBetter: false, values: [] },
-  ].map((panel, i) => ({
+  const panels: PairedPanel[] = (
+    [
+      // R1's three questions are closed, so they are scored from the answer key
+      // rather than by a person: it has a count out of three and no rubric.
+      {
+        id: 'r1',
+        title: 'R1 provenance',
+        higherIsBetter: true,
+        domain: [0, 3],
+        pick: (p, c) => conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
+      },
+      {
+        id: 'r23',
+        title: 'R2+R3 removal',
+        higherIsBetter: true,
+        domain: [0, 4],
+        pick: (p, c) => conditionValue(p, c, (m) => m.score, 'sum', ['r2', 'r3']),
+      },
+      {
+        id: 'damage',
+        title: 'Collateral damage',
+        higherIsBetter: false,
+        pick: (p, c) => conditionValue(p, c, (m) => m.collateralDamage, 'sum'),
+      },
+    ] as Array<Omit<PairedPanel, 'values'> & { pick: Picker }>
+  ).map(({ pick, ...panel }) => ({
     ...panel,
     values: dataset.participants.map((p) => ({
       pid: p.pid,
       label: p.label,
-      git:
-        i === 3
-          ? conditionValue(p, 'git', (m) => m.collateralDamage, 'sum')
-          : scoreOf(i === 0 ? ['r1'] : i === 1 ? ['r2', 'r3'] : ['r4'])(p, 'git'),
-      sgt:
-        i === 3
-          ? conditionValue(p, 'sgt', (m) => m.collateralDamage, 'sum')
-          : scoreOf(i === 0 ? ['r1'] : i === 1 ? ['r2', 'r3'] : ['r4'])(p, 'sgt'),
+      git: pick(p, 'git'),
+      sgt: pick(p, 'sgt'),
     })),
-  })) as PairedPanel[]
+  }))
 
   it('renders a publishable SVG', () => {
     const svg = renderToStaticMarkup(<PairedEstimation ref={createRef()} panels={panels} order={ORDER} />)

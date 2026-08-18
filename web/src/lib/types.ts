@@ -108,8 +108,12 @@ export interface RequestDoc {
   pauses: PauseInterval[]
   capMs: number
   hitCap: boolean
-  /** Free-text answer where the request asks for one (r1, r4, r5). */
-  answer: string
+  /**
+   * questionId -> index of the option picked, where the request asks closed
+   * questions. Indices rather than the option text, so re-wording an option
+   * between pilots does not orphan the answers already collected.
+   */
+  choices?: Record<string, number>
   /** 0-100. Asked wherever there is a right answer. */
   confidence: number | null
   /** Participant-declared outcome. Scoring is the facilitator's, not this. */
@@ -184,27 +188,6 @@ export interface ScoringDoc {
   scoredBy: string
   scoredAt: number
   note: string
-}
-
-/** Summary-task grading. Id is `summary-h${half}`. */
-export interface SummaryScoringDoc {
-  half: Half
-  /** Episode ids the participant covered. */
-  covered: string[]
-  causalLinks: number
-  misconceptions: number
-  coderId: string
-  scoredAt: number
-  note: string
-}
-
-/** Quiz grading. Id is `quiz-h${half}`. */
-export interface QuizScoringDoc {
-  half: Half
-  /** itemId -> correct. */
-  correct: Record<string, boolean>
-  coderId: string
-  scoredAt: number
 }
 
 export interface InterviewNote {

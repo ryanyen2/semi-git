@@ -8,12 +8,12 @@
 
 import type { Condition } from '../lib/types'
 import { CATEGORY_ORDER, type Category } from '../study/taxonomy'
-import { mulberry32 } from '../lib/stats'
+import { TLX_SUBSCALES, mulberry32 } from '../lib/stats'
 import type { Dataset, HalfSummary, ParticipantAnalysis, RequestMetrics } from './pipeline'
 import { blocksForGroup, groupForOrdinal } from '../study/flow'
 import { HLAC } from '../study/instruments'
 
-const REQUEST_IDS = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'] as const
+const REQUEST_IDS = ['r1', 'r2', 'r3'] as const
 
 /** Rough transition weights, different enough between conditions to be visible. */
 const CHAINS: Record<Condition, Partial<Record<Category, Partial<Record<Category, number>>>>> = {
@@ -95,14 +95,11 @@ export function demoDataset(seed = 4242): Dataset {
       const lift = sgt ? 0.75 : 0
 
       for (const rid of REQUEST_IDS) {
-        const optional = rid === 'r5' || rid === 'r6'
-        if (optional && rand() > (sgt ? 0.62 : 0.45)) continue
-
         const n = Math.round(clamp(46 + gauss() * 14 + (sgt ? -6 : 4), 14, 110))
         const seq = walk(rand, block.condition, n)
         const c = counts(seq)
         const activeMs = clamp(
-          (rid === 'r2' ? 13 : rid === 'r4' ? 8 : 6) * 60_000 + gauss() * 90_000 - lift * 40_000,
+          (rid === 'r2' ? 13 : rid === 'r3' ? 5 : 4) * 60_000 + gauss() * 90_000 - lift * 40_000,
           60_000,
           20 * 60_000,
         )
@@ -124,12 +121,18 @@ export function demoDataset(seed = 4242): Dataset {
           })
         })
 
-        const base = rid === 'r1' ? 1.1 : rid === 'r4' ? 0.9 : 1.0
+        const base = rid === 'r1' ? 1.1 : 1.0
         const score = clamp(Math.round(base + ability + lift + gauss() * 0.55), 0, 2)
         const damage = Math.max(
           0,
           Math.round((sgt ? 0.6 : 1.9) - ability * 0.4 + gauss() * (sgt ? 0.7 : 1.4)),
         )
+        // r1 is the one request with closed questions, so it carries a count
+        // out of three and no facilitator score. Same latent ability behind
+        // both, so a person who does well on one tends to do well on the other.
+        const closed = rid === 'r1'
+        const choiceScore = closed ? clamp(Math.round(score * 1.4 + gauss() * 0.5), 0, 3) : null
+        const confidence = clamp(Math.round(55 + score * 12 + gauss() * 14), 0, 100)
 
         requests.push({
           requestId: rid,
@@ -139,7 +142,7 @@ export function demoDataset(seed = 4242): Dataset {
           activeMs,
           hitCap: rand() < (sgt ? 0.18 : 0.3),
           selfReport: score >= 2 ? 'done' : score >= 1 ? 'partial' : 'gave-up',
-          confidence: clamp(Math.round(55 + score * 12 + gauss() * 14), 0, 100),
+          confidence,
           counts: c,
           surfaces: {
             terminal: Math.round(n * 0.45),
@@ -165,9 +168,12 @@ export function demoDataset(seed = 4242): Dataset {
             900_000,
           ),
           wrongTurns: Math.max(0, Math.round((sgt ? 0.4 : 1.2) + gauss() * 0.8)),
-          score,
-          outOf: 2,
-          collateralDamage: rid === 'r2' || rid === 'r4' ? damage : null,
+          score: closed ? null : score,
+          outOf: closed ? null : 2,
+          collateralDamage: rid === 'r2' || rid === 'r3' ? damage : null,
+          choiceScore,
+          choiceOutOf: closed ? 3 : null,
+          calibration: choiceScore == null ? null : confidence / 100 - choiceScore / 3,
         })
       }
 
@@ -177,18 +183,23 @@ export function demoDataset(seed = 4242): Dataset {
         hlac[item.id] = item.reverse ? 8 - better : better
       }
 
+      // Subscales scattered around the overall figure, all already in workload
+      // direction, so a demo dataset can never be the thing that reintroduces a
+      // reversed Performance into a figure.
+      const tlx = clamp(58 - lift * 11 - ability * 3 + gauss() * 9, 5, 100)
+      const tlxSubscales: Record<string, number> = {}
+      for (const k of TLX_SUBSCALES) {
+        tlxSubscales[k] = clamp(Math.round((tlx + gauss() * 12) / 5) * 5, 0, 100)
+      }
+
       halves.push({
         half: block.half,
         condition: block.condition,
         project: block.project,
-        tlx: clamp(58 - lift * 11 - ability * 3 + gauss() * 9, 5, 100),
+        tlx,
+        tlxSubscales,
         umux: clamp(64 + (sgt ? 10 : 0) + ability * 4 + gauss() * 9, 10, 100),
         hlac,
-        quizScore: clamp(Math.round(2.6 + (sgt ? 1.0 : 0) + ability + gauss() * 0.8), 0, 5),
-        quizConfidence: clamp(Math.round(58 + (sgt ? 8 : 0) + gauss() * 12), 0, 100),
-        summaryCoverage: clamp(Math.round(7 + (sgt ? 3.2 : 0) + ability * 1.5 + gauss() * 2), 0, 22),
-        summaryCausal: Math.max(0, Math.round(1.5 + (sgt ? 1.6 : 0) + gauss())),
-        summaryMisconceptions: Math.max(0, Math.round(1.6 - (sgt ? 0.9 : 0) + gauss() * 0.8)),
       })
     }
 

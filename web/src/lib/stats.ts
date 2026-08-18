@@ -262,16 +262,42 @@ export function weightedLogOdds(
 // Instrument scoring
 // ---------------------------------------------------------------------------
 
-/** Raw TLX: reverse Performance, then average the six subscales. */
-export function tlxScore(values: Record<string, unknown>): number | null {
-  const keys = ['mental', 'physical', 'temporal', 'performance', 'effort', 'frustration']
-  const nums: number[] = []
-  for (const k of keys) {
+export const TLX_SUBSCALES = [
+  'mental', 'physical', 'temporal', 'performance', 'effort', 'frustration',
+] as const
+
+/**
+ * The six subscales in workload direction, 0-100, or null if any is unanswered.
+ *
+ * This is the ONLY place Performance is reversed, and everything that reports a
+ * subscale must come through here rather than reading the stored response.
+ *
+ * The stored response for Performance runs Failure(0) to Perfect(100), because
+ * that is the direction its anchors are read in and presenting it the other way
+ * is what produces the instrument's best-documented failure: a participant who
+ * did well marking the high end and contributing maximum workload. Collecting
+ * it reversed is explicitly allowed, on the condition that it is turned back
+ * "before analysis or reporting" -- and reporting was the half we had not done.
+ * `tlxScore` reversed it inside the average, so the aggregate was right while
+ * every per-subscale number in the store still ran the other way from the other
+ * five. Nothing had read them yet. The first per-subscale figure anyone drew
+ * would have shown the arm that performed best carrying the highest performance
+ * workload, and it would have looked plausible.
+ */
+export function tlxSubscales(values: Record<string, unknown>): Record<string, number> | null {
+  const out: Record<string, number> = {}
+  for (const k of TLX_SUBSCALES) {
     const v = values[k]
     if (typeof v !== 'number') return null
-    nums.push(k === 'performance' ? 100 - v : v)
+    out[k] = k === 'performance' ? 100 - v : v
   }
-  return mean(nums)
+  return out
+}
+
+/** Raw (unweighted) TLX: the mean of the six subscales in workload direction. */
+export function tlxScore(values: Record<string, unknown>): number | null {
+  const subscales = tlxSubscales(values)
+  return subscales === null ? null : mean(Object.values(subscales))
 }
 
 /**

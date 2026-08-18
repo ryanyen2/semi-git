@@ -202,6 +202,22 @@ blockquote p:last-child {
   align-items: start;
 }
 
+/* The content column must not be sized by its widest child.
+
+   `1fr` means `minmax(auto, 1fr)`, and that `auto` is the item's min-content
+   width -- so one unbreakable thing inside a step (a `<code>` span like
+   `[Mon 09:00-10:30, Wed 13:00-14:30]` in a request, a markdown table) pushes
+   the track past its share and the whole grid overflows. The visible effect is
+   backwards from the cause: the stretched steps look normal because they are
+   most of them, and the one step with nothing wide in it -- "This setup", two
+   Likert rows -- looks like it shrank.
+
+   With `min-width: 0` every step is the same width, and wide content scrolls
+   inside its own box (below) instead of moving the furniture. */
+.layout > main {
+  min-width: 0;
+}
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
@@ -765,17 +781,105 @@ input[type='range'] {
   text-align: right;
 }
 
-.ticks {
+/* NASA-TLX: twenty-one tick marks between two text anchors, and no number.
+   The anchors sit on the line's own row rather than under it, so the eye
+   travels left-to-right once instead of down and back. */
+
+.tlx {
   display: flex;
-  justify-content: space-between;
-  padding: 0 2px;
-  margin-top: -0.4rem;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.6rem;
 }
 
-.ticks span {
-  width: 1px;
-  height: 5px;
-  background: var(--line);
+.tlx-anchor {
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Performance only. Its ends run Failure to Perfect where the other five run
+   low to high, and a participant reading five scales on autopilot marks the
+   sixth the way they marked the rest -- which inverts it and quietly cancels
+   out against the others in the average. Making these two words look unlike
+   the other ten is the cheapest guard there is against the one error this
+   instrument is most often reported with. */
+.tlx-anchor.flagged {
+  color: var(--bad);
+  font-weight: 640;
+}
+
+.tlx-track {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.tlx-tick {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 2.6rem;
+  cursor: pointer;
+  border-right: 1px solid var(--line-2);
+  transition: background 0.08s ease;
+}
+
+.tlx-tick:last-child {
+  border-right: 0;
+}
+
+/* Landmarks at 0, 50 and 100: full-height dividers where the rest are faint,
+   so the middle of the scale is findable at a glance. Deliberately unlabelled
+   -- a labelled midpoint reads as a neutral option, which this scale does not
+   have. */
+.tlx-tick.landmark {
+  border-right-color: var(--muted);
+}
+
+.tlx-tick.landmark:first-child {
+  border-left: 1px solid var(--muted);
+}
+
+.tlx-tick:hover {
+  background: var(--good-soft);
+}
+
+.tlx-tick.on {
+  background: var(--good);
+}
+
+/* The radio itself is the accessible control; the bar is what you see. Kept in
+   the flow with zero size rather than `display: none`, so it stays focusable
+   and reachable by keyboard. */
+.tlx-tick input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.tlx-track:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+@media (max-width: 640px) {
+  .tlx {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .tlx-track {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .tlx-anchor:last-child {
+    margin-left: auto;
+  }
 }
 
 /* ---------- progress rail ---------- */
@@ -1087,11 +1191,20 @@ input[type='range'] {
 .markdown li {
   margin-bottom: 0.35rem;
 }
+/* Wide markdown content scrolls in its own box rather than widening the page.
+   `.layout > main` now refuses to be stretched, so without these a wide table
+   or a long inline-code span would simply overflow the card instead. Tables get
+   the same `.scroll-x` wrapper the questionnaire grid already uses, applied in
+   Markdown.tsx. */
 .markdown table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
   margin-bottom: 1rem;
+}
+
+.markdown code {
+  overflow-wrap: anywhere;
 }
 .markdown th,
 .markdown td {

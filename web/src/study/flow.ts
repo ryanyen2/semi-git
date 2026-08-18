@@ -61,9 +61,8 @@ export type StepKind =
   | 'form'
   | 'setup'
   | 'tutorial'
+  | 'brief'
   | 'tasks'
-  | 'quiz'
-  | 'summary'
   | 'preference'
   | 'handover'
   | 'done'
@@ -95,21 +94,19 @@ export const STEPS: Step[] = [
 
   { id: 'setup-1', phase: 'First half', title: 'Set up your machine', kind: 'setup', half: 1, estimateMin: 10 },
   { id: 'tutorial-1', phase: 'First half', title: 'Practice', kind: 'tutorial', half: 1, estimateMin: 10 },
-  { id: 'tasks-1', phase: 'First half', title: 'The requests', kind: 'tasks', half: 1, estimateMin: 45 },
+  { id: 'brief-1', phase: 'First half', title: 'The project', kind: 'brief', half: 1, estimateMin: 5 },
+  { id: 'tasks-1', phase: 'First half', title: 'The requests', kind: 'tasks', half: 1, estimateMin: 20 },
   { id: 'tlx-1', phase: 'First half', title: 'How that felt', kind: 'form', half: 1, instrumentId: 'tlx', estimateMin: 2 },
   { id: 'umux-1', phase: 'First half', title: 'This setup', kind: 'form', half: 1, instrumentId: 'umux', estimateMin: 1 },
   { id: 'hlac-1', phase: 'First half', title: 'The history', kind: 'form', half: 1, instrumentId: 'hlac', estimateMin: 3 },
-  { id: 'quiz-1', phase: 'First half', title: 'Five questions', kind: 'quiz', half: 1, instrumentId: 'quiz', estimateMin: 3 },
-  { id: 'summary-1', phase: 'First half', title: 'Tell the story', kind: 'summary', half: 1, instrumentId: 'summary', estimateMin: 3 },
 
   { id: 'setup-2', phase: 'Second half', title: 'Set up the second project', kind: 'setup', half: 2, estimateMin: 5 },
   { id: 'tutorial-2', phase: 'Second half', title: 'Practice', kind: 'tutorial', half: 2, estimateMin: 10 },
-  { id: 'tasks-2', phase: 'Second half', title: 'The requests', kind: 'tasks', half: 2, estimateMin: 45 },
+  { id: 'brief-2', phase: 'Second half', title: 'The project', kind: 'brief', half: 2, estimateMin: 5 },
+  { id: 'tasks-2', phase: 'Second half', title: 'The requests', kind: 'tasks', half: 2, estimateMin: 20 },
   { id: 'tlx-2', phase: 'Second half', title: 'How that felt', kind: 'form', half: 2, instrumentId: 'tlx', estimateMin: 2 },
   { id: 'umux-2', phase: 'Second half', title: 'This setup', kind: 'form', half: 2, instrumentId: 'umux', estimateMin: 1 },
   { id: 'hlac-2', phase: 'Second half', title: 'The history', kind: 'form', half: 2, instrumentId: 'hlac', estimateMin: 3 },
-  { id: 'quiz-2', phase: 'Second half', title: 'Five questions', kind: 'quiz', half: 2, instrumentId: 'quiz', estimateMin: 3 },
-  { id: 'summary-2', phase: 'Second half', title: 'Tell the story', kind: 'summary', half: 2, instrumentId: 'summary', estimateMin: 3 },
 
   {
     id: 'preference',
@@ -118,7 +115,7 @@ export const STEPS: Step[] = [
     kind: 'preference',
     half: null,
     instrumentId: 'preference',
-    estimateMin: 6,
+    estimateMin: 5,
   },
   { id: 'handover', phase: 'Finishing', title: 'Hand over your data', kind: 'handover', half: null, estimateMin: 3 },
   { id: 'done', phase: 'Finishing', title: 'Done', kind: 'done', half: null },
