@@ -185,6 +185,11 @@ export interface EmitView {
   // U3 additions -- the selectable dependent frontier and the rolled-up affected features.
   frontier?: FrontierRow[];
   affected?: AffectedRow[];
+  // Present only when the target resolved as a `<feature>@<n>` / `<feature>:<slug>` checkpoint
+  // (cli/ideal_edit.py's `extra={"checkpoint": label}`): that segment's own display label, e.g.
+  // `Waitlist Priority@2: Promote On Cancel`. Lets a confirm name the chapter the user clicked
+  // instead of the opaque ref they never typed.
+  checkpoint?: string;
   // The "Focus & Morph" subgraph the webview dims-and-morphs from (sgt.api.focus_subgraph).
   focus?: FocusView;
 }

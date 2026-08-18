@@ -29,6 +29,7 @@ import * as vscode from "vscode";
 import { colorForNode } from "./color";
 import { FoldFrontier } from "./sgt";
 import { Store } from "./store";
+import { SelectionView } from "./types";
 
 export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
@@ -237,7 +238,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.revertSelection(msg.refs);
         return;
       case "revertCheckpoint":
-        await this.revertCheckpoint(msg.ref, msg.label);
+        await this.revertCheckpoint(msg.ref);
         return;
       case "applyVerb":
         await this.apply(msg.verb, msg.args);
@@ -331,13 +332,30 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // current state (mine-on-contact), so reverting them sequentially is correct, and we STOP on the
   // first refusal (e.g. a fork) rather than pressing on into an inconsistent partial. One confirm
   // up front covers the batch.
+  //
+  // That confirm used to be a bare count of the rows the user had ticked, which is the one number
+  // they already knew. Because there is no set-revert to `--emit`, the honest feedforward for the
+  // batch is the union closure `sgt feature select` reports -- how many edits actually go once
+  // dependencies are pulled in, which files get rewritten, and whose other work is dragged along --
+  // computed before the first mutation, when it is still all true.
   private async revertSelection(refs: string[]): Promise<void> {
     if (!refs?.length) {
       return;
     }
+    let selection: SelectionView;
+    try {
+      selection = await this.store.sgt.select(refs);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    if (!selection.ok) {
+      vscode.window.showWarningMessage(selection.message || `Cannot revert ${refs.length} selected feature(s).`);
+      return;
+    }
     const ok = await vscode.window.showWarningMessage(
-      `Revert ${refs.length} selected feature(s)? Each is reverted and committed in turn; stops if one refuses.`,
-      { modal: true },
+      `Revert ${refs.length} selected feature(s)?`,
+      { modal: true, detail: this.selectionConsequence(refs, selection) },
       "Revert all"
     );
     if (ok !== "Revert all") {
@@ -358,29 +376,45 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     vscode.window.showInformationMessage(`Reverted ${done} feature(s).`);
   }
 
+  /**
+   * The consequence block the multi-select revert confirm carries as its `detail`.
+   *
+   * `pulled` is the part a count can never show: a feature the user did not tick whose ops come
+   * out anyway because the ticked ones are built on them. It is also the answer to "which other
+   * features are unaffected" -- everything not named here.
+   */
+  private selectionConsequence(refs: string[], sel: SelectionView): string {
+    const cap = (xs: string[], n = 6) =>
+      xs.slice(0, n).join(", ") + (xs.length > n ? `, +${xs.length - n} more` : "");
+    const pulled = sel.pulled.filter((p) => p.feature_id && !refs.includes(p.feature_id));
+    const pulledOps = pulled.reduce((n, p) => n + p.op_count, 0);
+    return [
+      `${sel.direct_op_count} edit(s) selected; ${sel.closure_op_count} come out once what depends on them is included.`,
+      sel.files.length ? `Rewrites ${sel.files.length} file(s): ${cap(sel.files)}` : "No file changes.",
+      pulled.length
+        ? `Drags in ${pulledOps} edit(s) from ${pulled.length} other feature(s) you did not select.`
+        : "No other feature's work is dragged in.",
+      "Nothing is applied yet. Each feature is then reverted and committed in turn, stopping if one refuses.",
+    ].join("\n");
+  }
+
   // Rewind a single feature-scoped checkpoint (an intent segment). `ref` is `<feature>@<n>`, which
   // `sgt revert` resolves to that segment's deterministic op-set -- the same exact ideal-edit path
-  // as any other revert. A checkpoint-specific confirm (not the multi-feature one) so the user
-  // sees exactly which chapter they're undoing.
-  private async revertCheckpoint(ref: string, label: string): Promise<void> {
+  // as any other revert.
+  //
+  // This used to confirm and apply here, with no preview at all: the one destructive verb in the
+  // product where the GUI was weaker than the CLI, which never applies a revert without printing
+  // the before/after first. A pilot participant rewound a checkpoint and could not say what they
+  // had rewound to. `sgt.revert` already emits the dry run, opens the resulting diff, and spells
+  // the consequences in its confirm -- and its selection ladder resolves a checkpoint ref exactly
+  // as it resolves a feature id -- so route to it instead, the same way `apply()` does. The
+  // webview's `label` is dropped on purpose: the emit hands back the checkpoint's own display
+  // label (`Waitlist Priority@2: Promote On Cancel`), which cannot drift from what was reverted.
+  private async revertCheckpoint(ref: string): Promise<void> {
     if (!ref) {
       return;
     }
-    const ok = await vscode.window.showWarningMessage(
-      `Rewind checkpoint "${label}"? This removes its ops (and anything built on them) and commits.`,
-      { modal: true },
-      "Rewind"
-    );
-    if (ok !== "Rewind") {
-      return;
-    }
-    try {
-      await this.store.sgt.confirmedMutate(["revert", ref]);
-      vscode.window.showInformationMessage(`Rewound checkpoint "${label}".`);
-    } catch (e: any) {
-      vscode.window.showWarningMessage(`Could not rewind "${label}": ${e.message}`);
-    }
-    this.store.invalidate();
+    await vscode.commands.executeCommand("sgt.revert", ref);
   }
 
   private async renamePrompt(feature: string): Promise<void> {

@@ -54,8 +54,13 @@ function showMutationReport(report: string): void {
   vscode.window.showInformationMessage(lines[0] || "Done.");
 }
 
-async function applyMutation(store: Store, args: string[], confirmMsg: string): Promise<void> {
-  const ok = await vscode.window.showWarningMessage(confirmMsg, { modal: true }, "Apply");
+async function applyMutation(
+  store: Store,
+  args: string[],
+  confirmMsg: string,
+  detail?: string
+): Promise<void> {
+  const ok = await vscode.window.showWarningMessage(confirmMsg, { modal: true, detail }, "Apply");
   if (ok !== "Apply") {
     return;
   }
@@ -70,10 +75,54 @@ async function applyMutation(store: Store, args: string[], confirmMsg: string): 
   }
 }
 
+/** First `n` of a list, comma-joined, with the remainder counted rather than printed -- a modal
+ * that lists forty symbols is the same as a modal that lists none. */
+function cap(xs: string[], n = 6): string {
+  return xs.slice(0, n).join(", ") + (xs.length > n ? `, +${xs.length - n} more` : "");
+}
+
+/**
+ * The consequence block a revert confirm carries as its modal `detail`.
+ *
+ * The confirm line alone answers "how many ops", and none of "of what", "which
+ * files", "what still points at it", or "what is left alone" -- so a pilot
+ * participant hit Rewind on a checkpoint and could not say afterwards what they
+ * had rewound to. The emit view already carries every one of those (the CLI
+ * prints them above its own y/N gate), so this reads them off the same
+ * projection rather than deriving a second opinion the two surfaces could
+ * disagree about.
+ */
+function consequenceDetail(view: EmitView): string {
+  const files = Object.keys(view.files);
+  // `::__anchor__`/`::__residue__` are the miner's own bookkeeping symbols; naming one at a user
+  // reads as an internal leak, the same reason `sgt.api.so_what_for` skips them in its headline.
+  const symbols = view.affected_symbols.filter((s) => !s.includes("::__"));
+  const frontier = view.frontier ?? [];
+  const blast = frontier.filter((r) => r.bucket === "blast" && r.toggleable);
+  const locked = frontier.filter((r) => !r.toggleable);
+  const untouched = view.focus?.context_count ?? 0;
+  return [
+    view.focus?.so_what,
+    `${view.removed.length} edit(s) come out` +
+      (files.length ? `, across ${files.length} file(s): ${cap(files)}` : ", changing no files"),
+    symbols.length ? `Symbols affected: ${cap(symbols)}` : undefined,
+    blast.length
+      ? `${blast.length} later edit(s) are built on this — you pick which to keep next.`
+      : "Nothing built on it is left dangling.",
+    locked.length ? `${locked.length} prerequisite(s) it sits on stay put.` : undefined,
+    untouched ? `${untouched} other feature(s) are untouched.` : undefined,
+    files.length ? "Nothing is applied yet — the open PREVIEW tabs are the proposed before → after." : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 // The interactive revert frontier (U3/R4): preview the selection, then let the user pick which
 // toggleable dependents to KEEP (rescue) vs. drop with the target. `foundation` prerequisites
 // can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
 // drafts continuation hollows (see `Sgt.revertKeep`); keeping none is a plain full revert.
+// `sel` is anything the CLI's own selection ladder resolves -- a feature id/label, a `file::name`
+// symbol, or a `<feature>@<n>` checkpoint -- because `--emit` and the apply share that ladder.
 async function revertWithFrontier(store: Store, sel: string, preview: PreviewProvider): Promise<void> {
   let view: EmitView;
   try {
@@ -82,13 +131,27 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
     vscode.window.showErrorMessage(e.message);
     return;
   }
+  // A checkpoint target comes back carrying its own chapter name; anything else is named by the
+  // token the user picked. Computed before the refusal branch so even "cannot revert" names the
+  // chapter, and used everywhere below so the question and the answer agree on the noun.
+  const name = view.checkpoint ? `checkpoint "${view.checkpoint}"` : sel;
+
   if (!view.ok) {
-    vscode.window.showWarningMessage(view.message || `Cannot revert ${sel}.`);
+    vscode.window.showWarningMessage(view.message || `Cannot revert ${name}.`);
+    return;
+  }
+
+  // An `ok` revert that removes nothing is not a change to confirm -- these ops are already out of
+  // this composition. Asking anyway and then reporting success is precisely the "wait, is that
+  // done?" the preview exists to prevent. Mirrors `restoreWithPreview`'s already-live guard below.
+  if (view.removed.length === 0) {
+    vscode.window.showInformationMessage(`${name} removes nothing here — it is already out of this composition.`);
     return;
   }
 
   // Show the resulting diff first -- "where this lands" -- so the confirm isn't a blind op-count.
-  const changedFiles = await preview.openDiff(view);
+  await preview.openDiff(view);
+  const detail = consequenceDetail(view);
 
   const frontier = view.frontier ?? [];
   const toggleable = frontier.filter((r) => r.toggleable);
@@ -96,12 +159,11 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
 
   // No dependents to choose among -> the plain confirm path (behavior unchanged from before U3).
   if (toggleable.length === 0) {
-    const note = lockedCount ? ` (built on ${lockedCount} kept prerequisite(s))` : "";
-    const diffNote = changedFiles ? ` Changes ${changedFiles} file(s) — see the open diff.` : "";
     await applyMutation(
       store,
       ["revert", sel],
-      `Revert ${sel}? Removes ${view.removed.length} op(s)${note}.${diffNote} Rewrites the working tree and commits.`
+      `Revert ${name}? Rewrites the working tree and commits.`,
+      detail
     );
     return;
   }
@@ -117,7 +179,7 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
     {
       canPickMany: true,
       placeHolder:
-        `Revert ${sel}: check dependents to KEEP; unchecked are removed with it` +
+        `Revert ${name}: check dependents to KEEP; unchecked are removed with it` +
         (lockedCount ? ` · ${lockedCount} prerequisite(s) locked` : ""),
     }
   );
@@ -127,8 +189,12 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
   const keep = picks.map((p) => p.op_id);
   const summary = keep.length
     ? `keep ${keep.length}/${toggleable.length} dependent(s) — drafts continuation hollows to fulfill`
-    : `remove ${sel} and all ${toggleable.length} dependent(s)`;
-  const ok = await vscode.window.showWarningMessage(`Revert ${sel} — ${summary}?`, { modal: true }, "Apply");
+    : `remove ${name} and all ${toggleable.length} dependent(s)`;
+  const ok = await vscode.window.showWarningMessage(
+    `Revert ${name} — ${summary}?`,
+    { modal: true, detail },
+    "Apply"
+  );
   if (ok !== "Apply") {
     return;
   }
