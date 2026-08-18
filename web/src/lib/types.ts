@@ -218,8 +218,15 @@ export interface GroundTruth {
     coursecraft: string
     confplan: string
   }>
-  quizAnswers: Record<string, { coursecraft: string; confplan: string; accepts?: string[] }>
-  requestKeys: Record<string, { coursecraft: string; confplan: string }>
+  requestKeys: Record<
+    string,
+    {
+      coursecraft: string
+      confplan: string
+      /** Correct option INDEX per closed question, per project. Present on r1 only. */
+      choices?: Record<string, Record<string, number>>
+    }
+  >
   rubrics: Record<string, Array<{ id: string; label: string; points: number }>>
 }
 

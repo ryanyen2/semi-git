@@ -10,6 +10,7 @@
 import type {
   Condition,
   EventDoc,
+  GroundTruth,
   Half,
   Participant,
   Project,
@@ -123,13 +124,10 @@ export type ChoiceKey = Record<string, Partial<Record<Project, Record<string, nu
  * questions, or half-edited has to leave the questions unscored rather than
  * mark every one of them wrong.
  */
-export function choiceKeyFrom(truth: unknown): ChoiceKey {
-  const keys = (truth as { requestKeys?: Record<string, unknown> } | null)?.requestKeys
-  if (!keys) return {}
+export function choiceKeyFrom(truth: GroundTruth | null): ChoiceKey {
   const out: ChoiceKey = {}
-  for (const [requestId, entry] of Object.entries(keys)) {
-    const choices = (entry as { choices?: ChoiceKey[string] } | null)?.choices
-    if (choices) out[requestId] = choices
+  for (const [requestId, entry] of Object.entries(truth?.requestKeys ?? {})) {
+    if (entry.choices) out[requestId] = entry.choices
   }
   return out
 }
