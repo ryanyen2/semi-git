@@ -210,6 +210,11 @@ function Overview({
           <dt>Requests opened</dt>
           <dd>
             {requests.filter((r) => r.openedAt).length} of {REQUESTS.length * 2}
+            {requests.filter((r) => r.openedAt && !requestById(r.requestId)).length > 0 && (
+              <span className="muted small">
+                {' '}· includes requests this study no longer asks
+              </span>
+            )}
           </dd>
           <dt>Quotes allowed</dt>
           <dd>{consent?.quotes === true ? 'yes' : 'no'}</dd>
@@ -446,6 +451,9 @@ function RequestCard({
 }) {
   const spec = requestById(req.requestId)
   const rubric = truth?.rubrics?.[req.requestId] ?? []
+  // A pilot's stored requests include ones this study no longer asks. Say so and
+  // move on: the alternative was resolving them anyway, which threw mid-render
+  // and took every other request on the page down with it.
   const outOf = rubric.reduce((n, x) => n + x.points, 0) || 2
   const [checks, setChecks] = useState<Record<string, boolean>>(existing?.rubric ?? {})
   const [damage, setDamage] = useState<string>(
@@ -490,9 +498,10 @@ function RequestCard({
   // is an invitation to disagree with it. Shown so the facilitator can see what
   // was answered without opening Firestore.
   const wanted = choiceKeyFrom(truth)[req.requestId]?.[req.project] ?? null
-  const rightCount = wanted
-    ? spec.choices.filter((q) => req.choices?.[q.id] === wanted[q.id]).length
-    : null
+  const rightCount =
+    wanted && spec
+      ? spec.choices.filter((q) => req.choices?.[q.id] === wanted[q.id]).length
+      : null
 
   async function save() {
     await setDoc(doc(db, 'participants', pid, 'scoring', req.id), {
@@ -512,6 +521,26 @@ function RequestCard({
     setRecovered(null)
     setSaved(true)
     window.setTimeout(() => setSaved(false), 1500)
+  }
+
+  // A request this study no longer asks. Pilots 01 to 03 ran the six-request
+  // design, so their stored collections still hold r4, r5 and r6; resolving one
+  // used to throw mid-render and take every other request on the page with it.
+  // Rendered as a stub rather than hidden, because "10 of 6 opened" with three
+  // cards silently missing is its own kind of wrong.
+  if (spec === undefined) {
+    return (
+      <div className="card soft">
+        <div className="eyebrow">
+          half {req.half} · {req.condition} · {req.project}
+        </div>
+        <div className="strong">{req.requestId.toUpperCase()} — retired request</div>
+        <p className="small muted" style={{ marginBottom: 0 }}>
+          This participant was run on an earlier design that asked this request. It is kept in the
+          record and is not scored.
+        </p>
+      </div>
+    )
   }
 
   return (

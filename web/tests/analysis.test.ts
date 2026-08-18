@@ -198,6 +198,27 @@ describe('per-request measures', () => {
     expect(a.requests[0].calibration).toBeCloseTo(0.7 - 2 / 3)
   })
 
+  it('leaves them unscored when the participant answered nothing, rather than scoring zero', () => {
+    // `choices` is seeded as `{}` the moment a request is opened, and `{}` is
+    // truthy — so a participant who ran out of time having picked nothing used
+    // to score 0 of 3, which reads identically to three wrong answers and drags
+    // the condition mean down. With a confidence rating attached it was worse:
+    // nothing answered plus a moved slider recorded as maximum overconfidence.
+    const a = analyzeParticipant(
+      {
+        participant: participantDoc(),
+        responses: [],
+        requests: [requestDoc({ choices: {}, confidence: 70 })],
+        events: [],
+        scoring: [],
+      },
+      { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } },
+    )
+    expect(a.requests[0].choiceScore).toBeNull()
+    expect(a.requests[0].choiceOutOf).toBeNull()
+    expect(a.requests[0].calibration).toBeNull()
+  })
+
   it('leaves them unscored when no key has been loaded, rather than scoring zero', () => {
     // The failure this prevents: an experimenter computes before loading the
     // answer key, and reads a column of zeroes as everybody getting it wrong.

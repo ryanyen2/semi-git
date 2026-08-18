@@ -171,9 +171,12 @@ function SliderRow({
  * work reports it as both 20-point and 21-point. Twenty-one is the number of
  * answers a participant can give. `tlxScore` and its tests are untouched.
  *
- * The ticks at 0, 50 and 100 are drawn full height and the other eighteen half
- * height, matching the reference implementation: three fixed landmarks, none of
- * them labelled, so the midpoint is findable without becoming a neutral option.
+ * The dividers at 0, 50 and 100 are darkened, so the middle of the scale is
+ * findable at a glance. Deliberately unlabelled -- a labelled midpoint reads as
+ * a neutral option, which this scale does not have. The reference implementation
+ * draws its landmarks as full-height tick marks against half-height ones; this
+ * is a row of cells rather than ticks on a rule, so it marks the same three
+ * positions the way this shape allows.
  */
 function TlxScale({
   item,

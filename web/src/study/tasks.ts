@@ -265,10 +265,18 @@ waitlist promotion happening when a seat frees up.`,
   },
 ]
 
-export function requestById(id: RequestId): RequestSpec {
-  const spec = REQUESTS.find((r) => r.id === id)
-  if (!spec) throw new Error(`unknown request ${id}`)
-  return spec
+/**
+ * Undefined, not a throw, for an id this study no longer asks.
+ *
+ * The dashboard resolves specs from the participant's STORED request documents,
+ * not from `REQUESTS`, and pilots 01 to 03 ran the six-request design -- so
+ * their collections still hold `r4`, `r5` and `r6`. Throwing took the whole
+ * "Requests & scoring" tab down mid-render whenever one was opened, and took
+ * r1 to r3 with it. `RequestId` still names all six, so nothing catches this at
+ * compile time either.
+ */
+export function requestById(id: RequestId): RequestSpec | undefined {
+  return REQUESTS.find((r) => r.id === id)
 }
 
 /** Requests grouped into cards. Requests on one card share a single timer. */

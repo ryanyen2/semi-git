@@ -223,12 +223,31 @@ function TaskCardView({
     for (const r of card.requests) {
       const doc = docFor(r.id)
       const openedAt = doc?.openedAt ?? leadDoc?.openedAt ?? t
+      // The last answer, taken from the draft rather than from `doc`.
+      //
+      // Answering is debounced by 600ms, and submitting unmounts the card that
+      // owns the debounce, so a pick made in that window is cleared before it is
+      // written and then refused on recovery for being older than `submittedAt`.
+      // It sat in localStorage, unreachable. That was survivable when the last
+      // act before submitting was finishing a typed sentence; with radio buttons
+      // the last act IS a click, and "choose the last option, press Mark done"
+      // is the normal rhythm. Reading the draft here closes the window without
+      // touching the debounce machinery, and writes nothing when there is
+      // nothing newer to write.
+      const draft = readDraft<{ picks: Record<string, number>; confidence: number | null }>(
+        draftKey(pid, 'choices', `${r.id}-h${half}`),
+      )
+      const rescued =
+        draft && draft.at > (doc?.submittedAt ?? 0)
+          ? { choices: draft.value.picks, confidence: draft.value.confidence }
+          : {}
       await patchRequest(pid, r.id, half, {
         submittedAt: t,
         elapsedMs: t - openedAt,
         activeMs: Math.max(0, t - openedAt - pausedMsOf(leadDoc, t)),
         pauses: (leadDoc?.pauses ?? []).map((p) => (p.to == null ? { ...p, to: t } : p)),
         selfReport: doc?.selfReport ?? selfReport,
+        ...rescued,
       })
     }
     await markRequestBoundary(pid, lead.id, block, 'close')
