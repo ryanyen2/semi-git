@@ -85,6 +85,16 @@ export interface ResponseDoc {
   dwellMs: number
 }
 
+/**
+ * Every request id that has ever been STORED, not the three this study asks.
+ *
+ * Pilots 01 to 03 ran the six-request design, so their `requests` collections
+ * hold r4, r5 and r6. This type describes what is in Firestore; narrowing it to
+ * the current set would make every read of a pilot document a lie the compiler
+ * endorses, and would make `requestById`'s undefined branch — the one that
+ * stopped the dashboard throwing mid-render — look unreachable to whoever reads
+ * it next. `requestById` returns undefined for the retired three on purpose.
+ */
 export type RequestId = 'r1' | 'r2' | 'r3' | 'r4' | 'r5' | 'r6'
 
 export interface PauseInterval {

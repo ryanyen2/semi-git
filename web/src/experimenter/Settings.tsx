@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { deleteDoc, doc, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useLiveCollection, useLiveDoc } from '../lib/db'
-import type { GroundTruth, PublicConfig, SecretsDoc } from '../lib/types'
+import type { GroundTruth, PublicConfig, RequestId, SecretsDoc } from '../lib/types'
+import { requestById } from '../study/tasks'
 import { Callout, Copyable, fmtAgo } from '../ui/bits'
 import { OWNER_EMAIL } from './ExperimenterApp'
 
@@ -302,6 +303,23 @@ function GroundTruthPanel() {
           'That key has no closed-question answers in it, so request one would go unscored. ' +
             'It looks like a key from before request one became multiple choice.',
         )
+      }
+      // And the same failure one level down: a key with a `choices` block whose question ids do
+      // not match the ones being asked scores every participant zero out of three, which is the
+      // silent zero the analysis was just taught not to produce. Check the ids against the
+      // requests themselves rather than trusting the block's presence.
+      for (const [requestId, entry] of Object.entries(parsed.requestKeys)) {
+        const asked = requestById(requestId as RequestId)?.choices ?? []
+        if (!entry.choices || asked.length === 0) continue
+        for (const [project, answers] of Object.entries(entry.choices)) {
+          const missing = asked.map((q) => q.id).filter((id) => !(id in answers))
+          if (missing.length > 0) {
+            throw new Error(
+              `That key is missing answers for ${requestId} (${project}): ` +
+                `${missing.join(', ')}. Every question asked needs one, or they score zero.`,
+            )
+          }
+        }
       }
       await setDoc(doc(db, 'study', 'groundTruth'), parsed)
     } catch (e) {

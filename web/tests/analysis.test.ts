@@ -486,7 +486,7 @@ describe('the whole pipeline on a full cohort', () => {
 
   it('rolls per-request measures up to a per-condition value', () => {
     const p = dataset.participants[0]
-    const total = conditionValue(p, 'git', (m) => m.score, 'sum', ['r1', 'r2', 'r3', 'r4'])
+    const total = conditionValue(p, 'git', (m) => m.score, 'sum', ['r1', 'r2', 'r3'])
     expect(Number.isFinite(total)).toBe(true)
     expect(total).toBeGreaterThanOrEqual(0)
   })

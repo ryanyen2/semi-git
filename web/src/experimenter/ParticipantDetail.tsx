@@ -209,10 +209,16 @@ function Overview({
           <dd>{participant.currentStep}</dd>
           <dt>Requests opened</dt>
           <dd>
-            {requests.filter((r) => r.openedAt).length} of {REQUESTS.length * 2}
+            {/* Counted apart rather than summed. A pilot ran six requests a half, so a single
+                total against the current set of three reads "12 of 6" -- a fraction that is
+                wrong rather than merely surprising. */}
+            {requests.filter((r) => r.openedAt && requestById(r.requestId)).length} of{' '}
+            {REQUESTS.length * 2}
             {requests.filter((r) => r.openedAt && !requestById(r.requestId)).length > 0 && (
               <span className="muted small">
-                {' '}· includes requests this study no longer asks
+                {' '}
+                · plus {requests.filter((r) => r.openedAt && !requestById(r.requestId)).length}{' '}
+                from a retired design
               </span>
             )}
           </dd>
