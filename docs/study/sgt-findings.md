@@ -477,3 +477,57 @@ leaf (`confplan/cli.py::cmd_speaker` and its test; the `coursecraft` equivalents
 rebuild). No feature-scoped verb reaches them. This predates the fix above and is unaffected by it:
 100 of 102 placed both before and after. It is a coverage gap rather than a false statement, so the
 integrity check reports it and does not block.
+
+---
+
+## Finding 22: a tree merge that deleted the node it was rewriting
+
+Found 2026-08-18, while dry-running the bundle build after finding 21.
+
+`sgt log --refresh` on `confplan` printed:
+
+```
+✗ KeyError: 'af-m0530ca1c3d2d03aaaaf80de1ae3b8e4f99327844b804093883657ef54919770f'
+```
+
+and then rendered a map anyway. That is the whole trap: the command fails, says
+so, and still shows you something — the *previous* tree, because `build_map`
+died before writing the new one. So every fix to clustering appeared to have no
+effect on this project, including finding 21's. The nine husks were being
+removed correctly on every run and the result was being thrown away.
+
+**Cause.** `tree._dedup` merges sibling leaves that share a label:
+
+```python
+dupes = leaves_by_label[nodes[c]["label"]]
+...
+for k in dupes[1:]:
+    remap[k] = c
+    del nodes[k]
+nodes[c] = { ..., "depth": nodes[c]["depth"], ... }   # KeyError when k was c
+```
+
+When a parent's children list names the same leaf twice, that leaf appears in
+its own `dupes[1:]`, so the loop deletes it and the rewrite three lines later
+indexes a node that is gone.
+
+**Fix.** Skip `k == c` in the delete loop. One line.
+
+**Effect.** `confplan` builds again: 20 leaves with 9 husks becomes 14 leaves
+with none.
+
+**Also changed.** Bundles are built with `sgt log --rebuild` rather than
+`--refresh`. A refresh splices unchanged subtrees from the tree it inherits, and
+on `confplan` that leaves nine symbols owned by no feature — including all of
+`slots.py`, which is exactly what request one asks about — where a cold
+recluster of the same repo leaves two. A bundle is built once, from a pristine
+copy, for one participant, so a minute buys the graph the current code actually
+produces.
+
+**Still open, and these are related.** Nothing here explains why a spliced tree
+contains a duplicated child id in the first place, nor why the splice path owns
+nine fewer symbols than a cold recluster of the same repository. `_splice`,
+`_dirty_subdivide` and `_regroup_flat_root` are where to look. The guard stops
+the crash; it does not stop whatever produced the duplicate. Until that is
+understood, treat `--refresh` as a fast approximation and `--rebuild` as the
+answer of record — which is now what the bundle build does.
