@@ -1085,8 +1085,10 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
     # on one of the study projects permanently, since the same entry is dropped on every build.
     # Surfaced beside `cannot_link_moves` for the same reason it is: a guarantee downgraded to
     # best-effort should be visible to whoever reads the tree, not discoverable by instrumenting it.
-    if dropped:
-        result["unapplied_assign_pins"] = dict(sorted(dropped.items()))
+    # Always set, empty included, because `cannot_link_moves` is -- a key that appears only when
+    # there is bad news makes `result["unapplied_assign_pins"]` raise on every healthy repo, which
+    # is the opposite of what a reporting field is for.
+    result["unapplied_assign_pins"] = dict(sorted(dropped.items()))
     if amap:
         _apply_id_map(result, amap)
 
