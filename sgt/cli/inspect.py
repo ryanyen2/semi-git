@@ -318,11 +318,17 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     # subsystems stay expanded as nested headers -- the map is a single-rooted tree, so collapsing
     # every subsystem would fold the whole codebase into the root's one lane. `--focus <subsystem>`
     # above already rerouted to the expanded rail view, so a collapsed subsystem is never the target.
+    #
+    # The root is never collapsed. On a small repo the root IS a leaf subsystem -- every feature
+    # hangs directly off it -- so the rule above folded the entire map to a single lane labelled
+    # with the root's theme, under a header still counting four features. That is the first thing a
+    # participant sees in the warm-up repo, and "4 feature(s)" above one row is worse than no map.
     if focus is None:
         kind = {n["id"]: n.get("kind") for n in mv.get("nodes", [])}
         collapsed = tuple(
             n["id"] for n in mv.get("nodes", [])
             if n.get("kind") == "subsystem"
+            and n.get("parent") is not None
             and not any(kind.get(c) == "subsystem" for c in n.get("children") or [])
         )
     else:
