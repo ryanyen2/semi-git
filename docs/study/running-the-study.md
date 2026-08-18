@@ -34,14 +34,19 @@ key.
 Go to **Setup → Answer key → Load answer key JSON** and select the file
 `docs/study/answer-key.json` from this repository.
 
-The answer key contains 22 history episodes, quiz answers, request scoring
-rubrics, and ground-truth data. It is stored where only signed-in experimenters
-can read it. It is deliberately *not* compiled into the website JavaScript — a
-participant with browser developer tools open must not be able to read the quiz
-answers from the page source.
+The answer key contains 22 history episodes, the ground truth for each request,
+the rubrics for requests 2 and 3, and — under `requestKeys.r1.choices` — which
+option is correct for each of request 1's three closed questions. It is stored
+where only signed-in experimenters can read it. It is deliberately *not*
+compiled into the website JavaScript: the questions themselves ship in the
+bundle the participant's browser downloads, so a participant with developer
+tools open would be able to read the answers out of the page source if they
+lived beside the questions.
 
-The console still works without the answer key loaded, but scoring would mean
-looking things up in the build logs by hand.
+Without the answer key loaded, request 1 is not scored at all. It shows as
+unscored rather than as wrong, which is deliberate — a request answered before
+the key was loaded is a different thing from three wrong answers — but it means
+the figures have a hole in them until you load it.
 
 ### Issue the session API keys
 
@@ -71,10 +76,15 @@ Go to **Setup → Participant-facing settings** and fill in:
 - Compensation wording
 - Protocol number (from ethics approval)
 - Consent information sheet
-- Four bundle download URLs (one per condition-project combination)
 
-When naming the bundle files, use neutral names. The participant can see the
-download URL, and a filename containing "sgt" would reveal which condition is
+There are also four bundle download URL slots. **Normally leave them blank.**
+`make-study-bundle.sh` writes into the site's own static files, so a deployed
+bundle is already served at `/bundles/study-<project>-<a|b>.tgz`, which is where
+the setup page looks. Fill one in only if you are hosting that bundle somewhere
+else.
+
+The `a` and `b` in those filenames are deliberate. The participant can see the
+download URL, and a filename containing "sgt" would tell them which condition is
 the new tool.
 
 ### Build the four bundles and deploy
@@ -105,11 +115,20 @@ There are four bundles total, not one per participant. Everything specific to a
 person — which condition they are in and the API keys for their session — is
 fetched by the setup script using their participant code. Each bundle build
 verifies the project's tests pass, pre-warms the sgt history view (so the
-participant's first command is fast), and includes a throwaway practice
-repository that is separate from the two study projects.
+participant's first command is fast), pins the editor extensions, and includes
+the throwaway practice repository, which is separate from the two study
+projects.
 
-After building, upload the bundles somewhere with stable download links, then
-paste each link into the matching slot under **Setup** in the console.
+Watch the practice repository lines the build prints. In the sgt condition it
+pins four feature names — The Cart, Discounts, Receipts, Shipping — and then
+checks every handle the practice sheet quotes. If it warns that a name did not
+stick or a handle does not resolve, the practice sheet is wrong on that machine,
+and a participant will find that out in front of you. Fix it before the session
+rather than during it.
+
+The publish script deploys the bundles alongside the site and then fetches each
+one back from the live URL to check its size, so there is nothing to upload or
+paste in afterwards.
 
 ### Create the cohort
 
@@ -219,10 +238,17 @@ Open a participant's record, then go to **Requests & scoring**. Each request
 shows what the participant did, how long it took, whether they hit the time cap,
 their answer, and the ground truth beside it.
 
-### Automated scoring for requests 2, 3, and 4
+### Request 1 scores itself
 
-For these requests (which involve modifying code), run the scoring script and
-paste its output into the scoring field:
+Request 1 asks three multiple-choice questions and one confidence rating. The
+console scores the three against the answer key and computes calibration
+(confidence minus proportion correct) from them. There is nothing to grade. If
+the panel shows the questions unscored, the answer key is not loaded.
+
+### Automated scoring for requests 2 and 3
+
+These two involve modifying code and share a single clock. Run the scoring
+script and paste its output into the scoring field:
 
 ```bash
 python3 scripts/score_study_repo.py ~/study/p07/work \
@@ -236,24 +262,20 @@ which of the four possible outcomes happened. The outcomes include "tests pass
 but the application will not start" — which is why the scorer actually launches
 the program, not just runs the tests.
 
-### Quiz and summary scoring
+### The post-half questionnaires
 
-The **Quiz & summary** section grades the five knowledge questions against the
-answer key and scores the summary against the 22-episode checklist.
+Nothing to score. Workload (NASA-TLX), usability (UMUX-Lite) and the history
+block are recorded as the participant answers them and go straight into the
+analysis. The history block is fourteen seven-point items followed by two
+questions about the requests themselves — whether they were realistic, and how
+much time pressure the participant felt. Those two are checks on the design, not
+outcomes: they are reported separately and stay out of Figure 1 and the block
+means (`protocol.md` §5.5).
 
-Three numbers come out of the summary scoring:
-
-1. **Episodes covered** — how many of the 22 historical episodes the
-   participant mentioned.
-2. **Causal links stated correctly** — whether they connected cause and effect
-   accurately.
-3. **Confident claims that are false** — assertions they made with confidence
-   that are wrong.
-
-Coverage alone would reward simply listing things. The three measures together
-separate *remembering a list* from *having built a mental model* — which is the
-whole point of the third research question (RQ3: what understanding do they end
-up with?).
+A five-question quiz and a three-minute written summary used to sit here and be
+graded against the 22-episode checklist. Both were removed on 2026-08-17 —
+`protocol.md` §5.6 has the reasoning. If you are looking at an older console
+build with a **Quiz & summary** section, it is out of date.
 
 ### Interview scoring
 
@@ -263,9 +285,9 @@ notes. Ask the fourth probe — "what did you wish you could ask the history?" �
 this probe with something close to what sgt actually does, one of them from
 inside the git condition. That insight is worth protecting from contamination.
 
-Scoring uses two independent coders, with 25% of responses double-coded and
-disagreements resolved through negotiated agreement. See `protocol.md` §5.7 for
-the full procedure.
+Coding uses two independent coders, with 25% double-coded and disagreements
+resolved through negotiated agreement. See `protocol.md` §7, "Qualitative
+material", for the full procedure.
 
 ---
 
@@ -282,11 +304,14 @@ not a lost measurement.
 Each figure can be exported to SVG at publication quality (with fonts rendered
 as text, not outlines):
 
-1. **What the two setups felt like.** The ten perception items (from NASA-TLX
-   and custom scales) shown as diverging stacked bars, with paired mean
-   differences and 95% studentized-bootstrap confidence intervals.
-2. **What people managed to do.** Paired estimation plots for the four scored
-   outcomes. Every participant is a line connecting their score in each
+1. **What the two setups felt like.** The fourteen seven-point history and agent
+   items shown as diverging stacked bars, one panel per condition, with paired
+   mean differences and 95% bootstrap confidence intervals. Reverse-keyed items
+   are recoded so that agreement always means better, and marked. The two
+   five-point checks at the end of that block are not part of this figure.
+2. **What people managed to do.** Paired estimation plots for three outcomes:
+   request 1's closed questions (out of 3), the requests 2 and 3 rubric, and
+   collateral damage. Every participant is a line connecting their score in each
    condition. Showing all twelve slopes individually is the honest way to
    visualize twelve people.
 3. **How the work was done.** Where time was spent across normalized request

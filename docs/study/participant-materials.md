@@ -14,17 +14,25 @@ scoring rubrics listed below, and stores your interview notes. The answer keys
 below also live in `docs/study/answer-key.json`, which the console loads so
 the correct answer appears next to each request while you score.
 
-Participant handouts live in `materials/`. The website renders the same text.
+Participant handouts live in `materials/`, as printed copies. The wording itself
+lives in `web/src/study/content.ts` (welcome, project briefs, practice sheets)
+and `web/src/study/tasks.ts` (the requests), which is what the website renders
+and what the participant actually reads. If the two ever disagree, the code is
+right and the copy in `materials/` needs updating.
 
 ## Quick overview
 
 - Each participant completes two halves: one with git and one with sgt, on two
   different projects.
-- Each half has the same six requests, worded for someone who has never seen
-  the project before.
+- Each half has the same three requests, worded for someone who has never seen
+  the project before, and twenty minutes to work through them.
+- Before the requests, and with no clock running, they read a page describing
+  what the program is for. Let them take as long as they want on it.
 - You are testing the two setups, not the person. Say this out loud, and say it
   often.
-- A session takes about two hours per participant.
+- A session takes about two hours per participant, of which 113 minutes is
+  scheduled steps (`TOTAL_ESTIMATE_MIN` in `web/src/study/flow.ts` — if you
+  change a step's estimate, this number moves with it).
 
 ## Before the participant arrives
 
@@ -68,13 +76,19 @@ and ordering effects wash out.
 | Minutes | What happens |
 |---|---|
 | 10 | Consent and background questions |
-| 10 | Practice sheet and first setup |
-| 45 | First half: six requests |
-| 8 | Workload questionnaire, quiz, spoken summary |
-| 10 | Practice sheet and second setup |
-| 45 | Second half: six requests on the other project |
-| 8 | Workload questionnaire, quiz, spoken summary |
-| 15 | Usability questionnaire, preference ranking, interview |
+| 20 | First setup, then the practice sheet |
+| 5 | Reading about the first project. No clock |
+| 20 | First half: three requests |
+| 6 | Three questionnaires: workload, usability, the history |
+| 15 | Second setup, then the practice sheet again |
+| 5 | Reading about the second project. No clock |
+| 20 | Second half: three requests on the other project |
+| 6 | The same three questionnaires |
+| 8 | Comparing the two setups, then the interview |
+
+The two reading pages are not timed and are not a formality. Pilots used to meet
+the codebase for the first time with a countdown already running and spent a
+third of the first request working out what the program was for.
 
 ## What to say to the participant
 
@@ -84,7 +98,9 @@ and ordering effects wash out.
 - "Keep talking. Tell me what you expect before you run it."
 - When they stall: "That's useful, tell me what you're thinking." Do not help
   unless something is actually broken.
-- Call the time at the halfway mark and again at two minutes left.
+- Call the time at the halfway mark and again at two minutes left. Request 1 is
+  only five minutes long, so those are nearly the same moment: call it once, at
+  two minutes left.
 
 ## What to watch for (qualitative observations)
 
@@ -104,17 +120,27 @@ Write these down as they happen. This is your qualitative data.
 
 ### Request 1: what changed course/talk search?
 
-Two points. One for identifying the correct commit, one for noticing it
-contains two unrelated pieces of work. Record the participant's stated
-confidence.
+**Nothing to score by hand.** The request asks three multiple-choice questions
+and one confidence rating, and the console scores the three against
+`requestKeys.r1.choices` in the answer key. If the scoring panel shows them
+unscored, the answer key is not loaded — load it under **Setup** rather than
+grading them yourself.
 
-**Answer:** a search change and a one-line day-parsing fix landed together in
-a single commit whose message mentions only search.
+The correct answers are q1 "one piece of work", q2 "the week of 6 July", q3
+"a change to how day names are read when a slot is parsed".
+
+**What happened:** a search change and a one-line day-parsing fix landed
+together in a single commit whose message mentions only search, on 2026-07-10,
+which is the Friday of the week beginning 6 July.
 
 | Project | git commit | sgt commit |
 |---|---|---|
 | coursecraft | `9f5f7e5` | `079fa49` |
 | confplan | `d0711a1` | `7ede859` |
+
+The commit ids are here for your own orientation and for the interview. Do not
+read them out; the participant is answering from a fixed option list and does
+not need a commit id to answer.
 
 ### Requests 2 and 3: remove the waitlist, keep drops
 
@@ -140,60 +166,56 @@ participant finished with 29 passing tests and an application that raised an
 error on startup, because no test in the suite exercises the command-line
 parser.
 
-### Request 4: back-to-back enrollment
+The rubric in the answer key is three points: waitlist gone (1), everything else
+still passing and the app still starting (1), and dropping working again with no
+promotion (1).
 
-Two points. One for finding the commit that broke it, one for a fix that
-restores back-to-back enrollment while keeping the room audit working.
+### Requests that no longer exist
 
-| Project | git commit(s) | sgt commit(s) |
-|---|---|---|
-| coursecraft | `5762524` | `25e91a9` |
-| confplan | `821f9d4`, then `8049f48` | `704e7a4`, then `6ca9a53` |
+Three requests were cut on 2026-08-17 because pilots ran out of time on all
+three in both conditions: a back-to-back regression request against episode 17,
+a build-two-alternatives request, and a history-surgery request. If you have an
+older copy of this page or an older task sheet, it has scoring guidance for
+requests 4, 5, and 6. Do not use it. `protocol.md` §2 has the reasoning and what
+the cut costs.
 
-**Expect this:** `test_back_to_back_is_fine` checks a function the app stopped
-calling, so it stays green throughout the outage. Both pilot participants found
-this. Note whether yours does too.
-
-### Request 5: two ways to swap
-
-Score three things:
-
-- One working version is in the final code, and the other is gone.
-- The participant can explain why they kept the one they kept.
-- Note how they kept the two attempts apart, and how they threw one away.
-
-### Request 6: split the tangled change
-
-This is finishable in both conditions. Score three things:
-
-- Are the two pieces of work now in separate units?
-- Does each have a name that says what it is?
-- Is the current code unchanged? A tree-hash comparison or an empty diff
-  proves it.
-
-In the sgt condition, the split usually already exists before they start, and
-nothing renames a checkpoint yet, so they may not finish the naming half.
+Episode 17's regression is still in both repositories. Nothing in the session
+asks anyone to repair it, so expect it to be there, untouched, at the end.
 
 ## After each half
 
-Run these three activities immediately after the participant finishes:
+Three questionnaires, all administered by the console, immediately after the
+participant finishes: **workload** (NASA-TLX), **usability** (UMUX-Lite, two
+items), and **the history** (the fourteen HLAC items, then two questions about
+the requests themselves). Six minutes in total. Nothing here is scored by you.
 
-1. **Workload questionnaire** (NASA-TLX, administered by the console).
-2. **Two-minute quiz** (project closed, from memory):
-   - Which feature was added and then deliberately removed? *Answer: the
-     priority experiment.*
-   - Which came first: conflict detection, capacity limits, or the waitlist?
-     *Answer: capacity limits.*
-   - Did the previous maintainer work alone? *Answer: no, an AI assistant
-     helped.*
-3. **Three-minute spoken summary.** Ask: "Tell me the story of this project
-   without looking at it. What was built, what went wrong, what was undone."
-   Score their answer against the episode list in `testbed-spec.md`.
+Two things to leave alone while they answer. The workload scales are clicked on
+a line of tick marks with no number anywhere, and one of the six runs the other
+way from the rest — "Failure" on the left, "Perfect" on the right. That is the
+published instrument, not a bug, and it is marked on the page. If someone asks,
+point at the two words at the ends of the line and say nothing else; telling
+them which end is the good one is telling them what to answer.
+
+The two questions at the end — whether the requests felt realistic, and how much
+time pressure they felt — are checks on our design, not on the setups. They are
+the only place the study can find out whether the time caps bit harder in one
+half than the other, so it matters that the answer is theirs. Do not apologize
+for the clock before they answer it.
+
+There used to be a five-question quiz and a three-minute spoken summary here as
+well. Both were removed on 2026-08-17: they cost twelve minutes a session and
+asked for written recall immediately after a block the participant had usually
+just run out of time on, and the two coders differed on the results more than
+the two conditions did. See `protocol.md` §5.6.
 
 ## At the end of the session
 
-- Administer the usability questionnaire (SUS) for each setup.
-- Ask which setup they would prefer for which kind of request, and why.
+- The console administers the comparison block: seven comparisons over jobs they
+  actually did, why, two "where would each earn its keep" scenarios, an overall
+  comparison, and what would put them off. Each comparison offers five options —
+  A clearly, A slightly, no real difference, B slightly, B clearly. "No real
+  difference" is a real answer and we want it where it is true, so do not nudge
+  anyone off it.
 - Interview prompts:
   - "What did you trust, and what did you check?"
   - "Where were you lost?"
@@ -219,11 +241,12 @@ See `protocol.md` section 7 for the statistical models and
 
 For each participant per half, you should have:
 
-- Request 1 and 4 scores (out of 2), with stated confidence.
-- Scorer output for requests 2 and 3, including which of the four outcomes.
-- Time or number of attempts per request.
-- Workload and usability scores.
-- Quiz answers and the summary recording.
+- Request 1: how many of the three closed questions were right, out of 3, and
+  the confidence rating beside them.
+- Scorer output for requests 2 and 3, including which of the four outcomes, and
+  the rubric points that follow from it.
+- Time per request, and whether the cap was hit.
+- Workload, usability, and history scores.
 - Your qualitative notes from "what to watch for" above.
 
 When analysing:
@@ -244,6 +267,17 @@ When analysing:
   stopped by a tool failure.
 - The `year` and `speaker` leftovers in the code are deliberate. If a
   participant asks, say the history will tell them.
+- **Back-to-back enrollment is broken in both projects, and the participant's
+  materials say it is not.** Episode 17 made boundary-touching slots count as a
+  clash, and the request that used to repair it was cut. The project brief says
+  "a section that ends at 10:30 and one that starts at 10:30 do not clash", and
+  request 2 says back-to-back sections "are legal and must stay legal". Both are
+  true of the test suite and neither is true of the running application, because
+  `test_back_to_back_is_fine` checks a function the app stopped calling. A
+  participant who tries it during request 2 will hit the contradiction. This
+  needs a decision before participant 1 — repair episode 17 in the testbed, or
+  reword the brief — and it is not the facilitator's to make mid-session. Until
+  it is made, if it comes up, say the history will tell them.
 - The git copies were cleaned so nothing in them mentions sgt. The sgt copies
   keep their own commits, which is correct. See `pilot-02-findings.md` for
   why.
@@ -255,7 +289,8 @@ When analysing:
   Claude Code.
 - `testbed-spec.md` — how the two study projects were built.
 - `build-log-*.md` — the ground truth for each project's history.
-- `pilot-01-findings.md` and `pilot-02-findings.md` — what the pilot sessions
-  found.
+- `pilot-01-findings.md`, `pilot-02-findings.md`, `pilot-03-findings.md` — what
+  the pilot sessions found. They describe the six-request study, because that is
+  what was piloted.
 - `sgt-findings.md` — the running list of known sgt problems discovered during
   the study.
