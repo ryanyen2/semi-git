@@ -853,9 +853,9 @@ input[type='range'] {
   background: var(--good);
 }
 
-/* The radio itself is the accessible control; the bar is what you see. Kept in
-   the flow with zero size rather than `display: none`, so it stays focusable
-   and reachable by keyboard. */
+/* The radio itself is the accessible control; the bar is what you see. Hidden by
+   size and opacity rather than `display: none`, which would take it out of the
+   accessibility tree and off the keyboard path. */
 .tlx-tick input {
   position: absolute;
   opacity: 0;

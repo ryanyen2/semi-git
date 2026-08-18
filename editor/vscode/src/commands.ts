@@ -106,10 +106,18 @@ function consequenceDetail(view: EmitView): string {
     `${view.removed.length} edit(s) come out` +
       (files.length ? `, across ${files.length} file(s): ${cap(files)}` : ", changing no files"),
     symbols.length ? `Symbols affected: ${cap(symbols)}` : undefined,
-    blast.length
-      ? `${blast.length} later edit(s) are built on this — you pick which to keep next.`
-      : "Nothing built on it is left dangling.",
-    locked.length ? `${locked.length} prerequisite(s) it sits on stay put.` : undefined,
+    // Absent is not the same as none. `sgt.api._frontier_rows` returns `[]` for any target it
+    // cannot reduce to a single op -- which is every whole-feature and every checkpoint revert,
+    // i.e. both ways into this dialog. Saying "nothing is left dangling" there would be asserting
+    // safety from an absence of data, in the modal that gates a destructive rewrite.
+    frontier.length
+      ? blast.length
+        ? `${blast.length} later edit(s) are built on this — you pick which to keep next.`
+        : "Nothing built on it is left dangling."
+      : "What is built on top was not computed for this target — check the diff before applying.",
+    frontier.length && locked.length
+      ? `${locked.length} prerequisite(s) it sits on stay put.`
+      : undefined,
     untouched ? `${untouched} other feature(s) are untouched.` : undefined,
     files.length ? "Nothing is applied yet — the open PREVIEW tabs are the proposed before → after." : undefined,
   ]
@@ -122,7 +130,10 @@ function consequenceDetail(view: EmitView): string {
 // can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
 // drafts continuation hollows (see `Sgt.revertKeep`); keeping none is a plain full revert.
 // `sel` is anything the CLI's own selection ladder resolves -- a feature id/label, a `file::name`
-// symbol, or a `<feature>@<n>` checkpoint -- because `--emit` and the apply share that ladder.
+// symbol, or a `<feature>@<n>` checkpoint. `--emit` and a plain `revert <sel>` share that ladder;
+// `--keep` does NOT (cli/ideal_edit.py routes it to `_revert_keep_dependents`, which resolves via
+// `verbs.resolve_target` and never reaches the checkpoint branch). That path is unreachable today
+// only because the frontier above is empty for exactly the targets that would take it.
 async function revertWithFrontier(store: Store, sel: string, preview: PreviewProvider): Promise<void> {
   let view: EmitView;
   try {

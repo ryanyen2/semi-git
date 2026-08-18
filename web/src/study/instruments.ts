@@ -628,8 +628,8 @@ export const PREFERENCE: Instrument = {
   // thing those boxes were being mined for anyway, and the one open box left is
   // optional.
   //
-  // The choices name jobs the participant actually did in the six requests they
-  // saw, in outcome terms, never in tool terms -- "taking one piece of work out
+  // The choices name jobs the participant actually did across the two halves, in
+  // outcome terms, never in tool terms -- "taking one piece of work out
   // without breaking the rest", not "reverting a feature". A question phrased as
   // a mechanism only one setup has is not a comparison, it is a leading
   // question with a forced answer.

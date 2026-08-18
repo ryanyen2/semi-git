@@ -408,12 +408,18 @@ function metricsFor(
   // The closed questions are scored here rather than by a person, so r1 has no
   // rubric. Both halves have to be present: a request answered before the key
   // was loaded is unscored, which is a different thing from all three wrong.
+  //
+  // `choices` is SEEDED as `{}` when a request is opened, and `{}` is truthy, so
+  // a participant who ran out of time having picked nothing scored 0 of 3 --
+  // indistinguishable from three wrong answers, and pulling the condition mean
+  // toward zero. Worse with a confidence rating attached: nothing answered plus
+  // a moved slider recorded as maximum overconfidence.
   const wanted = choiceKey[req.requestId]?.[req.project] ?? null
-  const chosen = req.choices ?? null
+  const answered = req.choices && Object.keys(req.choices).length > 0 ? req.choices : null
   const questions = wanted ? Object.keys(wanted) : []
-  const choiceOutOf = wanted && chosen ? questions.length : null
+  const choiceOutOf = wanted && answered ? questions.length : null
   const choiceScore =
-    wanted && chosen ? questions.filter((q) => chosen[q] === wanted[q]).length : null
+    wanted && answered ? questions.filter((q) => answered[q] === wanted[q]).length : null
 
   let wrongTurns = 0
   for (let i = 0; i < mine.length; i++) {
