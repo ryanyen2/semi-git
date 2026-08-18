@@ -145,14 +145,21 @@ WRAPPER
     # thing a participant met in the sgt condition was the one thing the sgt
     # condition is supposed to have. The refresh prints a warning to stderr when
     # a labeling call is rejected, so the check below reads for it.
-    echo "  Refreshing the history view. About thirty seconds."
+    # `--rebuild`, not `--refresh`. A refresh splices unchanged subtrees from the
+    # tree it inherits, and on `confplan` that splice leaves a whole module owned
+    # by no feature (nine symbols, including the `slots.py` parsing that request
+    # one is about) where a cold recluster of the same repo leaves two. A bundle
+    # is built once, from a pristine copy, and handed to one participant: paying
+    # thirty seconds for the graph the current code actually produces is the
+    # right trade, and it makes the integrity gate below mean what it says.
+    echo "  Rebuilding the history view. About a minute."
     refresh_log="$staging/.refresh.log"
     (
         set -a
         # shellcheck disable=SC1091
         [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
         set +a
-        cd "$staging/work" && "$staging/bin/sgt" log --refresh
+        cd "$staging/work" && "$staging/bin/sgt" log --rebuild
     ) > "$refresh_log" 2>&1 || true
     if grep -q "LLM labeling call was rejected" "$refresh_log"; then
         echo

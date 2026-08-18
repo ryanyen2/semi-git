@@ -1125,6 +1125,14 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
                     continue
                 members = sorted({m for k in dupes for m in nodes[k]["members"]})
                 for k in dupes[1:]:
+                    # `k is c` when a parent's children list names the same leaf twice: `c` then
+                    # appears in its own `dupes[1:]`, and deleting it here makes the rewrite two
+                    # lines below raise KeyError on the node it is in the middle of building.
+                    # `confplan` hits this and takes `build_map` down with it, so its tree is
+                    # never updated -- which is how nine features that own no code survived a
+                    # refresh that was supposed to remove them.
+                    if k == c:
+                        continue
                     remap[k] = c
                     del nodes[k]
                 nodes[c] = {
