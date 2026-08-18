@@ -1065,7 +1065,28 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
     # Dropping the entry leaves the pin where it is, which is the conservative half of the trade:
     # the id stays on whichever node already had it rather than moving to a node whose claim we
     # cannot honour without evicting someone.
-    amap = {leaf: fid for leaf, fid in amap.items() if fid not in result["nodes"] or fid in amap}
+    #
+    # Iterated to a fixpoint, because the filter is not monotone in one pass. `fid in amap` means
+    # "the node holding this id is itself giving it up", and that justification dies if THAT entry
+    # is dropped later in the same sweep -- a chain `L1 -> F2`, `F2 -> F3` keeps `L1 -> F2` while
+    # dropping `F2 -> F3`, so `F2` never gives up its id and `L1` is aliased onto it anyway,
+    # reproducing exactly the corruption this filter exists to prevent. Each pass only removes
+    # entries, so this terminates.
+    wanted = amap
+    while True:
+        kept = {leaf: fid for leaf, fid in amap.items()
+                if fid not in result["nodes"] or fid in amap}
+        if len(kept) == len(amap):
+            break
+        amap = kept
+    dropped = {leaf: fid for leaf, fid in wanted.items() if leaf not in amap}
+    # Every pin whose rename could not be applied. `assign` promises that a pinned op never leaves
+    # its assigned feature (D3), and a dropped entry is that promise going unkept -- silently, and
+    # on one of the study projects permanently, since the same entry is dropped on every build.
+    # Surfaced beside `cannot_link_moves` for the same reason it is: a guarantee downgraded to
+    # best-effort should be visible to whoever reads the tree, not discoverable by instrumenting it.
+    if dropped:
+        result["unapplied_assign_pins"] = dict(sorted(dropped.items()))
     if amap:
         _apply_id_map(result, amap)
 
