@@ -27,6 +27,7 @@ import {
   type Specificity,
 } from '../study/taxonomy'
 import { gitExpertise, tlxScore, tlxSubscales, umuxLiteScore } from '../lib/stats'
+import { HLAC } from '../study/instruments'
 
 export interface CategorizedEvent {
   id: string
@@ -142,6 +143,8 @@ export interface HalfSummary {
   tlxSubscales: Record<string, number> | null
   umux: number | null
   hlac: Record<string, number>
+  /** Manipulation checks that ride along on the HLAC block: task realism, and whether the cap bound. */
+  checks: Record<string, number>
 }
 
 export interface ParticipantAnalysis {
@@ -478,11 +481,21 @@ function halfSummary(
   const find = (instrument: string) =>
     responses.find((r) => r.id === `${instrument}-h${half}`)?.values ?? null
 
+  // The HLAC block carries two manipulation checks that are not part of what it
+  // measures, so they are split out here rather than averaged into it. They also
+  // need coercing: `timePressure` is a select, so its five fully-labelled
+  // options arrive as strings and a `typeof v === 'number'` filter dropped the
+  // item entirely -- collected every half, surfaced nowhere.
+  const checkIds = new Set(HLAC.items.filter((i) => i.check).map((i) => i.id))
   const hlacVals = find('hlac')
   const hlac: Record<string, number> = {}
+  const checks: Record<string, number> = {}
   if (hlacVals) {
     for (const [k, v] of Object.entries(hlacVals)) {
-      if (typeof v === 'number') hlac[k] = v
+      const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
+      if (!Number.isFinite(n)) continue
+      if (checkIds.has(k)) checks[k] = n
+      else if (typeof v === 'number') hlac[k] = v
     }
   }
 
@@ -496,6 +509,7 @@ function halfSummary(
     tlxSubscales: find('tlx') ? tlxSubscales(find('tlx')!) : null,
     umux: find('umux') ? umuxLiteScore(find('umux')!) : null,
     hlac,
+    checks,
   }
 }
 
