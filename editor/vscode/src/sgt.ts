@@ -263,11 +263,15 @@ export class Sgt {
     return this.confirmedMutate(["revert", sel, "--keep", keepOpIds.join(",")]);
   }
 
-  // The union closure a multi-select induces (`sgt select <feature>... --json` → selection_view):
-  // the feature ids, direct + closure op counts, and the ops pulled in from other features. Feeds
-  // the workbench's multi-select "selection" card + closure paint (Stage C). A report-only read.
+  // The union closure a multi-select induces (`sgt feature select <feature>... --json` →
+  // selection_view): the feature ids, direct + closure op counts, and the ops pulled in from other
+  // features. Feeds the workbench's multi-select "selection" card + closure paint (Stage C), and
+  // the batch preview its "Revert all" confirms against. A report-only read.
+  // The bare `sgt select` spelling this used to call was re-homed under `feature` and now answers
+  // with a "no longer exists — run: sgt feature select" stub on stderr, which the extension saw as
+  // a failed read: the selection card only ever showed that migration notice.
   select(refs: string[]): Promise<SelectionView> {
-    return this.json<SelectionView>(["select", ...refs, "--json"]);
+    return this.json<SelectionView>(["feature", "select", ...refs, "--json"]);
   }
 
   // Active plan sessions + the pure checkpoint preview (plan U14). A read, not a rebuild —
