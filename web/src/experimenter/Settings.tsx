@@ -291,6 +291,18 @@ function GroundTruthPanel() {
       if (!parsed.episodes || !parsed.requestKeys) {
         throw new Error('That file has no episodes or requestKeys in it.')
       }
+      // An answer key from before request one became closed questions passes
+      // every check above -- it has episodes and it has requestKeys, its entries
+      // just carry no `choices`. Uploading it scores nothing, and nothing says
+      // so: the "no answer key loaded" warning stays quiet precisely because a
+      // key IS loaded. Name the one thing that would be silently missing.
+      const scorable = Object.values(parsed.requestKeys).filter((k) => k.choices).length
+      if (scorable === 0) {
+        throw new Error(
+          'That key has no closed-question answers in it, so request one would go unscored. ' +
+            'It looks like a key from before request one became multiple choice.',
+        )
+      }
       await setDoc(doc(db, 'study', 'groundTruth'), parsed)
     } catch (e) {
       setError((e as Error).message)
