@@ -136,8 +136,45 @@ WRAPPER
     # A fresh copy shows a provisional set of features that collapses to a
     # different, smaller set on the first refresh, with two renamed in place.
     # Doing it here means every participant sees one stable set all session.
+    #
+    # Built with the key from the source checkout's `.env`, not with whatever
+    # the builder's shell happens to hold. Feature names come from an LLM call,
+    # and without a key every one of them falls back to a joined list of symbol
+    # names -- `add_item apply_discount…` instead of `Shopping Cart`. That is
+    # not hypothetical: it is what the practice repo shipped with, so the first
+    # thing a participant met in the sgt condition was the one thing the sgt
+    # condition is supposed to have. The refresh prints a warning to stderr when
+    # a labeling call is rejected, so the check below reads for it.
     echo "  Refreshing the history view. About thirty seconds."
-    (cd "$staging/work" && "$staging/bin/sgt" log --refresh >/dev/null 2>&1 || true)
+    refresh_log="$staging/.refresh.log"
+    (
+        set -a
+        # shellcheck disable=SC1091
+        [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
+        set +a
+        cd "$staging/work" && "$staging/bin/sgt" log --refresh
+    ) > "$refresh_log" 2>&1 || true
+    if grep -q "LLM labeling call was rejected" "$refresh_log"; then
+        echo
+        echo "  WARNING: feature naming fell back to terse symbol lists. Usually a missing" >&2
+        echo "  or out-of-credit OPENAI_API_KEY in $SGT_SOURCE/.env. Fix it and rebuild," >&2
+        echo "  or the sgt condition ships without the readable names it is being tested on." >&2
+        echo
+    fi
+    rm -f "$refresh_log"
+
+    # The graph the participant will actually navigate, checked rather than
+    # assumed. A degenerate build is silent from every angle a builder would
+    # look at -- `sgt log` still lists every save, `sgt find` still ranks
+    # everything -- and only shows itself when a participant asks a feature what
+    # it contains and is told "0 symbols in 0 files".
+    echo "  Checking the feature graph."
+    if ! "$staging/toolenv/bin/python" "$SGT_SOURCE/scripts/check_graph_integrity.py" "$staging/work"; then
+        echo >&2
+        echo "  Not shipping this bundle. Re-run the build; if it happens twice on the" >&2
+        echo "  same project, the repo needs looking at rather than rebuilding." >&2
+        exit 1
+    fi
 
     # The search index, embedded once here rather than on first use in a
     # session. Built after the refresh so it indexes the feature set the
@@ -217,8 +254,17 @@ else
 fi
 echo "  $editor_ext"
 
+# The practice copy, built with the same key for the same reason as the work
+# copy above -- and NOT silenced, because it pins the feature names the practice
+# sheet quotes literally and says so on stderr when a pin does not stick.
 echo "  Building the practice copy."
-"$SGT_SOURCE/scripts/make-practice-repo.sh" "$staging/practice" "$condition" "$staging" >/dev/null
+(
+    set -a
+    # shellcheck disable=SC1091
+    [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
+    set +a
+    "$SGT_SOURCE/scripts/make-practice-repo.sh" "$staging/practice" "$condition" "$staging"
+) | sed 's/^/  /'
 
 claude_version="$(claude --version 2>/dev/null | awk '{print $1}' || true)"
 
