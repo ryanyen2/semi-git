@@ -145,13 +145,15 @@ WRAPPER
     # thing a participant met in the sgt condition was the one thing the sgt
     # condition is supposed to have. The refresh prints a warning to stderr when
     # a labeling call is rejected, so the check below reads for it.
-    # `--rebuild`, not `--refresh`. A refresh splices unchanged subtrees from the
-    # tree it inherits, and on `confplan` that splice leaves a whole module owned
-    # by no feature (nine symbols, including the `slots.py` parsing that request
-    # one is about) where a cold recluster of the same repo leaves two. A bundle
-    # is built once, from a pristine copy, and handed to one participant: paying
-    # thirty seconds for the graph the current code actually produces is the
-    # right trade, and it makes the integrity gate below mean what it says.
+    # `--rebuild`, not `--refresh`, and the reason is provenance rather than
+    # quality. Both now produce the same graph -- the gap that first prompted
+    # this (nine symbols owned by no feature on `confplan`) was one aliased id in
+    # `_apply_assign_pins` and is fixed. What a refresh still does is splice from
+    # whatever tree the source repository happens to carry, so the bundle's graph
+    # depends on that repo's build history. A bundle is built once, from a
+    # pristine copy, and handed to one participant who cannot rebuild it; a
+    # minute buys a graph that is a function of the code alone, which is the same
+    # argument the wheel-provenance check above makes.
     echo "  Rebuilding the history view. About a minute."
     refresh_log="$staging/.refresh.log"
     (

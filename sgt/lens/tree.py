@@ -499,8 +499,10 @@ def _absorb_husk_leaves(nodes: dict, roots: list[str]) -> int:
     Absorbed rather than deleted, so the leaves still partition the alive set exactly. The target is
     the leaf holding the member's anchor entity, which is where `_member_leaf_for` already routes
     that residue's *ops* -- so membership and op assignment now agree instead of pointing at two
-    different lanes. Members with no anchor entity (a file's trailing residue) go to the largest
-    surviving sibling; a husk with no surviving sibling is left alone rather than orphaned."""
+    different lanes. A member with no anchor entity (a file's head gap) goes to the largest
+    surviving leaf under the same parent, widening to the largest anywhere if that parent has none
+    left -- so it can land in an unrelated subsystem. Only when every leaf in the tree is a husk is
+    one left alone, rather than orphaning its members."""
     from sgt.core.op import is_behavioral
 
     member_leaf = leaf_member_index(nodes)
@@ -515,9 +517,10 @@ def _absorb_husk_leaves(nodes: dict, roots: list[str]) -> int:
 
     def fallback_for(husk: str) -> str | None:
         """Where a member with no anchor entity goes: the biggest surviving leaf under the same
-        parent, or the biggest anywhere if that parent has none left. A file's trailing residue
-        (`__residue__::\x00HEAD\x00`) has no entity to follow, so this is the common case, not an
-        edge case. Ties break on id so two builds of one repo agree."""
+        parent, or the biggest anywhere if that parent has none left. Residue is keyed by the
+        entity *preceding* it, so nearly all of it has an anchor to follow; the exception is the
+        head gap (`__residue__::\x00HEAD\x00`, the bytes before a file's first top-level entity),
+        which has nothing before it. Ties break on id so two builds of one repo agree."""
         siblings = [
             nid for nid in leaves
             if nid not in husk_set and nodes[nid]["parent"] == nodes[husk]["parent"]
@@ -548,8 +551,30 @@ def _absorb_husk_leaves(nodes: dict, roots: list[str]) -> int:
                 nodes[dest]["dir"] = _dominant_dir(nodes[dest]["members"])
             nodes[husk]["members"] = []
             folded += 1
-    if folded:
-        _prune_empty_leaves(nodes, roots)  # the emptied husks, and any internal left childless
+    if not folded:
+        return 0
+
+    # Re-derive every interior node's membership from its descendants, bottom-up.
+    #
+    # An interior node carries the union of the leaves beneath it -- `_subdivide`, `_split_once`
+    # and `_regroup_by_dir` all build it that way, and `_splice` copies it forward verbatim. The
+    # fold above rewrites leaves only, so without this the ancestors of anything absorbed keep a
+    # stale union, and one shape breaks the partition outright: a subsystem whose leaf children
+    # were ALL husks keeps their residue as its own members, so `_prune_empty_leaves` will not
+    # take it (it has members) and it survives as a childless node -- duplicating members that now
+    # also live in the destination leaf, and being a husk itself, one level up where the pass above
+    # can no longer see it.
+    for rid in roots:
+        for nid in _post_order(nodes, rid):
+            nd = nodes.get(nid)
+            if nd is None or not nd["children"]:
+                continue
+            members = sorted({m for c in nd["children"] if c in nodes for m in nodes[c]["members"]})
+            nd["members"] = members
+            nd["size"] = len(members)
+            nd["dir"] = _dominant_dir(members)
+
+    _prune_empty_leaves(nodes, roots)  # the emptied husks, and any interior left with nothing
     return folded
 
 
@@ -1025,6 +1050,22 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
     # pass -> a deterministic 2-cycle (the `af-` id oscillation). Choosing first, filtering second,
     # converges to a fixpoint: the strongest (tie -> smallest) pin always wins and holds.
     amap = {leaf: fid for leaf, fid in amap.items() if leaf != fid}
+    # Drop a rename onto an id a *different* live node already holds, unless that holder is itself
+    # giving the id up in this same map. `_apply_id_map` rewrites every children list through the
+    # map, so aliasing two live nodes onto one id makes a parent name the same child twice and then
+    # collapses both into one `renamed[rid]` entry -- one node's members vanish, and `_dedup` later
+    # finds a leaf in its own `dupes[1:]` and deletes the node it is rewriting.
+    #
+    # It happens whenever a pin's plurality leaf moves between builds: the id still sits on last
+    # build's leaf (carried across by Greene matching) while the pin now wants it on a new one. On
+    # `confplan` one pin aliased an `af-` id onto a sibling and cost nine symbols their feature. A
+    # cold recluster does not avoid it -- it only tends to land the two nodes under different
+    # parents, which hides the duplicate-child symptom while still losing the members.
+    #
+    # Dropping the entry leaves the pin where it is, which is the conservative half of the trade:
+    # the id stays on whichever node already had it rather than moving to a node whose claim we
+    # cannot honour without evicting someone.
+    amap = {leaf: fid for leaf, fid in amap.items() if fid not in result["nodes"] or fid in amap}
     if amap:
         _apply_id_map(result, amap)
 
