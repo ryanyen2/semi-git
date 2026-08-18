@@ -524,10 +524,29 @@ recluster of the same repo leaves two. A bundle is built once, from a pristine
 copy, for one participant, so a minute buys the graph the current code actually
 produces.
 
-**Still open, and these are related.** Nothing here explains why a spliced tree
-contains a duplicated child id in the first place, nor why the splice path owns
-nine fewer symbols than a cold recluster of the same repository. `_splice`,
-`_dirty_subdivide` and `_regroup_flat_root` are where to look. The guard stops
-the crash; it does not stop whatever produced the duplicate. Until that is
-understood, treat `--refresh` as a fast approximation and `--rebuild` as the
-answer of record — which is now what the bundle build does.
+**Root cause, found on review.** Not splice. `_apply_assign_pins` builds
+`{leaf_id: pinned_fid}` and refuses a self-rename, but never checks whether
+`pinned_fid` is already held by a *different* live node. It is, whenever a pin's
+plurality leaf moves between builds: the id still sits on the previous build's
+leaf, carried across by Greene matching, while the pin now wants it elsewhere.
+`_apply_id_map` rewrites every children list through that map, aliasing the two
+nodes onto one id — so a parent names the same child twice, and `renamed[rid] =
+nd` keeps whichever came last while the other node's members vanish. One bug,
+both symptoms: the duplicate child that `_dedup` tripped over, and nine symbols
+missing from `confplan` — every top-level symbol of `slots.py` plus its tests,
+which is the module request one asks about.
+
+`_apply_id_map`'s docstring claimed the collision could not happen because
+"`id_map` only ever covers leaf ids, so internal `N*` ids and the fresh `F*` ids
+never collide". The reasoning skips `af-` ids, which is exactly what collided.
+
+Fixed by dropping any rename onto an id a live node already holds and is not
+itself giving up in the same map. Both study projects now place 102 of 102.
+
+**A correction to what this file said an hour ago.** The `--refresh` to
+`--rebuild` switch was recorded here as the answer of record. It was not a fix:
+a cold recluster happens to land the two aliased nodes under different parents,
+so the duplicate-child symptom disappears while the members are still lost. It
+is kept for a different and smaller reason — a bundle's graph should be a
+function of the code, not of whatever tree the source repository happens to
+carry.
