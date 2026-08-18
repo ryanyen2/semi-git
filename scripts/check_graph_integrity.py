@@ -117,11 +117,16 @@ def main(argv: list[str]) -> int:
     #
     # A symbol that is in the hierarchy but in no leaf is the graph being
     # INCOMPLETE rather than wrong -- it cannot be reached by feature, which is a
-    # coverage gap worth knowing about and fixing, but nothing misreports it and
-    # `sgt show` still resolves it. Both study projects carry two of these out of
-    # a hundred and two, and have since before the husk fix. Reported loudly,
-    # does not block, because refusing to ship over it would stop the study
-    # without making anything more truthful.
+    # coverage gap worth knowing about, but nothing misreports it and `sgt show`
+    # still resolves it. Reported loudly, does not block, because refusing to
+    # ship over it would stop the study without making anything more truthful.
+    #
+    # Both study projects sit at 102 of 102 today. They did not: confplan was
+    # missing nine, all five top-level symbols of `slots.py` and its tests, which
+    # is the module request one asks about. That was one aliased id in
+    # `_apply_assign_pins`, not a tolerance to design around -- so if this tier
+    # starts reporting whole modules again, treat it as a bug to find rather than
+    # a number to accept.
     ok = not husks and not vanished
 
     print("  %d symbol(s) touched, %d alive, %d tombstoned, %d placed in %d leaf feature(s)"
