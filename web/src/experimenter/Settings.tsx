@@ -288,8 +288,8 @@ function GroundTruthPanel() {
     setError(null)
     try {
       const parsed = JSON.parse(await file.text()) as GroundTruth
-      if (!parsed.episodes || !parsed.quizAnswers) {
-        throw new Error('That file has no episodes or quizAnswers in it.')
+      if (!parsed.episodes || !parsed.requestKeys) {
+        throw new Error('That file has no episodes or requestKeys in it.')
       }
       await setDoc(doc(db, 'study', 'groundTruth'), parsed)
     } catch (e) {
@@ -301,9 +301,9 @@ function GroundTruthPanel() {
     <div className="card">
       <h2>Answer key</h2>
       <p className="small muted">
-        Episodes, quiz answers, request keys and rubrics. Stored where only signed-in experimenters
-        can read it, and deliberately not compiled into the site, so a participant with devtools
-        open cannot read the quiz answers out of the JavaScript.
+        Episodes, request keys and rubrics. Stored where only signed-in experimenters can read it,
+        and deliberately not compiled into the site, so a participant with devtools open cannot read
+        the answers to request 1's questions out of the JavaScript.
       </p>
 
       <div className="row">

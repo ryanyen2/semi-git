@@ -11,9 +11,9 @@ import {
   useLiveCollection,
   writeDraft,
 } from '../../lib/db'
-import type { PauseInterval, RequestDoc, RequestId } from '../../lib/types'
+import type { PauseInterval, Project, RequestDoc, RequestId } from '../../lib/types'
 import { blockFor, type Step } from '../../study/flow'
-import { BLOCK_CAP_MIN, SCENARIO, taskCards } from '../../study/tasks'
+import { BLOCK_CAP_MIN, SCENARIO, taskCards, type ChoiceQuestion } from '../../study/tasks'
 import { TASK_PREAMBLE } from '../../study/content'
 import { Callout, Countdown, fmtClock, useCountdown } from '../../ui/bits'
 import { Markdown } from '../../ui/Markdown'
@@ -271,11 +271,14 @@ function TaskCardView({
         </div>
         {card.requests.map((r) => {
           const d = docFor(r.id)
-          if (!r.wantsAnswer || !d?.answer) return null
+          if (!r.choices.length || !d?.choices) return null
           return (
             <div key={r.id} className="small" style={{ marginTop: '0.75rem' }}>
               <div className="muted tiny">{r.title[project]}</div>
-              <div style={{ whiteSpace: 'pre-wrap' }}>{d.answer}</div>
+              {r.choices.map((q) => {
+                const pick = d.choices?.[q.id]
+                return <div key={q.id}>{pick == null ? '—' : q.options[project][pick]}</div>
+              })}
             </div>
           )
         })}
@@ -316,9 +319,24 @@ function TaskCardView({
             {card.requests.length > 1 && <h3>{r.title[project]}</h3>}
             <div className="no-copy" onCopy={blockProseCopy}>
               <Markdown>{r.body[project]}</Markdown>
+              {r.tip && (
+                <div style={{ marginTop: '0.75rem' }}>
+                  <Callout kind="soft" title="What this is asking">
+                    <Markdown>{r.tip[project]}</Markdown>
+                  </Callout>
+                </div>
+              )}
             </div>
-            {r.wantsAnswer && (
-              <AnswerBox pid={pid} half={half} request={r.id} doc={docFor(r.id)} wantsConfidence={r.wantsConfidence} />
+            {r.choices.length > 0 && (
+              <ChoiceAnswers
+                pid={pid}
+                half={half}
+                request={r.id}
+                doc={docFor(r.id)}
+                questions={r.choices}
+                project={project}
+                wantsConfidence={r.wantsConfidence}
+              />
             )}
           </div>
         ))}
@@ -365,76 +383,103 @@ function TaskCardView({
   )
 }
 
-function AnswerBox({
+/** Same picks, whatever order the two objects happen to list their keys in. */
+function samePicks(a: Record<string, number> | undefined, b: Record<string, number> | undefined) {
+  const x = a ?? {}
+  const y = b ?? {}
+  const keys = Object.keys(x)
+  return keys.length === Object.keys(y).length && keys.every((k) => x[k] === y[k])
+}
+
+function ChoiceAnswers({
   pid,
   half,
   request,
   doc,
+  questions,
+  project,
   wantsConfidence,
 }: {
   pid: string
   half: 1 | 2
   request: RequestId
   doc: RequestDoc | undefined
+  questions: ChoiceQuestion[]
+  project: Project
   wantsConfidence: boolean
 }) {
   // A crash-safe mirror, keyed to this request. The questionnaires have had one
-  // since the start; this box did not, and it is the worse thing to lose: a
-  // scored answer written while reading code cannot be reconstructed by asking
+  // since the start; these answers did not, and they are the worse thing to
+  // lose: an answer picked while reading code cannot be reconstructed by asking
   // the participant again, and a rating they no longer hold cannot be re-felt.
-  const key = draftKey(pid, 'answer', `${request}-h${half}`)
-  const [answer, setAnswer] = useState(doc?.answer ?? '')
+  const key = draftKey(pid, 'choices', `${request}-h${half}`)
+  const [picks, setPicks] = useState<Record<string, number>>(doc?.choices ?? {})
   const [confidence, setConfidence] = useState<number | null>(doc?.confidence ?? null)
   const [dirty, setDirty] = useState(false)
 
   // Recover a draft the server never received -- the browser died between a
-  // keystroke and the debounce. Only when it is strictly newer than what came
+  // click and the debounce. Only when it is strictly newer than what came
   // back, so a stale draft from a previous attempt cannot resurrect itself over
   // a real submitted answer.
   useEffect(() => {
-    const local = readDraft<{ answer: string; confidence: number | null }>(key)
+    const local = readDraft<{ picks: Record<string, number>; confidence: number | null }>(key)
     if (!local) return
     const remoteAt = doc?.submittedAt ?? 0
-    if (local.at <= remoteAt || !local.value.answer) return
-    if (local.value.answer === (doc?.answer ?? '')) return
-    setAnswer(local.value.answer)
+    if (local.at <= remoteAt || !Object.keys(local.value.picks ?? {}).length) return
+    if (samePicks(local.value.picks, doc?.choices)) return
+    setPicks(local.value.picks)
     setConfidence(local.value.confidence)
     setDirty(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  // Adopt the stored value only while the box is untouched, so a slow snapshot
-  // cannot overwrite something the participant is in the middle of typing.
+  // Adopt the stored value only while the answers are untouched, so a slow
+  // snapshot cannot overwrite a pick the participant has just made.
   useEffect(() => {
-    if (!dirty && doc?.answer != null && doc.answer !== answer) setAnswer(doc.answer)
+    if (!dirty && doc?.choices && !samePicks(doc.choices, picks)) setPicks(doc.choices)
     if (!dirty && doc?.confidence != null && doc.confidence !== confidence) setConfidence(doc.confidence)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc?.answer, doc?.confidence])
+  }, [doc?.choices, doc?.confidence])
 
   useEffect(() => {
     if (!dirty) return
-    writeDraft(key, { answer, confidence })
+    writeDraft(key, { picks, confidence })
     const t = window.setTimeout(() => {
-      void patchRequest(pid, request, half, { answer, confidence })
+      void patchRequest(pid, request, half, { choices: picks, confidence })
     }, 600)
     return () => window.clearTimeout(t)
-  }, [answer, confidence, dirty, pid, request, half, key])
+  }, [picks, confidence, dirty, pid, request, half, key])
 
   useFlushOnHide(() => {
-    if (dirty) void patchRequest(pid, request, half, { answer, confidence })
+    if (dirty) void patchRequest(pid, request, half, { choices: picks, confidence })
   })
 
   return (
     <div className="stack tight" style={{ marginTop: '0.75rem' }}>
-      <div className="field-label">Your answer</div>
-      <textarea
-        value={answer}
-        placeholder="Two or three sentences."
-        onChange={(e) => {
-          setAnswer(e.target.value)
-          setDirty(true)
-        }}
-      />
+      {questions.map((q, qi) => (
+        <div key={q.id} style={{ marginTop: qi ? '0.75rem' : 0 }}>
+          <div className="field-label">{q.prompt}</div>
+          <div className="stack tight" role="radiogroup" aria-label={q.prompt}>
+            {q.options[project].map((option, oi) => {
+              const on = picks[q.id] === oi
+              return (
+                <label key={oi} className={`check${on ? ' on' : ''}`}>
+                  <input
+                    type="radio"
+                    name={`${request}-h${half}-${q.id}`}
+                    checked={on}
+                    onChange={() => {
+                      setPicks({ ...picks, [q.id]: oi })
+                      setDirty(true)
+                    }}
+                  />
+                  <span>{option}</span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      ))}
       {wantsConfidence && (
         <div style={{ marginTop: '0.5rem' }}>
           <div className="field-label">How sure are you?</div>

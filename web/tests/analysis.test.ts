@@ -54,7 +54,6 @@ function requestDoc(over: Partial<RequestDoc> = {}): RequestDoc & { id: string }
     pauses: [],
     capMs: 420_000,
     hitCap: false,
-    answer: '',
     confidence: 70,
     selfReport: 'done',
     notes: '',
@@ -177,6 +176,40 @@ describe('per-request measures', () => {
       scoring: [],
     })
     expect(a.requests[0].counts.orient).toBe(1)
+  })
+
+  it('scores the closed questions against the key, and says how sure they were', () => {
+    // Two of three right at 70% confidence: they were slightly overconfident.
+    // The arithmetic is trivial and the comparison is the whole measure, so the
+    // thing worth pinning is that an index is compared to an index -- a stray
+    // string on either side would score every answer wrong and look like data.
+    const a = analyzeParticipant(
+      {
+        participant: participantDoc(),
+        responses: [],
+        requests: [requestDoc({ choices: { q1: 0, q2: 1, q3: 3 } })],
+        events: [],
+        scoring: [],
+      },
+      { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } },
+    )
+    expect(a.requests[0].choiceScore).toBe(2)
+    expect(a.requests[0].choiceOutOf).toBe(3)
+    expect(a.requests[0].calibration).toBeCloseTo(0.7 - 2 / 3)
+  })
+
+  it('leaves them unscored when no key has been loaded, rather than scoring zero', () => {
+    // The failure this prevents: an experimenter computes before loading the
+    // answer key, and reads a column of zeroes as everybody getting it wrong.
+    const a = analyzeParticipant({
+      participant: participantDoc(),
+      responses: [],
+      requests: [requestDoc({ choices: { q1: 0, q2: 1, q3: 1 } })],
+      events: [],
+      scoring: [],
+    })
+    expect(a.requests[0].choiceScore).toBeNull()
+    expect(a.requests[0].calibration).toBeNull()
   })
 
   it('measures how long orientation lasted before the first change', () => {

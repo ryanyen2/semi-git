@@ -1,11 +1,12 @@
-// Participant-facing prose: the welcome, and the two practice sheets.
+// Participant-facing prose: the welcome, the project brief, and the two
+// practice sheets.
 //
 // Taken from docs/study/materials/ so there is one wording, not two. The only
 // edits are the ones the bundle made necessary: the practice sheets no longer
 // explain `../bin/sgt`, because the study shell puts the right binary on PATH,
 // and the timings match docs/study/protocol.md §4.
 
-import type { Condition } from '../lib/types'
+import type { Condition, Project } from '../lib/types'
 
 export const WELCOME_MD = `
 Thanks for taking part. Plan for about two hours, including breaks.
@@ -13,7 +14,8 @@ Thanks for taking part. Plan for about two hours, including breaks.
 ## What you'll do
 
 - Work on a small program you have never seen. Someone built it over six weeks and then left.
-- Handle a few requests that have come in about it.
+- Read a short description of what it does, with no clock running.
+- Handle three requests that have come in about it.
 - Do that twice, with two different setups for looking at the project's history, on two different projects.
 
 We are comparing the two setups. We are not testing you. If something confuses you, that is the most useful thing you can tell us.
@@ -35,16 +37,24 @@ We record the screen and audio. You can ask us to stop at any time.
 
 | Minutes | What |
 |---|---|
-| 10 | Consent and a few questions about your background |
-| 10 | Setting up, then a practice project |
-| 45 | The requests |
-| 12 | Two questionnaires, five questions, and a short summary |
-| 15 | Same again, other setup, other project |
-| 45 | The requests |
-| 12 | Questionnaires again |
-| 8 | Comparing the two, and a chat about how it went |
+| 8 | Consent and a few questions about your background |
+| 10 | Setting up your machine |
+| 10 | A practice project |
+| 5 | Reading about the project you are taking over |
+| 20 | Three requests |
+| 6 | Three short questionnaires |
+| 15 | Setting up the second project, and practice again |
+| 5 | Reading about the second project |
+| 20 | Three requests |
+| 6 | Questionnaires again |
+| 5 | Comparing the two |
+| 3 | Handing your data over |
 
-Each request has its own time limit, and you can see it counting down.
+That is about 110 minutes of work. Two hours with breaks.
+
+Each request has its own time limit, and you can see it counting down. The clock
+only starts once you have read about the project, so there is no rush before
+that.
 
 - Stopping in the middle is fine.
 - Finishing early is fine.
@@ -59,42 +69,178 @@ Nothing you do can break anything that matters. Every project is a fresh copy. I
 The setup step installs everything inside one folder and uses its own Python. It does not change your shell, your global packages, or your existing AI assistant account. The assistant runs on a key we issue for this session and revoke afterwards, so nothing is billed to you.
 `.trim()
 
+// ---------------------------------------------------------------------------
+// The project brief
+// ---------------------------------------------------------------------------
+//
+// Read with no clock running, between the practice and the requests.
+//
+// It exists because pilots met the codebase for the first time with a countdown
+// already going, and spent the first four minutes of a seven minute request
+// working out what the program was for. That is not the thing we are measuring,
+// it is the same cost in both conditions, and it came out of the budget for the
+// thing we are.
+//
+// It describes the product, not the code. No file names, no function names, no
+// module layout, and nothing about how any of it was built -- all of that is
+// what the requests are about, and handing it over here would answer request one
+// on the way past.
+
+export const PROJECT_BRIEF: Record<Project, string> = {
+  coursecraft: `
+You are taking over **coursecraft**. Riley Chen built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+
+## What it is for
+
+A university department runs course registration by hand every term: a spreadsheet of who is in which class, a second one for room bookings, and a lot of email. coursecraft replaces that. It is a command line tool. One person in the department office runs it, and everything it knows lives in a single file on disk.
+
+## Who uses it, and how
+
+Someone in the office types commands at a terminal. There is no web page and no login. A normal term looks like this:
+
+- At the start of term they add the **courses** the department is running, and for each course the **sections** it is taught in — a section is one timetabled group, with a teacher, a room, a weekly time slot, and a cap on how many people fit.
+- Students get added to the system, then **enrolled** into sections.
+- When a student wants out, they are **dropped** from a section, which frees the seat.
+
+## What it refuses to do
+
+Most of the value is in what it stops you doing by accident. When someone is enrolled, the app checks that:
+
+- the section is not already full,
+- the student has passed whatever the course requires first,
+- and the new section does not clash with something else in their week.
+
+A section that ends at 10:30 and one that starts at 10:30 do not clash. That was a deliberate decision.
+
+## The rest of it
+
+- **Waitlists.** When a section is full a student can join a queue instead. When a seat frees up the next person in the queue gets it, and a notice is left for the office to pass on.
+- **Search.** Find courses by typing part of a name or a topic.
+- **Views and exports.** One student's week, one teacher's timetable, the whole catalogue as a spreadsheet, and a count of how full everything is.
+- **A room audit**, which lists rooms that got double booked.
+
+## Its condition
+
+It works and it has a test suite that passes. It has never had a second maintainer.
+`.trim(),
+
+  confplan: `
+You are taking over **confplan**. Sam Park built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+
+## What it is for
+
+A conference committee plans its two-day program by hand every year: a spreadsheet of who is booked into which talk, a second one for room bookings, and a lot of email. confplan replaces that. It is a command line tool. One person on the committee runs it, and everything it knows lives in a single file on disk.
+
+## Who uses it, and how
+
+Someone on the committee types commands at a terminal. There is no web page and no login. A normal year looks like this:
+
+- While the program is being built they add the **talks** that were accepted, and for each talk the **sessions** it is given — a session is one scheduled slot, with a speaker, a room, a time on one of the two days, and a cap on how many people fit.
+- Attendees get added to the system, then **registered** into sessions.
+- When an attendee wants out, they are **unregistered** from a session, which frees the seat.
+
+## What it refuses to do
+
+Most of the value is in what it stops you doing by accident. When someone is registered, the app checks that:
+
+- the session is not already full,
+- the attendee has been to whatever the talk expects first,
+- and the new session does not clash with something else in their day.
+
+A session that ends at 10:30 and one that starts at 10:30 do not clash. That was a deliberate decision.
+
+## The rest of it
+
+- **Waitlists.** When a session is full an attendee can join a queue instead. When a seat frees up the next person in the queue gets it, and a notice is left for the committee to pass on.
+- **Search.** Find talks by typing part of a title or a topic.
+- **Views and exports.** One attendee's day, one speaker's schedule, the whole program as a spreadsheet, and a count of how full everything is.
+- **A room audit**, which lists rooms that got double booked.
+
+## Its condition
+
+It works and it has a test suite that passes. It has never had a second maintainer.
+`.trim(),
+}
+
+// The two practice sheets.
+//
+// Both are written editor-first. Pilots read a sheet made entirely of terminal
+// commands, then met the requests inside an editor they had been given but
+// never shown, and several never opened the history view at all -- which turns
+// "does this representation help" into "did you find the panel".
+//
+// Every command, id, feature name and phrase quoted below is real in the
+// warm-up repository that scripts/make-practice-repo.sh builds, and that script
+// re-checks each of them at the end of a build. The previous sheet said things
+// like `sgt show <id>` with no id, and `sgt find "the thing that formats
+// dates"` against a repo with no dates in it, so the first thing a participant
+// did in the sgt condition was watch search return nothing.
+
 const TUTORIAL_GIT = `
 Ten minutes on a practice project first. Ask anything now. Once the real requests start we can only answer questions about the requests themselves.
 
-You already know git. This is only to check that nothing on this machine is set up oddly, and to remind you what is available.
+You already know git. This is not a lesson. It is here so that nothing on this machine surprises you later, and so that you have seen the editor before you need it.
 
-## 1. Look around
+## The practice project
+
+Run \`study-practice\`. It puts you in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
+
+It has four pieces: \`cart.py\` (adding and removing things, and the total), \`discount.py\` (a percentage off, or a coupon code), \`receipt.py\` (printing a receipt), and \`shipping.py\` (what postage costs). Sixteen commits, and \`python -m pytest -q\` passes.
+
+## 1. The editor first
+
+\`\`\`
+study-code
+\`\`\`
+
+That opens the practice project in VS Code with **GitLens** installed. Three things are worth finding now, because you will want them later:
+
+- **Source Control** in the left bar, for what has changed and where you commit.
+- **Commit Graph** — the GitLens icon in the left bar, or *GitLens: Show Commit Graph* from the command palette. The history as a graph you can click through.
+- **File History** — right-click any file, *Open File History*. Blame also appears greyed out at the end of whichever line your cursor is on.
+
+Open \`shipping.py\` and look at its file history. Four commits touch it. That is the shape of the thing you will be asked about later.
+
+## 2. Look around, in the terminal
 
 \`\`\`
 git log --oneline
 git log --stat
 \`\`\`
 
-## 2. Ask what one change was
+## 3. Ask what one change was
+
+Take a real one from that list:
 
 \`\`\`
-git show <commit>
-git show <commit> -- <file>
+git show 44da4ad
+git show 44da4ad -- shipping.py
 \`\`\`
 
-## 3. Follow one file or one piece of text over time
+## 4. Follow one thing through time
+
+This is the useful one. \`git log -S\` finds the commits where the number of times some text appears changed, so it tells you when something arrived and when it went away:
 
 \`\`\`
-git log -p -- <file>
-git log -S "<some text>"
-git blame <file>
+git log --oneline -S "FREE_OVER"
 \`\`\`
 
-\`git log -S\` finds commits where the number of times some text appears changed. It is the usual way to find when something arrived or disappeared.
+Three commits come back: free shipping over fifty arrived, then vanished inside a commit about per-item pricing whose message does not mention it, then came back. Try to see that same story in the Commit Graph.
 
-## 4. Undo something
+Also worth having:
 
 \`\`\`
-git revert <commit>
+git log -p -- shipping.py
+git blame shipping.py
 \`\`\`
 
-Makes a new commit that undoes an old one. It can conflict if later commits touched the same lines. Fix the conflict, or \`git revert --abort\`.
+## 5. Take something out, and put it back
+
+\`\`\`
+git revert 7e6e383
+\`\`\`
+
+Makes a new commit that undoes an old one. It can conflict if later commits touched the same lines; fix the conflict, or \`git revert --abort\`. Undo the revert itself with \`git revert HEAD\`, or throw the lot away with \`git reset --hard 7e6e383\`. This is the practice copy, so break it if you like.
 
 Branches, for trying something you might throw away:
 
@@ -104,25 +250,13 @@ git checkout main
 git branch -D try-something
 \`\`\`
 
-## 5. The editor
+## 6. Your assistant
 
-Open the project in the editor with \`study-code\`. It opens with GitLens
-installed, which is the usual way to read git history without leaving the
-editor:
+\`claude\` starts it in the study shell. It knows git well and it can run commands for you, so "work out when free shipping stopped applying" is a perfectly good thing to type at it.
 
-- The **Source Control** view in the sidebar, for what has changed and for committing.
-- **GitLens Inspect** and the **Commit Graph**, for reading history.
-- Blame text at the end of the line you are on, and **File History** on any file.
+It can also plan before it acts. If you ask it to plan first, or use its plan mode, it lays out the steps it intends to take before touching anything. You do not have to try that now. It is worth knowing about for the second request.
 
-Use the editor, the terminal, or both. Whatever you would normally do.
-
-## 6. Help
-
-\`\`\`
-git help <command>
-\`\`\`
-
-Your assistant knows git well, so you can just ask it.
+Use the editor, the terminal, the assistant, or all three. Whatever you would normally do.
 
 ## Before we start
 
@@ -134,91 +268,136 @@ Ten minutes on a practice project first. Ask anything now. Once the real request
 
 ## What it is
 
-\`sgt\` sits on top of an ordinary git repository. Git records which lines in which files changed. \`sgt\` records which functions and classes changed, and groups related work under a name. It calls those groups features.
+\`sgt\` sits on top of an ordinary git repository. Git records which lines in which files changed. \`sgt\` records which functions and classes changed, and groups related work under a name. It calls those groups **features**.
 
-Ten minutes will not make you fluent, and we do not expect it to. Every command ends by printing what you might want to run next, so you can follow that rather than memorising anything.
+Ten minutes will not make you fluent and we do not expect it to. Every command ends by printing what you might want to run next, so you can follow that rather than memorising anything.
 
-## 1. Look around
+## The practice project
+
+Run \`study-practice\`. It puts you in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
+
+\`sgt\` has already read its history and found four features:
+
+| Feature | What it is |
+|---|---|
+| **The Cart** | adding and removing things, and the total |
+| **Discounts** | a percentage off, or a coupon code |
+| **Receipts** | turning a cart into something you can print |
+| **Shipping** | what it costs to post an order |
+
+Those names are what you hand back to the commands below.
+
+## 1. The editor first
 
 \`\`\`
-sgt now          a short summary of where things stand
-sgt log          your saved work, newest first
-sgt log --map    the same history, one row per feature over time
+study-code
 \`\`\`
 
-## 2. Record a change
+That opens the practice project in VS Code with the **semi-git** extension installed. Click the semi-git icon in the left bar and you get:
 
-Edit one of the functions, then:
+- **Now**, for where things stand and anything waiting on you.
+- **Features**, the four above as a tree. Expand one to see what it covers.
+- **Changes**, for what you have edited and not yet saved.
+
+At the bottom, the **SGT Workbench** panel draws every feature as a row across time, so you can see which ones were being worked on at the same moment. There is a search box in its toolbar: type \`shipping\` into it.
+
+Right-clicking a feature offers the same verbs as the commands below. **Toggle Feature Blame** puts the owning feature at the end of whichever line your cursor is on.
+
+Open \`shipping.py\` with blame on. That is the shape of the thing you will be asked about later.
+
+## 2. Look around, in the terminal
+
+\`\`\`
+sgt now           where things stand
+sgt log           your saved work, newest first
+sgt log --map     one row per feature, across time
+sgt log --tree    just the four features and their handles
+\`\`\`
+
+In \`--map\`, the bars are how busy a feature was at that moment, and the \`@0\`, \`@1\`, \`@2\` chips underneath are its **checkpoints** — the chapters within one feature.
+
+## 3. Ask what one thing is
+
+Hand back a name, a function, or a save id. All three of these work:
+
+\`\`\`
+sgt show "Shipping"                what the feature covers
+sgt show cart.py::total            what one function belongs to
+sgt show 44da4ad                   what one save did
+\`\`\`
+
+Try the first. It tells you it covers five things in two files, lists the four saves that built it, and says how many edits removing it would take with it.
+
+For a feature's chapters:
+
+\`\`\`
+sgt log --focus "Shipping"
+\`\`\`
+
+## 4. Find something when you do not know its name
+
+Describe it:
+
+\`\`\`
+sgt find "the thing that works out postage"
+\`\`\`
+
+It ranks features, saves and functions against your words and hands you back the ids. The search box in the workbench toolbar does the same thing.
+
+## 5. Record a change
+
+Edit anything — a function, or just the README — then:
 
 \`\`\`
 sgt save -m "what you changed, in your own words"
 \`\`\`
 
-Your words become the name of the work. It then tells you which feature the change landed in.
+Your words become the name of that work, and it tells you which feature the change landed in. Do it once now so you have seen it happen.
 
-## 3. Ask what something is
+## 6. Take something out, and put it back
 
-Every command prints short ids. Hand any of them back:
-
-\`\`\`
-sgt show <id>
-\`\`\`
-
-You get what it covers, what would come with it, and what you can do next.
-
-If you don't know what it's called, describe it:
+Do this whole sequence. It is the most useful thing in these ten minutes.
 
 \`\`\`
-sgt find "the thing that formats dates"
+sgt revert "Receipts"
 \`\`\`
 
-It ranks features, saves and symbols against your words and gives you the ids.
-There is a box for the same thing in the editor's toolbar.
-
-## 4. Take something out
+Nothing has happened yet. That was a preview, and three things in it are worth reading: which chapters would go, that it removes 14 edits across 2 files, and the line saying **3 other feature(s) unchanged**. Now do it:
 
 \`\`\`
-sgt revert <what>
+sgt revert "Receipts" --yes
+python -m pytest -q
 \`\`\`
 
-- It shows you what would happen first, and only does it if you add \`--yes\`.
-- \`<what>\` can be a function like \`cart.py::total\`, a feature name, or a plain English phrase like "the thing that formats dates".
-
-Two more:
+\`receipt.py\` and its tests are gone, and the other nine tests still pass. Put it back:
 
 \`\`\`
-sgt restore <what>    bring something back
-sgt undo              reverse the last thing sgt did
+sgt undo
+python -m pytest -q
 \`\`\`
 
-Try it now: remove a function, read what it says it would do, do it, then undo it.
+Eleven again. \`sgt undo\` reverses the last thing sgt did; \`sgt restore "<name>"\` brings back something removed longer ago.
 
-## 5. The editor
+You can also take out one chapter rather than a whole feature:
 
-Open the project in the editor with \`study-code\`. There is a **semi-git** icon
-in the sidebar with the same information the commands print:
+\`\`\`
+sgt revert Shipping@2
+\`\`\`
 
-- **Now** and **Features**, for where things stand and what work exists.
-- **Changes**, for what you have not saved yet.
-- The **Composition Workbench** panel, for seeing features against each other.
-- Feature blame at the end of the line you are on, from **Toggle Feature Blame**.
+Preview first is the rule everywhere, including in the editor.
 
-Right-clicking a feature offers the same verbs as the commands, and preview
-first is still the rule.
+## 7. Your assistant
 
-Your assistant can drive this tool too, not just the shell: ask it to look
-something up or to take something out, and the workbench paints what that would
-do to the graph while it happens. Use the editor, the terminal, the assistant,
-or all three. Whatever you would normally do.
+\`claude\` starts it in the study shell. It can drive this tool as well as the shell, so "what came along with free shipping over fifty" and "take the receipts out" are both things you can just type at it. The workbench paints what a change would do to the graph while it happens.
 
-## 6. Help
+It can also plan before it acts. Ask it to plan first, or use its plan mode, and it lays out the steps it intends to take before touching anything; \`sgt\` records that plan next to the work, so afterwards you can compare what it said it would do with what it did. You do not have to try that now. It is worth knowing about for the second request.
+
+## 8. Help
 
 \`\`\`
 sgt --help
 sgt <command> --help
 \`\`\`
-
-Your assistant knows these commands too.
 
 ## Before we start
 
@@ -231,9 +410,9 @@ export function tutorialFor(condition: Condition): string {
 
 export const TASK_PREAMBLE = (app: string, maintainer: string, blurb: string) =>
   `
-You are the new maintainer of a program called **${app}**. It is ${blurb}. ${maintainer} built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+You are the new maintainer of **${app}**, the program you just read about — ${blurb}. ${maintainer} built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
 
-You have the code, its full history, and your assistant. Work through the requests in order. The last two are optional and only if you have time.
+You have the code, its full history, and your assistant. Three requests, in order, about twenty minutes in total. Each has its own clock and running out of time on one is a normal result.
 
 Tell us what you are thinking as you go.
 `.trim()
@@ -271,7 +450,7 @@ That is everything. Thank you.
 
 Version control records history as lines in files. When you work with an AI assistant you describe what you want in sentences, and then the record of what you did comes back to you as diffs. We built a tool that records history as the pieces of work someone meant to do, and we wanted to know whether that helps a person who arrives afterwards.
 
-One of the two setups you used was that tool. The other was ordinary git. We deliberately did not say which was which, and we asked the same six requests of both, because we are measuring the difference between the two representations and not the difference between you and anyone else.
+One of the two setups you used was that tool. The other was ordinary git. We deliberately did not say which was which, and we asked the same three requests of both, because we are measuring the difference between the two representations and not the difference between you and anyone else.
 
 ## What happens to your data
 

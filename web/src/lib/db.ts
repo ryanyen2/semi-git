@@ -527,7 +527,7 @@ export async function openRequest(
     pauses: [],
     capMs,
     hitCap: false,
-    answer: '',
+    choices: {},
     confidence: null,
     selfReport: null,
     notes: '',

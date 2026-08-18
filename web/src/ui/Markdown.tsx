@@ -98,25 +98,31 @@ export function Markdown({ children, className }: { children: string; className?
         rows.push(splitRow(lines[i]))
         i++
       }
+      // Wrapped so a wide table scrolls inside itself. Unwrapped, its
+      // min-content width propagates up through the page's grid and widens the
+      // whole content column, which made every step carrying a table render
+      // wider than every step that did not.
       blocks.push(
-        <table key={k++}>
-          <thead>
-            <tr>
-              {head.map((c, ci) => (
-                <th key={ci}>{inline(c, `th${ci}`)}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, ri) => (
-              <tr key={ri}>
-                {r.map((c, ci) => (
-                  <td key={ci}>{inline(c, `td${ri}-${ci}`)}</td>
+        <div className="scroll-x" key={k++}>
+          <table>
+            <thead>
+              <tr>
+                {head.map((c, ci) => (
+                  <th key={ci}>{inline(c, `th${ci}`)}</th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>,
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={ri}>
+                  {r.map((c, ci) => (
+                    <td key={ci}>{inline(c, `td${ri}-${ci}`)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
       )
       continue
     }

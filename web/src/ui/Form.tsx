@@ -102,13 +102,11 @@ function SliderRow({
   value,
   onChange,
   disabled,
-  ticks,
 }: {
   item: Item
   value: Value
   onChange: (v: number) => void
   disabled?: boolean
-  ticks?: number
 }) {
   const min = item.min ?? 0
   const max = item.max ?? 100
@@ -142,19 +140,83 @@ function SliderRow({
           {touched ? shown : '–'}
         </span>
       </div>
-      {ticks ? (
-        <div className="ticks" aria-hidden>
-          {Array.from({ length: ticks }, (_, i) => (
-            <span key={i} />
-          ))}
-        </div>
-      ) : null}
       <Anchors item={item} />
       {!touched && (
         <div className="tiny faint" style={{ marginTop: '0.15rem' }}>
           Not answered yet — click or drag anywhere on the line.
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * The NASA-TLX scale, in the form the instrument actually specifies: twenty-one
+ * tick marks with twenty intervals between them, bipolar text anchors at the two
+ * ends, and no number anywhere.
+ *
+ * It was an HTML range input with a numeric readout beside it. Three things
+ * were wrong with that. A range slider invites dragging to a value, which is a
+ * magnitude judgement, where TLX asks for a mark in an interval. The readout
+ * turns the answer into a number the participant then reasons about ("I said 60
+ * last time"), and TLX is meant to be answered on first instinct. And a slider
+ * thumb sits somewhere from the moment it renders, so an untouched scale looks
+ * answered -- the old code carried a whole apparatus of dimming and synthetic
+ * commit events to work around exactly that. Twenty-one discrete targets have
+ * no default position, so an unanswered scale is simply empty.
+ *
+ * The recorded value is unchanged: 0 to 100 in steps of 5. That is the
+ * twenty-one TICK MARKS numbered, not the twenty intervals -- the two counts
+ * describe the same scale and get conflated constantly, which is why published
+ * work reports it as both 20-point and 21-point. Twenty-one is the number of
+ * answers a participant can give. `tlxScore` and its tests are untouched.
+ *
+ * The ticks at 0, 50 and 100 are drawn full height and the other eighteen half
+ * height, matching the reference implementation: three fixed landmarks, none of
+ * them labelled, so the midpoint is findable without becoming a neutral option.
+ */
+function TlxScale({
+  item,
+  value,
+  onChange,
+  disabled,
+}: {
+  item: Item
+  value: Value
+  onChange: (v: number) => void
+  disabled?: boolean
+}) {
+  const steps = Array.from({ length: 21 }, (_, i) => i * 5)
+  const selected = typeof value === 'number' ? value : null
+  // Performance is the one subscale whose ends run the other way, and marking it
+  // in the wrong direction is this instrument's best-documented failure mode --
+  // enough of one that the reference implementation sets those two anchors apart
+  // from the other five on purpose, rather than trusting the words alone.
+  const flagged = item.reverse ? ' flagged' : ''
+  return (
+    <div className="tlx">
+      <span className={`tlx-anchor${flagged}`}>{item.anchors?.[0]}</span>
+      <div className="tlx-track" role="radiogroup" aria-label={item.label}>
+        {steps.map((v) => (
+          <label
+            key={v}
+            className={
+              `tlx-tick${selected === v ? ' on' : ''}${v % 50 === 0 ? ' landmark' : ''}`
+            }
+            title={item.anchors ? `${item.anchors[0]} … ${item.anchors[1]}` : undefined}
+          >
+            <input
+              type="radio"
+              name={item.id}
+              checked={selected === v}
+              disabled={disabled}
+              aria-label={`${v} out of 100`}
+              onChange={() => onChange(v)}
+            />
+          </label>
+        ))}
+      </div>
+      <span className={`tlx-anchor${flagged}`}>{item.anchors?.[1]}</span>
     </div>
   )
 }
@@ -348,15 +410,11 @@ function Field({
         )
 
       case 'tlx':
-        // 21 ticks: the raw TLX scale is coarse enough to answer quickly and
-        // fine enough to average, and a continuous slider would invent
-        // precision the instrument does not have.
         return (
-          <SliderRow
+          <TlxScale
             item={item}
             value={value}
             disabled={disabled}
-            ticks={21}
             onChange={(v) => setValue(item.id, v)}
           />
         )
@@ -375,6 +433,23 @@ function Field({
 
   const showLabel = item.type !== 'checkbox'
 
+  // A TLX label carries both the subscale's name and its question, joined by an
+  // em dash ("Mental demand — How mentally demanding was the task?"). The name
+  // is what the participant scans for on the second and third administration,
+  // so it is set apart; the question is what they should actually read the
+  // first time. Splitting on the dash here rather than adding a second field to
+  // `Item` keeps the instrument file readable as prose.
+  const dash = item.type === 'tlx' ? item.label.indexOf(' — ') : -1
+  const renderedLabel =
+    dash < 0 ? (
+      item.label
+    ) : (
+      <>
+        <strong>{item.label.slice(0, dash)}</strong>
+        {item.label.slice(dash)}
+      </>
+    )
+
   return (
     <div
       className="field"
@@ -382,7 +457,7 @@ function Field({
     >
       {showLabel && (
         <div className="field-label">
-          {item.label}
+          {renderedLabel}
           {item.required && <span className="req">*</span>}
         </div>
       )}

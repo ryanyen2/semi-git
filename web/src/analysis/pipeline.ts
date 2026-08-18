@@ -26,7 +26,7 @@ import {
   type ClassifyContext,
   type Specificity,
 } from '../study/taxonomy'
-import { gitExpertise, tlxScore, umuxLiteScore } from '../lib/stats'
+import { gitExpertise, tlxScore, tlxSubscales, umuxLiteScore } from '../lib/stats'
 
 export interface CategorizedEvent {
   id: string
@@ -92,6 +92,45 @@ export interface RequestMetrics {
   score: number | null
   outOf: number | null
   collateralDamage: number | null
+  /** Closed questions answered correctly, where the request asks any (r1). */
+  choiceScore: number | null
+  choiceOutOf: number | null
+  /**
+   * Stated confidence minus proportion correct, both on 0-1. Positive is
+   * overconfidence: surer than they were right. Null unless both halves are
+   * there, because a missing confidence is not a confident zero.
+   */
+  calibration: number | null
+}
+
+/**
+ * Which option is the right one for a request's closed questions:
+ * request id -> project -> question id -> index into the option list in
+ * study/tasks.ts.
+ *
+ * The indexes live in docs/study/answer-key.json rather than beside the
+ * questions, because tasks.ts is compiled into the bundle the participant
+ * downloads and anything in it is readable from devtools.
+ */
+export type ChoiceKey = Record<string, Partial<Record<Project, Record<string, number>>>>
+
+/**
+ * Read the closed-question key out of the answer-key document.
+ *
+ * Takes `unknown` and picks it apart by hand because that document is a file a
+ * person loads into the console by hand. A key that is missing, older than the
+ * questions, or half-edited has to leave the questions unscored rather than
+ * mark every one of them wrong.
+ */
+export function choiceKeyFrom(truth: unknown): ChoiceKey {
+  const keys = (truth as { requestKeys?: Record<string, unknown> } | null)?.requestKeys
+  if (!keys) return {}
+  const out: ChoiceKey = {}
+  for (const [requestId, entry] of Object.entries(keys)) {
+    const choices = (entry as { choices?: ChoiceKey[string] } | null)?.choices
+    if (choices) out[requestId] = choices
+  }
+  return out
 }
 
 export interface HalfSummary {
@@ -99,13 +138,10 @@ export interface HalfSummary {
   condition: Condition
   project: Project
   tlx: number | null
+  /** The six TLX subscales, all in workload direction (higher = more load). */
+  tlxSubscales: Record<string, number> | null
   umux: number | null
   hlac: Record<string, number>
-  quizScore: number | null
-  quizConfidence: number | null
-  summaryCoverage: number | null
-  summaryCausal: number | null
-  summaryMisconceptions: number | null
 }
 
 export interface ParticipantAnalysis {
@@ -347,6 +383,7 @@ function metricsFor(
   req: RequestDoc,
   events: CategorizedEvent[],
   scoring: ScoringDoc | undefined,
+  choiceKey: ChoiceKey,
 ): RequestMetrics {
   const mine = events.filter((e) => e.requestId === req.requestId && e.half === req.half)
   const counts = ZERO_COUNTS()
@@ -367,6 +404,16 @@ function metricsFor(
 
   const mutations = counts.agent_edit + counts.manual_edit + counts.history_op
   const firstOp = mine.find((e) => e.category === 'history_op')
+
+  // The closed questions are scored here rather than by a person, so r1 has no
+  // rubric. Both halves have to be present: a request answered before the key
+  // was loaded is unscored, which is a different thing from all three wrong.
+  const wanted = choiceKey[req.requestId]?.[req.project] ?? null
+  const chosen = req.choices ?? null
+  const questions = wanted ? Object.keys(wanted) : []
+  const choiceOutOf = wanted && chosen ? questions.length : null
+  const choiceScore =
+    wanted && chosen ? questions.filter((q) => chosen[q] === wanted[q]).length : null
 
   let wrongTurns = 0
   for (let i = 0; i < mine.length; i++) {
@@ -407,6 +454,12 @@ function metricsFor(
     score: scoring?.score ?? null,
     outOf: scoring?.outOf ?? null,
     collateralDamage: scoring?.collateralDamage ?? null,
+    choiceScore,
+    choiceOutOf,
+    calibration:
+      choiceScore != null && choiceOutOf && req.confidence != null
+        ? req.confidence / 100 - choiceScore / choiceOutOf
+        : null,
   }
 }
 
@@ -415,7 +468,6 @@ function halfSummary(
   condition: Condition,
   project: Project,
   responses: Array<ResponseDoc & { id: string }>,
-  scoring: Array<Record<string, unknown> & { id: string }>,
 ): HalfSummary {
   const find = (instrument: string) =>
     responses.find((r) => r.id === `${instrument}-h${half}`)?.values ?? null
@@ -428,38 +480,23 @@ function halfSummary(
     }
   }
 
-  const quizVals = find('quiz')
-  const quizGrade = scoring.find((s) => s.id === `quiz-h${half}`) as
-    | { correct?: Record<string, boolean> }
-    | undefined
-  const quizScore = quizGrade?.correct
-    ? Object.values(quizGrade.correct).filter(Boolean).length
-    : null
-  const confKeys = ['q1_conf', 'q2_conf', 'q3_conf', 'q4_conf', 'q5_conf']
-  const confs = quizVals
-    ? confKeys.map((k) => quizVals[k]).filter((v): v is number => typeof v === 'number')
-    : []
-
-  const summaryGrade = scoring.find((s) => s.id === `summary-h${half}`) as
-    | { covered?: string[]; causalLinks?: number; misconceptions?: number }
-    | undefined
-
   return {
     half,
     condition,
     project,
     tlx: find('tlx') ? tlxScore(find('tlx')!) : null,
+    // Carried beside the aggregate so a per-subscale figure never has to reach
+    // into the stored responses, where Performance still runs the other way.
+    tlxSubscales: find('tlx') ? tlxSubscales(find('tlx')!) : null,
     umux: find('umux') ? umuxLiteScore(find('umux')!) : null,
     hlac,
-    quizScore,
-    quizConfidence: confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : null,
-    summaryCoverage: summaryGrade?.covered?.length ?? null,
-    summaryCausal: summaryGrade?.causalLinks ?? null,
-    summaryMisconceptions: summaryGrade?.misconceptions ?? null,
   }
 }
 
-export function analyzeParticipant(raw: RawParticipantData): ParticipantAnalysis {
+export function analyzeParticipant(
+  raw: RawParticipantData,
+  choiceKey: ChoiceKey = {},
+): ParticipantAnalysis {
   const { participant, responses, requests, events, scoring } = raw
   const windows = windowsFor(requests)
   const { categorized } = analyzeEvents(events, windows)
@@ -474,11 +511,12 @@ export function analyzeParticipant(raw: RawParticipantData): ParticipantAnalysis
           return w ? e.ts >= w.from && e.ts <= w.to : false
         }),
         scoring.find((s) => s.id === `${r.requestId}-h${r.half}`) as unknown as ScoringDoc | undefined,
+        choiceKey,
       ),
     )
 
   const halves = participant.blocks.map((b) =>
-    halfSummary(b.half, b.condition, b.project, responses, scoring),
+    halfSummary(b.half, b.condition, b.project, responses),
   )
 
   const background = responses.find((r) => r.id === 'background')?.values ?? null
@@ -497,12 +535,12 @@ export function analyzeParticipant(raw: RawParticipantData): ParticipantAnalysis
   }
 }
 
-export function buildDataset(raws: RawParticipantData[]): Dataset {
+export function buildDataset(raws: RawParticipantData[], choiceKey: ChoiceKey = {}): Dataset {
   let unassigned = 0
   const participants = raws.map((r) => {
     const windows = windowsFor(r.requests)
     unassigned += analyzeEvents(r.events, windows).unassigned
-    return analyzeParticipant(r)
+    return analyzeParticipant(r, choiceKey)
   })
   participants.sort((a, b) => a.ordinal - b.ordinal)
   return { participants, builtAt: Date.now(), unassignedEvents: unassigned }
