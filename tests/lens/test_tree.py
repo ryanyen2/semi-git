@@ -815,6 +815,26 @@ def test_assign_pins_report_the_renames_they_could_not_apply():
     assert result["unapplied_assign_pins"] == {"F-mover": "af-taken"}
 
 
+def test_assign_pins_report_an_empty_map_when_every_rename_applied():
+    # Present even when there is nothing to say, like `cannot_link_moves`. A key that appears only
+    # on bad news makes the obvious read raise on every healthy repo.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a"], "size": 1,
+                   "dir": "pkg", "children": ["L1"], "split_reason": None},
+            "L1": _leaf("L1", "N0", ["a"], "pkg"),
+        },
+        "roots": ["N0"],
+        "op_leaf": {},
+    }
+    tree._apply_assign_pins(result, Pins(assign={"a": "F-free"}))
+
+    assert result["unapplied_assign_pins"] == {}
+    assert "F-free" in result["nodes"]  # the rename did apply
+
+
 def test_prune_empty_leaves_keeps_a_lone_empty_root():
     # Degenerate no-member build: keep one empty root so downstream never faces an empty forest.
     nodes = {"N0": {"id": "N0", "parent": None, "depth": 0, "members": [], "size": 0, "dir": "",
