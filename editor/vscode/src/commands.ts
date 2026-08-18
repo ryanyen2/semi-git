@@ -98,7 +98,12 @@ function consequenceDetail(view: EmitView): string {
   // reads as an internal leak, the same reason `sgt.api.so_what_for` skips them in its headline.
   const symbols = view.affected_symbols.filter((s) => !s.includes("::__"));
   const frontier = view.frontier ?? [];
+  // `blast` is only the part of the frontier the target REFERENCES directly. Everything else
+  // reached through chain or declared edges comes back as `carry`, and carry rows are toggleable
+  // too -- so "no blast rows" does not mean "nothing is at risk". `toggleable` is the predicate
+  // for that question; `blast` is the predicate for how many the next dialog will ask about.
   const blast = frontier.filter((r) => r.bucket === "blast" && r.toggleable);
+  const atRisk = frontier.filter((r) => r.toggleable);
   const locked = frontier.filter((r) => !r.toggleable);
   const untouched = view.focus?.context_count ?? 0;
   return [
@@ -111,13 +116,14 @@ function consequenceDetail(view: EmitView): string {
     // i.e. both ways into this dialog. Saying "nothing is left dangling" there would be asserting
     // safety from an absence of data, in the modal that gates a destructive rewrite.
     frontier.length
-      ? blast.length
-        ? `${blast.length} later edit(s) are built on this — you pick which to keep next.`
+      ? atRisk.length
+        ? `${atRisk.length} later edit(s) are built on this — you pick which to keep next.` +
+          (blast.length && blast.length !== atRisk.length
+            ? ` ${blast.length} of them reference it directly.`
+            : "")
         : "Nothing built on it is left dangling."
       : "What is built on top was not computed for this target — check the diff before applying.",
-    frontier.length && locked.length
-      ? `${locked.length} prerequisite(s) it sits on stay put.`
-      : undefined,
+    locked.length ? `${locked.length} prerequisite(s) it sits on stay put.` : undefined,
     untouched ? `${untouched} other feature(s) are untouched.` : undefined,
     files.length ? "Nothing is applied yet — the open PREVIEW tabs are the proposed before → after." : undefined,
   ]

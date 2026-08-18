@@ -480,7 +480,14 @@ function halfSummary(
     responses.find((r) => r.id === `${instrument}-h${half}`)?.values ?? null
 
   // The HLAC block carries two manipulation checks that are not part of what it
-  // measures, so they are split out here rather than averaged into it. They also
+  // measures, so they are split out here rather than averaged into it.
+  //
+  // This reads the CURRENT instrument to classify a STORED response, which is
+  // the one place this file is not a pure function of the raw stream. It is safe
+  // only because both check ids are new in hlac-v3, so no earlier response can
+  // carry one. If a later version marks an existing item `check: true`, this
+  // would retroactively move it out of `hlac` for people who answered it as a
+  // construct item -- read `r.version` here rather than widening the set. They also
   // need coercing: `timePressure` is a select, so its five fully-labelled
   // options arrive as strings and a `typeof v === 'number'` filter dropped the
   // item entirely -- collected every half, surfaced nowhere.

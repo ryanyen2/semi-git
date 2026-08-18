@@ -237,9 +237,14 @@ function TaskCardView({
       const draft = readDraft<{ picks: Record<string, number>; confidence: number | null }>(
         draftKey(pid, 'choices', `${r.id}-h${half}`),
       )
+      // `?? {}` because Firestore is initialised without `ignoreUndefinedProperties`, so a single
+      // undefined field rejects the entire `setDoc` -- `submittedAt` with it. A truncated or
+      // hand-edited draft would then make "Mark done" do nothing at all, silently, which is a
+      // worse failure than the one this rescue exists to prevent. The sibling recovery path
+      // defends the same way.
       const rescued =
         draft && draft.at > (doc?.submittedAt ?? 0)
-          ? { choices: draft.value.picks, confidence: draft.value.confidence }
+          ? { choices: draft.value.picks ?? {}, confidence: draft.value.confidence ?? null }
           : {}
       await patchRequest(pid, r.id, half, {
         submittedAt: t,
