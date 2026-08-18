@@ -5,6 +5,9 @@
 
 export type Condition = 'git' | 'sgt'
 export type Project = 'coursecraft' | 'confplan'
+
+/** Both projects, for the checks that have to assert every one is covered. */
+export const PROJECTS: readonly Project[] = ['coursecraft', 'confplan']
 export type Half = 1 | 2
 
 /** Counterbalancing group. Determines condition order and project pairing. */
