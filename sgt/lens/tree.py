@@ -476,6 +476,83 @@ def _prune_empty_leaves(nodes: dict, roots: list[str]) -> None:
             changed = True
 
 
+def _absorb_husk_leaves(nodes: dict, roots: list[str]) -> int:
+    """Fold away every leaf that owns no *behavioral* member, moving its members into the leaf that
+    already owns the entity they hang off. Returns how many were folded.
+
+    A husk is a leaf whose members are all residue and anchors. It happens because the clustering
+    graph is built over content-bearing symbols (`cluster.alive_nodes`), which includes residue --
+    correctly, because residue carries the within-file cohesion that keeps unrelated entities out
+    of one god-lane; removing it from the graph collapses a four-feature repo to one. But residue
+    is positional gap-bytes, not behaviour, so a community made only of residue is a community of
+    nothing a person edits, and Leiden forms them readily: residue outnumbers entities about 27 to
+    20 in a small repo.
+
+    What that costs, before this: the husk is a full feature. It has a handle, a generated name, an
+    op count and a lane on the map. `sgt show` reports "0 symbols in 0 files" for it and offers a
+    revert. `sgt log --tree` skips it, so the tree and the map disagree on how many features exist.
+    Both study projects carried nine husks each out of twenty-four leaves, and in `coursecraft`
+    they were named `Section Waitlist`, `Waitlist Promotion` and `Drop Enrollment` -- the features
+    two of the study's three requests ask a participant to remove. A pilot participant picked one
+    off the map to "remove the waitlist" and got nothing.
+
+    Absorbed rather than deleted, so the leaves still partition the alive set exactly. The target is
+    the leaf holding the member's anchor entity, which is where `_member_leaf_for` already routes
+    that residue's *ops* -- so membership and op assignment now agree instead of pointing at two
+    different lanes. Members with no anchor entity (a file's trailing residue) go to the largest
+    surviving sibling; a husk with no surviving sibling is left alone rather than orphaned."""
+    from sgt.core.op import is_behavioral
+
+    member_leaf = leaf_member_index(nodes)
+    leaves = [nid for nid, nd in nodes.items() if not nd["children"]]
+    husks = [
+        nid for nid in leaves
+        if nodes[nid]["members"] and not any(is_behavioral(m) for m in nodes[nid]["members"])
+    ]
+    if not husks:
+        return 0
+    husk_set = set(husks)
+
+    def fallback_for(husk: str) -> str | None:
+        """Where a member with no anchor entity goes: the biggest surviving leaf under the same
+        parent, or the biggest anywhere if that parent has none left. A file's trailing residue
+        (`__residue__::\x00HEAD\x00`) has no entity to follow, so this is the common case, not an
+        edge case. Ties break on id so two builds of one repo agree."""
+        siblings = [
+            nid for nid in leaves
+            if nid not in husk_set and nodes[nid]["parent"] == nodes[husk]["parent"]
+        ] or [nid for nid in leaves if nid not in husk_set]
+        if not siblings:
+            return None
+        return max(siblings, key=lambda nid: (len(nodes[nid]["members"]), nid))
+
+    folded = 0
+    for husk in husks:
+        fallback = fallback_for(husk)
+        moves: dict[str, list[str]] = {}
+        for member in nodes[husk]["members"]:
+            entity = _anchor_entity_of(member)
+            home = member_leaf.get(entity) if entity is not None else None
+            dest = home if home is not None and home not in husk_set else fallback
+            if dest is None:
+                break  # every leaf is a husk; leave this one alone rather than orphan its members
+            moves.setdefault(dest, []).append(member)
+        else:
+            for dest, members in moves.items():
+                nodes[dest]["members"] = sorted(set(nodes[dest]["members"]) | set(members))
+                # `size` and `dir` are derived from `members`, and every other place that
+                # rewrites a node's members recomputes both (`verbs._apply_move`,
+                # `_resplit_real`). Leaving `dir` stale here would be invisible until it
+                # surfaced as a wrong package hint on the map or a wrong fallback label.
+                nodes[dest]["size"] = len(nodes[dest]["members"])
+                nodes[dest]["dir"] = _dominant_dir(nodes[dest]["members"])
+            nodes[husk]["members"] = []
+            folded += 1
+    if folded:
+        _prune_empty_leaves(nodes, roots)  # the emptied husks, and any internal left childless
+    return folded
+
+
 def _leaf_ids(nodes: dict, nid: str) -> list[str]:
     nd = nodes[nid]
     if not nd["children"]:
@@ -694,6 +771,8 @@ def build(
     roots = [root_id]
     _prune_empty_leaves(nodes, roots)  # a member-less leaf is not a feature -- drop it before any
     # feature id is minted for it, so the phantom never reaches identity/op-assignment or the tree.
+    _absorb_husk_leaves(nodes, roots)  # nor is a leaf made only of residue; same reasoning, and
+    # likewise before any id is minted, so a husk never becomes a feature anyone can be handed.
 
     cannot_link_moves = enforce_cannot_link(nodes, pins, real_adj)
 

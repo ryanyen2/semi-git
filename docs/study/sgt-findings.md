@@ -407,3 +407,73 @@ and red for anyone with a key configured.
 env -u OPENAI_API_KEY SGT_UPDATE_GOLDEN=1 pytest tests/golden/
 ```
 The proper fix is to stub the labeler under test.
+
+---
+
+## Finding 21: nine of twenty-four features in each study project owned no code
+
+Found 2026-08-18, while rebuilding the warm-up repository.
+
+`sgt show "Section Waitlist"` in `coursecraft` read:
+
+```
+feature cca80773  "Section Waitlist"
+  1 edit · 0 symbols in 0 files · last touched 33d ago
+  reverting this removes 1 edit
+```
+
+A feature with a name, a handle, an op count and a lane on the map, owning nothing. `sgt log --tree`
+omitted it, so the tree and the map disagreed about how many features existed. `sgt find` ranked it
+normally, because search matches saves and the generated description, so search hid the hole rather
+than exposing it. Reverting it did nothing a person would recognise.
+
+Nine such features in `coursecraft` out of twenty-four leaves, nine in `confplan` out of twenty-one.
+They included `Section Waitlist`, `Waitlist Promotion` and `Drop Enrollment` — the features two of
+the study's three requests ask a participant to remove. Pilot 03 already recorded a participant
+picking one of these off the map to "remove the waitlist" and getting nothing; that was read at the
+time as a display bug and patched so the two surfaces at least agreed on the number.
+
+**Cause.** The clustering graph's nodes are every *content-bearing* symbol
+(`cluster.alive_nodes` → `is_content_bearing`), which includes residue. That is correct for its
+purpose: residue carries the within-file cohesion that keeps unrelated entities out of one god-lane.
+But residue is positional gap-bytes, not behaviour, and it outnumbers entities roughly 27 to 20 in a
+small repo — so Leiden readily forms a community made only of residue. `sgt/core/op.py` already
+draws exactly this distinction and says so: `is_content_bearing` is the fold predicate,
+`is_behavioral` is the segmentation predicate, "they differ only on `residue`, and that difference
+is the point." Nothing was applying the second one when deciding what counts as a feature.
+
+**Rejected fix.** Switching `alive_nodes` to `is_behavioral` removes the husks and also removes most
+of the graph's edges: the warm-up repository collapsed from four features to one. Residue is
+load-bearing for clustering quality even though it must not confer membership.
+
+**Fix.** `tree._absorb_husk_leaves`, run beside `_prune_empty_leaves` and before any feature id is
+minted. A leaf with no behavioral member is folded into the leaf that already owns the entity its
+members hang off — which is where `_member_leaf_for` already routes that residue's *ops*, so
+membership and op assignment now agree instead of naming two different lanes. Absorbed rather than
+deleted, so leaves still partition the alive set exactly (`tests/lens/test_tree.py` asserts this).
+
+**Effect.** `coursecraft` goes from 24 leaves with 9 husks to 14 leaves with none, and the waitlist
+becomes a feature a participant can actually act on:
+
+```
+feature 10462e17  "Waitlist Enrollment"
+  15 edits · 10 symbols in 4 files
+  symbols  cli.py::cmd_waitlist_join, cli.py::cmd_waitlist_show, enrollment.py::join_waitlist,
+           enrollment.py::waitlist_for, tests/test_waitlist.py::(3 tests), …
+```
+
+Its revert preview now names the seven symbols and three files it removes, which checkpoints go,
+that `Waitlist Promotion Notices` and `Enrollment Drop` are affected, that eleven other features are
+untouched, and that `enrollment.py::enroll` overlaps later edits and needs the participant's own
+edit. That is the whole claim of request 2, made legible.
+
+**Guard.** `scripts/check_graph_integrity.py`, wired into `make-study-bundle.sh` and
+`make-practice-repo.sh`. It fails the build on a husk, or on a symbol that is in the working tree
+but absent from the frontier. It notes, without blocking, symbols that are in the tree but in no
+leaf — see below.
+
+**Still open.** Both study projects carry two symbols that are members of a subsystem node but of no
+leaf (`confplan/cli.py::cmd_speaker` and its test; the `coursecraft` equivalents resolved on
+rebuild). No feature-scoped verb reaches them. This predates the fix above and is unaffected by it:
+100 of 102 placed both before and after. It is a coverage gap rather than a false statement, so the
+integrity check reports it and does not block.
