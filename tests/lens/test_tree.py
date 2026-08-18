@@ -763,6 +763,58 @@ def test_assign_pins_refuse_to_alias_two_live_nodes_onto_one_id():
     assert nodes["F-mover"]["members"] == ["b"]          # members survived the refused rename
 
 
+def test_assign_pins_refuse_a_chain_of_aliases_not_just_a_single_one():
+    # The filter is not monotone in one pass: "the node holding this id is itself giving it up"
+    # stops being true if THAT entry is dropped later in the same sweep. A chain L1 -> F2, F2 -> F3
+    # kept L1 -> F2 (F2 was a key when it was tested) while dropping F2 -> F3 -- so F2 never gave up
+    # its id and L1 was aliased onto it anyway, reproducing the exact corruption the filter exists
+    # to prevent. It has to run to a fixpoint.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0,
+                   "members": ["pkg/a.py::m1", "pkg/a.py::m2", "pkg/a.py::m3"], "size": 3,
+                   "dir": "pkg", "children": ["L1", "F2", "F3"], "split_reason": None},
+            "L1": _leaf("L1", "N0", ["pkg/a.py::m1"], "pkg"),
+            "F2": _leaf("F2", "N0", ["pkg/a.py::m2"], "pkg"),
+            "F3": _leaf("F3", "N0", ["pkg/a.py::m3"], "pkg"),
+        },
+        "roots": ["N0"],
+        "op_leaf": {},
+    }
+    tree._apply_assign_pins(result, Pins(assign={"pkg/a.py::m1": "F2", "pkg/a.py::m2": "F3"}))
+
+    nodes = result["nodes"]
+    children = nodes["N0"]["children"]
+    assert len(children) == len(set(children))          # no id named twice
+    assert set(nodes) == {"N0", "L1", "F2", "F3"}       # nobody clobbered
+    members = sorted(m for nid in ("L1", "F2", "F3") for m in nodes[nid]["members"])
+    assert members == ["pkg/a.py::m1", "pkg/a.py::m2", "pkg/a.py::m3"]
+
+
+def test_assign_pins_report_the_renames_they_could_not_apply():
+    # Dropping the rename keeps the tree intact but leaves `assign`'s promise -- a pinned op never
+    # leaves its assigned feature -- unkept. On one study project the same entry is dropped on every
+    # build, so this is permanent rather than transient. Reported rather than left to be found by
+    # instrumenting the filter, for the same reason `cannot_link_moves` is.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b"], "size": 2,
+                   "dir": "pkg", "children": ["af-taken", "F-mover"], "split_reason": None},
+            "af-taken": _leaf("af-taken", "N0", ["a"], "pkg"),
+            "F-mover": _leaf("F-mover", "N0", ["b"], "pkg"),
+        },
+        "roots": ["N0"],
+        "op_leaf": {},
+    }
+    tree._apply_assign_pins(result, Pins(assign={"b": "af-taken"}))
+
+    assert result["unapplied_assign_pins"] == {"F-mover": "af-taken"}
+
+
 def test_prune_empty_leaves_keeps_a_lone_empty_root():
     # Degenerate no-member build: keep one empty root so downstream never faces an empty forest.
     nodes = {"N0": {"id": "N0", "parent": None, "depth": 0, "members": [], "size": 0, "dir": "",

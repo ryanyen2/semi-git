@@ -27,6 +27,9 @@ SGT_SOURCE_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 rm -rf "$dest"
 mkdir -p "$dest"
+# Absolute from here on: everything below `cd`s into it and several later lines
+# still pass `$dest` as a path, which would resolve to `$dest/$dest` otherwise.
+dest="$(cd "$dest" && pwd)"
 cd "$dest"
 
 git init -q .
@@ -182,9 +185,13 @@ commit "2026-06-11T16:30:00" "coupon codes"
 
 # --- 3. the tangled one ---------------------------------------------------
 #
-# One save that quietly does two things: it adds the receipt, which is what the
-# message says, and it switches the shop from dollars to pounds, which it does
-# not. The practice sheet asks the participant to notice that.
+# The receipt, and the first place money is formatted at all.
+#
+# This used to be the repo's tangled save -- in the one-file version the same
+# commit added a `receipt()` to `cart.py` AND a `CURRENCY` constant nobody asked
+# for. It is not tangled any more: it writes one new file. The tangle the sheet
+# actually points at is "charge shipping per item", below, which silently drops
+# the free-over-fifty rule while its message talks only about per-item pricing.
 
 cat > receipt.py <<'EOF'
 """Turning a cart into something you can print."""
@@ -545,25 +552,45 @@ build_index('$dest')
     fi
     rm -f .sgt-names.txt
 
+    # These three checks FAIL the build rather than warn.
+    #
+    # They used to echo to stderr and exit 0, so a bundle whose warm-up repo had
+    # a degenerate graph, unpinned names and seven dead handles shipped silently
+    # -- on the repository the participant meets first, and in a build log the
+    # facilitator has no reason to re-read. The work repo has been hard-gated
+    # since the beginning; there was no argument for the practice repo being
+    # softer, only an accident of the order they were written in.
+    fail=0
+
+    # The graph itself, before any of its handles. A build can produce an ideal
+    # missing most of its symbols, and every handle check below would then fail
+    # for a reason that reads like a naming problem.
+    if [ ! -x "$python_bin" ]; then
+        echo "  no interpreter at $python_bin, so the graph could not be checked." >&2
+        fail=1
+    elif ! "$python_bin" "$SGT_SOURCE_SCRIPTS/check_graph_integrity.py" "$dest"; then
+        fail=1
+    fi
+    [ "$pin_status" -eq 0 ] || fail=1
+
     # Every handle the practice sheet quotes, checked here rather than found
     # wrong by a participant with a facilitator watching. Add a line whenever
     # the sheet gains an example.
-    # The graph itself, before any of its handles. A build can silently produce
-    # an ideal missing most of its symbols, and every handle check below would
-    # then fail for a reason that reads like a naming problem.
-    if ! "$python_bin" "$SGT_SOURCE_SCRIPTS/check_graph_integrity.py" "$dest"; then
-        echo "  Rebuild this practice copy before using it." >&2
-    fi
-
-    bad=0
     for handle in "The Cart" "Discounts" "Receipts" "Shipping" \
                   "cart.py::total" "shipping.py::shipping_cost" "receipt.py::format_money"; do
         if ! "$sgt_bin" show "$handle" --json 2>/dev/null | grep -q '"ok": true'; then
-            echo "  WARNING: the practice sheet quotes \`$handle\` and it does not resolve." >&2
-            bad=1
+            echo "  the practice sheet quotes \`$handle\` and it does not resolve." >&2
+            fail=1
         fi
     done
-    [ "$bad" -eq 0 ] && echo "  Every handle the practice sheet quotes resolves."
+
+    if [ "$fail" -ne 0 ]; then
+        echo >&2
+        echo "  Refusing to ship this practice copy. It is the first ten minutes of the" >&2
+        echo "  session, and the sheet quotes these by name." >&2
+        exit 1
+    fi
+    echo "  Every handle the practice sheet quotes resolves."
 fi
 
 echo "Practice repo at $dest"
