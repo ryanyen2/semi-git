@@ -24,11 +24,13 @@ We want to find out four things:
    example, removing one feature cleanly without breaking later work that
    depends on it?
 3. **Mental model.** What understanding of the project do they end up with after
-   working through it?
+   working through it? This one is now asked by questionnaire and interview
+   rather than by a recall test — see `protocol.md` §5.6 for why, and what that
+   costs.
 4. **AI collaboration.** Does sgt change how they work with the AI assistant?
 
-We are not claiming sgt can do things git cannot. Both tools can handle all six
-of the study's requests. We are asking how well people perform with each.
+We are not claiming sgt can do things git cannot. Both tools can handle all
+three of the study's requests. We are asking how well people perform with each.
 
 ## How it works
 
@@ -42,9 +44,17 @@ compare each person against themselves.
   one for conference scheduling.
 - **Counterbalanced order.** We vary which condition and which project each
   participant sees first, to control for learning and ordering effects.
-- **Six requests per half.** The participant works on a project they have never
-  seen, as if the original maintainer has left and they are picking it up.
-- **Twelve participants**, about two hours each.
+- **Three requests per half, twenty minutes.** The participant works on a
+  project they have never seen, as if the original maintainer has left and they
+  are picking it up. Before the clock starts they read a page describing what
+  the program does.
+- **Twelve participants**, about two hours each, of which about 100 minutes is
+  scheduled steps.
+
+There were six requests per half and forty-five minutes until 2026-08-17. Pilots
+ran out of time on three of them in both conditions, which is a floor rather
+than a measurement, so those three were cut. `protocol.md` §2 records which
+three, why, and what the study lost with them.
 
 The two projects were built commit by commit over a scripted six-week history.
 That history contains, on purpose: one commit doing two unrelated things, one
@@ -56,8 +66,8 @@ how the projects were constructed.
 
 There are three roles:
 
-- **Participant.** Works through the six requests while thinking out loud. They
-  receive the handouts from `materials/`.
+- **Participant.** Works through the three requests while thinking out loud.
+  They see the handouts from `materials/`, rendered by the website.
 - **Facilitator.** Sets up the session, keeps time, observes, scores, and
   conducts the debrief interview. Their guide is `participant-materials.md`.
 - **Analyst.** Scores the recordings against a shared codebook. See the analysis
@@ -75,7 +85,7 @@ There are three roles:
 | `participant-materials.md` | The facilitator's script and answer keys |
 | `answer-key.json` | Ground-truth data loaded into the web console for scoring |
 | `remote-setup.md` | How to run sessions on a participant's own laptop |
-| `materials/` | Handouts that participants see (also rendered by the website) |
+| `materials/` | Printed copies of what participants see: welcome, both practice sheets, both project briefs, both task sheets |
 | `testbed-spec.md` | How the two study projects were built |
 | `build-log-*.md` | Ground truth for each project's commit history |
 | `pilot-01-findings.md` | Findings from the first pilot (sgt condition) |
@@ -101,32 +111,47 @@ machine) is in `scripts/study-bundle/`. Other scripts:
 ### Ready
 
 - Both projects built and tested in both conditions. All tests pass.
-- Setup and bundling pipeline, with the sgt tool version pinned and recorded.
-- Scoring rubrics for requests 1, 2, 3, and 4.
-- All handouts, this guide, and the confplan task sheet.
+- Setup and bundling pipeline, with the sgt tool version pinned and recorded,
+  and both editors' extensions pinned to fixed versions.
+- The closed-question key for request 1 and the rubrics for requests 2 and 3, in
+  `answer-key.json`.
+- All handouts, this guide, and both task sheets.
+- The warm-up repository, rebuilt: sixteen commits over four modules, four
+  named features, and a build-time check on every handle the practice sheets
+  quote.
 - Three pilots run (two sgt, one git), which found twelve tool defects and four
-  study-design problems. All have been fixed.
-- The website: consent flow, background questionnaire, per-request timing, all
-  four post-task questionnaires (NASA-TLX, SUS, custom scales), the knowledge
-  quiz, the summary writing task, live session monitoring, scoring interface, and
-  the three paper figures with SVG export.
+  study-design problems. All the defects are fixed.
+- The website: consent flow, background questionnaire, the project brief, the
+  practice sheets, per-request timing with an explicit pause, the three
+  post-half questionnaires (NASA-TLX, UMUX-Lite, and the history and agent
+  block), the end-of-session comparison block, live session monitoring, the
+  scoring interface, and the three paper figures with SVG export.
 - The participant bundle: one-command setup, an assistant profile isolated from
-  the participant's own account and billing, prompt and command recording, and an
-  upload pipeline that cannot lose or double-count events.
-- Tests: 57 in `web/` covering the Firestore security rules, the analysis
-  pipeline, and the chart components; 29 covering the recording pipeline
-  end-to-end.
+  the participant's own account and billing, prompt and command recording from
+  the terminal, the editor and the assistant alike, and an upload pipeline that
+  cannot lose or double-count events.
+- Tests: 81 in `web/` covering the Firestore security rules, the analysis
+  pipeline, and the chart components — 28 of those need the Firestore emulator
+  running and skip without it. The recording pipeline has its own end-to-end
+  test in `scripts/study-bundle/tests/test_telemetry.py`, which also needs the
+  emulator.
 
 ### Not ready (needed before participant 1)
 
 - Ethics approval and pre-registration on OSF (Open Science Framework).
   `protocol.md` is the pre-registration text.
-- Bundles built, uploaded, and their download links entered into the web console.
+- Bundles built and deployed for the real cohort. `scripts/publish-study.sh`
+  does the build, the deploy, and the check that the live site is serving what
+  was just built, so this is one command rather than a series of uploads and
+  pasted links.
 - Session API keys issued with spend caps and entered into the console.
 - A pilot with an actual person. All three pilots so far used AI agents, which
   are good at finding defects but tell you nothing about whether a human can
   finish in the time given.
 - A pilot on the second project (confplan). Nobody has run it yet.
+- A decision on the `Sgt-Op` commit trailers, which make plain git history
+  harder to read in the sgt condition than in the git condition. See the end of
+  `pilot-03-findings.md`. Whatever is decided has to be disclosed in the paper.
 
 ### Recently resolved
 

@@ -40,6 +40,7 @@ swapped.
 | instructor | speaker |
 | student | attendee |
 | enroll | register |
+| drop | unregister |
 | prerequisite | series dependency (part 2 requires part 1) |
 | semester week grid | two-day slot grid |
 | department | track |
@@ -76,8 +77,11 @@ tasks depend on them:
   interleaved with the chain — these must survive the removal.
 - **One abandoned experiment** removed with a real revert (episode 16) — so the
   history itself contains a revert.
-- **One refactor that silently changes behavior** (episode 17) — the regression
-  target for request 4.
+- **One refactor that silently changes behavior** (episode 17). This was the
+  regression target for request 4, which no longer exists. It is still built,
+  because removing it would mean rebuilding both repositories and because a
+  history with no silent behavior change in it is not a realistic history. See
+  §3 for what its presence now implies.
 
 ### Full episode list
 
@@ -114,23 +118,39 @@ absent, and every other tag must still pass.
 
 ## 3. Study tasks and what commands they exercise
 
-There are four scored tasks per block, plus one stretch task if time allows.
-Each block takes about 45 minutes. The participant-facing wording lives in the
-task sheets (a separate document); the descriptions below are internal
-shorthand. No task names a specific git or sgt command.
+There are three scored tasks per block, and the block is 20 minutes. The
+participant-facing wording is in `web/src/study/tasks.ts`, which is what the
+website renders and what the printed sheets in `materials/` copy; the
+descriptions below are internal shorthand. No task names a specific git or sgt
+command.
 
 | Task | Time cap | What it targets | How the git condition approaches it | How the sgt condition approaches it |
 |---|---|---|---|---|
-| S1: Provenance | 7 min | Episode 8's tangle: "search behavior changed around when date entry got lenient; what work changed search and what else came along?" | `git log`, `git blame`, diff reading | `sgt show` (accepts the save ID that `sgt log` prints), `sgt log`, `sgt why` |
+| S1: Provenance | 5 min | Episode 8's tangle: "search behavior changed around when date entry got lenient; what work changed search and what else came along?" Answered as three closed questions plus a confidence rating | `git log`, `git blame`, diff reading | `sgt show` (accepts the save ID that `sgt log` prints), `sgt log`, `sgt why` |
 | S2: Entangled removal | 15 min | Remove the waitlist (episode 11) and everything built on it; keep the episode 13 fix, the episode 15 export, and everything else passing | Revert or rebase across interleaved commits | `sgt show f-waitlist` (shows impact count), then `sgt revert` |
-| S3: Selective restore | (within S2 cap) | Bring back the plain join-waitlist functionality without promotion or notifications | Cherry-pick archaeology | `sgt restore <selection>` |
-| S4: Regression repair | 10 min | Episode 17 made back-to-back sections conflict; restore the old boundary behavior while keeping the rest of the refactor | `git bisect` or log reading, then a manual partial revert | `sgt intent` rewind, `sgt revert f@n`, or symbol-level restore with `at` |
-| S5: Plan and fork | 12 min | Add "swap section" two ways (transactional swap vs. drop-then-enroll with a hold); try both, keep one | Git branches | Agent plan loop plus `sgt session start/land`, `sgt resolve` if versions compete |
-| S6: Stretch — history edit | If time | Split the episode 8 tangle into two cleanly named pieces | Interactive rebase | `sgt feature regroup split`, `sgt feature rename` |
+| S3: Selective restore | (within S2 cap) | Bring back the drop command without promotion or notifications | Cherry-pick archaeology | `sgt restore <selection>` |
 
-**Coverage check against the study goals:** planning (S5 plan loop), reverting
-(S2, plus episode 16 inside the history), restoring (S3, S4), forking (S5
-sessions/resolve), and editing history (S6). Comprehension (S1) carries RQ1.
+**Coverage check against the study goals:** comprehension (S1) carries RQ1;
+reverting (S2, plus episode 16 inside the history) and restoring (S3) carry RQ2.
+
+### The three tasks that were cut
+
+Until 2026-08-17 there were six, at 45 minutes a block: a regression repair
+against episode 17, a plan-and-fork task building "swap section" two ways, and a
+stretch task splitting episode 8's tangle with `sgt feature regroup split`.
+Pilots ran out of time on all three in both conditions, so they measured nothing
+that could separate the conditions while spending the budget of the tasks that
+could. `protocol.md` §2 has the full reasoning.
+
+This matters to the testbed as well as to the schedule. **The episode 17
+regression is now never repaired during a session.** It stays in both
+repositories, back-to-back enrollment stays broken in the running application to
+the end of the history, and nothing in the flow points a participant at it. The
+structural landmark in §2 is still built, still real, and no longer targeted.
+
+The plan-and-fork task was also the only one that exercised sessions, `sgt
+land`, and conflict resolution between competing versions. Nothing in the study
+touches those paths now.
 
 ## 4. Construction rules
 
@@ -161,12 +181,17 @@ sessions/resolve), and editing history (S6). Comprehension (S1) carries RQ1.
 
 Capture these details at build time for the answer keys:
 
-- **Episode 8:** the exact save ID, its label, both concerns inside it, and the
-  two-sentence correct answer for task S1.
+- **Episode 8:** the exact save ID, its label, both concerns inside it, and its
+  authoring date. Task S1 is now three closed questions, so what the key needs
+  is which option each one resolves to, not a model answer: whether the two
+  reported symptoms were one piece of work, which week it landed in, and what
+  else came with it.
 - **Episode 11 chain:** the feature ID of F, the full set of dependents as
   `sgt show` reports it, and the expected impact numbers that participants should
   discover in task S2.
-- **Episode 17:** the episode ID, the symbol whose semantics changed, the
-  one-line cause, and the minimal correct repair for task S4.
+- **Episode 17:** the episode ID, the symbol whose semantics changed, and the
+  one-line cause. No task targets it now, but it is the answer to "why does the
+  application reject back-to-back enrollment when the tests say it should not",
+  which a participant can still walk into during S2.
 - **Tag-to-test map:** the mapping from feature tags to test files, and the
   expected pass/fail sets after tasks S2 and S3.

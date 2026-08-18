@@ -9,6 +9,8 @@ Read this alongside `pilot-01-findings.md`. Pilot 1 focused on defects in sgt. T
 
 Note: the commit ids quoted from P2's session are the ones that existed at the time. The git-condition copies were rewritten afterwards to remove contamination (see below), so those ids no longer resolve. The current ids are in `participant-materials.md`.
 
+**Note added 2026-08-17.** This pilot ran the six-request, 45-minute-a-half design. The study now asks three requests in 20 minutes a half, and requests 4, 5 and 6 no longer exist (`protocol.md` §2). The reason recorded there for cutting them is that pilots ran out of time on all three in both conditions. That is not what this session recorded — P2 finished all six inside the budget, including both optional ones — so the two accounts do not agree. P2 was an AI agent and no pilot with a person has been run, which is the most likely place the disagreement comes from. Whoever writes the paper needs to settle it before citing either. Nothing below is edited; it is the record of what happened on 2026-08-13.
+
 
 ## What happened
 

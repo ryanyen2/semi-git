@@ -1,6 +1,6 @@
 # Study protocol
 
-Date: 2026-08-15
+Date: 2026-08-17
 Status: The operational protocol. This is what the study website implements.
 
 Related documents:
@@ -23,16 +23,22 @@ describing what they want to an AI coding assistant. The unit of recording
 (line-level diffs) and the unit of thinking (intent-level descriptions) have
 come apart. sgt records history at the level of intents.
 
-The paper's claim is not about capability. Both git and sgt can handle all six
+The paper's claim is not about capability. Both git and sgt can handle all three
 requests, and the paper says so in a side-by-side parity table. The claim is
 about **what a particular representation costs the person reading it**. There are
 three sub-claims, each with its own evidence, each designed to be falsifiable:
 
 | Claim | How it would be falsified |
 |---|---|
-| C1. Intent-aligned history makes provenance questions cheaper and more reliably answered. | Accuracy on requests 1 and 4 is equal or worse under sgt, with no gain in confidence calibration. |
+| C1. Intent-aligned history makes provenance questions cheaper and more reliably answered. | Accuracy on request 1's three closed questions is equal or worse under sgt, with no gain in confidence calibration. |
 | C2. Intent-aligned history makes destructive edits safer. | Collateral damage on requests 2 and 3 is equal or worse under sgt. |
-| C3. Intent-aligned history leaves the developer with a better working theory of the project. | Quiz and summary scores do not differ, and interviews show no difference in what people could reconstruct. |
+| C3. Intent-aligned history leaves the developer with a better working theory of the project. | The two "what you came away with" items do not differ, and interviews show no difference in what people could reconstruct. |
+
+C3 is the weakest of the three and is stated that way in the paper. It used to
+rest on a five-item recall quiz and a three-minute written summary, both of
+which were removed on 2026-08-17 for the reasons in §5.6. What is left is two
+self-report items and the interview, which can show that people believe they
+came away with a working theory but cannot show that they did.
 
 A fourth question is exploratory rather than a claim, because we have no prior
 estimate to power it:
@@ -49,31 +55,82 @@ a p-value.
 
 | Research question (RQ) | What answers it | Instrument |
 |---|---|---|
-| RQ1: Comprehension | Accuracy, time, and confidence on requests 1 and 4 | Task scoring plus confidence slider |
-| RQ2: Operation | Outcome and collateral damage on requests 2, 3, and 4 | Output of `score_study_repo.py`, uploaded |
-| RQ3: Theory building | Quiz, summary task, and interview | Quiz (5 items), summary rubric (22 episodes), interview |
+| RQ1: Comprehension | Accuracy, time, and confidence on request 1 | Three closed questions scored against the key, plus a confidence rating |
+| RQ2: Operation | Outcome and collateral damage on requests 2 and 3 | Output of `score_study_repo.py`, uploaded |
+| RQ3: Theory building | What the participant says they came away with, and the interview | HLAC block 3 (2 items), interview |
 | RQ4: Agent collaboration | Telemetry on prompts, verification, and wrong turns | Claude Code hooks plus command-recording wrappers |
 
-### The six requests, explained
+### The three requests, explained
 
 Each request is modeled on a real kind of task from the Codoban et al. taxonomy
-of developer motivations for examining software history.
+of developer motivations for examining software history. Wording is fixed in
+`web/src/study/tasks.ts` and is the participant's handout verbatim. Nothing in
+it names a git or an sgt verb: the request states a goal in product terms and
+the participant chooses the mechanism, because naming the verb would tell them
+which tool we expect them to reach for.
 
-| Request | What it tests | Codoban motivation | Which claims it serves |
-|---|---|---|---|
-| R1: What changed course search? | Provenance in a tangled commit (episode 8) | Rationale recovery | RQ1, C1 |
-| R2: Take the waitlist out | Entangled removal (episodes 11, 12, 14, 21) | Change impact | RQ2, C2 |
-| R3: Drops still need to work | Correction under time pressure (episode 14) | Change impact | RQ2, C2 |
-| R4: Back-to-back enrollment broke | Regression localization (episode 17, second save) | Bug localization | RQ1+RQ2, C1+C2 |
-| R5: Two ways to swap | Parallel alternatives, discard one | Evolution | RQ4 |
-| R6: Clean up the tangled change | History surgery, code stays the same | Evolution | RQ2 |
+| Request | Cap | What it tests | Codoban motivation | Which claims it serves |
+|---|---|---|---|---|
+| R1: What changed course search? | 5 min | Provenance in a tangled commit (episode 8) | Rationale recovery | RQ1, C1 |
+| R2: Take the waitlist out | 15 min | Entangled removal (episodes 11, 12, 14, 21) | Change impact | RQ2, C2 |
+| R3: Drops still need to work | shares R2's clock | Correction under time pressure (episode 14) | Change impact | RQ2, C2 |
 
-Requests 5 and 6 are optional and analyzed descriptively only. They exist
-because both pilots showed that participants reach for these kinds of tasks, and
-because R6 is the cleanest single demonstration of the representational
-difference. They are never used to support claims C1–C3, since not every
-participant reaches them, and analyzing an optional task as if it were assigned
-would create a garden of forking paths.
+R2 and R3 sit on one card and share one timer, because R3 is a correction to
+work R2 has just done and timing it separately would measure how quickly the
+participant read the second card.
+
+**Why three requests and not six.** Until 2026-08-17 there were six, over
+forty-five minutes a half. Three are gone: a second regression-localization
+request against episode 17, a build-two-alternatives-and-discard-one request,
+and a history-surgery request that split episode 8's tangle. Pilots ran out of
+time on all three, in both conditions. A request that nobody finishes in either
+condition produces a floor rather than a measurement — it cannot separate the
+conditions, and it spends budget that the requests which can separate them
+needed. What is left is one question about the past and one change to the
+present with a correction on top of it, which is the smallest set that still
+exercises C1 and C2. Finding the thing to change is most of the work in R2, so
+search is measured twice and paid for once.
+
+**What the cut costs, recorded here because the paper has to be able to say
+it.** The history-surgery request was the cleanest single demonstration of the
+representational difference, and an earlier version of this document
+pre-committed to it as the place sgt should look best. The study can no longer
+show it. Episode 17's regression is still in both repositories; no request
+points at it now, so nothing in the session repairs it.
+
+### Request 1's three questions
+
+Request 1 asks three multiple-choice questions with fixed options, plus one
+confidence rating. It used to ask for two or three sentences in a notes file,
+graded by hand against a rubric.
+
+Prose written under time pressure, at the moment the participant had just spent
+their budget, came back short and hedged, and two graders differed on it more
+than the two conditions differed from each other — so the writing itself became
+part of what was being measured. A fixed option list measures whether they found
+the answer, which is what the request is about.
+
+| # | Question | Options |
+|---|---|---|
+| q1 | Were the two things in the ticket one piece of work, or two? | One piece of work, both arrived together / Two, days apart / Two, on the same day / I could not tell |
+| q2 | When did it land? | The week of 29 June / 6 July / 20 July / 3 August / I could not tell |
+| q3 | Did anything else come along with it that the change was not advertised as doing? | No, just the search command and its tests / Yes, a change to how day names are read when a slot is parsed / Yes, a change to how capacity limits are enforced / Yes, a change to the export format / I could not tell |
+
+"I could not tell" is on every question and is a real answer. A question that
+forces a guess turns a participant who found nothing into a participant who was
+wrong, and those are different results.
+
+The correct option for each is **not** in the website's source. `tasks.ts` is
+compiled into the bundle the participant's browser downloads, so anything in it
+can be read from developer tools. The indexes live in
+`docs/study/answer-key.json` under `requestKeys.r1.choices`, which the
+experimenter loads into the console by hand. The analysis scores the three
+questions from that key, so request 1 carries no hand-scored rubric.
+
+Confidence is a 0–100 rating, in steps of five, anchored "Guessing" to
+"Certain", recorded once for the three answers together. Confidence minus
+proportion correct is the calibration measure named in C1: positive means surer
+than they were right.
 
 ## 3. Study design
 
@@ -111,8 +168,9 @@ freely among them:
 | AI assistant | Claude Code, pinned to a specific model, identical in both halves | Same assistant, plus sgt's MCP tools and skills |
 
 The assistant's capabilities are part of the condition, not background scenery.
-Both halves tell the participant to use the assistant for anything, and request 5
-explicitly asks for two implementations, so most work will involve the assistant.
+Both halves tell the participant to use the assistant for anything, and both
+practice sheets end by pointing out that it can plan before it acts, so most
+work will involve the assistant.
 In the git half the assistant already knows git well and needs nothing extra. In
 the sgt half it gets the MCP server and three bundled skills (what `sgt init
 --agent` installs for any user). Without these, the sgt condition would be
@@ -156,38 +214,105 @@ anything extra was installed.
 The study website is the participant's only interface for the study flow. Each
 step writes to Firestore as values change, so closing a laptop loses nothing.
 
-| Step | What happens | Time cap | What is recorded |
+The step list is `STEPS` in `web/src/study/flow.ts`; the estimates below are its
+`estimateMin` values.
+
+| Step | What happens | Estimate | What is recorded |
 |---|---|---|---|
 | 1 | Welcome and code entry | — | Claims the participant record |
-| 2 | Consent | — | `consent` (6 items, typed name, version) |
+| 2 | Consent | 3 min | `consent` (6 items, typed name, version) |
 | 3 | Background questionnaire | 5 min | `background` |
-| 4 | Setup for first half | — | Live green checks from the machine's heartbeat |
-| 5 | Tutorial for first half | 10 min | `tutorialCompletedAt` |
-| 6 | Task block 1 (requests R1–R6) | 45 min | Per-request timings, answers, and confidence |
-| 7 | Post-block 1 questionnaires: NASA-TLX, UMUX-Lite, HLAC, quiz, summary | 12 min | Four response documents |
-| 8 | Setup for second half | — | Second heartbeat |
-| 9 | Tutorial for second half | 10 min | — |
-| 10 | Task block 2 | 45 min | — |
-| 11 | Post-block 2 (same four questionnaires) | 12 min | — |
-| 12 | Preference and closing questions | 8 min | `preference` |
-| 13 | Data handover and debrief | — | Final sync confirmation |
+| 4 | Setup for first half | 10 min | Live green checks from the machine's heartbeat |
+| 5 | Practice for first half | 10 min | `tutorialCompletedAt` |
+| 6 | The project, first half | 5 min | Nothing. No clock runs on this page |
+| 7 | Task block 1 (requests R1–R3) | 20 min | Per-request timings, closed answers, and confidence |
+| 8 | Post-block 1: NASA-TLX, UMUX-Lite, HLAC | 6 min | Three response documents |
+| 9 | Setup for second half | 5 min | Second heartbeat |
+| 10 | Practice for second half | 10 min | — |
+| 11 | The project, second half | 5 min | — |
+| 12 | Task block 2 | 20 min | — |
+| 13 | Post-block 2 (same three questionnaires) | 6 min | — |
+| 14 | Comparing the two setups | 5 min | `preference` |
+| 15 | Data handover and debrief | 3 min | Final sync confirmation |
 
-The session takes about 125 minutes with breaks, compared to the design
-document's original 120. The extra 5 minutes come from moving the usability and
-HLAC (History Legibility and Agent Collaboration) batteries to immediately after
-each half, which is where usability instruments belong: asking someone to rate
-"Setup A" after they have spent 45 minutes in "Setup B" measures memory, not
-experience. Replacing the 10-item SUS (System Usability Scale) with the 2-item
-UMUX-Lite (Usability Metric for User Experience, Lite version) gave two minutes
-back and spent four of them on the new HLAC items.
+Those estimates add up to 113 minutes. The welcome page gives the participant a
+rounder version of the same table that comes to 100, and tells them to plan for
+about two hours including breaks.
+
+Two things about that shape have not changed. The usability and HLAC (History
+Legibility and Agent Collaboration) batteries sit immediately after each half,
+which is where usability instruments belong: asking someone to rate "Setup A"
+after they have spent the second half in "Setup B" measures memory, not
+experience. And the 10-item SUS (System Usability Scale) stays replaced by the
+2-item UMUX-Lite (Usability Metric for User Experience, Lite version).
+
+The length has. Requests went from 45 minutes a half to 20 (§2), the per-half
+questionnaire block from 12 minutes to 6 (§5.6), and two five-minute pages with
+no clock on them were added. This document used to put the session at about 125
+minutes; on the estimates above it is 113, and the welcome page's own breakdown
+comes to 100.
+
+### The project, before any clock exists
+
+Step 6 and step 11 are a plain-language description of what the program is for,
+who uses it, and what it refuses to do. Product terms only: no file names, no
+function names, no module layout, and nothing about how any of it was built.
+All of that is what the requests are about, and handing it over here would
+answer request 1 on the way past. Nothing on the page starts, opens, or patches
+a request.
+
+It exists because pilots met the codebase for the first time with a countdown
+already running, and spent the first third of a request working out what the
+program was for. That is not what the study measures. It is also not evenly
+distributed: whichever project a participant sees second is cheaper to orient
+in, because the two are the same shape under different nouns, so leaving
+orientation inside the timed block puts an order effect straight into the
+primary measure.
+
+### The warm-up project
+
+The practice steps run against a throwaway repository that
+`scripts/make-practice-repo.sh` builds — deliberately not one of the two study
+projects, because ten minutes of practice on a study project would teach part of
+the answer to request 1 and we would never know how much.
+
+It is sixteen commits over `cart.py`, `discount.py`, `receipt.py`,
+`shipping.py`, and four test files, and it clusters into four features: The
+Cart, Discounts, Receipts, and Shipping. It used to be a single `cart.py`, which
+clustered into exactly one feature — so a practice sheet that says "take one
+feature out without disturbing the others" ran against a repository that had no
+others, and the map the participant met had one row in it. The history now
+contains everything the sheets claim: a commit that quietly does two things, a
+regression with its later fix, a feature added and then dropped, and a commit
+that touches no code at all.
+
+The four feature names are pinned by the build script (`sgt feature rename`,
+durable in `.sgt/pins/pins.json`) so the sgt practice sheet can quote them
+literally. Without pinning, the names come from a model call, which makes them
+neither stable between builds nor present at all when the key is missing — and a
+missing key is what shipped once, giving the practice repository a feature
+called `add_item apply_discount…`. The script re-checks every handle the sheet
+quotes and warns on stderr if one stops resolving.
+
+Both practice sheets are editor-first: they open with `study-code` and the
+graphical history view — GitLens in the git half, the semi-git sidebar and
+workbench in the sgt half — before any terminal command, and both end by
+pointing out that the assistant can plan before it acts. Pilots read a sheet
+made entirely of terminal commands, then met the requests inside an editor they
+had been given but never shown, and several never opened the history view at
+all, which turns "does this representation help" into "did you find the panel".
 
 ### Timers
 
-Each request card has its own time cap and its own clock. The clock starts when
-the participant opens the card and stops when they mark it done or the time cap
-expires. The timer is visible to them. A visible countdown is part of the task
-design: the time caps come from Ko et al., and a hidden cap would turn "ran out
-of time" into "gave up", which are different kinds of data.
+Each request card has its own time cap and its own clock. R1 has a card to
+itself, capped at 5 minutes; R2 and R3 share a card and a single 15-minute
+clock. That is 20 minutes a half (`BLOCK_CAP_MIN` in `tasks.ts`), and the
+participant also sees elapsed time against that figure for the half as a whole.
+
+The clock starts when the participant opens the card and stops when they mark it
+done or the time cap expires. The timer is visible to them. A visible countdown
+is part of the task design: the time caps come from Ko et al., and a hidden cap
+would turn "ran out of time" into "gave up", which are different kinds of data.
 
 Pausing is explicit and recorded. Facilitator interruptions, tool breakage, and
 breaks all produce a paused interval with a recorded reason, and the analysis
@@ -234,35 +359,116 @@ covariate. We do not ask for self-rated expertise on a single 1–7 scale, becau
 that correlates with confidence rather than actual skill. The last item is an
 exclusion check, not a covariate.
 
-### 5.3 NASA-TLX (Task Load Index), raw (`tlx-v2`), after each half
+### 5.3 NASA-TLX (Task Load Index), raw (`tlx-v3`), after each half
 
 Six subscales, unweighted (this is "Raw TLX", following Hart's 2006
 retrospective), using the instrument's original 21-point scale from 0 to 100
-rather than the seven-point scale used elsewhere in this study. A coarser scale
-does not merely blur TLX — it changes its shape: frustration migrates onto the
-physical subscale and effort splits across two. Three implementation choices are
-stated here because their absence is the recurring source of incomparability
-between papers that all report "we used TLX."
+rather than the seven-point scale used elsewhere in this study.
 
-The six subscales are: Mental demand, Physical demand, Temporal demand,
-Performance, Effort, and Frustration.
+The administration follows Lee et al., "NASA-Task Load Index in CHI: A
+Comprehensive Review and Subscale Meta-Analysis with Implementation Guidelines"
+(ACM Transactions on Computer-Human Interaction, 2026, DOI
+[10.1145/3837858](https://doi.org/10.1145/3837858)), which reviews how the
+instrument is actually administered in this venue and turns the recurring
+mistakes into named guidelines. Each choice below is stated here rather than
+left in the code, because the absence of exactly these statements is what makes
+two papers that both report "we used TLX" incomparable.
 
-Each subscale is shown with its full published definition, not only its name.
-The six correlate strongly enough in interactive work that a participant reading
-only a short label tends to answer several of them alike.
+The six subscales, with the question each is asked as and the words at the two
+ends of its line:
 
-Performance is presented **failure-to-perfect** (failure at the low end, perfect
-at the high end) and reversed exactly once in the `tlxScore` computation, so
-that a higher number consistently means higher workload on all six subscales.
+| Subscale | Question | Anchors |
+|---|---|---|
+| Mental demand | How mentally demanding was the task? | Very low … Very high |
+| Physical demand | How physically demanding was the task? | Very low … Very high |
+| Temporal demand | How hurried or rushed was the pace of the task? | Very low … Very high |
+| Performance | How successful were you in accomplishing what you were asked to do? | Failure … Perfect |
+| Effort | How hard did you have to work to accomplish your level of performance? | Very low … Very high |
+| Frustration | How insecure, discouraged, irritated, stressed and annoyed were you? | Very low … Very high |
+
+Each also carries its published definition underneath, which is a guideline in
+its own right and is covered below.
+
+**Weighting: none.** Raw TLX, unweighted, is what is reported. Stating which of
+the two procedures was used is itself a guideline, because a paper that reports
+"TLX" without saying cannot be compared with either kind, and that is why this
+paragraph exists rather than being left implicit. The pairwise-weighting
+procedure is scoped to single-task studies, where the weights describe what made
+that one task heavy. This study compares two conditions inside one person, so
+weights would be collected twice and would themselves differ between the two
+administrations, turning a difference in workload into a difference in workload
+plus a difference in what the participant thought mattered.
+
+**Scale: 21 tick marks, 20 intervals, no number.** Each subscale is drawn as the
+instrument's own line: twenty-one tick marks with twenty intervals between them,
+bipolar text anchors at the two ends, and no number shown to the participant
+anywhere. The ticks at 0, 50 and 100 are drawn as landmarks and left unlabelled,
+so the midpoint is findable without becoming a neutral option. Answering is a
+discrete click on a tick, not a drag: the guidelines are explicit that dragging
+must not be the primary input, because a drag is a magnitude judgement where TLX
+asks for a mark in an interval. It was a range slider with a numeric readout
+beside it until 2026-08-17. A visible readout also turns the answer into a
+number the participant then reasons about ("I said 60 last time"), and TLX is
+meant to be answered on first instinct; and a slider thumb sits somewhere from
+the moment it renders, so an unanswered scale looked answered. Twenty-one
+discrete targets have no default position, so an unanswered scale is simply
+empty. The recorded value is unchanged — 0 to 100 in steps of five, which is
+those twenty-one tick marks numbered — and `tlxScore` is unchanged with it, so
+responses collected before and after the change are on the same scale.
+
+**Not harmonized to seven points.** The rest of this study's self-report runs on
+seven points, and TLX deliberately does not. A coarser scale does not merely
+blur TLX, it changes its shape: five- and seven-point administrations distort
+the factor structure, with frustration migrating onto the physical subscale and
+effort splitting across two. The guidelines anticipate the consistency argument
+— "make it match the rest of the battery" — and reject it.
+
+**Name, question, and definition, all three.** Each subscale is shown with its
+published name, its question, and its full published definition. Displaying both
+the title and the complete description is a named guideline, and omitting the
+description is one of the failures the review found most often. The name alone
+is not enough here in particular: the six correlate strongly in interactive
+work, and a participant reading only "Mental demand" answers several of them
+alike.
+
+**Performance direction, and where it is reversed.** Performance is presented
+**failure-to-perfect** (failure at the low end, perfect at the high end), which
+is the direction its anchors are read in, and it is reversed exactly once,
+before analysis, so that a higher number consistently means higher workload on
+all six subscales. Collecting it reversed is permitted on the condition that the
+transformation happens before analysis *or reporting* and is documented; this
+paragraph is that documentation. Its two anchors are styled differently from the
+other five subscales' on the page, which is what the guidelines' reference
+implementation does, because marking this scale in the wrong direction is the
+instrument's best-documented failure.
+
 Until 2026-08-17 it was presented perfect-to-failure *and* reversed in scoring,
 which meant a participant who felt they had performed perfectly was contributing
-the maximum possible workload score. The item anchors are asserted in
-`web/tests/analysis.test.ts` alongside the arithmetic, because either half of
-the convention alone is only half correct.
+the maximum possible workload score. A second, quieter version of the same
+defect survived that fix: only the aggregate was reversed, inside `tlxScore`, so
+the stored per-subscale value for Performance still ran the opposite way from
+the other five. Nothing had drawn a per-subscale figure yet. The first one drawn
+would have shown the condition people performed best in carrying the highest
+performance workload, and it would have looked plausible. The reversal now lives
+in one function, `tlxSubscales` in `web/src/lib/stats.ts`; `tlxScore` is defined
+in terms of it, the analysis pipeline carries the six subscales beside the
+aggregate on every half, and anything that reports a subscale must come through
+that function rather than reading the stored response. The item anchors are
+asserted in `web/tests/analysis.test.ts` alongside the arithmetic, because
+either half of the convention alone is only half correct.
 
-Physical demand is retained even though it provides little information for desk
-work. Dropping a subscale would make the total incomparable with every other
-paper that reports Raw TLX.
+**Physical demand** is retained even though it provides little information for
+desk work. Dropping a subscale would make the total incomparable with every
+other paper that reports Raw TLX. Its help text used to end "For desk work this
+is usually low, and that is a normal answer." That clause is gone: it was meant
+kindly, and it told the participant what to answer before they answered, on the
+one subscale where a floor is the expected result — so it manufactured the very
+reading it was reassuring them about.
+
+**Reporting.** Scores are reported on 0–100, per subscale and as the raw average
+of the six, and are called **workload** rather than "cognitive load". TLX spans
+physical and temporal demand as well as mental effort, and the narrower term
+claims something the instrument does not measure.
 
 The questionnaire names the specific requests, not the session as a whole.
 NASA-TLX measures the workload of a bounded task and produces something
@@ -297,11 +503,13 @@ reports a paired difference. Ten items administered twice per session bought one
 number that two items buy equally well, and the eight extra rows were the ones
 most likely to be answered carelessly (straight-lined).
 
-### 5.5 HLAC: History Legibility and Agent Collaboration (`hlac-v2`), after each half
+### 5.5 HLAC: History Legibility and Agent Collaboration (`hlac-v3`), after each half
 
 Fourteen items on a 7-point Likert-type scale from strongly disagree (1) to
-strongly agree (7), organized in four labeled blocks in a fixed order. This
-battery appears as Figure 1 in the paper.
+strongly agree (7), organized in four labeled blocks in a fixed order, followed
+by two manipulation checks on their own five-point scales. The fourteen appear
+as Figure 1 in the paper; the two checks are reported separately and are not
+outcomes.
 
 These are **Likert-type items grouped into ad-hoc composites, not a validated
 psychometric scale**, and they are reported as such: item by item, with the
@@ -361,67 +569,178 @@ Q14 — people accepted more unreviewed work because the tool made accepting
 easy — the data reads as credible, and the story is a cost paid knowingly.
 Either pattern is reported.
 
-### 5.6 Quiz (`quiz-v1`), after each half, with the project closed
+**Two manipulation checks: about the requests themselves**
 
-Five items, two-minute time cap. Answer keys are specific to each project and
-are stored in `web/src/study/answerKeys.ts`, generated from the build logs.
+These are not opinions about the setup, and they are the last thing in the
+block.
 
-1. Which feature was added and then deliberately removed?
-   *coursecraft*: senior priority enrollment (episode 16). *confplan*: speaker-priority registration.
-2. Which came first: conflict detection, capacity limits, or the waitlist?
-   Capacity limits (episode 6, before episode 7, before episode 11), in both projects.
-3. Did the previous maintainer work alone?
-   No. An AI assistant did part of the work.
-4. Name one change that was later corrected, and say what the correction was.
-   Accepts any of: episode 5's ID reuse, episode 13's back-to-back fix, episode 20's export escaping, or episode 16's revert.
-5. Which single change touched the most unrelated concerns?
-   Episode 8 — the search commit that also carried the date-parsing fix.
+| # | Statement or question | Scale | Checks |
+|---|---|---|---|
+| M1 | These requests were realistic. I can see this situation happening in real development. | 5-point agreement | Task realism |
+| M2 | How much time pressure did you feel? *(about the clock specifically, not about how hard the work was)* | 5 fully labeled options, "Too much. I could not cope, regardless of difficulty" … "None at all" | Whether the time cap bound |
 
-Each item is scored 0 or 1 by the facilitator against the answer key, and each
-carries a confidence slider. Item 4 intentionally accepts several answers: a
-quiz that only accepts the answer we were fishing for measures our fishing, not
-the participant's understanding.
+The paper claims that the two projects are isomorphic and that the requests are
+the kind of thing that happens in real work. Both claims are made by
+construction and, until now, defended by argument alone — which is the first
+thing a reviewer pushes on. M1 turns the second one into something measured,
+per half, for the cost of one row.
 
-### 5.7 Summary task (`summary-v1`), after each half
+M2 matters more than it looks. Every request in this study is capped (§4,
+Timers), so "the cap bound harder in one condition" is a live alternative
+explanation for any difference in what people got done. Asked directly, it
+becomes a number that can be checked rather than a threat to be argued away in
+the discussion. It is deliberately fully labeled rather than anchored at the
+ends only, because the middle of a time-pressure scale is where the interesting
+answer sits and "3 out of 5" does not say what the participant meant by it.
 
-Three minutes, project closed, typed and spoken aloud. The prompt:
+Both have precedent in the closest published work on history tools: the Azurite
+evaluation asked participants whether its tasks were plausible, and the Replay
+evaluation asked both a plausibility question and a time-pressure question.
 
-> Without looking at the project, tell the story of it. What was built, in what
-> order, what went wrong, and what was undone?
+Neither check is one of the six comparison families in §7, and neither is on the
+seven-point scale, so neither belongs in Figure 1's diverging bars or in any
+block mean.
 
-Scored later in the analysis dashboard against the 22-episode ground truth as
-three numbers:
+### 5.6 The recall quiz and the summary task, both removed
 
-- **Coverage.** How many episodes were mentioned, out of 22. Scored using a
-  checkbox grid, one row per episode.
-- **Causal links.** The number of correctly stated because-relationships between
-  episodes. For example: "The waitlist stopped being needed once the registrar
-  took it over" counts as one.
-- **Misconceptions.** Confidently stated claims that are factually false,
-  counted.
+A five-item recall quiz (`quiz-v1`, two-minute cap) and a three-minute "tell the
+story of this project" summary (`summary-v1`, scored against the 22-episode
+ground truth for coverage, causal links, and misconceptions) used to run after
+each half with the project closed. Both were removed on 2026-08-17. They are
+recorded here rather than deleted, because RQ3 is thinner without them and the
+paper has to be able to say why.
 
-Coverage alone rewards listing things. The three measures together separate
-"remembered a list" from "built a working theory," which is the RQ3 distinction
-and the reason Naur's "programming as theory building" is cited. Two coders
-score the summaries, with 25% double-coded and agreement negotiated following
-McDonald et al.
+They cost twelve minutes a session and asked the participant to write, from
+memory, with the project closed, immediately after a block they had usually just
+run out of time on. What came back was short, hedged, and graded by hand against
+a rubric, and the two conditions differed less on it than the graders differed
+from each other. A measure whose between-coder variance exceeds its
+between-condition variance is not measuring the condition.
 
-### 5.8 Preference and closing (`preference-v1`), end of session
+What they were meant to support — what a person carries away from a history —
+is still in HLAC block 3, "what you came away with", at a cost of thirty seconds
+and no writing. That is self-report where this was performance, which is a real
+loss and is stated as one in §1 and §9.
 
-Forced choice for each task archetype, with the two setups labeled A and B:
+Removing them also removed the only reason the answer key had to ship a
+`quizAnswers` block, and the only step in the flow that had to be locked against
+editing after submission.
 
-- Finding when and why something changed
-- Taking a feature out without breaking things
-- Finding what caused a regression
-- Working with the AI assistant
+### 5.7 Preference and closing (`preference-v2`), end of session
 
-For each: Setup A / Setup B / No real difference, plus a free-text explanation of
-why. Then overall preference, and "would you want this on your own projects" per
-setup on a 7-point scale. The archetype-level forced choice is the most
-defensible preference measure here, because a single overall preference with
-n=12 is just one bit times twelve.
+A reminder of which letter was which, seven comparative judgements over jobs the
+participant actually did, one multi-select of reasons, two discriminant
+scenarios, an overall comparison, two adoption items, one multi-select on cost,
+and one optional free-text box. The two setups are labeled A and B throughout.
 
-### 5.9 Interview
+**The scale: five points, not three.** Every comparative item in this block
+offers the same five options, in this order:
+
+> A, clearly · A, slightly · No real difference · B, slightly · B, clearly
+
+The midpoint stays. The paper's argument is about a tradeoff, and a block that
+cannot record "these were the same here" cannot describe one. What changed is
+either side of it: with twelve participants, the distance between "leaned that
+way" and "chose that one" is most of the result, and a three-option select threw
+it away. The options are symmetric and neither setup is named first. The
+comparable published instruments put the new tool in the stem ("I found Gitless
+to be easier to use than Git"), which anchors on it and leaves disagreement
+ambiguous between "the other one won" and "no difference".
+
+Responses are recoded to −2 … +2 in the **sgt-positive** direction, using
+whichever letter sgt was for that participant, and reported item by item with
+its own n. **The midpoint is a substantive category, reported as itself and
+never dropped as missing.** That is pre-committed here rather than decided
+later: dropping "no real difference" after seeing how many people chose it is a
+forking path, and at n=12 it is a path that could produce a majority out of four
+people.
+
+**Which letter was which.** The block opens with a line, not a question: "Setup
+A was the one you used first. Setup B was the one you used second." Every
+comparable published study named its two tools outright. This one cannot, because
+naming them tells the participant which one is ours, and the participant is being
+asked to compare two labels they last saw an hour ago. The price of that choice
+is recorded in §9: letter and order are perfectly confounded within a
+participant, recency favors B, and counterbalancing fixes that at the group level
+only.
+
+**The jobs you just did.** The five-point comparison for each of:
+
+- Working out when a behavior changed, and what caused it *(C1)*
+- Working out what else came along with a change *(C1)*
+- Taking one piece of work out without breaking the rest *(C2)*
+- Putting back part of what you took out, after the fact *(C2)*
+- Being confident the result was what you intended *(C2)*
+- Getting back to a good state when something went wrong *(C2)*
+- Checking what the AI assistant had actually done *(Q4)*
+
+Each names a job in outcome terms and never in tool terms — "taking one piece of
+work out without breaking the rest", not "reverting a feature". A question
+phrased as a mechanism that only one setup has is not a comparison, it is a
+leading question with a forced answer. The job-level comparison is the most
+defensible preference measure available, because a single overall preference at
+n=12 is one bit times twelve.
+
+The last of the seven asks about checking the assistant's work only. It used to
+ask about "directing the AI assistant, and checking what it did", and directing
+is near-identical across the two arms — same assistant, same prompts — so half
+of the wording was noise. The two halves are also known to come apart:
+Vaithilingam, Zhang and Glassman (CHI 2022 Extended Abstracts,
+[10.1145/3491101.3519665](https://dl.acm.org/doi/10.1145/3491101.3519665)) found
+23 of 24 participants calling Copilot more helpful while only 10 of 24 felt more
+confident in its output. Our own HLAC block already splits directing (Q8) from
+checking (Q9), so collapsing them here disagreed with our own battery.
+
+**Reasons.** One multi-select, "What made the difference, wherever you felt
+one?", replacing five required free-text "Why?" boxes. The v1 block ran eighteen
+items and sat at the end of a two-hour session; by the third box the answers
+were "same reason as above". The options are the reasons pilots gave, in their
+words, and they include the two that would be evidence against us — already
+knowing the commands, and being able to predict exactly what the tool would do —
+plus "nothing much, they felt about the same". An option list with no losing
+options is a leading question wearing a checkbox. "Undoing was easy" and "I
+trusted what the undo had done" are two separate options, for the same reason
+the item above asks only about checking: an undo can be easy to perform and hard
+to believe, and one option covering both would record the two as one.
+
+**Where each one would earn its keep.** Two discriminant scenarios, on the same
+five-point scale:
+
+| Scenario | What we expect |
+|---|---|
+| A repository you have never seen and will not see again | Plain git |
+| A codebase you will own for the next year | sgt |
+
+The first is a job that does not reward reading history carefully, and a
+participant who picks the same setup for it as for the second is evidence of
+demand characteristics rather than of preference. That reading is reported
+either way, and it only works if at least one scenario is one we expect to lose.
+
+A third scenario, "a production hotfix under time pressure", was cut on
+2026-08-17. This document had carried it with its expected result listed as
+"open", which is the problem rather than a caveat: an item nobody can be wrong
+about cannot discriminate, and it was spending a question to collect a shrug. These two are also the weakest items in the block and are kept
+deliberately few: each asks a person to forecast from thirty-five minutes of
+use, which the seven job items do not.
+
+**Overall.** Which setup would you rather work in, on the same five points, then
+"I would want Setup A on my own projects" and the same for Setup B, each on the
+7-point agreement scale. Asking about both separately rather than as one choice
+lets a participant want both, or neither, which a comparison cannot record.
+
+**Cost.** A multi-select: "What would put you off using the one you preferred?"
+Every tool study collects reasons to adopt. This one collects the price, because
+the finding is a tradeoff and a tradeoff with no cost recorded reads as
+advocacy. The options include "having to piece together what happened from the
+messages", which is a cost of plain git and not of sgt: a cost list that only
+lists sgt's costs cannot be answered honestly by a participant who preferred
+plain git, and their answer is the one this item most needs.
+
+**One open box, optional.** "Anything you wanted to ask the project history and
+could not?" — answered from what they remember wanting, not from what either
+setup offered.
+
+### 5.8 Interview
 
 Conducted by the facilitator using the dashboard, with timestamped notes
 organized around fixed probes:
@@ -545,6 +864,10 @@ Computed per request, per condition:
   event
 - **Collateral damage**: tests failing outside the target feature, reported by
   the scoring script
+- **Calibration**, on request 1 only: stated confidence minus proportion of the
+  three closed questions answered correctly, both on 0–1. Positive is
+  overconfidence. Null unless both the confidence rating and the scored answers
+  are present, because a missing confidence is not a confident zero.
 - **Action n-grams**: bigram (two-step) and trigram (three-step) sequences over
   the category alphabet
 
@@ -573,19 +896,30 @@ difference and is dropped from paired comparisons rather than imputed.
 
 ### Which measures carry which weight
 
-Stated in advance so that a tertiary measure that happens to move cannot be
+Stated in advance so that a lower-tier measure that happens to move cannot be
 reported as if it were the main finding.
 
 | Tier | Measures |
 |---|---|
-| Primary | Request scoring on R1–R4 (rubric points) and collateral damage from `score_study_repo.py` |
-| Secondary | Quiz and summary task — what the person could reconstruct with the project closed |
-| Tertiary | Self-report: NASA-TLX, UMUX-Lite, the HLAC battery |
-| Descriptive | Telemetry: surfaces used, action sequences, prompt specificity, wrong turns, time to first history operation |
+| Primary | R1's three closed questions (0–3 correct), the R2+R3 rubric, and collateral damage from `score_study_repo.py` |
+| Secondary | Self-report: NASA-TLX, UMUX-Lite, the HLAC battery, the end-of-session preference block |
+| Descriptive | Telemetry: surfaces used, action sequences, prompt specificity, calibration, wrong turns, time to first history operation |
 
-Self-report is tertiary and is treated as such throughout. It is the tier most
-exposed to demand characteristics — the participant knows one setup is ours,
-whatever we call it on screen.
+There used to be a tier between these two: the quiz and the summary task, which
+asked what the person could reconstruct with the project closed. It is gone
+(§5.6), and with it the only performance measure of what a participant took away
+rather than what they said they took away.
+
+Self-report is not primary and is treated as such throughout. It is the tier
+most exposed to demand characteristics — the participant knows one setup is
+ours, whatever we call it on screen.
+
+The two manipulation checks at the end of the HLAC block (§5.5) are in no tier,
+because they are not outcomes. They are reported as paired differences like
+everything else, but a difference on them is a problem with the design rather
+than a result about the tools: if the requests read as less realistic in one
+condition, or if the time cap bound harder in one condition, that is the first
+thing the discussion has to deal with rather than the last.
 
 ### The estimate is the headline, not the statistical test
 
@@ -614,6 +948,20 @@ score, a rubric total — can reasonably be treated with parametric methods.
 Individual ordinal items do not get a metric model; this is the one point the
 ordinal-data methodology literature does not divide on.
 
+### The preference block, and what its midpoint means
+
+Each comparative item in the closing block (§5.7) is recoded to −2 … +2 in the
+sgt-positive direction, using whichever letter sgt was for that participant, and
+reported item by item with its own n and its full distribution. The overall
+comparison is one item among the ten, not a summary of them: an overall
+preference that disagrees with the seven job items is itself the interesting
+result.
+
+"No real difference" is reported as its own category. It is never dropped as
+missing, never redistributed across the two sides, and never treated as a
+failure to answer. Twelve people choosing the midpoint on an item is a finding
+about that job, and it is the finding the paper's tradeoff argument most needs.
+
 ### Families of comparison, and what we do not correct for
 
 Six families of comparison are named in advance: the four HLAC blocks, NASA-TLX,
@@ -628,8 +976,10 @@ unable to answer anything at all.
 Think-aloud recordings are treated as protocol data and analyzed alongside a
 reflexive thematic analysis of the closing interviews. Navigation behavior is
 hand-coded in both conditions using the same coding scheme, so that navigation
-remains a property of the person rather than of the instrumented tool. The
-recording that explains a quantitative result is reported beside it.
+remains a property of the person rather than of the instrumented tool. Two
+coders work from a codebook agreed before coding starts, with 25% double-coded
+and disagreements resolved by negotiated agreement following McDonald et al.
+The recording that explains a quantitative result is reported beside it.
 
 ### Pre-registration, and the limits of the claims
 
@@ -645,13 +995,49 @@ names. No claim is made that any absolute score is high or low.
 
 Two results are pre-committed as expected:
 
-1. Request 6 is where sgt should show its clearest advantage, yet it is
-   nonetheless optional and descriptive only.
+1. Request 2 is where sgt should show its clearest advantage, because taking one
+   piece of work out of a history that other work has landed on top of is the
+   job the representation is for. This is a primary measure, not a descriptive
+   one, so a null result here counts against C2 rather than being set aside.
 2. The discriminant scenarios at the end of the session should produce **mixed**
-   results. If a participant picks the same setup for fixing a typo in a repo
-   they will never see again *and* for a codebase they will own for a year, that
-   is evidence of demand characteristics (answering how they think we want) and
-   is reported as such rather than as a preference.
+   results. If a participant picks the same setup for a repository they will
+   never see again *and* for a codebase they will own for a year, that is
+   evidence of demand characteristics (answering how they think we want) and is
+   reported as such rather than as a preference.
+
+Two **dissociations** are predicted as well, and named here so that finding one
+is a result rather than a discovery made while reading the data:
+
+3. **Confidence may come apart from preference.** "Being confident the result
+   was what you intended" and "which setup would you rather work in" can point
+   different ways, and if they do, that is a finding with precedent rather than
+   noise: Vaithilingam et al. (§5.7) found 23 of 24 participants calling a tool
+   more helpful while only 10 of 24 felt more confident in what it produced. A
+   study that collects only an overall preference cannot see this, which is part
+   of why the block asks about seven jobs.
+4. **The two self-report blocks may disagree with each other, and that is
+   informative.** Five of the seven job comparisons have a near-twin in the HLAC
+   battery — finding when something changed, seeing what came with it, removing
+   safely, recovering, and checking the assistant's work. HLAC is answered once
+   per half, in absolute terms, about the half just finished; the preference
+   block is answered once, in relative terms, about both. Crossing them:
+   agreement is convergent validity for an ad-hoc battery that has none
+   otherwise, and disagreement is a result about how people compare against how
+   they rate in the moment. Both are reported.
+
+   The threat on that crossing runs one way and is stated with it. The second
+   half's HLAC is answered immediately before the comparison block, and the
+   first half's about forty-five minutes before it (§4), so a participant can
+   align a comparison to the rating they remember giving rather than to what
+   happened. Agreement between the two blocks is therefore the weaker evidence,
+   and disagreement — which recall-alignment cannot manufacture — is the
+   stronger.
+
+An earlier version of this document pre-committed to request 6, the history
+surgery task, as the clearest demonstration. That request no longer exists
+(§2). The prediction is not quietly transferred to a different request: request
+2 is named here as the expectation from 2026-08-17 onward, and the paper reports
+the change of pre-commitment along with its date.
 
 ## 8. The three figures
 
@@ -661,12 +1047,17 @@ and question Q4.
 
 ### Figure 1. What the two setups felt like
 
-Diverging stacked Likert bars for the fourteen HLAC items, grouped by their four
-blocks with reverse-keyed items marked, one panel per condition, response counts
-printed inside the segments. A right-hand panel shows paired mean differences
-with 95% bootstrap confidence intervals (CIs). Items are shown individually; the
-block mean appears as a summary line, not as a construct score, and no
-reliability coefficient is reported for blocks this short.
+Diverging stacked Likert bars for the fourteen seven-point HLAC items, grouped
+by their four blocks with reverse-keyed items marked, one panel per condition,
+response counts printed inside the segments. A right-hand panel shows paired
+mean differences with 95% bootstrap confidence intervals (CIs). Items are shown
+individually; the block mean appears as a summary line, not as a construct
+score, and no reliability coefficient is reported for blocks this short.
+
+The two manipulation checks that close the HLAC block (§5.5) are **not** in this
+figure. They are on five points, not seven, so a diverging bar chart that
+included them would put two scales in one axis, and they are checks on the
+design rather than perceptions of the setups.
 
 This figure goes first because it is the only one a reviewer can read in five
 seconds, and because perception is the claim most people will test against their
@@ -674,17 +1065,20 @@ own intuition.
 
 ### Figure 2. What people actually managed to do
 
-A paired within-subject estimation plot with four archetypes across the top (R1,
-R2+R3, R4, and collateral damage). For each archetype: every participant's two
-scores are joined by a line, with condition on the x-axis, and beneath it the
-paired mean difference with its bootstrap CI on a floating axis (Gardner-Altman
-style).
+A paired within-subject estimation plot with three panels across the top: R1
+provenance (how many of the three closed questions were right), R2+R3 removal
+(rubric points), and collateral damage. For each: every participant's two scores
+are joined by a line, with condition on the x-axis, and beneath it the paired
+mean difference with its bootstrap CI on a floating axis (Gardner-Altman style).
 
 Showing twelve individual slopes is the honest way to plot n=12. A bar chart of
 two group means hides whether one person moved a lot or twelve people moved a
 little, and at this sample size that distinction is the whole question. Collateral
 damage is on its own panel with an inverted axis so that "up is better" holds
 consistently across the figure.
+
+The figure lost a panel when request 4 was cut. Three panels is the whole
+outcome measure now, which is worth seeing plainly rather than padding.
 
 ### Figure 3. How the work was done
 
@@ -719,9 +1113,30 @@ rasterized layers.
 - A novelty effect runs the other way and cannot be fully removed. It is
   mitigated by neutral naming and by never revealing authorship, and it is stated
   as a limitation.
+- **Letter and order are perfectly confounded within a participant.** The setups
+  are called A and B, and the letters are assigned by order, so "Setup B" always
+  means "the one I used second" for the person answering. Recency favors it in
+  an end-of-session comparison. Counterbalancing fixes this at the group level
+  and cannot fix it inside a person, so no single participant's comparison can
+  be read as free of it. We use letters at all because every comparable study
+  named its two tools outright and this one cannot: naming them tells the
+  participant which one is ours, which is the larger threat. The comparison
+  block opens by restating which letter was which (§5.7); that is a reminder,
+  not a remedy.
 - Agent variance is part of the condition, not controlled away. The model
   version is pinned, and every transcript is kept.
-- Two small synthesized codebases and 45-minute halves. Real theory building
+- Two small synthesized codebases and 20-minute halves. Real theory building
   happens over weeks. The lab study answers the question of first contact only,
   which is why the design document recommends a field deployment as the
   companion study.
+- Three requests, two of which share a clock. The study asks one provenance
+  question and one removal with a correction on it, so a claim about "history
+  work" generally rests on two archetypes out of the six Codoban et al. name.
+  The three cut requests were cut because pilots could not finish them, which is
+  itself a finding about how much of this work fits in an hour, and it is
+  reported rather than left as an unexplained change of design. Whether the
+  remaining caps bound harder in one condition than the other is no longer left
+  to argument: it is asked directly after each half (§5.5, M2).
+- C3 is now measured by two self-report items and an interview (§5.6). The study
+  can show what people believe they came away with, and cannot show what they
+  actually retained.

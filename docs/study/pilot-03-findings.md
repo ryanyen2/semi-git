@@ -13,6 +13,8 @@ The participant finished all four scored requests with **full marks** (R1: 2/2, 
 
 Everything below is about the machinery around that.
 
+> **Note added 2026-08-17.** Three of those instruments are gone. Requests 4, 5 and 6 were cut, R1 is now three closed questions rather than a hand-graded paragraph, and the quiz and the summary were removed (`protocol.md` §2 and §5.6). This paragraph is left as recorded: it is what this session produced, and it is also the last measurement anyone has of R4 and of the quiz. As with pilot 02, the participant was an AI agent, and finishing everything with full marks is not evidence about a person under a clock.
+
 ---
 
 ## The one that would have invalidated the study

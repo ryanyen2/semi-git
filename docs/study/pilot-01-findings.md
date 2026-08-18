@@ -320,10 +320,10 @@ Done since this document was first written:
 
 Still open:
 
-9. **Pilot the git condition.** Until it runs we do not know whether the requests are doable in 45 minutes without sgt, which is half the comparison.
+9. **Pilot the git condition.** Until it runs we do not know whether the requests are doable in 45 minutes without sgt, which is half the comparison. *(Run as pilot 02. Update 2026-08-17: a block is now three requests in 20 minutes, not six in 45, so the open question is whether those three are doable without sgt — see `protocol.md` §2.)*
 10. **Pilot task set B.** The confplan project has never been run by anyone. Its equivalence to coursecraft is an assumption.
-11. **Pilot with people.** Both pilots so far used AI agents. They are good at finding defects but cannot tell us about time pressure, confusion, or the point at which someone gives up.
-12. **The instruments.** Consent form, background questionnaire, the workload and usability questionnaires, and the block quiz are all described but not built.
+11. **Pilot with people.** Both pilots so far used AI agents. They are good at finding defects but cannot tell us about time pressure, confusion, or the point at which someone gives up. *(Still open, and now load-bearing: the three cut requests were cut on a time argument that only a human pilot can confirm.)*
+12. **The instruments.** Consent form, background questionnaire, the workload and usability questionnaires, and the block quiz are all described but not built. *(Update 2026-08-17: all built except the quiz, which was removed rather than built — `protocol.md` §5.6.)*
 13. **Ethics approval and pre-registration.** Neither has been started, and the design says to pre-register before participant 1.
 
 
