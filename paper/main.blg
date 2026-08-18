@@ -12,24 +12,36 @@ Reallocated glb_str_ptr (elt_size=4) to 20 items from 10.
 Reallocated global_strs (elt_size=200001) to 20 items from 10.
 Reallocated glb_str_end (elt_size=4) to 20 items from 10.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
-Warning--no journal in bacchelli2013
-Warning--no number and no volume in bacchelli2013
+Warning--empty publisher in apel2011
+Warning--empty address in apel2011
+Warning--empty publisher in bacchelli2013
+Warning--empty address in bacchelli2013
 Warning--empty publisher in barnett2015
 Warning--empty address in barnett2015
 Warning--empty publisher in biggerstaff1993
 Warning--empty address in biggerstaff1993
 Warning--empty address in blackwell2003
-Warning--empty publisher in brindescu2020
-Warning--empty address in brindescu2020
-Warning--empty publisher in nguyen2024
-Warning--empty address in nguyen2024
-Warning--page numbers missing in both pages and numpages fields in nguyen2024
-Warning--no number and no volume in church2014
+Warning--empty publisher in buse2010
+Warning--empty address in buse2010
+Warning--no number and no volume in cheng2024
+Warning--page numbers missing in both pages and numpages fields in cheng2024
+Warning--empty publisher in chucarroll2000
+Warning--empty address in chucarroll2000
+Warning--empty publisher in chucarroll2002
+Warning--empty address in chucarroll2002
+Warning--empty publisher in church2014
+Warning--empty address in church2014
 Warning--page numbers missing in both pages and numpages fields in church2014
 Warning--empty publisher in codoban2015
 Warning--empty address in codoban2015
+Warning--no number and no volume in cui2025
+Warning--page numbers missing in both pages and numpages fields in cui2025
 Warning--empty publisher in dias2015
 Warning--empty address in dias2015
+Warning--empty publisher in dig2007
+Warning--empty address in dig2007
+Warning--no number and no volume in sarkar2025
+Warning--page numbers missing in both pages and numpages fields in sarkar2025
 Warning--empty publisher in falleri2014
 Warning--empty address in falleri2014
 Warning--empty publisher in grossman2010
@@ -38,10 +50,12 @@ Warning--empty publisher in guimaraes2012
 Warning--empty address in guimaraes2012
 Warning--empty publisher in hartmann2008
 Warning--empty address in hartmann2008
-Warning--empty publisher in hattori2008
-Warning--empty address in hattori2008
+Warning--empty publisher in hata2011
+Warning--empty address in hata2011
 Warning--empty publisher in head2019
 Warning--empty address in head2019
+Warning--no number and no volume in heander2026
+Warning--page numbers missing in both pages and numpages fields in heander2026
 Warning--empty publisher in herzig2013
 Warning--empty address in herzig2013
 Warning--no number and no volume in jacobson2009
@@ -49,20 +63,24 @@ Warning--page numbers missing in both pages and numpages fields in jacobson2009
 Warning--empty publisher in jimenez2024
 Warning--empty address in jimenez2024
 Warning--page numbers missing in both pages and numpages fields in jimenez2024
+Warning--empty publisher in kersten2006
+Warning--empty address in kersten2006
 Warning--empty publisher in kery2017
 Warning--empty address in kery2017
 Warning--empty publisher in kery2018
 Warning--empty address in kery2018
 Warning--empty publisher in kim2005
 Warning--empty address in kim2005
-Warning--empty publisher in kleppmann2019
-Warning--empty address in kleppmann2019
 Warning--empty publisher in latoza2010
 Warning--empty address in latoza2010
 Warning--empty publisher in liang2024
 Warning--empty address in liang2024
+Warning--empty publisher in lippe1992
+Warning--empty address in lippe1992
 Warning--empty publisher in mikami2017
 Warning--empty address in mikami2017
+Warning--no number and no volume in mozannar2024
+Warning--page numbers missing in both pages and numpages fields in mozannar2024
 Warning--empty address in perezderosso2013
 Warning--empty address in perezderosso2016
 Warning--empty publisher in perry2023
@@ -71,9 +89,15 @@ Warning--empty publisher in partachi2020
 Warning--empty address in partachi2020
 Warning--empty publisher in rigby2013
 Warning--empty address in rigby2013
-Warning--no number and no volume in roundy2009
+Warning--empty publisher in roundy2005
+Warning--empty address in roundy2005
+Warning--empty publisher in sarkar2022
+Warning--empty address in sarkar2022
+Warning--page numbers missing in both pages and numpages fields in sarkar2022
 Warning--empty publisher in shen2021
 Warning--empty address in shen2021
+Warning--empty publisher in tang2024
+Warning--empty address in tang2024
 Warning--empty publisher in tao2015
 Warning--empty address in tao2015
 Warning--empty publisher in terry2004
@@ -82,9 +106,10 @@ Warning--empty publisher in tsantalis2018
 Warning--empty address in tsantalis2018
 Warning--empty publisher in vaithilingam2022
 Warning--empty address in vaithilingam2022
-Warning--empty publisher in vasconcelos2025
-Warning--empty address in vasconcelos2025
+Warning--no number and no volume in vasconcelos2025
 Warning--page numbers missing in both pages and numpages fields in vasconcelos2025
+Warning--empty publisher in wang2019
+Warning--empty address in wang2019
 Warning--empty publisher in yang2024
 Warning--empty address in yang2024
 Warning--page numbers missing in both pages and numpages fields in yang2024
@@ -96,45 +121,45 @@ Warning--empty publisher in yoon2013
 Warning--empty address in yoon2013
 Warning--empty publisher in zimmermann2004
 Warning--empty address in zimmermann2004
-You've used 67 entries,
+You've used 82 entries,
             6273 wiz_defined-function locations,
-            1920 strings with 32636 characters,
-and the built_in function-call counts, 77075 in all, are:
-= -- 9541
-> -- 2310
+            1993 strings with 36058 characters,
+and the built_in function-call counts, 94868 in all, are:
+= -- 11766
+> -- 2905
 < -- 0
-+ -- 793
-- -- 810
-* -- 5322
-:= -- 7226
-add.period$ -- 343
-call.type$ -- 67
-change.case$ -- 477
-chr.to.int$ -- 66
-cite$ -- 151
-duplicate$ -- 7128
-empty$ -- 4973
-format.name$ -- 1045
-if$ -- 18723
++ -- 1003
+- -- 1027
+* -- 6523
+:= -- 8911
+add.period$ -- 420
+call.type$ -- 82
+change.case$ -- 591
+chr.to.int$ -- 81
+cite$ -- 191
+duplicate$ -- 8747
+empty$ -- 6106
+format.name$ -- 1318
+if$ -- 23135
 int.to.chr$ -- 3
 int.to.str$ -- 1
-missing$ -- 262
-newline$ -- 612
-num.names$ -- 470
-pop$ -- 2858
+missing$ -- 327
+newline$ -- 725
+num.names$ -- 575
+pop$ -- 3585
 preamble$ -- 1
-purify$ -- 1011
+purify$ -- 1245
 quote$ -- 0
-skip$ -- 2673
+skip$ -- 3267
 stack$ -- 0
-substring$ -- 5918
-swap$ -- 676
+substring$ -- 7121
+swap$ -- 822
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 1738
-warning$ -- 84
-while$ -- 458
+type$ -- 2118
+warning$ -- 109
+while$ -- 556
 width$ -- 0
-write$ -- 1335
-(There were 84 warnings)
+write$ -- 1607
+(There were 109 warnings)

@@ -1,153 +1,180 @@
 % Figure 1 (teaser). One agent session, recorded two ways.
-\newcommand{\FigOneCaption}{One hour of work with a coding agent, and the two
-records it leaves behind. The developer asked for three things and got a fourth
-(left). Git kept two commits whose fifteen hunks interleave all four requests
-(middle). The colours in that panel are ours, and git holds no record of which
-request produced which hunk, so a developer taking one request back out has to
-decide for each hunk whether it belongs to that
-request. \sgt{} recorded one edit per function and filed each under the request it
-came from (right), so the caching work is a set of six edits with a name, and the
-one function both the rate limiter and the cache touched is visible as such.}
+\newcommand{\FigOneCaption}{One hour with a coding agent, recorded two ways. The
+developer asked for three things and the agent did a fourth nobody asked for, and
+the two records differ in whether anything in the repository says which is which.}
 
-\newcommand{\FigOneDescription}{A three panel diagram. The left panel lists the
-three requests a developer made to a coding agent and one change the agent made
-without being asked, each in its own colour. The middle panel shows two git
-commits drawn as stacks of file names with coloured diff hunks inside them,
-where the hunks of every colour are mixed together inside both commits. The
-right panel shows four horizontal lines, one per request, with square, circular
-and triangular marks placed on each line under the commit in which that edit
-happened, plus tick marks for checkpoints and a line joining the two marks that
-edited the same function. The bottom row asks the same task of both records:
-removing the caching request takes six hunk selections across three files and
-two commits under git, and one named command under sgt.}
+\newcommand{\FigOneDescription}{A three panel diagram. The left panel lists three
+requests a developer typed to a coding agent, each marked with a small figure of a
+person, and below them one change the agent made without being asked, marked with
+a small figure of a robot. Each request has its own colour. The middle panel shows
+two git commits drawn as cards containing file names with coloured diff hunks
+under each, and each commit holds hunks of three different colours, so two
+requests and the unrequested change are mixed together inside each of them. The
+right panel shows four horizontal rails, one per request, with square, circular and
+triangular marks placed along each rail under the commit in which that edit
+happened. Three marks on three different rails are ringed to show that all three
+edited the same function. A strip along the bottom asks the same task of both
+records: taking the caching back out means finding six of the fifteen hunks by hand
+under git, and one named command under sgt. The request's name is set in its own
+colour both where the task is stated and inside the sgt command, because they are the
+same words.}
 
 \begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
 
-% ===================== panel A: what was asked ============================
-\node[hd, anchor=west] at (0,53.4) {WHAT THE DEVELOPER SAID};
-\node[note, anchor=west, text=sgtGrey] at (0,50.2) {14:02 to 15:20, one sitting};
+% ===================== panel A: what the developer said ====================
+\panel{0}{15}{36}{42}{sgtInk}{WHAT WAS ASKED}
+\node[note, anchor=north west, text=sgtGrey] at (2.2,53.6) {one sitting, 14:02 to 15:20};
 
-% #1 top y, #2 height, #3 colour, #4 time, #5 text
-\newcommand{\reqcard}[5]{%
-  \fill[#3!12, rounded corners=0.7mm] (0,{#1-#2}) rectangle (34,#1);
-  \fill[#3] (0,{#1-#2}) rectangle (1.1,#1);
+% #1 top y, #2 height, #3 colour, #4 wash, #5 time, #6 text
+\newcommand{\reqcard}[6]{%
+  \fill[#4, rounded corners=0.7mm] (2.2,{#1-#2}) rectangle (33.8,#1);
+  \fill[#3, rounded corners=0.7mm] (2.2,{#1-#2}) rectangle (3.3,#1);
   \node[anchor=north west, inner sep=0, text=#3,
-        font=\sffamily\fontsize{5}{5.6}\selectfont] at (2.2,{#1-0.3}) {#4};
-  \node[anchor=north west, text width=30mm, align=left, inner sep=0,
-        font=\sffamily\fontsize{5.8}{6.6}\selectfont, text=sgtInk]
-    at (2.2,{#1-2.6}) {#5};}
+        font=\sffamily\bfseries\fontsize{4.9}{5.6}\selectfont] at (4.4,{#1-0.5}) {#5};
+  \node[anchor=north west, text width=25.5mm, align=left, inner sep=0,
+        font=\sffamily\fontsize{5.7}{6.5}\selectfont, text=sgtInk]
+    at (4.4,{#1-2.7}) {#6};}
 
-\reqcard{47.6}{7.4}{fRate}{14:02}{``rate limit the public API, 60 requests a minute per key''}
-\reqcard{38.6}{7.4}{fCache}{14:31}{``the price lookup is slow, cache it''}
-\reqcard{29.6}{7.4}{fRetry}{15:01}{``retry the upstream call when it returns a 5xx''}
-\reqcard{20.6}{10.0}{sgtGrey}{nobody asked for this}{the agent renamed \fsym{fetch} to \fsym{fetch\_row} and fixed its four callers}
+\reqcard{51.0}{7.0}{fRate}{wRate}{14:02}{``rate limit the public API, 60 a minute per key''}
+\whodev{31.6}{47.5}{fRate}
+\reqcard{42.7}{7.0}{fCache}{wCache}{14:31}{``the price lookup is slow, cache it''}
+\whodev{31.6}{39.2}{fCache}
+\reqcard{34.4}{7.0}{fRetry}{wRetry}{15:01}{``retry the upstream call on a 5xx''}
+\whodev{31.6}{30.9}{fRetry}
+\reqcard{26.1}{10.0}{sgtGrey}{wGrey}{NOT ASKED FOR}{the agent renamed \fsym{fetch} to \fsym{fetch\_row} and fixed its four callers}
+\whoagent{31.6}{21.6}{sgtGrey}
 
-% ===================== panel B: what git stored ===========================
-\node[hd, anchor=west] at (41,53.4) {WHAT GIT STORED};
-\node[note, anchor=west, text=sgtGrey] at (41,50.2) {2 commits, 5 files, 15 hunks};
+% ===================== panel B: what git stored ============================
+\panel{39}{15}{63}{42}{sgtGrey}{WHAT GIT STORED}
+\node[note, anchor=north west, text=sgtGrey] at (41.2,53.6) {2 commits, 5 files, 15 hunks};
 
 % #1 x, #2 sha, #3 message
 \newcommand{\commitblock}[3]{%
-  \draw[card, color=sgtGrey!45, fill=sgtPaper] (#1,9.2) rectangle ({#1+29},44.6);
+  \draw[rounded corners=0.8mm, line width=0.3pt, color=sgtInk!18, fill=white]
+    (#1,18.7) rectangle ({#1+28.4},51.2);
   \node[anchor=north west, inner sep=0, text=sgtInk,
-        font=\ttfamily\fontsize{5.2}{6}\selectfont] at ({#1+1.4},44.0) {#2};
-  \node[anchor=north west, text width=25mm, align=left, inner sep=0, text=sgtInk!75,
-        font=\sffamily\fontsize{5.4}{6.2}\selectfont] at ({#1+1.4},41.2) {#3};}
+        font=\ttfamily\fontsize{5.2}{6}\selectfont] at ({#1+1.4},50.5) {#2};
+  \node[anchor=north west, text width=24mm, align=left, inner sep=0, text=sgtInk!70,
+        font=\sffamily\fontsize{5.3}{6.1}\selectfont] at ({#1+1.4},47.7) {#3};}
 % #1 x, #2 y, #3 name
 \newcommand{\fname}[3]{\node[anchor=north west, inner sep=0, text=sgtInk!80,
   font=\ttfamily\fontsize{5.2}{6}\selectfont] at ({#1+1.4},#2) {#3};}
 
-\commitblock{41}{c39ab2}{``add rate limiting and price cache''}
-\fname{41}{35.0}{api.py}
-  \hunk{43.4}{31.8}{16}{fRate}\hunk{43.4}{30.5}{11}{fRate}
-  \hunk{43.4}{29.2}{14}{fRate}\hunk{43.4}{27.9}{19}{fCache}
-\fname{41}{25.7}{cache.py}
-  \hunk{43.4}{22.5}{22}{fCache}\hunk{43.4}{21.2}{14}{fCache}
-\fname{41}{19.0}{db.py}
-  \hunk{43.4}{15.8}{12}{fCache}
-\fname{41}{13.6}{util.py}
-  \hunk{43.4}{10.4}{9}{sgtGrey}
+\commitblock{41.2}{c39ab2}{``add rate limiting and price cache''}
+\fname{41.2}{42.0}{api.py}
+  \hunk{43.4}{38.8}{15}{fRate}\hunk{43.4}{37.5}{10}{fRate}
+  \hunk{43.4}{36.2}{13}{fRate}\hunk{43.4}{34.9}{18}{fCache}
+\fname{41.2}{33.3}{cache.py}
+  \hunk{43.4}{30.1}{21}{fCache}\hunk{43.4}{28.8}{13}{fCache}
+\fname{41.2}{27.2}{db.py}
+  \hunk{43.4}{24.0}{11}{fCache}
+\fname{41.2}{22.4}{util.py}
+  \hunk{43.4}{19.2}{9}{sgtGrey}
 
-\commitblock{74}{7f10de}{``retries, plus fixes to the cache''}
-\fname{74}{35.0}{api.py}
-  \hunk{76.4}{31.8}{13}{fRetry}\hunk{76.4}{30.5}{18}{fCache}
-\fname{74}{28.3}{retry.py}
-  \hunk{76.4}{25.1}{21}{fRetry}\hunk{76.4}{23.8}{15}{fRetry}\hunk{76.4}{22.5}{19}{fRetry}
-\fname{74}{20.3}{cache.py}
-  \hunk{76.4}{17.1}{10}{fCache}
-\fname{74}{14.9}{util.py}
-  \hunk{76.4}{11.7}{16}{sgtGrey}
+\commitblock{72.4}{7f10de}{``retries, plus fixes to the cache''}
+\fname{72.4}{42.0}{api.py}
+  \hunk{74.6}{38.8}{12}{fRetry}\hunk{74.6}{37.5}{17}{fCache}
+\fname{72.4}{35.9}{retry.py}
+  \hunk{74.6}{32.7}{20}{fRetry}\hunk{74.6}{31.4}{14}{fRetry}\hunk{74.6}{30.1}{18}{fRetry}
+\fname{72.4}{28.5}{cache.py}
+  \hunk{74.6}{25.3}{10}{fCache}
+\fname{72.4}{23.7}{util.py}
+  \hunk{74.6}{20.5}{15}{sgtGrey}
 
-% ===================== panel C: what sgt stored ==========================
-\node[hd, anchor=west] at (108,53.4) {WHAT \sgt{} STORED};
-\node[note, anchor=west, text=sgtGrey] at (108,50.2) {18 edits over 14 functions in 5 files};
+% the colours in this panel are the paper's, not git's, and saying so is the point
+\node[anchor=north west, inner sep=0, text=sgtInk!70,
+      font=\sffamily\fontsize{5.2}{6}\selectfont] at (41.2,18.1)
+  {We coloured these hunks. Git stores no such link.};
 
-\draw[commitcol] (131,14.5) -- (131,41.6);
-\draw[commitcol] (152,14.5) -- (152,41.6);
-\node[note, text=sgtGrey, anchor=south] at (131,42.0) {c39ab2};
-\node[note, text=sgtGrey, anchor=south] at (152,42.0) {7f10de};
+% ===================== panel C: what sgt stored ===========================
+\panel{105}{15}{69}{42}{sgtInk}{WHAT \textsf{sgt} STORED}
 
-\newcommand{\raillabel}[3]{\node[lbl, anchor=east, text=#3] at (125.5,#1) {#2};}
+\draw[commitcol] (128.5,27.2) -- (128.5,51.6);
+\draw[commitcol] (150.0,27.2) -- (150.0,51.6);
+\node[note, text=sgtGrey, anchor=south] at (128.5,51.8) {c39ab2};
+\node[note, text=sgtGrey, anchor=south] at (150.0,51.8) {7f10de};
 
-% rate limiting: two new functions and one handler taught to call them
-\draw[rail=fRate] (127,38) -- (174,38);
-\raillabel{38}{rate limiting}{fRate}
-\opadd{131.4}{38}{fRate}\opadd{133.8}{38}{fRate}\opadd{136.2}{38}{fRate}
-\opext{138.6}{38}{fRate}\ckpt{140.8}{38}{fRate}
+\newcommand{\raillabel}[3]{\node[lbl, anchor=east, text=#3] at (123.6,#1) {#2};}
+% A ring saying: this mark and the other ringed marks are the same function.
+% Solid, and drawn solid on purpose. The legend two rows below this one gives a
+% dotted outline to an edit that is no longer included, and every other figure
+% spends dotted the same way, so a dotted ring here would mark the one fact in
+% the panel that \sgt{} does record as the one thing it does not.
+\newcommand{\shared}[2]{\draw[color=sgtInk!50, line width=0.3pt]
+  (#1,#2) circle (2.0);}
 
-% price cache: four edits in the first commit, reworked in the second
-\draw[rail=fCache] (127,31) -- (174,31);
-\raillabel{31}{price cache}{fCache}
-\opadd{131.4}{31}{fCache}\opadd{133.8}{31}{fCache}\opext{136.2}{31}{fCache}
-\opext{138.6}{31}{fCache}\ckpt{140.8}{31}{fCache}
-\oprew{152.4}{31}{fCache}\opext{154.8}{31}{fCache}\ckpt{157.0}{31}{fCache}
+% rate limiting
+\draw[rail=fRate] (125.4,48.5) -- (171.6,48.5);
+  \raillabel{48.5}{rate limiting}{fRate}
+\opadd{128.9}{48.5}{fRate}\opadd{131.8}{48.5}{fRate}\opadd{134.7}{48.5}{fRate}
+\opext{137.6}{48.5}{fRate}\ckpt{140.0}{48.5}{fRate}
+\shared{137.6}{48.5}
 
-% the one function both requests changed
-\draw[line width=0.3pt, color=sgtGrey!80] (138.6,36.6) -- (138.6,32.4);
-\draw[line width=0.3pt, color=sgtGrey!80] (138.6,34.5) -- (143.0,34.5);
-\node[anchor=west, text width=22mm, align=left, inner sep=0, text=sgtInk!70,
-      font=\sffamily\fontsize{5}{5.8}\selectfont] at (143.2,34.6)
-  {\fsym{api.py::handle}, extended by these two and again by retries};
+% price cache
+\draw[rail=fCache] (125.4,42.0) -- (171.6,42.0);
+  \raillabel{42.0}{price cache}{fCache}
+\opadd{128.9}{42.0}{fCache}\opadd{131.8}{42.0}{fCache}\opext{134.7}{42.0}{fCache}
+\opext{137.6}{42.0}{fCache}\ckpt{140.0}{42.0}{fCache}
+\oprew{150.4}{42.0}{fCache}\opext{153.3}{42.0}{fCache}\ckpt{155.7}{42.0}{fCache}
+\shared{137.6}{42.0}
 
 % retry policy
-\draw[rail=fRetry] (127,24) -- (174,24);
-\raillabel{24}{retry policy}{fRetry}
-\opadd{152.4}{24}{fRetry}\opadd{154.8}{24}{fRetry}\opext{157.2}{24}{fRetry}\ckpt{159.4}{24}{fRetry}
+\draw[rail=fRetry] (125.4,35.5) -- (171.6,35.5);
+  \raillabel{35.5}{retry policy}{fRetry}
+\opadd{150.4}{35.5}{fRetry}\opadd{153.3}{35.5}{fRetry}\opext{156.2}{35.5}{fRetry}
+\ckpt{158.6}{35.5}{fRetry}
+\shared{156.2}{35.5}
 
-% housekeeping: the rename nobody asked for, and its callers
-\draw[rail=sgtGrey] (127,17) -- (174,17);
-\raillabel{17}{row accessors}{sgtGrey}
-\opmove{131.4}{17}{sgtGrey}\opext{133.8}{17}{sgtGrey}\opext{136.2}{17}{sgtGrey}
-\opext{138.6}{17}{sgtGrey}\opext{152.4}{17}{sgtGrey}
+% the rename nobody asked for
+\draw[rail=sgtGrey] (125.4,29.0) -- (171.6,29.0);
+  \raillabel{29.0}{row accessors}{sgtGrey}
+\opmove{128.9}{29.0}{sgtGrey}\opext{131.8}{29.0}{sgtGrey}\opext{134.7}{29.0}{sgtGrey}
+\opext{137.6}{29.0}{sgtGrey}\opext{150.4}{29.0}{sgtGrey}
+\whoagent{106.4}{29.0}{sgtGrey}
 
-% legend
-\newcommand{\leg}[3]{\node[anchor=west, inner sep=0, text=sgtInk!75,
-  font=\sffamily\fontsize{5.2}{6}\selectfont] at ({#1+2.6},#2) {#3};}
-\opadd{109.2}{13.2}{sgtInk!65}\leg{109.2}{13.2}{new function}
-\opext{129.2}{13.2}{sgtInk!65}\leg{129.2}{13.2}{extended}
-\oprew{147.2}{13.2}{sgtInk!65}\leg{147.2}{13.2}{reworked}
-\opmove{109.2}{10.2}{sgtInk!65}\leg{109.2}{10.2}{moved or renamed}
-\ckpt{135.2}{10.2}{sgtInk!65}\leg{135.0}{10.2}{checkpoint}
-\opghost{155.2}{10.2}{sgtInk!65}\leg{155.2}{10.2}{taken out}
+% What the rings mean. The leader stops on the ring's own circumference rather
+% than short of it, because the checkpoint tick stands where it used to land and
+% an arrow between a ring and a tick names whichever of the two the reader
+% happens to look at.
+\annot{142.8}{45.4}{139.3}{43.1}{20}{sgtInk}
+\node[anchor=west, text width=25mm, align=left, inner sep=0, text=sgtInk!75,
+      font=\sffamily\fontsize{5.1}{5.9}\selectfont] at (143.2,45.4)
+  {\fsym{api.py::handle}, written by three requests};
 
-% ===================== bottom row: the same task ==========================
-\draw[color=sgtGrey!35, line width=0.3pt] (0,7.6) -- (174,7.6);
+\node[note, anchor=east, text=sgtGrey] at (171.8,25.5) {18 edits, 14 functions, 5 files};
 
-\node[anchor=north west, text width=34mm, align=left, inner sep=0, text=sgtInk,
-      font=\sffamily\bfseries\fontsize{6.2}{7.2}\selectfont] at (0,6.4)
-  {The price cache turns out to be wrong. Take it back out.};
+% legend, inside the panel whose marks it explains
+\newcommand{\leg}[3]{\node[anchor=west, inner sep=0, text=sgtInk!70,
+  font=\sffamily\fontsize{5.1}{5.9}\selectfont] at ({#1+2.4},#2) {#3};}
+\opadd{107.6}{21.6}{sgtInk!55}\leg{107.6}{21.6}{new}
+\opext{119.5}{21.6}{sgtInk!55}\leg{119.5}{21.6}{extended}
+\oprew{137.5}{21.6}{sgtInk!55}\leg{137.5}{21.6}{reworked}
+\opmove{156.0}{21.6}{sgtInk!55}\leg{156.0}{21.6}{renamed}
+\ckpt{107.6}{18.2}{sgtInk!55}\leg{107.4}{18.2}{checkpoint}
+\opghost{127.5}{18.2}{sgtInk!55}\leg{127.5}{18.2}{taken out}
+\whodev{145.5}{18.2}{sgtInk!55}\leg{145.1}{18.2}{developer}
+\whoagent{161.5}{18.2}{sgtInk!55}\leg{161.1}{18.2}{agent}
 
-\node[anchor=north west, text width=62mm, align=left, inner sep=0, text=sgtInk!85,
-      font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (41,6.4)
-  {Find the 6 cache hunks among the 15, in 3 files, in 2 commits. Split both
-   commits, and check that the \fsym{fetch\_row} rename did not ride along with
-   them.};
+% ===================== the same task, of both records =====================
+\plainpanel{0}{0}{174}{12.6}{wGrey}
+
+% The request is named in its own colour here and again in the command on the right,
+% because those are the same words and the reader typing them is the whole argument.
+% The middle column has no name to colour, which is the thing git does not store.
+\node[anchor=north west, text width=32mm, align=left, inner sep=0, text=sgtInk,
+      font=\sffamily\bfseries\fontsize{6.0}{7.0}\selectfont] at (2.2,10.6)
+  {A week later, the \textcolor{fCache}{price cache} has to come back out.};
+
+\node[anchor=north west, text width=59mm, align=left, inner sep=0, text=sgtInk!85,
+      font=\sffamily\fontsize{5.7}{6.7}\selectfont] at (41.2,10.6)
+  {Find 6 of the 15 hunks, in 3 files, in 2 commits. Split both commits by hand,
+   then check the \fsym{fetch\_row} rename did not ride along.};
 
 \node[anchor=north west, inner sep=0, text=sgtInk,
-      font=\ttfamily\fontsize{5.8}{7}\selectfont] at (108,6.4)
-  {\$ sgt revert "price cache"};
+      font=\ttfamily\fontsize{5.9}{7}\selectfont] at (107.2,10.6)
+  {\$ sgt revert \textcolor{fCache}{"price cache"}};
 \node[anchor=north west, inner sep=0, text=sgtInk!75,
-      font=\sffamily\fontsize{5.6}{6.6}\selectfont] at (108,2.8)
-  {removes 6 edits across 4 symbols, 3 files};
+      font=\sffamily\fontsize{5.5}{6.5}\selectfont] at (107.2,6.6)
+  {6 edits, 4 functions, 3 files, one name};
 
 \end{tikzpicture}

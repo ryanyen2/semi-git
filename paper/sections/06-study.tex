@@ -1,5 +1,226 @@
-\section{Evaluation}
+\section{What Would Show This Is Wrong}
 \label{sec:study}
 
-\noindent\emph{[This section is in preparation and is not part of this
-submission draft.]}
+Three claims in this paper fail independently of one another, and each one fails
+in a way that a different kind of evidence catches. The record either reproduces
+the bytes the developer's editor and agent left in the files or it does not, and
+that is a question about a program, settled by running it over histories that
+already exist. The grouping either lines up with the requests a developer made or
+it does not, and that is a question about an inference, settled by comparing it
+against sessions where somebody happened to write the requests down. A developer
+either gets more of these operations right with \sgt{} than without it, or does
+not, and that is a question about people. The first has a procedure and a number we
+can print today, the second is under way on a corpus we are still assembling, and
+the third is designed and not yet run. Underneath all three, \sgt{} has been the
+version control for its own repository since the day it first ran, which is where
+every number in Section~\ref{sec:discussion} comes from and why the two prices
+Section~\ref{sec:design} states most flatly are the two that cost us something
+before they cost anybody else.
+
+\smallskip\noindent\emph{Not one number in this section comes from that third
+study.} The measure that decides the argument is not the time a task takes but the
+errors a participant does not notice, and naming that before the data exists is the
+only way to be believed about it afterwards.
+
+\subsection{The rebuild has to be exact}
+\label{sec:eval-exact}
+
+If \sgt{} reassembles a file into bytes that differ from what the developer left
+there, then every operation in Section~\ref{sec:design} is set arithmetic over a
+fiction, and nothing else in this paper is worth reading. This is the one
+measurement whose failure would end the work rather than qualify it, so it goes
+first and it is the only one we insist on before adoption.
+
+The procedure follows the shape of the claim. We walk a repository's history one
+commit at a time, mine each commit into records, rebuild every file from the set of
+records that commit's state implies, and compare the result against the blob git
+holds, byte for byte. A repository passes at a commit only if every file matches, so a
+single differing byte in a single file is a failure at that commit, and we will report
+the fraction of files that rebuild rather than an average over repositories, because a
+developer cares whether their file comes back and not whether most files do. The
+corpus is open source Python and TypeScript repositories chosen for length of history
+and nothing else, and we are still assembling it, so the only number this procedure has
+produced comes from our own repository, which is the hardest case available to us
+because records written by five different versions of our miner sit in it.
+
+That number is fifty-six files that no valid set of records reproduces, one in seven of
+the files whose records name functions, and Section~\ref{sec:unreproducible} gives that
+denominator and says what is in the fifty-six. What we do not know is whether
+fifty-six is the cost of our own format changes or the cost of the design, and since
+five miner versions in fifty-seven days is a rate no adopter will ever match, the
+corpus run is how we intend to separate the two: a repository \sgt{} has never touched
+cannot have our migrations in it.
+
+\subsection{Whether the grouping matches what was asked for}
+
+The names in every figure in this paper are inferred, and a developer who types
+\cmd{sgt revert "price cache"} is trusting that inference with the contents of
+their files. The question is not whether the clustering scores well against a
+partition somebody drew, which is how the untangling literature is evaluated for
+the good reason that its authors had nothing better to compare against
+(Section~\ref{sec:related}). The question is whether the set that comes back when
+a developer names one request is the set of edits that request produced.
+
+That question needs a corpus where the requests were recorded, which agent sessions
+now supply as a matter of course, since the transcript of a session names each request
+and the files the agent touched while carrying it out. We mine each repository without
+reading any transcript, derive a reference grouping from the transcripts alone, and
+then ask two things of every request in the session: how much of what that request
+produced comes back when the developer names it, and how much else comes with it.
+Those are the two ways a revert disappoints the person who ran it, the edit it missed
+and left sitting in the file, and the edit belonging to a different request that it
+carried off as well. They fail asymmetrically, and the second is worse, because a
+developer who is handed too little notices when the code still runs the way it did and
+a developer who is handed too much has already lost work they meant to keep.
+
+We expect the shared helper to be where this measurement goes wrong, because
+Section~\ref{sec:names} predicts it and fifty-seven days of daily use have not
+stopped it happening. An argument parser or a logging function that changes in nearly every
+save is coupled to everything by the signal the clustering reads, and it draws
+otherwise unrelated requests into one group. If most of the disagreement between
+our grouping and the transcripts turns out to sit on functions of that kind, then
+the fix is to weight a function's coupling down as the number of things it couples
+to grows, and that is a change to one term rather than to the design. If the
+disagreement is spread evenly across ordinary functions instead, then the coupling
+signal is not carrying the grouping and the developer should be asked at save
+time, which is the design we argued against in Section~\ref{sec:names} and would
+have to argue for.
+
+\subsection{Three requests, a transcript, and code nobody in the room wrote}
+\label{sec:eval-study}
+
+\begin{table*}[t]
+  \centering
+  \caption{The six measures of the study in Section~\ref{sec:eval-study}, each
+  with the result that would count against the design. The first row is the one we
+  would report first, and the third row is the one a reader would expect us to
+  report first.}
+  \Description{A three-column table. The left column names six measures: undetected
+  errors, correct submissions, time to completion, diff lines read, forks raised and
+  judged pointless, and label corrections. The middle column states what the authors
+  expect for each. The right column states, for each, the observation that would
+  count against the design.}
+  \label{tab:measures}
+  \small
+  \begin{tabular}{@{}p{0.235\textwidth}p{0.335\textwidth}p{0.355\textwidth}@{}}
+    \toprule
+    \textbf{What we measure} & \textbf{What we expect} &
+      \textbf{What would count against us} \\
+    \midrule
+    Submissions the participant believed correct and that were not.
+      & The gap here is wider than the gap in time. Removing a request touches
+        code the participant never read, and in git nothing tells them so.
+      & Equal rates in both conditions. The recovery we call expensive would then
+        be something developers already do reliably, and Section~\ref{sec:scenarios}
+        is a story about us. \\[0.6ex]
+    Submissions that pass the check.
+      & More of them with \sgt{}, and the ones that fail fail in the places
+        \cmd{revert} named out loud.
+      & A failure in \sgt{} that the preview did not name. A report that misses a
+        consequence is worse than no report. \\[0.6ex]
+    Time to the moment the participant says they are done.
+      & Shorter with \sgt{}, and we would not publish this alone.
+      & Shorter with \sgt{} while the first row is flat. \sgt{} would then be a
+        convenience, and we have argued for it as something else. \\[0.6ex]
+    Lines of diff the participant opened before submitting.
+      & Far fewer with \sgt{}, since no command in
+        Section~\ref{sec:design} asks anyone to look at a hunk.
+      & Participants reading the diff anyway. They would be checking \sgt{}'s
+        report rather than using it, and after twenty minutes of that they are
+        doing the git task with extra steps. \\[0.6ex]
+    Forks \sgt{} raised, and how many the participant judged pointless.
+      & A small number, mostly judged pointless, all cheap.
+      & Any participant switching the rule off, or a fork resolved by picking a
+        side whose result then failed the check. Being stopped would have bought
+        nothing. \\[0.6ex]
+    Labels the participant corrected, and what the correction cost.
+      & One or two renames, no regroups.
+      & A regroup on the critical path of an operation. The inference would then
+        be spending the developer's attention rather than saving it. \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+The study puts a developer in the position the paper is about, which means giving
+them a repository whose code they did not write and the three sentences that
+caused it. Each participant receives a five thousand line Python service, a
+transcript of the session that produced its most recent hour of work, and three
+tasks, each of which names one request from that transcript and asks for it to be
+moved or removed without disturbing the other two. This is the
+state of the developer in Section~\ref{sec:scenarios} a week later, and it is also
+the state of the developer who picks up a colleague's branch on a Monday, and it
+is the only arrangement we found in which every participant knows exactly as much
+about the code as every other one. Participants who direct the agent themselves
+each remember a different amount of what came back, and that remembering is the
+thing whose absence we are claiming matters.
+
+We recruit developers who use a coding agent as part of their ordinary work,
+because the difficulty we describe belongs to them and to nobody else, and we ask
+each of them to work through two repositories, one with git and one with \sgt{},
+in a counterbalanced order. In the git condition they use whatever they normally
+use, including a graphical client, since the argument is about what git's record
+can express and not about anybody's command line fluency. Each repository holds
+three requests whose edits interleave inside shared functions, and each has a
+different set of three so that a participant who has learned the shape of the
+first task cannot apply it to the second. The tasks are the three operations from
+Section~\ref{sec:scenarios} with a checkable outcome: take one named request out
+and leave the other two working, carry one request to a release branch on its own,
+and find the earlier state of a request in order to change it. We leave the other
+two scenarios out of the study because their outcome is a judgement about when to
+commit and how to stack, and we would be scoring participants against our
+preference rather than against a result.
+
+A submission is correct when a script says so, and the script asks three
+questions. The tests belonging to the removed request fail, the tests belonging to
+the two kept requests pass, and no function outside the intended set differs from
+the reference repository. That third question is the one that catches the failure
+this paper is about, because a participant who removes the caching and quietly
+takes half the retry policy with it has produced a repository that passes its own
+tests.
+
+The first row of Table~\ref{tab:measures} is the one that matters, because a
+developer who spends an extra twenty minutes untangling a commit by hand has lost
+twenty minutes, while a developer who submits a repository they believe is clean and
+that still calls a function they deleted has lost something they will not find until
+the release branch fails to import. Hand untangling fails silently, and a design whose
+whole argument is that the developer no longer holds the decomposition has to be
+measured against silent failure rather than against the clock. We collect time because
+a reader would want it and because a tool that is correct and unbearably slow is not
+adopted, and we would not publish a time difference as the finding.
+
+The last two rows of Table~\ref{tab:measures} measure the prices we stated in
+Section~\ref{sec:design} rather than the benefits, and they are there because a
+study that measures only what a design buys is a study that cannot be wrong. A
+fork stops the developer and a wrong label makes them type a rename, both of which
+are countable inside the session, and both have a threshold past which we would
+change the design rather than defend it.
+
+\subsection{What none of this would tell us}
+
+Only the first of the three claims can be pushed past by running more of the same,
+since adding repositories to Section~\ref{sec:eval-exact} sharpens that number and
+nothing else here improves with volume.
+
+A recorded request is not an intention. A developer who types
+\emph{make the price lookup faster} holds a view of what should change that the
+sentence does not contain, and the agent's response is a guess at the remainder.
+The alignment we measure against a transcript is therefore alignment with what was
+said, and the transcript sets a ceiling on it that no better clustering can pass.
+We think this is the right measurement anyway, on the ground that what was said is
+what the developer will type when they come back to remove it, but a reader who
+believes intention and utterance come apart more often than we do should read that
+number as an upper bound on something smaller.
+
+Two hours with a transcript is not a week of forgetting. The cost we describe in
+Section~\ref{sec:scenarios} grows as a developer's memory of the session fades,
+and our design substitutes reading somebody else's transcript for that fading.
+A participant who has just read three sentences knows more about the session than
+the developer who typed them a week ago, so the git condition in our study is
+easier than the situation it stands for, and the difference we measure understates
+the one that matters. We prefer the understatement to a study nobody can run.
+
+Finally, every task in the study has an answer a script can check, and we chose
+those three tasks for that reason. The operations a developer wants most may be
+the ones with no checkable answer, and deciding whether a stack of two reviews
+was the right shape is one of them. We can say what \sgt{} makes possible there
+and we cannot measure it, and Section~\ref{sec:discussion} keeps that distinction.
