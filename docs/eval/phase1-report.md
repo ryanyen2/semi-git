@@ -75,6 +75,34 @@ other file.
 
 None of the four touch sgt itself, so no measurement has to be repeated on their account.
 
+## What a merge conflict resolution removed
+
+Six fixes that were already in the repository were removed by the way a merge conflict was resolved,
+and git reported the merge as a success. The merge left six files in conflict, and the resolution
+took the in-progress copy of each file whole. Those copies had been made before several of the fixes
+landed, so taking them whole removed the fixes without deleting a line of history. The log shows
+nothing, and the working tree was clean afterwards.
+
+The most serious of the six was a function that sgt's agent interface calls by name every time an
+agent restores removed work, so with the function gone every one of those calls failed. The others
+were the reason text on a refusal, which the editor needs in order to say why it will not act, and
+the whole path that lets you ask about a saved commit rather than a feature, which a pilot
+participant had already run into, and one method the editor calls.
+
+Finding them meant comparing what the tests cover today against what they covered at the last
+commit, name by name, across thirty files. Two of the six had no failing test, because the same
+resolution had removed their tests along with the code. A suite that passes over reduced coverage
+reads the same as a suite that passes over full coverage.
+
+One of the six was found by a different checker. The editor is written in TypeScript, and running
+its compiler reported two calls to a method the merge had deleted, in two files the merge never
+marked as conflicted. No test in the Python suite compiles TypeScript, so the Python suite was never
+going to report that the editor had not built since the merge. The lesson is about which checkers
+get run rather than about how many tests there are, so we now run all of them: the Python suite, the
+TypeScript compiler, the editor's own unit tests, a sweep that imports every module, a check that
+every import written inside a function resolves, and the script that checks the documentation's
+example commands against the real command parser.
+
 ## The one issue that needs your decision
 
 sgt loses commits when it reads a repository's history, and it reports the reading as complete.
@@ -104,12 +132,18 @@ and both failures come from the same part of sgt that the fix above would change
 
 ## Also waiting on you
 
-- Whether to commit the evaluation records. The `docs/eval` directory is not tracked by git and
-  holds about 6.7 MB. Without it, the sweep figures in the paper cannot be reproduced by anybody.
-- Whether to unstage the 54 files currently sitting in the git index from earlier sittings, and
-  whether to drop the retained stash entry.
+- Whether to keep the evaluation records in git. They are committed now, so the sweep figures can be
+  reproduced, but they are 21 MB across 694 files and nothing has been pushed, so taking them out
+  again is still cheap. Two of the transcripts quote our proxy endpoint's address in passing. No key
+  material is in any tracked file, and we checked every value in `.env` against every file in the
+  commit.
 - Whether to add a test dependency so that the VS Code extension's confirm dialog can be tested.
   Nothing currently checks that clicking the button reaches the command.
+- Which version of the paper's abstract to keep. Four exist: the one committed, the one in the
+  repository before this sitting, and the ones in the two retained stashes. We committed the working
+  copy and left the other three recoverable rather than choose for you.
+- Whether to push. Nothing has been pushed. The branch is 14 commits ahead of `origin/main` and
+  behind it by none.
 
 One plan rule cannot be met as things stand. The plan requires that the agent which runs a work
 package is not the agent that checks it, and this session is told not to use subagents, so no
@@ -117,7 +151,24 @@ independent check has been made.
 
 ## What is currently green
 
-Recorded here after the run finished, in the next revision of this file.
+The Python test suite passes in full. The run finished 1600 tests passed, 4 skipped and 1 expected
+failure, with none failing and none erroring, in 50 minutes. No test-shuffling plugin is installed,
+so the order is the file order every time. The 59 warnings the run reports are all the same one,
+which comes from the OpenAI client library re-serializing a reasoning item our proxy shapes
+differently, and `sgt/config.py` already silences it outside the tests because the parsed result is
+correct either way.
+
+The four areas the removed fixes sat in were re-run on their own first and passed 103 of 103. The VS
+Code extension compiles with no type errors and its own 11 tests pass. Every one of sgt's modules
+imports, and all 596 imports written inside functions resolve to something that exists, which is the
+check that would have caught the worst of the six removals. The script that compares every `sgt`
+command quoted in the documentation against the real command parser reports no mismatches. The paper
+builds to 27 pages with no undefined references and no duplicate labels.
+
+What green does not cover. Nothing tests that clicking Apply in the extension's confirm dialog
+reaches the command, because that needs a test dependency we have not added. Nothing compares
+today's test coverage against the last commit's, which is why six removed fixes went unnoticed for
+as long as they did. Neither gap is closed by any number above.
 
 ## Next step
 

@@ -10556,3 +10556,26 @@ over the same merge, and it found a break the first oracle is structurally unabl
 to see. A merge resolution that takes one file whole can break callers in files
 the merge never touched, and the only check that notices is one that reads both
 sides at once.
+
+### Full suite after the restores
+
+```
+1600 passed, 4 skipped, 1 xfailed, 59 warnings in 3002.60s (0:50:02)
+```
+
+No FAILED and no ERROR lines. No test-ordering plugin is installed, so the order
+is file order. All 59 warnings are the single pydantic union-serializer
+`UserWarning` that `sgt/config.py:37` filters at runtime; pytest resets warning
+filters, which is why they appear here and not in normal use.
+
+Also green in this sitting: the four affected areas on their own (103/103),
+`npx tsc --noEmit` (clean), `npm test` in editor/vscode (11/11),
+`scripts/check_docs_commands.py` (clean), a sweep importing every sgt module (0
+failures), a check that all 596 function-local sgt imports resolve (0
+unresolved), and the paper build (27 pages, no undefined references, no
+multiply-defined labels).
+
+The function-local import check is the one that would have caught the
+`_restore_gap` removal directly, since `sgt/mcp/server.py:144` imports it inside
+a function and the module therefore still imported cleanly with the function
+gone. It is a throwaway script right now, not a committed check.
