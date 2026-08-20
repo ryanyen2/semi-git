@@ -153,8 +153,8 @@ text it had at 14:02. The three functions in the last line are row accessors the
 rewrote during its rename, and it pointed all three at \sym{get\_cached} while it
 was in there, so their edits belong to a request the developer is keeping and name
 a function the revert deletes. \sgt{} names them and proceeds, because whether the
-repair is deleting three call sites or reverting the rename as well is not a
-question about the recorded edits.
+repair is deleting three call sites or reverting the rename as well is a
+question about the developer's intent, which the recorded edits cannot answer.
 
 The developer answered \cmd{y} and ran the test suite, which failed in the three
 places the report named and nowhere else, and the repair was deleting the cache lookup

@@ -20,20 +20,26 @@ several files in a loop~\cite{yang2024}. The unit a developer hands over has gon
 from a line to a paragraph of English, and the code that comes back is
 correspondingly larger.
 
-All of this work studies the minutes around acceptance, asking whether the code
-is correct~\cite{perry2023}, whether the developer can tell that it is
+All of this work studies the minutes around acceptance: whether the code is
+correct~\cite{perry2023}, whether the developer can tell that it is
 correct~\cite{vasconcelos2025}, whether they trust
 it~\cite{liang2024,cheng2024}, and how much faster they
-finish~\cite{mozannar2024,cui2025}. But did the programmer come to understand the
-codebase, understand it enough to explain why it is constructed this way rather
-than only to say what it is, understand it enough to recall what their codebase
-was a few weeks ago, what has changed since, and what state it is in now? We find
-programmers gradually losing the theory of their own
-codebase~\cite{naur1985} over the time they use these tools, losing the ability to
-describe the rationale behind a design, the ability to carry out a further
-modification, and the ability to recall what the codebase held. We suspect this
-becomes more of a problem the further specifying in natural language can carry a
-developer without their ever having to examine the code.
+finish~\cite{mozannar2024,cui2025}. None of it asks what happens a week later,
+when the developer needs to recall what their codebase was, what has changed
+since, and why it is constructed the way it is. Bainbridge identified this
+structure in 1983: automation removes the need for a skill, the skill degrades
+through disuse, and when the automation fails the operator needs exactly the
+skill that has degraded~\cite{bainbridge1983}. The irony applies here directly.
+A developer who specifies in natural language no longer practises the
+decomposition that version control demands, so the ability to say which function
+served which request---the skill git's revert requires---decays in proportion to
+the success of the tool that made the decomposition unnecessary. Bastani et al.\ confirmed the mechanism experimentally: participants who used a
+generative model during practice solved faster in the moment but performed
+significantly worse on later assessments without access to
+it~\cite{bastani2025}. We observe programmers gradually losing the theory of
+their own codebase~\cite{naur1985} over the time they use these tools, and
+Bainbridge's framework says the loss is structural rather than incidental: it is
+what automation does to the skill it replaces.
 
 \subsection{What a version control system agrees to record}
 
@@ -132,10 +138,10 @@ developer only what they cannot already supply for themselves, and until recentl
 they could supply all of it. Whoever wanted the caching out of a 2010 repository
 had written the caching, so a system that told them which methods it touched was
 performing work they had already done, at the price of a repository their
-colleagues could not clone with plain git. What has changed is not the value of
-the grain but the identity of the author, and a record that was redundant while
-the developer wrote the lines is the only surviving copy of the decomposition once
-they have stopped writing them. Mylyn's task context and \sgt{}'s named group of
+colleagues could not clone with plain git. The value of a finer grain has not
+changed; what changed is the identity of the author. A record that was redundant
+while the developer wrote the lines is now the only surviving copy of the
+decomposition, because the developer has stopped writing them. Mylyn's task context and \sgt{}'s named group of
 edits are the same object built for two different situations, and the difference is
 that Mylyn watched a developer's attention move through code that developer was
 writing, whereas the attention \sgt{} reconstructs belonged to a process that has
@@ -212,9 +218,10 @@ it~\cite{hartmann2008,terry2004,grossman2010,mikami2017,kery2018,head2019}. That
 commitment \sgt{} keeps. All of them also stop at
 the boundary of one machine: the history lives in the editor's own store, so a
 colleague, a build, and a code review never see it, and the unit is a single edit
-event, so a set of related edits still has no name a person can use. \sgt{} pays
-for crossing that boundary by writing its record into the git repository as files
-committed with the code, and Section~\ref{sec:colleague} describes what that costs.
+event, and a set of related edits still has no name a person can use. \sgt{}
+crosses that boundary by writing its record into the git repository as files
+committed with the code, and Section~\ref{sec:colleague} describes what that
+costs.
 
 \subsection{Layers over git built for the way people work now}
 

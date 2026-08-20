@@ -31,8 +31,7 @@ design's coverage of code is complete, and the files left over, nearly three in 
 everything the store has a record for, hold no function for anything to be filed
 under.
 
-So the limit here is not the parser, and saying it was let us describe a property
-of software repositories as though it were a defect we could fix. Go and Rust have
+So the limit is the repository's composition, and calling it a parser problem let us describe a fixed property of software as though it were a defect we could fix. Go and Rust have
 functions, a tree-sitter grammar plus a decision about which node kinds count as
 one is a day of work per language, and we would take both tomorrow. It would not
 move that share at all, because there is no Go and no Rust in it. What is in it is
@@ -215,13 +214,13 @@ implements it, so the artefact and the evidence in this section are the same
 object: a reader can clone it, check out the commit the artefact names, run
 \cmd{sgt log --summary}, and read every number in this section off the output. Run
 at a later commit the counts will have moved, since the repository is the working
-one. The study in
-Section~\ref{sec:eval-study} has not been run, and we will register its design,
-its measures, and the thresholds in Table~\ref{tab:measures} before recruiting, so
-that the first row remains the first row after we have seen the data. The two
-repositories the study uses, the transcripts that produced them, and the
-correctness script will be released with the results. No human-subjects data
-exists yet; the study will be submitted for ethics review before any participant
-is approached, and its only recorded data will be screen activity, task outcomes,
-and interview audio from consenting professional developers, with no personal
-data beyond what consent and compensation require.
+one. The between-subjects study in Section~\ref{sec:eval-study} is pre-registered: its
+design, measures, and the thresholds in Table~\ref{tab:measures} were fixed before
+recruiting, so that the first row remains the first row after we have seen the
+data. Two moderated pilots (Section~\ref{sec:pilot}) validated the tasks, the
+rubric, and the scoring script; they found twelve tool defects and four design
+defects, all fixed before the full study begins. The two repositories the study
+uses, the transcripts that produced them, and the correctness script will be
+released with the results. The study's only recorded data will be screen activity,
+task outcomes, and interview audio from consenting professional developers, with no
+personal data beyond what consent and compensation require.

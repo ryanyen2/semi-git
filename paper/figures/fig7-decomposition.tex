@@ -1,0 +1,105 @@
+% Over-decomposition: how many sgt features one human request maps to.
+% One-column figure for Section 6.7 (Grouping alignment).
+\newcommand{\FigSevenCaption}{One human request maps to a median of 2--6
+\sgt{} features across four repositories with full transcripts. The bar shows
+the median; the whisker extends to the maximum observed. A ratio of~1 would
+mean each request lands in exactly one feature. The consistently above-1 ratio
+means the operations of Section~\ref{sec:design} require the developer to name
+a unit smaller than what they asked for.}
+
+\newcommand{\FigSevenDescription}{A horizontal bar chart with four rows, one
+per repository: CodeNav (median 4, max 12), eico (median 3, max 8),
+semipy-package (median 6, max 10), and semi-git (median 2, max 13).
+A vertical dashed reference line at 1 marks the ideal ratio. All four
+repositories sit above the reference, with medians between 2 and 6.}
+
+\begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
+
+% dimensions
+\def\barh{5}      % bar height
+\def\gapy{10}     % vertical pitch between bars
+\def\scl{5.5}     % mm per unit (1 feature = 5.5mm)
+\def\maxval{14}   % axis max
+
+% --- reference line at 1 ---
+\draw[dashed, sgtGrey!60, line width=0.3pt]
+  ({1*\scl}, -3) -- ({1*\scl}, 4*\gapy+\barh+2);
+\node[anchor=south, text=sgtGrey, font=\sffamily\fontsize{5.2}{6.2}\selectfont]
+  at ({1*\scl}, 4*\gapy+\barh+2.5) {1:1};
+
+% --- axis ---
+\draw[sgtGrey!50, line width=0.3pt] (0, -3) -- ({\maxval*\scl}, -3);
+\foreach \v in {0, 2, 4, 6, 8, 10, 12, 14} {
+  \draw[sgtGrey!50, line width=0.3pt] ({\v*\scl}, -3) -- ({\v*\scl}, -4.5);
+  \node[anchor=north, text=sgtGrey, font=\sffamily\fontsize{5}{6}\selectfont]
+    at ({\v*\scl}, -5) {\v};
+}
+\node[anchor=north, text=sgtInk!70, font=\sffamily\fontsize{5.6}{6.6}\selectfont]
+  at ({7*\scl}, -9) {sgt features per human request};
+
+% --- data ---
+% Row 4 (top): semipy-package — median 6, max 10
+\def\yD{30}
+\node[anchor=east, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{6}{7}\selectfont] at (-2, \yD+\barh/2)
+  {\textsf{semipy-pkg}};
+\fill[fRetry!45, rounded corners=0.4mm]
+  (0,\yD) rectangle ({6*\scl}, \yD+\barh);
+\draw[fRetry!70, line width=0.5pt]
+  ({6*\scl}, \yD+\barh/2) -- ({10*\scl}, \yD+\barh/2);
+\fill[fRetry!70] ({10*\scl}, \yD+\barh/2) circle (0.7mm);
+\node[anchor=west, text=sgtInk!70, font=\sffamily\fontsize{5.2}{6.2}\selectfont]
+  at ({10*\scl+1.5}, \yD+\barh/2) {max 10};
+
+% Row 3: CodeNav — median 4, max 12
+\def\yC{20}
+\node[anchor=east, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{6}{7}\selectfont] at (-2, \yC+\barh/2)
+  {\textsf{CodeNav}};
+\fill[fIdx!45, rounded corners=0.4mm]
+  (0,\yC) rectangle ({4*\scl}, \yC+\barh);
+\draw[fIdx!70, line width=0.5pt]
+  ({4*\scl}, \yC+\barh/2) -- ({12*\scl}, \yC+\barh/2);
+\fill[fIdx!70] ({12*\scl}, \yC+\barh/2) circle (0.7mm);
+\node[anchor=west, text=sgtInk!70, font=\sffamily\fontsize{5.2}{6.2}\selectfont]
+  at ({12*\scl+1.5}, \yC+\barh/2) {max 12};
+
+% Row 2: eico — median 3, max 8
+\def\yB{10}
+\node[anchor=east, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{6}{7}\selectfont] at (-2, \yB+\barh/2)
+  {\textsf{eico}};
+\fill[fCache!35, rounded corners=0.4mm]
+  (0,\yB) rectangle ({3*\scl}, \yB+\barh);
+\draw[fCache!60, line width=0.5pt]
+  ({3*\scl}, \yB+\barh/2) -- ({8*\scl}, \yB+\barh/2);
+\fill[fCache!60] ({8*\scl}, \yB+\barh/2) circle (0.7mm);
+\node[anchor=west, text=sgtInk!70, font=\sffamily\fontsize{5.2}{6.2}\selectfont]
+  at ({8*\scl+1.5}, \yB+\barh/2) {max 8};
+
+% Row 1 (bottom): semi-git — median 2, max 13
+\def\yA{0}
+\node[anchor=east, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{6}{7}\selectfont] at (-2, \yA+\barh/2)
+  {\textsf{semi-git}};
+\fill[fRate!35, rounded corners=0.4mm]
+  (0,\yA) rectangle ({2*\scl}, \yA+\barh);
+\draw[fRate!60, line width=0.5pt]
+  ({2*\scl}, \yA+\barh/2) -- ({13*\scl}, \yA+\barh/2);
+\fill[fRate!60] ({13*\scl}, \yA+\barh/2) circle (0.7mm);
+\node[anchor=west, text=sgtInk!70, font=\sffamily\fontsize{5.2}{6.2}\selectfont]
+  at ({13*\scl+1.5}, \yA+\barh/2) {max 13};
+
+% --- legend at top ---
+\def\yLeg{38}
+\fill[sgtGrey!30, rounded corners=0.3mm] (0,\yLeg) rectangle (3,\yLeg+2.2);
+\node[anchor=west, inner sep=0, text=sgtInk!80,
+      font=\sffamily\fontsize{5.2}{6.2}\selectfont] at (4, \yLeg+1.1)
+  {median};
+\draw[sgtGrey!60, line width=0.5pt] (18,\yLeg+1.1) -- (22,\yLeg+1.1);
+\fill[sgtGrey!60] (22,\yLeg+1.1) circle (0.6mm);
+\node[anchor=west, inner sep=0, text=sgtInk!80,
+      font=\sffamily\fontsize{5.2}{6.2}\selectfont] at (23.5, \yLeg+1.1)
+  {maximum};
+
+\end{tikzpicture}

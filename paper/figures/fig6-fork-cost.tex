@@ -1,0 +1,126 @@
+% The fork rule's cost: how 162 forked functions block 153 files.
+% One-column figure for Section 6.3 (Rebuild completeness).
+\newcommand{\FigSixCaption}{The fork rule's cost on \sgt{}'s own repository,
+measured over the 252 files \sgt{} decomposes into functions. With the rule,
+57 files rebuild; without it, 210 do. The 153 files the rule blocks are the
+transitive cost of 162 forked functions withdrawing 2{,}864 record keys through
+their dependency chains. The 42 files that fail in both cases are the residual
+losses of Section~\ref{sec:unreproducible}: missing separators, incomplete chains,
+and the one file whose pending record our own measurement apparatus appended.
+Whole-file records (104 files, not shown) rebuild at 0.97 in both conditions
+and move by exactly one file.}
+
+\newcommand{\FigSixDescription}{Two horizontal stacked bars, each representing
+252 decomposed Python files. The top bar shows 57 files rebuilding and 195 not
+rebuilding with the fork rule active. The bottom bar shows 210 files rebuilding
+and 42 not rebuilding with the fork rule disabled. An annotation connects the
+gap between the two, labelling the 153 files as the fork rule's cost and
+attributing it to 162 forked functions withdrawing 2864 record keys.}
+
+\begin{tikzpicture}[x=1mm, y=1mm, line cap=round, font=\sffamily]
+
+% dimensions
+\def\barw{70}    % bar width in mm (represents 252 files)
+\def\barh{6.5}   % bar height
+\def\gapy{15}    % vertical gap between bars
+
+% scale: 1mm = 252/70 ≈ 3.6 files; or 70mm = 252 files
+\pgfmathsetmacro{\scl}{70/252}  % mm per file
+
+% --- bar 1: fork rule ON ---
+\def\yOne{20}
+\pgfmathsetmacro{\rebuildOn}{57*\scl}
+\pgfmathsetmacro{\blockedOn}{153*\scl}
+\pgfmathsetmacro{\otherOn}{42*\scl}
+
+\node[anchor=east, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{6.4}{7.4}\selectfont] at (-2,\yOne+\barh/2)
+  {fork rule \textbf{on}};
+
+% rebuild portion
+\fill[fIdx!50, rounded corners=0.5mm]
+  (0,\yOne) rectangle (\rebuildOn, \yOne+\barh);
+% blocked-by-fork portion
+\fill[fCache!25, rounded corners=0.5mm]
+  (\rebuildOn,\yOne) rectangle ({\rebuildOn+\blockedOn}, \yOne+\barh);
+% other-failures portion
+\fill[sgtGrey!18, rounded corners=0.5mm]
+  ({\rebuildOn+\blockedOn},\yOne) rectangle (\barw, \yOne+\barh);
+
+% labels inside bars
+\node[anchor=center, inner sep=0, text=sgtPaper,
+      font=\sffamily\bfseries\fontsize{6}{7}\selectfont] at (\rebuildOn/2, \yOne+\barh/2)
+  {57};
+\node[anchor=center, inner sep=0, text=fCache!80,
+      font=\sffamily\fontsize{5.6}{6.6}\selectfont] at ({\rebuildOn+\blockedOn/2}, \yOne+\barh/2)
+  {153 blocked};
+\node[anchor=center, inner sep=0, text=sgtGrey,
+      font=\sffamily\fontsize{5.4}{6.4}\selectfont] at ({\rebuildOn+\blockedOn+\otherOn/2}, \yOne+\barh/2)
+  {42};
+
+% rate annotation
+\node[anchor=west, inner sep=0, text=sgtInk!75,
+      font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (\barw+1.5, \yOne+\barh/2)
+  {0.23};
+
+% --- bar 2: fork rule OFF ---
+\def\yTwo{5}
+\pgfmathsetmacro{\rebuildOff}{210*\scl}
+\pgfmathsetmacro{\otherOff}{42*\scl}
+
+\node[anchor=east, inner sep=0, text=sgtInk,
+      font=\sffamily\fontsize{6.4}{7.4}\selectfont] at (-2,\yTwo+\barh/2)
+  {fork rule \textbf{off}};
+
+% rebuild portion
+\fill[fIdx!50, rounded corners=0.5mm]
+  (0,\yTwo) rectangle (\rebuildOff, \yTwo+\barh);
+% other-failures portion
+\fill[sgtGrey!18, rounded corners=0.5mm]
+  (\rebuildOff,\yTwo) rectangle (\barw, \yTwo+\barh);
+
+% labels inside bars
+\node[anchor=center, inner sep=0, text=sgtPaper,
+      font=\sffamily\bfseries\fontsize{6}{7}\selectfont] at (\rebuildOff/2, \yTwo+\barh/2)
+  {210};
+\node[anchor=center, inner sep=0, text=sgtGrey,
+      font=\sffamily\fontsize{5.4}{6.4}\selectfont] at ({\rebuildOff+\otherOff/2}, \yTwo+\barh/2)
+  {42};
+
+% rate annotation
+\node[anchor=west, inner sep=0, text=sgtInk!75,
+      font=\sffamily\fontsize{5.8}{6.8}\selectfont] at (\barw+1.5, \yTwo+\barh/2)
+  {0.83};
+
+% --- connecting annotation: the cost ---
+\draw[decorate, decoration={brace, amplitude=2mm, mirror},
+      line width=0.4pt, color=sgtInk!60]
+  (\rebuildOn, \yTwo+\barh+1.5) -- (\rebuildOff, \yTwo+\barh+1.5);
+\node[anchor=south, inner sep=0, text=sgtInk!70,
+      font=\sffamily\fontsize{5.4}{6.4}\selectfont]
+  at ({(\rebuildOn+\rebuildOff)/2}, \yTwo+\barh+4)
+  {153 files recovered $\rightarrow$};
+
+% --- cascade: the amplification chain ---
+\def\yAnn{31}
+\node[anchor=west, align=left, inner sep=0, text=sgtInk!70,
+      font=\sffamily\fontsize{5.8}{7.2}\selectfont] at (0, \yAnn)
+  {162 forked functions\ \ $\rightarrow$\ \ 2{,}864 withdrawn record keys\ \
+   $\rightarrow$\ \ 153 blocked files};
+
+% --- legend at the bottom ---
+\def\yLeg{-2}
+\fill[fIdx!50, rounded corners=0.3mm] (0,\yLeg) rectangle (3,\yLeg+2.5);
+\node[anchor=west, inner sep=0, text=sgtInk!80,
+      font=\sffamily\fontsize{5.4}{6.4}\selectfont] at (4, \yLeg+1.25)
+  {rebuilds byte-for-byte};
+\fill[fCache!25, rounded corners=0.3mm] (28,\yLeg) rectangle (31,\yLeg+2.5);
+\node[anchor=west, inner sep=0, text=sgtInk!80,
+      font=\sffamily\fontsize{5.4}{6.4}\selectfont] at (32, \yLeg+1.25)
+  {blocked by fork rule};
+\fill[sgtGrey!18, rounded corners=0.3mm] (54,\yLeg) rectangle (57,\yLeg+2.5);
+\node[anchor=west, inner sep=0, text=sgtInk!80,
+      font=\sffamily\fontsize{5.4}{6.4}\selectfont] at (58, \yLeg+1.25)
+  {other};
+
+\end{tikzpicture}

@@ -9,18 +9,23 @@ already exist. The grouping either lines up with the requests a developer made o
 it does not, and that is a question about an inference, settled by comparing it
 against sessions where somebody happened to write the requests down. A developer
 either gets more of these operations right with \sgt{} than without it, or does
-not, and that is a question about people. The first has a procedure and a number we
-can print today, the second is under way on a corpus we are still assembling, and
-the third is designed and not yet run. Underneath all three, \sgt{} has been the
-version control for its own repository since the day it first ran, which is where
-every number in Section~\ref{sec:discussion} comes from and why the two prices
+not, and that is a question about people. The first has a procedure and a number.
+The second is under way on a corpus we are still assembling. The third is designed,
+validated by three pilots (Section~\ref{sec:pilot}), and pre-registered
+before recruiting. Underneath all three, \sgt{} has been the version control for
+its own repository since the day it first ran, which is where every number in
+Section~\ref{sec:discussion} comes from and why the two prices
 Section~\ref{sec:design} states most flatly are the two that cost us something
 before they cost anybody else.
 
-\smallskip\noindent\emph{Not one number in this section comes from that third
-study.} The measure that decides the argument is not the time a task takes but the
-errors a participant does not notice, and naming that before the data exists is the
-only way to be believed about it afterwards.
+\smallskip\noindent\emph{This section declares the study before its data exists.}
+The measure that decides the argument is the errors a participant does not notice,
+and naming that measure before the data exists is the only way to be believed about
+it afterwards. A reader who encounters the result in a future paper can check it
+against the prediction stated here; a result that appeared without the prediction
+could have been chosen after the fact to make the design look good. The pilots in
+Section~\ref{sec:pilot} tested the tasks, the tools, and the rubric; they did not
+produce the between-subjects comparison this design calls for.
 
 \subsection{The rebuild has to be exact}
 \label{sec:eval-exact}
@@ -55,11 +60,11 @@ cannot have our migrations in it.
 
 The names in every figure in this paper are inferred, and a developer who types
 \cmd{sgt revert "price cache"} is trusting that inference with the contents of
-their files. The question is not whether the clustering scores well against a
-partition somebody drew, which is how the untangling literature is evaluated for
-the good reason that its authors had nothing better to compare against
-(Section~\ref{sec:related}). The question is whether the set that comes back when
-a developer names one request is the set of edits that request produced.
+their files. The untangling literature evaluates clustering against a partition
+somebody drew, for the good reason that its authors had nothing better to
+compare against (Section~\ref{sec:related}). We ask a different question: whether
+the set that comes back when a developer names one request is the set of edits
+that request produced.
 
 That question needs a corpus where the requests were recorded, which agent sessions
 now supply as a matter of course, since the transcript of a session names each request
@@ -154,29 +159,35 @@ about the code as every other one. Participants who direct the agent themselves
 each remember a different amount of what came back, and that remembering is the
 thing whose absence we are claiming matters.
 
-We recruit developers who use a coding agent as part of their ordinary work,
-because the difficulty we describe belongs to them and to nobody else, and we ask
-each of them to work through two repositories, one with git and one with \sgt{},
-in a counterbalanced order. In the git condition they use whatever they normally
-use, including a graphical client, since the argument is about what git's record
-can express and not about anybody's command line fluency. Each repository holds
-three requests whose edits interleave inside shared functions, and each has a
-different set of three so that a participant who has learned the shape of the
-first task cannot apply it to the second. The tasks are the three operations from
-Section~\ref{sec:scenarios} with a checkable outcome: take one named request out
-and leave the other two working, carry one request to a release branch on its own,
-and find the earlier state of a request in order to change it. We leave the other
-two scenarios out of the study because their outcome is a judgement about when to
-commit and how to stack, and we would be scoring participants against our
-preference rather than against a result.
+We recruit twelve developers who use a coding agent as part of their ordinary
+work, because the difficulty we describe belongs to them and to nobody else, and
+we ask each of them to work through two repositories, one with git and one with
+\sgt{}, in a counterbalanced within-subjects order (four groups of three,
+fully crossing condition order with project assignment). Both conditions include
+the same AI coding assistant and the same editor, differing only in how history
+is recorded and queried; the git condition includes GitLens in the editor,
+because comparing a graphical extension against a bare terminal would measure the
+presence of a view rather than the representation underneath it. Each repository
+holds three requests whose edits interleave inside shared functions, and each has
+a different set of three so that a participant who has learned the shape of the
+first task cannot apply it to the second. The three requests are: identify what
+a tangled commit introduced and when (provenance, five minutes, three closed
+questions scored against a key); remove one named feature without breaking the
+other two (entangled removal, fifteen minutes shared with the third request);
+and correct a dependency that the removal broke (a repair under time pressure
+that tests whether the participant noticed the collateral). With twelve
+participants we can detect large effects and nothing else, and the paper will
+say so in its limitations rather than obscure the sample size behind a
+$p$-value.
 
-A submission is correct when a script says so, and the script asks three
-questions. The tests belonging to the removed request fail, the tests belonging to
-the two kept requests pass, and no function outside the intended set differs from
-the reference repository. That third question is the one that catches the failure
-this paper is about, because a participant who removes the caching and quietly
-takes half the retry policy with it has produced a repository that passes its own
-tests.
+Request~1 is scored by key: three closed questions, each with one correct answer
+and an ``I could not tell'' option that is real data rather than a wrong guess.
+Requests~2 and~3 are scored by script, and the script asks three questions. The
+tests belonging to the removed request fail, the tests belonging to the two kept
+requests pass, and no function outside the intended set differs from the reference
+repository. That third check catches the failure this paper is about, because a
+participant who removes the waitlist and quietly takes half the enrollment logic
+with it has produced a repository that passes its own tests.
 
 The first row of Table~\ref{tab:measures} is the one that matters, because a
 developer who spends an extra twenty minutes untangling a commit by hand has lost
@@ -195,23 +206,34 @@ fork stops the developer and a wrong label makes them type a rename, both of whi
 are countable inside the session, and both have a threshold past which we would
 change the design rather than defend it.
 
+Three pilots (Section~\ref{sec:pilot}) validated this design before the
+full study: one in each condition tested the tasks, and a third exercised the
+study apparatus end to end. Both task conditions completed all six requests,
+confirming that the primary measure is error rate and cost rather than task
+completion. The pilots found twenty-one tool defects that would each have cost a
+real participant their data point, four defects in the study design that would
+have made a result uninterpretable, and one validity threat (a confound favouring
+our condition) that we disclose in Section~\ref{sec:pilot-trailers}. The tool
+participants receive is a different version from the one the pilots ran.
+
 \subsection{What none of this would tell us}
 
 Only the first of the three claims can be pushed past by running more of the same,
 since adding repositories to Section~\ref{sec:eval-exact} sharpens that number and
 nothing else here improves with volume.
 
-A recorded request is not an intention. A developer who types
-\emph{make the price lookup faster} holds a view of what should change that the
-sentence does not contain, and the agent's response is a guess at the remainder.
-The alignment we measure against a transcript is therefore alignment with what was
-said, and the transcript sets a ceiling on it that no better clustering can pass.
+A recorded request is a sentence, and a sentence is less than an intention.
+A developer who types \emph{make the price lookup faster} holds a view of what
+should change that the sentence does not contain, and the agent's response is a
+guess at the remainder. The alignment we measure against a transcript is therefore
+alignment with what was said, and the transcript sets a ceiling on it that better
+clustering alone cannot exceed.
 We think this is the right measurement anyway, on the ground that what was said is
 what the developer will type when they come back to remove it, but a reader who
 believes intention and utterance come apart more often than we do should read that
 number as an upper bound on something smaller.
 
-Two hours with a transcript is not a week of forgetting. The cost we describe in
+Two hours with a transcript understates a week of forgetting. The cost we describe in
 Section~\ref{sec:scenarios} grows as a developer's memory of the session fades,
 and our design substitutes reading somebody else's transcript for that fading.
 A participant who has just read three sentences knows more about the session than

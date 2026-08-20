@@ -1,82 +1,89 @@
 \section{Introduction}
 
-A version control system should record the changes made by a developer in a way
-that is both revisitable and reversible. Most of them therefore record the
-artefact the programmer wrote, lines of code, throughout the development life
-cycle, whether by recording snapshots of the codebase~\cite{git2026} or a
-sequence of changes to those lines~\cite{roundy2005,pijul2024}. This is a
-reasonable design choice, because code is authored by the developer, who
-possesses at least a rough idea of when, how, and why it was
-changed~\cite{naur1985,ko2006}. With the practice of the last few years of
-writing code through large language models, where developers specify prompts in
-natural language in a much vaguer form and the model translates them into a
-series of code edits~\cite{sarkar2025}, we question whether this design choice
-still holds.
+A version control system records changes so they can be revisited and reversed.
+Every widely adopted system records lines of code---whether as
+snapshots~\cite{git2026} or as patches to those
+lines~\cite{roundy2005,pijul2024}---and groups them into commits a developer
+names. This agreement dates to the earliest systems and has survived every
+redesign since, for a reason that was sound from the start: the developer
+authored the code, held at least a rough model of what changed and
+why~\cite{naur1985,ko2006}, and could therefore supply the decomposition
+whenever a tool asked for it. Developers now specify intent in natural language and models translate it into
+edits across files~\cite{sarkar2025}. Three controlled field experiments show
+this shift produces 26\% more code per week with no measurable quality
+decline~\cite{cui2025}. The condition that made the agreement sound---that the
+developer holds a model of what changed and why---no longer holds reliably. A
+developer who types three sentences in an hour and receives fourteen functions
+across five files cannot supply the decomposition a tool asks for, because they
+never held it. We argue that the design choice should be renegotiated.
 
-In practice we find three places where the design philosophy of current version
-control systems misfits the new workflow. First, the codebase is highly iterated.
-Models make prototyping very easy, and tools like Lovable, Bolt.new, v0, and
-Replit generate an entire codebase from a single prompt, marketed on the premise
-that what they produce is finished software, which is arguably only true when that
-software has no bugs and is tolerably aligned with what the developer was
-imagining. We do not claim that writing code will be automated away in the near
-future, but this reflects how capable models are at generating large chunks of
-code across files, through the features of the software, iterating over interface
-components, and so on, and what matters is no longer where a line of code was but
-what the version of the feature was two turns ago. Across 211 million changed
-lines authored between 2020 and 2024, the share associated with refactoring,
-which is to say lines being moved into a better position rather than written
-afresh, fell from a quarter in 2021 to under a tenth in 2024, while over those
-same three years copied lines rose from 8.3\% to 12.3\% and overtook moved lines
-for the first time~\cite{gitclear2025}, so a
-line is now replaced faster than it settles into a position worth recording.
+Three consequences of this shift make the mismatch concrete. First, the unit
+that version control addresses, the line, is no longer stable enough to serve as
+an anchor. A model that generates a function in one response and regenerates it
+with different formatting or variable names in the next has changed every line
+while changing nothing a developer would name. Across 211 million changed lines
+from public repositories authored between 2020 and 2024, the share associated
+with refactoring---lines moved into a better position rather than written
+afresh---fell from a quarter to under a tenth, while code revised within two
+weeks of being written roughly doubled~\cite{gitclear2025}. A line is now
+replaced faster than it settles into a position worth recording, and the
+developer wants to revisit a feature as it stood two requests ago---a unit
+the line-level record cannot express.
 
-Second, prompts in natural language are underspecified and lack the detail that
-code carries~\cite{sarkar2025}. This means there will always be large chunks of
-code carrying logic that the model inferred during implementation and that the
-developer only becomes aware of reactively. Barke et al.\ describe programmers in
-this mode reading what comes back for the shape they expected rather than line by
+Second, the developer does not hold a detailed model of what the code
+says~\cite{sarkar2022}. A natural language prompt specifies an outcome
+but not the logic that implements it, so the implementation contains decisions
+the model made and the developer has not reviewed. Barke et al.\ observed
+programmers reading generated code for shape rather than line by
 line~\cite{barke2023}, Tang et al.\ found that developers often do not notice
-which code a model wrote, and delete and rewrite it rather than repair it when
-something is wrong~\cite{tang2024}, and among 410 developers surveyed by Liang et
-al., understanding and trusting generated code was one of the most frequently
-reported difficulties~\cite{liang2024}. Version control over code that never
-existed in the developer's memory loses the purpose of version control, which is
-that a programmer can trace back to the version they desired, because a history
-can only be searched with the words that person already has.
+which code a model wrote and delete it rather than repair it~\cite{tang2024},
+and among 410 developers surveyed by Liang et al.\ understanding generated code
+was one of the most frequently reported
+difficulties~\cite{liang2024}. The consequence for version
+control is that the developer who searches a history for a prior state must
+describe it in terms they never acquired. This is the vocabulary problem Furnas
+et al.\ measured in information retrieval~\cite{furnas1987}, now appearing inside
+the repository. The model named the code, so the developer searches with
+vocabulary they never learned and finds whatever happens to match instead of the
+version that served a stated purpose~\cite{codoban2015}.
 
-Third, prompts are mostly constituted by what the programmer desires to do,
-rather than, as they once were, by specifying the location of files and the target
-of interest for the change. In that sense, developers are constructing their
-theory about the codebase~\cite{naur1985} at the level of what a feature of the
-software is, the components in the interface, the policy for retries, the stages
-in the pipeline, none of which currently serves as the unit a version control
-system records. This is the level the comprehension literature has always found
-people working at: Biggerstaff et al.\ called recovering which functions
-implement a named concern the concept assignment problem~\cite{biggerstaff1993},
-and the feature location field exists because answering it by reading code is
-expensive~\cite{dit2013}. The commit is the closest thing a version control
-system offers and it is not the same unit, since Herzig and Zeller found changes
-serving several unrelated purposes throughout the histories of five open source
-Java projects~\cite{herzig2013}, and an agent session produces exactly that,
-because a commit ends where the developer stopped to type a command and a request
-ends somewhere else.
+Third, the unit the developer thinks in has moved from a location in the code to
+a purpose the code serves. A prompt names what the software should do (rather
+than which file to edit), so the developer's mental model of their own work is
+organised by feature: the retry policy, the export endpoint, the rate limiter. This is the
+level the program comprehension literature has always found people work at:
+Biggerstaff et al.\ called recovering which functions implement a named concern
+the concept assignment problem~\cite{biggerstaff1993}, and the feature location
+field exists because answering it by reading code is
+expensive~\cite{dit2013}. The commit is the closest unit a version control system
+offers, and it does not correspond to this level, since Herzig and Zeller found
+changes serving several unrelated purposes throughout the histories of five open
+source Java projects~\cite{herzig2013}. An agent session produces exactly that
+structure, because a commit ends where the developer stopped to type a command
+and a request ends somewhere else.
 
-We thus describe a new version control system, which we designed to version
-control the highly iterated codebase at the more semantic level of the feature,
-where each version of the code is a set of edits filed across those features.
-Instead of version controlling the line of code, we parse each file into its
-functions and classes~\cite{treesitter} and record one edit per changed function,
-where each edit names the function, the version it started from, the version it
-produced, and the other functions the new code refers to. We then group those
-functions into features from which ones changed in the same save, which ones call
-one another, and where they
-sit~\cite{zimmermann2004,ying2004,traag2019}, and label each group with the words
-the developer and the agent used while the work was happening. A version is then
-a set of these edits held to two rules, that no edit is included without the edits
-it was built on and that each function has one included version, and the files on
-disk are rebuilt by writing out the included version of every function and
-leaving the text between them alone.
+The response we describe is a version control system that records at the grain
+the developer thinks at. Instead of recording lines inside a commit, we parse
+each file into its functions and classes~\cite{treesitter} and record one edit
+per changed function, together with what that edit was built on. We group those
+functions into features from how they change and how they refer to one
+another~\cite{zimmermann2004,ying2004,traag2019}, and label each group with the
+words the developer and the agent used while the work was happening. A version
+of the code is then a set of these edits, and the files on disk are rebuilt
+from whichever set is included, so a feature can be taken out or put back by
+naming it rather than by naming the lines it produced. None of the individual techniques is new. Change coupling mining, community
+detection, feature location, and set-based version control each have a
+literature. What is new is composing them into a single tool that a developer
+operates daily, because that composition introduces interactions none of the
+original designs anticipated. A function identity tracker that loses a rename
+breaks the dependency chain a revert depends on. A grouping inference that absorbs
+a shared helper pulls unrelated work into a single feature. A layout record (the
+whitespace between functions) that becomes individually addressable acquires
+failure modes the entity record does not have, and 68\% of the violations we found
+in ten thousand operations entered through that seam. The contribution is in making
+the composition survive daily use on a real codebase, in measuring where it fails
+honestly, and in reporting both the design's costs and the conditions under which
+it should not be adopted.
 
 For example, a service that answers price quotes for a trading dashboard has a
 handler, a database layer, and a set of row accessors. On Monday the developer
@@ -125,8 +132,9 @@ itself~\cite{perezderosso2013,perezderosso2016}. We describe \sgt{}'s design as
 four commitments, say what each one buys and what it costs, and run the whole set
 of operations on one repository (Sections~\ref{sec:design}
 and~\ref{sec:walkthrough}). We state which observation would show each of our
-claims to be wrong, and fix the design of the study that would produce it before
-we hold its results (Section~\ref{sec:study}). We report what fifty-seven days of
-\sgt{} versioning its own construction has taught us about where the design
-breaks down, which is the one part of this paper whose numbers are real today
-(Section~\ref{sec:discussion}).
+claims to be wrong, and pre-register the study that would produce it
+(Section~\ref{sec:study}). We report what fifty-seven days of \sgt{} versioning its
+own construction taught us about where the design breaks
+(Section~\ref{sec:discussion}), and what three pilots taught us about the distance between a property that holds
+across 10{,}237 operations and a property a new user can rely on
+(Section~\ref{sec:pilot}).

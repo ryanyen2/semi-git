@@ -18,35 +18,55 @@ commitment and the three that follow from it, each with the price it carries.
 Figure~\ref{fig:model} shows the first two of them at work on the sitting from
 Figure~\ref{fig:two-records}: what one save writes down, and what a version is.
 
+The design philosophy is that a tool should refuse rather than guess wrong, and
+should report rather than act silently. A differently-minded designer would merge
+concurrent edits to one function the way git merges concurrent edits to one file,
+on the grounds that most such merges produce working code. We tried that first and
+abandoned it because when the merge fails the developer has lost work they did not
+know was at risk, and the failure appears somewhere other than where the merge
+happened. Another reasonable design would ask the developer at save time which
+request each function belongs to. We tried that too, and the developer cannot
+answer it without reading the diff, which is the labour the tool was supposed to
+eliminate. The four commitments below are what survived: each one is the design we
+arrived at after building the alternative and finding its cost.
+
 \subsection{One edit to one function, filed under the request}
 \label{sec:grain}
 
 A save reads the working files, compares them against the last recorded state, and
 writes one record per changed function, naming the function, the version of it the
-edit started from, the version it produced, and the other functions the new code
-refers to. The developer supplies one sentence,
+edit started from, the version it produced, and those other functions the new code
+refers to that \sgt{} can identify without guessing: a reference is recorded when the
+name it uses resolves to exactly one function in the codebase, and left unrecorded
+when the same short name is defined in several places, because a reference attributed
+to the wrong definition is worse than a missing one. The developer supplies one sentence,
 \cmd{sgt save -m "retry the upstream call when it returns a 5xx"}, and \sgt{} reads
 everything else out of the files, so a record can be no more wrong than the code it
 was read from.
 
-We chose the function as the unit because the line and the commit both fail on the
+We chose the function as the unit because the three alternatives each fail on the
 same ordinary case. The price cache in Figure~\ref{fig:model} added a parameter to
 \sym{db.py::query} and passed a matching argument from \sym{api.py::handle}, and
 those two changes share no line and no file, so a record that bottoms out at a line
-has nowhere to write down that they were made for one reason and the developer who
+has nowhere to write down that they were made for one reason, and the developer who
 removes the cache a week later learns about the second one when the import fails. A
-record whose unit is the commit holds whatever was pending when the developer typed
-the command, which in Figure~\ref{fig:two-records} is three requests and a rename
-the agent did on its own initiative, divided across two commits by the clock. A
-function is the smallest thing that both the developer and the agent name out loud
-while the work is happening, and the feature location literature works at that same
-unit because the code serving one concern is a set of functions scattered across
+record whose unit is the file cannot say that two changes to \sym{api.py} served
+different purposes, which is the default case in Figure~\ref{fig:two-records} where
+three requests all edit the same handler. GitButler uses this unit and solves the
+problem it can solve, which is the case where one feature per file
+suffices~\cite{gitbutler2026}. A record whose unit is the commit holds whatever was
+pending when the developer typed the command, which in
+Figure~\ref{fig:two-records} is three requests and a rename the agent did on its
+own initiative, divided across two commits by the clock. A function is the smallest
+thing that both the developer and the agent name out loud while the work is
+happening, and the feature location literature works at that same unit because the
+code serving one concern is a set of functions scattered across
 files~\cite{biggerstaff1993,dit2013}.
 
 \sgt{} finds functions in Python, TypeScript, and TSX with
 tree-sitter~\cite{treesitter} and records every other file as its whole content, at
-the grain git already offers, so nothing below gets any sharper on a file it cannot
-parse. Within the three parsed languages a function can be smaller than a purpose: the rename in
+the grain git already offers, so the rest of this section applies only to files
+\sgt{} can parse. Within the three parsed languages a function can be smaller than a purpose: the rename in
 Figure~\ref{fig:two-records} moved \sym{db.py::fetch} to \sym{fetch\_row} and
 updated four call sites, so \sgt{} writes five records for what the developer thinks
 of as one action, and because those five are one named group the mismatch shows up
@@ -63,6 +83,18 @@ by writing out the included version of every function it contains and keeping th
 text between functions exactly as it was, which produces the bytes that are checked
 out. The middle panel of Figure~\ref{fig:model} is one such set before and after a
 revert, and the right panel is the file each set produces.
+
+The alternative is to store patches and replay them, which is what Darcs and Pijul
+do at the line level~\cite{roundy2005,pijul2024}. We chose sets over replay
+because replay introduces ordering: reverting a feature means computing an inverse
+patch and applying it to the current state, and the result depends on what the
+current state is. A set-based revert is idempotent (removing what is already absent
+changes nothing) and its inverse is exact (restoring a removed set reproduces the
+original bytes with no drift). Those two properties make the preview trustworthy,
+because the files the preview shows are the files the operation will produce,
+regardless of what else has been recorded since. The cost is that every function
+must have exactly one included version at any moment, which is the constraint the
+fork rule (Section~\ref{sec:fork}) enforces.
 
 Because a version is a set, \cmd{revert}, \cmd{restore}, \cmd{diff}, and
 \cmd{switch} all take a set and return a set, and two properties follow that a
@@ -199,9 +231,15 @@ alone.
 developer or their agent, apart from the three-way merge splice in
 Section~\ref{sec:sets}, which reports every case it cannot perform cleanly. We have
 been asked more than once during this work why \sgt{} does not hand the shared
-function to a language model and have it redrafted after a revert, and our answer is
-that a version control system whose output nobody wrote is a version control system
-nobody can audit.
+function to a language model and have it redrafted after a revert. We considered it
+seriously and rejected it for one reason: a revert whose output depends on a
+model's judgement produces a file whose correctness the developer can verify only
+by reading every line the model touched, which is the labour Section~\ref{sec:scenarios}
+argued this tool should eliminate. A revert whose output is computed from the
+records the developer already validated produces a file whose correctness follows
+from the records, and the developer's test suite decides whether the composition
+is sound. The cost is that a subtraction which overlaps later work requires a hand
+edit; the benefit is that the developer knows what they are reading.
 
 \sgt{} also does not stand between a developer and git. The records are files under
 \cmd{.sgt/} committed alongside the code, \cmd{sgt git <args>} passes through to git
@@ -238,11 +276,13 @@ stretch of work on it alone. Removing a named set is
 \cmd{sgt propose land --subset "export"}, which declines a subset that omits a group
 another chosen group depends on and names the group that is missing. Each of those
 four takes as its argument a phrase somebody used while the work was happening, so
-the recovery Section~\ref{sec:scenarios} priced is not made cheaper but is never
-performed. Discovering the
-layering needs no command at all, because the cache edits record that they were
-built on \sym{api.py::\_bucket} and therefore on the rate limiter, so the developer
-has at any later moment the fact they needed at 14:30 and did not have. The rest of
+the recovery Section~\ref{sec:scenarios} described is eliminated entirely. Discovering the
+layering needs no command at all wherever the references resolved, because the cache
+edits record that they were built on \sym{api.py::\_bucket} and therefore on the rate
+limiter, so the developer has at any later moment the fact they needed at 14:30 and
+did not have. Where they did not resolve the layering is simply absent rather than
+wrong, and the developer is back to reading the code, which is the position the
+ambiguity rule above trades down to on purpose. The rest of
 what a developer types is housekeeping around those nine, \cmd{sgt init} to begin,
 \cmd{sgt log} and \cmd{sgt sync} to see where things stand, and the
 \cmd{sgt feature rename} of Section~\ref{sec:names} to correct a name, none of which

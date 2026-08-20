@@ -1,0 +1,46 @@
+\section{Conclusion}
+
+We set out to build a version control system that records the edits a developer
+asks for instead of the lines an agent writes, and to test that system honestly.
+The evaluation found that the read operations work and the write operations fail.
+Attribution, preview, and dependency display survived first contact with a user
+who had never seen the tool, and a participant in the baseline condition
+independently described the capability the tool provides. The write operations
+did not survive. On 27 of 28 repositories we did not record ourselves, the
+primary verbs refused to run because they could not guarantee the rebuilt file
+would match what the developer left on disk. The refusal is correct, but it
+converts a tool that promises selective revert into a tool that declines to
+record the next edit. The cause is the fork rule. The fork rule withdraws
+records to protect 162 actually-forked functions. That withdrawal cascades
+eighteen-fold to cover 2{,}864 function keys, the rebuild becomes incomplete, and
+every write guard fires on the gap. The fix is straightforward in principle
+(loosen the fork rule) but involves a real tradeoff: loosening it gives up the
+safety guarantee of Section~\ref{sec:fork} in exchange for the completeness of
+Section~\ref{sec:eval-exact}.
+
+Section~\ref{sec:discussion-synthesis} traces each design commitment back to its
+evaluation outcome. The pattern across all four commitments is the same: the part
+that shows information to the developer held up under first contact, and the part
+that modifies the developer's files either failed or refused to act.
+
+Three findings generalise past this system. First, automating the earlier
+stages of Parasuraman's model (parsing, clustering, dependency tracking)
+delivers value independently of whether the later stages work, and a developer
+who trusts the reports can use them with git directly. Second, the failure mode
+that cost us the most was a command that reported success while doing nothing.
+A silent lie is worse than a crash because a tool that lies quietly erodes the
+basis for trusting anything else it says, and that erosion did not recover
+within a session (Section~\ref{sec:pilot-lessons}). Third, evaluating intent
+recovery against real agentic transcripts is unstable in a way the metric hides.
+The share of contentless turns varies from 0\% to 88\% across our four
+repositories, and a pairwise F1 computed on a history with 88\% continuation
+tokens measures the ground truth's grain rather than the system's accuracy
+(Section~\ref{sec:codebook-wrong}).
+
+The second finding generalises further. Durability and legibility require
+different kinds of guarantee. The append-only store ensures that every prior
+state is reachable, and it does so structurally. But the developer still has to
+know which command to type and whether its output told the truth, and the
+architecture provides no structural guarantee of that. Every one of our seven
+self-reporting failures demonstrated this gap: the data was present, and the
+tool's account of how to reach it was wrong.

@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  14 AUG 2026 23:10
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.1)  20 AUG 2026 10:39
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1398,12 +1398,11 @@ LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/b/n' will be
 LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/b/n' will be
 (Font)              scaled to size 10.95pt on input line 40.
 
+(./sections/01-intro.tex
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
-
-(./sections/01-intro.tex
 LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
-(Font)              scaled to size 6.0pt on input line 33.
+(Font)              scaled to size 6.0pt on input line 49.
  [1.1{/Users/ryanyen2/Library/texlive/2026basic/texmf-var/fonts/map/pdftex/updm
 ap/pdftex.map}{/Users/ryanyen2/Library/texmf/fonts/enc/dvips/libertine/lbtn_76g
 pa5.enc}{/Users/ryanyen2/Library/texmf/fonts/enc/dvips/libertine/lbtn_25tcsq.en
@@ -1412,11 +1411,18 @@ s/ryanyen2/Library/texmf/fonts/enc/dvips/libertine/lbtn_nh77jq.enc}
 
 ]
 LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
-(Font)              scaled to size 8.0pt on input line 83.
-) (./sections/02-related.tex
+(Font)              scaled to size 8.0pt on input line 90.
+)
+(./sections/02-related.tex
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
-(Font)              scaled to size 7.0pt on input line 1.
- [2.2] (./figures/fig2-granularity.tex
+(Font)              scaled to size 7.0pt on input line 22.
+ [2.2]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+
+(./figures/fig2-granularity.tex
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/b/n' will be
 (Font)              scaled to size 6.6pt on input line 32.
 LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
@@ -1447,26 +1453,30 @@ Underfull \vbox (badness 3049) has occurred while \output is active []
 (./sections/03-scenarios.tex [5.5]
 
 Class acmart Warning: \vspace should only be used to provide space above/below 
-surrounding objects on input line 37.
+surrounding objects on input line 42.
 
 LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/it' will be
-(Font)              scaled to size 9.0pt on input line 37.
+(Font)              scaled to size 9.0pt on input line 42.
 
 Class acmart Warning: \vspace should only be used to provide space above/below 
-surrounding objects on input line 57.
+surrounding objects on input line 62.
+
+
+Underfull \vbox (badness 1337) has occurred while \output is active []
+
 
 
 Class acmart Warning: \vspace should only be used to provide space above/below 
-surrounding objects on input line 75.
+surrounding objects on input line 80.
 
 
 Class acmart Warning: \vspace should only be used to provide space above/below 
-surrounding objects on input line 92.
+surrounding objects on input line 97.
 
 [6.6{/Users/ryanyen2/Library/texmf/fonts/enc/dvips/libertine/lbtn_7grukw.enc}]
 
 Class acmart Warning: \vspace should only be used to provide space above/below 
-surrounding objects on input line 115.
+surrounding objects on input line 120.
 
 ) (./sections/04-design.tex
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/b/n' will be
@@ -1485,12 +1495,14 @@ LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/it' will be
 LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
 (Font)              scaled to size 5.8pt on input line 294.
 )
-LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
-(Font)              scaled to size 8.0pt on input line 99.
-
 Underfull \vbox (badness 4279) has occurred while \output is active []
 
  [7.7]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 8.0pt on input line 131.
+
 (./figures/fig5-fork.tex
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
 (Font)              scaled to size 5.4pt on input line 56.
@@ -1502,22 +1514,19 @@ LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
 Underfull \vbox (badness 3679) has occurred while \output is active []
 
  [8.8]
-LaTeX Font Info:    Trying to load font information for TS1+zi4 on input line 1
-91.
+LaTeX Font Info:    Trying to load font information for TS1+zi4 on input line 2
+23.
 
 (/Users/ryanyen2/Library/texmf/tex/latex/inconsolata/ts1zi4.fd
 File: ts1zi4.fd 2018/01/14 TS1/zi4 (Inconsolata)
 )
 LaTeX Font Info:    Font shape `TS1/zi4/m/n' will be
-(Font)              scaled to size 8.0pt on input line 191.
+(Font)              scaled to size 8.0pt on input line 223.
 Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             `zi4' (encoding: TS1).
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
-
-Underfull \vbox (badness 4279) has occurred while \output is active []
-
-
+ [9.9{/Users/ryanyen2/Library/texmf/fonts/enc/dvips/inconsolata/i4-ts1.enc}]
 (./figures/fig4-operations.tex
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
 (Font)              scaled to size 5.0pt on input line 33.
@@ -1536,9 +1545,8 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 
-Underfull \vbox (badness 6396) has occurred while \output is active []
+Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [9.9{/Users/ryanyen2/Library/texmf/fonts/enc/dvips/inconsolata/i4-ts1.enc}]
 LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
 (Font)              scaled to size 6.9pt on input line 20.
 LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
@@ -1623,9 +1631,6 @@ LaTeX Font Info:    Font shape `TS1/zi4/m/n' will be
 LaTeX Info: Symbol \textasciigrave not provided by
             font family zi4 in TS1 encoding.
             Default family used instead on input line 31.
-
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
 LaTeX Font Info:    Font shape `TS1/LinuxLibertineT-TLF/m/n' will be
 (Font)              scaled to size 8.0pt on input line 46.
 LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
@@ -1667,6 +1672,12 @@ Underfull \vbox (badness 10000) has occurred while \output is active []
 
  [10.10{/Users/ryanyen2/Library/texmf/fonts/enc/dvips/libertine/lbtn_naooyc.enc
 }]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [11.11]
 LaTeX Info: Symbol \textasciigrave not provided by
             font family zi4 in TS1 encoding.
             Default family used instead on input line 168.
@@ -1677,83 +1688,250 @@ n/8 cache.py\T1/LinuxLibertineT-TLF/m/n/9 (+20) , \T1/zi4/m/n/8 db.py::query\T1
 /LinuxLibertineT-TLF/m/n/9 (+20) , and
  []
 
-[11.11]) (./sections/06-study.tex
+
+Underfull \vbox (badness 4132) has occurred while \output is active []
+
+ [12.12])
+(./sections/06-study.tex
 
 Class acmart Warning: \vspace should only be used to provide space above/below 
-surrounding objects on input line 20.
+surrounding objects on input line 21.
 
-[12.12]
 LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/b/n' will be
-(Font)              scaled to size 8.0pt on input line 107.
+(Font)              scaled to size 8.0pt on input line 112.
 LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
-(Font)              scaled to size 8.0pt on input line 117.
+(Font)              scaled to size 8.0pt on input line 122.
 
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [13.13])
-(./sections/07-discussion.tex
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
+ [13.13]
 LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
-(Font)              scaled to size 6.6pt on input line 27.
+(Font)              scaled to size 6.6pt on input line 181.
 LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
-(Font)              scaled to size 6.6pt on input line 27.
+(Font)              scaled to size 6.6pt on input line 181.
 LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
-(Font)              scaled to size 6.6pt on input line 27.
+(Font)              scaled to size 6.6pt on input line 181.
 LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
-(Font)              scaled to size 6.6pt on input line 27.
+(Font)              scaled to size 6.6pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
-(Font)              scaled to size 6.6pt on input line 27.
+(Font)              scaled to size 6.6pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
-(Font)              scaled to size 6.6pt on input line 27.
+(Font)              scaled to size 6.6pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
-(Font)              scaled to size 6.6pt on input line 27.
+(Font)              scaled to size 6.6pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
-(Font)              scaled to size 9.0pt on input line 27.
+(Font)              scaled to size 9.0pt on input line 181.
 LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
-(Font)              scaled to size 6.6pt on input line 27.
-LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
-(Font)              scaled to size 6.6pt on input line 27.
- [14.14]
+(Font)              scaled to size 6.6pt on input line 181.
+
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [15.15]
+
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
+ [14.14])
+(./sections/07-pilot.tex [15.15]
+
+Class acmart Warning: \vspace should only be used to provide space above/below 
+surrounding objects on input line 94.
+
+[16.16] [17.17]
+
+Class acmart Warning: \vspace should only be used to provide space above/below 
+surrounding objects on input line 336.
+
+
+Overfull \hbox (4.56001pt too wide) in paragraph at lines 396--402
+\T1/zi4/m/n/8 cli.py::cmd_search \T1/LinuxLibertineT-TLF/m/n/9 (-20) lands in o
+ne fea-ture while \T1/zi4/m/n/8 slots.py::parse_slot
+ []
+
+) (./sections/07b-discussion.tex
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [18.18]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [19.19]
+(./figures/fig6-fork-cost.tex
+LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
+(Font)              scaled to size 6.4pt on input line 38.
+LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/b/n' will be
+(Font)              scaled to size 6.4pt on input line 38.
+LaTeX Font Info:    Calculating math sizes for size <5.4> on input line 102.
+LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
+(Font)              scaled to size 5.4pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
+(Font)              scaled to size 3.94197pt on input line 102.
+LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
+(Font)              scaled to size 2.97pt on input line 102.
+LaTeX Font Info:    Calculating math sizes for size <5.8> on input line 108.
+LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `OT1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 3.19002pt on input line 108.
+LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `OML/nxlmi/m/it' will be
+(Font)              scaled to size 3.19002pt on input line 108.
+LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `LMS/ntxsy/m/n' will be
+(Font)              scaled to size 3.19002pt on input line 108.
+LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `LMX/ntxexx/m/n' will be
+(Font)              scaled to size 3.19002pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxmia/m/it' will be
+(Font)              scaled to size 3.19002pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxsym/m/n' will be
+(Font)              scaled to size 3.19002pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxsyc/m/n' will be
+(Font)              scaled to size 3.19002pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
+(Font)              scaled to size 5.8pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
+(Font)              scaled to size 4.23396pt on input line 108.
+LaTeX Font Info:    Font shape `U/ntxexa/m/n' will be
+(Font)              scaled to size 3.19002pt on input line 108.
 )
-(./main.bbl
-LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/it' will be
-(Font)              scaled to size 7.0pt on input line 47.
+Overfull \hbox (10.09158pt too wide) in paragraph at lines 126--123
+ [][] 
+ []
 
-Underfull \vbox (badness 4279) has occurred while \output is active []
+(./figures/fig7-decomposition.tex
+LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/m/n' will be
+(Font)              scaled to size 6.0pt on input line 45.
+)
+Overfull \hbox (22.62187pt too wide) in paragraph at lines 105--161
+ [][] 
+ []
 
- [16.16]
-Underfull \hbox (badness 7540) in paragraph at lines 335--342
-[]\T1/LinuxLibertineT-TLF/m/n/7 (+20) GitHub. 2026.  Stacked pull re-quests are
- now in pub-lic pre-view.
+[20.20]
+LaTeX Font Info:    Font shape `T1/LinuxBiolinumT-TLF/b/n' will be
+(Font)              scaled to size 8.0pt on input line 216.
+
+Underfull \hbox (badness 10000) in paragraph at lines 218--218
+[]\T1/LinuxLibertineT-TLF/m/n/8 (+20) Function (de-rived
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 218--219
+[]\T1/LinuxLibertineT-TLF/m/n/8 (+20) Function (com-mit-ted
  []
 
 
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [17.17]
+
+Underfull \vbox (badness 4279) has occurred while \output is active []
+
+ [21.21])
+(./sections/07-discussion.tex
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
 LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
-(Font)              scaled to size 5.5pt on input line 745.
-)
+(Font)              scaled to size 6.6pt on input line 27.
+
+Underfull \vbox (badness 1107) has occurred while \output is active []
+
+ [22.22]
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [23.23])
+(./sections/08-conclusion.tex)
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [24.24]
+(./main.bbl
+LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/it' will be
+(Font)              scaled to size 7.0pt on input line 47.
+
+Underfull \hbox (badness 7540) in paragraph at lines 397--404
+[]\T1/LinuxLibertineT-TLF/m/n/7 (+20) GitHub. 2026.  Stacked pull re-quests are
+ now in pub-lic pre-view.
+ []
+
+[25.25]
+LaTeX Font Info:    Font shape `T1/LinuxLibertineT-TLF/m/n' will be
+(Font)              scaled to size 5.5pt on input line 894.
+ [26.26])
 
 Class acmart Warning: ACM reference format is mandatory 
 (acmart)              for papers over one page. 
@@ -1763,47 +1941,44 @@ Class acmart Warning: ACM reference format is mandatory
 
 Class acmart Warning: CCS concepts are mandatory for papers over two pages.
 
-
-Package balance Warning: You have called \balance in second column
-(balance)                Columns might not be balanced.
-
 (/Users/ryanyen2/Library/texmf/tex/generic/stringenc/se-pdfdoc.def
 File: se-pdfdoc.def 2019/11/29 v1.12 stringenc: PDFDocEncoding
 )
 (/Users/ryanyen2/Library/texmf/tex/generic/stringenc/se-utf8.def
 File: se-utf8.def 2019/11/29 v1.12 stringenc: UTF-8
-) [18.18]
+) [27.27]
 (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: B8DE5DF9A6C2C06BB0A7F6EEB64A0142;11992.
+(rerunfilecheck)             Checksum: 510E2ABE5EE5563AD2387C8D764D2BAA;15427.
  ) 
 Here is how much of TeX's memory you used:
- 35113 strings out of 469006
- 660426 string characters out of 5454814
- 1183515 words of memory out of 5000000
- 61850 multiletter control sequences out of 15000+600000
- 1011801 words of font info for 802 fonts, out of 8000000 for 9000
+ 35714 strings out of 469006
+ 673180 string characters out of 5454814
+ 1185146 words of memory out of 5000000
+ 62192 multiletter control sequences out of 15000+600000
+ 1079472 words of font info for 973 fonts, out of 8000000 for 9000
  480 hyphenation exceptions out of 8191
  90i,17n,131p,1001b,1299s stack positions out of 10000i,1000n,20000p,200000b,200000s
  </Users/ryanyen2/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappe
 n/ec/tctt0800.525pk></Users/ryanyen2/Library/texmf/fonts/type1/public/inconsola
 ta/Inconsolata-zi4b.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/incon
-solata/Inconsolata-zi4r.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/l
-ibertine/LinBiolinumT.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/lib
-ertine/LinBiolinumTB.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libe
-rtine/LinBiolinumTI.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/liber
-tine/LinLibertineT.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libert
-ine/LinLibertineTB.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libert
-ine/LinLibertineTI.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/newtx/
-txsym.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/newtx/txsys.pfb>
-Output written on main.pdf (18 pages, 666654 bytes).
+solata/Inconsolata-zi4r.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/n
+ewtx/LibertineMathMI.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libe
+rtine/LinBiolinumT.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libert
+ine/LinBiolinumTB.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/liberti
+ne/LinBiolinumTI.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libertin
+e/LinLibertineT.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libertine
+/LinLibertineTB.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/libertine
+/LinLibertineTI.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/newtx/txs
+ym.pfb></Users/ryanyen2/Library/texmf/fonts/type1/public/newtx/txsys.pfb>
+Output written on main.pdf (27 pages, 761468 bytes).
 PDF statistics:
- 730 PDF objects out of 1000 (max. 8388607)
- 678 compressed objects within 7 object streams
- 154 named destinations out of 1000 (max. 500000)
- 220529 words of extra memory for PDF output out of 221844 (max. 10000000)
+ 967 PDF objects out of 1000 (max. 8388607)
+ 900 compressed objects within 9 object streams
+ 220 named destinations out of 1000 (max. 500000)
+ 249321 words of extra memory for PDF output out of 266212 (max. 10000000)
 

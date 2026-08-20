@@ -1,0 +1,411 @@
+\section{Pilot Study}
+\label{sec:pilot}
+
+We ran three pilots before the full study: one in each condition (sgt and git,
+both on the same task set) and a third exercising the study apparatus end to end.
+The first two were designed to find defects in the tool that would cost a real
+participant their data point, and defects in the study design that would make a
+result uninterpretable. The third tested the machinery between the participant's
+machine and the facilitator's console---exactly the seam nobody had
+exercised---and found a validity threat that neither task pilot could surface.
+We report all three because the defects they found are consequences of design
+commitments rather than accidents of implementation: a technical evaluation
+establishes that a property holds across 10{,}237 operations; it takes a new
+user to show that a property that holds still costs too much to use.
+
+\subsection{What the pilots tested}
+
+Six requests, drawn from the scenarios of Section~\ref{sec:scenarios}: find
+which commit introduced two unrelated changes (provenance), remove a named
+feature while keeping the rest (removal), selectively restore a single function
+(selective restore), locate and repair a regression whose test still passes
+(regression repair), plan work on a branch and resolve a conflict (plan and
+fork), and split a tangled commit so each half has a clear name (history edit).
+Both conditions worked on the same five-thousand-line Python project and were
+scored with the same rubric and the same automated check.
+Table~\ref{tab:pilot} summarises the outcomes.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{p{2.8cm}p{2.4cm}p{2.2cm}}
+\toprule
+Request & \sgt{} condition & git condition \\
+\midrule
+R1: Provenance & Correct, 4 cmds & Correct, 6 cmds \\
+R2: Removal & Done; tool corrupted file, repaired by hand & Done cleanly \\
+R3: Selective restore & \cmd{restore} crashed; recovered via git & Done cleanly \\
+R4: Regression repair & Correct fix + better test & Correct fix + better test \\
+R5: Plan \& fork & Done in git (declined sgt) & Done cleanly \\
+R6: History edit & Half done (no rename verb) & Done (scripted rebase) \\
+\bottomrule
+\end{tabular}
+\caption{Per-request outcomes across both pilot conditions on coursecraft (same
+tasks, same rubric). The sgt condition ran on version 0.1.0; twelve defects
+fixed afterwards. R4 and R5 produced equivalent results in both conditions.}
+\label{tab:pilot}
+\end{table}
+
+\subsection{What the sgt condition found}
+\label{sec:pilot-sgt}
+
+The sgt pilot completed four of six tasks and reached the correct answer on
+a fifth. Three of the eight verbs in the daily interface failed during the
+session: \cmd{revert} produced syntactically invalid Python, \cmd{restore}
+crashed with a raw traceback, and \cmd{save} refused to record a legitimate
+edit. The participant fell back to git for the repairs and finished the
+substantive work outside the tool.
+
+Twelve defects were fixed from this one session. We describe three because they
+are consequences of design commitments this paper defends.
+
+\paragraph{Semantic subtraction glued lines together.}
+Reverting the waitlist feature left one file with three function headers on one
+line, \cmd{find\_student} relocated to end of file, and thirteen collection
+errors in pytest---under a green checkmark. The cause is the round-trip
+design of Section~\ref{sec:sets}: the rebuild synthesises zero separator bytes,
+so a removal that takes the layout chain of an entity it keeps produces
+definitions with no whitespace between them. The fix re-grounds the layout of
+every kept entity after a subtraction.
+
+\paragraph{A preview flag mutated state.}
+The tutorial teaches that every destructive verb shows a preview first and acts
+only with \cmd{--yes}. Adding \cmd{--keep-dependents} to a revert silently
+voided that contract, writing intermediate state into the store with no preview
+and no confirmation. The participant's verdict: ``If a flag can turn a preview
+into an action, I can't reason about which of these commands are safe.'' The
+flag now requires \cmd{--yes}.
+
+\paragraph{The map showed husk features.}
+\cmd{sgt log --map} displayed a feature called \emph{Section Waitlist} that
+contained zero symbols in zero files---a cluster whose only records were
+bookkeeping sentinels---while the feature that actually held the waitlist
+code was named after a deleted experiment and did not appear in the view at all.
+The participant followed the wrong name for the entire removal task. Later
+validation found the problem was systemic: 9 of 24 leaf features in each study
+repository owned no behavioural code, including the three features the study's
+own removal requests name. The mechanism was that the clustering graph includes
+positional gap-bytes as nodes (they carry within-file cohesion), and Leiden
+readily forms a community made entirely of them. The fix absorbs any leaf whose
+members are all non-behavioural into the leaf that already owns the entities
+those members hang off, reducing coursecraft from 24 leaves to 14 with none
+empty.
+
+\smallskip\noindent
+The comprehension operations (naming what a request produced, seeing what a
+revert would remove) held up under a user who had never seen the tool before;
+the participant credited ``sgt's attribution and its revert preview, which git
+genuinely cannot do.'' The mutation operations did not survive contact, and the
+data-loss path that one of them opened---a \cmd{fulfill} command that overwrote
+uncommitted work in five files while printing a green checkmark---was the worst
+defect we found in the system during this evaluation. The participant's
+conclusion: ``From here I treat \cmd{sgt revert} as `a fast, accurate first
+pass that leaves me a punch list', not as an operation that completes.'' When
+asked at exit whether they would adopt the tool: ``For reading history, yes,
+starting today. For anything that writes, no.''
+
+\subsection{What the git condition found}
+\label{sec:pilot-git}
+
+The git pilot completed all six tasks inside the time budgets, including
+request~6 (history edit), which the protocol had expected to be out of reach in
+the git condition. The participant scripted the interactive rebase, split the
+tangled commit in two, and verified that both halves pass independently by
+comparing tree hashes. That result is better than the sgt condition managed on
+the same task: sgt had already split the same commit at mining time, which is
+the more impressive half, but the participant could not give the two halves
+clear names because no verb renames a checkpoint.
+
+Four defects in the study design surfaced:
+\begin{enumerate}
+\item The git-condition copies carried commits written by \sgt{}
+  (\cmd{sgt revert f-10462e17@2}, \cmd{sgt undo: restore prior ideal}).
+  A participant in the baseline should not be able to tell that another tool was
+  involved.
+\item A request ticket described a change as ``showing times differently'' when
+  no earlier format existed. Both pilots spent time on our wording rather than
+  on the task.
+\item Request~6 needs a rubric for both conditions rather than an assumption
+  that the git condition cannot finish.
+\item One ticket referenced a duplicate commit and an undo authored by the
+  researcher.
+\end{enumerate}
+All four are fixed.
+
+The git participant also described, unprompted, what they wished the history
+could answer: ``Ask history a question about a symbol, not a file. `What
+happened to \sym{overlaps}, who calls it, and when did that change?' would have
+turned request~4 from a hunch into a lookup.'' A baseline participant
+independently describing the treatment condition's premise is evidence that the
+problem this paper addresses exists independently of the tool we built. The
+need exists before the solution is shown, and we have added a question to the
+exit interview to collect this evidence deliberately.
+
+\subsection{What the apparatus pilot found}
+\label{sec:pilot-apparatus}
+
+The third pilot ran the full study end to end---real bundles, real terminal, real
+git and \sgt{}---with the sole purpose of exercising the machinery between the
+participant's machine and the facilitator's console. It found nine defects, all
+in the seam between systems. Three generalise.
+
+\paragraph{The primary read verb rejected its own output.}
+\cmd{sgt show} failed 6 of the 10 times it was used, and it is the verb the
+practice sheet tells participants to lean on. It rejected save identifiers printed
+by \cmd{sgt log}, full git commit hashes, and feature names typed exactly as
+displayed. The cause was narrower than ``identifiers are inconsistent'': the id
+column of \cmd{sgt log} prints the 7-character git commit hash, and \cmd{show}
+did not accept that format as a selection kind. The participant fell back to
+\cmd{git blame} and \cmd{git show --stat}---in the \sgt{} condition---and
+answered the question that way. A tool that pushes someone back to the baseline
+mid-task is not a measurement problem; it is the measurement. The defect is
+fixed: \cmd{show} now resolves commit-shaped tokens as saves.
+
+\paragraph{A validity threat: the sgt condition degrades its own baseline.}
+\label{sec:pilot-trailers}
+Every commit in the sgt-condition repositories carries its operation identifiers
+as commit-message trailers. On a representative commit whose actual message is
+the single line \texttt{add course search}, we measured 174 \texttt{Sgt-Op:}
+trailer lines. So \cmd{git show}, \cmd{git log}, and \cmd{git log -p} all bury
+the real content under a screenful of hex. The git-condition repositories are
+stripped of these by design, so a participant in the baseline sees clean history
+while a participant in the treatment sees this. The direction of the bias is the
+problem: it makes git look worse exactly where \sgt{} is being measured against
+it, and it does so in the treatment arm---the arm whose participant reaches for
+\cmd{git blame} as a fallback whenever \sgt{} does not have the answer. We
+disclose this because it favours our condition: a win for \sgt{} on any task
+where the participant consulted git history is weaker than it appears, and we
+cannot retrospectively subtract the effect. The pre-registered analysis
+acknowledges it as a confound.
+
+\paragraph{Carry-over between isomorphic tasks.}
+The two test repositories are isomorphic by design (same episode script, nouns
+swapped) so nobody sees the same project twice. The pilot participant reported
+that the resemblance is strong: ``by half two I was pattern-matching against an
+already-solved puzzle rather than reading fresh.'' The design counterbalances
+order and models it as a factor; this finding confirms that modelling order is
+essential rather than a formality, and that the carry-over effect is likely large
+relative to the condition effect on a twelve-person sample.
+
+\subsection{Thematic analysis}
+\label{sec:pilot-lessons}
+
+We coded all three pilots' observations against the design commitments of
+Section~\ref{sec:design} and identified six themes that generalise past the
+individual defects.
+
+\paragraph{Comprehension held; mutation did not.}
+The comprehension operations---attribution, revert preview, dependency
+display, feature listing---produced correct answers on first contact in the task
+pilot. The sgt participant reached the right answer on request~1
+in four commands, using a path the git participant could not take (symbol-level
+attribution across files). Every write operation---\cmd{revert},
+\cmd{restore}, \cmd{save}, \cmd{fulfill}---either failed, crashed, corrupted
+output, or refused to run. The apparatus pilot qualifies this split: the
+\emph{interface} to the comprehension layer failed at the same rate as the
+mutation layer (\cmd{show} rejected 6 of 10 queries), so a user who could not
+navigate to the right screen never reached the comprehension that screen
+provides. The distinction matters because it separates two failure modes with
+different fixes: the underlying analysis was correct (the attribution existed and
+could be displayed), but the path to it was blocked by an identifier mismatch
+between two surfaces of the same tool.
+
+Norman calls these two directions the gulf of
+evaluation and the gulf of execution: the first asks whether a user can tell
+what state the system is in, the second whether they can act to change
+it~\cite{norman1986}. Parasuraman, Sheridan, and Wickens decompose automation
+into four stages---information acquisition, information analysis, decision
+selection, and action implementation---and argue that automating the earlier
+stages while leaving the later ones to the human is both safer and more robust
+than automating uniformly across all four~\cite{parasuraman2000}. \sgt{}
+automates stages one and two heavily (parsing, clustering, dependency tracking,
+consequence display) and leaves stage three to the developer (which feature to
+revert, how to resolve a fork). The pilot failure sits squarely at stage four:
+the action implementation that follows a correct analysis either crashed or
+corrupted output. The design implication is that the comprehension layer is
+independently valuable even when the action layer is not yet trustworthy, but
+only if the developer can reach it---an interface failure at the front door costs
+the same as a corruption behind it, because in both cases the developer falls
+back to git.
+
+\paragraph{Silent wrong answers erode trust faster than crashes.}
+The participant encountered both an omission error (\cmd{restore}: raw traceback,
+no data loss, the system failed to act) and a commission error (\cmd{revert}:
+green checkmark, three function headers glued onto one line, the system acted
+wrongly while reporting success). Mishler and Chen showed that commission errors
+erode trust in automation faster than omission errors, because a system that does
+the wrong thing while claiming to have done the right thing attacks the
+operator's ability to distinguish reliable reports from unreliable
+ones~\cite{mishler2023}. That asymmetry appeared here in full: the crash cost one command; the
+corruption cost twenty minutes of repair work, left the participant unwilling to
+trust checkmarks, and propagated forward: when the session feature later
+reported ``86 new ops'' on a workspace with zero edits, the participant
+declined to use it. The number was explainable, but the tool had spent its
+credibility on an earlier false~positive. Lee and See's model predicts exactly this: a crash provides
+correct calibration information (the system failed and said so), whereas a false
+positive undermines the calibration mechanism itself, because the user can no
+longer distinguish a true positive from the next false
+one~\cite{lee2004}. Wang et al.\ found the same asymmetry in developers using
+AI code generation: one bad recommendation erases the credibility of three good
+ones, and a single negative experience with a category of output causes
+developers to stop reading that category
+entirely~\cite{wang2024trust}. Madhavan and Wiegmann's integrative review
+explains why the recovery never came: people hold automation to a higher initial
+standard than they hold humans, and a single failure triggers categorical
+attribution---the system is \emph{broken}---with no intermediate state between
+working perfectly and being untrustworthy~\cite{madhavan2007}. Sabouri et al.\
+measured the downstream consequence: developers retained only 52\% of initially
+accepted AI suggestions on revisitation, and the retention rate dropped further
+after encountering a single incorrect suggestion they had initially
+accepted~\cite{sabouri2025}. Trust is not per-operation but cumulative, and one
+self-reporting failure costs more than the task it belongs to.
+Seven such failures appeared across the full evaluation period,
+three of which we had not found after eight months of daily use and
+found only by auditing the evaluation's own results.
+
+\paragraph{The tool's value was in the punch list.}
+The participant reframed the revert as ``a fast, accurate first pass that
+leaves me a punch list'' rather than an operation that completes on its own. Every item on the
+removal's consequence report came true: the three functions that still
+referenced removed code broke, and nothing else did. The preview was the
+product; the execution was the problem. The participant's exit debrief sharpened
+this: ``It indexes your history by function instead of by file, so you can ask
+`what changed this symbol, and what else came along for the ride' and get a real
+answer in one command---that part is excellent. Use it to find things, then make
+the change yourself with git.'' Ferdowsi et al.\ found that continuously displaying runtime values mitigates
+both over-reliance and under-reliance on AI-generated code, by lowering the cost
+of validation through execution~\cite{ferdowsi2024}. The preview serves the same
+function: it lowers the cost of evaluating a revert by showing the consequence
+before it happens, and the pilot confirms both halves of Ferdowsi's finding.
+Where the preview was correct (the three named functions broke, nothing else
+did), the participant relied on the tool appropriately. Where it was incorrect
+(the green checkmark over corruption), the lowered validation cost produced
+worse outcomes than no tool at all, because the participant trusted the preview
+and did not verify independently. A partially-working tool can
+deliver value through its read layer alone---it tells the developer what to
+change, and they change it with the tools they already trust---provided the
+reports are accurate. The accuracy condition circles back to the previous theme:
+a tool whose punch lists are wrong on one task stops being consulted on the next.
+
+\paragraph{Vocabulary mismatch across surfaces.}
+Four counting units---edits, ops, symbols, saves---appeared in different
+outputs with no definitions, and the participant stopped reading the numbers
+halfway through: ``the edit counts have been meaningless all session.'' Two
+views of the same feature reported different symbol counts (the tree counted
+cluster members; \cmd{show} counted footprint symbols). Selector namespaces
+varied per verb, with no cross-lookup. Each of these is a consistency defect,
+not a missing feature, and each one makes the tool harder to learn because the
+participant cannot build a stable model of what the numbers mean. The fix was
+mechanical: one counting unit (symbols) and one namespace across all verbs.
+Carroll and Rosson named the mechanism that makes this costly: active users
+learn by generalising from one interaction to the next, and inconsistent surfaces
+punish generalisation by teaching a rule that fails on the second
+screen~\cite{carroll1987}. Jackson frames the same requirement as a property of
+the concepts a system exposes: a concept whose state looks different depending on
+which operation queries it has no stable operational
+principle~\cite{jackson2021}. The lesson is that internal consistency is a
+learnability precondition (not merely cosmetic), and a tool whose surfaces
+disagree teaches the user to ignore its numbers.
+
+\paragraph{Baseline sufficiency reframes the study.}
+The git condition completed every task, including the one we had expected to be
+out of reach (splitting a tangled commit via scripted interactive rebase). The
+study therefore measures cost and confidence rather than raw capability: both
+conditions can finish, and the question is how many commands, how many errors,
+and how much the developer trusts the result. That is a stronger design than one
+where the baseline cannot finish, because it makes both directions of the
+comparison informative---the git condition can win on tasks where the tool's
+mutation failures cost more time than the workaround saves.
+
+\paragraph{The treatment degrades its own fallback.}
+The apparatus pilot found that the sgt condition makes plain git---the tool a
+participant reaches for when \sgt{} fails---measurably worse than in the git
+condition. Every sgt-authored commit carries operation identifiers as
+commit-message trailers (174 lines on a one-line commit), so \cmd{git show} and
+\cmd{git log} bury the content a developer needs under hex they cannot use. The
+git-condition repositories are stripped of these by design, so the baseline sees
+clean history while the treatment does not. This creates a confound that favours
+our condition: any comprehension task where the participant consulted git history
+in the sgt arm was harder than the identical task in the git arm, for a reason
+unrelated to \sgt{}'s attribution. The measurement lesson is that a tool layered
+on top of a host system (here, git) must account for how it changes that host's
+usability, because a participant evaluating the treatment is also evaluating a
+degraded version of the control. We acknowledge this as a threat and note that
+the pre-registered analysis cannot correct for it post hoc.
+
+\medskip\noindent
+The twenty-one fixes and four design corrections together mean that the study we
+will run differs substantially from the study we would have run two weeks
+earlier. Three consequences follow for its design. First, the primary dependent
+variable is now time and error count per task rather than task completion, since
+both conditions finish. Second, the exit interview asks whether the participant
+trusts the tool's reports, because the pilot showed that credibility, once lost
+to a false positive, does not recover within a session. Third, the sgt
+condition's tasks are scored on the comprehension half (did the participant
+identify the right target) separately from the mutation half (did the tool
+execute correctly), so that a mutation failure in the tool does not mask a
+comprehension success in the participant. The result that would count against the
+design is error-rate parity between the two conditions. If both conditions
+produce equal rates of undetected errors, then the recovery this paper describes
+is something developers already do reliably without the tool, and
+Section~\ref{sec:scenarios} overstates the difficulty. We
+report the pilots rather than only the findings, because we want a reader to
+know which version of the tool the full study runs against and why the study
+measures what it measures.
+
+\subsection{Study repository validation}
+\label{sec:pilot-repos}
+
+We built two 5{,}000-line Python projects (coursecraft and confplan) using
+scripted agent sessions---28 and 26 commits, 23 episodes each---so that the
+ground truth for every task is known from the build log. Running the
+derivability census on both repositories before the pilot produced one pass and
+one failure: confplan's central removal task (``take the promotion system out'')
+was not answerable from the record, because the promotion subsystem sat inside
+a 40-symbol feature that also held the entire CLI. The same episode script, the
+same 23 episodes, the same task---answerable on one repository and not the other.
+
+Tracing the cause exposed a single defect with four visible consequences: the
+largest feature was named \emph{init repo} (a label derived from one seed-commit
+vote in a 71-op leaf), 77--84\% of commits had edits filed under that seed
+feature, eight features carried file-path labels, and confplan's promotion
+subsystem was absorbed into one cluster. The mechanism was provenance blindness
+on the save path: \sgt{}'s two clustering signals read each operation's
+provenance field to learn ``these symbols were written in the same sitting,''
+and every operation saved through \cmd{sgt save} carried no provenance---the
+commit reference lives in trailers that three call sites did not resolve. 366
+of 370 operations, unattributed. Co-change without temporal separation is
+co-occurrence, which produces one cluster.
+
+The finding that generalises beyond our system: the blindness appeared only in
+histories built \emph{through} \sgt{}. Every unit test, every dogfood run on
+the development repository, and every retroactively-mined fixture had
+provenance, because all of those derive their temporal signal from git commits
+that already exist. The save path---the one workflow we ask participants to
+use---was the least-tested path in the codebase, and a tool evaluated only
+against mined history has been evaluated on its strongest arm.
+
+After three fixes---provenance resolution, label prompt filtering, and an
+aliasing-rename crash---both repositories pass an 8-of-8 derivability gate: the
+answer to each of the study's four requests is reachable through the taught verb
+set (\cmd{log}, \cmd{show}) in at most three commands. We score this as ``8/8
+by the author's reading'': the pre-registered primary metric could not be
+computed as written, so a referee is entitled to treat the replacement as weaker
+evidence.
+
+Four tangle cases---commits the build log placed two unrelated changes into---are
+all separated correctly: in coursecraft, \sym{cli.py::cmd\_search} lands in
+one feature while \sym{slots.py::parse\_slot} and its test land in another, and
+the two concerns the commit message conflates are two features in the record.
+Reconstruction is exact on both repositories (0 drifted paths), so nothing
+above came at the cost of fidelity.
+
+One asymmetry remains: coursecraft's waitlist feature contains five enrollment
+symbols (a hub function's edit chain pulls them in), so a feature-level revert
+would violate the request to ``keep enrolling working.'' The member list is
+visible before applying, which makes this a legibility cost rather than a silent
+failure, and it is the cost we report to participants in the task handout
+rather than one we hide. On mirrored histories the clustering diverges---the same
+episode script produces 2 separable features in coursecraft and 3 in
+confplan---which is itself a finding about the method's stability under
+near-identical inputs.

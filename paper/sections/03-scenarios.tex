@@ -1,16 +1,21 @@
 \section{Five Operations a Developer Cannot Name}
 \label{sec:scenarios}
 
-The five scenarios below come from our own use of \sgt{} while building it and from
-watching colleagues work with coding agents on repositories we maintain. Each one
-is an operation a developer tried to perform, stated in the words they used, and
-all five fail for the same reason, that the developer names the work by the request
-that produced it, because that is the level their theory of the codebase is pitched
-at~\cite{naur1985}, while the record they have to operate through holds lines inside
-commits (Figure~\ref{fig:granularity}). Every scenario has a workaround and all the
-workarounds work, so the argument is about what the workarounds cost, and what they
-cost is working out from the code which function served which request, a division the
-developer stated in advance and nothing wrote down.
+All five scenarios below fail for the same reason: the developer names their
+work by the request that produced it (``the caching,'' ``the rate limiter''),
+because that is the level their understanding of the code is pitched
+at~\cite{naur1985}, while the record they have to operate through holds lines
+inside commits (Figure~\ref{fig:granularity}). Every scenario has a workaround
+and all the workarounds work. The argument is about what the workarounds cost,
+and what they cost is recovering from the code which function served which
+request---a decomposition the developer stated in their own words before any code
+existed, and that nothing wrote down.
+
+The five scenarios follow one developer through a single afternoon and the
+week after it. The project is a Python service that answers price quotes for a
+trading dashboard; its request handling lives in \sym{api.py::handle}, its database
+access in \sym{db.py::query}, and the developer asked a coding agent for three
+things in one sitting: a rate limiter, a price cache, and a retry policy.
 
 \subsection{``Commit this when it is done, and I do not know yet when that is''}
 
@@ -30,9 +35,9 @@ commitment, where a notation forces a decision before the information it needs
 exists, and the third viscosity, the resistance a notation puts up once a decision
 turns out to be wrong~\cite{green1996,blackwell2003}. Git asks for the
 decomposition at the moment of writing, and in a session driven by requests the
-boundary does exist at that moment: what the developer lacks is not the boundary,
-which they stated themselves before any of the code existed, but the list of
-functions on either side of it, which only the agent ever had.
+boundary does exist at that moment. The developer stated the boundary themselves
+before any of the code existed. What they lack is the list of functions on either
+side of it, which only the agent ever had.
 
 \smallskip\noindent\emph{The operation.} Record the boundary the developer already
 stated, without asking them to state it a second time in a different notation.
@@ -61,8 +66,8 @@ its current state and its previous state, and change it as a unit.
 
 The caching turned out to serve a stale price for up to sixty seconds, and it has
 to go. Its six edits are spread over three files and two commits, mixed with nine
-hunks belonging to three other purposes, one of them adds a parameter to
-\sym{db.py::query} while another passes it from \sym{api.py::handle}, and three
+hunks belonging to three other purposes. One cache edit adds a parameter to
+\sym{db.py::query}; another passes that parameter from \sym{api.py::handle}. Three
 functions the rename rewrote afterwards call a helper the caching introduced.
 \cmd{git revert} takes back a whole commit, so reverting either of these two
 removes work the developer is keeping. The developer therefore checks out both
@@ -121,7 +126,11 @@ Every one of these operations takes a set of edits as its argument, and the
 developer identifies that set by the purpose the edits served. Git expresses a set
 of lines, a set of files, and a set of commits, and a developer can build all five
 operations out of those three. The price of building them is recovering a
-decomposition that nobody recorded, and that recovery stayed affordable for as long
-as the person paying it was the person who had written the code.
+decomposition that nobody recorded, and that recovery was affordable when the
+person paying it was the person who had written the code---because they held the
+answer already, having typed the lines minutes earlier. A developer who typed
+``add a retry policy'' instead does not hold the answer, and the longer the session
+ran, the less they remember of the code it produced, until the recovery costs more
+than the operation it serves.
 Section~\ref{sec:design} describes what we changed so that a developer can type the
 argument these five operations want.

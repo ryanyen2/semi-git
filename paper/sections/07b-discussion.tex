@@ -1,0 +1,343 @@
+\section{What the Design Bought and What It Cost}
+\label{sec:discussion-synthesis}
+
+The evaluation, the corpus, and the pilot each show a different aspect of
+the same design. We organise this section around what generalises past our
+system, because an honest account of one tool's failures is useful to a reader
+only when it explains what would fail differently had the tool been designed
+differently.
+
+\subsection{Three distinct safety properties}
+
+The evaluation surfaced three properties a developer needs from a tool that
+rewrites files on their behalf, and they require different kinds of guarantee.
+
+\begin{enumerate}
+\item \textbf{Nothing is removed.} The store is append-only; every prior state
+  is reachable by identifier. The append-only store guarantees this
+  structurally, and all 10{,}237 operations in the harness preserved it.
+\item \textbf{The tool operates on what you named.} The revert removes the
+  feature the developer pointed at, the restore brings back the thing they
+  asked for, and neither touches anything else. Three findings in the
+  robustness harness broke this property: an undo that silently dropped a
+  \emph{different} edit, a revert that printed success about an operation it
+  had not performed, and a restore that reported ``changed nothing'' while
+  emptying a file. All were recoverable---property~1 held throughout---and
+  all were wrong in the direction hardest to detect, because the command's own
+  report confirmed what the developer expected.
+\item \textbf{New work can still be recorded.} A revert that succeeds must
+  leave the repository in a state where the next save is accepted. One
+  sequence in the robustness harness reached a state where every write verb
+  was refused, including \cmd{undo}, because a layout record outlived the
+  entity it described and the rebuild's composed image disagreed with the
+  file by one byte. The developer's work was intact and unreachable.
+\end{enumerate}
+
+Property~1 is architectural and held universally. Properties~2 and~3 are
+behavioural and failed on sequences involving layout records (the gap text
+and ordering facts that sit between functions in a file). The append-only store
+makes durability cheap, so legibility becomes the remaining problem. In every
+one of seven self-reporting failures we found during dogfooding, the data was
+present and the tool's account of how to reach it was wrong. Any system that
+maintains a semantic record alongside a repository will face this same
+separation, and the lesson is that testing durability (can the bytes be
+recovered?) answers a different question from testing agreement (did the tool do
+what it said?). Agreement is harder to test, because the only oracle that can
+verify it is a probe that independently checks the outcome. The tool's own
+report is the thing that failed.
+
+\subsection{What each design commitment cost}
+\label{sec:design-cost}
+
+We trace each of the four commitments of Section~\ref{sec:design} back to its
+evaluation outcome to show where the design has already been tested and where
+it has not.
+
+\paragraph{The function as unit (Section~\ref{sec:grain}).}
+Delivered entity coverage over 42\% of files, with a threshold that loses
+function identity on roughly half of all renames that co-occur with a body
+rewrite (Section~\ref{sec:identity}). On the corpus the decomposed
+rebuild rate is 0.23, meaning that three functions in four are absent from
+the composition at \cmd{HEAD}. Ninety percent of those absences come from the
+fork rule withholding records, and the parsing itself succeeds, so most of the
+cost at this level actually originates from the fork rule (the next commitment)
+rather than from the function-as-unit decision itself. The implication for a
+designer choosing a grain: the function works as a recording unit---parsing
+succeeds, identity tracking is imperfect but bounded, and the coverage spans
+every file tree-sitter can read---but the cost of acting on those records
+depends on what other commitments the design makes downstream.
+
+\paragraph{Set-based versions (Section~\ref{sec:sets}).}
+Gave the round-trip reversibility the walkthrough demonstrates, which the pilot
+participant called ``a fast, accurate first pass that leaves me a punch list.''
+That reversibility breaks twice in 10{,}237 operations, both on layout targets
+no developer would name. The robustness harness found 340 operations that left
+the repository in an unexpected state, and 68\% of those targeted an entity the
+developer would name---but the dominant violation in those cases (157 of 232) was
+a layout record being dragged along by the entity operation, while the entity
+logic itself worked correctly. The set formalism fails in two distinct ways. First, layout records: layout
+facts are individually addressable because they are symbols, and individually
+revertible because they are records, but no mechanism keeps them consistent with
+the entities they sit between. Nine distinct defects trace to this decision, and
+every robustness-harness failure entered through it. Second, upward closure:
+reverting a mid-history edit originally orphaned every later edit that depended on
+it, because the closure rule excluded them from the rebuilt set. On the study
+repository this demolished 13 files when the participant asked to remove one
+feature---the worst single defect we found. The fix replaced blanket exclusion
+with forward subtraction (splice the removed content out of later edits rather
+than dropping them), which preserves the set semantics while changing what
+``remove'' means from ``exclude this and everything above it'' to ``subtract this
+contribution from the tip.'' The lesson for a designer using set-based versions:
+closure is correct for the append-only store (nothing is lost) but too aggressive
+for the working tree (a developer removing one feature does not intend to remove
+everything built on top of it).
+
+\paragraph{The fork rule (Section~\ref{sec:fork}).}
+Protected 162 actually-forked functions and blocked mutation on 27 of 28
+outside repositories. The amplification factor is 18: each forked function
+withdraws records covering 17.7 function keys on average, and the total
+withdrawal of 2{,}864 keys is what blocks the write guards. On the self-hosted
+repository, switching the rule off raises the rebuild rate from 0.44 to 0.88.
+On the corpus, the median rebuild of 0.33 means the guard requires 1.00 and
+most repositories are at one third of that. The rule's read benefit is real (the pilot participant was stopped before two
+conflicting edits could be silently merged), but the write cost is eighteen
+times larger than the rule's description suggests.
+Nelson et al.\ found that the expensive part of a merge conflict is the
+semantic investigation required to understand whether both sides can
+coexist, not the textual resolution~\cite{nelson2019}. The fork rule moves
+that investigation from the moment the merge fails to the moment the second
+edit arrives, when the developer still holds both intents.
+Kazemitabaar et al.\ showed that cognitive engagement techniques---friction
+that stops passive acceptance of AI-generated code---improve comprehension at
+the cost of goodwill~\cite{kazemitabaar2025}. The fork rule is exactly this
+tradeoff: it stops the developer from accepting a merge they have not
+inspected, and the pilot showed it costs goodwill (the participant declined to
+use the session feature afterwards).
+Figure~\ref{fig:fork-cost} shows the amplification visually: the 153 files
+the rule blocks come from just 162 forked functions, and switching the rule off
+recovers them but removes the safety guarantee.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/fig6-fork-cost}
+  \caption{\FigSixCaption}
+  \Description{\FigSixDescription}
+  \label{fig:fork-cost}
+\end{figure}
+
+\paragraph{Inferred names (Section~\ref{sec:names}).}
+Recovered cross-file groupings that git cannot express, and systematically
+over-decomposed what a developer asked for by a factor of 2 to 6 at the median
+(up to 13 on the longest-session repository). On
+CodeNav (the one repository where the metric discriminates), F1 is 0.66 with
+precision 0.68 and recall 0.64. The margin over a file-only baseline comes
+entirely from cross-file grouping. The tool's vocabulary is finer than the
+developer's vocabulary, which means the operations of
+Section~\ref{sec:design} require naming something smaller than what was
+originally asked for. The pilot participant saw five unnamed features for one
+coherent piece of work and asked why the tool was decomposing what they had done
+in one sitting. On the study repositories, the feature surface is a reliable
+index into history (every request's answer is reachable in at most three
+commands) but an unreliable decomposition of it. Fifteen percent of labels
+describe a minority of their members' actual content, and reverting a 5-symbol
+feature removes 13 edits, because the structural cut crosses the episode
+boundary whenever a hub function participates. Study preparation found that 9 of 24 features in each repository owned no
+behavioural code at all---communities formed entirely from positional gap-bytes
+that the clustering includes for structural cohesion---and three of those husks
+carried the names the study's own removal requests use, so a participant following
+the map would select a feature and find nothing inside it. The fix (absorb husks
+into the feature that owns their parent entities) reduced the tree from 24 leaves
+to 14, but we found it only because a study task routed through it. A purity
+gate that rejects a domain label when the majority of the group's symbols are
+scaffold or test code would fix the 15\% label inaccuracy, but we did not build
+it, because tuning on evaluation data produces a number, not a finding.
+Figure~\ref{fig:decomposition} shows the ratio across all four transcript
+repositories. No repository reaches 1:1, and the whiskers show that the worst
+case (13 features for one request) sits on the longest-session history.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/fig7-decomposition}
+  \caption{\FigSevenCaption}
+  \Description{\FigSevenDescription}
+  \label{fig:decomposition}
+\end{figure}
+
+\subsection{The codebook that was wrong}
+\label{sec:codebook-wrong}
+
+We coded 60 sampled errors from two repositories (CodeNav and eico) against
+a pre-registered four-code taxonomy: split (one intent across two features),
+merge (two intents in one feature), mis-assign (correct groups, wrong
+membership), and rename (correct membership, wrong label). The pre-registered
+codes explained 6 of 30 errors in CodeNav and 15 of 30 in eico. On both
+repositories, the dominant mechanism was a disagreement about what counts
+as one request, which the clustering handled correctly.
+
+Two mechanisms accounted for the residual. First, \textbf{consecutive turns of
+one feature}: a developer who types ``resume'' and then ``ok sure'' between
+substantive requests creates turn boundaries that the ground truth treats as
+request boundaries, but \sgt{} groups the symbols from both turns into one
+feature, which is the semantically correct answer. On CodeNav this mechanism
+produced 15 of 30 coded items. Second, \textbf{continuation tokens as intent}:
+on eico, 88\% of turns are contentless directives (``resume'', ``move on'',
+``(a)''), and the ground truth attributes each turn's output to that turn's
+text, producing a positive base rate of 47\% against a signal that carries no
+semantic content. \sgt{} correctly refuses to separate work that differs only in
+which continuation token preceded it.
+
+This finding generalises. Anyone measuring intent recovery against real agentic
+transcripts will face the same problem, because a per-turn ground truth does not
+yield a per-turn metric on histories where most turns carry no semantic content. The fraction of contentless turns varies from 0\% to 88\%
+across the four repositories we hold, and it is not predictable from session
+length or repository size. A metric computed on a history with 88\%
+continuation tokens measures the ground truth's granularity rather than the
+system's accuracy.
+
+The one mechanism that \emph{is} an error in the clustering---intent sharded by
+directory (F32)---appeared in both repositories and has a consistent shape: two
+leaves carry the same label and the same intent, separated only because their
+symbols live in different directories, with no interior node uniting them.
+This is an addressable defect: a merge pass that detects identically-labelled
+sibling leaves would eliminate it without changing any parameter.
+
+\subsection{Comparison with alternatives}
+\label{sec:comparison}
+
+The evaluation data lets us compare against what existing tools offer as
+well as against our own aspirations. Table~\ref{tab:comparison} summarises the
+tradeoffs.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{p{2.2cm}p{2.6cm}p{2.6cm}p{2.6cm}p{2.6cm}}
+\toprule
+Property & \textbf{Darcs/Pijul} & \textbf{GitButler} & \textbf{sem} & \textbf{\sgt{}} \\
+\midrule
+Unit of record & Line-level patch & File-level change & Function (derived cache) & Function (committed record) \\
+Cross-file dep. & Not tracked & Not tracked & Reported, not enforced & Tracked and enforced \\
+Selective revert & Pull/unpull a patch & Undo a file assignment & N/A (read-only) & Revert a named feature \\
+Adoption cost & Replace git & Add to git workflow & None (cache alongside) & Add to git workflow \\
+Failure mode & Silent (line-level) & Silent (file-level) & N/A & Fork rule stops \\
+\bottomrule
+\end{tabular}
+\caption{Design tradeoffs across four systems that address change grouping.
+Darcs and Pijul compute dependency from lines; GitButler assigns files to
+virtual branches; sem derives a function-level cache but takes no action on it;
+\sgt{} commits its record and acts on it.}
+\label{tab:comparison}
+\end{table*}
+
+Darcs computes dependency from line adjacency~\cite{roundy2005}, so pulling a
+patch that edits \sym{api.py::handle} without the patch that defined
+\sym{Retry} in another file produces a reference to a name that does not exist,
+with no refusal and no warning. \sgt{}'s closure rule prevents this by refusing to write rather than writing a
+file that does not parse, and the fork rule's amplification is the cost. The
+evaluation shows that this conservatism is too expensive on repositories \sgt{}
+did not record live (27 of 28 refused entirely), but the pilot shows it catching
+the case it was designed for (two edits to one function from separate requests,
+neither aware of the other).
+
+sem offers the entity-level answers without the action layer~\cite{sem2026},
+which makes it safe to adopt and safe to abandon. The evaluation suggests this
+may be the right stopping point for a tool that cannot yet guarantee its write
+operations. Every read operation that the pilot participant reached produced
+correct answers; the apparatus pilot showed that reaching them was the harder
+problem, since the primary inspect verb rejected 6 of 10 queries
+(Section~\ref{sec:pilot-apparatus}). The pilot participant independently
+described the same decomposition by rephrasing the revert as ``a fast, accurate
+first pass that leaves me a punch list.'' A tool that reports without acting inherits
+property~1 automatically (there is nothing to corrupt) and sidesteps property~3
+entirely (there is no write guard to trigger). It cannot offer the selective
+revert, the restore, or the switch, because those operations require writing the
+subset back to disk. Those operations are what motivated \sgt{}'s decision to
+commit its record, and the evaluation shows they are also where every failure
+lives.
+
+GitButler assigns file-level changes to virtual branches~\cite{gitbutler2026},
+which handles the common case where one feature per file suffices. The scenario at the centre of
+this paper---three requests all editing \sym{api.py::handle}---is the case
+where file-level assignment cannot express the grouping. \sgt{}'s function-level
+record handles this case and pays for it with the fork rule, the layout seam,
+and the identity threshold. Whether that trade is worthwhile depends on the
+share of a developer's requests that touch the same function as another
+request, which the evaluation did not measure directly. What it did measure is
+the share of hub functions that absorb unrelated work into a single feature
+label, and on the study repositories that share ranges from 19 symbols
+(\emph{Course Search}, actually the CLI) to 41 (\emph{Waitlist Queue}, actually
+README and entry points).
+
+\subsection{Design implication: build the read layer before the write layer}
+
+The evaluation, the pilot, and the comparison converge on one recommendation for
+a designer facing the same problem: build the read layer first, ship it alone,
+and defer the write operations until the developer trusts the reports.
+Parasuraman's model explains why. Automating stages one and two (parsing,
+clustering, dependency display) while leaving stage three to the developer
+(which feature to name, which revert to confirm) is both safer and independently
+useful~\cite{parasuraman2000}. The pilot confirmed this empirically: the
+participant adopted the read layer on first contact and declined the write layer
+after one session. The corpus confirmed it structurally: on 27 of 28 outside
+repositories, the write layer had nothing to offer because its preconditions
+were unmet, while the read layer (attribution, dependency display, feature
+listing) ran on all 35.
+
+The practical consequence is that a tool in this design space should ship its
+read layer without waiting for write-path stability. The argument has two parts.
+Thimbleby argued that good design delays commitment until the user holds the
+information the commitment requires~\cite{thimbleby1988}, and a developer who
+has not yet seen the tool's attributions does not hold the information needed to
+decide whether to trust its reverts. But there is a stronger reason. Bainbridge
+observed that automation degrades the skill it replaces, and the degraded skill
+is exactly what the operator needs when the automation
+fails~\cite{bainbridge1983}. A developer using an agent to write code no longer
+practises the decomposition that a revert requires; the read layer
+(attribution, dependency display, consequence preview) is what restores that
+decomposition, and without it the developer who needs to intervene is in the
+position Bainbridge described: lacking the comprehension the automation took
+from them. A read-only release whose attribution is correct builds both the
+trust and the comprehension that a later write release depends on.
+Lee and See's review of trust in automation found that a single visible error
+erodes trust faster than a string of correct outcomes restores
+it~\cite{lee2004}. Trust is harder to earn after a write failure than before
+one. This recommendation is in tension with the
+paper's own motivation: Section~\ref{sec:scenarios} argues for operations
+(revert, restore, switch) that require writing, and a read-only tool cannot
+offer them. The resolution is temporal. Ship the read layer now, and ship the
+write layer when its failure rate is low enough that the trust the read layer
+earned survives a session. The pilot is evidence that we shipped the write layer too
+early.
+
+\subsection{What would change our conclusion}
+
+The result that would overturn this paper's central claim is an error-rate
+finding. If a controlled study shows that developers using git alone detect
+unintended removals at the same rate as developers using \sgt{}'s preview, then
+the comprehension benefit Section~\ref{sec:scenarios} argues for does not exist
+in practice, and the fork rule, the layout seam, and the naming instability
+provide no benefit. The
+pilot cannot settle this because one participant per condition (with the
+researcher present) measures tool fitness rather than developer behaviour, and
+the sgt condition's mutation failures make the comparison one-sided, and the
+trailer confound (Section~\ref{sec:pilot-trailers}) degrades the git fallback
+in the treatment arm, so any comprehension advantage we observed could partly
+reflect a weakened baseline rather than a strengthened treatment. A
+between-subjects study on tasks where both conditions finish (which the pilot
+showed they can) would answer it.
+
+Two secondary results would reshape specific claims. First, if the fork rule's
+amplification factor holds on repositories recorded live (rather than mined
+retroactively), then the 0.44 rebuild rate is a property of the design under its
+intended workflow, and the distinction Section~\ref{sec:unreproducible} draws
+between the two regimes would collapse. We have partial evidence against this: on the two study repositories,
+recorded entirely through \cmd{sgt save}, reconstruction is exact (0 drifted
+paths), which suggests that the fork rule's cost scales with history length
+rather than with recording method. Second, if the codebook's dominant
+residual---ground-truth grain disagreement---replicates on repositories with
+more intentful request histories, then the pairwise F1 metric is fundamentally
+unsuited to this domain and the over-decomposition ratio (2--6$\times$ at the
+median, up to 13) is the only stable measurement available. We report both findings so that future work
+on intent recovery can calibrate its metrics before discovering the same
+instability we found.
+

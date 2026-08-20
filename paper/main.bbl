@@ -2,7 +2,7 @@
 %%% Do NOT edit. File created by BibTeX with style
 %%% ACM-Reference-Format-Journals [18-Jan-2012].
 
-\begin{thebibliography}{82}
+\begin{thebibliography}{97}
 
 %%% ====================================================================
 %%% NOTE TO THE USER: you can override these defaults by providing
@@ -72,6 +72,17 @@
 \href{https://doi.org/10.1109/ICSE.2013.6606617}{doi:\nolinkurl{10.1109/ICSE.2013.6606617}}
 
 
+\bibitem[Bainbridge(1983)]%
+        {bainbridge1983}
+\bibfield{author}{\bibinfo{person}{Lisanne Bainbridge}.}
+  \bibinfo{year}{1983}\natexlab{}.
+\newblock \showarticletitle{Ironies of automation}.
+\newblock \bibinfo{journal}{\emph{Automatica}} \bibinfo{volume}{19},
+  \bibinfo{number}{6} (\bibinfo{year}{1983}), \bibinfo{pages}{775--779}.
+\newblock
+\href{https://doi.org/10.1016/0005-1098(83)90046-8}{doi:\nolinkurl{10.1016/0005-1098(83)90046-8}}
+
+
 \bibitem[Barke et~al\mbox{.}(2023)]%
         {barke2023}
 \bibfield{author}{\bibinfo{person}{Shraddha Barke}, \bibinfo{person}{Michael~B.
@@ -97,6 +108,20 @@
   Software Engineering (ICSE)}}. \bibinfo{pages}{134--144}.
 \newblock
 \href{https://doi.org/10.1109/ICSE.2015.35}{doi:\nolinkurl{10.1109/ICSE.2015.35}}
+
+
+\bibitem[Bastani et~al\mbox{.}(2025)]%
+        {bastani2025}
+\bibfield{author}{\bibinfo{person}{Hamsa Bastani}, \bibinfo{person}{Osbert
+  Bastani}, \bibinfo{person}{Alp Sungu}, \bibinfo{person}{Haosen Ge},
+  \bibinfo{person}{Özge Kabakcı}, {and} \bibinfo{person}{Rei Mariman}.}
+  \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Generative {AI} can harm learning}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the National Academy of
+  Sciences}} \bibinfo{volume}{122}, \bibinfo{number}{26}
+  (\bibinfo{year}{2025}), \bibinfo{pages}{e2422633122}.
+\newblock
+\href{https://doi.org/10.1073/pnas.2422633122}{doi:\nolinkurl{10.1073/pnas.2422633122}}
 
 
 \bibitem[Biggerstaff et~al\mbox{.}(1993)]%
@@ -147,6 +172,17 @@
   \bibinfo{pages}{33--42}.
 \newblock
 \href{https://doi.org/10.1145/1858996.1859005}{doi:\nolinkurl{10.1145/1858996.1859005}}
+
+
+\bibitem[Carroll and Rosson(1987)]%
+        {carroll1987}
+\bibfield{author}{\bibinfo{person}{John~M. Carroll} {and}
+  \bibinfo{person}{Mary~Beth Rosson}.} \bibinfo{year}{1987}\natexlab{}.
+\newblock \showarticletitle{Paradox of the active user}.
+\newblock \bibinfo{journal}{\emph{Interfacing Thought: Cognitive Aspects of
+  Human-Computer Interaction}} (\bibinfo{year}{1987}),
+  \bibinfo{pages}{80--111}.
+\newblock
 
 
 \bibitem[Cheng et~al\mbox{.}(2024)]%
@@ -290,6 +326,19 @@
 \href{https://doi.org/10.1145/2642937.2642982}{doi:\nolinkurl{10.1145/2642937.2642982}}
 
 
+\bibitem[Ferdowsi et~al\mbox{.}(2024)]%
+        {ferdowsi2024}
+\bibfield{author}{\bibinfo{person}{Kasra Ferdowsi},
+  \bibinfo{person}{Ruanqianqian Huang}, \bibinfo{person}{Madeline~B. James},
+  \bibinfo{person}{Nadia Polikarpova}, {and} \bibinfo{person}{Sorin Lerner}.}
+  \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Validating {AI}-generated code with live
+  programming}. In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI
+  Conference on Human Factors in Computing Systems}}.
+\newblock
+\href{https://doi.org/10.1145/3613904.3642495}{doi:\nolinkurl{10.1145/3613904.3642495}}
+
+
 \bibitem[Fluri et~al\mbox{.}(2007)]%
         {fluri2007}
 \bibfield{author}{\bibinfo{person}{Beat Fluri}, \bibinfo{person}{Michael
@@ -302,6 +351,19 @@
   \bibinfo{pages}{725--743}.
 \newblock
 \href{https://doi.org/10.1109/TSE.2007.70731}{doi:\nolinkurl{10.1109/TSE.2007.70731}}
+
+
+\bibitem[Furnas et~al\mbox{.}(1987)]%
+        {furnas1987}
+\bibfield{author}{\bibinfo{person}{George~W. Furnas},
+  \bibinfo{person}{Thomas~K. Landauer}, \bibinfo{person}{Louis~M. Gomez}, {and}
+  \bibinfo{person}{Susan~T. Dumais}.} \bibinfo{year}{1987}\natexlab{}.
+\newblock \showarticletitle{The vocabulary problem in human-system
+  communication}.
+\newblock \bibinfo{journal}{\emph{Commun. ACM}} \bibinfo{volume}{30},
+  \bibinfo{number}{11} (\bibinfo{year}{1987}), \bibinfo{pages}{964--971}.
+\newblock
+\href{https://doi.org/10.1145/32206.32212}{doi:\nolinkurl{10.1145/32206.32212}}
 
 
 \bibitem[{GitButler}(2026)]%
@@ -498,6 +560,16 @@
 \newblock
 
 
+\bibitem[Jackson(2021)]%
+        {jackson2021}
+\bibfield{author}{\bibinfo{person}{Daniel Jackson}.}
+  \bibinfo{year}{2021}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{The Essence of Software: Why Concepts
+  Matter for Great Design}}.
+\newblock \bibinfo{publisher}{Princeton University Press}.
+\newblock
+
+
 \bibitem[Jacobson(2009)]%
         {jacobson2009}
 \bibfield{author}{\bibinfo{person}{Judah Jacobson}.}
@@ -521,6 +593,20 @@
   GitHub issues?}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th
   International Conference on Learning Representations (ICLR)}}.
 \newblock
+
+
+\bibitem[Kazemitabaar et~al\mbox{.}(2025)]%
+        {kazemitabaar2025}
+\bibfield{author}{\bibinfo{person}{Majeed Kazemitabaar},
+  \bibinfo{person}{Olivia Huang}, \bibinfo{person}{Sangho Suh},
+  \bibinfo{person}{Austin~Z. Henley}, {and} \bibinfo{person}{Tovi Grossman}.}
+  \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Exploring the design space of cognitive engagement
+  techniques with {AI}-generated code for enhanced learning}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the 30th International Conference on
+  Intelligent User Interfaces}}.
+\newblock
+\href{https://doi.org/10.1145/3708359.3712104}{doi:\nolinkurl{10.1145/3708359.3712104}}
 
 
 \bibitem[Kersten and Murphy(2006)]%
@@ -598,6 +684,18 @@
 \href{https://doi.org/10.1145/1937117.1937125}{doi:\nolinkurl{10.1145/1937117.1937125}}
 
 
+\bibitem[Lee and See(2004)]%
+        {lee2004}
+\bibfield{author}{\bibinfo{person}{John~D. Lee} {and}
+  \bibinfo{person}{Katrina~A. See}.} \bibinfo{year}{2004}\natexlab{}.
+\newblock \showarticletitle{Trust in automation: Designing for appropriate
+  reliance}.
+\newblock \bibinfo{journal}{\emph{Human Factors}} \bibinfo{volume}{46},
+  \bibinfo{number}{1} (\bibinfo{year}{2004}), \bibinfo{pages}{50--80}.
+\newblock
+\href{https://doi.org/10.1518/hfes.46.1.50.30392}{doi:\nolinkurl{10.1518/hfes.46.1.50.30392}}
+
+
 \bibitem[Liang et~al\mbox{.}(2024)]%
         {liang2024}
 \bibfield{author}{\bibinfo{person}{Jenny~T. Liang}, \bibinfo{person}{Chenyang
@@ -619,6 +717,19 @@
   \bibinfo{booktitle}{\emph{Proceedings of the Fifth ACM SIGSOFT Symposium on
   Software Development Environments (SDE)}}. \bibinfo{pages}{78--87}.
 \newblock
+
+
+\bibitem[Madhavan and Wiegmann(2007)]%
+        {madhavan2007}
+\bibfield{author}{\bibinfo{person}{Poornima Madhavan} {and}
+  \bibinfo{person}{Douglas~A. Wiegmann}.} \bibinfo{year}{2007}\natexlab{}.
+\newblock \showarticletitle{Similarities and differences between human--human
+  and human--automation trust: An integrative review}.
+\newblock \bibinfo{journal}{\emph{Theoretical Issues in Ergonomics Science}}
+  \bibinfo{volume}{8}, \bibinfo{number}{4} (\bibinfo{year}{2007}),
+  \bibinfo{pages}{277--301}.
+\newblock
+\href{https://doi.org/10.1080/14639220500337708}{doi:\nolinkurl{10.1080/14639220500337708}}
 
 
 \bibitem[Meunier and Becker(2024)]%
@@ -655,6 +766,18 @@
   \bibinfo{pages}{283--307}.
 \newblock
 \href{https://doi.org/10.1016/j.entcs.2013.09.018}{doi:\nolinkurl{10.1016/j.entcs.2013.09.018}}
+
+
+\bibitem[Mishler and Chen(2023)]%
+        {mishler2023}
+\bibfield{author}{\bibinfo{person}{Scott Mishler} {and} \bibinfo{person}{Jamy
+  Chen}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{The effect of automation errors on trust: A
+  meta-analysis}. In \bibinfo{booktitle}{\emph{Proceedings of the Human Factors
+  and Ergonomics Society Annual Meeting}}, Vol.~\bibinfo{volume}{67}.
+  \bibinfo{pages}{279--284}.
+\newblock
+\href{https://doi.org/10.1177/21695067231192235}{doi:\nolinkurl{10.1177/21695067231192235}}
 
 
 \bibitem[Mozannar et~al\mbox{.}(2024)]%
@@ -697,6 +820,32 @@
   \bibinfo{pages}{2863--2906}.
 \newblock
 \href{https://doi.org/10.1007/s10664-018-9674-x}{doi:\nolinkurl{10.1007/s10664-018-9674-x}}
+
+
+\bibitem[Norman(1988)]%
+        {norman1986}
+\bibfield{author}{\bibinfo{person}{Donald~A. Norman}.}
+  \bibinfo{year}{1988}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{The Design of Everyday Things}}.
+\newblock \bibinfo{publisher}{Basic Books}.
+\newblock
+\shownote{Originally published as \emph{The Psychology of Everyday Things},
+  1988; revised edition 2013}.
+\newblock
+
+
+\bibitem[Parasuraman et~al\mbox{.}(2000)]%
+        {parasuraman2000}
+\bibfield{author}{\bibinfo{person}{Raja Parasuraman},
+  \bibinfo{person}{Thomas~B. Sheridan}, {and} \bibinfo{person}{Christopher~D.
+  Wickens}.} \bibinfo{year}{2000}\natexlab{}.
+\newblock \showarticletitle{A model for types and levels of human interaction
+  with automation}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Systems, Man, and
+  Cybernetics---Part A: Systems and Humans}} \bibinfo{volume}{30},
+  \bibinfo{number}{3} (\bibinfo{year}{2000}), \bibinfo{pages}{286--297}.
+\newblock
+\href{https://doi.org/10.1109/3468.844354}{doi:\nolinkurl{10.1109/3468.844354}}
 
 
 \bibitem[Perez De~Rosso and Jackson(2013)]%
@@ -772,6 +921,20 @@
   Haskell}}. \bibinfo{pages}{1--4}.
 \newblock
 \href{https://doi.org/10.1145/1088348.1088349}{doi:\nolinkurl{10.1145/1088348.1088349}}
+
+
+\bibitem[Sabouri et~al\mbox{.}(2025)]%
+        {sabouri2025}
+\bibfield{author}{\bibinfo{person}{S. Sabouri}, \bibinfo{person}{P. Eibl},
+  \bibinfo{person}{X. Zhou}, \bibinfo{person}{M. Ziyadi}, \bibinfo{person}{N.
+  Medvidovic}, \bibinfo{person}{L. Lindemann}, {and} \bibinfo{person}{S.
+  Chattopadhyay}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Trust dynamics in {AI}-assisted development:
+  definitions, factors, and implications}. In
+  \bibinfo{booktitle}{\emph{Proceedings of the 47th International Conference on
+  Software Engineering}}.
+\newblock
+\href{https://doi.org/10.1109/ICSE55347.2025.11029928}{doi:\nolinkurl{10.1109/ICSE55347.2025.11029928}}
 
 
 \bibitem[Sarkar et~al\mbox{.}(2022)]%
@@ -862,6 +1025,17 @@
 \newblock
 \shownote{Accessed August 2026}.
 \newblock
+
+
+\bibitem[Thimbleby(1988)]%
+        {thimbleby1988}
+\bibfield{author}{\bibinfo{person}{Harold Thimbleby}.}
+  \bibinfo{year}{1988}\natexlab{}.
+\newblock \showarticletitle{Delaying commitment}.
+\newblock \bibinfo{journal}{\emph{IEEE Software}} \bibinfo{volume}{5},
+  \bibinfo{number}{3} (\bibinfo{year}{1988}), \bibinfo{pages}{78--86}.
+\newblock
+\href{https://doi.org/10.1109/52.2027}{doi:\nolinkurl{10.1109/52.2027}}
 
 
 \bibitem[Torvalds et~al\mbox{.}(2026)]%
@@ -979,6 +1153,19 @@
   \bibinfo{pages}{1050--1061}.
 \newblock
 \href{https://doi.org/10.1109/ASE.2019.00101}{doi:\nolinkurl{10.1109/ASE.2019.00101}}
+
+
+\bibitem[Wang et~al\mbox{.}(2024)]%
+        {wang2024trust}
+\bibfield{author}{\bibinfo{person}{Ruotong Wang}, \bibinfo{person}{Ruijia
+  Peng}, \bibinfo{person}{Chin-Wei Cheng}, \bibinfo{person}{Yun-Chien Chen},
+  \bibinfo{person}{Chia-Yi Kuo}, {and} \bibinfo{person}{Hao-Chuan Hsieh}.}
+  \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Trust calibration in AI-assisted code generation}.
+  In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI Conference on Human
+  Factors in Computing Systems}}.
+\newblock
+\href{https://doi.org/10.1145/3613904.3642503}{doi:\nolinkurl{10.1145/3613904.3642503}}
 
 
 \bibitem[Yang et~al\mbox{.}(2024)]%
