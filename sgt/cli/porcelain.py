@@ -191,6 +191,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     in `status`/`fsck --tree`."""
     from sgt.core.lens import (
         DirtyWorkingTreeError, current_ideal, get, merge_in_progress, put, record_ideal,
+        sync_status,
     )
     from sgt.store.gitbind import GitBinding, GitError
 
@@ -259,6 +260,19 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
             except Exception:  # noqa: BLE001
                 pass
     elif not resolve_plan:
+        # F78: "nothing to save" is a claim about the user's working tree, so only make it when the
+        # tree was actually examined. `mine()` skips its dirty pass on any chunk whose deadline is
+        # spent on history (`mine.py:791`), so while a backfill is still walking, a real edit can go
+        # unmined -- and reporting that as `✓ nothing to save` is the silent-success shape this
+        # project treats as its worst bug class. Refuse to make the claim instead: say the mine is
+        # incomplete and that re-running advances it, since each contact mines one more chunk.
+        if not sync_status(repo)["complete"]:
+            return _fail_json(
+                "can't tell yet whether there's anything to save -- this repo's history is still "
+                "being mined, and until that finishes sgt does not examine the working tree. "
+                "Re-run `sgt save` (each run mines another chunk) until it reports a result",
+                as_json,
+            )
         msg = "nothing to save -- no uncommitted ops"
         nothing = {"ok": True, "saved": False, "message": msg}
         if return_payload:  # this early exit is a real outcome, not a shortcut past the payload

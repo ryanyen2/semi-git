@@ -1422,10 +1422,12 @@ def test_focus_subgraph_revert_splits_target_blast_and_foundation_with_before_af
     `foundation` -- each carrying its op-count before and after, so a renderer can dim the field and
     morph just these nodes instead of listing 64 op-ids.
 
-    Since the forward-subtraction default, the acted-on leaf *grows* rather than shrinks: the
-    revert appends compensating `prune` ops instead of dropping the target, so the dependents that
-    used to appear as shrinking `blast` leaves now survive untouched and never enter the subgraph.
-    The pane still has to name the leaf that changed, which is what this pins."""
+    Since the forward-subtraction default the revert both drops ops and mints compensating `prune`
+    ops, so the acted-on leaf moves in both directions at once: F35 pulls the entity's layout
+    siblings (its anchor and its trailing gap) in as targets so they are excluded alongside it, and
+    the emptied-path pass then mints one prune, which is two ops out and one in for this leaf. The
+    dependents that used to appear as shrinking `blast` leaves survive untouched and never enter the
+    subgraph. The pane still has to name the leaf that changed, which is what this pins."""
     from sgt.api import map_view, verb_preview_view
 
     repo, ops = _per_file_leaf_tree(tmp_path)
@@ -1448,8 +1450,11 @@ def test_focus_subgraph_revert_splits_target_blast_and_foundation_with_before_af
 
     # The per-node deltas account for exactly the ops the plan moves. The compensating ops the
     # subtraction mints must be attributed to a feature, or the pane renders empty.
+    # The sign of the net is the planner's business (F35 made it negative for this shape); what the
+    # pane needs is that the plan moves ops in both directions and every one of them lands on a node.
     net = sum(n["ops_after"] - n["ops_before"] for n in focus["nodes"])
-    assert net == len(view["added"]) - len(view["removed"]) > 0
+    assert view["removed"] and view["added"]
+    assert net == len(view["added"]) - len(view["removed"])
 
     # edges are the map's cross-feature edges restricted to focus members; context is the rest.
     fids = set(by_fid)
@@ -1694,3 +1699,40 @@ def test_now_view_suggests_a_plain_save_when_the_words_would_not_paste(tmp_path)
     (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
 
     assert now_view(repo)["next_action"]["command"] == "sgt save"
+
+
+def test_forks_across_miner_versions_are_marked_as_store_generations_not_divergent_edits(tmp_path):
+    """F82: a MINER_VERSION bump re-mines history but nothing evicts the previous generation, so the
+    same commit can sit in the store twice with different ids. The two generations disagree about a
+    symbol's after-state and collide on its `before_version`, which reads as a fork -- 619 of the 642
+    on sgt's own repo. Nobody made those edits, and no hand-merge closes them (the remedy is
+    `sgt advanced migrate ops-v3`), so a fork whose tips carry different miner_versions must be
+    flagged as such rather than presented as a divergence the user is expected to resolve."""
+    from sgt import state
+    from sgt.api import forks_view
+    from sgt.core.op import MINER_VERSION, make_op
+    from sgt.core.store import Store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)
+
+    store = Store(repo)
+    old = str(int(MINER_VERSION) - 1)
+
+    def _fork(symbol, mv_a, mv_b):
+        a = store.add(make_op({symbol: ("v0", "left")}, {symbol: b"left"}, miner_version=mv_a))
+        b = store.add(make_op({symbol: ("v0", "right")}, {symbol: b"right"}, miner_version=mv_b))
+        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"sgt merge-op {a.id} {b.id}"}
+
+    state.save_json(repo, "forks", [
+        _fork("c.py::baz", MINER_VERSION, MINER_VERSION),  # a real divergence
+        _fork("d.py::qux", old, MINER_VERSION),            # two mining generations, not an edit
+    ])
+
+    by_symbol = {f["symbol"]: f for f in forks_view(repo)["forks"]}
+    assert set(by_symbol) == {"c.py::baz", "d.py::qux"}, "neither fork may be silently dropped"
+    assert by_symbol["c.py::baz"]["cross_version"] is False
+    assert by_symbol["d.py::qux"]["cross_version"] is True

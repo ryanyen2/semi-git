@@ -8,6 +8,8 @@ clobbering it (U7.5, closing the two gaps FINDINGS.md flagged under its 2026-07-
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from sgt.core.fold import code
@@ -1013,3 +1015,83 @@ def _tracked_after(repo):
     import subprocess
     out = subprocess.run(["git", "-C", str(repo), "ls-files"], capture_output=True, text=True).stdout
     return [l for l in out.splitlines() if l and not l.startswith(".sgt/")]
+
+
+def test_a_chunked_backfill_admits_every_op_the_finished_store_can_ground(tmp_path, monkeypatch):
+    """A history mined in several deadline-cut chunks must end at the same ideal as one mined whole.
+
+    Backward backfill reduces after every chunk, and an op whose producer is older than the chunk
+    boundary is legitimately ungrounded *at that moment* -- so reduction drops it. The drop has to be
+    reconsidered once the producer lands, and it was not: `base_ids` is the previous reduced answer, so
+    the dropped op is in neither `base_ids` nor `new_committed_ids` on the next chunk and never comes
+    back (F68 layer 2). Worse, once `reached_genesis` flips, the no-op gate's fingerprint covers HEAD,
+    the working tree, and the ideal entry but *not* the op store -- so no later read recomputes either
+    (F68 layer 1). Measured on a real corpus repo this cost ~17 points of byte-exact reconstruction at
+    the median.
+
+    The invariant is chunk-invariance of the *result*, so this asserts against `reduce_to_ideal` over
+    the finished store rather than a hardcoded count: whatever the store can ground, the persisted
+    ideal must admit.
+    """
+    from sgt.core import order
+    from sgt.core.lens import current_ideal
+
+    # Self-calibrate the chunk budget instead of hardcoding one: a fixed number starves the walk on a
+    # slow machine (below one commit's cost, no chunk ever mines anything and the frontier never moves)
+    # and lets a fast one finish in a single chunk, which would make this test pass while testing
+    # nothing. Time one whole mine on a throwaway copy, then give each chunk a third of it.
+    warmup = corpus.CORPUS["linear_history"].build(tmp_path / "warmup")
+    started = time.monotonic()
+    get(warmup)
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", (time.monotonic() - started) / 3)
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    chunks = 0
+    for _ in range(60):
+        get(repo)
+        chunks += 1
+        if sync_status(repo)["reached_genesis"]:
+            break
+    assert sync_status(repo)["reached_genesis"], "chunked walk never finished; test cannot conclude"
+    assert chunks > 1, "history mined in one chunk; test cannot conclude"
+
+    ops = Store(repo).all_ops()
+    groundable = set(order.reduce_to_ideal(frozenset(o.id for o in ops), ops))
+    assert groundable, "no groundable ops; fixture mined nothing"
+    admitted = set(current_ideal(repo).op_ids)
+    assert admitted == groundable, (
+        f"chunked mining left {len(groundable - admitted)} groundable ops out of the ideal "
+        f"(admitted {len(admitted)} of {len(groundable)})"
+    )
+
+
+def test_fsck_tree_classifies_a_tracked_path_with_a_non_ascii_name(tmp_path):
+    """F72: a tracked, in-scope file sgt cannot reproduce must appear in *some* `fsck --tree` class.
+    `_tracked_paths` ran plain `git ls-files`, which C-quotes any path containing non-ASCII bytes
+    (`"a/\\346\\234\\272.bin"`). That quoted literal names nothing on disk, so the `is_file()` guard in
+    `_status_paths`' `to_delete` filter dropped it, and the path fell out of `backstop_kept`,
+    `unmanaged`, and `drift` alike -- reported as nothing at all. On yanshengjia/ml-road that silently
+    excused three tracked PDFs (5.6MB, 12MB, 35MB) that sgt never composes, and because the evaluation's
+    denominator counts them as in scope, they scored as *successes*: 10 points of inflation on a 30-file
+    repo. Same `is_file()`-swallows-a-misparsed-path shape as the V4 harness defect, in the one function
+    whose job is to report what sgt cannot reproduce. `-z` is the fix; symlink entries stay in the list
+    because `unmanaged` is built from them."""
+    from sgt.core.lens import fsck_tree
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal = get(repo)
+    put(repo, ideal)
+    assert not fsck_tree(repo)["drift"], "fixture should start clean"
+
+    # A binary blob under a non-ASCII name, committed outside sgt: nothing in the store can
+    # regenerate its bytes, so it is exactly a `backstop_kept` path.
+    name = "資料/機械学習.bin"
+    (repo / "資料").mkdir()
+    (repo / name).write_bytes(bytes(range(256)) * 4)
+    GitBinding(repo).commit_all("add a blob with a non-ascii name")
+
+    result = fsck_tree(repo)
+    assert name in result["backstop_kept"], (
+        f"tracked non-ASCII path vanished from every fsck class; got "
+        f"{ {k: v for k, v in result.items() if v} }"
+    )

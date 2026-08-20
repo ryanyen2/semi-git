@@ -305,11 +305,17 @@ def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
 
 
 def reduce_to_ideal(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
-    """The largest *valid ideal* contained in a raw provenance-derived op set: ground it (keep only
+    """One maximal *valid ideal* contained in a raw provenance-derived op set: ground it (keep only
     ops all of whose chain/reference/declared prerequisites are also present -- downward-closure),
     then drop forked tips and their up-sets (fork-freedom). One pass suffices, in that order:
     `fork_free` removes only upward-closed up-sets, and removing an upward-closed set from a
     downward-closed one leaves it downward-closed, so grounding survives fork-freeing.
+
+    *Maximal*, not maximum, and not monotone in the input: admitting one more op can rebirth-fork a
+    symbol, and `fork_free` then drops that fork's whole up-set, so a subset can reduce larger than
+    the whole. Measured on bentoml/llm-optimizer: a subset reduces to 728 ops where the full 751-op
+    store reduces to 723, and a greedy hill-climb lifts Den4ikAI/ruaccent from 211 to 229. Callers
+    must not read the result as an upper bound on what a store can compose.
 
     A raw provenance scan of real history is not directly a valid ideal for two reasons a
     single-clone `sgt` still hits (not just sync): a symbol added, deleted, then re-added rebirths

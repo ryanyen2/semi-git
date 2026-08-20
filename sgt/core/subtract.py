@@ -35,7 +35,7 @@ from pathlib import Path
 
 from sgt.core import order
 from sgt.core.mine import _ANCHOR_FIRST, _content_version, _positional_version
-from sgt.core.op import BOTTOM, Op, is_bottom, make_op
+from sgt.core.op import BOTTOM, Op, is_behavioral, is_bottom, make_op
 from sgt.core.patch import merge3
 from sgt.core.store import Store
 
@@ -76,6 +76,74 @@ def _semantic_closure(target_ids, blast, by_id, declared_dependents_of) -> set[s
                 removal.add(oid)
                 changed = True
     return removal
+
+
+def _broken_references(
+    ops, survivors, removal, born, by_id, images_of, post_frontier, new_ops,
+) -> tuple[str, ...]:
+    """Surviving symbols whose bytes still name a removed entity: never swept, always reported.
+
+    Two complementary sweeps. (1) `requires`-level, any file: ops whose recorded references name a
+    removed symbol (the def-use dependents left in place -- e.g. a promotion module calling a removed
+    queue). (2) Byte-level over the files the removal touched: a reference the extractor missed (a
+    callback handed to `set_defaults`, a name inside a string) still NameErrors the moment the pruned
+    symbol is gone. Both scan only the removal's own files and dependents, against post-splice images.
+
+    Called from both of `plan_subtraction`'s returns. It used to sit only on the splicing path, which
+    made the warning unreachable in the one shape whose `born` set is reliably non-empty: a removal
+    that takes an entity outright needs no splice, so `forward` is empty and the early return fired
+    before the sweep. Reverting a function while a string literal in the same file still named it
+    said nothing, and the same removal *did* warn as soon as any unrelated symbol needed a splice
+    (F123 -- the reason `still references removed code` never fired in the WP-V4 sweep).
+    """
+    removed_names = {sym.rsplit("::", 1)[1].encode() for sym in born
+                     if "::" in sym and "::__" not in sym}
+    if not removed_names:
+        return ()
+    spliced_by_sym = {next(iter(op.footprint)): op for op in new_ops}
+    broken: set[str] = set()
+
+    def _flag_if_naming_removed(sym: str) -> None:
+        if "::__" in sym or sym in born or sym in broken:
+            return
+        tip_id = post_frontier.get(sym)
+        if tip_id is None:
+            return
+        spliced = spliced_by_sym.get(sym)
+        image = spliced.images[sym] if spliced is not None else images_of(tip_id).get(sym)
+        if image and any(name in image for name in removed_names):
+            broken.add(sym)
+
+    for op in ops:
+        if op.id in survivors and any(req_sym in born for (req_sym, _v) in op.requires):
+            for sym in op.footprint:
+                _flag_if_naming_removed(sym)
+    touched_files = {sym.split("::", 1)[0] for oid in removal
+                     for sym in by_id[oid].footprint}
+    for sym in post_frontier:
+        if sym.split("::", 1)[0] in touched_files:
+            _flag_if_naming_removed(sym)
+    return tuple(sorted(broken))
+
+
+def layout_ops_of(op_ids, by_id, pool) -> set[str]:
+    """The ops in `pool` carrying the residue/anchor facts of the entities *born* in `op_ids`.
+
+    An entity's trailing gap and its anchor fact are siblings of the entity, not dependents and not
+    prerequisites, so neither `upset_in` nor `downset_in` reaches them. Both directions of the ideal
+    edit have to move them by hand or the fold's byte partition stops matching the file; see the two
+    call sites (`plan_subtraction` here, `verbs.plan_restore`) for what each one costs.
+    """
+    wanted: set[str] = set()
+    for sym in _born_symbols(op_ids, by_id):
+        path, sep, name = sym.partition("::")
+        if not sep or not name or "::__" in sym or "." in name:
+            continue  # only top-level entities own residue/anchor facts
+        wanted.add(f"{path}::__residue__::{name}")
+        wanted.add(f"{path}::__anchor__::{name}")
+    if not wanted:
+        return set()
+    return {oid for oid in pool if wanted & set(by_id[oid].footprint)}
 
 
 def _repair_layout(
@@ -172,6 +240,56 @@ def _repair_layout(
     return repairs
 
 
+def _prune_emptied_paths(
+    paths, pre_frontier, live_after, by_id, images_of, removal, tag: str,
+) -> list[Op]:
+    """The counterpart of `_repair_layout` for a path the removal leaves with *no* entity at all.
+
+    A file's end-of-file gap is `path::__residue__::\\x00HEAD\\x00` -- a sentinel, not any entity's
+    name -- so `layout_ops_of` never reaches it and no removal ever takes it. Left behind it is still
+    live and still content-bearing (`op.CONTENT_BEARING_KINDS` includes `residue`), so `fold.code`
+    keeps covering the path and folds it to blank: reverting a file's last entity left a zero-byte
+    tracked file, and for Python an importable module with none of its symbols (F42, 2026-08-16).
+    Bottoming what remains makes the ideal genuinely stop covering the path, so
+    `lens._write_working_tree` deletes it through the existing R4 backstop.
+
+    Two gates, and both were found by trying to do without them:
+
+    - The path must have had a live entity *before*. A comment-only file and an empty file are each
+      represented by that same lone sentinel op and nothing else, so a predicate reading only the
+      result would delete them -- a worse bug than the phantom it fixes.
+    - What remains must be **blank**. A file's leading gap carries any header comment, and it is that
+      same `\\x00HEAD\\x00` symbol: bottoming it discarded those bytes, so `restore` brought the entity
+      back without the comment (byte loss), and in the meantime `code(I)` covered no symbol at all for
+      the path, which sent `lens._write_working_tree` into its R4 backstop and left the reverted code
+      sitting on disk under a `✓ revert applied` (a silent success -- strictly worse than a phantom).
+      Leaving a non-blank path alone is also the right answer on its own terms: reverting the only
+      function of a file that has a header comment should leave the header comment.
+    """
+    def live_syms(frontier, in_path: str) -> dict[str, str]:
+        return {sym: oid for sym, oid in frontier.items()
+                if sym.split("::", 1)[0] == in_path
+                and not is_bottom(by_id[oid].footprint[sym][1])}
+
+    out: list[Op] = []
+    for path in sorted(paths):
+        orphaned = live_syms(live_after, path)
+        if any(is_behavioral(sym) for sym in orphaned):
+            continue
+        if not any(is_behavioral(sym) for sym in live_syms(pre_frontier, path)):
+            continue  # never had an entity (comment-only, empty): not ours to remove
+        if any((images_of(oid).get(sym) or b"").strip() for sym, oid in orphaned.items()):
+            continue  # real bytes still live here (a header comment): never ours to discard
+        for sym, oid in sorted(orphaned.items()):
+            _before, sym_after = by_id[oid].footprint[sym]
+            out.append(make_op(
+                {sym: (sym_after, BOTTOM)}, {sym: None}, kind="prune",
+                intent=f"revert {tag}: remove {path}, now empty",
+                resolves=frozenset(o for o in removal if sym in by_id[o].footprint),
+            ))
+    return out
+
+
 def plan_subtraction(
     repo: str | Path, target_ids, ops: list[Op], ideal_ids, declared, *, tag: str,
 ) -> SubtractionPlan:
@@ -183,13 +301,25 @@ def plan_subtraction(
         return SubtractionPlan(ok=True, after_ids=live,
                                message=f"{tag}: none of its ops are in the current ideal; no change")
 
-    blast = set(order.upset_in_many(targets, live, ops, declared))
     declared_dependents_of: dict[str, set[str]] = {}
     for a, b in declared:
         if a in live and b in live:
             declared_dependents_of.setdefault(a, set()).add(b)
 
-    removal = _semantic_closure(targets, blast, by_id, declared_dependents_of)
+    # An entity's `__residue__`/`__anchor__` ops are its *siblings*, not its dependents, so no up-set
+    # reaches them. Reverting the op that introduced `mod.py::only` used to leave that entity's
+    # trailing gap live and orphaned, and `fold._fold_file` appends an orphaned gap at the end of the
+    # file -- so `code(ideal)` stayed one gap longer than whatever a developer typed into that path
+    # next, and `put()` refused every save there from then on, `sgt undo` included (F35). Pull the
+    # layout facts in as *targets* rather than pruning them forward, so they ride the same exclusion
+    # the entity does and `sgt restore` brings gap, anchor and entity back together.
+    while True:
+        blast = set(order.upset_in_many(targets, live, ops, declared))
+        removal = _semantic_closure(targets, blast, by_id, declared_dependents_of)
+        also = layout_ops_of(removal, by_id, live) - removal
+        if not also:
+            break
+        targets = targets | also
 
     # The upward-closed part of the removal is excludable exactly as before; each member's whole
     # up-set lies inside the removal, so excluding it can never orphan a survivor.
@@ -199,9 +329,9 @@ def plan_subtraction(
     survivors = live - excluded
     forward = removal - excluded
 
-    if not forward:
-        return SubtractionPlan(ok=True, after_ids=frozenset(survivors),
-                               excluded=frozenset(excluded))
+    layout_paths = {sym.split("::", 1)[0] for oid in removal
+                    for sym in by_id[oid].footprint if "::" in sym}
+    pre_frontier = order.frontier(live, ops)
 
     store = Store(repo)
 
@@ -211,6 +341,20 @@ def plan_subtraction(
             return op.images
         stored = store.get(op_id)
         return stored.images if stored is not None else {}
+
+    if not forward:
+        # Nothing to splice forward -- but a file whose whole live chain was excluded can still be
+        # left covered by its leading-gap sentinel, so it needs the same pass (F42).
+        post_frontier = order.frontier(survivors, ops)
+        emptied = _prune_emptied_paths(layout_paths, pre_frontier, post_frontier,
+                                       by_id, _images, removal, tag)
+        return SubtractionPlan(
+            ok=True, after_ids=frozenset(survivors | {o.id for o in emptied}),
+            new_ops=tuple(emptied), excluded=frozenset(excluded),
+            broken_references=_broken_references(
+                ops, survivors, removal, _born_symbols(removal, by_id), by_id, _images,
+                post_frontier, emptied),
+        )
 
     chains = order._ordered_chains(live, ops)
     post_frontier = order.frontier(survivors, ops)
@@ -301,38 +445,8 @@ def plan_subtraction(
             new_ops.append(splice)
             subtracted.append(sym)
 
-    # Surviving symbols whose bytes still name a removed entity: never swept, always reported.
-    # Scan only the reference dependents of the removal (small set), against post-splice images.
-    spliced_by_sym = {next(iter(op.footprint)): op for op in new_ops}
-    removed_names = {sym.rsplit("::", 1)[1].encode() for sym in born
-                     if "::" in sym and "::__" not in sym}
-    broken: set[str] = set()
-    if removed_names:
-        def _flag_if_naming_removed(sym: str) -> None:
-            if "::__" in sym or sym in born or sym in broken:
-                return
-            tip_id = post_frontier.get(sym)
-            if tip_id is None:
-                return
-            spliced = spliced_by_sym.get(sym)
-            image = spliced.images[sym] if spliced is not None else _images(tip_id).get(sym)
-            if image and any(name in image for name in removed_names):
-                broken.add(sym)
-
-        # Two complementary sweeps. (1) `requires`-level, any file: ops whose recorded references
-        # name a removed symbol (the def-use dependents left in place -- e.g. a promotion module
-        # calling a removed queue). (2) Byte-level over the files the removal touched: a reference
-        # the extractor missed (a callback handed to `set_defaults`, a name inside a string) still
-        # NameErrors the moment the pruned symbol is gone.
-        for op in ops:
-            if op.id in survivors and any(req_sym in born for (req_sym, _v) in op.requires):
-                for sym in op.footprint:
-                    _flag_if_naming_removed(sym)
-        touched_files = {sym.split("::", 1)[0] for oid in removal
-                         for sym in by_id[oid].footprint}
-        for sym in post_frontier:
-            if sym.split("::", 1)[0] in touched_files:
-                _flag_if_naming_removed(sym)
+    broken = _broken_references(ops, survivors, removal, born, by_id, _images,
+                                post_frontier, new_ops)
 
     # Keep the fold's layout invariant: every entity still live needs a live residue gap and an
     # anchor naming a live predecessor. The removal can strip both off symbols it never intended
@@ -348,18 +462,18 @@ def plan_subtraction(
         stored = store.get(op_id)
         return stored.images if stored is not None else {}
 
-    pre_frontier = order.frontier(live, ops)
     live_after = order.frontier(survivors | {op.id for op in new_ops}, ops + new_ops)
-    layout_paths = {sym.split("::", 1)[0] for oid in removal
-                    for sym in by_id[oid].footprint if "::" in sym}
     for layout_path in sorted(layout_paths):
         new_ops.extend(
             _repair_layout(layout_path, pre_frontier, live_after, _images_any, all_by_id, tag)
         )
 
+    new_ops.extend(_prune_emptied_paths(layout_paths, pre_frontier, live_after,
+                                        all_by_id, _images_any, removal, tag))
+
     after = frozenset(survivors | {op.id for op in new_ops})
     return SubtractionPlan(
         ok=True, after_ids=after, new_ops=tuple(new_ops), excluded=frozenset(excluded),
         subtracted_symbols=tuple(sorted(subtracted)), pruned_symbols=tuple(sorted(pruned)),
-        kept_conflicts=tuple(sorted(kept)), broken_references=tuple(sorted(broken)),
+        kept_conflicts=tuple(sorted(kept)), broken_references=broken,
     )

@@ -29,7 +29,7 @@ import math
 import igraph as ig
 import leidenalg as la
 
-from sgt.lens import cluster, tree
+from sgt.lens import cluster, label as labelmod, tree
 
 # Boundary bound (KTD3): only a new symbol's TOP_K highest-weight owned, non-hub neighbours enter
 # the local graph, so the local-move cost is proportional to genuinely new work, never the repo
@@ -269,7 +269,14 @@ def assign_at_save(repo, ideal, ops) -> dict | None:
             # clustered/LLM label a rebuild computes for the lane (`tree.label_tree` only lets a
             # *non-empty* authored label override the clustered proposal). So the register starts
             # empty -- the rebuild names the lane, and a later `rename` overrides that.
-            provisional = symbol.split("::", 1)[0]
+            # Name it after the *symbol*, not its file. The file path was the visible half of the
+            # first-save experience: a save of `cli.py::cmd_swap` reported "new feature — unnamed" and
+            # then `sgt show` gave its label as `"coursecraft/cli.py"`, so the taught promise ("your
+            # words become the name of the work") read as false and two new lanes from one save both
+            # displayed as file paths -- indistinguishable in `log`. `fallback_label` is the same
+            # deterministic namer every un-LLM'd cluster already uses, so the provisional label now
+            # matches what a rebuild would show instead of contradicting it.
+            provisional = labelmod.fallback_label([symbol]).label
             lane_id = _new_lane_id(symbol)
             existing = af.get(lane_id)
             if existing is not None:

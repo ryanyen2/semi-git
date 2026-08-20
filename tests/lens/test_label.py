@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from sgt.lens import label as label_mod
@@ -266,6 +267,28 @@ def test_clean_symbol_name_distinguishes_names_from_artifacts():
     assert label_mod._clean_symbol_name("a.py::__anchor__::x") is None
 
 
+def test_leaf_prompt_never_offers_a_fold_artifact_as_an_entity():
+    """A residue/anchor member is a verbatim byte-gap between named entities, not a name -- which is
+    exactly what `_clean_symbol_name` is for, and the fallback path already respects it. The LLM path
+    did not: it split each member on `::` and handed `__residue__::cmd_waitlist_join` to the model
+    under "the entities are the ground truth for what the code IS". In pilot 1's confplan that named
+    a leaf of README + `build_parser` + `main` + `pytest.ini` "Waitlist Queue" -- a name whose only
+    support was an internal sentinel, sitting next to the feature that really is the waitlist.
+    """
+    prompt = label_mod._leaf_prompt(
+        ["README.md", "cli.py::__residue__::cmd_waitlist_join", "cli.py::__anchor__::main",
+         "cli.py::build_parser", "cli.py::main", "pytest.ini"],
+        ["waitlist join and show commands", "README and help text"], "rework×20",
+    )
+    entities = next(l for l in prompt.splitlines() if l.startswith("Entities:"))
+    assert "__residue__" not in entities and "__anchor__" not in entities
+    assert "waitlist" not in entities            # the artifact's host name is not this leaf's content
+    assert "build_parser" in entities and "main" in entities
+    # A leaf made of nothing but artifacts has no entity line to offer at all.
+    only_artifacts = label_mod._leaf_prompt(["a.py::__residue__::x", "a.py::__anchor__::x"])
+    assert "Entities:" not in only_artifacts and "Files: a.py" in only_artifacts
+
+
 def test_weighted_jaccard_grades_by_op_mass_not_symbol_count():
     # a shared heavy symbol keeps two sets similar; dropping it is expensive
     w = {"a": 10.0, "b": 1.0, "c": 1.0}
@@ -460,6 +483,37 @@ def test_naming_from_own_words_never_calls_the_client(tmp_path, monkeypatch):
 
     assert result["nodes"]["f-1"]["label"] == subject
     assert calls["n"] == 0
+
+
+def test_every_op_votes_on_its_feature_name(tmp_path, monkeypatch):
+    """The dominance gate asks whether one commit carries most of a feature's mass, so the mass has
+    to be every op's. Counting `op.provenance` meant only re-mined ops voted: in a repo built
+    through `sgt save`, 4 of 370 ops had provenance, one of them was the seed commit's, and a
+    71-op feature was confidently named `init repo` on a sample of one."""
+    from sgt.core.lens import get, put
+    from sgt.core.store import Store
+    from sgt.lens import tree as tree_mod
+    from sgt.store.gitbind import init_store
+
+    monkeypatch.setattr(label_mod, "get_client", _no_client)
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("init repo")
+    get(repo)
+
+    (repo / "b.py").write_text("def beta():\n    return 2\n", encoding="utf-8")
+    ideal = get(repo)
+    put(repo, ideal, "add the beta helper")
+
+    ops = Store(repo).all_ops()
+    assert [o for o in ops if not o.provenance], "fixture must contain pending (saved) ops"
+    built = tree_mod.build(repo, ops, ideal)
+    _subjects, _kinds, counts = tree_mod.label_context(repo, ops, built)
+
+    ops_per_leaf = Counter(built["op_leaf"].values())
+    for leaf, n in ops_per_leaf.items():
+        assert sum(counts.get(leaf, {}).values()) == n, leaf
 
 
 def test_both_tree_build_paths_name_a_feature_the_same_way(tmp_path, monkeypatch):

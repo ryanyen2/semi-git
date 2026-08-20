@@ -184,30 +184,47 @@ def test_every_suggested_command_is_a_real_dispatchable_verb(tmp_path):
     commands in the skills and docs, rather than a parser walk of its own. This test previously had
     one, and it shared the blind spot the docs checker had: an unknown *subcommand* was treated as a
     positional argument, so when `why` was promoted out of the `feature` grouping this test kept
-    passing while `show_view` went on suggesting `sgt feature why`.
-
-    It had a second blind spot, of the same kind: no target here was ever commit-shaped, so the
-    branch that answers a commit sha was the one branch whose suggestions nothing checked -- and
-    `sgt feature why` came back in it, unnoticed, for exactly that reason. Both a *resolving* sha
-    (the save rung) and a non-resolving one (the explain-and-stop path) are covered now."""
+    passing while `show_view` went on suggesting `sgt feature why`."""
     from scripts.check_docs_commands import unrunnable
 
     repo, result = _repo(tmp_path)
-    targets = [_feature(result), "a.py::foo", "README.md", "nonsense-token",
-               _a_logged_save_id(repo), "deadbee"]
+    targets = [_feature(result), "a.py::foo", "README.md", "nonsense-token"]
     seen = 0
     for target in targets:
         for step in api.show_view(repo, target)["next"]:
-            # `git show` is the one non-sgt command `show` points at, and deliberately: the
-            # line-by-line diff lives in git and claiming otherwise would be the lie. It is checked
-            # by running it for real in `test_a_save_id_from_the_log_is_shown_as_a_save`.
-            if not step["cmd"].startswith("sgt "):
-                assert step["cmd"].startswith("git show "), f"unexpected foreign cmd {step['cmd']!r}"
-                continue
             reason = unrunnable(step["cmd"])
             assert reason is None, f"suggested {step['cmd']!r}: {reason}"
             seen += 1
     assert seen >= 6, "expected suggestions across the selection kinds"
+
+
+# Named explicitly rather than derived: sgt has no runtime "is this verb a write" bit, and inferring
+# one from the parser would be inventing a classification this test then trusts. Short list, one line
+# to extend when a verb is added, and wrong only in the safe direction (a missing entry weakens the
+# test; it can never fail a read).
+_MUTATING_VERBS = frozenset({"revert", "save", "commit", "switch", "fulfill", "split", "merge",
+                             "edit", "plan", "reconcile", "identity", "checkpoint", "drift"})
+
+
+def test_a_miss_never_offers_a_verb_that_would_change_the_repo(tmp_path):
+    """The user typed a token `show` does not recognize -- so `show` does not know what the token
+    means. Suggesting `sgt revert <that same token>` answered "what is this?" with a demolition
+    charge: `revert` resolves a phrase *by meaning*, so on the one input where sgt has admitted it
+    cannot identify the target, the offered next step was to let a different resolver guess and then
+    act on the guess. `revert` has no `--dry-run`, so there was no safe way to take the suggestion.
+
+    A miss is a read that failed; every way out of it must also be a read."""
+    repo, _ = _repo(tmp_path)
+    view = api.show_view(repo, "the waitlist promotion logic")
+    assert view["ok"] is False
+    offered = [s["cmd"] for s in view["next"]]
+    assert offered, "a miss must still say where to look"
+    for cmd in offered:
+        verb = cmd.split()[1] if cmd.startswith("sgt ") else cmd
+        assert verb not in _MUTATING_VERBS, f"a miss offered the mutating verb {verb!r}: {cmd!r}"
+    # And the reason the phrase failed is stated, since "not a known feature" reads as "you have no
+    # such feature" when the real fact is that this verb does not resolve phrases at all.
+    assert "phrase" in view["message"] or "label" in view["message"], view["message"]
 
 
 def test_cli_show_json_and_text_agree_and_exit_codes_are_honest(tmp_path, capsys, monkeypatch):
@@ -285,7 +302,76 @@ def test_affected_symbols_are_capped_with_an_honest_count(tmp_path):
     assert isinstance(cons["removes"], int) and isinstance(cons["dependents"], int)
 
 
-# -- saves -------------------------------------------------------------------------------------
+def _rewritten_symbol(tmp_path):
+    """A symbol introduced in one commit and rewritten in a later one -- the shape that made `show`
+    name the wrong commit."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "rewritten"
+    repo.mkdir()
+    gb, _ = init_store(repo)
+    (repo / "cli.py").write_text("def cmd_search(q):\n    return [q]\n", encoding="utf-8")
+    gb.commit_all("add course search")
+    (repo / "cli.py").write_text(
+        "def cmd_search(q, store):\n    return store.find(q)\n", encoding="utf-8")
+    gb.commit_all("extract Repository class for persistence")
+    get(repo)
+    lensmap.build_map(repo)
+    return repo
+
+
+def test_show_symbol_provenance_covers_its_whole_history_not_just_its_current_op(tmp_path):
+    """"When did this land, and what else happened to it" is the question `show <symbol>` exists to
+    answer, and it was answering with only the symbol's *current defining op*. A symbol selection is
+    deliberately the frontier tip -- that is the correct thing to *revert* -- but as a read it meant
+    `sgt show coursecraft/cli.py::cmd_search` reported `saves: extract Repository class for
+    persistence` while `git log -S"def cmd_search"` said the symbol was introduced by `add course
+    search`. On the study fixture that is Request 1's exact question, answered with the wrong commit.
+
+    The revert target must not change, so only the provenance and the edit count widen."""
+    repo = _rewritten_symbol(tmp_path)
+    view = api.show_view(repo, "cli.py::cmd_search")
+
+    assert view["kind"] == "symbol"
+    subjects = [s["subject"] for s in view["saves"]]
+    assert "add course search" in subjects, subjects          # the introduction
+    assert "extract Repository class for persistence" in subjects, subjects   # the rewrite
+    assert view["op_count"] >= 2                              # not "1 edit"
+
+    # The revert target is untouched: consequences still describe the frontier tip alone.
+    assert view["consequences"]["affected_symbol_count"] >= 1
+
+
+def test_the_elided_save_count_comes_with_a_way_to_see_them(tmp_path, capsys, monkeypatch):
+    """"(+2 older save(s))" named a quantity of hidden information and offered no verb to reveal it.
+
+    The `save_limit` cap existed only as an API keyword, so from the CLI those saves were unreachable:
+    nothing in `next:` lists a *symbol's* saves (`log --focus` lists a feature's checkpoints,
+    `advanced blame` lists a file's symbols). On the study fixture that is not cosmetic -- the two
+    saves the default cap hides on `enrollment.py::enroll` are the early links of the waitlist chain,
+    which is the whole of Request 2. Saying what isn't shown is half the rule; the other half is
+    letting the reader look."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "many"
+    gb, _ = init_store(repo)
+    for i in range(8):
+        (repo / "fetch.py").write_text(
+            f"def fetch(u):\n    return get(u, retries={i})\n", encoding="utf-8")
+        gb.commit_all(f"retry pass {i}")
+    get(repo)
+    lensmap.build_map(repo)
+    monkeypatch.chdir(repo)
+
+    assert main(["show", "fetch.py::fetch"]) == 0
+    capped = capsys.readouterr().out
+    assert "older save(s)" in capped, capped
+    assert "--saves" in capped, "the elision must name the way to widen it"
+
+    assert main(["show", "--saves", "50", "fetch.py::fetch"]) == 0
+    widened = capsys.readouterr().out
+    assert "older save(s)" not in widened, widened
+    assert widened.count("retry pass") > capped.count("retry pass")
 
 
 def test_a_save_id_from_the_log_is_shown_as_a_save(tmp_path):

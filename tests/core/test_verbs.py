@@ -350,7 +350,9 @@ def test_every_verb_output_is_a_valid_ideal(tmp_path_factory, data):
 
     preview = (verbs.plan_revert if verb == "revert" else verbs.plan_restore)(repo, target)
     if preview.ok:
-        assert is_valid_ideal(ops, preview.after_ids)
+        # `after_ids` may name ops the preview *mints* (splices, prunes) that `apply` will store,
+        # so the law is over the composed set -- the same one `plan_revert` validates against.
+        assert is_valid_ideal(ops + list(preview.new_ops), preview.after_ids)
     else:
         assert preview.after_ids == preview.before_ids  # a refusal leaves the ideal untouched
 
@@ -493,3 +495,55 @@ def test_repair_layout_is_a_no_op_when_the_removal_left_the_partition_intact():
 
     assert _repair_layout(path, frontier, dict(frontier),
                           lambda oid: by_id[oid].images, by_id, "F") == []
+
+
+def test_restore_picks_one_layout_head_when_repairs_forked_the_anchor_chain(tmp_path):
+    """F39: `_repair_layout` mints an anchor repair with `before=None` (`subtract.py`'s `_emit`,
+    kind `touched`) whenever a removal leaves that layout symbol no live tip, so an entity removed
+    and reborn a few times owns *several* heads of one anchor chain in the store. That is legal
+    there -- the store is a forest of versions, fork-freedom binds the ideal -- but `plan_restore`'s
+    whole-store fallback rung (the one the test above exercises, for a symbol the reduced ideal
+    parks) pulled *every* sibling layout op, so the union it handed to `_validated` forked the
+    anchor chain and the restore was refused. The entity's bytes were in the store the whole time
+    and compose identically under either head, so the refusal manufactured data loss: found by the
+    WP-V4 sweep, where it left a file at 1 byte with no documented command able to bring it back.
+
+    The birth-fork below is what puts resolution on the whole-store rung; the second anchor head is
+    added by hand in the shape `_repair_layout` emits it (`intent="revert <tag>: keep <name>'s place
+    in <path>"`), rather than driven through the multi-cycle revert sequence the sweep took to it.
+    """
+    from sgt.core.mine import _content_version, _positional_version
+    from sgt.core.subtract import _ANCHOR_FIRST
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "base.py").write_text("x = 1\n", encoding="utf-8")
+    gb.commit_all("base, no foo yet")
+    main = gb.symbolic_ref().rsplit("/", 1)[-1]
+    gb._git("checkout", "-q", "-b", "feature")
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feature adds foo")
+    gb._git("checkout", "-q", main)
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("main adds foo")
+    gb._git("merge", "-q", "--no-edit", "-X", "ours", "feature")
+    get(repo)
+
+    ops = Store(repo).all_ops()
+    assert "a.py::foo" not in order.frontier(get(repo).op_ids, ops)  # on the whole-store rung
+
+    anchor = "a.py::__anchor__::foo"
+    image = _ANCHOR_FIRST.encode()
+    Store(repo).add(make_op(
+        {anchor: (None, _positional_version(anchor, _content_version(image + b"repair")))},
+        {anchor: image}, kind="touched", intent="revert F: keep foo's place in a.py",
+    ))
+    heads = [o for o in Store(repo).all_ops()
+             if anchor in o.footprint and o.footprint[anchor][0] is None]
+    assert len(heads) > 1  # precondition: the anchor chain is forked in the store
+
+    preview = verbs.plan_restore(repo, "a.py::foo")
+    assert preview.ok, preview.message
+    verbs.restore(repo, "a.py::foo")
+    assert code(get(repo), Store(repo).all_ops())["a.py"] in (
+        b"def foo():\n    return 1\n", b"def foo():\n    return 2\n")

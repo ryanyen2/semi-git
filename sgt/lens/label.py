@@ -87,7 +87,14 @@ def _key(members: list[str]) -> str:
 def _leaf_prompt(
     members: list[str], subjects: list[str] | None = None, kinds: str | None = None,
 ) -> str:
-    names = [m.split("::", 1)[1] if "::" in m else m for m in sorted(members)[:MAX_MEMBERS]]
+    # Through `_clean_symbol_name`, the same filter the fallback path uses: a residue/anchor member
+    # is a verbatim byte-gap between entities, not an entity. Splitting the raw member instead put
+    # `__residue__::cmd_waitlist_join` in a list the prompt calls "the ground truth for what the code
+    # IS", and the model named the leaf after it -- a feature of README + `build_parser` + `main` +
+    # `pytest.ini` came out as "Waitlist Queue", beside the feature that actually is the waitlist
+    # (pilot 1, confplan). The artifact's host entity is not a member of this leaf; naming the leaf
+    # after it is a claim about content that isn't there.
+    names = [n for n in (_clean_symbol_name(m) for m in sorted(members)[:MAX_MEMBERS]) if n]
     files = sorted({m.split("::", 1)[0] for m in members})[:8]
     subj = (subjects or [])[:MAX_SUBJECTS]
     return (
@@ -99,7 +106,7 @@ def _leaf_prompt(
         "'Management', 'Semantic').\n"
         "rationale: ONE factual sentence naming what it does. Do not start with 'These'.\n\n"
         f"Files: {', '.join(files)}\n"
-        f"Entities: {', '.join(names)}\n"
+        + (f"Entities: {', '.join(names)}\n" if names else "")
         + (f"Commit intents: {' | '.join(subj)}\n" if subj else "")
         + (f"Change activity: {kinds}\n" if kinds else "")
     )

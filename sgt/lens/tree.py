@@ -476,106 +476,58 @@ def _prune_empty_leaves(nodes: dict, roots: list[str]) -> None:
             changed = True
 
 
-def _absorb_husk_leaves(nodes: dict, roots: list[str]) -> int:
-    """Fold away every leaf that owns no *behavioral* member, moving its members into the leaf that
-    already owns the entity they hang off. Returns how many were folded.
+def _rehome_pseudo_members(nodes: dict) -> None:
+    """Move every residue/anchor member into the leaf that owns its anchor entity.
 
-    A husk is a leaf whose members are all residue and anchors. It happens because the clustering
-    graph is built over content-bearing symbols (`cluster.alive_nodes`), which includes residue --
-    correctly, because residue carries the within-file cohesion that keeps unrelated entities out
-    of one god-lane; removing it from the graph collapses a four-feature repo to one. But residue
-    is positional gap-bytes, not behaviour, so a community made only of residue is a community of
-    nothing a person edits, and Leiden forms them readily: residue outnumbers entities about 27 to
-    20 in a small repo.
+    `_member_leaf_for` already routes a residue *op* to its anchor entity's lane (U4/R3), so a
+    feature owns the whitespace after its own entities. Membership did not follow the same rule, and
+    the clusterer readily groups residue pseudo-symbols with each other -- they co-occur in exactly
+    the ops their entities do -- producing a leaf whose members are *all* pseudo-symbols. Such a leaf
+    holds no real symbol, yet it gets a feature id, a label off its commit subject, and a `sgt log`
+    row: in both study fixtures 4 of ~21 features were this shape, labelled with the study's own task
+    nouns ("add course search", "waitlist for full sections with stable join order") and reported by
+    `sgt show` as `0 symbols in 0 files` with a revert that removes nothing a reader can name.
 
-    What that costs, before this: the husk is a full feature. It has a handle, a generated name, an
-    op count and a lane on the map. `sgt show` reports "0 symbols in 0 files" for it and offers a
-    revert. `sgt log --tree` skips it, so the tree and the map disagree on how many features exist.
-    Both study projects carried nine husks each out of twenty-four leaves, and in `coursecraft`
-    they were named `Section Waitlist`, `Waitlist Promotion` and `Drop Enrollment` -- the features
-    two of the study's three requests ask a participant to remove. A pilot participant picked one
-    off the map to "remove the waitlist" and got nothing.
+    Applying the U4 rule to membership empties those leaves, and `_prune_empty_leaves` -- already the
+    single funnel every construction path passes through -- drops them.
 
-    Absorbed rather than deleted, so the leaves still partition the alive set exactly. The target is
-    the leaf holding the member's anchor entity, which is where `_member_leaf_for` already routes
-    that residue's *ops* -- so membership and op assignment now agree instead of pointing at two
-    different lanes. A member with no anchor entity (a file's head gap) goes to the largest
-    surviving leaf under the same parent, widening to the largest anywhere if that parent has none
-    left -- so it can land in an unrelated subsystem. Only when every leaf in the tree is a husk is
-    one left alone, rather than orphaning its members."""
-    from sgt.core.op import is_behavioral
-
+    A file-head residue names no anchor entity (its anchor is the HEAD sentinel), so it needs the
+    same rule one level up: it follows the leaf owning the plurality of that file's real symbols. The
+    first version of this function left it where it was, and that alone kept all four phantom leaves
+    alive with exactly one member each -- the sentinel of a test file whose tests live elsewhere. A
+    pseudo-symbol with no anchor entity and no real same-file symbol anywhere stays put: there is
+    genuinely no lane to follow, and it is a live member of the ideal, never dropped."""
     member_leaf = leaf_member_index(nodes)
-    leaves = [nid for nid, nd in nodes.items() if not nd["children"]]
-    husks = [
-        nid for nid in leaves
-        if nodes[nid]["members"] and not any(is_behavioral(m) for m in nodes[nid]["members"])
-    ]
-    if not husks:
-        return 0
-    husk_set = set(husks)
-
-    def fallback_for(husk: str) -> str | None:
-        """Where a member with no anchor entity goes: the biggest surviving leaf under the same
-        parent, or the biggest anywhere if that parent has none left. Residue is keyed by the
-        entity *preceding* it, so nearly all of it has an anchor to follow; the exception is the
-        head gap (`__residue__::\x00HEAD\x00`, the bytes before a file's first top-level entity),
-        which has nothing before it. Ties break on id so two builds of one repo agree."""
-        siblings = [
-            nid for nid in leaves
-            if nid not in husk_set and nodes[nid]["parent"] == nodes[husk]["parent"]
-        ] or [nid for nid in leaves if nid not in husk_set]
-        if not siblings:
-            return None
-        return max(siblings, key=lambda nid: (len(nodes[nid]["members"]), nid))
-
-    folded = 0
-    for husk in husks:
-        fallback = fallback_for(husk)
-        moves: dict[str, list[str]] = {}
-        for member in nodes[husk]["members"]:
-            entity = _anchor_entity_of(member)
-            home = member_leaf.get(entity) if entity is not None else None
-            dest = home if home is not None and home not in husk_set else fallback
-            if dest is None:
-                break  # every leaf is a husk; leave this one alone rather than orphan its members
-            moves.setdefault(dest, []).append(member)
-        else:
-            for dest, members in moves.items():
-                nodes[dest]["members"] = sorted(set(nodes[dest]["members"]) | set(members))
-                # `size` and `dir` are derived from `members`, and every other place that
-                # rewrites a node's members recomputes both (`verbs._apply_move`,
-                # `_resplit_real`). Leaving `dir` stale here would be invisible until it
-                # surfaced as a wrong package hint on the map or a wrong fallback label.
-                nodes[dest]["size"] = len(nodes[dest]["members"])
-                nodes[dest]["dir"] = _dominant_dir(nodes[dest]["members"])
-            nodes[husk]["members"] = []
-            folded += 1
-    if not folded:
-        return 0
-
-    # Re-derive every interior node's membership from its descendants, bottom-up.
-    #
-    # An interior node carries the union of the leaves beneath it -- `_subdivide`, `_split_once`
-    # and `_regroup_by_dir` all build it that way, and `_splice` copies it forward verbatim. The
-    # fold above rewrites leaves only, so without this the ancestors of anything absorbed keep a
-    # stale union, and one shape breaks the partition outright: a subsystem whose leaf children
-    # were ALL husks keeps their residue as its own members, so `_prune_empty_leaves` will not
-    # take it (it has members) and it survives as a childless node -- duplicating members that now
-    # also live in the destination leaf, and being a husk itself, one level up where the pass above
-    # can no longer see it.
-    for rid in roots:
-        for nid in _post_order(nodes, rid):
-            nd = nodes.get(nid)
-            if nd is None or not nd["children"]:
-                continue
-            members = sorted({m for c in nd["children"] if c in nodes for m in nodes[c]["members"]})
-            nd["members"] = members
-            nd["size"] = len(members)
-            nd["dir"] = _dominant_dir(members)
-
-    _prune_empty_leaves(nodes, roots)  # the emptied husks, and any interior left with nothing
-    return folded
+    votes: dict[str, dict[str, int]] = {}
+    for sym, nid in member_leaf.items():
+        if _symbol_kind(sym) in ("residue", "anchor"):
+            continue
+        per_file = votes.setdefault(sym.partition("::")[0], {})
+        per_file[nid] = per_file.get(nid, 0) + 1
+    # plurality, tie-broken on leaf id so the choice is stable across runs
+    file_owner = {path: max(sorted(v), key=lambda n: v[n]) for path, v in votes.items()}
+    for nid, nd in nodes.items():
+        if nd["children"]:
+            continue
+        keep, moved = [], []
+        for sym in nd["members"]:
+            home = _anchor_entity_of(sym)
+            target = member_leaf.get(home) if home is not None else None
+            if target is None and _symbol_kind(sym) in ("residue", "anchor"):
+                # No live anchor entity -- a file-head residue's anchor is the HEAD sentinel, which
+                # names no entity at all. Follow the file instead.
+                target = file_owner.get(sym.partition("::")[0])
+            if target is None or target == nid:
+                keep.append(sym)
+            else:
+                moved.append((sym, target))
+        if not moved:
+            continue
+        nd["members"] = keep
+        nd["size"] = len(keep)
+        for sym, target in moved:
+            nodes[target]["members"].append(sym)
+            nodes[target]["size"] = len(nodes[target]["members"])
 
 
 def _leaf_ids(nodes: dict, nid: str) -> list[str]:
@@ -666,13 +618,17 @@ def fused_graph_with_hubs(
 
     `head` (default `gb.head()`) selects the commit the structural signal is read at -- see
     `cluster.signals`; a historical replay passes the point it is reconstructing."""
+    from sgt.core import opindex
+
     gb = GitBinding(repo)
     nodes_set, hubs, cochange, structural = cluster.signals(
         repo, ops, ideal, refresh_cache=refresh_structural_cache, head=head,
     )
-    subjects = {sha: subject for sha, _parent, subject in gb.history()}
-    scope = cluster.scope_edges(ops, subjects, nodes_set, hubs)
-    commit = cluster.commit_edges(ops, nodes_set, hubs)
+    rows = gb.history()
+    subjects = {sha: subject for sha, _parent, subject in rows}
+    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
+    scope = cluster.scope_edges(ops, subjects, nodes_set, hubs, sha_of=sha_of)
+    commit = cluster.commit_edges(ops, nodes_set, hubs, sha_of=sha_of)
     path = cluster.path_edges(nodes_set, hubs)
     structural = cluster.hub_normalize(structural)
     fused = _fuse(structural, cochange, scope, commit, path)
@@ -794,10 +750,11 @@ def build(
     counter = [0]
     root_id = _register(nodes, root, None, counter)
     roots = [root_id]
+    _rehome_pseudo_members(nodes)      # residue/anchor members follow their anchor entity's lane
+    # (the U4 rule op assignment already uses), which empties any residue-only leaf for the prune
+    # below to drop. Without it such a leaf becomes a named, labelled, 0-symbol feature (F21).
     _prune_empty_leaves(nodes, roots)  # a member-less leaf is not a feature -- drop it before any
     # feature id is minted for it, so the phantom never reaches identity/op-assignment or the tree.
-    _absorb_husk_leaves(nodes, roots)  # nor is a leaf made only of residue; same reasoning, and
-    # likewise before any id is minted, so a husk never becomes a feature anyone can be handed.
 
     cannot_link_moves = enforce_cannot_link(nodes, pins, real_adj)
 
@@ -1003,13 +960,24 @@ def _apply_id_map(result: dict, id_map: dict[str, str]) -> None:
     the fresh `F*` ids never collide."""
     nodes = result["nodes"]
     renamed: dict[str, dict] = {}
+    source: dict[str, str] = {}  # new id -> the node id it came from, for the collision message
     for nid, nd in nodes.items():
         rid = id_map.get(nid, nid)
+        if rid in renamed:
+            # Two nodes renamed onto one id. Left alone, the assignment below silently keeps whichever
+            # came second and drops the other leaf's members from the tree, so the failure surfaces
+            # later as a wrong feature or a `_dedup` KeyError instead of here. Callers must resolve
+            # the collision before calling (see `_apply_assign_pins`); an aliasing map is a bug, not
+            # an input to absorb.
+            raise ValueError(
+                f"_apply_id_map: aliasing rename -- {nid!r} and {source[rid]!r} both map to "
+                f"{rid!r}; resolve the collision before renaming")
         nd["id"] = rid
         nd["children"] = [id_map.get(c, c) for c in nd["children"]]
         if nd["parent"] is not None:
             nd["parent"] = id_map.get(nd["parent"], nd["parent"])
         renamed[rid] = nd
+        source[rid] = nid
     result["nodes"] = renamed
     result["roots"] = [id_map.get(r, r) for r in result["roots"]]
     result["op_leaf"] = {op: id_map.get(leaf, leaf) for op, leaf in result["op_leaf"].items()}
@@ -1050,45 +1018,21 @@ def _apply_assign_pins(result: dict, pins: Pins) -> None:
     # pass -> a deterministic 2-cycle (the `af-` id oscillation). Choosing first, filtering second,
     # converges to a fixpoint: the strongest (tie -> smallest) pin always wins and holds.
     amap = {leaf: fid for leaf, fid in amap.items() if leaf != fid}
-    # Drop a rename onto an id a *different* live node already holds, unless that holder is itself
-    # giving the id up in this same map. `_apply_id_map` rewrites every children list through the
-    # map, so aliasing two live nodes onto one id makes a parent name the same child twice and then
-    # collapses both into one `renamed[rid]` entry -- one node's members vanish, and `_dedup` later
-    # finds a leaf in its own `dupes[1:]` and deletes the node it is rewriting.
-    #
-    # It happens whenever a pin's plurality leaf moves between builds: the id still sits on last
-    # build's leaf (carried across by Greene matching) while the pin now wants it on a new one. On
-    # `confplan` one pin aliased an `af-` id onto a sibling and cost nine symbols their feature. A
-    # cold recluster does not avoid it -- it only tends to land the two nodes under different
-    # parents, which hides the duplicate-child symptom while still losing the members.
-    #
-    # Dropping the entry leaves the pin where it is, which is the conservative half of the trade:
-    # the id stays on whichever node already had it rather than moving to a node whose claim we
-    # cannot honour without evicting someone.
-    #
-    # Iterated to a fixpoint, because the filter is not monotone in one pass. `fid in amap` means
-    # "the node holding this id is itself giving it up", and that justification dies if THAT entry
-    # is dropped later in the same sweep -- a chain `L1 -> F2`, `F2 -> F3` keeps `L1 -> F2` while
-    # dropping `F2 -> F3`, so `F2` never gives up its id and `L1` is aliased onto it anyway,
-    # reproducing exactly the corruption this filter exists to prevent. Each pass only removes
-    # entries, so this terminates.
-    wanted = amap
-    while True:
-        kept = {leaf: fid for leaf, fid in amap.items()
-                if fid not in result["nodes"] or fid in amap}
-        if len(kept) == len(amap):
-            break
-        amap = kept
-    dropped = {leaf: fid for leaf, fid in wanted.items() if leaf not in amap}
-    # Every pin whose rename could not be applied. `assign` promises that a pinned op never leaves
-    # its assigned feature (D3), and a dropped entry is that promise going unkept -- silently, and
-    # on one of the study projects permanently, since the same entry is dropped on every build.
-    # Surfaced beside `cannot_link_moves` for the same reason it is: a guarantee downgraded to
-    # best-effort should be visible to whoever reads the tree, not discoverable by instrumenting it.
-    # Always set, empty included, because `cannot_link_moves` is -- a key that appears only when
-    # there is bad news makes `result["unapplied_assign_pins"]` raise on every healthy repo, which
-    # is the opposite of what a reporting field is for.
-    result["unapplied_assign_pins"] = dict(sorted(dropped.items()))
+    # The winning leaf and the leaf *currently wearing* the pinned id can be two different leaves: a
+    # previous rebuild renamed whichever leaf then held the plurality, and this clustering moved the
+    # plurality elsewhere. Dropping self-renames does not cover that -- the rename still lands on an
+    # id a live leaf wears, aliasing two leaves onto one node id, which drops one leaf's members in
+    # `_apply_id_map` and leaves the parent listing the id twice for `_dedup` to crash on. Move the
+    # stale holder off the id first, onto the same content-addressed id a leaf with no continuation
+    # gets from `_match_features`, so the pin lands on the plurality leaf and nothing is merged.
+    nodes = result["nodes"]
+    used = set(nodes) | set(amap.values())
+    for fid in sorted(set(amap.values()) & set(nodes)):
+        if fid in amap:
+            continue  # the stale holder is already being renamed away by its own winning pin
+        freed = _content_birth_id(frozenset(nodes[fid]["members"]), None, used)
+        used.add(freed)
+        amap[fid] = freed
     if amap:
         _apply_id_map(result, amap)
 
@@ -1189,14 +1133,6 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
                     continue
                 members = sorted({m for k in dupes for m in nodes[k]["members"]})
                 for k in dupes[1:]:
-                    # `k is c` when a parent's children list names the same leaf twice: `c` then
-                    # appears in its own `dupes[1:]`, and deleting it here makes the rewrite two
-                    # lines below raise KeyError on the node it is in the middle of building.
-                    # `confplan` hits this and takes `build_map` down with it, so its tree is
-                    # never updated -- which is how nine features that own no code survived a
-                    # refresh that was supposed to remove them.
-                    if k == c:
-                        continue
                     remap[k] = c
                     del nodes[k]
                 nodes[c] = {
@@ -1243,9 +1179,18 @@ def label_context(repo: Path, ops: list, result: dict) -> tuple[dict, dict]:
     was the caller's job to assemble and pass, `lens/map.py` did and `lens/reconcile.py` did not, so
     the same feature got named two different ways depending on which path built the tree. `label_tree`
     now derives it when the caller doesn't supply it, which is the only way that cannot drift."""
+    from sgt.core import opindex
     from sgt.store.gitbind import GitBinding
 
-    subjects = {sha: subj for sha, _parent, subj in GitBinding(repo).history()}
+    gb = GitBinding(repo)
+    rows = gb.history()
+    subjects = {sha: subj for sha, _parent, subj in rows}
+    # One vote per op, from the commit that embodies it -- `opindex.earliest_commit_sha`, the same
+    # rule the time-aware projections read. Counting `op.provenance` instead silently reduced the
+    # vote to the handful of ops sgt happened to have re-mined: in a study repo built through
+    # `sgt save`, 4 of 370 ops carried provenance, so one op's subject "dominated" a 71-op feature
+    # and named it `init repo`. A dominance gate over a sample of one is not a gate.
+    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
     by_id = {op.id: op for op in ops}
     subj_counts: dict[str, Counter] = defaultdict(Counter)
     kind_counts: dict[str, Counter] = defaultdict(Counter)
@@ -1254,10 +1199,9 @@ def label_context(repo: Path, ops: list, result: dict) -> tuple[dict, dict]:
         if op is None:
             continue
         kind_counts[leaf][op.kind] += 1
-        for sha in op.provenance:
-            subj = subjects.get(sha)
-            if subj:
-                subj_counts[leaf][subj] += 1
+        subj = subjects.get(sha_of.get(op_id) or "")
+        if subj:
+            subj_counts[leaf][subj] += 1
     subjects_by_leaf = {leaf: [s for s, _ in c.most_common()] for leaf, c in subj_counts.items()}
     kinds_by_leaf = {
         leaf: ", ".join(f"{k}×{n}" for k, n in c.most_common(4)) for leaf, c in kind_counts.items()
