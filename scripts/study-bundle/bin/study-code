@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# The session editor. Same job as the session shell, for the graphical half.
+#
+# Three things have to be true at once, and stay true for the whole session:
+# the editor runs from a profile inside this folder with only the extension the
+# condition allows, everything it does to the repository is recorded, and the
+# participant's own editor is left exactly as it was.
+#
+# The recording works because the editor never runs git or sgt directly. Both
+# are pointed at the wrappers in bin/shims -- through `git.path` and `sgt.path`
+# in the profile below, and through PATH as a second route in case a setting is
+# ever ignored. The built-in Source Control view, GitLens and the semi-git
+# extension all resolve their binary from those two settings, so a click that
+# reads history lands in the same log as a command typed in the shell.
+set -euo pipefail
+
+STUDY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+[ -f "$STUDY_HOME/study.env" ] && . "$STUDY_HOME/study.env"
+: "${STUDY_PY:=$STUDY_HOME/work/.venv/bin/python}"
+
+PROFILE="$STUDY_HOME/.vscode-study"
+SHIMS="$STUDY_HOME/bin/shims"
+
+find_code() {
+    if command -v code >/dev/null 2>&1; then
+        command -v code
+        return
+    fi
+    for candidate in \
+        "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
+        "$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
+        "/usr/share/code/bin/code" \
+        "/snap/bin/code"; do
+        [ -x "$candidate" ] && { echo "$candidate"; return; }
+    done
+    return 1
+}
+
+CODE="$(find_code || true)"
+if [ -z "$CODE" ]; then
+    echo "Visual Studio Code is not installed, or its 'code' command is not set up." >&2
+    echo "Tell your facilitator. Everything in this study can also be done from the shell." >&2
+    exit 1
+fi
+
+mkdir -p "$PROFILE/User"
+
+# Rewritten on every launch rather than once at setup. The paths in it are
+# absolute, and a folder that was moved between halves would otherwise leave
+# the editor pointed at wrappers that no longer exist -- which fails silently,
+# by recording nothing.
+#
+# Nothing here turns a feature off to make the recording tidier. The editor's
+# own refreshes are flagged in the log instead. Quieting the tool being measured
+# to make its measurements easier to read is how a study ends up describing an
+# editor nobody used.
+cat > "$PROFILE/User/settings.json" <<SETTINGS
+{
+  "git.path": "$SHIMS/git",
+  "sgt.path": "$SHIMS/sgt",
+
+  "git.autofetch": false,
+  "git.openRepositoryInParentFolders": "never",
+
+  "security.workspace.trust.enabled": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "extensions.ignoreRecommendations": true,
+  "workbench.startupEditor": "none",
+  "window.restoreWindows": "none",
+
+  "terminal.integrated.env.osx": { "STUDY_SURFACE": "terminal" },
+  "terminal.integrated.env.linux": { "STUDY_SURFACE": "terminal" }
+}
+SETTINGS
+
+# What the editor's own processes inherit. `STUDY_SURFACE` is how a click in a
+# history view is told apart from a command typed in the shell afterwards: both
+# run the same git, and the difference between them is the reason the editor is
+# in this study at all. The integrated terminal overrides it back to `terminal`
+# in the settings above, because a command typed there is still typed.
+export STUDY_HOME STUDY_PY
+export STUDY_SURFACE=editor
+export STUDY_SHIM_DIR="$SHIMS"
+export CLAUDE_CONFIG_DIR="$STUDY_HOME/.claude-study"
+export PATH="$SHIMS:$STUDY_HOME/bin:$STUDY_HOME/work/.venv/bin:$PATH"
+# `OPENAI_*` too: the history tool prefers a shell-exported key over the one we
+# issued, so a participant's own key would otherwise be the one the editor's
+# searches and labels were billed to.
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL || true
+unset OPENAI_API_KEY OPENAI_BASE_URL || true
+
+echo "Opening the project in the editor. Leave it open for the rest of the half."
+exec "$CODE" \
+    --user-data-dir "$PROFILE" \
+    --extensions-dir "$PROFILE/extensions" \
+    -n "$STUDY_HOME/work"

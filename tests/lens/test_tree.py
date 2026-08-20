@@ -670,6 +670,171 @@ def test_prune_empty_leaves_removes_member_less_leaves_and_cascades():
     assert roots == ["N0"]
 
 
+def test_absorb_husk_folds_a_residue_only_leaf_into_its_anchor_entity_lane():
+    # A leaf whose members are all residue owns nothing a person recognizes: `sgt show` reports
+    # "0 symbols in 0 files" for it and offers a revert that removes nothing. Its members belong in
+    # the leaf that already holds the entity they hang off -- which is where `_member_leaf_for`
+    # routes that residue's ops, so this makes membership and op assignment agree.
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0,
+               "members": ["pkg/a.py::one", "pkg/a.py::__residue__::one"], "size": 2,
+               "dir": "pkg", "children": ["N1", "N2"], "split_reason": None},
+        "N1": _leaf("N1", "N0", ["pkg/a.py::one"], "pkg"),
+        "N2": _leaf("N2", "N0", ["pkg/a.py::__residue__::one"], "pkg"),  # husk
+    }
+    roots = ["N0"]
+
+    assert tree._absorb_husk_leaves(nodes, roots) == 1
+
+    assert set(nodes) == {"N0", "N1"}
+    assert nodes["N1"]["members"] == ["pkg/a.py::__residue__::one", "pkg/a.py::one"]
+    assert nodes["N1"]["size"] == 2
+    assert nodes["N0"]["children"] == ["N1"]
+
+
+def test_absorb_husk_does_not_leave_an_all_husk_subsystem_behind():
+    # The shape that breaks the partition if only leaves are rewritten: every leaf child of N2 is a
+    # husk, so folding them empties N2 of children while it still carries their residue as its own
+    # members. `_prune_empty_leaves` will not take a node that has members, so N2 would survive as a
+    # childless node -- duplicating members that now also live in N1, and being a husk itself, one
+    # level up where the fold can no longer see it.
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0,
+               "members": ["pkg/a.py::one", "pkg/a.py::__residue__::one",
+                           "pkg/a.py::__residue__::two"], "size": 3,
+               "dir": "pkg", "children": ["N1", "N2"], "split_reason": None},
+        "N1": _leaf("N1", "N0", ["pkg/a.py::one"], "pkg"),
+        "N2": {"id": "N2", "parent": "N0", "depth": 1,
+               "members": ["pkg/a.py::__residue__::one", "pkg/a.py::__residue__::two"], "size": 2,
+               "dir": "pkg", "children": ["N3", "N4"], "split_reason": None},
+        "N3": _leaf("N3", "N2", ["pkg/a.py::__residue__::one"], "pkg"),
+        "N4": _leaf("N4", "N2", ["pkg/a.py::__residue__::two"], "pkg"),
+    }
+    roots = ["N0"]
+
+    tree._absorb_husk_leaves(nodes, roots)
+
+    leaves = [nid for nid, nd in nodes.items() if not nd["children"]]
+    members = [m for nid in leaves for m in nodes[nid]["members"]]
+    assert len(members) == len(set(members))            # a partition, not an overlapping cover
+    assert leaves == ["N1"]                             # N2 gone, not left behind childless
+    assert nodes["N0"]["members"] == sorted(members)    # interiors re-derived from their leaves
+
+
+def test_absorb_husk_leaves_an_all_husk_tree_alone():
+    # Nowhere to put them: absorbing would orphan the members rather than rehome them, so the
+    # tree is left exactly as it was.
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0,
+               "members": ["pkg/a.py::__residue__::one"], "size": 1,
+               "dir": "pkg", "children": ["N1"], "split_reason": None},
+        "N1": _leaf("N1", "N0", ["pkg/a.py::__residue__::one"], "pkg"),
+    }
+    before = {k: dict(v) for k, v in nodes.items()}
+
+    assert tree._absorb_husk_leaves(nodes, ["N0"]) == 0
+    assert nodes == before
+
+
+def test_assign_pins_refuse_to_alias_two_live_nodes_onto_one_id():
+    # A pin whose plurality leaf moved between builds wants an id that is still sitting on last
+    # build's leaf. Renaming onto it makes the shared parent name one child twice, and
+    # `_apply_id_map`'s `renamed[rid] = nd` then keeps only one of the two -- the other node's
+    # members vanish, and `_dedup` later finds a leaf in its own dupes and deletes the node it is
+    # rewriting. The rename is dropped instead: the id stays where it already is.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b"], "size": 2,
+                   "dir": "pkg", "children": ["af-taken", "F-mover"], "split_reason": None},
+            "af-taken": _leaf("af-taken", "N0", ["a"], "pkg"),
+            "F-mover": _leaf("F-mover", "N0", ["b"], "pkg"),
+        },
+        "roots": ["N0"],
+        "op_leaf": {},
+    }
+    tree._apply_assign_pins(result, Pins(assign={"b": "af-taken"}))
+
+    nodes = result["nodes"]
+    assert set(nodes) == {"N0", "af-taken", "F-mover"}   # nobody clobbered
+    assert nodes["N0"]["children"] == ["af-taken", "F-mover"]
+    assert len(nodes["N0"]["children"]) == len(set(nodes["N0"]["children"]))
+    assert nodes["F-mover"]["members"] == ["b"]          # members survived the refused rename
+
+
+def test_assign_pins_refuse_a_chain_of_aliases_not_just_a_single_one():
+    # The filter is not monotone in one pass: "the node holding this id is itself giving it up"
+    # stops being true if THAT entry is dropped later in the same sweep. A chain L1 -> F2, F2 -> F3
+    # kept L1 -> F2 (F2 was a key when it was tested) while dropping F2 -> F3 -- so F2 never gave up
+    # its id and L1 was aliased onto it anyway, reproducing the exact corruption the filter exists
+    # to prevent. It has to run to a fixpoint.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0,
+                   "members": ["pkg/a.py::m1", "pkg/a.py::m2", "pkg/a.py::m3"], "size": 3,
+                   "dir": "pkg", "children": ["L1", "F2", "F3"], "split_reason": None},
+            "L1": _leaf("L1", "N0", ["pkg/a.py::m1"], "pkg"),
+            "F2": _leaf("F2", "N0", ["pkg/a.py::m2"], "pkg"),
+            "F3": _leaf("F3", "N0", ["pkg/a.py::m3"], "pkg"),
+        },
+        "roots": ["N0"],
+        "op_leaf": {},
+    }
+    tree._apply_assign_pins(result, Pins(assign={"pkg/a.py::m1": "F2", "pkg/a.py::m2": "F3"}))
+
+    nodes = result["nodes"]
+    children = nodes["N0"]["children"]
+    assert len(children) == len(set(children))          # no id named twice
+    assert set(nodes) == {"N0", "L1", "F2", "F3"}       # nobody clobbered
+    members = sorted(m for nid in ("L1", "F2", "F3") for m in nodes[nid]["members"])
+    assert members == ["pkg/a.py::m1", "pkg/a.py::m2", "pkg/a.py::m3"]
+
+
+def test_assign_pins_report_the_renames_they_could_not_apply():
+    # Dropping the rename keeps the tree intact but leaves `assign`'s promise -- a pinned op never
+    # leaves its assigned feature -- unkept. On one study project the same entry is dropped on every
+    # build, so this is permanent rather than transient. Reported rather than left to be found by
+    # instrumenting the filter, for the same reason `cannot_link_moves` is.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b"], "size": 2,
+                   "dir": "pkg", "children": ["af-taken", "F-mover"], "split_reason": None},
+            "af-taken": _leaf("af-taken", "N0", ["a"], "pkg"),
+            "F-mover": _leaf("F-mover", "N0", ["b"], "pkg"),
+        },
+        "roots": ["N0"],
+        "op_leaf": {},
+    }
+    tree._apply_assign_pins(result, Pins(assign={"b": "af-taken"}))
+
+    assert result["unapplied_assign_pins"] == {"F-mover": "af-taken"}
+
+
+def test_assign_pins_report_an_empty_map_when_every_rename_applied():
+    # Present even when there is nothing to say, like `cannot_link_moves`. A key that appears only
+    # on bad news makes the obvious read raise on every healthy repo.
+    from sgt.lens.pins import Pins
+
+    result = {
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a"], "size": 1,
+                   "dir": "pkg", "children": ["L1"], "split_reason": None},
+            "L1": _leaf("L1", "N0", ["a"], "pkg"),
+        },
+        "roots": ["N0"],
+        "op_leaf": {},
+    }
+    tree._apply_assign_pins(result, Pins(assign={"a": "F-free"}))
+
+    assert result["unapplied_assign_pins"] == {}
+    assert "F-free" in result["nodes"]  # the rename did apply
+
+
 def test_prune_empty_leaves_keeps_a_lone_empty_root():
     # Degenerate no-member build: keep one empty root so downstream never faces an empty forest.
     nodes = {"N0": {"id": "N0", "parent": None, "depth": 0, "members": [], "size": 0, "dir": "",

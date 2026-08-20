@@ -1,0 +1,55 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/assets/**",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        ]
+      },
+      {
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "comment": "Bundles keep their filename across rebuilds -- deliberately, because the download link on the participant's setup page is fixed and a versioned name would leak which condition they are in. So the name cannot carry the cache key and revalidation has to. On the default hour, rebuilding a bundle mid-study means a participant can be handed an hour-old tool with nothing on screen to say so.",
+        "source": "/bundles/**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }]
+      },
+      {
+        "source": "**",
+        "headers": [
+          {
+            "comment": "Without this the sign-in popup cannot close itself, and a successful sign-in reports an error.",
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin-allow-popups"
+          }
+        ]
+      },
+      {
+        "comment": "Firebase's own auth machinery lives under /__/. Leave it exactly as Firebase serves it: the popup is one of these pages, and giving it a policy of our own is how you sever the thing you were trying to keep connected.",
+        "source": "/__/**",
+        "headers": [{ "key": "Cross-Origin-Opener-Policy", "value": "unsafe-none" }]
+      }
+    ]
+  },
+  "emulators": {
+    "auth": { "port": 9099 },
+    "firestore": { "port": 8080 },
+    "hosting": { "port": 5000 },
+    "ui": { "enabled": true, "port": 4000 },
+    "singleProjectMode": true
+  }
+}

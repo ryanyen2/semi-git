@@ -54,3 +54,23 @@ docs/ideation/
 docs/slides/
 
 .hypothesis
+# Study website build output. Source is web/src; node_modules and dist are not.
+web/node_modules/
+web/dist/
+web/.firebase/
+web/*.tsbuildinfo
+
+# Participant bundles are built, not committed. scripts/study-bundle/ is the
+# template and IS committed; these are the per-run artefacts it produces.
+scripts/study-bundle/telemetry/events.jsonl
+scripts/study-bundle/telemetry/uploaded.txt
+scripts/study-bundle/telemetry/state.json
+
+# Built participant bundles. They are generated into the site's static files by
+# scripts/make-study-bundle.sh and published by `firebase deploy`; the sources
+# they are built from are scripts/study-bundle/ and ~/repos/sgt-study.
+web/public/bundles/
+
+# Firebase CLI noise
+firebase-debug.log
+firestore-debug.log

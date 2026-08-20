@@ -25,7 +25,8 @@ def register(subs, parent) -> None:
     p = subs.add_parser("show", parents=[parent],
                         help="what is this? — or, with --at, what it was at a past point")
     p.add_argument("sel", nargs="*",
-                   help="a feature id/label, a checkpoint, an op id, a symbol, or (with --at) a file")
+                   help="a feature id/label, a checkpoint, an op id, a symbol, a save id from "
+                        "`sgt log`, or (with --at) a file")
     p.add_argument("--at", metavar="SPEC", default=None,
                    help="read it as it was at a past point: a commit index (`12`), an op set "
                         "(`op:<id>,...`), or a ref. Omit the selection to list what existed there")
@@ -46,7 +47,7 @@ def _cmd_show(args) -> int:
 
         return _show_at(".", args.at, selection or None, args.as_json)
     if not selection:
-        print("usage: sgt show <sel>            what is this? (feature, checkpoint, op, symbol)\n"
+        print("usage: sgt show <sel>            what is this? (feature, checkpoint, op, symbol, save)\n"
               "       sgt show <file> --at 12   that file as it was at commit 12\n"
               "       sgt show --at 12          what existed at commit 12")
         return 2
@@ -82,8 +83,11 @@ def _print_show(view: dict) -> None:
         shown = ", ".join(view["symbols"])
         more = view["symbol_count"] - len(view["symbols"])
         print(f"  symbols      {shown}" + (f" (+{more} more)" if more > 0 else ""))
+    # Same rule as the symbols line above: a save's own provenance is itself, and printing it back
+    # under `saves` reads as a second, different fact.
+    saves = [s for s in view["saves"] if not (view["kind"] == "save" and s["sha"] == view["handle"])]
     elided = view.get("save_count", len(view["saves"])) - len(view["saves"])
-    for i, save in enumerate(view["saves"]):
+    for i, save in enumerate(saves):
         head = "saves        " if i == 0 else "             "
         print(f'  {head}{save["sha"]}  {save["subject"]}')
     if elided > 0:
@@ -99,8 +103,8 @@ def _extent(view: dict) -> str:
     single-op selection doesn't read as `1 edits · 0 symbols in 0 files`."""
     parts = [f'{view["op_count"]} edit' + ("s" if view["op_count"] != 1 else "")]
     # A single-symbol selection's "1 symbol in 1 file" is already in the header; only a *group*
-    # (feature/checkpoint) needs its breadth spelled out.
-    if view["symbol_count"] > 1 or view["kind"] in ("feature", "checkpoint"):
+    # (feature/checkpoint/save) needs its breadth spelled out.
+    if view["symbol_count"] > 1 or view["kind"] in ("feature", "checkpoint", "save"):
         parts.append(f'{view["symbol_count"]} symbol' + ("s" if view["symbol_count"] != 1 else "")
                      + f' in {len(view["files"])} file' + ("s" if len(view["files"]) != 1 else ""))
     last = view["span"]["last"]

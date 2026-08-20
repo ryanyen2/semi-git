@@ -35,24 +35,111 @@ function toggle(key: string): void {
   c.update(key, !cur, vscode.ConfigurationTarget.Workspace);
 }
 
-async function applyMutation(store: Store, args: string[], confirmMsg: string): Promise<void> {
-  const ok = await vscode.window.showWarningMessage(confirmMsg, { modal: true }, "Apply");
+/**
+ * Surface a mutation's report without losing its warnings.
+ *
+ * The report's first line says what happened; any ⚠ lines after it say what did
+ * NOT happen -- a restore that leaves the earlier revert's collateral removed
+ * prints one, and truncating to line one silently dropped it. A caveat the CLI
+ * thought worth a ⚠ outranks the success line here, because a toast is the only
+ * part of this a person reliably reads.
+ */
+function showMutationReport(report: string): void {
+  const lines = report.trim().split("\n").map((l) => l.trim()).filter(Boolean);
+  const caveat = lines.filter((l) => l.startsWith("⚠")).pop();
+  if (caveat) {
+    vscode.window.showWarningMessage(caveat);
+    return;
+  }
+  vscode.window.showInformationMessage(lines[0] || "Done.");
+}
+
+async function applyMutation(
+  store: Store,
+  args: string[],
+  confirmMsg: string,
+  detail?: string
+): Promise<void> {
+  const ok = await vscode.window.showWarningMessage(confirmMsg, { modal: true, detail }, "Apply");
   if (ok !== "Apply") {
     return;
   }
   try {
-    const report = await store.sgt.mutate(args);
+    // The modal above is the confirmation, so the CLI must not go looking for
+    // another one it has no terminal to ask on.
+    const report = await store.sgt.confirmedMutate(args);
     store.invalidate();
-    vscode.window.showInformationMessage(report.trim().split("\n")[0] || "Done.");
+    showMutationReport(report);
   } catch (e: any) {
     vscode.window.showErrorMessage(e.message);
   }
+}
+
+/** First `n` of a list, comma-joined, with the remainder counted rather than printed -- a modal
+ * that lists forty symbols is the same as a modal that lists none. */
+function cap(xs: string[], n = 6): string {
+  return xs.slice(0, n).join(", ") + (xs.length > n ? `, +${xs.length - n} more` : "");
+}
+
+/**
+ * The consequence block a revert confirm carries as its modal `detail`.
+ *
+ * The confirm line alone answers "how many ops", and none of "of what", "which
+ * files", "what still points at it", or "what is left alone" -- so a pilot
+ * participant hit Rewind on a checkpoint and could not say afterwards what they
+ * had rewound to. The emit view already carries every one of those (the CLI
+ * prints them above its own y/N gate), so this reads them off the same
+ * projection rather than deriving a second opinion the two surfaces could
+ * disagree about.
+ */
+function consequenceDetail(view: EmitView): string {
+  const files = Object.keys(view.files);
+  // `::__anchor__`/`::__residue__` are the miner's own bookkeeping symbols; naming one at a user
+  // reads as an internal leak, the same reason `sgt.api.so_what_for` skips them in its headline.
+  const symbols = view.affected_symbols.filter((s) => !s.includes("::__"));
+  const frontier = view.frontier ?? [];
+  // `blast` is only the part of the frontier the target REFERENCES directly. Everything else
+  // reached through chain or declared edges comes back as `carry`, and carry rows are toggleable
+  // too -- so "no blast rows" does not mean "nothing is at risk". `toggleable` is the predicate
+  // for that question; `blast` is the predicate for how many the next dialog will ask about.
+  const blast = frontier.filter((r) => r.bucket === "blast" && r.toggleable);
+  const atRisk = frontier.filter((r) => r.toggleable);
+  const locked = frontier.filter((r) => !r.toggleable);
+  const untouched = view.focus?.context_count ?? 0;
+  return [
+    view.focus?.so_what,
+    `${view.removed.length} edit(s) come out` +
+      (files.length ? `, across ${files.length} file(s): ${cap(files)}` : ", changing no files"),
+    symbols.length ? `Symbols affected: ${cap(symbols)}` : undefined,
+    // Absent is not the same as none. `sgt.api._frontier_rows` returns `[]` for any target it
+    // cannot reduce to a single op -- which is every whole-feature and every checkpoint revert,
+    // i.e. both ways into this dialog. Saying "nothing is left dangling" there would be asserting
+    // safety from an absence of data, in the modal that gates a destructive rewrite.
+    frontier.length
+      ? atRisk.length
+        ? `${atRisk.length} later edit(s) are built on this — you pick which to keep next.` +
+          (blast.length && blast.length !== atRisk.length
+            ? ` ${blast.length} of them reference it directly.`
+            : "")
+        : "Nothing built on it is left dangling."
+      : "What is built on top was not computed for this target — check the diff before applying.",
+    locked.length ? `${locked.length} prerequisite(s) it sits on stay put.` : undefined,
+    untouched ? `${untouched} other feature(s) are untouched.` : undefined,
+    files.length ? "Nothing is applied yet — the open PREVIEW tabs are the proposed before → after." : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 // The interactive revert frontier (U3/R4): preview the selection, then let the user pick which
 // toggleable dependents to KEEP (rescue) vs. drop with the target. `foundation` prerequisites
 // can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
 // drafts continuation hollows (see `Sgt.revertKeep`); keeping none is a plain full revert.
+// `sel` is anything the CLI's own selection ladder resolves -- a feature id/label, a `file::name`
+// symbol, or a `<feature>@<n>` checkpoint. `--emit` and a plain `revert <sel>` share that ladder;
+// `--keep` does NOT (cli/ideal_edit.py routes it to `_revert_keep_dependents`, which resolves via
+// `verbs.resolve_target` and never reaches the checkpoint branch). That path is unreachable today
+// only because the frontier above is empty for exactly the targets that would take it.
 async function revertWithFrontier(store: Store, sel: string, preview: PreviewProvider): Promise<void> {
   let view: EmitView;
   try {
@@ -61,13 +148,27 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
     vscode.window.showErrorMessage(e.message);
     return;
   }
+  // A checkpoint target comes back carrying its own chapter name; anything else is named by the
+  // token the user picked. Computed before the refusal branch so even "cannot revert" names the
+  // chapter, and used everywhere below so the question and the answer agree on the noun.
+  const name = view.checkpoint ? `checkpoint "${view.checkpoint}"` : sel;
+
   if (!view.ok) {
-    vscode.window.showWarningMessage(view.message || `Cannot revert ${sel}.`);
+    vscode.window.showWarningMessage(view.message || `Cannot revert ${name}.`);
+    return;
+  }
+
+  // An `ok` revert that removes nothing is not a change to confirm -- these ops are already out of
+  // this composition. Asking anyway and then reporting success is precisely the "wait, is that
+  // done?" the preview exists to prevent. Mirrors `restoreWithPreview`'s already-live guard below.
+  if (view.removed.length === 0) {
+    vscode.window.showInformationMessage(`${name} removes nothing here — it is already out of this composition.`);
     return;
   }
 
   // Show the resulting diff first -- "where this lands" -- so the confirm isn't a blind op-count.
-  const changedFiles = await preview.openDiff(view);
+  await preview.openDiff(view);
+  const detail = consequenceDetail(view);
 
   const frontier = view.frontier ?? [];
   const toggleable = frontier.filter((r) => r.toggleable);
@@ -75,12 +176,11 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
 
   // No dependents to choose among -> the plain confirm path (behavior unchanged from before U3).
   if (toggleable.length === 0) {
-    const note = lockedCount ? ` (built on ${lockedCount} kept prerequisite(s))` : "";
-    const diffNote = changedFiles ? ` Changes ${changedFiles} file(s) — see the open diff.` : "";
     await applyMutation(
       store,
       ["revert", sel],
-      `Revert ${sel}? Removes ${view.removed.length} op(s)${note}.${diffNote} Rewrites the working tree and commits.`
+      `Revert ${name}? Rewrites the working tree and commits.`,
+      detail
     );
     return;
   }
@@ -96,7 +196,7 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
     {
       canPickMany: true,
       placeHolder:
-        `Revert ${sel}: check dependents to KEEP; unchecked are removed with it` +
+        `Revert ${name}: check dependents to KEEP; unchecked are removed with it` +
         (lockedCount ? ` · ${lockedCount} prerequisite(s) locked` : ""),
     }
   );
@@ -106,15 +206,19 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
   const keep = picks.map((p) => p.op_id);
   const summary = keep.length
     ? `keep ${keep.length}/${toggleable.length} dependent(s) — drafts continuation hollows to fulfill`
-    : `remove ${sel} and all ${toggleable.length} dependent(s)`;
-  const ok = await vscode.window.showWarningMessage(`Revert ${sel} — ${summary}?`, { modal: true }, "Apply");
+    : `remove ${name} and all ${toggleable.length} dependent(s)`;
+  const ok = await vscode.window.showWarningMessage(
+    `Revert ${name} — ${summary}?`,
+    { modal: true, detail },
+    "Apply"
+  );
   if (ok !== "Apply") {
     return;
   }
   try {
     const report = await store.sgt.revertKeep(sel, keep);
     store.invalidate();
-    vscode.window.showInformationMessage(report.trim().split("\n")[0] || "Done.");
+    showMutationReport(report);
   } catch (e: any) {
     vscode.window.showErrorMessage(e.message);
   }

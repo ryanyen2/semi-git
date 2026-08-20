@@ -1,44 +1,69 @@
 # Practice: git
 
-Ten minutes on a practice project first. Ask anything now. Once the real
-requests start we can only answer questions about the requests.
+Ten minutes on a practice project first. Ask anything now. Once the real requests start we can only answer questions about the requests themselves.
 
-You already know git. This is only to check that nothing on this machine is set
-up oddly, and to remind you what's available.
+You already know git. This is not a lesson. It is here so that nothing on this machine surprises you later, and so that you have seen the editor before you need it.
 
-## 1. Look around
+## The practice project
+
+Run `study-practice`. It puts you in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
+
+It has four pieces: `cart.py` (adding and removing things, and the total), `discount.py` (a percentage off, or a coupon code), `receipt.py` (printing a receipt), and `shipping.py` (what postage costs). Sixteen commits, and `python -m pytest -q` passes.
+
+## 1. The editor first
+
+```
+study-code
+```
+
+That opens the practice project in VS Code with **GitLens** installed. Three things are worth finding now, because you will want them later:
+
+- **Source Control** in the left bar, for what has changed and where you commit.
+- **Commit Graph** — the GitLens icon in the left bar, or *GitLens: Show Commit Graph* from the command palette. The history as a graph you can click through.
+- **File History** — right-click any file, *Open File History*. Blame also appears greyed out at the end of whichever line your cursor is on.
+
+Open `shipping.py` and look at its file history. Four commits touch it. That is the shape of the thing you will be asked about later.
+
+## 2. Look around, in the terminal
 
 ```
 git log --oneline
 git log --stat
 ```
 
-## 2. Ask what one change was
+## 3. Ask what one change was
+
+Take a real one from that list:
 
 ```
-git show <commit>
-git show <commit> -- <file>
+git show 44da4ad
+git show 44da4ad -- shipping.py
 ```
 
-## 3. Follow one file or one piece of text over time
+## 4. Follow one thing through time
+
+This is the useful one. `git log -S` finds the commits where the number of times some text appears changed, so it tells you when something arrived and when it went away:
 
 ```
-git log -p -- <file>
-git log -S "<some text>"
-git blame <file>
+git log --oneline -S "FREE_OVER"
 ```
 
-`git log -S` finds commits where the number of times some text appears changed.
-It's the usual way to find when something arrived or disappeared.
+Three commits come back: free shipping over fifty arrived, then vanished inside a commit about per-item pricing whose message does not mention it, then came back. Try to see that same story in the Commit Graph.
 
-## 4. Undo something
+Also worth having:
 
 ```
-git revert <commit>
+git log -p -- shipping.py
+git blame shipping.py
 ```
 
-Makes a new commit that undoes an old one. It can conflict if later commits
-touched the same lines. Fix the conflict, or `git revert --abort`.
+## 5. Take something out, and put it back
+
+```
+git revert 7e6e383
+```
+
+Makes a new commit that undoes an old one. It can conflict if later commits touched the same lines; fix the conflict, or `git revert --abort`. Undo the revert itself with `git revert HEAD`, or throw the lot away with `git reset --hard 7e6e383`. This is the practice copy, so break it if you like.
 
 Branches, for trying something you might throw away:
 
@@ -48,14 +73,14 @@ git checkout main
 git branch -D try-something
 ```
 
-## 5. Help
+## 6. Your assistant
 
-```
-git help <command>
-```
+`claude` starts it in the study shell. It knows git well and it can run commands for you, so "work out when free shipping stopped applying" is a perfectly good thing to type at it.
 
-Your assistant knows git well, so you can just ask it.
+It can also plan before it acts. If you ask it to plan first, or use its plan mode, it lays out the steps it intends to take before touching anything. You do not have to try that now. It is worth knowing about for the second request.
+
+Use the editor, the terminal, the assistant, or all three. Whatever you would normally do.
 
 ## Before we start
 
-Tell us if any of that behaved differently from what you expected here.
+Tell us if any of that behaved differently from what you expected.

@@ -1,0 +1,186 @@
+rules_version = '2';
+
+// Access model
+//
+// Experimenter: signs in with Google, must have a doc at /admins/{email}. That
+// doc is created by hand in the console once, for each experimenter. There is
+// no self-service path to becoming an admin.
+//
+// Participant: signs in anonymously and reaches exactly one participant record,
+// whose document id is a 24-character random access code. Knowing the code is
+// the capability. Listing participants is denied, so codes cannot be
+// enumerated, and a code only ever appears in the link the experimenter hands
+// over.
+//
+// The participant's own machine (the study bundle) also signs in anonymously,
+// with a different uid than the browser, and appends telemetry. That is why
+// event creation is allowed for any signed-in caller that knows the code rather
+// than only the claiming uid.
+//
+// Answer keys, per-request scores, and interview notes are admin-only. A
+// participant who opens devtools must not be able to read the quiz answers or
+// see how they were graded mid-session.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The owner is named here rather than seeded by hand in the console. A
+    // bootstrap that lives in a rules file is auditable; a bootstrap that lives
+    // in a setup instruction is a step somebody skips. Everyone else is added
+    // from the console's Setup tab, into /admins.
+    function isOwner() {
+      return signedIn() && request.auth.token.email == 'ryanyen2@mit.edu';
+    }
+
+    function isAdmin() {
+      return isOwner()
+        || (signedIn()
+            && request.auth.token.email != null
+            && exists(/databases/$(database)/documents/admins/$(request.auth.token.email)));
+    }
+
+    function participant(pid) {
+      return get(/databases/$(database)/documents/participants/$(pid)).data;
+    }
+
+    function participantExists(pid) {
+      return exists(/databases/$(database)/documents/participants/$(pid));
+    }
+
+    // The browser session that claimed this record.
+    function isClaimant(pid) {
+      return signedIn() && participant(pid).claimedUid == request.auth.uid;
+    }
+
+    // Unclaimed, or already claimed by this browser. Claiming is first-come:
+    // the link is single-use in practice because the experimenter hands it to
+    // one person.
+    function mayClaim(pid) {
+      return signedIn()
+        && (!('claimedUid' in participant(pid)) || participant(pid).claimedUid == null
+            || participant(pid).claimedUid == request.auth.uid);
+    }
+
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // ---- Experimenter allowlist -------------------------------------------
+    match /admins/{email} {
+      // You may always read your own row, which is how the console decides
+      // whether to show you anything.
+      allow get: if isAdmin() || (signedIn() && request.auth.token.email == email);
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---- Study-wide configuration -----------------------------------------
+    // Answer keys, episode ground truth, rubrics. Admin only, both ways.
+    match /study/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Public-ish operational settings the participant page needs before it
+    // knows who the participant is (bundle download URLs, support contact).
+    // Written by admins only.
+    match /public/{docId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- Participant records ----------------------------------------------
+    match /participants/{pid} {
+      // Knowing the 24-char code is the capability. Enumeration is denied.
+      allow get: if isAdmin() || signedIn();
+      allow list: if isAdmin();
+      allow create, delete: if isAdmin();
+
+      allow update: if isAdmin()
+        // The participant may claim the record and advance their own progress,
+        // and nothing else. `blocks`, `group`, `ordinal`, `code` and `studyId`
+        // are the assignment and the classification, so they are absent from
+        // this list on purpose: a participant who could rewrite `blocks` could
+        // put themselves in one condition twice, and one who could rewrite
+        // `studyId` could move themselves into or out of the analysed set.
+        // Either session would look completely normal in the dashboard.
+        || (mayClaim(pid)
+            && changed().hasOnly([
+                 'claimedUid', 'claimedAt', 'status', 'currentStep',
+                 'stepState', 'lastSeenAt', 'startedAt', 'completedAt',
+                 'consentAt', 'updatedAt'
+               ]));
+
+      // Questionnaire responses. The participant writes their own; nobody
+      // deletes them.
+      match /responses/{formId} {
+        allow read, write: if isAdmin();
+        allow read, create, update: if isClaimant(pid);
+        allow delete: if false;
+      }
+
+      // Per-request timing and answers, one doc per request per half.
+      match /requests/{requestId} {
+        allow read, write: if isAdmin();
+        allow read, create, update: if isClaimant(pid);
+        allow delete: if false;
+      }
+
+      // Telemetry from the participant's machine. Append-only for everyone
+      // except admins: an event that has landed is never rewritten, which is
+      // what makes re-running the sync safe.
+      match /events/{eventId} {
+        allow read: if isAdmin();
+        allow create: if signedIn()
+          && participantExists(pid)
+          && request.resource.data.keys().hasAll(['ts', 'kind'])
+          && request.resource.data.size() <= 24;
+        allow update, delete: if isAdmin();
+      }
+
+      // One doc per machine that has reported, with a heartbeat. The setup
+      // step turns green when this appears, which is how the participant knows
+      // their install worked without anybody reading a terminal to them.
+      match /devices/{deviceId} {
+        allow read: if isAdmin() || isClaimant(pid);
+        allow create, update: if signedIn() && participantExists(pid);
+        allow delete: if isAdmin();
+      }
+
+      // Session credentials: the OpenAI key sgt needs and the Anthropic key
+      // Claude Code needs, provisioned per participant so they are revocable
+      // one at a time. Readable by anything holding the code, because the
+      // setup script fetches them with the code alone -- the participant never
+      // copies a key by hand, which is where keys get pasted into the wrong
+      // window.
+      match /secrets/{docId} {
+        allow get: if isAdmin() || (signedIn() && participantExists(pid));
+        allow list: if isAdmin();
+        allow write: if isAdmin();
+      }
+
+      // Facilitator-only. Scores, interview notes, scorer output.
+      match /scoring/{docId} {
+        allow read, write: if isAdmin();
+      }
+      match /notes/{noteId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // ---- Cached analysis --------------------------------------------------
+    // Derived, never authoritative. Deleting these loses nothing; the
+    // dashboard recomputes from raw events.
+    match /analysis/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

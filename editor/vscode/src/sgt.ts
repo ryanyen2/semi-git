@@ -12,6 +12,7 @@ import {
   ComposeView,
   EmitView,
   FeatureVerbPreview,
+  FindView,
   FoldView,
   ForkDetailView,
   ForksView,
@@ -258,15 +259,19 @@ export class Sgt {
   // each kept `carry` dependent repoints mechanically for free. An empty keep set is a plain
   // full-upset revert that commits immediately. Returns the human report.
   revertKeep(sel: string, keepOpIds: string[]): Promise<string> {
-    if (keepOpIds.length === 0) return this.mutate(["revert", sel]);
-    return this.mutate(["revert", sel, "--keep", keepOpIds.join(",")]);
+    if (keepOpIds.length === 0) return this.confirmedMutate(["revert", sel]);
+    return this.confirmedMutate(["revert", sel, "--keep", keepOpIds.join(",")]);
   }
 
-  // The union closure a multi-select induces (`sgt select <feature>... --json` → selection_view):
-  // the feature ids, direct + closure op counts, and the ops pulled in from other features. Feeds
-  // the workbench's multi-select "selection" card + closure paint (Stage C). A report-only read.
+  // The union closure a multi-select induces (`sgt feature select <feature>... --json` →
+  // selection_view): the feature ids, direct + closure op counts, and the ops pulled in from other
+  // features. Feeds the workbench's multi-select "selection" card + closure paint (Stage C), and
+  // the batch preview its "Revert all" confirms against. A report-only read.
+  // The bare `sgt select` spelling this used to call was re-homed under `feature` and now answers
+  // with a "no longer exists — run: sgt feature select" stub on stderr, which the extension saw as
+  // a failed read: the selection card only ever showed that migration notice.
   select(refs: string[]): Promise<SelectionView> {
-    return this.json<SelectionView>(["select", ...refs, "--json"]);
+    return this.json<SelectionView>(["feature", "select", ...refs, "--json"]);
   }
 
   // Active plan sessions + the pure checkpoint preview (plan U14). A read, not a rebuild —
@@ -468,9 +473,28 @@ export class Sgt {
     return this.json(args, 120_000);
   }
 
+  /** `sgt find "<phrase>" --json`: ranked features/saves/symbols. Report-only. */
+  find(query: string): Promise<FindView> {
+    return this.json<FindView>(["find", query, "--json"], 60_000);
+  }
+
   // Mutations return the human report; surface it verbatim.
   async mutate(args: string[], timeout = 30_000): Promise<string> {
     return this.run(args, timeout);
+  }
+
+  /**
+   * A mutation the user has already agreed to in a modal.
+   *
+   * `revert` and `restore` ask before they act. On a terminal that is a y/N
+   * prompt; with no terminal to ask on -- which is every call from here -- the
+   * CLI prints the preview and exits 2. `execFile` reports a non-zero exit as a
+   * failure, so every revert and restore from the editor ended in "Command
+   * failed" after the user had clicked Apply, having changed nothing. `--yes`
+   * is the CLI's own way of saying the asking already happened.
+   */
+  async confirmedMutate(args: string[], timeout = 30_000): Promise<string> {
+    return this.run(args.includes("--yes") ? args : [...args, "--yes"], timeout);
   }
 }
 

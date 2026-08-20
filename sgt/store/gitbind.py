@@ -11,6 +11,7 @@ from __future__ import annotations
 import atexit
 import hashlib
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -983,7 +984,33 @@ class GitBinding:
         try:
             env = {"GIT_INDEX_FILE": scratch_path}
             self._git("add", "-A", env=env)
-            return self._git("write-tree", env=env).stdout.strip()
+            try:
+                return self._git("write-tree", env=env).stdout.strip()
+            except GitError as first:
+                # `write-tree` can fail with "invalid object ... for '<path>'" when a file the
+                # scratch index refers to is not resolvable as an object -- seen against a
+                # zero-byte file whose empty blob was not in the object store. Re-staging costs
+                # milliseconds and fixes the transient case, where a file changed underneath
+                # `add -A`; the tool writes into `.sgt/` constantly, so it can race itself.
+                #
+                # If it fails twice it is not transient, and what must not happen then is what
+                # happened in the pilot: a participant, ten minutes into a session, reading
+                # `GitError: git write-tree failed (128) ... e69de29bb2d1...` and having no idea
+                # whether they broke something. Say which file, and say it is not their fault.
+                self._git("add", "-A", env=env)
+                try:
+                    return self._git("write-tree", env=env).stdout.strip()
+                except GitError as second:
+                    detail = str(second)
+                    culprit = re.search(r"for '([^']+)'", detail)
+                    named = f" The file git named is {culprit.group(1)}." if culprit else ""
+                    raise GitError(
+                        "Could not take a snapshot of the working tree, so this change was not "
+                        f"recorded.{named} Nothing has been lost and nothing you did caused it; "
+                        "the repository is intact and your files are untouched. Re-run the "
+                        "command, and if it happens again tell whoever set this up and show them "
+                        f"this message.\n\ngit said: {detail}"
+                    ) from first
         finally:
             try:
                 os.unlink(scratch_path)
