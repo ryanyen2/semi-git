@@ -182,7 +182,8 @@
     "compile": "tsc --noEmit && node esbuild.js",
     "watch": "node esbuild.js --watch",
     "package": "tsc --noEmit && node esbuild.js --production",
-    "vscode:prepublish": "npm run package"
+    "vscode:prepublish": "npm run package",
+    "test": "node --test src/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

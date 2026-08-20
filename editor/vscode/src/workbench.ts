@@ -364,7 +364,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     let done = 0;
     for (const ref of refs) {
       try {
-        await this.store.sgt.confirmedMutate(["revert", ref]);
+        await this.store.sgt.mutate(["revert", ref]);
         done++;
       } catch (e: any) {
         this.store.invalidate();
