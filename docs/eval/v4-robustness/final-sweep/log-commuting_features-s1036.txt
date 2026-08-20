@@ -1,0 +1,50 @@
+    0 ✓ op_revert_keep_dependents 352384585f58
+    1 ✓ op_revert_restore_probe  01183d43dbc3
+    2 ✓ op_revert_undo_probe     66521c9c8059
+    3 ✓ op_revert_restore_probe  352384585f58
+    4 ✓ op_edit_save             a.py (rework)
+    5 ✓ op_revert                f9fe69be225f
+    6 ✓ op_edit_save             a.py (rework)
+    7 ✓ op_revert                01183d43dbc3
+    8 ✓ op_undo                  
+    9 ✓ op_edit_save             a.py (rework)
+   10 ✓ op_restore               f9fe69be225f
+   11 ✓ op_revert_undo_probe     352384585f58
+   12 ✓ op_add_file              v4_mod_12.py
+   13 · op_feature_merge         1 feature(s)
+   14 ✓ op_revert_restore_probe  01183d43dbc3
+   15 ✓ op_feature_split         f-01183d43dbc3
+   16 ✓ op_restore               f9fe69be225f
+   17 ✓ op_revert_undo_probe     66521c9c8059
+   18 ✓ op_edit_save             v4_mod_12.py (rework)
+   19 ✓ op_revert                781982b73f2a
+   20 ✓ op_revert                352384585f58
+   21 ✓ op_revert_undo_probe     39bc8466d27a
+   22 ✓ op_add_file              v4_mod_22.py
+   23 ✓ op_edit_save             v4_mod_12.py (rework)
+   24 ✓ op_edit_save             a.py (rework)
+   25 ✓ op_feature_merge         af-m86fa9e8741<-f-01183d43dbc3
+   26 ✓ op_revert                feec152f4fbd
+   27 ✓ op_revert                17459403971d
+   28 ✓ op_revert                0fce861cfd5c
+   29 ✓ op_restore               352384585f58
+   30 ✓ op_feature_merge         f-0f4a380c1198<-af-m86fa9e8741
+   31 · op_feature_merge         1 feature(s)
+   32 ✓ op_revert_undo_probe     63dce8d33652
+   33 ✓ op_feature_split         f-0f4a380c1198
+   34 ✓ op_revert_keep_dependents 63dce8d33652
+   35 ✓ op_feature_rename        f-md680c96985f
+   36 ✓ op_edit_save             v4_mod_22.py (rework)
+   37 ✓ op_revert                441275e32106
+   38 ✓ op_revert_restore_probe  66521c9c8059
+   39 ✓ op_restore               feec152f4fbd
+   40 ✓ op_add_file              v4_mod_40.py
+   41 ✓ op_revert_undo_probe     c9ae26c235f7
+   42 ✓ op_edit_save             v4_mod_40.py (rework)
+   43 ✓ op_revert                ad1dfcc0c49c
+   44 ✓ op_edit_save             a.py (rework)
+   45 ✓ op_undo                  
+   46 ✓ op_add_file              v4_mod_46.py
+   47 ✓ op_revert_restore_probe  0f4a380c1198
+   48 ✓ op_revert_undo_probe     5d14e4454702
+commuting_features seed 1036: 49 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-commuting_features-seed1036.json

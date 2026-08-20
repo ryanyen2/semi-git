@@ -1,0 +1,232 @@
+{
+  "repo": "Firepal/stammer",
+  "stars": 498,
+  "band": "200..500",
+  "license": "MIT",
+  "status": "ok",
+  "clone": {
+    "cmd": "git clone --quiet https://github.com/Firepal/stammer.git",
+    "rc": 0,
+    "seconds": 1.7,
+    "timed_out": false,
+    "out": "",
+    "err": ""
+  },
+  "head_sha": "f633f0447d8263b444ad35f83806a858abbb610a",
+  "tree": {
+    "files_total": 12,
+    "files_py": 6,
+    "py_bytes": 35423,
+    "commits": 94
+  },
+  "loadavg_at_init": 6.63525390625,
+  "init": {
+    "cmd": "sgt init",
+    "rc": 0,
+    "seconds": 10.8,
+    "timed_out": false,
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `sgt now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up\n",
+    "err": ""
+  },
+  "backfill": {
+    "reached_genesis": true,
+    "complete": true,
+    "chunks": 3,
+    "seconds": 26.5,
+    "capped": false,
+    "cap_s": 1800,
+    "progress": [
+      {
+        "chunk": 1,
+        "seconds": 10.5,
+        "ops": 145
+      },
+      {
+        "chunk": 2,
+        "seconds": 21.2,
+        "ops": 211
+      },
+      {
+        "chunk": 3,
+        "seconds": 26.5,
+        "ops": 235
+      }
+    ]
+  },
+  "summary": {
+    "files": 17,
+    "symbols": 104,
+    "features": 0,
+    "coverage_fraction": 0.2727272727272727,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "drift": {
+      "any": true,
+      "paths": [
+        "README.md",
+        "audio_matching.py",
+        "decay_cache.py",
+        "frame000001.png",
+        "frame000013.png",
+        "frame000026.png",
+        "image_tiling.py",
+        "scratch_fractions/__init__.py",
+        "scratch_fractions/from_scratch.py",
+        "stammer.py",
+        "tilings/__init__.py",
+        "tilings/image_tiling.py",
+        "video_out.py"
+      ]
+    },
+    "unmanaged": [],
+    "backstop_kept": [
+      ".gitignore",
+      "fraction_bits.py"
+    ],
+    "forks": {
+      "open": 0,
+      "records": []
+    },
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true,
+      "history_rewritten": false
+    }
+  },
+  "fsck": {
+    "ok": true,
+    "checked": 235,
+    "bad_hash": [],
+    "corrupt": [],
+    "chain_gaps": [
+      "README.md@32f2b122303ae6f48ac2820763b4f967b73daa32",
+      "scratch_fractions/fraction_bits.py::__residue__::as_array@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "scratch_fractions/fraction_bits.py::__residue__::main@ea5b8cfce6ef078998d756427296f2cb0de5abad"
+    ],
+    "invalid_ideals": [],
+    "unreachable_witnesses": [],
+    "mixed_versions": [],
+    "pending_land": [],
+    "op_index_stale": false,
+    "stale_sessions": []
+  },
+  "fsck_tree": {
+    "drift": [
+      "README.md",
+      "audio_matching.py",
+      "decay_cache.py",
+      "frame000001.png",
+      "frame000013.png",
+      "frame000026.png",
+      "image_tiling.py",
+      "scratch_fractions/__init__.py",
+      "scratch_fractions/from_scratch.py",
+      "stammer.py",
+      "tilings/__init__.py",
+      "tilings/image_tiling.py",
+      "video_out.py"
+    ],
+    "unmanaged": [],
+    "backstop_kept": [
+      ".gitignore",
+      "fraction_bits.py"
+    ],
+    "staged": [],
+    "unseeded": []
+  },
+  "symbols": {
+    "ok": true,
+    "data": {
+      "symbol_kinds": {
+        "anchor": 35,
+        "residue": 44,
+        "entity": 13,
+        "whole_file": 8,
+        "nested": 6
+      },
+      "paths": 17,
+      "paths_with_entities": 4,
+      "paths_whole_file_only": 13,
+      "live_ops": 113,
+      "has_probe": false,
+      "entity_paths": [
+        "image_tiling.py",
+        "scratch_fractions/from_scratch.py",
+        "stammer.py",
+        "tilings/image_tiling.py"
+      ]
+    },
+    "failure": null
+  },
+  "reconstruction": {
+    "tracked_files": 17,
+    "drifted_files": 13,
+    "rate": 0.2353,
+    "drifted_paths": [
+      "README.md",
+      "audio_matching.py",
+      "decay_cache.py",
+      "frame000001.png",
+      "frame000013.png",
+      "frame000026.png",
+      "image_tiling.py",
+      "scratch_fractions/__init__.py",
+      "scratch_fractions/from_scratch.py",
+      "stammer.py",
+      "tilings/__init__.py",
+      "tilings/image_tiling.py",
+      "video_out.py"
+    ]
+  },
+  "coverage_fraction_paths": 0.2727272727272727,
+  "edit": {
+    "path": "stammer.py",
+    "save": {
+      "cmd": "sgt save -m v3 probe edit",
+      "rc": 1,
+      "seconds": 3.8,
+      "timed_out": false,
+      "out": "\u2717 put() would overwrite uncommitted changes: ['stammer.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)\n",
+      "err": ""
+    },
+    "recorded_symbol": false,
+    "drift_after": 13,
+    "drift_paths_after": [
+      "README.md",
+      "audio_matching.py",
+      "decay_cache.py",
+      "frame000001.png",
+      "frame000013.png",
+      "frame000026.png",
+      "image_tiling.py",
+      "scratch_fractions/__init__.py",
+      "scratch_fractions/from_scratch.py",
+      "stammer.py",
+      "tilings/__init__.py",
+      "tilings/image_tiling.py",
+      "video_out.py"
+    ],
+    "symbols_after": {
+      "symbol_kinds": {
+        "anchor": 35,
+        "residue": 44,
+        "entity": 13,
+        "whole_file": 8,
+        "nested": 6
+      },
+      "paths": 17,
+      "paths_with_entities": 4,
+      "paths_whole_file_only": 13,
+      "live_ops": 113,
+      "has_probe": false,
+      "entity_paths": [
+        "image_tiling.py",
+        "scratch_fractions/from_scratch.py",
+        "stammer.py",
+        "tilings/image_tiling.py"
+      ]
+    }
+  }
+}

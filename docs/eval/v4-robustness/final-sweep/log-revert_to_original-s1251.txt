@@ -1,0 +1,51 @@
+    0 ✗ op_revert_restore_probe  ee1211142a8b
+        restore_resurrects_layout: restoring what revert ee1211142a8b removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']
+    1 ✓ op_feature_split         f-126303a70181
+    2 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+    3 ✓ op_revert                a08a015717cf
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_revert_undo_probe     ee1211142a8b
+    6 ✓ op_revert_undo_probe     ee1211142a8b
+    7 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+    8 ✓ op_revert_restore_probe  0bf8f47dd419
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_undo                  
+   11 ✓ op_feature_merge         af-mc9b0769788<-af-m4ea7d37230
+   12 ✓ op_edit_save             v4_mod_4.py (rework)
+   13 ✓ op_revert                db0e4b75f728
+   14 ✓ op_feature_rename        f-ee1211142a8b
+   15 ✓ op_revert_keep_dependents 0bf8f47dd419
+   16 ✓ op_edit_save             v4_mod_4.py (rework)
+   17 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   18 ✓ op_revert_keep_dependents 126303a70181
+   19 ✓ op_revert_undo_probe     f19ec32b02e9
+   20 ✓ op_revert                0442c989d468
+   21 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   22 ✓ op_restore               da76ef055716
+   23 ✓ op_feature_split         f-ee1211142a8b
+   24 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   25 ✗ op_revert_restore_probe  ee1211142a8b
+        restore_resurrects_layout: restoring what revert ee1211142a8b removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['a08a015717cf']
+   26 ✓ op_feature_split         f-ee1211142a8b
+   27 ✓ op_undo                  
+   28 ✓ op_revert_undo_probe     f19ec32b02e9
+   29 ✓ op_restore               7865e367ec4b
+   30 ✓ op_edit_save             v4_mod_4.py (rework)
+   31 ✓ op_restore               f82434e5639a
+   32 ✓ op_restore               d8db33dac867
+   33 ✓ op_edit_save             v4_mod_4.py (rework)
+   34 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   35 ✓ op_add_file              v4_mod_35.py
+   36 ✓ op_restore               e1f1561619a4
+   37 ✓ op_feature_split         af-mc18be9938d
+   38 ✓ op_revert_keep_dependents d8db33dac867
+   39 ✓ op_restore               53e12a4cd95e
+   40 ✓ op_feature_split         f-ee1211142a8b
+   41 ✓ op_undo                  
+revert_to_original seed 1251: 42 ops applied, 2 with an oracle failure, 0 traceback(s), 6 tree(s) settled → /tmp/v4-final/run-revert_to_original-seed1251.json

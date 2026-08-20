@@ -1,0 +1,52 @@
+    0 ✓ op_edit_save             ov.py (rework)
+    1 ✓ op_revert                ce259f0defb1
+    2 ✓ op_revert_restore_probe  de8a3537aed1
+    3 ✓ op_revert_keep_dependents de8a3537aed1
+    4 ✓ op_revert_restore_probe  273015e3c451
+    5 ✓ op_feature_rename        f-10e1ad11620f
+    6 ✓ op_revert                de8a3537aed1
+    7 ✓ op_edit_save             ov.py (rework)
+        settled (save refused, git restore): ['M ov.py']
+    8 ✓ op_restore               d9e35d9e5061
+    9 ✓ op_edit_save             ov.py (rework)
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_revert_undo_probe     4acbbd26efe3
+   12 ✓ op_revert                575bde27ed78
+   13 · op_restore               nothing addressable excluded
+   14 ✗ op_revert_restore_probe  4acbbd26efe3
+        restore_resurrects_layout: restoring what revert 4acbbd26efe3 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['575bde27ed78']
+   15 ✓ op_edit_save             ov.py (rework)
+   16 ✓ op_revert_restore_probe  575bde27ed78
+   17 ✓ op_add_file              v4_mod_17.py
+   18 ✓ op_revert_restore_probe  7457ba96181f
+   19 · op_restore               nothing addressable excluded
+   20 ✓ op_revert_undo_probe     de8a3537aed1
+   21 ✓ op_feature_rename        f-10e1ad11620f
+   22 ✓ op_revert_keep_dependents 7457ba96181f
+   23 ✓ op_edit_save             v4_mod_17.py (rework)
+   24 ✓ op_feature_split         af-ma4e357a76f
+   25 ✓ op_revert_restore_probe  95326139bbcc
+   26 · op_restore               nothing addressable excluded
+   27 ✓ op_feature_split         f-10e1ad11620f
+   28 ✓ op_edit_save             ov.py (rework)
+   29 ✓ op_revert_undo_probe     0123cff4e813
+   30 ✓ op_edit_save             ov.py (rework)
+   31 · op_restore               nothing addressable excluded
+   32 ✓ op_revert                95326139bbcc
+   33 ✓ op_revert                10e1ad11620f
+   34 ✓ op_revert                d1e11475bac8
+   35 ✓ op_feature_merge         f-0123cff4e813<-f-10e1ad11620f
+   36 ✓ op_revert_undo_probe     d9e35d9e5061
+   37 ✓ op_revert_undo_probe     d9e35d9e5061
+   38 ✗ op_revert_restore_probe  d2085870f0a8
+        revert_restore_unexplained_drift: revert d2085870f0a8 then restoring everything it removed left 1 file(s) different from before: ['v4_mod_17.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_17.py']
+   39 ✓ op_restore               d1e11475bac8
+   40 ✓ op_revert_undo_probe     d9e35d9e5061
+   41 ✓ op_undo                  
+   42 ✓ op_revert_keep_dependents d9e35d9e5061
+   43 ✓ op_restore               af358a5bfe44
+   44 ✓ op_undo                  
+   45 ✓ op_feature_split         f-0123cff4e813
+   46 ✓ op_revert_undo_probe     f6c4e93100ac
+overload_group seed 1267: 47 ops applied, 2 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-overload_group-seed1267.json

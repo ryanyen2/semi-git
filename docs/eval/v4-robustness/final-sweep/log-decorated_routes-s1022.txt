@@ -1,0 +1,33 @@
+    0 ✓ op_edit_save             routes.py (rework)
+    1 · op_feature_merge         1 feature(s)
+    2 ✓ op_revert                1a808351b6c6
+    3 · op_revert_undo_probe     empty ideal
+    4 ✓ op_restore               d620bf867672
+    5 ✓ op_undo                  
+    6 · op_revert_restore_probe  empty ideal
+    7 · op_revert_undo_probe     empty ideal
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_edit_save             routes.py (rework)
+        settled (save refused, git restore): ['M routes.py']
+   10 ✓ op_revert                85daff11b8f2
+   11 ✗ op_revert_restore_probe  1e907f1d838b
+        revert_restore_unexplained_drift: revert 1e907f1d838b then restoring everything it removed left 1 file(s) different from before: ['v4_mod_8.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_8.py']
+   12 ✓ op_revert_undo_probe     fb1dc3756108
+   13 ✓ op_revert                fb1dc3756108
+   14 ✓ op_edit_save             v4_mod_8.py (add)
+   15 ✓ op_revert_keep_dependents 3d9592fb07c4
+   16 ✓ op_feature_split         af-m7798385f8c
+   17 ✓ op_revert_keep_dependents 3d9592fb07c4
+   18 ✓ op_edit_save             v4_mod_8.py (rework)
+   19 ✓ op_revert_undo_probe     86f1ff25c696
+   20 ✓ op_edit_save             v4_mod_8.py (rework)
+   21 ✓ op_revert                86f1ff25c696
+   22 ✓ op_feature_merge         f-1a808351b6c6<-af-m8e67b04fbb
+   23 ✓ op_undo                  
+   24 ✓ op_undo                  
+   25 ✓ op_revert_keep_dependents f6ed1515d3ca
+   26 ✓ op_revert                48cc46b4b7e8
+   27 ✓ op_restore               bc4ee665797a
+   28 ✓ op_restore               d620bf867672
+decorated_routes seed 1022: 29 ops applied, 1 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-decorated_routes-seed1022.json

@@ -1,0 +1,453 @@
+{
+  "repo": "graphite-project/docker-graphite-statsd",
+  "stars": 500,
+  "band": "200..500",
+  "license": "MIT",
+  "status": "ok",
+  "clone": {
+    "cmd": "git clone --quiet https://github.com/graphite-project/docker-graphite-statsd.git",
+    "rc": 0,
+    "seconds": 0.6,
+    "timed_out": false,
+    "out": "",
+    "err": ""
+  },
+  "head_sha": "2756e48d2da2eed44a4246ce6fa259b1bf44470a",
+  "tree": {
+    "files_total": 57,
+    "files_py": 2,
+    "py_bytes": 22490,
+    "commits": 471
+  },
+  "loadavg_at_init": 7.04296875,
+  "init": {
+    "cmd": "sgt init",
+    "rc": 0,
+    "seconds": 10.8,
+    "timed_out": false,
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `sgt now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up\n",
+    "err": ""
+  },
+  "backfill": {
+    "reached_genesis": true,
+    "complete": true,
+    "chunks": 25,
+    "seconds": 260.5,
+    "capped": false,
+    "cap_s": 1800,
+    "progress": [
+      {
+        "chunk": 1,
+        "seconds": 11.2,
+        "ops": 51
+      },
+      {
+        "chunk": 2,
+        "seconds": 22.0,
+        "ops": 69
+      },
+      {
+        "chunk": 3,
+        "seconds": 32.6,
+        "ops": 86
+      },
+      {
+        "chunk": 4,
+        "seconds": 42.9,
+        "ops": 109
+      },
+      {
+        "chunk": 5,
+        "seconds": 53.7,
+        "ops": 134
+      },
+      {
+        "chunk": 6,
+        "seconds": 64.1,
+        "ops": 156
+      },
+      {
+        "chunk": 7,
+        "seconds": 75.0,
+        "ops": 171
+      },
+      {
+        "chunk": 8,
+        "seconds": 86.1,
+        "ops": 201
+      },
+      {
+        "chunk": 9,
+        "seconds": 96.4,
+        "ops": 218
+      },
+      {
+        "chunk": 10,
+        "seconds": 107.2,
+        "ops": 248
+      },
+      {
+        "chunk": 11,
+        "seconds": 117.5,
+        "ops": 275
+      },
+      {
+        "chunk": 12,
+        "seconds": 128.1,
+        "ops": 294
+      },
+      {
+        "chunk": 13,
+        "seconds": 138.6,
+        "ops": 319
+      },
+      {
+        "chunk": 14,
+        "seconds": 149.4,
+        "ops": 341
+      },
+      {
+        "chunk": 15,
+        "seconds": 159.8,
+        "ops": 353
+      },
+      {
+        "chunk": 16,
+        "seconds": 170.2,
+        "ops": 363
+      },
+      {
+        "chunk": 17,
+        "seconds": 180.8,
+        "ops": 381
+      },
+      {
+        "chunk": 18,
+        "seconds": 191.2,
+        "ops": 397
+      },
+      {
+        "chunk": 19,
+        "seconds": 201.8,
+        "ops": 411
+      },
+      {
+        "chunk": 20,
+        "seconds": 212.5,
+        "ops": 456
+      },
+      {
+        "chunk": 21,
+        "seconds": 223.4,
+        "ops": 472
+      },
+      {
+        "chunk": 22,
+        "seconds": 234.3,
+        "ops": 483
+      },
+      {
+        "chunk": 23,
+        "seconds": 245.0,
+        "ops": 521
+      },
+      {
+        "chunk": 24,
+        "seconds": 255.9,
+        "ops": 578
+      },
+      {
+        "chunk": 25,
+        "seconds": 260.5,
+        "ops": 603
+      }
+    ]
+  },
+  "summary": {
+    "files": 61,
+    "symbols": 61,
+    "features": 0,
+    "coverage_fraction": 0.0,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "drift": {
+      "any": true,
+      "paths": [
+        "Dockerfile",
+        "LICENSE.txt",
+        "README.md",
+        "Vagrantfile",
+        "__build.sh",
+        "assets/install",
+        "assets/start",
+        "bin/provision",
+        "bin/send_stats",
+        "build.sh",
+        "build_pypy.sh",
+        "conf/etc/collectd/collectd.conf",
+        "conf/etc/my_init.d/01_conf_init.sh",
+        "conf/etc/service/brubeck/run",
+        "conf/etc/service/carbon-relay/run",
+        "conf/etc/service/collectd/run",
+        "conf/etc/service/cron/run",
+        "conf/etc/service/go-carbon/run",
+        "conf/etc/service/redis/run",
+        "conf/graphite/aggregation-rules.conf",
+        "conf/graphite/blacklist.conf",
+        "conf/graphite/carbon.amqp.conf",
+        "conf/graphite/carbon.conf",
+        "conf/graphite/dashboard.conf",
+        "conf/graphite/graphTemplates.conf",
+        "conf/graphite/graphite.wsgi",
+        "conf/graphite/relay-rules.conf",
+        "conf/graphite/rewrite-rules.conf",
+        "conf/graphite/storage-aggregation.conf",
+        "conf/graphite/storage-schemas.conf",
+        "conf/graphite/whitelist.conf",
+        "conf/logrotate",
+        "conf/nginx/graphite.conf",
+        "conf/nginx/nginx.conf",
+        "conf/opt/graphite/bin/django_admin_init.exp",
+        "conf/opt/graphite/bin/django_admin_init.sh",
+        "conf/opt/graphite/webapp/graphite/app_settings.py",
+        "conf/opt/statsd/config_tcp.js",
+        "conf/opt/statsd/config_udp.js",
+        "conf/statsd/config.js",
+        "conf/usr/local/bin/manage.sh",
+        "daemons/carbon-aggregator.sh",
+        "daemons/carbon.sh",
+        "daemons/graphite.sh",
+        "daemons/nginx.sh",
+        "daemons/statsd.sh",
+        "docker-compose.yml",
+        "github/stale.yml",
+        "my_init.d/configure.sh",
+        "provision",
+        "scripts/django_admin_init.exp",
+        "scripts/local_settings.py"
+      ]
+    },
+    "unmanaged": [],
+    "backstop_kept": [
+      ".deepsource.toml",
+      ".dockerignore",
+      ".github/ISSUE_TEMPLATE/bug_report.md",
+      ".github/ISSUE_TEMPLATE/feature_request.md",
+      ".github/ISSUE_TEMPLATE/general-support-question.md",
+      ".github/dependabot.yml",
+      ".github/stale.yml",
+      ".github/workflows/master-publish.yml",
+      ".github/workflows/release-publish.yml",
+      ".gitignore",
+      ".hadolint.yaml",
+      "conf/entrypoint",
+      "conf/etc/logrotate.d/graphite-statsd",
+      "conf/etc/nginx/nginx.conf",
+      "conf/etc/nginx/sites-enabled/graphite-statsd.conf",
+      "conf/etc/service/carbon-aggregator/run",
+      "conf/etc/service/carbon/run",
+      "conf/etc/service/graphite/run",
+      "conf/etc/service/nginx/run",
+      "conf/etc/service/statsd/run",
+      "conf/opt/graphite/conf/aggregation-rules.conf",
+      "conf/opt/graphite/conf/blacklist.conf",
+      "conf/opt/graphite/conf/carbon.amqp.conf",
+      "conf/opt/graphite/conf/carbon.conf",
+      "conf/opt/graphite/conf/dashboard.conf",
+      "conf/opt/graphite/conf/graphTemplates.conf",
+      "conf/opt/graphite/conf/relay-rules.conf",
+      "conf/opt/graphite/conf/rewrite-rules.conf",
+      "conf/opt/graphite/conf/storage-aggregation.conf",
+      "conf/opt/graphite/conf/storage-schemas.conf",
+      "conf/opt/graphite/conf/whitelist.conf",
+      "conf/opt/graphite/webapp/graphite/local_settings.py",
+      "conf/opt/statsd/config/tcp.js",
+      "conf/opt/statsd/config/udp.js"
+    ],
+    "forks": {
+      "open": 0,
+      "records": []
+    },
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true,
+      "history_rewritten": false
+    }
+  },
+  "fsck": {
+    "ok": true,
+    "checked": 603,
+    "bad_hash": [],
+    "corrupt": [],
+    "chain_gaps": [
+      "Dockerfile@33223abbe3bef1b7a737862af86e7358c1a5d263",
+      "Dockerfile@337a20b817d74b0d69b0d13c6dad3454dc61082e",
+      "Dockerfile@342d50045aef81500bb9ec4ace63ce9fc3e54029",
+      "Dockerfile@5c09be0841beb020f3dda459da4f157d37f08437",
+      "Dockerfile@aa963702ac8b865221878b97e25bd2c784100480",
+      "README.md@898a901e2335f2c422a60159f830fd76ff09fb3f",
+      "README.md@d4339f5ef0b695b91ceebc2e809292285b24f795",
+      "assets/build@23bb49e04a27a032c116ada87d469b63da42c58c",
+      "bin/start@7ba8d47a7b4d09a31dfbc7580aec1df61941afc2",
+      "build.sh@6ab321143d589ab2bcaa36172a19ab9ec2837b2f",
+      "conf/entrypoint@6cad1bd11c9d08787d10c1f33b2a371767704dcf",
+      "conf/etc/my_init.d/01_conf_init.sh@cb3501f8f0d82a67025302ec6fb17481f8bda728",
+      "conf/etc/service/graphite/run@2408fafc0e658da21372286aa2595ae9357d15ac",
+      "conf/graphite-storage/graphite.db@fe6c2e4764516b78993e8b908de42b03ad60d6c2",
+      "conf/opt/graphite/webapp/graphite/local_settings.py::__residue__::\u0000HEAD\u0000@e716b0a80ecad6d764a0938590043aaf3bac3571",
+      "conf/opt/statsd/config.js::__residue__::\u0000HEAD\u0000@81ab4d920fabcb1feeaeb459a5ae9c9137698da8",
+      "conf/usr/local/bin/django_admin_init.exp@f5452328eb04f25b03adee8121cf65721ee6f2ab",
+      "scripts/init_conf_files.sh@df7e1774c84e07b42a9f1e25444c8ea4114f87d7"
+    ],
+    "invalid_ideals": [],
+    "unreachable_witnesses": [],
+    "mixed_versions": [],
+    "pending_land": [],
+    "op_index_stale": false,
+    "stale_sessions": []
+  },
+  "fsck_tree": {
+    "drift": [
+      "Dockerfile",
+      "LICENSE.txt",
+      "README.md",
+      "Vagrantfile",
+      "__build.sh",
+      "assets/install",
+      "assets/start",
+      "bin/provision",
+      "bin/send_stats",
+      "build.sh",
+      "build_pypy.sh",
+      "conf/etc/collectd/collectd.conf",
+      "conf/etc/my_init.d/01_conf_init.sh",
+      "conf/etc/service/brubeck/run",
+      "conf/etc/service/carbon-relay/run",
+      "conf/etc/service/collectd/run",
+      "conf/etc/service/cron/run",
+      "conf/etc/service/go-carbon/run",
+      "conf/etc/service/redis/run",
+      "conf/graphite/aggregation-rules.conf",
+      "conf/graphite/blacklist.conf",
+      "conf/graphite/carbon.amqp.conf",
+      "conf/graphite/carbon.conf",
+      "conf/graphite/dashboard.conf",
+      "conf/graphite/graphTemplates.conf",
+      "conf/graphite/graphite.wsgi",
+      "conf/graphite/relay-rules.conf",
+      "conf/graphite/rewrite-rules.conf",
+      "conf/graphite/storage-aggregation.conf",
+      "conf/graphite/storage-schemas.conf",
+      "conf/graphite/whitelist.conf",
+      "conf/logrotate",
+      "conf/nginx/graphite.conf",
+      "conf/nginx/nginx.conf",
+      "conf/opt/graphite/bin/django_admin_init.exp",
+      "conf/opt/graphite/bin/django_admin_init.sh",
+      "conf/opt/graphite/webapp/graphite/app_settings.py",
+      "conf/opt/statsd/config_tcp.js",
+      "conf/opt/statsd/config_udp.js",
+      "conf/statsd/config.js",
+      "conf/usr/local/bin/manage.sh",
+      "daemons/carbon-aggregator.sh",
+      "daemons/carbon.sh",
+      "daemons/graphite.sh",
+      "daemons/nginx.sh",
+      "daemons/statsd.sh",
+      "docker-compose.yml",
+      "github/stale.yml",
+      "my_init.d/configure.sh",
+      "provision",
+      "scripts/django_admin_init.exp",
+      "scripts/local_settings.py"
+    ],
+    "unmanaged": [],
+    "backstop_kept": [
+      ".deepsource.toml",
+      ".dockerignore",
+      ".github/ISSUE_TEMPLATE/bug_report.md",
+      ".github/ISSUE_TEMPLATE/feature_request.md",
+      ".github/ISSUE_TEMPLATE/general-support-question.md",
+      ".github/dependabot.yml",
+      ".github/stale.yml",
+      ".github/workflows/master-publish.yml",
+      ".github/workflows/release-publish.yml",
+      ".gitignore",
+      ".hadolint.yaml",
+      "conf/entrypoint",
+      "conf/etc/logrotate.d/graphite-statsd",
+      "conf/etc/nginx/nginx.conf",
+      "conf/etc/nginx/sites-enabled/graphite-statsd.conf",
+      "conf/etc/service/carbon-aggregator/run",
+      "conf/etc/service/carbon/run",
+      "conf/etc/service/graphite/run",
+      "conf/etc/service/nginx/run",
+      "conf/etc/service/statsd/run",
+      "conf/opt/graphite/conf/aggregation-rules.conf",
+      "conf/opt/graphite/conf/blacklist.conf",
+      "conf/opt/graphite/conf/carbon.amqp.conf",
+      "conf/opt/graphite/conf/carbon.conf",
+      "conf/opt/graphite/conf/dashboard.conf",
+      "conf/opt/graphite/conf/graphTemplates.conf",
+      "conf/opt/graphite/conf/relay-rules.conf",
+      "conf/opt/graphite/conf/rewrite-rules.conf",
+      "conf/opt/graphite/conf/storage-aggregation.conf",
+      "conf/opt/graphite/conf/storage-schemas.conf",
+      "conf/opt/graphite/conf/whitelist.conf",
+      "conf/opt/graphite/webapp/graphite/local_settings.py",
+      "conf/opt/statsd/config/tcp.js",
+      "conf/opt/statsd/config/udp.js"
+    ],
+    "staged": [],
+    "unseeded": []
+  },
+  "symbols": {
+    "ok": true,
+    "data": {
+      "symbol_kinds": {
+        "whole_file": 57,
+        "residue": 5
+      },
+      "paths": 62,
+      "paths_with_entities": 0,
+      "paths_whole_file_only": 62,
+      "live_ops": 97,
+      "has_probe": false,
+      "entity_paths": []
+    },
+    "failure": null
+  },
+  "reconstruction": {
+    "tracked_files": 61,
+    "drifted_files": 52,
+    "rate": 0.1475,
+    "drifted_paths": [
+      "Dockerfile",
+      "LICENSE.txt",
+      "README.md",
+      "Vagrantfile",
+      "__build.sh",
+      "assets/install",
+      "assets/start",
+      "bin/provision",
+      "bin/send_stats",
+      "build.sh",
+      "build_pypy.sh",
+      "conf/etc/collectd/collectd.conf",
+      "conf/etc/my_init.d/01_conf_init.sh",
+      "conf/etc/service/brubeck/run",
+      "conf/etc/service/carbon-relay/run",
+      "conf/etc/service/collectd/run",
+      "conf/etc/service/cron/run",
+      "conf/etc/service/go-carbon/run",
+      "conf/etc/service/redis/run",
+      "conf/graphite/aggregation-rules.conf"
+    ]
+  },
+  "coverage_fraction_paths": 0.0,
+  "edit": {
+    "skipped": "sgt covers no .py path at entity granularity"
+  }
+}

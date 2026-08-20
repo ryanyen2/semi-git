@@ -1,0 +1,49 @@
+    0 ✓ op_undo                  
+    1 ✓ op_revert_restore_probe  a48817bebd14
+    2 ✓ op_revert_keep_dependents e35fadd42272
+    3 ✓ op_revert_restore_probe  b47a71f812b4
+    4 ✓ op_undo                  
+    5 ✓ op_feature_rename        f-004014efad04
+    6 ✓ op_edit_save             b.py (rework)
+    7 ✓ op_revert_undo_probe     004014efad04
+    8 ✓ op_feature_merge         af-m4b31b23310<-f-004014efad04
+    9 ✓ op_revert                b63b907d5173
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_revert_keep_dependents 01183d43dbc3
+   12 ✓ op_edit_save             c.py (rework)
+   13 ✓ op_revert                f5eb13272206
+   14 ✓ op_feature_rename        af-m4b31b23310
+   15 ✓ op_undo                  
+   16 · op_restore               nothing addressable excluded
+   17 ✓ op_revert_keep_dependents c764130e8261
+   18 ✓ op_feature_rename        af-m4b31b23310
+   19 ✓ op_revert                13bf908d9584
+   20 ✓ op_edit_save             b.py (rework)
+   21 ✓ op_edit_save             a.py (add)
+   22 ✓ op_add_file              v4_mod_22.py
+   23 ✓ op_undo                  
+   24 ✓ op_undo                  
+   25 ✓ op_edit_save             a.py (add)
+   26 ✓ op_feature_merge         af-m4b31b23310<-af-m86fa9e8741
+   27 ✓ op_feature_split         af-m23d178de00
+   28 ✓ op_add_file              v4_mod_28.py
+   29 ✓ op_add_file              v4_mod_29.py
+   30 ✗ op_revert                c764130e8261
+        orphan_layout: 1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['b.py::__residue__::bar']
+   31 ✓ op_revert                7d5d719d1c5d
+   32 ✓ op_undo                  
+   33 ✓ op_add_file              v4_mod_33.py
+   34 ✓ op_revert                9ce6a1e0fe60
+   35 ✓ op_revert                9a867963e254
+   36 ✓ op_revert                5ded530aac40
+   37 ✓ op_edit_save             b.py (rework)
+   38 ✓ op_add_file              v4_mod_38.py
+   39 ✓ op_add_file              v4_mod_39.py
+   40 ✗ op_revert_restore_probe  87f82580ba5b
+        restore_resurrects_layout: restoring what revert 87f82580ba5b removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['b63b907d5173', 'f5eb13272206']
+   41 ✓ op_restore               13bf908d9584
+   42 ✓ op_edit_save             v4_mod_28.py (rework)
+   43 ✓ op_restore               5d14e4454702
+   44 ✓ op_revert_restore_probe  c9ae26c235f7
+   45 ✓ op_restore               77669d65785f
+linear_history seed 1107: 46 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-linear_history-seed1107.json

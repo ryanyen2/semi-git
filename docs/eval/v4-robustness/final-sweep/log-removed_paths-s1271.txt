@@ -1,0 +1,49 @@
+    0 ✓ op_revert                78ea467f7213
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_feature_rename        f-53ba468f48d5
+    3 ✓ op_edit_save             survivor.py (rework)
+    4 ✓ op_feature_rename        af-m39f4027d0b
+    5 · op_restore               nothing addressable excluded
+    6 ✓ op_undo                  
+    7 ✓ op_edit_save             survivor.py (rework)
+    8 ✓ op_revert                53ba468f48d5
+    9 ✓ op_feature_rename        af-m39f4027d0b
+   10 ✓ op_feature_merge         f-53ba468f48d5<-af-m39f4027d0b
+   11 ✓ op_feature_split         f-53ba468f48d5
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_feature_rename        f-523e5a0b3318
+   14 ✓ op_undo                  
+   15 ✓ op_feature_split         af-me1a3701a91
+   16 ✗ op_revert_undo_probe     36abf70110af
+        no_empty_phantom: blank tracked file(s) left behind: ['survivor.py']
+   17 ✓ op_edit_save             v4_mod_12.py (rework)
+   18 ✓ op_restore               82c3bb580ce3
+   19 ✓ op_edit_save             survivor.py (rework)
+   20 ✓ op_edit_save             survivor.py (rework)
+   21 ✓ op_feature_rename        f-523e5a0b3318
+   22 ✗ op_revert                36abf70110af
+        orphan_layout: 1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['survivor.py::__residue__::drop']
+   23 ✓ op_revert_keep_dependents e6ea659aefbe
+   24 ✓ op_feature_rename        f-53ba468f48d5
+   25 ✓ op_edit_save             v4_mod_12.py (rework)
+   26 ✓ op_add_file              v4_mod_26.py
+   27 ✓ op_revert                a12495ffb1df
+   28 ✓ op_feature_merge         f-53ba468f48d5<-af-me1a3701a91
+   29 ✓ op_restore               22c1c1ae99c6
+   30 ✓ op_add_file              v4_mod_30.py
+   31 ✓ op_feature_split         f-53ba468f48d5
+   32 ✓ op_feature_split         af-mf380eccfa3
+   33 · op_restore               nothing addressable excluded
+   34 ✗ op_revert_restore_probe  bd404f84829a
+        revert_restore_unexplained_drift: revert bd404f84829a then restoring everything it removed left 1 file(s) different from before: ['gone.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['gone.py']
+   35 ✗ op_undo                  
+        orphan_layout: 1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['gone.py::__residue__::gone']
+   36 ✓ op_add_file              v4_mod_36.py
+   37 ✓ op_revert_undo_probe     523e5a0b3318
+   38 ✓ op_revert                5a1cf5f59f9c
+   39 ✓ op_revert                3ebd50f5369b
+   40 ✓ op_edit_save             v4_mod_30.py (rework)
+   41 ✓ op_revert_keep_dependents 01f8d1c22c41
+   42 ✓ op_add_file              v4_mod_42.py
+removed_paths seed 1271: 43 ops applied, 4 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1271.json

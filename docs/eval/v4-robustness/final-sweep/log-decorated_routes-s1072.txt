@@ -1,0 +1,30 @@
+    0 ✓ op_revert_undo_probe     fbd81edea7f6
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_revert                832736908299
+    3 · op_restore               nothing addressable excluded
+    4 ✓ op_revert_keep_dependents bc4ee665797a
+    5 ✓ op_add_file              v4_mod_5.py
+    6 ✓ op_edit_save             routes.py (rework)
+    7 ✓ op_edit_save             v4_mod_5.py (rework)
+    8 ✓ op_edit_save             v4_mod_5.py (rework)
+    9 ✓ op_revert_keep_dependents 5ee479420c26
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_undo                  
+   12 ✓ op_undo                  
+   13 ✓ op_revert_undo_probe     0e94a6bf178a
+   14 ✓ op_edit_save             routes.py (rework)
+   15 ✓ op_add_file              v4_mod_15.py
+   16 ✓ op_revert_keep_dependents bc4ee665797a
+   17 ✓ op_feature_split         f-0e94a6bf178a
+   18 ✓ op_revert_keep_dependents bc4ee665797a
+   19 ✓ op_revert                68c863034640
+   20 ✓ op_undo                  
+   21 ✓ op_feature_rename        f-m0d7fdbffd18
+   22 ✓ op_revert_keep_dependents a51880e1ebdd
+   23 ✓ op_feature_split         f-0e94a6bf178a
+   24 ✓ op_restore               92b454a2c709
+   25 ✓ op_undo                  
+   26 ✓ op_add_file              v4_mod_26.py
+   27 ✓ op_feature_rename        af-m02874a11fa
+   28 ✓ op_edit_save             v4_mod_5.py (rework)
+decorated_routes seed 1072: 29 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-decorated_routes-seed1072.json

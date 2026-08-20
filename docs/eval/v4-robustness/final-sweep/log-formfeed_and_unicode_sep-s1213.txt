@@ -1,0 +1,22 @@
+    0 · op_restore               nothing addressable excluded
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_edit_save             a.py (rework)
+    3 ✓ op_undo                  
+    4 ✓ op_revert_keep_dependents fbcc8db8ae8b
+    5 ✓ op_restore               e910c829e9b7
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_edit_save             a.py (rework)
+    8 ✓ op_revert                66f4a7a053b8
+    9 ✓ op_revert                25459cad2014
+   10 ✓ op_revert_undo_probe     cf71fb5af07a
+   11 ✓ op_revert_undo_probe     66521c9c8059
+   12 ✓ op_revert                cf71fb5af07a
+   13 ✓ op_edit_save             a.py (rework)
+   14 ✓ op_revert                21fd29de3ee8
+   15 ✓ op_undo                  
+   16 ✓ op_restore               66f4a7a053b8
+   17 ✓ op_feature_split         f-21fd29de3ee8
+   18 ✓ op_revert_keep_dependents 66521c9c8059
+   19 ✓ op_restore               cd91684e9bee
+   20 ✓ op_revert_undo_probe     fbcc8db8ae8b
+formfeed_and_unicode_sep seed 1213: 21 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-formfeed_and_unicode_sep-seed1213.json

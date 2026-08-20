@@ -1,0 +1,47 @@
+    0 ✓ op_revert_keep_dependents 8ba1fc7a9102
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_revert_keep_dependents e9df8e9536f0
+    3 ✓ op_feature_rename        f-026fba3b609d
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_revert_undo_probe     e16c25543289
+    6 ✓ op_revert_undo_probe     e16c25543289
+    7 · op_feature_merge         1 feature(s)
+    8 ✓ op_edit_save             w.py (rework)
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_undo                  
+   11 ✓ op_add_file              v4_mod_11.py
+   12 ✓ op_feature_split         f-026fba3b609d
+   13 ✓ op_feature_merge         af-m178f40e40d<-af-mc9b0769788
+   14 ✓ op_restore               d8db33dac867
+   15 ✓ op_feature_split         f-026fba3b609d
+   16 ✓ op_edit_save             v4_mod_1.py (rework)
+   17 ✓ op_undo                  
+   18 ✓ op_revert_undo_probe     a356cbc27e41
+   19 ✓ op_feature_split         af-m178f40e40d
+   20 ✓ op_edit_save             v4_mod_9.py (rework)
+   21 ✓ op_revert_keep_dependents 99f936a69eab
+   22 ✓ op_restore               b65b274a4a71
+   23 ✓ op_revert_keep_dependents e16c25543289
+   24 ✓ op_revert                5b6324ac8470
+   25 ✓ op_undo                  
+   26 ✓ op_revert_keep_dependents 127c7f593a49
+   27 ✓ op_edit_save             v4_mod_1.py (rework)
+   28 ✓ op_revert_undo_probe     8ba1fc7a9102
+   29 ✓ op_revert_keep_dependents d8db33dac867
+   30 ✓ op_revert                ad2d7bd67c0d
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_add_file              v4_mod_32.py
+   33 ✓ op_edit_save             v4_mod_11.py (rework)
+   34 ✓ op_add_file              v4_mod_34.py
+   35 ✓ op_edit_save             v4_mod_11.py (rework)
+   36 ✓ op_edit_save             v4_mod_11.py (rework)
+   37 ✓ op_restore               e16c25543289
+   38 ✓ op_restore               ad2d7bd67c0d
+   39 ✓ op_feature_rename        f-026fba3b609d
+   40 ✓ op_edit_save             v4_mod_31.py (rework)
+   41 ✓ op_edit_save             v4_mod_32.py (rework)
+   42 ✓ op_edit_save             v4_mod_32.py (rework)
+   43 ✓ op_restore               ad2d7bd67c0d
+   44 ✓ op_undo                  
+   45 ✓ op_revert_undo_probe     d0e9f8607b6e
+property_pair seed 1160: 46 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-property_pair-seed1160.json

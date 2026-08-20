@@ -1,0 +1,53 @@
+    0 ✓ op_undo                  
+    1 · op_restore               nothing addressable excluded
+    2 · op_edit_save             a.py is not utf-8
+    3 ✓ op_feature_split         f-126303a70181
+    4 · op_edit_save             a.py is not utf-8
+    5 · op_edit_save             a.py is not utf-8
+    6 · op_edit_save             a.py is not utf-8
+    7 ✓ op_revert                126303a70181
+    8 · op_edit_save             no tracked .py file
+    9 · op_revert_restore_probe  empty ideal
+   10 · op_revert                empty ideal
+   11 · op_feature_merge         1 feature(s)
+   12 · op_edit_save             no tracked .py file
+   13 ✓ op_undo                  
+   14 · op_edit_save             a.py is not utf-8
+   15 ✓ op_feature_split         f-126303a70181
+   16 ✓ op_revert                66521c9c8059
+   17 ✓ op_revert_keep_dependents 126303a70181
+   18 ✗ op_revert_restore_probe  bf4a507b207e
+        restore_resurrects_layout: restoring what revert bf4a507b207e removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['66521c9c8059']
+   19 ✓ op_revert_undo_probe     66521c9c8059
+   20 · op_edit_save             a.py is not utf-8
+   21 · op_edit_save             a.py is not utf-8
+   22 ✓ op_revert                66521c9c8059
+   23 ✓ op_feature_split         f-126303a70181
+   24 ✓ op_revert                bf4a507b207e
+   25 ✓ op_add_file              v4_mod_25.py
+   26 ✓ op_revert_restore_probe  66c9c5a784ce
+   27 ✓ op_revert_keep_dependents b822f39611ee
+   28 ✓ op_revert                85b6909c3bf1
+   29 ✓ op_undo                  
+   30 ✓ op_undo                  
+   31 ✓ op_edit_save             v4_mod_25.py (rework)
+   32 ✓ op_revert_keep_dependents 92538905d680
+   33 ✓ op_revert_restore_probe  85b6909c3bf1
+   34 ✗ op_revert_restore_probe  a32b7c0adc65
+        restore_resurrects_layout: restoring what revert a32b7c0adc65 removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['66c9c5a784ce', 'c802619e8edd']
+   35 ✓ op_feature_rename        f-126303a70181
+   36 ✓ op_revert_restore_probe  66c9c5a784ce
+   37 ✓ op_revert_undo_probe     a32b7c0adc65
+   38 ✓ op_revert_keep_dependents c802619e8edd
+   39 ✓ op_edit_save             v4_mod_25.py (rework)
+   40 ✓ op_undo                  
+   41 ✓ op_edit_save             v4_mod_25.py (rework)
+   42 ✓ op_edit_save             v4_mod_25.py (rework)
+   43 ✓ op_feature_merge         f-66521c9c8059<-f-126303a70181
+   44 ✓ op_revert_undo_probe     b822f39611ee
+   45 ✓ op_revert_restore_probe  b822f39611ee
+   46 ✓ op_revert                1ea18a11d167
+   47 · op_revert_undo_probe     revert offered no undo
+   48 ✓ op_revert_keep_dependents c802619e8edd
+   49 ✓ op_edit_save             v4_mod_25.py (rework)
+latin1_encoded seed 1194: 50 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1194.json

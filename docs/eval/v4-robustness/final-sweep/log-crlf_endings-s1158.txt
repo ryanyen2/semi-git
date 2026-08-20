@@ -1,0 +1,31 @@
+    0 ✓ op_revert_restore_probe  ebfad9b63df6
+    1 ✓ op_edit_save             a.py (rework)
+    2 ✓ op_revert_keep_dependents ebfad9b63df6
+    3 ✓ op_revert                f850e49f9c5f
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_feature_rename        f-0442c989d468
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_revert                d7b65ae970f5
+    8 ✓ op_feature_rename        f-0442c989d468
+    9 ✓ op_undo                  
+   10 ✓ op_revert                a08a015717cf
+   11 ✓ op_feature_rename        f-0442c989d468
+   12 ✗ op_revert_restore_probe  da2398d9bb4e
+        restore_resurrects_layout: restoring what revert da2398d9bb4e removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['a08a015717cf']
+   13 ✓ op_edit_save             v4_mod_4.py (rework)
+   14 ✓ op_edit_save             v4_mod_4.py (rework)
+   15 ✓ op_revert                8958d91742a1
+   16 ✓ op_edit_save             v4_mod_4.py (rework)
+   17 ✓ op_revert_keep_dependents 0442c989d468
+   18 ✓ op_revert                9e1ede97fa03
+   19 ✓ op_add_file              v4_mod_19.py
+   20 ✓ op_edit_save             v4_mod_4.py (rework)
+   21 ✗ op_revert_restore_probe  837f614c8278
+        restore_resurrects_layout: restoring what revert 837f614c8278 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['8958d91742a1']
+   22 ✓ op_revert                8958d91742a1
+   23 ✓ op_revert_keep_dependents 0442c989d468
+   24 ✓ op_revert                837f614c8278
+   25 ✓ op_restore               9e1ede97fa03
+   26 ✓ op_revert                ebfad9b63df6
+   27 ✓ op_add_file              v4_mod_27.py
+crlf_endings seed 1158: 28 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-crlf_endings-seed1158.json

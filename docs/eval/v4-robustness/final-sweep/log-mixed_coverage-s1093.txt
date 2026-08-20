@@ -1,0 +1,45 @@
+    0 ✓ op_revert                95aecb0c0c67
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_revert_restore_probe  55e614d35a64
+    3 ✓ op_revert                483f05ca9dbc
+    4 ✓ op_edit_save             pkg.py (rework)
+    5 ✓ op_undo                  
+    6 ✓ op_restore               8cbcfbffc3e4
+    7 ✓ op_restore               483f05ca9dbc
+    8 · op_restore               nothing addressable excluded
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_edit_save             pkg.py (rework)
+   11 · op_restore               nothing addressable excluded
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_revert_undo_probe     b17bda92bad7
+   14 ✓ op_revert                d7a7a19a0fc7
+   15 ✓ op_revert_restore_probe  1a0fbfd1f1ee
+   16 · op_restore               nothing addressable excluded
+   17 · op_feature_merge         1 feature(s)
+   18 ✓ op_add_file              v4_mod_18.py
+   19 ✓ op_feature_merge         f-0027224b0d5f<-af-mdb55886239
+   20 ✓ op_add_file              v4_mod_20.py
+   21 · op_revert_undo_probe     revert offered no undo
+   22 ✓ op_revert                95aecb0c0c67
+   23 · op_restore               nothing addressable excluded
+   24 ✓ op_undo                  
+   25 · op_restore               nothing addressable excluded
+   26 ✓ op_revert                17459403971d
+   27 ✓ op_revert_keep_dependents 0fce861cfd5c
+   28 ✓ op_feature_rename        f-0027224b0d5f
+   29 ✓ op_edit_save             v4_mod_9.py (rework)
+   30 ✓ op_revert                ee1174ac338e
+   31 ✓ op_edit_save             v4_mod_9.py (rework)
+   32 ✓ op_revert_undo_probe     8dadf4ce358d
+   33 ✓ op_revert                ceb9c6c7d175
+   34 ✓ op_revert                39bc8466d27a
+   35 ✓ op_feature_merge         f-0027224b0d5f<-af-m5fec7e5af4
+   36 · op_restore               nothing addressable excluded
+   37 · op_restore               nothing addressable excluded
+   38 · op_revert_undo_probe     revert offered no undo
+   39 ✓ op_revert_restore_probe  0fce861cfd5c
+   40 ✓ op_feature_split         f-0027224b0d5f
+   41 ✓ op_edit_save             v4_mod_12.py (rework)
+   42 ✓ op_revert_restore_probe  5b6324ac8470
+   43 · op_restore               nothing addressable excluded
+mixed_coverage seed 1093: 44 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-mixed_coverage-seed1093.json

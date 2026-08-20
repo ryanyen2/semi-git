@@ -1,0 +1,83 @@
+{
+ "symbols_file": "symbols-semipy-package.json",
+ "repo": "/private/tmp/v2/semipy-package",
+ "coverage": {
+  "gt_symbols": 83,
+  "known_to_sgt": 41,
+  "fraction": 0.494,
+  "sgt_members_by_record_kind": {
+   "substantive": 525,
+   "residue": 2471,
+   "anchor": 0
+  },
+  "gt_only_examples": [
+   "semipy/agents/config.py::SemiConfig",
+   "semipy/agents/config.py::SemiConfig.model_for_role",
+   "semipy/agents/generator.py::_create_agent",
+   "semipy/agents/generator.py::_create_agent.execute_action_program",
+   "semipy/agents/generator.py::_create_scoring_agent",
+   "semipy/agents/generator.py::_create_scoring_agent.execute_action_program",
+   "semipy/agents/generator.py::_extract_mean_logprob",
+   "semipy/agents/generator.py::generate_scored",
+   "semipy/agents/generator.py::generate_scored._run",
+   "semipy/agents/generator.py::get_scoring_agent",
+   "semipy/agents/generator.py::get_semi_agent",
+   "semipy/decisions/divergence.py::DivergenceResult.diverged"
+  ]
+ },
+ "clusters": {
+  "requests": 4,
+  "features": 15
+ },
+ "pairs": {
+  "universe_pairs": 820,
+  "gt_positive": 444,
+  "sgt_positive": 62,
+  "agree": 59,
+  "positive_base_rate": 0.5415
+ },
+ "primary": {
+  "precision": 0.9516,
+  "recall": 0.1329,
+  "f1": 0.2332,
+  "null_f1_all_one_feature": 0.7025,
+  "beats_null": false,
+  "file_baseline_f1": 0.1491,
+  "file_baseline_precision": 0.9231,
+  "file_baseline_recall": 0.0811,
+  "beats_file_baseline": true
+ },
+ "diagnostic_grounded_subset": {
+  "n_symbols": 2,
+  "requests": 2,
+  "features": 2,
+  "universe_pairs": 1,
+  "gt_positive": 0,
+  "sgt_positive": 0,
+  "positive_base_rate": 0.0,
+  "null_f1_all_one_feature": 0.0,
+  "precision": 0.0,
+  "recall": 0.0,
+  "f1": 0.0
+ },
+ "diagnostic_intent_label_grouping": {
+  "n_symbols": 41,
+  "requests": 4,
+  "features": 15,
+  "universe_pairs": 820,
+  "gt_positive": 444,
+  "sgt_positive": 62,
+  "positive_base_rate": 0.5415,
+  "null_f1_all_one_feature": 0.7025,
+  "precision": 0.9516,
+  "recall": 0.1329,
+  "f1": 0.2332
+ },
+ "secondary": {
+  "ari_unambiguous_subset": 0.1407,
+  "ari_n": 30,
+  "split_error_rate": 0.75,
+  "median_features_per_request": 6,
+  "max_features_per_request": 10
+ }
+}

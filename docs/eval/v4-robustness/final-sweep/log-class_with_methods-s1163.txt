@@ -1,0 +1,36 @@
+    0 ✓ op_edit_save             service.py (rework)
+    1 ✓ op_revert_keep_dependents 6ce5787543f8
+    2 ✓ op_revert_keep_dependents 33a421745095
+    3 ✓ op_revert                6ce5787543f8
+    4 ✓ op_edit_save             service.py (rework)
+    5 ✓ op_revert_keep_dependents a12085bab688
+    6 ✓ op_revert                308db8498c58
+    7 ✓ op_revert                bda07be08e55
+    8 · op_revert_undo_probe     empty ideal
+    9 · op_feature_split         no features
+   10 · op_revert_restore_probe  empty ideal
+   11 ✓ op_edit_save             service.py (rework)
+        settled (save refused, git restore): ['M service.py']
+   12 · op_feature_merge         0 feature(s)
+   13 ✓ op_undo                  
+   14 ✓ op_revert                3bff00c33c82
+   15 ✓ op_revert_undo_probe     33a421745095
+   16 ✓ op_revert_undo_probe     bda07be08e55
+   17 ✗ op_revert_restore_probe  bda07be08e55
+        restore_resurrects_layout: restoring what revert bda07be08e55 removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['308db8498c58', '3bff00c33c82']
+   18 ✓ op_restore               11caa50049bf
+   19 ✓ op_add_file              v4_mod_19.py
+   20 ✓ op_revert                bda07be08e55
+   21 ✓ op_undo                  
+   22 ✓ op_revert_undo_probe     308db8498c58
+   23 ✓ op_revert_restore_probe  308db8498c58
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_undo                  
+   26 ✓ op_revert                d99fb0c45dc9
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_revert_restore_probe  f92a9c102730
+   29 ✓ op_restore               d99fb0c45dc9
+   30 ✓ op_feature_merge         af-mf703ed067f<-af-m0fbd1c282a
+   31 ✓ op_restore               56ac7619964a
+   32 ✓ op_revert                33aeb6f6c1f2
+class_with_methods seed 1163: 33 ops applied, 1 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-class_with_methods-seed1163.json

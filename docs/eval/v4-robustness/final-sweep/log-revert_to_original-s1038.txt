@@ -1,0 +1,41 @@
+    0 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_edit_save             v4_mod_1.py (rework)
+    3 ✓ op_restore               fb7bdb5067c4
+    4 ✓ op_revert_keep_dependents 026fba3b609d
+    5 ✓ op_revert_keep_dependents 66521c9c8059
+    6 ✓ op_edit_save             v4_mod_1.py (rework)
+    7 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+    8 · op_feature_merge         1 feature(s)
+    9 ✓ op_revert                ee1211142a8b
+   10 ✓ op_edit_save             v4_mod_1.py (rework)
+   11 ✓ op_revert_undo_probe     127c7f593a49
+   12 ✓ op_edit_save             v4_mod_1.py (rework)
+   13 ✓ op_undo                  
+   14 ✓ op_undo                  
+   15 ✓ op_feature_rename        f-026fba3b609d
+   16 · op_feature_merge         1 feature(s)
+   17 ✓ op_feature_split         f-026fba3b609d
+   18 ✓ op_revert_keep_dependents 026fba3b609d
+   19 ✓ op_revert_keep_dependents 66521c9c8059
+   20 ✓ op_revert                026fba3b609d
+   21 ✓ op_edit_save             v4_mod_1.py (rework)
+   22 ✓ op_revert_keep_dependents 127c7f593a49
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_revert_undo_probe     64fc2608972d
+   26 ✓ op_revert_keep_dependents 56ac7619964a
+   27 ✗ op_revert_restore_probe  64fc2608972d
+        restore_resurrects_layout: restoring what revert 64fc2608972d removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['026fba3b609d']
+   28 ✓ op_edit_save             v4_mod_24.py (rework)
+   29 ✓ op_edit_save             v4_mod_24.py (rework)
+   30 ✓ op_revert                33aeb6f6c1f2
+   31 ✓ op_revert_keep_dependents a5eb5b8d21d8
+   32 ✓ op_restore               60c29c1cd2cd
+   33 ✓ op_undo                  
+   34 ✓ op_revert                56ac7619964a
+   35 ✓ op_revert_restore_probe  db04126e1376
+   36 ✓ op_feature_split         f-126303a70181
+revert_to_original seed 1038: 37 ops applied, 1 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-revert_to_original-seed1038.json

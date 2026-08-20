@@ -1,0 +1,43 @@
+    0 ✓ op_edit_save             a.py (rework)
+    1 ✓ op_revert_undo_probe     1d2a148aa424
+    2 ✓ op_revert_undo_probe     3dabf448058e
+    3 ✓ op_edit_save             a.py (rework)
+    4 ✓ op_undo                  
+    5 ✓ op_edit_save             a.py (rework)
+    6 ✓ op_edit_save             a.py (rework)
+    7 ✓ op_revert                320660079e31
+    8 ✓ op_restore               46635e8818e3
+    9 ✓ op_restore               46635e8818e3
+   10 · op_revert_undo_probe     revert offered no undo
+   11 ✓ op_revert                3dabf448058e
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_undo                  
+   14 ✓ op_edit_save             a.py (rework)
+   15 ✓ op_revert                ebfad9b63df6
+   16 ✓ op_revert_undo_probe     66521c9c8059
+   17 ✓ op_restore               9e1ede97fa03
+   18 ✓ op_restore               82f10db4db6d
+   19 · op_feature_merge         1 feature(s)
+   20 ✓ op_revert                ebfad9b63df6
+   21 ✓ op_revert                66521c9c8059
+   22 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_revert_undo_probe     56ac7619964a
+   26 ✓ op_feature_rename        af-mc1b9525eba
+   27 ✓ op_edit_save             v4_mod_23.py (rework)
+   28 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   29 ✓ op_feature_split         af-m3e6c1ac9cc
+   30 ✓ op_revert_keep_dependents 6f7c786d964f
+   31 ✓ op_revert                a5eb5b8d21d8
+   32 ✓ op_revert                56ac7619964a
+   33 ✓ op_restore               c82d3c7aea16
+   34 ✓ op_restore               46635e8818e3
+   35 ✓ op_feature_split         af-mc1b9525eba
+   36 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   37 ✓ op_revert_undo_probe     6f7c786d964f
+   38 ✓ op_restore               441275e32106
+crlf_endings seed 1071: 39 ops applied, 0 with an oracle failure, 0 traceback(s), 3 tree(s) settled → /tmp/v4-final/run-crlf_endings-seed1071.json

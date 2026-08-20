@@ -1,0 +1,44 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_edit_save             a.py (rework)
+    2 · op_restore               nothing addressable excluded
+    3 ✓ op_add_file              v4_mod_3.py
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_feature_split         f-4e1ecc43fc48
+    6 ✓ op_edit_save             v4_mod_3.py (rework)
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_feature_split         f-m1a57a51d982
+    9 · op_restore               nothing addressable excluded
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_feature_split         f-m1a57a51d982
+   12 · op_restore               nothing addressable excluded
+   13 ✓ op_edit_save             v4_mod_7.py (rework)
+   14 · op_restore               nothing addressable excluded
+   15 ✓ op_undo                  
+   16 ✓ op_feature_split         af-m9af93080ce
+   17 ✓ op_revert_restore_probe  66521c9c8059
+   18 ✓ op_feature_split         f-m1a57a51d982
+   19 ✓ op_revert                ddef8999567d
+   20 ✗ op_revert_undo_probe     db3ae4dbb744
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_7.py']
+   21 ✓ op_revert_keep_dependents 84e078c19268
+   22 ✓ op_edit_save             v4_mod_7.py (add)
+   23 ✓ op_feature_split         f-m1a57a51d982
+   24 ✓ op_feature_split         af-m6bba3858ac
+   25 ✓ op_add_file              v4_mod_25.py
+   26 ✓ op_undo                  
+   27 ✓ op_edit_save             v4_mod_3.py (rework)
+   28 ✓ op_undo                  
+   29 ✓ op_revert_restore_probe  4e1ecc43fc48
+   30 ✓ op_edit_save             v4_mod_7.py (rework)
+   31 ✓ op_revert                ee1211142a8b
+   32 ✓ op_revert_restore_probe  718c07608bc0
+   33 ✓ op_revert_restore_probe  6946a0cb2aef
+   34 ✓ op_edit_save             v4_mod_7.py (rework)
+   35 ✓ op_add_file              v4_mod_35.py
+   36 ✓ op_revert_restore_probe  2ee46cdb7683
+   37 ✓ op_edit_save             v4_mod_3.py (rework)
+   38 ✓ op_feature_rename        f-m1a57a51d982
+   39 ✓ op_edit_save             v4_mod_7.py (rework)
+   40 ✓ op_restore               a32b7c0adc65
+   41 ✓ op_revert_undo_probe     66c9c5a784ce
+no_trailing_newline seed 1135: 42 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-no_trailing_newline-seed1135.json

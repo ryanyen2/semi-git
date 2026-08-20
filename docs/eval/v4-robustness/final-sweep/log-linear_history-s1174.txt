@@ -1,0 +1,45 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✗ op_revert                87f82580ba5b
+        no_empty_phantom: blank tracked file(s) left behind: ['b.py']
+    2 ✓ op_revert_undo_probe     19e4d531a38b
+    3 ✓ op_revert                6302d788bba6
+    4 ✓ op_edit_save             v4_mod_0.py (rework)
+    5 ✓ op_restore               87f82580ba5b
+    6 ✓ op_edit_save             c.py (rework)
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_revert                ae37c76fe624
+    9 ✓ op_revert                01183d43dbc3
+   10 ✓ op_undo                  
+   11 · op_feature_merge         1 feature(s)
+   12 ✓ op_edit_save             b.py (rework)
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_revert_restore_probe  569d93c0e7cf
+   15 ✓ op_edit_save             v4_mod_13.py (rework)
+   16 ✓ op_revert                ddd0cc977fe8
+   17 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   18 ✓ op_revert_restore_probe  ee1211142a8b
+   19 ✓ op_feature_merge         f-004014efad04<-af-m4b31b23310
+   20 ✓ op_revert_keep_dependents a24255df0edc
+   21 ✓ op_revert_undo_probe     01183d43dbc3
+   22 ✓ op_revert                ee1211142a8b
+   23 ✓ op_feature_merge         f-004014efad04<-af-m6e31d80f97
+   24 ✓ op_restore               30ad5dab128e
+   25 ✓ op_revert_keep_dependents a2c062dcc191
+   26 ✓ op_add_file              v4_mod_26.py
+   27 ✓ op_undo                  
+   28 ✓ op_feature_split         f-004014efad04
+   29 ✓ op_feature_split         af-m02874a11fa
+   30 ✓ op_edit_save             b.py (rework)
+   31 ✓ op_feature_split         f-004014efad04
+   32 ✓ op_restore               e2bce17b967d
+   33 ✓ op_revert                e35fadd42272
+   34 ✓ op_edit_save             b.py (rework)
+   35 ✓ op_undo                  
+   36 ✓ op_add_file              v4_mod_36.py
+   37 ✓ op_undo                  
+   38 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   39 ✓ op_edit_save             v4_mod_0.py (rework)
+   40 ✓ op_revert_undo_probe     5e17f640318a
+linear_history seed 1174: 41 ops applied, 1 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-linear_history-seed1174.json

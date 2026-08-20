@@ -1,0 +1,31 @@
+    0 ✓ op_undo                  
+    1 · op_feature_merge         1 feature(s)
+    2 ✓ op_edit_save             w.py (rework)
+    3 ✓ op_revert_keep_dependents 8ba1fc7a9102
+    4 ✓ op_edit_save             w.py (rework)
+    5 ✓ op_revert                7def9f1b6e72
+    6 ✓ op_revert_keep_dependents e16c25543289
+    7 ✓ op_edit_save             w.py (rework)
+    8 · op_restore               nothing addressable excluded
+    9 ✓ op_feature_rename        af-m178f40e40d
+   10 ✓ op_undo                  
+   11 ✓ op_edit_save             w.py (rework)
+   12 ✓ op_feature_split         f-7def9f1b6e72
+   13 ✓ op_revert_keep_dependents 0db13dc16ac6
+   14 ✓ op_edit_save             w.py (rework)
+   15 ✓ op_edit_save             w.py (rework)
+   16 ✓ op_undo                  
+   17 ✓ op_edit_save             w.py (rework)
+   18 ✓ op_restore               b1ad0485dfed
+   19 ✓ op_undo                  
+   20 ✓ op_revert                40b1cf7fcb9c
+   21 · op_revert_undo_probe     revert offered no undo
+   22 ✗ op_revert_restore_probe  e16c25543289
+        revert_restore_roundtrip: revert e16c25543289 removed 7 op(s); after restoring all of them 1 op(s) are still out of the ideal, though every tracked file composes the same bytes as before; restore refused: ['9b63b4b77bda rc=1 uld leave two live versions of w.py::__anchor__::Widget: 9b63b4b7 and e9df8e95 both claim the same next version, refused']
+   23 ✓ op_feature_split         f-mefe2fcfaf33
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✗ op_revert_restore_probe  56ac7619964a
+        restore_resurrects_layout: restoring what revert 56ac7619964a removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['9c000d8be474']
+   26 ✓ op_feature_rename        af-mc1b9525eba
+   27 ✓ op_add_file              v4_mod_27.py
+property_pair seed 1096: 28 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-property_pair-seed1096.json

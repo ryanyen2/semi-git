@@ -1,0 +1,28 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_revert                66521c9c8059
+    2 ✓ op_revert                19e4d531a38b
+    3 ✓ op_feature_rename        f-01183d43dbc3
+    4 ✓ op_revert_restore_probe  7ea7de8f7f45
+    5 ✓ op_revert                991adef74a8b
+    6 ✓ op_revert_restore_probe  fc7594968d92
+    7 ✓ op_restore               19e4d531a38b
+    8 ✓ op_feature_rename        f-01183d43dbc3
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_revert                9b55c37b1810
+   11 ✓ op_restore               9b55c37b1810
+   12 ✓ op_undo                  
+   13 ✓ op_revert_undo_probe     352384585f58
+   14 ✓ op_revert_keep_dependents 352384585f58
+   15 ✓ op_undo                  
+   16 ✓ op_revert_undo_probe     fc7594968d92
+   17 ✓ op_edit_save             a.py (rework)
+   18 ✓ op_revert                19e4d531a38b
+   19 ✓ op_feature_split         af-m2fd32cf6bd
+   20 ✓ op_revert                01183d43dbc3
+   21 ✓ op_restore               ca91b0b42079
+   22 ✓ op_undo                  
+   23 ✗ op_revert_restore_probe  121421e662ed
+        revert_restore_unexplained_drift: revert 121421e662ed then restoring everything it removed left 1 file(s) different from before: ['v4_mod_0.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_0.py']
+   24 ✓ op_revert                121421e662ed
+commuting_features seed 1145: 25 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-commuting_features-seed1145.json

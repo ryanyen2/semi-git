@@ -1,0 +1,45 @@
+    0 ✓ op_feature_rename        f-126303a70181
+    1 ✓ op_revert                66521c9c8059
+    2 ✓ op_revert_undo_probe     126303a70181
+    3 ✓ op_revert_undo_probe     a08a015717cf
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_edit_save             v4_mod_4.py (rework)
+    6 ✓ op_edit_save             v4_mod_4.py (rework)
+    7 ✓ op_feature_merge         f-126303a70181<-af-m4ea7d37230
+    8 · op_restore               nothing addressable excluded
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_revert                3456efddc820
+   11 ✓ op_revert_keep_dependents d8db33dac867
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_undo                  
+   14 ✓ op_revert_keep_dependents b2c93f7d74a8
+   15 ✓ op_restore               9cdf3758b576
+   16 ✓ op_revert_keep_dependents 1a0fbfd1f1ee
+   17 ✓ op_revert                b2c93f7d74a8
+   18 ✓ op_restore               19818cd11f88
+   19 ✓ op_revert_keep_dependents 5b6324ac8470
+   20 ✓ op_edit_save             v4_mod_4.py (rework)
+   21 ✓ op_revert_restore_probe  9cdf3758b576
+   22 ✓ op_undo                  
+   23 ✓ op_revert_undo_probe     126303a70181
+   24 · op_edit_save             a.py is not utf-8
+   25 ✓ op_revert_keep_dependents 8958d91742a1
+   26 ✓ op_restore               441275e32106
+   27 ✓ op_revert_restore_probe  441275e32106
+   28 · op_edit_save             a.py is not utf-8
+   29 ✓ op_restore               c3a77845d834
+   30 ✓ op_revert                126303a70181
+   31 ✓ op_feature_merge         af-mc9b0769788<-af-mf380eccfa3
+   32 ✓ op_add_file              v4_mod_32.py
+   33 ✓ op_feature_rename        f-126303a70181
+   34 ✓ op_revert                39bc8466d27a
+   35 ✓ op_feature_merge         f-126303a70181<-af-mc9b0769788
+   36 ✓ op_revert_keep_dependents 441275e32106
+   37 ✓ op_edit_save             v4_mod_12.py (rework)
+   38 ✗ op_revert_undo_probe     b2c93f7d74a8
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_4.py']
+   39 ✓ op_revert_keep_dependents b2c93f7d74a8
+   40 ✓ op_revert                0442c989d468
+   41 ✓ op_revert_undo_probe     a356cbc27e41
+   42 ✓ op_revert_keep_dependents a8d6d386494d
+latin1_encoded seed 1124: 43 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1124.json

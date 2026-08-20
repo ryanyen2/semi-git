@@ -1,0 +1,1470 @@
+{
+ "plan_seed": 20260817,
+ "target": 10000,
+ "min_ops": 20,
+ "max_ops": 50,
+ "jobs": 4,
+ "requested": 10258,
+ "system_at_plan": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "repo_pool": "/tmp/v3",
+ "repos": [
+  "/tmp/v3/johnhuang316__code-index-mcp",
+  "/tmp/v3/OML-Team__open-metric-learning",
+  "/tmp/v3/pyparsing__pyparsing",
+  "/tmp/v3/ghimiredhikura__Complex-YOLOv3",
+  "/tmp/v3/fastapi__asyncer"
+ ],
+ "sequences": [
+  {
+   "case": "/tmp/v3/johnhuang316__code-index-mcp",
+   "seed": 2000,
+   "ops": 50
+  },
+  {
+   "case": "/tmp/v3/OML-Team__open-metric-learning",
+   "seed": 2001,
+   "ops": 50
+  },
+  {
+   "case": "/tmp/v3/pyparsing__pyparsing",
+   "seed": 2002,
+   "ops": 50
+  },
+  {
+   "case": "/tmp/v3/ghimiredhikura__Complex-YOLOv3",
+   "seed": 2003,
+   "ops": 50
+  },
+  {
+   "case": "/tmp/v3/fastapi__asyncer",
+   "seed": 2004,
+   "ops": 50
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1000,
+   "ops": 50
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1001,
+   "ops": 40
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1002,
+   "ops": 29
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1003,
+   "ops": 44
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1004,
+   "ops": 49
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1005,
+   "ops": 50
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1006,
+   "ops": 35
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1007,
+   "ops": 35
+  },
+  {
+   "case": "overload_group",
+   "seed": 1008,
+   "ops": 23
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1009,
+   "ops": 23
+  },
+  {
+   "case": "property_pair",
+   "seed": 1010,
+   "ops": 39
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1011,
+   "ops": 29
+  },
+  {
+   "case": "linear_history",
+   "seed": 1012,
+   "ops": 22
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1013,
+   "ops": 20
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1014,
+   "ops": 27
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1015,
+   "ops": 42
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1016,
+   "ops": 48
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1017,
+   "ops": 22
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1018,
+   "ops": 26
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1019,
+   "ops": 44
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1020,
+   "ops": 31
+  },
+  {
+   "case": "linear_history",
+   "seed": 1021,
+   "ops": 35
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1022,
+   "ops": 29
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1023,
+   "ops": 29
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1024,
+   "ops": 35
+  },
+  {
+   "case": "overload_group",
+   "seed": 1025,
+   "ops": 37
+  },
+  {
+   "case": "property_pair",
+   "seed": 1026,
+   "ops": 44
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1027,
+   "ops": 24
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1028,
+   "ops": 25
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1029,
+   "ops": 48
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1030,
+   "ops": 49
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1031,
+   "ops": 35
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1032,
+   "ops": 31
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1033,
+   "ops": 30
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1034,
+   "ops": 45
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1035,
+   "ops": 33
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1036,
+   "ops": 49
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1037,
+   "ops": 49
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1038,
+   "ops": 37
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1039,
+   "ops": 26
+  },
+  {
+   "case": "linear_history",
+   "seed": 1040,
+   "ops": 50
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1041,
+   "ops": 47
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1042,
+   "ops": 42
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1043,
+   "ops": 36
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1044,
+   "ops": 33
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1045,
+   "ops": 43
+  },
+  {
+   "case": "property_pair",
+   "seed": 1046,
+   "ops": 46
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1047,
+   "ops": 39
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1048,
+   "ops": 38
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1049,
+   "ops": 47
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1050,
+   "ops": 42
+  },
+  {
+   "case": "overload_group",
+   "seed": 1051,
+   "ops": 42
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1052,
+   "ops": 45
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1053,
+   "ops": 32
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1054,
+   "ops": 37
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1055,
+   "ops": 50
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1056,
+   "ops": 32
+  },
+  {
+   "case": "property_pair",
+   "seed": 1057,
+   "ops": 29
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1058,
+   "ops": 47
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1059,
+   "ops": 24
+  },
+  {
+   "case": "linear_history",
+   "seed": 1060,
+   "ops": 42
+  },
+  {
+   "case": "overload_group",
+   "seed": 1061,
+   "ops": 40
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1062,
+   "ops": 25
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1063,
+   "ops": 31
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1064,
+   "ops": 32
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1065,
+   "ops": 34
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1066,
+   "ops": 37
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1067,
+   "ops": 38
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1068,
+   "ops": 27
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1069,
+   "ops": 38
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1070,
+   "ops": 22
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1071,
+   "ops": 39
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1072,
+   "ops": 29
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1073,
+   "ops": 22
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1074,
+   "ops": 36
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1075,
+   "ops": 38
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1076,
+   "ops": 45
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1077,
+   "ops": 42
+  },
+  {
+   "case": "overload_group",
+   "seed": 1078,
+   "ops": 25
+  },
+  {
+   "case": "linear_history",
+   "seed": 1079,
+   "ops": 30
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1080,
+   "ops": 25
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1081,
+   "ops": 49
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1082,
+   "ops": 50
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1083,
+   "ops": 21
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1084,
+   "ops": 33
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1085,
+   "ops": 23
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1086,
+   "ops": 28
+  },
+  {
+   "case": "property_pair",
+   "seed": 1087,
+   "ops": 39
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1088,
+   "ops": 37
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1089,
+   "ops": 31
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1090,
+   "ops": 28
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1091,
+   "ops": 32
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1092,
+   "ops": 36
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1093,
+   "ops": 44
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1094,
+   "ops": 49
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1095,
+   "ops": 37
+  },
+  {
+   "case": "property_pair",
+   "seed": 1096,
+   "ops": 28
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1097,
+   "ops": 48
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1098,
+   "ops": 29
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1099,
+   "ops": 36
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1100,
+   "ops": 43
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1101,
+   "ops": 29
+  },
+  {
+   "case": "overload_group",
+   "seed": 1102,
+   "ops": 27
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1103,
+   "ops": 25
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1104,
+   "ops": 50
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1105,
+   "ops": 50
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1106,
+   "ops": 33
+  },
+  {
+   "case": "linear_history",
+   "seed": 1107,
+   "ops": 46
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1108,
+   "ops": 48
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1109,
+   "ops": 35
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1110,
+   "ops": 28
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1111,
+   "ops": 27
+  },
+  {
+   "case": "overload_group",
+   "seed": 1112,
+   "ops": 29
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1113,
+   "ops": 49
+  },
+  {
+   "case": "linear_history",
+   "seed": 1114,
+   "ops": 46
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1115,
+   "ops": 23
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1116,
+   "ops": 28
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1117,
+   "ops": 30
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1118,
+   "ops": 25
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1119,
+   "ops": 26
+  },
+  {
+   "case": "property_pair",
+   "seed": 1120,
+   "ops": 35
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1121,
+   "ops": 23
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1122,
+   "ops": 27
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1123,
+   "ops": 29
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1124,
+   "ops": 43
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1125,
+   "ops": 43
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1126,
+   "ops": 42
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1127,
+   "ops": 34
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1128,
+   "ops": 42
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1129,
+   "ops": 32
+  },
+  {
+   "case": "property_pair",
+   "seed": 1130,
+   "ops": 39
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1131,
+   "ops": 50
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1132,
+   "ops": 28
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1133,
+   "ops": 39
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1134,
+   "ops": 50
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1135,
+   "ops": 42
+  },
+  {
+   "case": "overload_group",
+   "seed": 1136,
+   "ops": 46
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1137,
+   "ops": 21
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1138,
+   "ops": 35
+  },
+  {
+   "case": "linear_history",
+   "seed": 1139,
+   "ops": 38
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1140,
+   "ops": 22
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1141,
+   "ops": 34
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1142,
+   "ops": 35
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1143,
+   "ops": 21
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1144,
+   "ops": 50
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1145,
+   "ops": 25
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1146,
+   "ops": 33
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1147,
+   "ops": 31
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1148,
+   "ops": 47
+  },
+  {
+   "case": "overload_group",
+   "seed": 1149,
+   "ops": 33
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1150,
+   "ops": 40
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1151,
+   "ops": 41
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1152,
+   "ops": 37
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1153,
+   "ops": 44
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1154,
+   "ops": 35
+  },
+  {
+   "case": "linear_history",
+   "seed": 1155,
+   "ops": 43
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1156,
+   "ops": 41
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1157,
+   "ops": 42
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1158,
+   "ops": 28
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1159,
+   "ops": 23
+  },
+  {
+   "case": "property_pair",
+   "seed": 1160,
+   "ops": 46
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1161,
+   "ops": 45
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1162,
+   "ops": 42
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1163,
+   "ops": 33
+  },
+  {
+   "case": "property_pair",
+   "seed": 1164,
+   "ops": 20
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1165,
+   "ops": 41
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1166,
+   "ops": 35
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1167,
+   "ops": 50
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1168,
+   "ops": 26
+  },
+  {
+   "case": "overload_group",
+   "seed": 1169,
+   "ops": 47
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1170,
+   "ops": 21
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1171,
+   "ops": 30
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1172,
+   "ops": 39
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1173,
+   "ops": 40
+  },
+  {
+   "case": "linear_history",
+   "seed": 1174,
+   "ops": 41
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1175,
+   "ops": 47
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1176,
+   "ops": 27
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1177,
+   "ops": 26
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1178,
+   "ops": 25
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1179,
+   "ops": 37
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1180,
+   "ops": 29
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1181,
+   "ops": 45
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1182,
+   "ops": 20
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1183,
+   "ops": 28
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1184,
+   "ops": 41
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1185,
+   "ops": 23
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1186,
+   "ops": 45
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1187,
+   "ops": 39
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1188,
+   "ops": 30
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1189,
+   "ops": 27
+  },
+  {
+   "case": "linear_history",
+   "seed": 1190,
+   "ops": 33
+  },
+  {
+   "case": "overload_group",
+   "seed": 1191,
+   "ops": 47
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1192,
+   "ops": 29
+  },
+  {
+   "case": "property_pair",
+   "seed": 1193,
+   "ops": 37
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1194,
+   "ops": 50
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1195,
+   "ops": 38
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1196,
+   "ops": 47
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1197,
+   "ops": 46
+  },
+  {
+   "case": "property_pair",
+   "seed": 1198,
+   "ops": 30
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1199,
+   "ops": 32
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1200,
+   "ops": 37
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1201,
+   "ops": 50
+  },
+  {
+   "case": "overload_group",
+   "seed": 1202,
+   "ops": 28
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1203,
+   "ops": 39
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1204,
+   "ops": 22
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1205,
+   "ops": 41
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1206,
+   "ops": 23
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1207,
+   "ops": 42
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1208,
+   "ops": 46
+  },
+  {
+   "case": "linear_history",
+   "seed": 1209,
+   "ops": 50
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1210,
+   "ops": 27
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1211,
+   "ops": 32
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1212,
+   "ops": 35
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1213,
+   "ops": 21
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1214,
+   "ops": 40
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1215,
+   "ops": 34
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1216,
+   "ops": 45
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1217,
+   "ops": 43
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1218,
+   "ops": 23
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1219,
+   "ops": 25
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1220,
+   "ops": 30
+  },
+  {
+   "case": "linear_history",
+   "seed": 1221,
+   "ops": 36
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1222,
+   "ops": 23
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1223,
+   "ops": 49
+  },
+  {
+   "case": "overload_group",
+   "seed": 1224,
+   "ops": 20
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1225,
+   "ops": 45
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1226,
+   "ops": 41
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1227,
+   "ops": 37
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1228,
+   "ops": 33
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1229,
+   "ops": 30
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1230,
+   "ops": 33
+  },
+  {
+   "case": "property_pair",
+   "seed": 1231,
+   "ops": 34
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1232,
+   "ops": 27
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1233,
+   "ops": 43
+  },
+  {
+   "case": "linear_history",
+   "seed": 1234,
+   "ops": 30
+  },
+  {
+   "case": "overload_group",
+   "seed": 1235,
+   "ops": 42
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1236,
+   "ops": 24
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1237,
+   "ops": 32
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1238,
+   "ops": 33
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1239,
+   "ops": 30
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1240,
+   "ops": 48
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1241,
+   "ops": 24
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1242,
+   "ops": 21
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1243,
+   "ops": 20
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1244,
+   "ops": 32
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1245,
+   "ops": 25
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1246,
+   "ops": 35
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1247,
+   "ops": 23
+  },
+  {
+   "case": "property_pair",
+   "seed": 1248,
+   "ops": 29
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1249,
+   "ops": 29
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1250,
+   "ops": 30
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1251,
+   "ops": 42
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1252,
+   "ops": 42
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1253,
+   "ops": 50
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1254,
+   "ops": 23
+  },
+  {
+   "case": "revert_to_original",
+   "seed": 1255,
+   "ops": 23
+  },
+  {
+   "case": "diverged_chain",
+   "seed": 1256,
+   "ops": 32
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1257,
+   "ops": 44
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1258,
+   "ops": 42
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1259,
+   "ops": 24
+  },
+  {
+   "case": "ts_export_decorated",
+   "seed": 1260,
+   "ops": 37
+  },
+  {
+   "case": "squash_merge",
+   "seed": 1261,
+   "ops": 22
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1262,
+   "ops": 24
+  },
+  {
+   "case": "linear_history",
+   "seed": 1263,
+   "ops": 43
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1264,
+   "ops": 24
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1265,
+   "ops": 33
+  },
+  {
+   "case": "property_pair",
+   "seed": 1266,
+   "ops": 38
+  },
+  {
+   "case": "overload_group",
+   "seed": 1267,
+   "ops": 47
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1268,
+   "ops": 20
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1269,
+   "ops": 39
+  },
+  {
+   "case": "latin1_encoded",
+   "seed": 1270,
+   "ops": 33
+  },
+  {
+   "case": "removed_paths",
+   "seed": 1271,
+   "ops": 43
+  },
+  {
+   "case": "formfeed_and_unicode_sep",
+   "seed": 1272,
+   "ops": 43
+  },
+  {
+   "case": "property_pair",
+   "seed": 1273,
+   "ops": 33
+  },
+  {
+   "case": "class_with_methods",
+   "seed": 1274,
+   "ops": 22
+  },
+  {
+   "case": "imports_and_main",
+   "seed": 1275,
+   "ops": 35
+  },
+  {
+   "case": "overload_group",
+   "seed": 1276,
+   "ops": 29
+  },
+  {
+   "case": "residue_fork",
+   "seed": 1277,
+   "ops": 48
+  },
+  {
+   "case": "mixed_coverage",
+   "seed": 1278,
+   "ops": 45
+  },
+  {
+   "case": "no_trailing_newline",
+   "seed": 1279,
+   "ops": 28
+  },
+  {
+   "case": "crlf_endings",
+   "seed": 1280,
+   "ops": 40
+  },
+  {
+   "case": "decorated_routes",
+   "seed": 1281,
+   "ops": 35
+  },
+  {
+   "case": "linear_history",
+   "seed": 1282,
+   "ops": 38
+  },
+  {
+   "case": "commuting_features",
+   "seed": 1283,
+   "ops": 28
+  }
+ ]
+}

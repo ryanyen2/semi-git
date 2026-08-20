@@ -1,0 +1,83 @@
+{
+ "symbols_file": "symbols-eico.json",
+ "repo": "/private/tmp/v2/eico",
+ "coverage": {
+  "gt_symbols": 357,
+  "known_to_sgt": 282,
+  "fraction": 0.7899,
+  "sgt_members_by_record_kind": {
+   "substantive": 53732,
+   "residue": 65538,
+   "anchor": 0
+  },
+  "gt_only_examples": [
+   "experiments/agent_eval/delm_baseline.py::SharedLessons.__init__",
+   "experiments/agent_eval/delm_baseline.py::SharedLessons.note",
+   "experiments/agent_eval/delm_baseline.py::SharedLessons.read_all",
+   "experiments/agent_eval/delm_baseline.py::SharedLessons.record_body",
+   "experiments/agent_eval/delm_baseline.py::SharedLessons.render_peer_digest",
+   "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._close_path",
+   "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._launch",
+   "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._ready",
+   "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline._on_path_complete",
+   "experiments/agent_eval/metrics.py::PipelineMetrics.amdahl_speedup",
+   "experiments/agent_eval/metrics.py::PipelineMetrics.as_dict",
+   "experiments/agent_eval/metrics.py::PipelineMetrics.ideal_speedup"
+  ]
+ },
+ "clusters": {
+  "requests": 11,
+  "features": 17
+ },
+ "pairs": {
+  "universe_pairs": 39621,
+  "gt_positive": 11496,
+  "sgt_positive": 7803,
+  "agree": 3375,
+  "positive_base_rate": 0.2901
+ },
+ "primary": {
+  "precision": 0.4325,
+  "recall": 0.2936,
+  "f1": 0.3498,
+  "null_f1_all_one_feature": 0.4498,
+  "beats_null": false,
+  "file_baseline_f1": 0.1869,
+  "file_baseline_precision": 0.969,
+  "file_baseline_recall": 0.1034,
+  "beats_file_baseline": true
+ },
+ "diagnostic_grounded_subset": {
+  "n_symbols": 22,
+  "requests": 5,
+  "features": 5,
+  "universe_pairs": 231,
+  "gt_positive": 61,
+  "sgt_positive": 47,
+  "positive_base_rate": 0.2641,
+  "null_f1_all_one_feature": 0.4178,
+  "precision": 0.7872,
+  "recall": 0.6066,
+  "f1": 0.6852
+ },
+ "diagnostic_intent_label_grouping": {
+  "n_symbols": 282,
+  "requests": 11,
+  "features": 10,
+  "universe_pairs": 39621,
+  "gt_positive": 11496,
+  "sgt_positive": 32196,
+  "positive_base_rate": 0.2901,
+  "null_f1_all_one_feature": 0.4498,
+  "precision": 0.3175,
+  "recall": 0.8891,
+  "f1": 0.4679
+ },
+ "secondary": {
+  "ari_unambiguous_subset": 0.15,
+  "ari_n": 272,
+  "split_error_rate": 0.8182,
+  "median_features_per_request": 3,
+  "max_features_per_request": 8
+ }
+}

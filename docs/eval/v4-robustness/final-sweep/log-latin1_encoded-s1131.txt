@@ -1,0 +1,51 @@
+    0 · op_feature_merge         1 feature(s)
+    1 · op_feature_merge         1 feature(s)
+    2 · op_edit_save             a.py is not utf-8
+    3 ✓ op_undo                  
+    4 · op_edit_save             a.py is not utf-8
+    5 · op_edit_save             a.py is not utf-8
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_revert_keep_dependents d068113acb07
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_revert_undo_probe     301e32de9770
+   10 ✓ op_revert                f043e923512d
+   11 ✓ op_revert                bf4a507b207e
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_revert_restore_probe  0fce861cfd5c
+   14 ✓ op_revert_keep_dependents 370f2e23be24
+   15 ✓ op_edit_save             v4_mod_6.py (rework)
+   16 ✓ op_revert_undo_probe     39bc8466d27a
+   17 ✓ op_edit_save             v4_mod_12.py (rework)
+   18 ✓ op_restore               bf4a507b207e
+   19 · op_restore               nothing addressable excluded
+   20 ✓ op_add_file              v4_mod_20.py
+   21 · op_restore               nothing addressable excluded
+   22 ✓ op_edit_save             v4_mod_20.py (rework)
+   23 ✓ op_feature_split         af-m7798385f8c
+   24 ✓ op_revert_undo_probe     bed61cf83ec1
+   25 · op_restore               nothing addressable excluded
+   26 ✓ op_revert                30534bc278f8
+   27 ✓ op_revert_restore_probe  0fce861cfd5c
+   28 ✓ op_feature_merge         af-m7798385f8c<-af-mf380eccfa3
+   29 ✓ op_edit_save             v4_mod_6.py (rework)
+   30 ✓ op_revert_keep_dependents 301e32de9770
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_revert_undo_probe     301e32de9770
+   33 · op_restore               nothing addressable excluded
+   34 ✓ op_revert                4378362e3543
+   35 ✓ op_revert_keep_dependents b83e1be61a47
+   36 · op_edit_save             a.py is not utf-8
+   37 ✓ op_undo                  
+   38 · op_restore               nothing addressable excluded
+   39 ✓ op_revert                9f0d88fb2d86
+   40 ✓ op_revert                7f042a795a66
+   41 ✓ op_revert                97453535c60c
+   42 ✓ op_restore               97453535c60c
+   43 ✓ op_feature_split         af-m01dcf54483
+   44 ✓ op_revert_restore_probe  ee1174ac338e
+   45 ✓ op_revert                17459403971d
+   46 ✓ op_revert_keep_dependents 7f9e642020d8
+   47 ✓ op_edit_save             v4_mod_8.py (rework)
+   48 ✓ op_revert_restore_probe  0bf8f47dd419
+   49 ✓ op_revert                441275e32106
+latin1_encoded seed 1131: 50 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1131.json

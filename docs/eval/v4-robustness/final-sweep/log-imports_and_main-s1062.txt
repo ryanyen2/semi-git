@@ -1,0 +1,27 @@
+    0 ✓ op_edit_save             app.py (rework)
+    1 ✓ op_revert                c8bbe9d61e10
+    2 ✓ op_revert_restore_probe  2d609a0f1083
+    3 ✓ op_revert_undo_probe     868c1d84346d
+    4 ✓ op_edit_save             app.py (rework)
+    5 ✓ op_revert_keep_dependents 2d609a0f1083
+    6 ✓ op_edit_save             app.py (rework)
+    7 ✓ op_revert_undo_probe     3934033824cb
+    8 ✓ op_edit_save             app.py (rework)
+    9 ✓ op_edit_save             app.py (rework)
+   10 ✓ op_revert                5d3c6964b2f8
+   11 ✓ op_revert                868c1d84346d
+   12 · op_revert_undo_probe     revert offered no undo
+   13 ✓ op_restore               c8bbe9d61e10
+   14 ✓ op_revert                ebdced64c388
+   15 ✓ op_undo                  
+   16 ✓ op_revert_undo_probe     3934033824cb
+   17 ✓ op_edit_save             app.py (rework)
+   18 ✓ op_edit_save             app.py (rework)
+   19 ✓ op_edit_save             app.py (rework)
+   20 ✓ op_revert_undo_probe     868c1d84346d
+   21 ✓ op_revert                f4c12db8c06d
+   22 ✓ op_add_file              v4_mod_22.py
+   23 ✗ op_revert_restore_probe  5d14e4454702
+        restore_resurrects_layout: restoring what revert 5d14e4454702 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['139e3bf1bb3c']
+   24 ✓ op_revert                e218899408c3
+imports_and_main seed 1062: 25 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-imports_and_main-seed1062.json

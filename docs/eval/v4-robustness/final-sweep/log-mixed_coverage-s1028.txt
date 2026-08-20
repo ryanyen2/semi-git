@@ -1,0 +1,26 @@
+    0 ✓ op_revert_keep_dependents 13ded3f03308
+    1 ✓ op_revert_keep_dependents 4ea3ecdfa2b8
+    2 ✓ op_undo                  
+    3 ✓ op_add_file              v4_mod_3.py
+    4 ✓ op_feature_rename        f-0027224b0d5f
+    5 ✓ op_revert_keep_dependents 50afa70e3ab4
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_revert_undo_probe     84e078c19268
+    8 ✓ op_edit_save             pkg.py (rework)
+    9 ✓ op_edit_save             util.py (rework)
+   10 ✓ op_revert_restore_probe  7b08d1652d8f
+   11 ✓ op_undo                  
+   12 · op_feature_merge         1 feature(s)
+   13 ✓ op_feature_rename        f-0027224b0d5f
+   14 · op_feature_merge         1 feature(s)
+   15 · op_restore               nothing addressable excluded
+   16 ✓ op_edit_save             pkg.py (rework)
+   17 ✓ op_edit_save             v4_mod_3.py (rework)
+   18 ✓ op_revert                95aecb0c0c67
+   19 ✓ op_feature_rename        f-0027224b0d5f
+   20 ✓ op_edit_save             util.py (rework)
+   21 ✓ op_edit_save             pkg.py (rework)
+   22 ✓ op_undo                  
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_restore               28a8537c3953
+mixed_coverage seed 1028: 25 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-mixed_coverage-seed1028.json

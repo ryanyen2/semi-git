@@ -1,0 +1,53 @@
+    0 ✗ op_revert_restore_probe  bf4a507b207e
+        restore_resurrects_layout: restoring what revert bf4a507b207e removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']
+    1 ✓ op_undo                  
+    2 · op_edit_save             no tracked .py file
+    3 ✗ op_revert                0bf8f47dd419
+        no_empty_phantom: blank tracked file(s) left behind: ['a.py']
+    4 ✓ op_revert_keep_dependents 66521c9c8059
+    5 ✓ op_restore               bf4a507b207e
+    6 ✓ op_feature_split         f-0bf8f47dd419
+    7 · op_edit_save             a.py is not utf-8
+    8 ✓ op_undo                  
+    9 ✓ op_revert                66521c9c8059
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_add_file              v4_mod_11.py
+   12 ✓ op_undo                  
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_revert_keep_dependents 126303a70181
+   15 · op_edit_save             a.py is not utf-8
+   16 ✓ op_feature_split         f-0bf8f47dd419
+   17 ✓ op_restore               628909ee1ee3
+   18 ✓ op_revert_keep_dependents a08a015717cf
+   19 ✓ op_revert_restore_probe  f1f1d5d66cfb
+   20 ✓ op_revert_keep_dependents 1b40ce89c508
+   21 ✓ op_feature_rename        f-mebea80de43e
+   22 · op_edit_save             a.py is not utf-8
+   23 ✓ op_revert_undo_probe     569d93c0e7cf
+   24 ✓ op_revert_keep_dependents f1f1d5d66cfb
+   25 ✓ op_revert_undo_probe     569d93c0e7cf
+   26 ✓ op_feature_merge         f-mebea80de43e<-af-mb32ff0ce36
+   27 ✓ op_feature_split         f-0bf8f47dd419
+   28 ✓ op_add_file              v4_mod_28.py
+   29 ✓ op_revert_restore_probe  569d93c0e7cf
+   30 ✓ op_edit_save             v4_mod_28.py (rework)
+   31 ✓ op_edit_save             v4_mod_11.py (rework)
+   32 ✓ op_edit_save             v4_mod_11.py (rework)
+   33 ✓ op_revert                f9234cb3dd0a
+   34 · op_edit_save             a.py is not utf-8
+   35 ✓ op_revert_undo_probe     9a867963e254
+   36 ✓ op_revert                126303a70181
+   37 ✓ op_revert_restore_probe  a08a015717cf
+   38 ✓ op_restore               f9234cb3dd0a
+   39 ✓ op_add_file              v4_mod_39.py
+   40 ✓ op_revert                5b1baea1c38a
+   41 ✓ op_revert                0ee14cde13c0
+   42 ✓ op_undo                  
+   43 ✓ op_add_file              v4_mod_43.py
+   44 ✓ op_undo                  
+   45 ✓ op_feature_rename        f-0bf8f47dd419
+   46 ✓ op_revert_undo_probe     51184a3100ff
+   47 ✓ op_revert                0ee14cde13c0
+   48 ✓ op_revert_keep_dependents 7aec9c1957ce
+   49 ✓ op_restore               67c4b3cc7403
+latin1_encoded seed 1000: 50 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1000.json

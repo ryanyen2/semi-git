@@ -1,0 +1,386 @@
+{
+ "label": "diverged_chain",
+ "seed": 1002,
+ "requested_ops": 29,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/diverged_chain-s1002/diverged_chain/diverged_chain",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [],
+ "applied": 29,
+ "refused": 1,
+ "skipped": 4,
+ "with_violations": 0,
+ "tracebacks": 0,
+ "settles": 0,
+ "store_ops_seen": 17,
+ "commits_seen": 18,
+ "script": [
+  "op_restore",
+  "op_revert_keep_dependents",
+  "op_add_file",
+  "op_edit_save",
+  "op_restore",
+  "op_undo",
+  "op_undo",
+  "op_revert_restore_probe",
+  "op_revert_keep_dependents",
+  "op_edit_save",
+  "op_add_file",
+  "op_revert_undo_probe",
+  "op_revert_keep_dependents",
+  "op_restore",
+  "op_undo",
+  "op_revert_restore_probe",
+  "op_edit_save",
+  "op_revert_keep_dependents",
+  "op_undo",
+  "op_feature_merge",
+  "op_revert",
+  "op_feature_rename",
+  "op_revert_undo_probe",
+  "op_restore",
+  "op_restore",
+  "op_feature_merge",
+  "op_revert_keep_dependents",
+  "op_revert",
+  "op_revert_undo_probe"
+ ],
+ "log": [
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 0,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "23cdd075582d",
+   "rc": 0,
+   "out": "dd075582db80d7ef800e22a315e29e79fc6567b6ed18761aa7191ef6128e4 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 4d1f753d7003\n    edit the working tree, then: sgt fulfill 4d1f753d7003 --from-tree\n",
+   "err": "",
+   "i": 1,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_2.py",
+   "rc": 0,
+   "out": "\u2713 save af6787e \"v4 add module 2\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 2,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "slugify.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save aeb1292 \"v4 edit 3\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 3,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 4,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 3d2b0fb: restored the prior ideal \u2014 1 op(s) back to pending\n",
+   "err": "",
+   "i": 5,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 6acd3c0: restored the prior ideal \u2014 4 op(s) back to pending\n",
+   "err": "",
+   "i": 6,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "fa19a62eb22c",
+   "rc": 0,
+   "removed": 1,
+   "restored": 1,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": " \u25b8 rewind  fa19a62eb22ce6f19556ad762c52d933d65a588a91381881b43628f149ea98fc\n\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "restore_out": [
+    "fa19a62eb22c: 3d65a588a91381881b43628f149ea98fc\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 7,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "fa19a62eb22c",
+   "rc": 0,
+   "out": "9a62eb22ce6f19556ad762c52d933d65a588a91381881b43628f149ea98fc \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 7b23902ddb95\n    edit the working tree, then: sgt fulfill 7b23902ddb95 --from-tree\n",
+   "err": "",
+   "i": 8,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "slugify.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 3c9ddef \"v4 edit 9\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 9,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_10.py",
+   "rc": 0,
+   "out": "\u2713 save 3454a7e \"v4 add module 10\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 10,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "b968a2f6bc90",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "5997b62edcc3b3c52b4fefd804cd8a7624\n\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo 3b09689: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 11,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "bac2657449ec",
+   "rc": 0,
+   "out": "2657449ecaa02f92cdf8bebd8b3810e12aff30bb79d34f0a471ce2dbc9cea \u2014 removes 2 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 19e4df0491c1\n    edit the working tree, then: sgt fulfill 19e4df0491c1 --from-tree\n",
+   "err": "",
+   "i": 12,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "85fd97827faf",
+   "rc": 2,
+   "out": "ify is live\n    one live version per symbol: 1b7ce15f (save 3c9ddef \"v4 edit 9\") is live;\n    85fd9782 (save aeb1292 \"v4 edit 3\") waits behind it as a ghost.\n      swap       sgt revert 1b7ce15f   then   sgt restore 85fd9782\n      reconcile  sgt resolve slugify.py::slugify   (combine both versions)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 13,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo ddace34: restored the prior ideal \u2014 4 op(s) back to pending\n",
+   "err": "",
+   "i": 14,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "1b7ce15fce4f",
+   "rc": 0,
+   "removed": 1,
+   "restored": 1,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "15fce4f1f2693a6ffb7e9256ed5d6a9e026794f5564612dac7dd16b2ff6\n\n removes 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): slugify.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "restore_out": [
+    "1b7ce15fce4f: 5d6a9e026794f5564612dac7dd16b2ff6\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 15,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "slugify.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 8ff55cf \"v4 edit 16\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 16,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "1ba3b8c87e11",
+   "rc": 0,
+   "out": "3b8c87e117f90df231de1d581044d077dae2e57dafe3b1749d059c9c0b3f8 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: fe9801b1e523\n    edit the working tree, then: sgt fulfill fe9801b1e523 --from-tree\n",
+   "err": "",
+   "i": 17,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 56addf6: restored the prior ideal \u2014 1 op(s) back to pending\n",
+   "err": "",
+   "i": 18,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "skipped": "1 feature(s)",
+   "i": 19,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "bac2657449ec",
+   "rc": 0,
+   "out": "anged (the removal overlaps later edits \u2014 needs your edit): slugify.py::slugify\n  \u00b7 revert changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)\n  \u26a0 kept unchanged (the removal overlaps later edits \u2014 needs your edit): slugify.py::slugify\n",
+   "err": "",
+   "i": 20,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-1b7ce15fce4f",
+   "rc": 0,
+   "out": "\u2713 renamed f-1b7ce15fce4f1f2693a6ffb7e9256ed5d6a9e026794f5564612dac7dd16b2ff6: 'slugify' \u2192 'v4 label 21'\n",
+   "err": "",
+   "i": 21,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "83071043df5f",
+   "rc": 0,
+   "removed": 5,
+   "returned": true,
+   "out": "s removed\n\n removes 5 edit(s) across 1 symbol(s) \u00b7 1 file(s): slugify.py\n  \u2713 revert applied \u2014 5 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n | \u2713 undo 4c4a89b: restored the prior ideal \u2014 1 op(s) back to pending, 5 op(s) restored\n",
+   "err": "",
+   "i": 22,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "7fa52afc06b7",
+   "rc": 0,
+   "out": " \u25b8 restore  7fa52afc06b7fc8825f4824666701ce13cfc91342af373f7ef178b91152be6e2\n\n restores 3 edit(s) across 1 symbol(s) \u00b7 1 file(s): v4_mod_10.py\n  \u2713 restore applied \u2014 0 edit(s) removed, 3 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "came_back": true,
+   "ideal_delta": 3,
+   "i": 23,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "1ba3b8c87e11",
+   "rc": 0,
+   "out": "v4 label 21  1b7ce15f  \u2588\u2588\u2588\u2588\u2588\u2588\u2588  6\u21927 edits\n      sgt restore 1ba3b8c8\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 base slugify                             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u00b7 1/8 edits restored\n\n restores 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): slugify.py\n  \u2713 restore applied \u2014 0 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "came_back": true,
+   "ideal_delta": 1,
+   "i": 24,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "skipped": "1 feature(s)",
+   "i": 25,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "1b7ce15fce4f",
+   "rc": 0,
+   "out": "ce15fce4f1f2693a6ffb7e9256ed5d6a9e026794f5564612dac7dd16b2ff6 \u2014 removes 2 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: bcc6fc67b68b\n    edit the working tree, then: sgt fulfill bcc6fc67b68b --from-tree\n",
+   "err": "",
+   "i": 26,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "1b7ce15fce4f",
+   "rc": 0,
+   "out": "nd  v4 label 21  1b7ce15f  \u2591\u2591\u2591\u2591\u2591\u2591\u2591  7\u21920 edits\n      sgt revert 1b7ce15f\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 base slugify                             \u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591  \u00b7 7/8 edits removed\n\n removes 7 edit(s) across 1 symbol(s) \u00b7 1 file(s): slugify.py\n  \u2713 revert applied \u2014 7 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 27,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "72f70c2fbacc",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "d85bf85e6668a22275f931ad62\n\n removes 1 edit(s) \u00b7 1 file(s): v4_mod_10.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo 8766bd4: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 28,
+   "target_kind": "layout",
+   "violations": []
+  }
+ ]
+}

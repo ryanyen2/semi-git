@@ -1,0 +1,44 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_revert                1c8861fd738c
+    2 · op_feature_merge         1 feature(s)
+    3 ✓ op_feature_rename        f-19e4d531a38b
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_feature_split         f-19e4d531a38b
+    6 ✓ op_revert_restore_probe  fbd81edea7f6
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_edit_save             v4_mod_0.py (rework)
+    9 ✓ op_undo                  
+   10 ✓ op_revert_restore_probe  7c69d164214d
+   11 ✓ op_feature_rename        f-m5de65219c9b
+   12 ✓ op_revert                19e4d531a38b
+   13 ✓ op_feature_rename        f-m5de65219c9b
+   14 ✓ op_revert                19e4d531a38b
+   15 ✗ op_revert_restore_probe  19e4d531a38b
+        restore_resurrects_content: restoring what revert 19e4d531a38b removed also pulled back 3 op(s) carrying user code that were already out: ['68c863034640', 'bc4ee665797a', 'fbd81edea7f6']
+   16 ✓ op_revert_undo_probe     54f60db116c9
+   17 ✓ op_revert_restore_probe  27c2d01a1faf
+   18 ✓ op_feature_merge         f-19e4d531a38b<-f-m5de65219c9b
+   19 ✓ op_restore               069ff17ebbec
+   20 ✓ op_revert_restore_probe  68c863034640
+   21 ✓ op_add_file              v4_mod_21.py
+   22 ✓ op_edit_save             v4_mod_0.py (rework)
+   23 ✓ op_edit_save             v4_mod_0.py (rework)
+   24 ✓ op_feature_split         f-19e4d531a38b
+   25 · op_restore               nothing addressable excluded
+   26 · op_restore               nothing addressable excluded
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_feature_split         af-mba12d3e962
+   29 ✓ op_feature_merge         af-m9bd0270434<-f-19e4d531a38b
+   30 ✓ op_revert_keep_dependents 4f82641e8588
+   31 ✓ op_edit_save             routes.py (rework)
+   32 ✓ op_edit_save             v4_mod_0.py (rework)
+   33 ✓ op_undo                  
+   34 ✓ op_feature_merge         af-mba12d3e962<-af-m9bd0270434
+   35 ✓ op_revert                832736908299
+   36 ✓ op_undo                  
+   37 ✓ op_edit_save             v4_mod_27.py (rework)
+   38 ✓ op_revert_undo_probe     d7cc9e9ebcab
+   39 ✓ op_edit_save             v4_mod_27.py (rework)
+   40 ✓ op_revert_restore_probe  d7cc9e9ebcab
+   41 ✓ op_edit_save             v4_mod_0.py (rework)
+decorated_routes seed 1042: 42 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-decorated_routes-seed1042.json

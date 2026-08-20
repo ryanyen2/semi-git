@@ -1,0 +1,42 @@
+    0 ✓ op_revert_keep_dependents 40a1e5701ac6
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_revert                3549561cc039
+    3 · op_restore               nothing addressable excluded
+    4 · op_restore               nothing addressable excluded
+    5 · op_restore               nothing addressable excluded
+    6 ✓ op_revert                a08a015717cf
+    7 ✓ op_undo                  
+    8 ✓ op_revert                a08a015717cf
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_undo                  
+   11 ✓ op_edit_save             a.py (rework)
+   12 ✓ op_feature_rename        f-026fba3b609d
+   13 ✓ op_revert_restore_probe  320660079e31
+   14 ✓ op_undo                  
+   15 ✓ op_revert_keep_dependents d7b65ae970f5
+   16 ✓ op_edit_save             v4_mod_1.py (rework)
+   17 ✓ op_revert                127c7f593a49
+   18 ✓ op_edit_save             a.py (rework)
+   19 ✓ op_restore               127c7f593a49
+   20 ✓ op_feature_rename        f-026fba3b609d
+   21 ✓ op_undo                  
+   22 ✓ op_edit_save             v4_mod_1.py (rework)
+   23 ✓ op_undo                  
+   24 ✓ op_revert_restore_probe  9e1ede97fa03
+   25 ✓ op_edit_save             a.py (rework)
+   26 ✓ op_revert_keep_dependents 026fba3b609d
+   27 · op_revert_undo_probe     revert offered no undo
+   28 ✓ op_feature_split         f-026fba3b609d
+   29 ✓ op_revert_restore_probe  146eebdde27a
+   30 ✓ op_undo                  
+   31 ✓ op_revert                a08a015717cf
+   32 ✓ op_revert                320660079e31
+   33 ✓ op_restore               051e3e5157b8
+   34 ✓ op_edit_save             v4_mod_1.py (rework)
+   35 ✓ op_add_file              v4_mod_35.py
+   36 ✓ op_restore               b65b274a4a71
+   37 ✓ op_restore               b65b274a4a71
+   38 ✓ op_feature_merge         af-mc18be9938d<-f-026fba3b609d
+   39 ✓ op_revert_undo_probe     b3c60129c682
+   40 ✓ op_undo                  
+crlf_endings seed 1226: 41 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-crlf_endings-seed1226.json

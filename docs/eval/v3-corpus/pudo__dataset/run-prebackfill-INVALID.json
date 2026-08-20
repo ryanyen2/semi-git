@@ -1,0 +1,211 @@
+{
+  "repo": "pudo/dataset",
+  "stars": 4871,
+  "band": "2500..5000",
+  "license": "MIT",
+  "status": "ok",
+  "clone": {
+    "cmd": "git clone --quiet https://github.com/pudo/dataset.git",
+    "rc": 0,
+    "seconds": 1.0,
+    "timed_out": false,
+    "out": "",
+    "err": ""
+  },
+  "head_sha": "db592cc041014762bba55fd544e982170831f227",
+  "tree": {
+    "files_total": 37,
+    "files_py": 12,
+    "py_bytes": 82914,
+    "commits": 746
+  },
+  "loadavg_at_init": 6.9833984375,
+  "init": {
+    "cmd": "sgt init",
+    "rc": 0,
+    "seconds": 11.3,
+    "timed_out": false,
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `sgt now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up\n",
+    "err": ""
+  },
+  "summary": {
+    "files": 9,
+    "symbols": 155,
+    "features": 0,
+    "coverage_fraction": 0.4444444444444444,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "drift": {
+      "any": true,
+      "paths": [
+        "CLAUDE.md",
+        "dataset/chunked.py",
+        "dataset/util.py",
+        "pyproject.toml",
+        "test/conftest.py",
+        "test/test_database.py",
+        "test/test_row_type.py",
+        "test/test_table.py"
+      ]
+    },
+    "unmanaged": [],
+    "backstop_kept": [
+      ".bumpversion.cfg",
+      ".github/FUNDING.yml",
+      ".github/dependabot.yml",
+      ".github/workflows/build.yml",
+      ".gitignore",
+      ".readthedocs.yaml",
+      "CHANGELOG.md",
+      "LICENSE",
+      "Makefile",
+      "README.md",
+      "dataset/__init__.py",
+      "dataset/database.py",
+      "dataset/table.py",
+      "dataset/types.py",
+      "docs/.gitignore",
+      "docs/Makefile",
+      "docs/_static/dataset-logo-dark.png",
+      "docs/_static/dataset-logo-light.png",
+      "docs/_static/dataset-logo.png",
+      "docs/_static/knight_mozilla_on.jpg",
+      "docs/api.rst",
+      "docs/conf.py",
+      "docs/index.rst",
+      "docs/install.rst",
+      "docs/queries.rst",
+      "docs/quickstart.rst",
+      "docs/requirements.txt",
+      "test/__init__.py"
+    ],
+    "forks": {
+      "open": 0,
+      "records": []
+    },
+    "sync_status": {
+      "complete": false,
+      "reached_genesis": false,
+      "history_rewritten": false
+    }
+  },
+  "fsck": null,
+  "fsck_tree": {
+    "drift": [
+      "CLAUDE.md",
+      "dataset/chunked.py",
+      "dataset/util.py",
+      "docs/queries.rst",
+      "pyproject.toml",
+      "test/conftest.py",
+      "test/test_database.py",
+      "test/test_row_type.py",
+      "test/test_table.py"
+    ],
+    "unmanaged": [],
+    "backstop_kept": [
+      ".bumpversion.cfg",
+      ".github/FUNDING.yml",
+      ".github/dependabot.yml",
+      ".github/workflows/build.yml",
+      ".gitignore",
+      ".readthedocs.yaml",
+      "CHANGELOG.md",
+      "LICENSE",
+      "Makefile",
+      "README.md",
+      "dataset/__init__.py",
+      "dataset/database.py",
+      "dataset/table.py",
+      "dataset/types.py",
+      "docs/.gitignore",
+      "docs/Makefile",
+      "docs/_static/dataset-logo.png",
+      "docs/_static/knight_mozilla_on.jpg",
+      "docs/api.rst",
+      "docs/conf.py",
+      "docs/index.rst",
+      "docs/install.rst",
+      "docs/quickstart.rst",
+      "docs/requirements.txt",
+      "test/__init__.py"
+    ],
+    "staged": [],
+    "unseeded": []
+  },
+  "symbols": {
+    "ok": true,
+    "data": {
+      "symbol_kinds": {
+        "anchor": 68,
+        "residue": 71,
+        "entity": 13,
+        "whole_file": 6
+      },
+      "paths": 12,
+      "paths_with_entities": 4,
+      "paths_whole_file_only": 8,
+      "live_ops": 162,
+      "has_probe": false
+    },
+    "err": ""
+  },
+  "reconstruction": {
+    "tracked_files": 9,
+    "drifted_files": 9,
+    "rate": 0.0,
+    "drifted_paths": [
+      "CLAUDE.md",
+      "dataset/chunked.py",
+      "dataset/util.py",
+      "docs/queries.rst",
+      "pyproject.toml",
+      "test/conftest.py",
+      "test/test_database.py",
+      "test/test_row_type.py",
+      "test/test_table.py"
+    ]
+  },
+  "coverage_fraction_paths": 0.4444444444444444,
+  "edit": {
+    "path": "dataset/table.py",
+    "save": {
+      "cmd": "sgt save -m v3 probe edit",
+      "rc": 0,
+      "seconds": 11.7,
+      "timed_out": false,
+      "out": "\u2713 nothing to save -- no uncommitted ops\n",
+      "err": ""
+    },
+    "recorded_symbol": false,
+    "drift_after": 11,
+    "drift_paths_after": [
+      "CLAUDE.md",
+      "dataset/chunked.py",
+      "dataset/util.py",
+      "docs/queries.rst",
+      "docs/requirements.txt",
+      "pyproject.toml",
+      "test/conftest.py",
+      "test/test_database.py",
+      "test/test_row_type.py",
+      "test/test_table.py",
+      "tox.ini"
+    ],
+    "symbols_after": {
+      "symbol_kinds": {
+        "anchor": 72,
+        "residue": 75,
+        "entity": 14,
+        "whole_file": 6
+      },
+      "paths": 12,
+      "paths_with_entities": 4,
+      "paths_whole_file_only": 8,
+      "live_ops": 171,
+      "has_probe": false
+    }
+  }
+}

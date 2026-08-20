@@ -1,0 +1,53 @@
+    0 ✓ op_revert_keep_dependents bf4a507b207e
+    1 ✓ op_undo                  
+    2 · op_edit_save             a.py is not utf-8
+    3 · op_restore               nothing addressable excluded
+    4 · op_edit_save             a.py is not utf-8
+    5 ✓ op_revert_keep_dependents a08a015717cf
+    6 ✓ op_revert                bf4a507b207e
+    7 · op_edit_save             no tracked .py file
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_edit_save             v4_mod_8.py (rework)
+   10 ✓ op_edit_save             v4_mod_8.py (rework)
+   11 ✓ op_revert_keep_dependents 4af89a56031d
+   12 ✓ op_edit_save             v4_mod_8.py (rework)
+   13 ✗ op_revert_restore_probe  0bf8f47dd419
+        revert_restore_unexplained_drift: revert 0bf8f47dd419 then restoring everything it removed left 1 file(s) different from before: ['a.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['a.py']
+   14 ✓ op_revert_restore_probe  4af89a56031d
+   15 ✓ op_restore               bf4a507b207e
+   16 ✓ op_revert_restore_probe  f043e923512d
+   17 ✓ op_revert_restore_probe  bf4a507b207e
+   18 ✓ op_revert                d65c4074ef03
+   19 · op_restore               nothing addressable excluded
+   20 · op_feature_merge         1 feature(s)
+   21 ✓ op_revert_restore_probe  30534bc278f8
+   22 ✓ op_revert_undo_probe     bf4a507b207e
+   23 · op_restore               nothing addressable excluded
+   24 ✓ op_revert                bf4a507b207e
+   25 ✓ op_revert                0bf8f47dd419
+   26 ✓ op_revert_restore_probe  f453247d22ba
+   27 ✓ op_revert_keep_dependents f043e923512d
+   28 ✗ op_revert_restore_probe  85daff11b8f2
+        restore_resurrects_layout: restoring what revert 85daff11b8f2 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['1e907f1d838b']
+   29 ✓ op_revert_restore_probe  d65c4074ef03
+   30 ✓ op_revert_keep_dependents f043e923512d
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_revert                f043e923512d
+   33 ✓ op_edit_save             v4_mod_8.py (rework)
+   34 ✓ op_undo                  
+   35 ✓ op_edit_save             v4_mod_8.py (rework)
+   36 ✓ op_feature_merge         af-m198290c1dc<-f-126303a70181
+   37 ✓ op_edit_save             v4_mod_8.py (rework)
+   38 ✗ op_revert_restore_probe  97453535c60c
+        restore_resurrects_layout: restoring what revert 97453535c60c removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['d6fa826ed72d']
+   39 ✓ op_undo                  
+   40 ✓ op_revert_keep_dependents fb1dc3756108
+   41 ✗ op_revert_restore_probe  85daff11b8f2
+        restore_resurrects_layout: restoring what revert 85daff11b8f2 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['f043e923512d']
+   42 ✓ op_revert_restore_probe  8e11ac8ee892
+   43 ✓ op_revert                1e907f1d838b
+   44 ✓ op_add_file              v4_mod_44.py
+   45 ✓ op_revert                d65c4074ef03
+   46 ✓ op_restore               b919040ef440
+latin1_encoded seed 1148: 47 ops applied, 4 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1148.json

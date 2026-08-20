@@ -1,0 +1,50 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✗ op_revert_restore_probe  bda07be08e55
+        restore_resurrects_layout: restoring what revert bda07be08e55 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['cae03a295f59']
+    2 · op_restore               nothing addressable excluded
+    3 ✓ op_revert_restore_probe  cae03a295f59
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_revert_undo_probe     3bff00c33c82
+    6 ✓ op_revert_undo_probe     6ce5787543f8
+    7 ✓ op_feature_rename        f-308db8498c58
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_revert                30534bc278f8
+   10 ✓ op_revert_undo_probe     cae03a295f59
+   11 ✓ op_feature_merge         af-m0fbd1c282a<-f-308db8498c58
+   12 ✓ op_revert                85daff11b8f2
+   13 ✓ op_revert                3bff00c33c82
+   14 ✓ op_undo                  
+   15 ✓ op_restore               85daff11b8f2
+   16 · op_restore               nothing addressable excluded
+   17 ✓ op_feature_split         af-m0fbd1c282a
+   18 ✓ op_feature_split         af-m7798385f8c
+   19 ✓ op_feature_rename        af-m7798385f8c
+   20 ✓ op_add_file              v4_mod_20.py
+   21 ✓ op_undo                  
+   22 ✓ op_feature_split         af-m0fbd1c282a
+   23 ✓ op_feature_rename        af-m5fec7e5af4
+   24 ✓ op_edit_save             v4_mod_8.py (rework)
+   25 ✓ op_edit_save             service.py (rework)
+   26 ✓ op_feature_rename        af-m0fbd1c282a
+   27 ✓ op_undo                  
+   28 ✓ op_restore               7f9e642020d8
+   29 ✓ op_revert                ed486171e602
+   30 ✓ op_revert                1e907f1d838b
+   31 ✓ op_edit_save             v4_mod_20.py (rework)
+   32 ✓ op_edit_save             v4_mod_8.py (rework)
+   33 ✓ op_add_file              v4_mod_33.py
+   34 ✓ op_edit_save             v4_mod_33.py (rework)
+   35 ✓ op_feature_split         af-m7798385f8c
+   36 ✓ op_revert                d12941f5bfb0
+   37 ✓ op_revert_undo_probe     30534bc278f8
+   38 ✓ op_feature_split         af-m0fbd1c282a
+   39 ✓ op_feature_rename        af-m5fec7e5af4
+   40 ✓ op_revert_undo_probe     6ce5787543f8
+   41 ✓ op_undo                  
+   42 ✓ op_feature_rename        af-m445fdd0c87
+   43 ✓ op_feature_rename        af-m5fec7e5af4
+   44 ✓ op_revert_undo_probe     6ba984cb9733
+   45 ✓ op_revert                1dd01be271c5
+   46 ✓ op_feature_merge         af-m7798385f8c<-af-m445fdd0c87
+   47 ✓ op_revert_undo_probe     fd36ab53fba1
+class_with_methods seed 1029: 48 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-class_with_methods-seed1029.json

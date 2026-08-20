@@ -1,0 +1,26 @@
+    0 ✓ op_edit_save             ov.py (rework)
+    1 ✓ op_revert_keep_dependents ce259f0defb1
+    2 ✓ op_revert_restore_probe  273015e3c451
+    3 ✓ op_edit_save             ov.py (rework)
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_edit_save             ov.py (rework)
+    6 ✓ op_undo                  
+    7 ✓ op_undo                  
+    8 ✓ op_revert_restore_probe  ce259f0defb1
+    9 ✓ op_add_file              v4_mod_9.py
+   10 · op_feature_merge         1 feature(s)
+   11 ✓ op_revert_restore_probe  ce259f0defb1
+   12 ✓ op_revert_undo_probe     273015e3c451
+   13 ✓ op_revert                a356cbc27e41
+   14 ✓ op_edit_save             v4_mod_9.py (rework)
+   15 ✓ op_add_file              v4_mod_15.py
+   16 ✓ op_edit_save             v4_mod_9.py (rework)
+   17 ✓ op_feature_rename        f-10e1ad11620f
+   18 ✓ op_edit_save             ov.py (rework)
+   19 ✓ op_feature_split         f-10e1ad11620f
+   20 ✓ op_feature_rename        f-10e1ad11620f
+   21 ✓ op_feature_merge         f-10e1ad11620f<-af-m90fe05fe07
+   22 ✓ op_add_file              v4_mod_22.py
+   23 ✓ op_edit_save             v4_mod_9.py (rework)
+   24 ✓ op_add_file              v4_mod_24.py
+overload_group seed 1078: 25 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-overload_group-seed1078.json

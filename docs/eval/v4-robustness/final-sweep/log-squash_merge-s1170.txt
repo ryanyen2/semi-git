@@ -1,0 +1,22 @@
+    0 ✓ op_edit_save             a.py (rework)
+    1 ✓ op_edit_save             a.py (rework)
+    2 ✓ op_revert_keep_dependents dfedd87b7181
+    3 ✓ op_revert                c9381393933c
+    4 ✓ op_undo                  
+    5 · op_feature_merge         1 feature(s)
+    6 ✓ op_add_file              v4_mod_6.py
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_revert                370f2e23be24
+    9 ✓ op_revert                fb7bdb5067c4
+   10 ✓ op_revert_keep_dependents 301e32de9770
+   11 ✓ op_revert_keep_dependents ee1211142a8b
+   12 · op_restore               nothing addressable excluded
+   13 · op_revert_undo_probe     revert offered no undo
+   14 · op_restore               nothing addressable excluded
+   15 ✓ op_undo                  
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_feature_merge         f-126303a70181<-af-m01dcf54483
+   18 · op_restore               nothing addressable excluded
+   19 · op_restore               nothing addressable excluded
+   20 ✓ op_revert_undo_probe     d068113acb07
+squash_merge seed 1170: 21 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-squash_merge-seed1170.json

@@ -1,0 +1,31 @@
+    0 ✓ op_feature_split         f-126303a70181
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_revert                3549561cc039
+    3 ✓ op_feature_rename        f-126303a70181
+    4 ✓ op_edit_save             v4_mod_1.py (rework)
+    5 ✓ op_edit_save             a.py (rework)
+    6 ✓ op_revert_restore_probe  3f0a52756b18
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_revert                b40faf60cef7
+    9 ✓ op_revert                ddef8999567d
+   10 ✓ op_revert_undo_probe     c9381393933c
+   11 ✓ op_edit_save             v4_mod_1.py (rework)
+   12 ✓ op_revert_undo_probe     74d1b32b54ea
+   13 ✓ op_undo                  
+   14 ✓ op_edit_save             v4_mod_1.py (rework)
+   15 ✓ op_restore               ddef8999567d
+   16 ✓ op_edit_save             a.py (rework)
+   17 ✓ op_restore               74d1b32b54ea
+   18 ✓ op_revert_keep_dependents 3f0a52756b18
+   19 ✓ op_edit_save             v4_mod_7.py (rework)
+   20 ✓ op_revert_keep_dependents ffa4c883cdb6
+   21 ✓ op_feature_merge         f-126303a70181<-af-md2dff31351
+   22 ✓ op_revert                514b69a21007
+   23 ✓ op_revert                c9381393933c
+   24 ✓ op_revert_undo_probe     a08a015717cf
+   25 ✓ op_restore               74d1b32b54ea
+   26 ✓ op_revert_keep_dependents ffa4c883cdb6
+   27 ✓ op_revert                026fba3b609d
+   28 ✓ op_edit_save             v4_mod_7.py (rework)
+   29 ✓ op_feature_rename        f-126303a70181
+squash_merge seed 1033: 30 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-squash_merge-seed1033.json

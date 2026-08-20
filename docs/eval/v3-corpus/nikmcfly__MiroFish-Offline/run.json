@@ -1,0 +1,443 @@
+{
+  "repo": "nikmcfly/MiroFish-Offline",
+  "stars": 2471,
+  "band": "1000..2500",
+  "license": "AGPL-3.0",
+  "status": "ok",
+  "clone": {
+    "cmd": "git clone --quiet https://github.com/nikmcfly/MiroFish-Offline.git",
+    "rc": 0,
+    "seconds": 1.3,
+    "timed_out": false,
+    "out": "",
+    "err": ""
+  },
+  "head_sha": "313fe642853ff9fff05e3ecae2e439886c2d29f4",
+  "tree": {
+    "files_total": 102,
+    "files_py": 40,
+    "py_bytes": 777305,
+    "commits": 22
+  },
+  "loadavg_at_init": 8.541015625,
+  "init": {
+    "cmd": "sgt init",
+    "rc": 0,
+    "seconds": 10.8,
+    "timed_out": false,
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `sgt now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up\n",
+    "err": ""
+  },
+  "backfill": {
+    "reached_genesis": true,
+    "complete": true,
+    "chunks": 0,
+    "seconds": 0.2,
+    "capped": false,
+    "cap_s": 1800,
+    "progress": []
+  },
+  "summary": {
+    "files": 88,
+    "symbols": 1222,
+    "features": 0,
+    "coverage_fraction": 0.4431818181818182,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "drift": {
+      "any": true,
+      "paths": [
+        "backend/app/api/graph.py",
+        "backend/app/api/report.py",
+        "backend/app/api/simulation.py",
+        "backend/app/models/project.py",
+        "backend/app/models/task.py",
+        "backend/app/services/entity_reader.py",
+        "backend/app/services/graph_builder.py",
+        "backend/app/services/simulation_manager.py",
+        "backend/app/services/text_processor.py",
+        "backend/app/utils/file_parser.py",
+        "backend/scripts/test_profile_format.py"
+      ]
+    },
+    "unmanaged": [],
+    "backstop_kept": [
+      ".dockerignore",
+      ".env.example",
+      ".github/workflows/docker-image.yml",
+      ".gitignore",
+      "frontend/.gitignore"
+    ],
+    "forks": {
+      "open": 19,
+      "records": [
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::chat_with_report_agent",
+          "symbol": "backend/app/api/report.py::chat_with_report_agent",
+          "tips": [
+            "9a7a894bef4c0da59012555efffb14ca4c8d4f4cb5b3cf411a3f28052f9ea281",
+            "be64207010acacdc8e50f75f6373fa6df5e883b202a6f90d86230db008c6104f"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::check_report_status",
+          "symbol": "backend/app/api/report.py::check_report_status",
+          "tips": [
+            "5642bc42a5c2ee2758987df1d8db80e1a1e3389d91defe3fa436f4609d99d61b",
+            "9a7a894bef4c0da59012555efffb14ca4c8d4f4cb5b3cf411a3f28052f9ea281"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::delete_report",
+          "symbol": "backend/app/api/report.py::delete_report",
+          "tips": [
+            "34c2f5134726e6486cc4ded5333f1fa8df1bf2f022421a2e221bc5205fdec83f",
+            "da2cdf4e965271f1d1971f9ad05861ca86dde82092b068a8b6bce85137b55ef4"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::download_report",
+          "symbol": "backend/app/api/report.py::download_report",
+          "tips": [
+            "2528bd695108037320c4dd9dd71f3fc9852ec110bbb93a6b2f429124643dac6b",
+            "82f73f5da799610e0c4fcbaa54a24a5f2f0580881e233b89b6626cc0a3964b79"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::generate_report",
+          "symbol": "backend/app/api/report.py::generate_report",
+          "tips": [
+            "5642bc42a5c2ee2758987df1d8db80e1a1e3389d91defe3fa436f4609d99d61b",
+            "9a7a894bef4c0da59012555efffb14ca4c8d4f4cb5b3cf411a3f28052f9ea281"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::generate_report.run_generate",
+          "symbol": "backend/app/api/report.py::generate_report.run_generate",
+          "tips": [
+            "5642bc42a5c2ee2758987df1d8db80e1a1e3389d91defe3fa436f4609d99d61b",
+            "9a7a894bef4c0da59012555efffb14ca4c8d4f4cb5b3cf411a3f28052f9ea281"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_agent_log",
+          "symbol": "backend/app/api/report.py::get_agent_log",
+          "tips": [
+            "07a4f26ffd2a190bf3dd0c412b49ae5264b3a650a453221df37492f18812744e",
+            "1e185d612c00556f91aff4a0ed66771e569d1988a13eb697e62a4dd93fd5bdcc"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_console_log",
+          "symbol": "backend/app/api/report.py::get_console_log",
+          "tips": [
+            "046738484ed9f700a53ea2a0200ea28b385aa7ed14fdff234d78cf38f1538850",
+            "2dd53f8cc7909a3a181c3e97ad650a684e15a796194569af3fbe964b5632ef31"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_generate_status",
+          "symbol": "backend/app/api/report.py::get_generate_status",
+          "tips": [
+            "18c1f2629b6b720ed17266f2740cb0dd4530f29287bfaf03d651c067a766e601",
+            "9a7a894bef4c0da59012555efffb14ca4c8d4f4cb5b3cf411a3f28052f9ea281"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_graph_statistics_tool",
+          "symbol": "backend/app/api/report.py::get_graph_statistics_tool",
+          "tips": [
+            "0488f9c03c460f369b2fc8d7b61dbce3451e30a0e8f3d47461b1eee19490f53c",
+            "b5cd7f58d3c1be1501a2858f894c206eeb9e14ef095644a96fd0461bad42e8bf"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_report",
+          "symbol": "backend/app/api/report.py::get_report",
+          "tips": [
+            "2528bd695108037320c4dd9dd71f3fc9852ec110bbb93a6b2f429124643dac6b",
+            "82f73f5da799610e0c4fcbaa54a24a5f2f0580881e233b89b6626cc0a3964b79"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_report_by_simulation",
+          "symbol": "backend/app/api/report.py::get_report_by_simulation",
+          "tips": [
+            "5642bc42a5c2ee2758987df1d8db80e1a1e3389d91defe3fa436f4609d99d61b",
+            "9a7a894bef4c0da59012555efffb14ca4c8d4f4cb5b3cf411a3f28052f9ea281"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_report_progress",
+          "symbol": "backend/app/api/report.py::get_report_progress",
+          "tips": [
+            "2528bd695108037320c4dd9dd71f3fc9852ec110bbb93a6b2f429124643dac6b",
+            "569223f451bd2771f4a7394d9812ec05628ca0333bcb41081b5afb00445803aa"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_report_sections",
+          "symbol": "backend/app/api/report.py::get_report_sections",
+          "tips": [
+            "2528bd695108037320c4dd9dd71f3fc9852ec110bbb93a6b2f429124643dac6b",
+            "82f73f5da799610e0c4fcbaa54a24a5f2f0580881e233b89b6626cc0a3964b79"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::get_single_section",
+          "symbol": "backend/app/api/report.py::get_single_section",
+          "tips": [
+            "479f99d2f7fb0129fc9c957f41200155aa1331f3b4691a5215f6f2a8b5ca2fe6",
+            "60f6d993234cd77cc877c4a8d89355c87a03739234c5198acc6f0c8bbc2d5571"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::list_reports",
+          "symbol": "backend/app/api/report.py::list_reports",
+          "tips": [
+            "b91c655ba91b2e90d79773440a9655816ad21548ae2569291f91a2c6a03f353c",
+            "da88a48c953a6b4b87e058f8de668ef680795838ff47fb3a37f4dd7a05aef5a7"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::search_graph_tool",
+          "symbol": "backend/app/api/report.py::search_graph_tool",
+          "tips": [
+            "21d9cbbe68876bb27cff03a3e420df6ec2cb0a8931ad5617a2209e2e7d4f458a",
+            "34c1d09e00b972ee812691f951ad91076746cd4e0453ff966afda06e8e2e5c07"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::stream_agent_log",
+          "symbol": "backend/app/api/report.py::stream_agent_log",
+          "tips": [
+            "259fb9861ec9660ff040765bbf897f464031a2b319a875fbcc77dfdcc4081951",
+            "d30b20604ed4f284d7db4b4a52b9ddf26158c62f3f680ec04f0decacf7317b14"
+          ]
+        },
+        {
+          "remedy": "sgt resolve backend/app/api/report.py::stream_console_log",
+          "symbol": "backend/app/api/report.py::stream_console_log",
+          "tips": [
+            "341cc4c4c6d5776edb8964e0ca1e4b820c91c72bcbc1109ac3863a43146342ce",
+            "7af38b934e441e360b51213137268bf9a25cdeef333d73dda218c38fb3fd497f"
+          ]
+        }
+      ]
+    },
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true,
+      "history_rewritten": false
+    }
+  },
+  "fsck": {
+    "ok": true,
+    "checked": 890,
+    "bad_hash": [],
+    "corrupt": [],
+    "chain_gaps": [],
+    "invalid_ideals": [],
+    "unreachable_witnesses": [],
+    "mixed_versions": [],
+    "pending_land": [],
+    "op_index_stale": false,
+    "stale_sessions": []
+  },
+  "fsck_tree": {
+    "drift": [
+      "backend/app/api/graph.py",
+      "backend/app/api/report.py",
+      "backend/app/api/simulation.py",
+      "backend/app/models/project.py",
+      "backend/app/models/task.py",
+      "backend/app/services/entity_reader.py",
+      "backend/app/services/graph_builder.py",
+      "backend/app/services/simulation_manager.py",
+      "backend/app/services/text_processor.py",
+      "backend/app/utils/file_parser.py",
+      "backend/scripts/test_profile_format.py"
+    ],
+    "unmanaged": [],
+    "backstop_kept": [
+      ".dockerignore",
+      ".env.example",
+      ".github/workflows/docker-image.yml",
+      ".gitignore",
+      "frontend/.gitignore"
+    ],
+    "staged": [],
+    "unseeded": []
+  },
+  "symbols": {
+    "ok": true,
+    "data": {
+      "symbol_kinds": {
+        "anchor": 223,
+        "residue": 271,
+        "entity": 222,
+        "nested": 471,
+        "whole_file": 50
+      },
+      "paths": 98,
+      "paths_with_entities": 39,
+      "paths_whole_file_only": 59,
+      "live_ops": 835,
+      "has_probe": false,
+      "entity_paths": [
+        "backend/app/__init__.py",
+        "backend/app/api/graph.py",
+        "backend/app/api/report.py",
+        "backend/app/api/simulation.py",
+        "backend/app/config.py",
+        "backend/app/models/project.py",
+        "backend/app/models/task.py",
+        "backend/app/services/entity_reader.py",
+        "backend/app/services/graph_builder.py",
+        "backend/app/services/graph_memory_updater.py",
+        "backend/app/services/graph_tools.py",
+        "backend/app/services/oasis_profile_generator.py",
+        "backend/app/services/ontology_generator.py",
+        "backend/app/services/report_agent.py",
+        "backend/app/services/simulation_config_generator.py",
+        "backend/app/services/simulation_ipc.py",
+        "backend/app/services/simulation_manager.py",
+        "backend/app/services/simulation_runner.py",
+        "backend/app/services/text_processor.py",
+        "backend/app/storage/embedding_service.py",
+        "backend/app/storage/graph_storage.py",
+        "backend/app/storage/neo4j_storage.py",
+        "backend/app/storage/ner_extractor.py",
+        "backend/app/storage/search_service.py",
+        "backend/app/utils/file_parser.py",
+        "backend/app/utils/llm_client.py",
+        "backend/app/utils/logger.py",
+        "backend/app/utils/retry.py",
+        "backend/run.py",
+        "backend/scripts/action_logger.py",
+        "backend/scripts/run_parallel_simulation.py",
+        "backend/scripts/run_reddit_simulation.py",
+        "backend/scripts/run_twitter_simulation.py",
+        "backend/scripts/test_profile_format.py"
+      ]
+    },
+    "failure": null
+  },
+  "reconstruction": {
+    "tracked_files": 88,
+    "drifted_files": 11,
+    "rate": 0.875,
+    "drifted_paths": [
+      "backend/app/api/graph.py",
+      "backend/app/api/report.py",
+      "backend/app/api/simulation.py",
+      "backend/app/models/project.py",
+      "backend/app/models/task.py",
+      "backend/app/services/entity_reader.py",
+      "backend/app/services/graph_builder.py",
+      "backend/app/services/simulation_manager.py",
+      "backend/app/services/text_processor.py",
+      "backend/app/utils/file_parser.py",
+      "backend/scripts/test_profile_format.py"
+    ]
+  },
+  "coverage_fraction_paths": 0.4431818181818182,
+  "edit": {
+    "path": "backend/app/services/report_agent.py",
+    "save": {
+      "cmd": "sgt save -m v3 probe edit",
+      "rc": 1,
+      "seconds": 2.1,
+      "timed_out": false,
+      "out": "\u2717 put() would roll back files outside this edit's scope, whose committed content differs from sgt's recorded ideal: ['backend/app/api/graph.py', 'backend/app/api/report.py', 'backend/app/api/simulation.py', 'backend/app/models/project.py', 'backend/app/models/task.py', 'backend/app/services/entity_reader.py', 'backend/app/services/graph_builder.py', 'backend/app/services/simulation_manager.py', 'backend/app/services/text_processor.py', 'backend/app/utils/file_parser.py', 'backend/scripts/test_profile_format.py']\n",
+      "err": ""
+    },
+    "recorded_symbol": false,
+    "drift_after": 11,
+    "drift_paths_after": [
+      "backend/app/api/graph.py",
+      "backend/app/api/report.py",
+      "backend/app/api/simulation.py",
+      "backend/app/models/project.py",
+      "backend/app/models/task.py",
+      "backend/app/services/entity_reader.py",
+      "backend/app/services/graph_builder.py",
+      "backend/app/services/simulation_manager.py",
+      "backend/app/services/text_processor.py",
+      "backend/app/utils/file_parser.py",
+      "backend/scripts/test_profile_format.py"
+    ],
+    "symbols_after": {
+      "symbol_kinds": {
+        "anchor": 223,
+        "residue": 271,
+        "entity": 222,
+        "nested": 471,
+        "whole_file": 50
+      },
+      "paths": 98,
+      "paths_with_entities": 39,
+      "paths_whole_file_only": 59,
+      "live_ops": 835,
+      "has_probe": false,
+      "entity_paths": [
+        "backend/app/__init__.py",
+        "backend/app/api/graph.py",
+        "backend/app/api/report.py",
+        "backend/app/api/simulation.py",
+        "backend/app/config.py",
+        "backend/app/models/project.py",
+        "backend/app/models/task.py",
+        "backend/app/services/entity_reader.py",
+        "backend/app/services/graph_builder.py",
+        "backend/app/services/graph_memory_updater.py",
+        "backend/app/services/graph_tools.py",
+        "backend/app/services/oasis_profile_generator.py",
+        "backend/app/services/ontology_generator.py",
+        "backend/app/services/report_agent.py",
+        "backend/app/services/simulation_config_generator.py",
+        "backend/app/services/simulation_ipc.py",
+        "backend/app/services/simulation_manager.py",
+        "backend/app/services/simulation_runner.py",
+        "backend/app/services/text_processor.py",
+        "backend/app/storage/embedding_service.py",
+        "backend/app/storage/graph_storage.py",
+        "backend/app/storage/neo4j_storage.py",
+        "backend/app/storage/ner_extractor.py",
+        "backend/app/storage/search_service.py",
+        "backend/app/utils/file_parser.py",
+        "backend/app/utils/llm_client.py",
+        "backend/app/utils/logger.py",
+        "backend/app/utils/retry.py",
+        "backend/run.py",
+        "backend/scripts/action_logger.py",
+        "backend/scripts/run_parallel_simulation.py",
+        "backend/scripts/run_reddit_simulation.py",
+        "backend/scripts/run_twitter_simulation.py",
+        "backend/scripts/test_profile_format.py"
+      ]
+    }
+  },
+  "reconstruction_honest": {
+    "in_scope_files": 97,
+    "tracked_files": 102,
+    "failed": 11,
+    "honest_rate": 0.8866,
+    "claimed_rate": 0.875,
+    "drift_in_scope": 11,
+    "backstop_in_scope": 0,
+    "backstop_out_of_scope": 5,
+    "zombie": 0,
+    "other_classes": {
+      "staged": 0,
+      "unseeded": 0,
+      "unmanaged": 0
+    },
+    "samples": {
+      "backstop_in_scope": [],
+      "zombie": []
+    }
+  }
+}

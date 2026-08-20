@@ -1,0 +1,47 @@
+    0 ✓ op_revert_undo_probe     10d36ff6be9e
+    1 ✓ op_undo                  
+    2 · op_edit_save             no tracked .py file
+    3 ✓ op_revert                7646c3cb07ad
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_revert                8958d91742a1
+    6 ✓ op_feature_split         f-0442c989d468
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_revert                3456efddc820
+    9 ✓ op_edit_save             v4_mod_7.py (rework)
+   10 ✓ op_revert                0442c989d468
+   11 ✓ op_revert_keep_dependents ffa4c883cdb6
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_revert_keep_dependents 39bc8466d27a
+   14 ✓ op_edit_save             v4_mod_12.py (rework)
+   15 ✓ op_edit_save             v4_mod_7.py (rework)
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_edit_save             v4_mod_7.py (rework)
+   18 ✓ op_feature_rename        af-m5577c8370c
+   19 ✓ op_restore               10d36ff6be9e
+   20 ✓ op_revert                31ca9f5a9253
+   21 ✓ op_feature_rename        f-0442c989d468
+   22 ✓ op_revert                274ef6704983
+   23 ✓ op_edit_save             v4_mod_16.py (rework)
+   24 ✓ op_undo                  
+   25 ✓ op_feature_split         af-mf380eccfa3
+   26 ✓ op_revert_undo_probe     441275e32106
+   27 ✓ op_revert                bd0a33191ded
+   28 ✓ op_edit_save             v4_mod_7.py (rework)
+   29 ✓ op_revert_undo_probe     17459403971d
+   30 ✓ op_restore               31ca9f5a9253
+   31 ✓ op_restore               826a9707da6b
+   32 ✗ op_revert_restore_probe  699b8251cb9a
+        restore_resurrects_layout: restoring what revert 699b8251cb9a removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['1cd077bba183', '5b2d3969788a']
+   33 ✓ op_edit_save             v4_mod_12.py (rework)
+   34 ✓ op_revert_restore_probe  48c27e29cf8f
+   35 ✓ op_edit_save             v4_mod_16.py (rework)
+   36 ✓ op_undo                  
+   37 ✓ op_restore               6fc3a936c322
+   38 ✓ op_revert_restore_probe  7646c3cb07ad
+   39 ✓ op_revert_restore_probe  bd0a33191ded
+   40 ✓ op_feature_merge         f-0442c989d468<-af-md04b4d226b
+   41 ✓ op_undo                  
+   42 ✓ op_revert_keep_dependents 441275e32106
+   43 ✓ op_edit_save             v4_mod_7.py (rework)
+   44 ✓ op_feature_merge         f-mef7db993743<-af-m9af93080ce
+ts_export_decorated seed 1034: 45 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-ts_export_decorated-seed1034.json

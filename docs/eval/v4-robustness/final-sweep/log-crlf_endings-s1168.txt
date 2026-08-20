@@ -1,0 +1,27 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_undo                  
+    2 ✓ op_edit_save             a.py (rework)
+    3 ✓ op_revert_restore_probe  ebfad9b63df6
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_undo                  
+    6 ✓ op_revert_restore_probe  f850e49f9c5f
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_restore               9e1ede97fa03
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_revert                406e6f6c3b12
+   11 · op_feature_merge         1 feature(s)
+   12 ✓ op_revert                6946a0cb2aef
+   13 ✓ op_undo                  
+   14 ✓ op_edit_save             v4_mod_9.py (rework)
+   15 ✓ op_restore               406e6f6c3b12
+   16 ✓ op_feature_rename        f-1a0fbfd1f1ee
+   17 ✓ op_revert_restore_probe  ffa4c883cdb6
+   18 ✓ op_revert_keep_dependents cf71fb5af07a
+   19 ✓ op_revert                ffa4c883cdb6
+   20 ✓ op_edit_save             v4_mod_9.py (rework)
+   21 ✓ op_revert                5b6324ac8470
+   22 ✓ op_revert_undo_probe     d8db33dac867
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_revert                ebfad9b63df6
+   25 ✓ op_revert_restore_probe  406e6f6c3b12
+crlf_endings seed 1168: 26 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-crlf_endings-seed1168.json

@@ -1,0 +1,32 @@
+    0 ✓ op_revert                de8a3537aed1
+    1 ✓ op_revert_keep_dependents ce259f0defb1
+    2 ✓ op_feature_rename        f-ce259f0defb1
+    3 ✓ op_revert_undo_probe     ce259f0defb1
+    4 · op_feature_merge         1 feature(s)
+    5 ✓ op_edit_save             ov.py (add)
+    6 ✓ op_revert                c96fd028ce7f
+    7 ✓ op_feature_split         f-ce259f0defb1
+    8 ✓ op_revert                ce259f0defb1
+    9 · op_revert_restore_probe  empty ideal
+   10 ✓ op_edit_save             ov.py (add)
+        settled (save refused, git restore): ['M ov.py']
+   11 · op_revert_keep_dependents empty ideal
+   12 · op_revert_restore_probe  empty ideal
+   13 ✓ op_restore               b196bcba9e59
+   14 ✓ op_revert_undo_probe     2f53d05c3759
+   15 ✓ op_edit_save             ov.py (rework)
+   16 ✓ op_revert                b196bcba9e59
+   17 ✓ op_edit_save             ov.py (rework)
+        settled (save refused, git restore): ['M ov.py']
+   18 ✓ op_edit_save             ov.py (rework)
+        settled (save refused, git restore): ['M ov.py']
+   19 ✓ op_undo                  
+   20 ✓ op_revert_undo_probe     2f53d05c3759
+   21 ✓ op_add_file              v4_mod_21.py
+   22 ✓ op_restore               c96fd028ce7f
+   23 ✓ op_edit_save             v4_mod_21.py (rework)
+   24 ✓ op_revert_keep_dependents b196bcba9e59
+   25 ✓ op_feature_rename        f-ce259f0defb1
+   26 ✓ op_revert_undo_probe     18859c493117
+   27 ✓ op_revert_keep_dependents 2f53d05c3759
+overload_group seed 1202: 28 ops applied, 0 with an oracle failure, 0 traceback(s), 3 tree(s) settled → /tmp/v4-final/run-overload_group-seed1202.json

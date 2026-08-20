@@ -1,0 +1,83 @@
+{
+ "symbols_file": "symbols-CodeNav.json",
+ "repo": "/private/tmp/v2/CodeNav",
+ "coverage": {
+  "gt_symbols": 255,
+  "known_to_sgt": 200,
+  "fraction": 0.7843,
+  "sgt_members_by_record_kind": {
+   "substantive": 5850,
+   "residue": 19216,
+   "anchor": 0
+  },
+  "gt_only_examples": [
+   "codoc/agent/base.py::load_prompt",
+   "codoc/agent/base.py::load_prompt._expand",
+   "codoc/doclang.py::DocLanguage.is_default",
+   "codoc/doclang.py::is_mixed_prose",
+   "codoc/loop/migrate.py::MigrationResult.changed",
+   "codoc/loop/migrate.py::MigrationResult.summary",
+   "codoc/loop/sdk_realize.py::RealizeMonitor.__init__",
+   "codoc/loop/sdk_realize.py::RealizeMonitor._record_touch",
+   "codoc/loop/sdk_realize.py::RealizeMonitor.on_tool_use",
+   "codoc/loop/translate.py::TranslateResult.summary",
+   "codoc/mcp/tools.py::_script_mismatch",
+   "codoc/mcp/tools.py::doc_language_block$2"
+  ]
+ },
+ "clusters": {
+  "requests": 7,
+  "features": 25
+ },
+ "pairs": {
+  "universe_pairs": 19900,
+  "gt_positive": 6227,
+  "sgt_positive": 5781,
+  "agree": 3958,
+  "positive_base_rate": 0.3129
+ },
+ "primary": {
+  "precision": 0.6847,
+  "recall": 0.6356,
+  "f1": 0.6592,
+  "null_f1_all_one_feature": 0.4767,
+  "beats_null": true,
+  "file_baseline_f1": 0.3978,
+  "file_baseline_precision": 0.9537,
+  "file_baseline_recall": 0.2513,
+  "beats_file_baseline": true
+ },
+ "diagnostic_grounded_subset": {
+  "n_symbols": 16,
+  "requests": 5,
+  "features": 4,
+  "universe_pairs": 120,
+  "gt_positive": 43,
+  "sgt_positive": 43,
+  "positive_base_rate": 0.3583,
+  "null_f1_all_one_feature": 0.5276,
+  "precision": 0.814,
+  "recall": 0.814,
+  "f1": 0.814
+ },
+ "diagnostic_intent_label_grouping": {
+  "n_symbols": 200,
+  "requests": 7,
+  "features": 18,
+  "universe_pairs": 19900,
+  "gt_positive": 6227,
+  "sgt_positive": 9312,
+  "positive_base_rate": 0.3129,
+  "null_f1_all_one_feature": 0.4767,
+  "precision": 0.4479,
+  "recall": 0.6698,
+  "f1": 0.5368
+ },
+ "secondary": {
+  "ari_unambiguous_subset": 0.4956,
+  "ari_n": 193,
+  "split_error_rate": 1.0,
+  "median_features_per_request": 4,
+  "max_features_per_request": 12
+ }
+}

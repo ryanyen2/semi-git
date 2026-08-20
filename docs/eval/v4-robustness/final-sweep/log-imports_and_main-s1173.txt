@@ -1,0 +1,41 @@
+    0 ✓ op_revert_keep_dependents 3934033824cb
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_revert                3549561cc039
+    3 ✓ op_revert_restore_probe  868c1d84346d
+    4 ✓ op_add_file              v4_mod_4.py
+    5 · op_restore               nothing addressable excluded
+    6 ✓ op_undo                  
+    7 ✓ op_revert_undo_probe     868c1d84346d
+    8 ✓ op_edit_save             app.py (rework)
+    9 ✓ op_revert                5d3c6964b2f8
+   10 ✓ op_add_file              v4_mod_10.py
+   11 ✓ op_revert_restore_probe  146eebdde27a
+   12 ✓ op_restore               3456efddc820
+   13 ✓ op_revert                146eebdde27a
+   14 ✓ op_edit_save             v4_mod_4.py (rework)
+   15 ✓ op_revert_restore_probe  026fba3b609d
+   16 ✓ op_edit_save             v4_mod_1.py (rework)
+   17 ✓ op_revert_undo_probe     7fa52afc06b7
+   18 ✓ op_revert                b968a2f6bc90
+   19 ✓ op_revert_restore_probe  2d609a0f1083
+   20 ✓ op_revert_restore_probe  8958d91742a1
+   21 ✓ op_revert                026fba3b609d
+   22 ✓ op_revert_keep_dependents 9cbc06439871
+   23 ✓ op_revert_keep_dependents 7fa52afc06b7
+   24 ✓ op_revert_keep_dependents db0e4b75f728
+   25 ✓ op_add_file              v4_mod_25.py
+   26 · op_restore               nothing addressable excluded
+   27 ✓ op_edit_save             v4_mod_10.py (rework)
+   28 ✓ op_add_file              v4_mod_28.py
+   29 ✓ op_revert_keep_dependents 72f70c2fbacc
+   30 ✓ op_revert                7aec9c1957ce
+   31 ✓ op_revert                127c7f593a49
+   32 ✓ op_restore               127c7f593a49
+   33 ✓ op_restore               b65b274a4a71
+   34 ✓ op_edit_save             app.py (rework)
+   35 ✓ op_edit_save             v4_mod_1.py (rework)
+   36 ✓ op_edit_save             v4_mod_10.py (rework)
+   37 ✓ op_add_file              v4_mod_37.py
+   38 ✓ op_revert_undo_probe     83925cd460e4
+   39 ✓ op_edit_save             v4_mod_37.py (rework)
+imports_and_main seed 1173: 40 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-imports_and_main-seed1173.json

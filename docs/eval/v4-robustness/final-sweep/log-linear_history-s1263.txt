@@ -1,0 +1,44 @@
+    0 ✓ op_feature_split         f-004014efad04
+    1 ✓ op_revert_undo_probe     25459cad2014
+    2 ✓ op_add_file              v4_mod_2.py
+    3 ✓ op_feature_split         f-ma644e313a28
+    4 ✓ op_edit_save             c.py (rework)
+    5 ✓ op_add_file              v4_mod_5.py
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_undo                  
+    8 ✓ op_undo                  
+    9 ✓ op_edit_save             v4_mod_2.py (rework)
+   10 ✓ op_feature_split         f-004014efad04
+   11 ✓ op_restore               a4ce84350142
+   12 ✓ op_revert_restore_probe  f695cc6e8dad
+   13 ✓ op_revert_keep_dependents 004014efad04
+   14 ✓ op_add_file              v4_mod_14.py
+   15 ✓ op_undo                  
+   16 ✓ op_restore               5ee479420c26
+   17 ✓ op_add_file              v4_mod_17.py
+   18 ✓ op_revert_undo_probe     b63b907d5173
+   19 ✓ op_revert_restore_probe  b63b907d5173
+   20 ✓ op_undo                  
+   21 ✓ op_revert_keep_dependents 004014efad04
+   22 ✓ op_undo                  
+   23 ✓ op_edit_save             v4_mod_17.py (rework)
+   24 ✓ op_feature_merge         f-ma644e313a28<-af-ma4e357a76f
+   25 ✓ op_restore               6e3b6d2cc6c8
+   26 ✓ op_revert_restore_probe  ddd0cc977fe8
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_revert_restore_probe  ddd0cc977fe8
+   29 ✓ op_edit_save             v4_mod_14.py (rework)
+   30 ✓ op_feature_merge         f-004014efad04<-af-mba12d3e962
+   31 ✓ op_feature_split         af-m4b31b23310
+   32 ✓ op_revert_restore_probe  5e17f640318a
+   33 ✓ op_edit_save             b.py (rework)
+   34 ✓ op_revert_restore_probe  46d106b7667b
+   35 ✓ op_add_file              v4_mod_35.py
+   36 ✓ op_revert                439ab3afbd2b
+   37 ✓ op_revert_undo_probe     27d3d901e561
+   38 ✓ op_restore               439ab3afbd2b
+   39 ✓ op_edit_save             c.py (rework)
+   40 ✓ op_feature_rename        f-91cb13541de9
+   41 ✓ op_revert                66521c9c8059
+   42 ✓ op_revert_restore_probe  2169a5f36eef
+linear_history seed 1263: 43 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-linear_history-seed1263.json

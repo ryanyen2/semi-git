@@ -1,0 +1,32 @@
+    0 ✓ op_undo                  
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_undo                  
+    3 ✓ op_edit_save             survivor.py (rework)
+    4 ✓ op_feature_rename        f-523e5a0b3318
+    5 ✓ op_revert_undo_probe     d33327bc7b5d
+    6 · op_feature_merge         1 feature(s)
+    7 ✓ op_edit_save             survivor.py (rework)
+    8 ✓ op_edit_save             survivor.py (rework)
+    9 ✗ op_edit_save             gone.py (rework)
+        fsck_tree: exit 1: 1 newly drifted path(s): ['gone.py']
+        settled (save refused, git restore): ['M gone.py']
+   10 ✓ op_edit_save             gone.py (rework)
+        settled (save refused, git restore): ['M gone.py']
+   11 ✓ op_revert                58b3790c4c09
+   12 ✓ op_edit_save             survivor.py (rework)
+   13 ✓ op_restore               fde50449c7e0
+   14 ✓ op_revert_restore_probe  e20811f5bd51
+   15 ✓ op_revert                4bf89a81d9a3
+   16 · op_revert_undo_probe     revert offered no undo
+   17 ✓ op_feature_rename        f-523e5a0b3318
+   18 ✓ op_revert_restore_probe  523e5a0b3318
+   19 ✗ op_revert_undo_probe     5ccc73867abb
+        no_empty_phantom: blank tracked file(s) left behind: ['gone.py']
+   20 ✓ op_revert                01f8d1c22c41
+   21 ✓ op_revert_keep_dependents 78ea467f7213
+   22 ✓ op_feature_split         f-523e5a0b3318
+   23 ✓ op_revert                78ea467f7213
+   24 ✗ op_revert_restore_probe  523e5a0b3318
+        restore_resurrects_layout: restoring what revert 523e5a0b3318 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['78ea467f7213']
+   25 ✓ op_revert_undo_probe     523e5a0b3318
+removed_paths seed 1039: 26 ops applied, 3 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1039.json

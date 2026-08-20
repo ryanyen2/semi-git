@@ -1,0 +1,38 @@
+    0 · op_restore               nothing addressable excluded
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_revert                3934033824cb
+    3 ✓ op_feature_split         f-5d3c6964b2f8
+    4 ✓ op_edit_save             app.py (add)
+    5 ✓ op_add_file              v4_mod_5.py
+    6 ✓ op_revert_undo_probe     b072646df8ef
+    7 ✓ op_revert                5d3c6964b2f8
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_edit_save             v4_mod_8.py (rework)
+   10 ✓ op_add_file              v4_mod_10.py
+   11 ✓ op_edit_save             v4_mod_5.py (rework)
+   12 ✓ op_edit_save             v4_mod_5.py (rework)
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_restore               8490bb04995c
+   15 ✓ op_revert                85daff11b8f2
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_revert_keep_dependents f1f1d5d66cfb
+   18 ✓ op_restore               85daff11b8f2
+   19 ✓ op_restore               3934033824cb
+   20 ✓ op_revert_restore_probe  85daff11b8f2
+   21 ✓ op_feature_rename        af-m996ab1d34e
+   22 ✓ op_revert_undo_probe     b968a2f6bc90
+   23 ✓ op_revert                274ef6704983
+   24 ✓ op_revert_restore_probe  450b47510fcc
+   25 ✓ op_revert                991926d57719
+   26 ✓ op_edit_save             v4_mod_5.py (rework)
+   27 ✓ op_edit_save             v4_mod_10.py (rework)
+   28 ✓ op_undo                  
+   29 ✓ op_restore               4af89a56031d
+   30 ✓ op_revert_restore_probe  85daff11b8f2
+   31 ✓ op_undo                  
+   32 ✓ op_revert_undo_probe     fb1dc3756108
+   33 ✓ op_revert_undo_probe     fb0c56ff0322
+   34 ✓ op_revert                f9234cb3dd0a
+   35 ✓ op_revert_undo_probe     f043e923512d
+   36 ✓ op_undo                  
+imports_and_main seed 1088: 37 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-imports_and_main-seed1088.json

@@ -1,0 +1,50 @@
+    0 ✓ op_revert                66521c9c8059
+    1 ✓ op_revert                a08a015717cf
+    2 ✓ op_revert                4e1ecc43fc48
+    3 · op_restore               nothing addressable excluded
+    4 ✓ op_undo                  
+    5 ✓ op_undo                  
+    6 ✓ op_revert                ee1211142a8b
+    7 ✓ op_restore               ee1211142a8b
+    8 ✓ op_revert_keep_dependents ee1211142a8b
+    9 ✓ op_feature_rename        f-4e1ecc43fc48
+   10 ✓ op_revert_keep_dependents ee1211142a8b
+   11 · op_restore               nothing addressable excluded
+   12 ✓ op_undo                  
+   13 · op_restore               nothing addressable excluded
+   14 ✓ op_add_file              v4_mod_14.py
+   15 · op_restore               nothing addressable excluded
+   16 ✓ op_revert                4e1ecc43fc48
+   17 ✓ op_revert                3aaaa3478689
+   18 ✓ op_feature_rename        f-4e1ecc43fc48
+   19 ✓ op_revert                a6a77260b93c
+   20 ✓ op_revert                6e3b6d2cc6c8
+   21 ✓ op_undo                  
+   22 ✓ op_revert_undo_probe     2db4f51f9682
+   23 ✗ op_revert_restore_probe  6e3b6d2cc6c8
+        restore_resurrects_layout: restoring what revert 6e3b6d2cc6c8 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['3aaaa3478689']
+   24 ✓ op_undo                  
+   25 ✓ op_add_file              v4_mod_25.py
+   26 ✓ op_add_file              v4_mod_26.py
+   27 ✓ op_restore               6e3b6d2cc6c8
+   28 ✓ op_revert                b822f39611ee
+   29 ✓ op_revert_restore_probe  6e3b6d2cc6c8
+   30 ✓ op_edit_save             v4_mod_25.py (rework)
+   31 ✓ op_revert                66c9c5a784ce
+   32 ✓ op_revert_undo_probe     5a1cf5f59f9c
+   33 ✓ op_revert                96f3d20352a4
+   34 ✓ op_revert_undo_probe     85cff19698fc
+   35 ✓ op_restore               96f3d20352a4
+   36 ✓ op_revert_undo_probe     2db4f51f9682
+   37 ✓ op_restore               ee1211142a8b
+   38 ✓ op_revert_restore_probe  85b6909c3bf1
+   39 ✓ op_add_file              v4_mod_39.py
+   40 · op_restore               nothing addressable excluded
+   41 ✓ op_edit_save             a.py (rework)
+   42 ✓ op_edit_save             v4_mod_25.py (rework)
+   43 ✓ op_feature_merge         f-4e1ecc43fc48<-af-m4021f317e9
+   44 ✓ op_revert                ee1211142a8b
+   45 ✓ op_restore               ee1211142a8b
+   46 ✓ op_revert_keep_dependents 5b1baea1c38a
+   47 ✓ op_edit_save             v4_mod_39.py (rework)
+no_trailing_newline seed 1016: 48 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-no_trailing_newline-seed1016.json

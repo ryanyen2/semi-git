@@ -1,0 +1,1085 @@
+{
+ "repo": "/Users/ryanyen2/repos/sgt-study/confplan",
+ "counts": {
+  "commit_count": 26,
+  "save_count": 25,
+  "bookkeeping_count": 1,
+  "op_count": 347,
+  "feature_count": 22
+ },
+ "episodes_mapped": 26,
+ "rows": [
+  {
+   "commit_index": 0,
+   "sha": "81d329d",
+   "episode": "E0 seed",
+   "subject": "init repo",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Command Line Interface": [
+     "README.md"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 1,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 1,
+   "sha": "3f27ee7",
+   "episode": "E1 scaffold",
+   "subject": "scaffold confplan: models, JSON store, CLI init",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Catalog Storage": [
+     "confplan/cli.py::cmd_init",
+     "confplan/storage.py::load_data",
+     "confplan/storage.py::save_data",
+     "tests/test_storage.py::test_missing_file_loads_empty",
+     "tests/test_storage.py::test_round_trip"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "confplan/cli.py::main",
+     "pytest.ini"
+    ],
+    "scaffold confplan: models, JSON store, CLI init": [
+     "confplan/models.py::Attendee",
+     "confplan/models.py::Session",
+     "confplan/models.py::Talk"
+    ],
+    "ID Allocation": [
+     "confplan/storage.py::next_id"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Conference CLI",
+    "JSON Storage",
+    "seat notices when the queue promotes"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 12,
+   "n_anchor_records": 11,
+   "n_residue_records": 17
+  },
+  {
+   "commit_index": 2,
+   "sha": "a36401a",
+   "episode": "E2 slots",
+   "subject": "rooms and the two-day slot grid with parsing",
+   "bookkeeping": false,
+   "features_substantive": {
+    "rooms and the two-day slot grid with parsing": [
+     "confplan/models.py::Room",
+     "confplan/slots.py::SlotError",
+     "confplan/slots.py::_minutes",
+     "confplan/slots.py::format_slot",
+     "confplan/slots.py::parse_slot",
+     "tests/test_slots.py::test_bad_slots_rejected",
+     "tests/test_slots.py::test_parse_and_format_round_trip"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::cmd_room_add",
+     "confplan/cli.py::cmd_room_list"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ],
+    "scaffold confplan: models, JSON store, CLI init": [
+     "confplan/models.py::Session"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "JSON Storage"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 12,
+   "n_anchor_records": 11,
+   "n_residue_records": 12
+  },
+  {
+   "commit_index": 3,
+   "sha": "be3e582",
+   "episode": "E3 catalog",
+   "subject": "talk and session commands",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference CLI": [
+     "confplan/cli.py::cmd_session_add",
+     "confplan/cli.py::cmd_session_list",
+     "confplan/cli.py::cmd_session_remove",
+     "confplan/cli.py::cmd_talk_add",
+     "confplan/cli.py::cmd_talk_list",
+     "tests/test_catalog.py::_ns",
+     "tests/test_catalog.py::test_add_and_list_talk",
+     "tests/test_catalog.py::test_session_lifecycle"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ],
+    "talk and session commands": [
+     "tests/test_catalog.py::store"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 3,
+   "n_edit_records": 11,
+   "n_anchor_records": 10,
+   "n_residue_records": 10
+  },
+  {
+   "commit_index": 4,
+   "sha": "251d744",
+   "episode": "E4 register",
+   "subject": "attendee badges and session registration",
+   "bookkeeping": false,
+   "features_substantive": {
+    "attendee badges and session registration": [
+     "confplan/cli.py::cmd_register",
+     "confplan/registration.py::RegistrationError",
+     "confplan/registration.py::_by_id",
+     "confplan/registration.py::get_attendee",
+     "confplan/registration.py::get_session",
+     "confplan/registration.py::register",
+     "tests/test_register.py::test_register_adds_entry",
+     "tests/test_register.py::test_register_rejects_unknown_and_duplicate"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::cmd_attendee_list"
+    ],
+    "Registration Rules": [
+     "confplan/registration.py::registrations_of"
+    ],
+    "ID Allocation": [
+     "confplan/cli.py::cmd_attendee_add"
+    ],
+    "Catalog Storage": [
+     "tests/test_register.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "seat notices when the queue promotes"
+   ],
+   "n_features_substantive": 6,
+   "n_edit_records": 14,
+   "n_anchor_records": 13,
+   "n_residue_records": 15
+  },
+  {
+   "commit_index": 5,
+   "sha": "285f28c",
+   "episode": "E5 id fix",
+   "subject": "fix id reuse after removing a session",
+   "bookkeeping": false,
+   "features_substantive": {
+    "ID Allocation": [
+     "confplan/storage.py::next_id",
+     "tests/test_storage.py::test_ids_never_reused_after_remove"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Catalog Storage"
+   ],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 6,
+   "sha": "35350fb",
+   "episode": "E6 capacity",
+   "subject": "session capacity limits",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Registration Rules": [
+     "confplan/registration.py::headcount",
+     "confplan/registration.py::register",
+     "tests/test_capacity.py::test_full_session_rejects_registration"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::cmd_session_add",
+     "tests/test_catalog.py::test_session_lifecycle"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ],
+    "scaffold confplan: models, JSON store, CLI init": [
+     "confplan/models.py::Session"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 4,
+   "n_edit_records": 8,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 7,
+   "sha": "d7ffe42",
+   "episode": "E7 clashes",
+   "subject": "reject clashing registrations",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Registration Rules": [
+     "confplan/registration.py::register",
+     "confplan/slots.py::overlaps",
+     "tests/test_clashes.py::test_other_day_is_fine",
+     "tests/test_clashes.py::test_overlapping_sessions_rejected"
+    ],
+    "Command Line Interface": [
+     "pytest.ini"
+    ],
+    "Catalog Storage": [
+     "tests/test_clashes.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "reject clashing registrations",
+    "rooms and the two-day slot grid with parsing"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 6,
+   "n_anchor_records": 5,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 8,
+   "sha": "7ede859",
+   "episode": "E8 TANGLE search",
+   "subject": "add talk search",
+   "bookkeeping": false,
+   "features_substantive": {
+    "add talk search": [
+     "confplan/cli.py::cmd_search",
+     "tests/test_search.py::test_search_matches_code_and_title",
+     "tests/test_search.py::test_search_miss_reports"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ],
+    "rooms and the two-day slot grid with parsing": [
+     "confplan/slots.py::parse_slot",
+     "tests/test_slots.py::test_lowercase_day_accepted"
+    ],
+    "Conference CLI": [
+     "tests/test_search.py::store"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "ID Allocation"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 8,
+   "n_anchor_records": 7,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 9,
+   "sha": "645868e",
+   "episode": "E9 series",
+   "subject": "series talks require their earlier parts",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference CLI": [
+     "confplan/cli.py::cmd_talk_add",
+     "tests/test_catalog.py::test_add_and_list_talk",
+     "tests/test_catalog.py::test_session_lifecycle",
+     "tests/test_search.py::store"
+    ],
+    "Registration Rules": [
+     "confplan/registration.py::missing_requirements",
+     "confplan/registration.py::register",
+     "tests/test_series.py::test_missing_series_part_rejected",
+     "tests/test_series.py::test_series_satisfied_by_registration"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ],
+    "Catalog Storage": [
+     "tests/test_series.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "series talks require their earlier parts"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 11,
+   "n_anchor_records": 5,
+   "n_residue_records": 5
+  },
+  {
+   "commit_index": 10,
+   "sha": "8c4d1b9",
+   "episode": "E10 refactor",
+   "subject": "extract Catalog class for persistence",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference CLI": [
+     "confplan/cli.py::cmd_attendee_add",
+     "confplan/cli.py::cmd_attendee_list",
+     "confplan/cli.py::cmd_init",
+     "confplan/cli.py::cmd_register",
+     "confplan/cli.py::cmd_room_add",
+     "confplan/cli.py::cmd_room_list",
+     "confplan/cli.py::cmd_search",
+     "confplan/cli.py::cmd_session_add",
+     "confplan/cli.py::cmd_session_list",
+     "confplan/cli.py::cmd_session_remove",
+     "confplan/cli.py::cmd_talk_add",
+     "confplan/cli.py::cmd_talk_list",
+     "confplan/storage.py::Catalog",
+     "confplan/storage.py::Catalog.__init__",
+     "confplan/storage.py::Catalog.load",
+     "confplan/storage.py::Catalog.save",
+     "tests/test_storage.py::test_catalog_round_trip"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Catalog Storage",
+    "ID Allocation"
+   ],
+   "n_features_substantive": 1,
+   "n_edit_records": 17,
+   "n_anchor_records": 4,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 11,
+   "sha": "f85493e",
+   "episode": "E11 waitlist (logic)",
+   "subject": "waitlist for full sessions with stable join order",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Waitlist Commands": [
+     "confplan/registration.py::join_waitlist",
+     "confplan/registration.py::register",
+     "confplan/registration.py::waitlist_for",
+     "tests/test_waitlist.py::test_capacity_error_mentions_waitlist",
+     "tests/test_waitlist.py::test_join_order_is_stable",
+     "tests/test_waitlist.py::test_join_rules"
+    ],
+    "Command Line Interface": [
+     "pytest.ini"
+    ],
+    "Catalog Storage": [
+     "tests/test_waitlist.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "JSON Storage",
+    "Registration Rules",
+    "waitlist for full sessions with stable join order"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 8,
+   "n_anchor_records": 7,
+   "n_residue_records": 8
+  },
+  {
+   "commit_index": 12,
+   "sha": "1911a8f",
+   "episode": "E11 waitlist (CLI)",
+   "subject": "wire waitlist commands into the CLI",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Waitlist Commands": [
+     "confplan/cli.py::cmd_waitlist_join",
+     "confplan/cli.py::cmd_waitlist_show"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Conference CLI"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 3,
+   "n_anchor_records": 3,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 13,
+   "sha": "d4051d6",
+   "episode": "E12 promotion",
+   "subject": "promote from the queue when a seat frees",
+   "bookkeeping": false,
+   "features_substantive": {
+    "promote from the queue when a seat frees": [
+     "confplan/cli.py::cmd_waitlist_promote",
+     "confplan/promotion.py::promote_next",
+     "tests/test_promotion.py::_free_seat",
+     "tests/test_promotion.py::data",
+     "tests/test_promotion.py::test_first_in_queue_promoted",
+     "tests/test_promotion.py::test_ineligible_attendee_keeps_spot",
+     "tests/test_promotion.py::test_no_promotion_while_full"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Conference CLI",
+    "seat notices when the queue promotes"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 9,
+   "n_anchor_records": 8,
+   "n_residue_records": 10
+  },
+  {
+   "commit_index": 14,
+   "sha": "de52f62",
+   "episode": "E13 keeper fix",
+   "subject": "back-to-back sessions are not a clash",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Registration Rules": [
+     "confplan/slots.py::overlaps",
+     "tests/test_clashes.py::test_back_to_back_is_fine"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 15,
+   "sha": "f8de0fd",
+   "episode": "E14 cancel cascade",
+   "subject": "cancel frees the seat and promotes the queue",
+   "bookkeeping": false,
+   "features_substantive": {
+    "cancel frees the seat and promotes the queue": [
+     "confplan/cli.py::cmd_cancel",
+     "confplan/registration.py::cancel",
+     "tests/test_cancel.py::store",
+     "tests/test_cancel.py::test_cancel_promotes_from_queue",
+     "tests/test_cancel.py::test_cancel_requires_registration"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Registration Rules",
+    "Waitlist Commands"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 7,
+   "n_anchor_records": 7,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 16,
+   "sha": "4f9b974",
+   "episode": "E15 TANGLE export",
+   "subject": "agenda export",
+   "bookkeeping": false,
+   "features_substantive": {
+    "agenda export": [
+     "confplan/cli.py::cmd_agenda",
+     "confplan/export.py::export_csv",
+     "confplan/export.py::export_markdown",
+     "tests/test_export.py::test_csv_lists_every_session",
+     "tests/test_export.py::test_markdown_agenda_sorted_by_weekend_position"
+    ],
+    "Registration Rules": [
+     "confplan/registration.py::register",
+     "tests/test_export.py::data"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "cancel frees the seat and promotes the queue",
+    "seat notices when the queue promotes"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 9,
+   "n_anchor_records": 7,
+   "n_residue_records": 9
+  },
+  {
+   "commit_index": 17,
+   "sha": "dfdcce6",
+   "episode": "E16 experiment",
+   "subject": "speaker priority in session queues",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Waitlist Commands": [
+     "confplan/registration.py::waitlist_for",
+     "confplan/registration.py::waitlist_for._rank",
+     "tests/test_priority.py::test_speakers_jump_the_queue"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ],
+    "ID Allocation": [
+     "confplan/cli.py::cmd_attendee_add"
+    ],
+    "scaffold confplan: models, JSON store, CLI init": [
+     "confplan/models.py::Attendee"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 4,
+   "n_edit_records": 7,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 18,
+   "sha": "a8cd83f",
+   "episode": "E16 revert (bk)",
+   "subject": "sgt revert f-02c4a091@3",
+   "bookkeeping": true,
+   "features_substantive": {},
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 0,
+   "n_edit_records": 0,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 19,
+   "sha": "704e7a4",
+   "episode": "E17 REGRESSION (helper)",
+   "subject": "normalize slot comparison for cross-track sessions and room audits",
+   "bookkeeping": false,
+   "features_substantive": {
+    "normalize slot comparison for cross-track sessions and ro\u2026": [
+     "confplan/cli.py::cmd_room_audit",
+     "confplan/scheduling.py::room_clashes",
+     "confplan/slots.py::ranges_clash",
+     "tests/test_rooms.py::test_same_room_overlap_is_a_clash",
+     "tests/test_rooms.py::test_unscheduled_sessions_ignored"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Conference CLI",
+    "rooms and the two-day slot grid with parsing",
+    "seat notices when the queue promotes"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 7,
+   "n_anchor_records": 7,
+   "n_residue_records": 8
+  },
+  {
+   "commit_index": 20,
+   "sha": "6ca9a53",
+   "episode": "E17 REGRESSION (route)",
+   "subject": "route registration clash checks through the shared helper",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Registration Rules": [
+     "confplan/registration.py::register"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 1,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 21,
+   "sha": "25905db",
+   "episode": "E18 speaker view",
+   "subject": "speaker schedule view",
+   "bookkeeping": false,
+   "features_substantive": {
+    "speaker schedule view": [
+     "confplan/cli.py::cmd_speaker",
+     "tests/test_speaker.py::test_speaker_view_sorted_by_weekend"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "agenda export"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 4,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 22,
+   "sha": "7f5c84c",
+   "episode": "E19 stats",
+   "subject": "registration stats report",
+   "bookkeeping": false,
+   "features_substantive": {
+    "registration stats report": [
+     "confplan/cli.py::cmd_stats",
+     "tests/test_stats.py::test_stats_reports_fill"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "speaker schedule view"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 4,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 23,
+   "sha": "970a8be",
+   "episode": "E20 export fix",
+   "subject": "escape pipes in agenda export",
+   "bookkeeping": false,
+   "features_substantive": {
+    "agenda export": [
+     "confplan/export.py::export_markdown",
+     "tests/test_export.py::test_markdown_escapes_pipes"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 24,
+   "sha": "b4e06f2",
+   "episode": "E21 notices",
+   "subject": "seat notices when the queue promotes",
+   "bookkeeping": false,
+   "features_substantive": {
+    "seat notices when the queue promotes": [
+     "confplan/cli.py::cmd_notices",
+     "confplan/notify.py::clear_notices",
+     "confplan/notify.py::pending_notices",
+     "confplan/promotion.py::promote_next",
+     "tests/test_notify.py::test_promotion_queues_a_notice"
+    ],
+    "Command Line Interface": [
+     "confplan/cli.py::build_parser",
+     "pytest.ini"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "registration stats report"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 7,
+   "n_anchor_records": 5,
+   "n_residue_records": 7
+  },
+  {
+   "commit_index": 25,
+   "sha": "4241cd0",
+   "episode": "E22 polish",
+   "subject": "README and help text",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Command Line Interface": [
+     "README.md",
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  }
+ ],
+ "feature_spans": {
+  "Catalog Storage": [
+   "E1 scaffold",
+   "E11 waitlist (logic)",
+   "E4 register",
+   "E7 clashes",
+   "E9 series"
+  ],
+  "Command Line Interface": [
+   "E0 seed",
+   "E1 scaffold",
+   "E11 waitlist (CLI)",
+   "E11 waitlist (logic)",
+   "E12 promotion",
+   "E14 cancel cascade",
+   "E15 TANGLE export",
+   "E16 experiment",
+   "E17 REGRESSION (helper)",
+   "E18 speaker view",
+   "E19 stats",
+   "E2 slots",
+   "E21 notices",
+   "E22 polish",
+   "E3 catalog",
+   "E4 register",
+   "E6 capacity",
+   "E7 clashes",
+   "E8 TANGLE search",
+   "E9 series"
+  ],
+  "Conference CLI": [
+   "E10 refactor",
+   "E2 slots",
+   "E3 catalog",
+   "E4 register",
+   "E6 capacity",
+   "E8 TANGLE search",
+   "E9 series"
+  ],
+  "ID Allocation": [
+   "E1 scaffold",
+   "E16 experiment",
+   "E4 register",
+   "E5 id fix"
+  ],
+  "Registration Rules": [
+   "E13 keeper fix",
+   "E15 TANGLE export",
+   "E17 REGRESSION (route)",
+   "E4 register",
+   "E6 capacity",
+   "E7 clashes",
+   "E9 series"
+  ],
+  "Waitlist Commands": [
+   "E11 waitlist (CLI)",
+   "E11 waitlist (logic)",
+   "E16 experiment"
+  ],
+  "add talk search": [
+   "E8 TANGLE search"
+  ],
+  "agenda export": [
+   "E15 TANGLE export",
+   "E20 export fix"
+  ],
+  "attendee badges and session registration": [
+   "E4 register"
+  ],
+  "cancel frees the seat and promotes the queue": [
+   "E14 cancel cascade"
+  ],
+  "normalize slot comparison for cross-track sessions and ro\u2026": [
+   "E17 REGRESSION (helper)"
+  ],
+  "promote from the queue when a seat frees": [
+   "E12 promotion"
+  ],
+  "registration stats report": [
+   "E19 stats"
+  ],
+  "rooms and the two-day slot grid with parsing": [
+   "E2 slots",
+   "E8 TANGLE search"
+  ],
+  "scaffold confplan: models, JSON store, CLI init": [
+   "E1 scaffold",
+   "E16 experiment",
+   "E2 slots",
+   "E6 capacity"
+  ],
+  "seat notices when the queue promotes": [
+   "E21 notices"
+  ],
+  "speaker schedule view": [
+   "E18 speaker view"
+  ],
+  "talk and session commands": [
+   "E3 catalog"
+  ]
+ },
+ "label_coverage": {
+  "Catalog Storage": {
+   "coverage": 0.444,
+   "tokens": [
+    "catalog",
+    "storage"
+   ],
+   "n_symbols": 9
+  },
+  "Command Line Interface": {
+   "coverage": 0.0,
+   "tokens": [
+    "command",
+    "line",
+    "interface"
+   ],
+   "n_symbols": 4
+  },
+  "Conference CLI": {
+   "coverage": 0.0,
+   "tokens": [
+    "conference"
+   ],
+   "n_symbols": 21
+  },
+  "ID Allocation": {
+   "coverage": 0.0,
+   "tokens": [
+    "allocation"
+   ],
+   "n_symbols": 3
+  },
+  "Registration Rules": {
+   "coverage": 0.5,
+   "tokens": [
+    "registration",
+    "rules"
+   ],
+   "n_symbols": 12
+  },
+  "Waitlist Commands": {
+   "coverage": 0.8,
+   "tokens": [
+    "waitlist",
+    "commands"
+   ],
+   "n_symbols": 10
+  },
+  "add talk search": {
+   "coverage": 1.0,
+   "tokens": [
+    "talk",
+    "search"
+   ],
+   "n_symbols": 3
+  },
+  "agenda export": {
+   "coverage": 1.0,
+   "tokens": [
+    "agenda",
+    "export"
+   ],
+   "n_symbols": 6
+  },
+  "attendee badges and session registration": {
+   "coverage": 0.625,
+   "tokens": [
+    "attendee",
+    "badges",
+    "session",
+    "registration"
+   ],
+   "n_symbols": 8
+  },
+  "cancel frees the seat and promotes the queue": {
+   "coverage": 1.0,
+   "tokens": [
+    "cancel",
+    "frees",
+    "seat",
+    "promotes",
+    "queue"
+   ],
+   "n_symbols": 5
+  },
+  "normalize slot comparison for cross-track sessions and ro\u2026": {
+   "coverage": 0.4,
+   "tokens": [
+    "normalize",
+    "slot",
+    "comparison",
+    "cross",
+    "track",
+    "sessions"
+   ],
+   "n_symbols": 5
+  },
+  "promote from the queue when a seat frees": {
+   "coverage": 0.571,
+   "tokens": [
+    "promote",
+    "queue",
+    "seat",
+    "frees"
+   ],
+   "n_symbols": 7
+  },
+  "registration stats report": {
+   "coverage": 1.0,
+   "tokens": [
+    "registration",
+    "stats",
+    "report"
+   ],
+   "n_symbols": 2
+  },
+  "rooms and the two-day slot grid with parsing": {
+   "coverage": 0.875,
+   "tokens": [
+    "rooms",
+    "slot",
+    "grid",
+    "parsing"
+   ],
+   "n_symbols": 8
+  },
+  "scaffold confplan: models, JSON store, CLI init": {
+   "coverage": 1.0,
+   "tokens": [
+    "scaffold",
+    "confplan",
+    "models",
+    "json",
+    "store",
+    "init"
+   ],
+   "n_symbols": 3
+  },
+  "seat notices when the queue promotes": {
+   "coverage": 0.8,
+   "tokens": [
+    "seat",
+    "notices",
+    "queue",
+    "promotes"
+   ],
+   "n_symbols": 5
+  },
+  "speaker schedule view": {
+   "coverage": 1.0,
+   "tokens": [
+    "speaker",
+    "schedule",
+    "view"
+   ],
+   "n_symbols": 2
+  },
+  "talk and session commands": {
+   "coverage": 0.0,
+   "tokens": [
+    "talk",
+    "session",
+    "commands"
+   ],
+   "n_symbols": 1
+  }
+ },
+ "flags": [
+  {
+   "episode": "E1 scaffold",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Catalog Storage, Command Line Interface, scaffold confplan: models, JSON store, CLI init, ID Allocation"
+  },
+  {
+   "episode": "E2 slots",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: rooms and the two-day slot grid with parsing, Conference CLI, Command Line Interface, scaffold confplan: models, JSON store, CLI init"
+  },
+  {
+   "episode": "E3 catalog",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Conference CLI, Command Line Interface, talk and session commands"
+  },
+  {
+   "episode": "E4 register",
+   "flag": "split",
+   "detail": "6 features hold this episode's edits: attendee badges and session registration, Command Line Interface, Conference CLI, Registration Rules, ID Allocation, Catalog Storage"
+  },
+  {
+   "episode": "E6 capacity",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Registration Rules, Conference CLI, Command Line Interface, scaffold confplan: models, JSON store, CLI init"
+  },
+  {
+   "episode": "E7 clashes",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Registration Rules, Command Line Interface, Catalog Storage"
+  },
+  {
+   "episode": "E8 TANGLE search",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: add talk search, Command Line Interface, rooms and the two-day slot grid with parsing, Conference CLI"
+  },
+  {
+   "episode": "E9 series",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Conference CLI, Registration Rules, Command Line Interface, Catalog Storage"
+  },
+  {
+   "episode": "E11 waitlist (logic)",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Waitlist Commands, Command Line Interface, Catalog Storage"
+  },
+  {
+   "episode": "E15 TANGLE export",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: agenda export, Registration Rules, Command Line Interface"
+  },
+  {
+   "episode": "E16 experiment",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Waitlist Commands, Command Line Interface, ID Allocation, scaffold confplan: models, JSON store, CLI init"
+  },
+  {
+   "feature": "Catalog Storage",
+   "flag": "lump",
+   "detail": "spans 5 episodes: E1 scaffold, E11 waitlist (logic), E4 register, E7 clashes, E9 series"
+  },
+  {
+   "feature": "Command Line Interface",
+   "flag": "lump",
+   "detail": "spans 20 episodes: E0 seed, E1 scaffold, E11 waitlist (CLI), E11 waitlist (logic), E12 promotion, E14 cancel cascade, E15 TANGLE export, E16 experiment, E17 REGRESSION (helper), E18 speaker view, E19 stats, E2 slots, E21 notices, E22 polish, E3 catalog, E4 register, E6 capacity, E7 clashes, E8 TANGLE search, E9 series"
+  },
+  {
+   "feature": "Conference CLI",
+   "flag": "lump",
+   "detail": "spans 7 episodes: E10 refactor, E2 slots, E3 catalog, E4 register, E6 capacity, E8 TANGLE search, E9 series"
+  },
+  {
+   "feature": "ID Allocation",
+   "flag": "lump",
+   "detail": "spans 4 episodes: E1 scaffold, E16 experiment, E4 register, E5 id fix"
+  },
+  {
+   "feature": "Registration Rules",
+   "flag": "lump",
+   "detail": "spans 7 episodes: E13 keeper fix, E15 TANGLE export, E17 REGRESSION (route), E4 register, E6 capacity, E7 clashes, E9 series"
+  },
+  {
+   "feature": "scaffold confplan: models, JSON store, CLI init",
+   "flag": "lump",
+   "detail": "spans 4 episodes: E1 scaffold, E16 experiment, E2 slots, E6 capacity"
+  },
+  {
+   "feature": "Conference CLI",
+   "flag": "mislabel",
+   "detail": "label covers 0% of its 21 symbols; 21 unrelated, e.g. confplan/cli.py::cmd_attendee_add, confplan/cli.py::cmd_attendee_list, confplan/cli.py::cmd_init, confplan/cli.py::cmd_register"
+  },
+  {
+   "flag": "label-covers-all",
+   "detail": "2 feature(s) whose label covers every symbol: agenda export, cancel frees the seat and promotes the queue"
+  }
+ ]
+}

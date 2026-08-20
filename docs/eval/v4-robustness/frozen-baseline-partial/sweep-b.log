@@ -1,0 +1,887 @@
+    0 ✓ op_revert_keep_dependents bda07be08e55
+    1 ✓ op_undo                  
+    2 ✓ op_undo                  
+    3 ✓ op_edit_save             service.py (rework)
+    4 ✓ op_edit_save             service.py (rework)
+    5 ✓ op_revert                3bff00c33c82
+    6 ✓ op_revert                94f2d23a3346
+    7 ✓ op_revert_undo_probe     6ce5787543f8
+    8 ✓ op_undo                  
+    9 ✓ op_restore               11caa50049bf
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_undo                  
+   12 ✓ op_edit_save             service.py (rework)
+   13 ✓ op_revert_keep_dependents 308db8498c58
+   14 ✓ op_edit_save             service.py (rework)
+   15 ✓ op_feature_rename        f-308db8498c58
+   16 ✓ op_edit_save             service.py (rework)
+   17 ✓ op_revert_undo_probe     6ce5787543f8
+   18 ✓ op_edit_save             service.py (rework)
+   19 ✓ op_undo                  
+   20 ✓ op_revert                94f2d23a3346
+   21 ✓ op_revert_keep_dependents 6ce5787543f8
+   22 ✓ op_revert_undo_probe     308db8498c58
+   23 ✓ op_edit_save             service.py (rework)
+   24 ✓ op_edit_save             service.py (rework)
+   25 ✓ op_feature_merge         f-308db8498c58<-af-m0fbd1c282a
+   26 ✓ op_restore               7ce27bb93ba4
+   27 ✓ op_edit_save             service.py (rework)
+   28 ✓ op_feature_split         af-mf703ed067f
+   29 ✓ op_feature_merge         af-mf703ed067f<-f-308db8498c58
+   30 ✓ op_edit_save             service.py (rework)
+   31 ✓ op_revert_keep_dependents 5bdb2b19040b
+   32 ✓ op_edit_save             service.py (rework)
+   33 ✗ op_revert                bda07be08e55
+        no_empty_phantom: blank tracked file(s) left behind: ['service.py']
+   34 ✓ op_undo                  
+   35 ✓ op_edit_save             service.py (rework)
+   36 ✓ op_revert_restore_probe  fe645592cb58
+   37 ✓ op_edit_save             service.py (rework)
+   38 ✓ op_edit_save             service.py (rework)
+   39 ✓ op_revert_undo_probe     6ce5787543f8
+   40 ✓ op_revert_keep_dependents 5bdb2b19040b
+   41 ✓ op_revert_keep_dependents 94f2d23a3346
+   42 ✓ op_restore               7ce27bb93ba4
+   43 ✓ op_revert_keep_dependents d159037ba34d
+   44 ✓ op_revert                5bdb2b19040b
+   45 ✓ op_edit_save             service.py (rework)
+   46 ✓ op_revert_restore_probe  6ce5787543f8
+   47 ✓ op_feature_split         af-mf703ed067f
+   48 ✓ op_feature_split         af-mf703ed067f
+   49 ✓ op_undo                  
+   50 ✓ op_revert                97dc8098378c
+   51 ✓ op_revert                6b7fafd2fde6
+   52 ✓ op_undo                  
+   53 ✓ op_undo                  
+   54 ✓ op_edit_save             service.py (rework)
+   55 ✓ op_add_file              v4_mod_55.py
+   56 ✓ op_revert                fa11e5adbcec
+   57 ✓ op_restore               7ce27bb93ba4
+   58 · op_revert_undo_probe     revert offered no undo
+   59 ✓ op_restore               7ce27bb93ba4
+   60 ✓ op_edit_save             v4_mod_55.py (rework)
+   61 · op_revert_undo_probe     revert offered no undo
+   62 ✓ op_revert_keep_dependents 9a71cc001204
+   63 ✓ op_restore               7ce27bb93ba4
+   64 ✓ op_add_file              v4_mod_64.py
+   65 ✓ op_revert_keep_dependents 7c22ef4cf8ab
+   66 ✓ op_revert                4d41de6434f3
+   67 ✓ op_revert_restore_probe  1ffb8204c22c
+   68 ✓ op_edit_save             v4_mod_55.py (rework)
+   69 ✓ op_restore               7ce27bb93ba4
+   70 ✓ op_add_file              v4_mod_70.py
+   71 ✓ op_revert_restore_probe  d159037ba34d
+   72 ✓ op_edit_save             v4_mod_70.py (rework)
+   73 ✓ op_revert                97dc8098378c
+   74 ✓ op_revert                fe645592cb58
+   75 ✓ op_undo                  
+   76 ✓ op_edit_save             service.py (rework)
+   77 ✓ op_revert_keep_dependents 8937ad708f43
+   78 ✓ op_add_file              v4_mod_78.py
+   79 ✓ op_revert                1ffb8204c22c
+   80 ✓ op_revert_keep_dependents ffca66e30181
+   81 ✓ op_feature_split         af-mee974de67e
+   82 ✓ op_restore               7ce27bb93ba4
+   83 ✓ op_feature_merge         af-md0a8dfab5a<-af-mf703ed067f
+   84 ✓ op_edit_save             v4_mod_55.py (rework)
+   85 ✓ op_feature_merge         af-mee974de67e<-af-mcb5ccc6cab
+   86 ✓ op_revert                fe645592cb58
+   87 ✓ op_add_file              v4_mod_87.py
+   88 ✓ op_revert_restore_probe  a165b6639f91
+   89 ✓ op_feature_rename        af-maf1791772f
+   90 ✓ op_edit_save             v4_mod_87.py (rework)
+   91 ✓ op_revert                5bdb2b19040b
+   92 ✓ op_revert_restore_probe  298dc31af19f
+   93 ✓ op_revert                6d8f30675ae7
+   94 ✓ op_add_file              v4_mod_94.py
+   95 ✓ op_edit_save             v4_mod_94.py (rework)
+   96 ✓ op_edit_save             v4_mod_87.py (rework)
+   97 ✓ op_undo                  
+   98 ✓ op_feature_split         af-mee974de67e
+   99 ✓ op_feature_split         af-m74a3ab7205
+  100 ✓ op_restore               315978eb32e6
+  101 ✓ op_edit_save             service.py (rework)
+  102 ✓ op_revert                1c964e626bda
+  103 ✓ op_revert_undo_probe     315978eb32e6
+  104 · op_revert_undo_probe     revert offered no undo
+  105 ✓ op_undo                  
+  106 ✓ op_add_file              v4_mod_106.py
+  107 ✓ op_restore               9e54f9eddfde
+  108 ✓ op_revert_keep_dependents 11caa50049bf
+  109 ✓ op_undo                  
+  110 ✓ op_revert                315978eb32e6
+  111 ✓ op_feature_merge         af-maf1791772f<-f-298dc31af19f
+  112 ✓ op_feature_rename        af-m83f57f9e8d
+  113 ✓ op_edit_save             v4_mod_70.py (rework)
+  114 ✓ op_revert                308db8498c58
+  115 ✓ op_feature_rename        af-m83f57f9e8d
+  116 ✓ op_revert                11caa50049bf
+  117 ✓ op_feature_merge         af-md0a8dfab5a<-af-m83f57f9e8d
+  118 ✓ op_restore               11caa50049bf
+  119 ✓ op_revert_restore_probe  114d70e52d0a
+  120 ✓ op_revert_restore_probe  305af9b57b34
+  121 ✓ op_add_file              v4_mod_121.py
+  122 ✓ op_revert                02a0f4c22b4e
+  123 ✓ op_add_file              v4_mod_123.py
+  124 ✓ op_undo                  
+  125 ✓ op_undo                  
+  126 ✓ op_edit_save             v4_mod_94.py (rework)
+  127 ✓ op_feature_rename        af-md0a8dfab5a
+  128 ✓ op_revert_keep_dependents dbef59f6d0c3
+  129 ✓ op_add_file              v4_mod_129.py
+  130 ✓ op_revert_keep_dependents aa109e33e3bd
+  131 ✓ op_feature_split         af-mff07a3f7bb
+  132 ✓ op_restore               9e54f9eddfde
+  133 ✓ op_undo                  
+  134 ✓ op_feature_merge         af-maf1791772f<-af-mee974de67e
+  135 ✓ op_feature_split         af-maf1791772f
+  136 ✓ op_revert_restore_probe  9a2a8d3061a2
+  137 ✓ op_revert_keep_dependents aa109e33e3bd
+  138 ✓ op_restore               315978eb32e6
+  139 ✓ op_feature_rename        f-298dc31af19f
+  140 ✓ op_revert_undo_probe     06e7511b39ff
+  141 ✓ op_restore               7ce27bb93ba4
+  142 ✗ op_revert                63d330afdc54
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_129.py']
+  143 ✓ op_revert                305af9b57b34
+  144 ✓ op_revert_restore_probe  f018ad335795
+  145 ✓ op_restore               7ce27bb93ba4
+  146 ✓ op_edit_save             v4_mod_106.py (rework)
+  147 ✗ op_revert_restore_probe  bda07be08e55
+        revert_restore_roundtrip: revert bda07be08e55 removed 20 op(s); after restoring all of them 1 op(s) are still out of the ideal, though every tracked file composes the same bytes as before; restore refused: ['4d41de6434f3 rc=2 revert 94f2d23a   then   sgt restore 4d41de64\n      reconcile  sgt resolve service.py::Service   (combine both versions)', "97dc8098378c rc=2 hes handle '97dc8098378c479e42664e4237a5c217acf37db6b8421aab08e43aff8185d6aa' -- run `sgt log --map` to see the handles."]
+  148 ✓ op_feature_rename        af-m74a3ab7205
+  149 ✓ op_revert_undo_probe     86b2aba81d40
+  150 ✓ op_feature_rename        af-mc3d53f3c05
+  151 ✓ op_feature_rename        af-mff07a3f7bb
+  152 ✓ op_restore               a62c9c8a484e
+  153 ✓ op_revert_undo_probe     114d70e52d0a
+  154 ✓ op_revert                b5a4870eb02f
+  155 ✓ op_edit_save             v4_mod_64.py (rework)
+  156 ✓ op_revert                ed071a779a4c
+  157 ✓ op_revert                305af9b57b34
+  158 ✓ op_feature_merge         af-m68ea758f45<-af-m74a3ab7205
+  159 ✓ op_undo                  
+  160 ✓ op_restore               7ce27bb93ba4
+  161 ✓ op_undo                  
+  162 ✓ op_edit_save             v4_mod_70.py (rework)
+  163 ✓ op_restore               7ce27bb93ba4
+  164 ✓ op_revert_restore_probe  bda07be08e55
+  165 ✓ op_revert_keep_dependents a9e3f37bdcd0
+  166 ✓ op_add_file              v4_mod_166.py
+  167 ✓ op_revert_keep_dependents db8ec17dd509
+  168 ✓ op_revert                308db8498c58
+  169 ✓ op_undo                  
+  170 ✓ op_edit_save             v4_mod_70.py (rework)
+  171 ✓ op_edit_save             v4_mod_55.py (rework)
+  172 ✓ op_revert                114d70e52d0a
+  173 ✓ op_revert_restore_probe  e34077fb898d
+  174 ✓ op_revert_restore_probe  2a781ecb25b1
+  175 ✓ op_undo                  
+  176 ✓ op_feature_merge         af-mc3d53f3c05<-af-mda90456bbc
+  177 ✓ op_revert                d0081e21172d
+  178 ✓ op_edit_save             v4_mod_70.py (rework)
+  179 ✓ op_restore               d0081e21172d
+  180 ✓ op_revert_keep_dependents aa109e33e3bd
+  181 ✓ op_add_file              v4_mod_181.py
+  182 ✓ op_undo                  
+  183 ✓ op_revert                2842854141a3
+  184 ✓ op_add_file              v4_mod_184.py
+  185 ✓ op_revert                8fe8c33b694f
+  186 ✓ op_feature_merge         af-mc3d53f3c05<-af-mdfb410c64f
+  187 ✓ op_edit_save             v4_mod_55.py (rework)
+  188 ✓ op_revert                b56f8c08d43a
+  189 ✓ op_revert                18f507e1bd85
+  190 ✓ op_add_file              v4_mod_190.py
+  191 ✓ op_revert_keep_dependents d159037ba34d
+  192 ✓ op_add_file              v4_mod_192.py
+  193 ✓ op_feature_merge         af-m74a3ab7205<-af-m68ea758f45
+  194 ✓ op_restore               63d330afdc54
+  195 ✓ op_revert_restore_probe  8144f0d34a95
+  196 ✓ op_edit_save             v4_mod_121.py (rework)
+  197 ✓ op_revert_keep_dependents 65745a569c7e
+  198 ✓ op_restore               9e54f9eddfde
+  199 ✓ op_revert_undo_probe     fa11e5adbcec
+  200 ✓ op_add_file              v4_mod_200.py
+  201 ✓ op_revert_keep_dependents e6ef4775344b
+  202 ✓ op_revert_undo_probe     06e7511b39ff
+  203 ✓ op_revert_undo_probe     39a6f04406e4
+  204 ✓ op_add_file              v4_mod_204.py
+  205 ✓ op_restore               7ce27bb93ba4
+  206 ✓ op_revert_restore_probe  298dc31af19f
+  207 ✓ op_revert_keep_dependents 315978eb32e6
+  208 ✗ op_undo                  
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_87.py']
+  209 ✓ op_undo                  
+  210 ✓ op_feature_split         af-m957d2df796
+  211 ✓ op_restore               7ce27bb93ba4
+  212 ✓ op_undo                  
+  213 ✓ op_revert                02baa646fb11
+  214 ✓ op_revert_restore_probe  f2538b426bf9
+  215 ✓ op_revert                a3e9ca2068d2
+  216 ✓ op_restore               18f507e1bd85
+  217 ✓ op_revert                a7a282b0dff6
+  218 ✓ op_revert                8cd7977be011
+  219 ✓ op_edit_save             v4_mod_166.py (rework)
+  220 ✓ op_add_file              v4_mod_220.py
+  221 ✓ op_restore               eddde06c6e52
+  222 ✓ op_add_file              v4_mod_222.py
+  223 ✓ op_edit_save             v4_mod_87.py (rework)
+  224 · op_revert_undo_probe     revert offered no undo
+  225 ✓ op_revert                1fce724dad6e
+  226 ✓ op_feature_merge         af-m34bdd0fc18<-af-m7530a8eec0
+  227 ✓ op_restore               1fce724dad6e
+  228 ✓ op_revert                ed3c4b9b5d92
+  229 ✓ op_feature_rename        af-m957d2df796
+  230 ✓ op_feature_rename        af-maf1791772f
+  231 ✗ op_revert                39a6f04406e4
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_192.py']
+  232 ✓ op_edit_save             v4_mod_200.py (rework)
+  233 ✓ op_undo                  
+  234 ✓ op_revert_undo_probe     7d2318446501
+  235 ✓ op_restore               c5a5def81839
+  236 ✓ op_revert_undo_probe     bda07be08e55
+  237 ✓ op_revert_keep_dependents 01de4490437f
+  238 ✓ op_undo                  
+  239 ✓ op_revert                6ce5787543f8
+  240 ✓ op_revert_keep_dependents 1fce724dad6e
+  241 ✓ op_revert                7c22ef4cf8ab
+  242 ✓ op_revert                308db8498c58
+  243 ✓ op_revert_keep_dependents ae1020e92527
+  244 ✓ op_revert_undo_probe     2204470d31fc
+  245 ✓ op_edit_save             v4_mod_192.py (add)
+  246 ✓ op_add_file              v4_mod_246.py
+  247 ✓ op_add_file              v4_mod_247.py
+  248 ✓ op_feature_split         af-md0a8dfab5a
+  249 ✓ op_restore               c5a5def81839
+  250 ✓ op_edit_save             v4_mod_246.py (rework)
+  251 ✓ op_revert_undo_probe     2204470d31fc
+  252 ✓ op_feature_rename        f-298dc31af19f
+  253 ✓ op_revert_undo_probe     a5858f6fbff2
+  254 ✓ op_revert                84b89696910d
+  255 ✓ op_revert_restore_probe  76f5b5967a38
+  256 ✓ op_revert                fe645592cb58
+  257 ✓ op_edit_save             v4_mod_166.py (rework)
+  258 ✓ op_revert_undo_probe     85b10ae2fce7
+  259 ✓ op_revert_undo_probe     58510daec8a3
+  260 ✓ op_add_file              v4_mod_260.py
+  261 ✓ op_feature_rename        af-m23d8f823b7
+  262 ✓ op_edit_save             v4_mod_94.py (rework)
+  263 ✓ op_revert                4a84ce4ecae1
+  264 ✓ op_edit_save             v4_mod_55.py (rework)
+  265 ✓ op_edit_save             service.py (rework)
+  266 ✓ op_edit_save             v4_mod_190.py (rework)
+  267 ✗ op_revert_restore_probe  8937ad708f43
+        restore_resurrects_excluded: restoring what revert 8937ad708f43 removed also pulled back 1 op(s) that were already out: ['308db8498c58']
+  268 ✓ op_revert                11caa50049bf
+  269 ✓ op_add_file              v4_mod_269.py
+  270 ✓ op_add_file              v4_mod_270.py
+  271 ✓ op_revert                bfd63afd28d5
+  272 ✓ op_revert_undo_probe     df65e575701a
+  273 ✓ op_restore               975b74a2eb91
+  274 ✓ op_edit_save             v4_mod_64.py (rework)
+  275 ✓ op_undo                  
+  276 ✓ op_restore               b5a4870eb02f
+  277 ✓ op_revert_keep_dependents d80b10d65509
+  278 ✓ op_restore               6b7fafd2fde6
+  279 ✓ op_undo                  
+  280 ✓ op_revert_undo_probe     7d2318446501
+  281 ✓ op_restore               fe645592cb58
+  282 ✓ op_undo                  
+  283 ✓ op_revert_keep_dependents 90825135c0e0
+  284 ✓ op_undo                  
+  285 ✓ op_revert                1c964e626bda
+  286 ✓ op_revert_keep_dependents 315978eb32e6
+  287 ✓ op_restore               f018ad335795
+  288 ✓ op_revert_restore_probe  e01acfe628b9
+  289 ✓ op_revert                ddf98f28ee9c
+  290 ✓ op_feature_merge         af-m1867b540e0<-af-m36af5f084e
+  291 ✓ op_restore               11caa50049bf
+  292 ✓ op_revert_undo_probe     02a0f4c22b4e
+  293 ✓ op_undo                  
+  294 ✓ op_feature_merge         af-m6bc8a6aa50<-af-mc3d53f3c05
+  295 ✓ op_undo                  
+  296 ✓ op_revert_keep_dependents 16cafd889504
+  297 ✓ op_revert_keep_dependents 637617ad1da2
+  298 ✓ op_restore               d159037ba34d
+  299 ✗ op_revert_restore_probe  94f2d23a3346
+        restore_resurrects_excluded: restoring what revert 94f2d23a3346 removed also pulled back 1 op(s) that were already out: ['11caa50049bf']
+  300 ✓ op_revert_undo_probe     14959492a5a6
+  301 ✓ op_edit_save             v4_mod_200.py (rework)
+  302 ✓ op_edit_save             v4_mod_129.py (rework)
+  303 ✓ op_edit_save             v4_mod_123.py (rework)
+  304 ✓ op_edit_save             v4_mod_87.py (rework)
+  305 ✓ op_edit_save             v4_mod_55.py (rework)
+  306 ✓ op_edit_save             v4_mod_247.py (rework)
+  307 ✓ op_add_file              v4_mod_307.py
+  308 ✓ op_edit_save             v4_mod_247.py (rework)
+  309 ✓ op_undo                  
+  310 ✓ op_undo                  
+  311 ✓ op_feature_split         af-m1867b540e0
+  312 ✓ op_feature_split         af-mc3d53f3c05
+  313 ✓ op_revert_restore_probe  d159037ba34d
+  314 ✓ op_feature_merge         af-me4506a5aab<-af-mc62232d7f3
+  315 ✓ op_edit_save             v4_mod_166.py (rework)
+  316 ✓ op_add_file              v4_mod_316.py
+  317 ✓ op_feature_merge         af-m957d2df796<-af-m1867b540e0
+  318 ✓ op_revert_keep_dependents de6be6f69034
+  319 ✓ op_add_file              v4_mod_319.py
+  320 ✓ op_revert_restore_probe  03422e307638
+  321 ✓ op_revert_keep_dependents 90825135c0e0
+  322 ✓ op_restore               c7f623b3e666
+  323 ✓ op_revert                01de4490437f
+  324 ✓ op_add_file              v4_mod_324.py
+  325 ✓ op_edit_save             v4_mod_123.py (rework)
+  326 ✓ op_restore               c7f623b3e666
+  327 ✓ op_feature_merge         af-m04b6cb95f1<-af-m629cb1c3b0
+  328 ✓ op_feature_split         af-ma52f7a1db6
+  329 ✓ op_revert_restore_probe  d0916893ec3f
+  330 ✓ op_feature_merge         af-mc3d53f3c05<-af-mdfb2ee4455
+  331 ✗ op_revert                76f5b5967a38
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_106.py']
+  332 ✓ op_revert                4bbcb825a88c
+  333 ✓ op_feature_merge         f-11caa50049bf<-af-m23d8f823b7
+  334 ✓ op_restore               c87e42d43ea0
+  335 ✓ op_undo                  
+  336 ✓ op_edit_save             v4_mod_204.py (rework)
+  337 ✓ op_add_file              v4_mod_337.py
+  338 ✓ op_restore               bc5ef76d0422
+  339 ✓ op_revert_restore_probe  90825135c0e0
+  340 ✓ op_revert_undo_probe     8269ef12ce0d
+  341 ✓ op_revert_restore_probe  94b0cfe1ca79
+  342 ✓ op_revert                4a3ceafd9022
+  343 ✓ op_revert                9db53a3f7a65
+  344 ✓ op_revert_undo_probe     1b62b57cf19e
+  345 ✓ op_feature_split         af-m9caf6a8a05
+  346 ✓ op_restore               8234f7735960
+  347 ✓ op_add_file              v4_mod_347.py
+  348 ✓ op_undo                  
+  349 ✓ op_restore               d4f334563ff4
+  350 ✓ op_revert                4afe00c0e1ee
+  351 ✓ op_add_file              v4_mod_351.py
+  352 ✓ op_revert                4a184f0a8ae9
+  353 ✓ op_undo                  
+  354 ✓ op_edit_save             v4_mod_181.py (rework)
+  355 ✓ op_restore               b5dede260a57
+  356 ✓ op_feature_merge         f-298dc31af19f<-af-m252b76055a
+  357 ✓ op_revert_restore_probe  e5543eedab53
+  358 ✓ op_add_file              v4_mod_358.py
+  359 ✓ op_revert_keep_dependents bc5ef76d0422
+  360 ✓ op_edit_save             v4_mod_247.py (rework)
+  361 ✓ op_revert_restore_probe  d159037ba34d
+  362 ✓ op_undo                  
+  363 ✓ op_edit_save             v4_mod_184.py (rework)
+  364 ✓ op_restore               b56f8c08d43a
+  365 ✓ op_restore               18f507e1bd85
+  366 ✓ op_restore               7ce27bb93ba4
+  367 ✓ op_revert                b5a4870eb02f
+  368 ✓ op_revert                f2538b426bf9
+  369 ✓ op_revert                d0916893ec3f
+  370 ✓ op_feature_split         af-mc3d53f3c05
+  371 ✓ op_revert                d2229a574a79
+  372 ✓ op_restore               39a6f04406e4
+  373 ✓ op_revert_keep_dependents bfe62a112547
+  374 ✓ op_edit_save             v4_mod_64.py (rework)
+  375 ✓ op_revert_keep_dependents 305af9b57b34
+  376 ✓ op_add_file              v4_mod_376.py
+  377 ✓ op_revert                18f507e1bd85
+  378 ✓ op_revert                859c0790cb56
+  379 ✓ op_revert                ffca66e30181
+  380 ✓ op_feature_merge         af-mc3d53f3c05<-f-5ababf4e2bad
+  381 ✓ op_revert                8937ad708f43
+  382 ✓ op_revert                2842854141a3
+  383 ✓ op_undo                  
+  384 ✓ op_revert_keep_dependents a9b99a00f3d9
+  385 ✓ op_restore               faddf4754399
+  386 ✓ op_undo                  
+  387 ✓ op_edit_save             v4_mod_247.py (rework)
+  388 ✓ op_undo                  
+  389 ✓ op_edit_save             v4_mod_351.py (rework)
+  390 ✓ op_add_file              v4_mod_390.py
+  391 ✓ op_revert_undo_probe     3f726b1c29d2
+  392 ✓ op_feature_split         af-m801f415f92
+  393 ✓ op_undo                  
+  394 ✓ op_edit_save             v4_mod_260.py (rework)
+  395 ✓ op_revert_keep_dependents e01acfe628b9
+  396 ✗ op_revert                0d6b725cf0a1
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_324.py']
+  397 ✓ op_revert_undo_probe     5a3ac3cba23e
+  398 ✓ op_add_file              v4_mod_398.py
+  399 ✓ op_add_file              v4_mod_399.py
+  400 ✓ op_undo                  
+  401 ✓ op_undo                  
+  402 ✓ op_restore               c87e42d43ea0
+  403 ✓ op_restore               4858ea4a0f0e
+  404 ✓ op_feature_split         af-m04b6cb95f1
+  405 ✓ op_revert_keep_dependents edd941d76637
+  406 ✓ op_feature_merge         af-me43647f56f<-af-m9caf6a8a05
+  407 ✓ op_revert_keep_dependents dbef59f6d0c3
+  408 ✓ op_revert_keep_dependents c4de89734635
+  409 ✓ op_revert                de6be6f69034
+  410 ✓ op_revert_restore_probe  7c22ef4cf8ab
+  411 ✓ op_revert_restore_probe  637617ad1da2
+  412 ✓ op_add_file              v4_mod_412.py
+  413 ✓ op_restore               7ce27bb93ba4
+  414 ✓ op_revert_restore_probe  75afff88ae43
+  415 ✓ op_restore               586c9153466a
+  416 ✓ op_undo                  
+  417 ✓ op_undo                  
+  418 ✓ op_revert_restore_probe  b5a4870eb02f
+  419 ✓ op_revert                95e59ab24cfe
+  420 ✓ op_revert                5a3ac3cba23e
+  421 ✓ op_edit_save             v4_mod_87.py (rework)
+  422 ✓ op_feature_rename        af-md0a8dfab5a
+  423 ✓ op_revert_undo_probe     477b75ac1909
+  424 ✓ op_revert                74777e3c6f1a
+  425 ✓ op_feature_split         af-m801f415f92
+  426 ✓ op_feature_rename        af-me4506a5aab
+  427 ✓ op_edit_save             service.py (rework)
+  428 ✓ op_revert_undo_probe     ae1020e92527
+  429 ✓ op_revert_keep_dependents b4be405ecc61
+  430 ✓ op_revert                a62c9c8a484e
+  431 ✓ op_add_file              v4_mod_431.py
+  432 ✓ op_revert_keep_dependents f7e9112dc525
+  433 ✓ op_edit_save             v4_mod_78.py (rework)
+  434 ✓ op_edit_save             v4_mod_316.py (rework)
+  435 ✓ op_edit_save             v4_mod_106.py (rework)
+  436 ✓ op_revert                3b4fe3a445d8
+  437 ✓ op_edit_save             v4_mod_181.py (rework)
+  438 ✓ op_edit_save             v4_mod_319.py (rework)
+  439 ✓ op_revert_undo_probe     2842854141a3
+  440 ✓ op_revert                793cbba006fe
+  441 ✓ op_restore               7ce27bb93ba4
+  442 ✓ op_restore               5720e68c9593
+  443 ✓ op_feature_merge         af-ma0260172fd<-af-m801f415f92
+  444 ✓ op_edit_save             v4_mod_351.py (rework)
+  445 ✓ op_add_file              v4_mod_445.py
+  446 ✓ op_revert_undo_probe     edd941d76637
+  447 ✓ op_feature_rename        af-ma76083ea4e
+  448 ✓ op_feature_merge         af-mae4d5f03e1<-af-m0d746c7283
+  449 ✓ op_restore               c7f623b3e666
+  450 ✓ op_revert                a5131016c439
+  451 ✓ op_add_file              v4_mod_451.py
+  452 ✓ op_feature_rename        f-298dc31af19f
+  453 ✓ op_revert_restore_probe  4a559397f149
+  454 ✓ op_restore               6a72a3c789ea
+  455 · op_revert_undo_probe     revert offered no undo
+  456 ✓ op_add_file              v4_mod_456.py
+  457 ✓ op_restore               201f0966872f
+  458 ✓ op_feature_rename        af-me4506a5aab
+  459 ✓ op_edit_save             v4_mod_87.py (rework)
+  460 ✓ op_undo                  
+  461 ✓ op_add_file              v4_mod_461.py
+  462 ✓ op_revert_undo_probe     6b7e4ae61ac7
+  463 ✓ op_revert_undo_probe     52f3c395916d
+  464 ✓ op_undo                  
+  465 ✓ op_revert_keep_dependents de4ff5a4c0fd
+  466 ✓ op_edit_save             v4_mod_181.py (rework)
+  467 ✓ op_restore               0d6b725cf0a1
+  468 ✓ op_revert                e01acfe628b9
+  469 ✓ op_revert_keep_dependents 38221709fc55
+  470 ✓ op_edit_save             v4_mod_412.py (rework)
+  471 ✓ op_feature_merge         af-m0cf1b2ecec<-af-maf1791772f
+  472 ✓ op_restore               477b75ac1909
+  473 ✓ op_restore               c7f623b3e666
+  474 ✓ op_revert_undo_probe     8fe8c33b694f
+  475 ✓ op_feature_rename        af-mb1b38e32bb
+  476 ✓ op_restore               586c9153466a
+  477 ✓ op_restore               c87e42d43ea0
+  478 ✓ op_revert_undo_probe     4a559397f149
+  479 ✓ op_revert                1c964e626bda
+  480 ✓ op_feature_rename        af-ma52f7a1db6
+  481 ✓ op_edit_save             v4_mod_351.py (rework)
+  482 ✓ op_revert_undo_probe     4e01daabed45
+  483 ✓ op_restore               a1731b0c2099
+  484 ✓ op_undo                  
+  485 ✓ op_feature_split         af-mff07a3f7bb
+  486 ✓ op_add_file              v4_mod_486.py
+  487 ✓ op_revert_keep_dependents bc5ef76d0422
+  488 · op_revert_undo_probe     revert offered no undo
+  489 ✓ op_revert_restore_probe  1c8772b1b0f9
+  490 ✓ op_restore               19307a46263c
+  491 ✓ op_revert_restore_probe  8269ef12ce0d
+  492 ✓ op_undo                  
+  493 ✓ op_revert_undo_probe     df65e575701a
+  494 ✓ op_undo                  
+  495 ✓ op_revert                da7435ee88f5
+  496 ✓ op_revert                d4f334563ff4
+  497 ✓ op_edit_save             v4_mod_192.py (rework)
+  498 ✓ op_edit_save             v4_mod_358.py (rework)
+  499 ✓ op_edit_save             v4_mod_106.py (rework)
+  500 ✓ op_feature_split         af-med8112a68e
+  501 ✓ op_edit_save             v4_mod_451.py (rework)
+  502 ✓ op_restore               7ce27bb93ba4
+  503 ✓ op_edit_save             v4_mod_431.py (rework)
+  504 ✓ op_feature_split         af-ma0260172fd
+  505 ✓ op_restore               c87e42d43ea0
+  506 ✓ op_add_file              v4_mod_506.py
+  507 ✓ op_revert_undo_probe     86b2aba81d40
+  508 ✓ op_revert_undo_probe     85b10ae2fce7
+  509 ✓ op_feature_split         af-m36af5f084e
+  510 ✓ op_add_file              v4_mod_510.py
+  511 ✓ op_revert_keep_dependents 586c9153466a
+  512 ✓ op_undo                  
+  513 ✓ op_revert                e34077fb898d
+  514 ✓ op_restore               18f507e1bd85
+  515 ✓ op_revert_restore_probe  a858ad9e3bfc
+  516 ✓ op_revert_restore_probe  b29a59a25d21
+  517 ✓ op_revert_undo_probe     14959492a5a6
+  518 ✓ op_revert_restore_probe  ddf98f28ee9c
+  519 ✓ op_revert                5bdb2b19040b
+  520 ✓ op_revert_restore_probe  b322e9e7993f
+  521 ✓ op_revert_keep_dependents eddde06c6e52
+  522 ✓ op_edit_save             v4_mod_324.py (rework)
+  523 ✓ op_edit_save             v4_mod_269.py (rework)
+  524 ✓ op_undo                  
+  525 ✓ op_revert                b4be405ecc61
+  526 ✓ op_edit_save             v4_mod_70.py (rework)
+  527 ✓ op_restore               74777e3c6f1a
+  528 ✓ op_revert_keep_dependents f2538b426bf9
+  529 ✓ op_revert                58510daec8a3
+  530 ✓ op_restore               305af9b57b34
+  531 ✓ op_restore               ecf41eea2071
+  532 ✓ op_restore               3dab913ee822
+  533 ✓ op_feature_split         f-298dc31af19f
+  534 ✓ op_feature_rename        af-m34bdd0fc18
+  535 ✓ op_revert                ffca66e30181
+  536 ✓ op_feature_rename        f-a1731b0c2099
+  537 ✓ op_revert                1ce3f272f0e2
+  538 ✓ op_feature_merge         af-m5db30b24b8<-f-c7add6fe9938
+  539 ✓ op_edit_save             v4_mod_166.py (rework)
+  540 ✓ op_revert                5cec42d3fa2d
+  541 ✓ op_feature_merge         af-m36af5f084e<-f-1977b0d54a0a
+  542 ✓ op_undo                  
+  543 ✓ op_revert_restore_probe  03422e307638
+  544 ✓ op_add_file              v4_mod_544.py
+  545 ✓ op_edit_save             v4_mod_260.py (rework)
+  546 ✓ op_feature_split         af-me9b0cccfd4
+  547 ✓ op_edit_save             v4_mod_78.py (rework)
+  548 ✓ op_add_file              v4_mod_548.py
+  549 ✓ op_revert_keep_dependents a480234566e1
+  550 ✓ op_revert_undo_probe     f1e241de2a97
+  551 ✓ op_undo                  
+  552 ✓ op_feature_split         af-me43647f56f
+  553 ✓ op_revert_restore_probe  03422e307638
+  554 ✓ op_revert_keep_dependents 85b10ae2fce7
+  555 ✓ op_feature_rename        af-mff07a3f7bb
+  556 ✓ op_revert                4cb000d829ce
+  557 ✓ op_edit_save             v4_mod_412.py (rework)
+  558 ✓ op_feature_split         af-meef219fdc2
+  559 ✓ op_feature_rename        af-m957d2df796
+  560 ✓ op_undo                  
+  561 ✓ op_restore               bb8d6f82af1f
+  562 ✓ op_add_file              v4_mod_562.py
+  563 ✓ op_add_file              v4_mod_563.py
+  564 ✓ op_edit_save             v4_mod_222.py (rework)
+  565 ✓ op_edit_save             v4_mod_451.py (rework)
+  566 ✓ op_restore               c7f623b3e666
+  567 ✓ op_feature_rename        f-11caa50049bf
+  568 ✓ op_feature_merge         af-m63b82ce7ff<-af-me43647f56f
+  569 ✓ op_restore               c7f623b3e666
+  570 ✓ op_undo                  
+  571 ✓ op_revert_keep_dependents dbef59f6d0c3
+  572 ✓ op_revert_restore_probe  ad79647ed385
+  573 ✓ op_revert_restore_probe  ed071a779a4c
+  574 ✓ op_feature_split         af-m957d2df796
+  575 ✓ op_revert_undo_probe     52f3c395916d
+  576 ✓ op_undo                  
+  577 ✓ op_restore               33d785a824cb
+  578 ✓ op_edit_save             v4_mod_184.py (rework)
+  579 ✓ op_revert_keep_dependents df65e575701a
+  580 ✓ op_revert_keep_dependents ecf41eea2071
+  581 ✓ op_edit_save             v4_mod_106.py (rework)
+  582 ✓ op_add_file              v4_mod_582.py
+  583 ✓ op_revert_keep_dependents a9e3f37bdcd0
+  584 ✓ op_add_file              v4_mod_584.py
+  585 ✓ op_undo                  
+  586 ✗ op_revert                685992fe392f
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_220.py']
+  587 ✓ op_feature_split         af-m457b36f3a5
+  588 ✓ op_undo                  
+  589 ✓ op_restore               d7d7688440bf
+  590 ✓ op_revert_keep_dependents bda07be08e55
+  591 ✓ op_revert_keep_dependents 04dd2a02e635
+  592 ✓ op_add_file              v4_mod_592.py
+  593 ✓ op_feature_split         af-ma52f7a1db6
+  594 ✓ op_feature_merge         af-mb1b38e32bb<-af-m0cf1b2ecec
+  595 ✓ op_undo                  
+  596 ✓ op_undo                  
+  597 ✓ op_edit_save             v4_mod_121.py (rework)
+  598 ✓ op_restore               18f507e1bd85
+  599 ✓ op_edit_save             v4_mod_451.py (rework)
+  600 ✓ op_revert                7982849d200e
+  601 ✓ op_restore               03a8398567e2
+  602 ✓ op_edit_save             v4_mod_412.py (rework)
+  603 ✓ op_add_file              v4_mod_603.py
+  604 ✓ op_revert_restore_probe  6a72a3c789ea
+  605 ✓ op_restore               faddf4754399
+  606 ✓ op_feature_rename        af-ma52f7a1db6
+  607 ✓ op_edit_save             v4_mod_412.py (rework)
+  608 ✓ op_edit_save             v4_mod_390.py (rework)
+  609 ✓ op_feature_merge         af-meef219fdc2<-af-ma1d3394412
+  610 ✓ op_undo                  
+  611 ✓ op_undo                  
+  612 ✓ op_restore               7ce27bb93ba4
+  613 ✓ op_edit_save             v4_mod_55.py (rework)
+  614 ✓ op_feature_split         af-m74a3ab7205
+  615 ✓ op_restore               a1731b0c2099
+  616 ✓ op_feature_rename        af-m04b6cb95f1
+  617 ✓ op_edit_save             v4_mod_222.py (rework)
+  618 ✓ op_revert                8269ef12ce0d
+  619 ✓ op_restore               e5f0607a3b2a
+  620 ✓ op_add_file              v4_mod_620.py
+  621 · op_revert_undo_probe     revert offered no undo
+  622 ✓ op_add_file              v4_mod_622.py
+  623 ✓ op_edit_save             v4_mod_544.py (rework)
+  624 ✓ op_edit_save             v4_mod_592.py (rework)
+  625 ✓ op_revert                64cb373070dc
+  626 ✓ op_feature_merge         af-m34bdd0fc18<-af-me4506a5aab
+  627 ✓ op_feature_rename        af-maf74692ca2
+  628 ✓ op_undo                  
+  629 ✓ op_revert_keep_dependents 1b62b57cf19e
+  630 ✓ op_edit_save             v4_mod_270.py (rework)
+  631 ✓ op_revert_undo_probe     2e7d7df2fac9
+  632 ✓ op_edit_save             v4_mod_431.py (rework)
+  633 ✓ op_add_file              v4_mod_633.py
+  634 ✓ op_revert_keep_dependents c4ce0cdd399b
+  635 ✓ op_revert_undo_probe     4b104a526404
+  636 ✓ op_add_file              v4_mod_636.py
+  637 ✓ op_edit_save             v4_mod_129.py (rework)
+  638 ✓ op_feature_rename        af-me8c9f28d7e
+  639 ✓ op_edit_save             v4_mod_64.py (rework)
+  640 ✓ op_revert_restore_probe  d6b9fe87b4ae
+  641 ✓ op_edit_save             v4_mod_181.py (rework)
+  642 ✓ op_revert                60d48d06f169
+  643 ✓ op_add_file              v4_mod_643.py
+  644 ✓ op_revert_keep_dependents 6a900d9dbf96
+  645 ✓ op_feature_merge         af-m5db30b24b8<-af-me8c9f28d7e
+  646 ✓ op_revert_undo_probe     18b5b1e0432e
+  647 ✓ op_restore               c87e42d43ea0
+  648 ✓ op_edit_save             v4_mod_337.py (rework)
+  649 ✓ op_add_file              v4_mod_649.py
+  650 ✓ op_revert                90825135c0e0
+  651 · op_revert_undo_probe     revert offered no undo
+  652 ✓ op_feature_merge         af-m3b92b786d8<-af-meedff2ffdb
+  653 ✓ op_edit_save             v4_mod_544.py (rework)
+  654 ✓ op_revert                b4db86410b73
+  655 ✓ op_feature_split         af-m6f049b0b2c
+  656 ✓ op_edit_save             v4_mod_166.py (rework)
+  657 ✓ op_edit_save             v4_mod_486.py (rework)
+  658 ✓ op_revert                bfe62a112547
+  659 ✓ op_feature_rename        f-1fce724dad6e
+  660 ✓ op_revert                f558fc3cf0f7
+  661 ✓ op_revert_restore_probe  e34077fb898d
+  662 ✓ op_edit_save             v4_mod_622.py (rework)
+  663 ✓ op_undo                  
+  664 ✓ op_edit_save             v4_mod_87.py (rework)
+  665 ✓ op_restore               16b771cad19a
+  666 ✓ op_revert_restore_probe  c4de89734635
+  667 ✓ op_feature_rename        af-med8112a68e
+  668 ✓ op_revert_keep_dependents 97b7f3f867d2
+  669 ✓ op_feature_split         af-m6e3e7700a9
+  670 ✓ op_revert_keep_dependents db8ec17dd509
+  671 ✓ op_feature_merge         af-m4df90b2135<-f-a1731b0c2099
+  672 ✓ op_feature_merge         af-m5db30b24b8<-af-ma0260172fd
+  673 ✓ op_feature_split         af-m6e3e7700a9
+  674 ✓ op_edit_save             v4_mod_592.py (rework)
+  675 ✓ op_revert                3bff00c33c82
+  676 ✓ op_revert_restore_probe  a68756631bfb
+  677 ✓ op_feature_rename        af-m19013f28b2
+  678 ✓ op_add_file              v4_mod_678.py
+  679 ✓ op_revert_restore_probe  ae1020e92527
+  680 ✓ op_revert_keep_dependents b07ef864c836
+  681 ✓ op_edit_save             v4_mod_204.py (rework)
+  682 ✓ op_edit_save             v4_mod_166.py (rework)
+  683 ✓ op_edit_save             v4_mod_486.py (rework)
+  684 ✓ op_add_file              v4_mod_684.py
+  685 ✓ op_feature_merge         af-mb1b38e32bb<-af-m36af5f084e
+  686 ✓ op_undo                  
+  687 ✓ op_revert_undo_probe     7cdac77ee0ce
+  688 ✓ op_feature_merge         af-m12a3277778<-af-mb6a0bfa599
+  689 ✓ op_revert_keep_dependents 0aeb8f5037ea
+  690 ✓ op_revert_restore_probe  ad79647ed385
+  691 ✓ op_undo                  
+  692 ✓ op_undo                  
+  693 ✓ op_edit_save             v4_mod_166.py (rework)
+  694 ✓ op_feature_rename        af-ma4c4f7d3af
+  695 ✓ op_edit_save             v4_mod_222.py (rework)
+  696 ✓ op_revert_keep_dependents a21f7349671d
+  697 ✓ op_undo                  
+  698 ✗ op_revert_restore_probe  10091d8cfbd8
+        restore_resurrects_excluded: restoring what revert 10091d8cfbd8 removed also pulled back 1 op(s) that were already out: ['3b4fe3a445d8']
+  699 ✓ op_revert_undo_probe     2741d6a8bf66
+  700 ✓ op_revert                554c62ba10ab
+  701 ✓ op_revert                1c964e626bda
+  702 ✗ op_revert_restore_probe  b56f8c08d43a
+        restore_resurrects_excluded: restoring what revert b56f8c08d43a removed also pulled back 1 op(s) that were already out: ['27c0426599f3']
+  703 ✓ op_edit_save             v4_mod_399.py (rework)
+  704 ✓ op_feature_rename        af-m36af5f084e
+  705 ✓ op_revert                f2538b426bf9
+  706 ✓ op_revert_keep_dependents 02a0f4c22b4e
+  707 ✓ op_revert                a1731b0c2099
+  708 ✓ op_revert_restore_probe  c6aca1dd3825
+  709 ✓ op_edit_save             v4_mod_351.py (rework)
+  710 ✓ op_edit_save             v4_mod_562.py (rework)
+  711 ✓ op_edit_save             service.py (rework)
+  712 ✓ op_edit_save             v4_mod_563.py (rework)
+  713 ✓ op_undo                  
+  714 ✓ op_feature_split         af-meef219fdc2
+  715 ✓ op_edit_save             v4_mod_582.py (rework)
+  716 ✓ op_revert_keep_dependents a9a21af6015d
+  717 ✓ op_revert                f1e241de2a97
+  718 ✗ op_revert                d6b9fe87b4ae
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_582.py']
+  719 ✓ op_revert                a480234566e1
+  720 ✓ op_edit_save             v4_mod_390.py (rework)
+  721 ✓ op_revert_keep_dependents 4bbcb825a88c
+  722 ✓ op_revert                65adbeb33ace
+  723 ✓ op_edit_save             v4_mod_316.py (rework)
+  724 ✓ op_edit_save             service.py (rework)
+  725 ✓ op_feature_merge         af-mff07a3f7bb<-af-ma52f7a1db6
+  726 ✓ op_revert_restore_probe  9d6bf7a1008f
+  727 ✓ op_feature_split         af-md0a8dfab5a
+  728 · op_revert_undo_probe     revert offered no undo
+  729 ✓ op_revert_restore_probe  a7a282b0dff6
+  730 ✓ op_add_file              v4_mod_730.py
+  731 ✓ op_edit_save             v4_mod_319.py (rework)
+  732 ✓ op_feature_split         af-m4df90b2135
+  733 ✓ op_undo                  
+  734 ✗ op_revert_restore_probe  63d330afdc54
+        restore_resurrects_excluded: restoring what revert 63d330afdc54 removed also pulled back 1 op(s) that were already out: ['8cd7977be011']
+  735 ✓ op_edit_save             v4_mod_649.py (rework)
+  736 · op_revert_undo_probe     revert offered no undo
+  737 ✓ op_restore               18f507e1bd85
+  738 ✓ op_edit_save             v4_mod_269.py (rework)
+  739 ✓ op_add_file              v4_mod_739.py
+  740 ✓ op_feature_split         af-mff07a3f7bb
+  741 ✓ op_undo                  
+  742 ✓ op_edit_save             v4_mod_316.py (rework)
+  743 ✓ op_edit_save             v4_mod_247.py (rework)
+  744 ✓ op_revert_restore_probe  e34077fb898d
+  745 ✗ op_revert                9a71cc001204
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_55.py']
+  746 ✓ op_revert_keep_dependents 1977b0d54a0a
+  747 ✓ op_edit_save             v4_mod_316.py (rework)
+  748 ✓ op_add_file              v4_mod_748.py
+  749 ✓ op_restore               a68756631bfb
+  750 ✓ op_revert_keep_dependents c02462f3eeb6
+  751 ✓ op_add_file              v4_mod_751.py
+  752 ✓ op_edit_save             v4_mod_351.py (rework)
+  753 ✓ op_revert_keep_dependents 96457f90b9e2
+  754 ✓ op_edit_save             v4_mod_678.py (rework)
+  755 ✓ op_edit_save             v4_mod_347.py (rework)
+  756 ✓ op_revert_keep_dependents 2e7d7df2fac9
+  757 ✓ op_edit_save             v4_mod_351.py (rework)
+  758 ✓ op_revert_restore_probe  10091d8cfbd8
+  759 ✓ op_revert_restore_probe  eddde06c6e52
+  760 ✓ op_revert_restore_probe  0f62e9036ab7
+  761 ✓ op_feature_merge         af-mff2446a7eb<-af-m4df90b2135
+  762 ✓ op_edit_save             v4_mod_451.py (rework)
+  763 ✓ op_revert_keep_dependents 9a5f5e4fefa5
+  764 ✓ op_revert_keep_dependents 8b9697a9881a
+  765 ✓ op_edit_save             v4_mod_319.py (rework)
+  766 ✓ op_revert_undo_probe     d80b10d65509
+  767 ✓ op_edit_save             v4_mod_222.py (rework)
+  768 ✓ op_feature_split         af-mec4a17d417
+  769 ✓ op_undo                  
+  770 ✓ op_feature_split         af-ma76083ea4e
+  771 ✓ op_edit_save             v4_mod_678.py (rework)
+  772 ✓ op_feature_rename        f-1977b0d54a0a
+  773 ✓ op_feature_split         af-m10493afe6c
+  774 ✓ op_revert_restore_probe  0bddf10594b1
+  775 ✓ op_restore               21b97a446a84
+  776 ✓ op_undo                  
+  777 ✓ op_restore               9874c72bd1d5
+  778 ✓ op_revert_undo_probe     6f8fe2bb5403
+  779 ✓ op_restore               791b946197e4
+  780 ✓ op_restore               76ce9e5f8d36
+  781 ✓ op_revert_keep_dependents 87336717ef8d
+  782 ✓ op_undo                  
+  783 ✓ op_restore               7ce27bb93ba4
+  784 ✓ op_feature_merge         f-7d2318446501<-af-m0cf1b2ecec
+  785 ✓ op_revert_restore_probe  c6aca1dd3825
+  786 ✓ op_revert                a476e35e2691
+  787 ✗ op_revert_restore_probe  7c22ef4cf8ab
+        restore_resurrects_excluded: restoring what revert 7c22ef4cf8ab removed also pulled back 1 op(s) that were already out: ['97dc8098378c']
+  788 ✓ op_add_file              v4_mod_788.py
+  789 ✓ op_restore               859c0790cb56
+  790 ✓ op_restore               29d0f487a71f
+  791 ✓ op_revert_restore_probe  a5858f6fbff2
+  792 ✓ op_edit_save             v4_mod_246.py (rework)
+  793 ✓ op_edit_save             v4_mod_78.py (rework)
+  794 ✓ op_add_file              v4_mod_794.py
+  795 ✓ op_undo                  
+  796 ✓ op_edit_save             v4_mod_643.py (rework)
+  797 ✓ op_restore               14ccaa9228c2
+  798 ✓ op_feature_rename        af-me9b0cccfd4
+  799 ✓ op_revert_keep_dependents 97dc8098378c
+  800 ✓ op_add_file              v4_mod_800.py
+  801 ✓ op_restore               76ce9e5f8d36
+  802 ✓ op_revert_keep_dependents 975b74a2eb91
+  803 ✓ op_revert_keep_dependents 3bffb73d9bac
+  804 ✓ op_add_file              v4_mod_804.py
+  805 ✓ op_undo                  
+  806 ✓ op_revert                0aeb8f5037ea
+  807 ✓ op_feature_split         af-m3b92b786d8
+  808 ✓ op_restore               0aeb8f5037ea
+  809 ✓ op_undo                  
+  810 ✓ op_feature_merge         af-me9b0cccfd4<-af-m36af5f084e
+  811 ✓ op_feature_split         af-me9b0cccfd4
+  812 ✓ op_edit_save             v4_mod_270.py (rework)
+  813 ✓ op_feature_merge         f-1977b0d54a0a<-af-m8f214717d4
+  814 ✓ op_edit_save             v4_mod_620.py (rework)
+  815 ✓ op_feature_merge         af-m5db30b24b8<-af-mb1b38e32bb
+  816 ✓ op_revert_undo_probe     cc0904e5360b
+  817 ✓ op_add_file              v4_mod_817.py
+  818 ✓ op_revert_restore_probe  aa109e33e3bd
+  819 ✓ op_restore               ddc7e870359f
+  820 ✓ op_revert_keep_dependents faddf4754399
+  821 ✓ op_undo                  
+  822 ✓ op_revert_keep_dependents 0bddf10594b1
+  823 ✓ op_undo                  
+  824 ✓ op_undo                  
+  825 ✓ op_edit_save             v4_mod_94.py (rework)
+  826 ✓ op_undo                  
+  827 ✓ op_revert_restore_probe  c54a8168cdbf
+  828 ✓ op_revert_undo_probe     f7d3f0ec0ca0
+  829 ✓ op_restore               18f507e1bd85
+  830 ✓ op_restore               b324688259aa
+  831 ✓ op_edit_save             v4_mod_633.py (rework)
+  832 ✓ op_add_file              v4_mod_832.py
+  833 ✓ op_feature_rename        af-md0a8dfab5a
+  834 ✓ op_edit_save             v4_mod_166.py (rework)
+  835 ✓ op_feature_rename        af-med8112a68e
+  836 ✓ op_edit_save             v4_mod_270.py (rework)
+  837 ✓ op_revert                32a6d1be7888
+  838 ✓ op_undo                  
+  839 ✓ op_edit_save             v4_mod_222.py (rework)
+  840 ✓ op_revert_keep_dependents 0a40050cb5c5
+  841 · op_revert_undo_probe     revert offered no undo
+  842 ✓ op_revert                586c9153466a
+  843 ✓ op_add_file              v4_mod_843.py
+  844 ✓ op_edit_save             v4_mod_337.py (rework)
+  845 ✓ op_feature_merge         af-me0bfa0457a<-f-1fce724dad6e
+  846 ✓ op_edit_save             v4_mod_748.py (rework)
+  847 ✓ op_undo                  
+  848 ✓ op_undo                  
+  849 ✓ op_revert                bda07be08e55
+  850 ✓ op_restore               a476e35e2691
+  851 ✓ op_undo                  
+  852 ✓ op_add_file              v4_mod_852.py
+  853 ✓ op_add_file              v4_mod_853.py
+  854 ✓ op_feature_merge         af-m4a51d75580<-af-m63b82ce7ff
+  855 ✓ op_add_file              v4_mod_855.py
+  856 ✓ op_restore               ddc7e870359f
+  857 ✓ op_revert_keep_dependents 0b06a0b7d618
+  858 ✗ op_revert_restore_probe  582c562b3ace
+        restore_resurrects_excluded: restoring what revert 582c562b3ace removed also pulled back 1 op(s) that were already out: ['c6f5eae8ea57']
+  859 ✓ op_revert_undo_probe     26f6a0659635
+  860 ✓ op_revert_restore_probe  507dd9eda875
+  861 ✗ op_undo                  
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_832.py']
+  862 ✓ op_restore               8937ad708f43
+  863 ✓ op_edit_save             v4_mod_603.py (rework)
+  864 ✓ op_restore               f98cd40c4dfa
+  865 ✓ op_revert_keep_dependents 8144f0d34a95
+  866 ✓ op_revert_restore_probe  147d860ef316
+  867 ✓ op_revert                e23621476f1f
+  868 ✓ op_edit_save             v4_mod_192.py (rework)

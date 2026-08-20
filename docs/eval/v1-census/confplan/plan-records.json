@@ -1,0 +1,522 @@
+{
+ "repo": "/private/tmp/v1c/cp",
+ "n_sessions": 8,
+ "n_steps": 36,
+ "rows": [
+  {
+   "session": "8dc4040e",
+   "plan": "Scaffold confplan: dataclass models Talk, Session, Attendee ",
+   "title": "Define dataclass models",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/models.py::Talk",
+    "confplan/models.py::Session",
+    "confplan/models.py::Attendee"
+   ],
+   "n_matched": 6,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "8dc4040e",
+   "plan": "Scaffold confplan: dataclass models Talk, Session, Attendee ",
+   "title": "Implement JSON storage helpers",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/storage.py::load_data",
+    "confplan/storage.py::save_data",
+    "confplan/storage.py::next_id"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "8dc4040e",
+   "plan": "Scaffold confplan: dataclass models Talk, Session, Attendee ",
+   "title": "Add CLI init command",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/cli.py"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "8dc4040e",
+   "plan": "Scaffold confplan: dataclass models Talk, Session, Attendee ",
+   "title": "Write storage round-trip tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_storage.py"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "e4fbd002",
+   "plan": "Rooms and a two-day slot grid: Room dataclass plus Session.r",
+   "title": "Add room and slot fields",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/models.py::Room",
+    "confplan/models.py::Session"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "e4fbd002",
+   "plan": "Rooms and a two-day slot grid: Room dataclass plus Session.r",
+   "title": "Create slot utilities module",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/slots.py"
+   ],
+   "n_matched": 9,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "e4fbd002",
+   "plan": "Rooms and a two-day slot grid: Room dataclass plus Session.r",
+   "title": "Wire slot validation into models",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/models.py::Session",
+    "confplan/slots.py::parse_slot",
+    "confplan/slots.py::format_slot"
+   ],
+   "n_matched": 14,
+   "n_outside_footprint": 1
+  },
+  {
+   "session": "e4fbd002",
+   "plan": "Rooms and a two-day slot grid: Room dataclass plus Session.r",
+   "title": "Implement room CLI commands",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/cli.py::room_add",
+    "confplan/cli.py::room_list"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 3
+  },
+  {
+   "session": "e4fbd002",
+   "plan": "Rooms and a two-day slot grid: Room dataclass plus Session.r",
+   "title": "Add slot parsing tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_slots.py",
+    "confplan/slots.py::parse_slot",
+    "confplan/slots.py::format_slot"
+   ],
+   "n_matched": 15,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "8575aa18",
+   "plan": "Detect schedule clashes at registration time: an overlaps(a,",
+   "title": "Add slot overlap comparison",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/slots.py::overlaps"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "8575aa18",
+   "plan": "Detect schedule clashes at registration time: an overlaps(a,",
+   "title": "Reject overlapping registrations",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/registration.py::register"
+   ],
+   "n_matched": 1,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "8575aa18",
+   "plan": "Detect schedule clashes at registration time: an overlaps(a,",
+   "title": "Cover clash behavior with tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_clashes.py"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "67834ea7",
+   "plan": "Series dependencies: talks gain a requires list (talk add --",
+   "title": "Add talk dependency parsing",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/cli.py"
+   ],
+   "n_matched": 2,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "67834ea7",
+   "plan": "Series dependencies: talks gain a requires list (talk add --",
+   "title": "Check attendee requirements during registration",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/registration.py::missing_requirements",
+    "confplan/registration.py::register"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "67834ea7",
+   "plan": "Series dependencies: talks gain a requires list (talk add --",
+   "title": "Cover series dependency behavior",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_series.py"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "7ab11326",
+   "plan": "Refactor persistence behind a Catalog class: confplan/storag",
+   "title": "Add Catalog skeleton",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/storage.py::Catalog",
+    "confplan/storage.py"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "7ab11326",
+   "plan": "Refactor persistence behind a Catalog class: confplan/storag",
+   "title": "Implement load and save methods",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/storage.py::Catalog.load",
+    "confplan/storage.py::Catalog.save",
+    "confplan/storage.py"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "7ab11326",
+   "plan": "Refactor persistence behind a Catalog class: confplan/storag",
+   "title": "Route CLI through Catalog",
+   "status": "pending",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/cli.py"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "7ab11326",
+   "plan": "Refactor persistence behind a Catalog class: confplan/storag",
+   "title": "Remove obsolete module calls and update imports",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/cli.py",
+    "confplan/storage.py"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "209d50e0",
+   "plan": "Waitlist for full sessions: waitlist entries with a stable j",
+   "title": "Add waitlist storage model",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/registration.py"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "209d50e0",
+   "plan": "Waitlist for full sessions: waitlist entries with a stable j",
+   "title": "Implement waitlist enqueue and lookup",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/registration.py::join_waitlist",
+    "confplan/registration.py::waitlist_for"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "209d50e0",
+   "plan": "Waitlist for full sessions: waitlist entries with a stable j",
+   "title": "Route full-session errors to waitlist",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/registration.py"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "209d50e0",
+   "plan": "Waitlist for full sessions: waitlist entries with a stable j",
+   "title": "Add waitlist CLI commands",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/cli.py"
+   ],
+   "n_matched": 6,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "209d50e0",
+   "plan": "Waitlist for full sessions: waitlist entries with a stable j",
+   "title": "Write waitlist tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_waitlist.py"
+   ],
+   "n_matched": 10,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "d267d35f",
+   "plan": "Speaker priority experiment: attendees get a speaker flag (a",
+   "title": "Add speaker flag to attendee add flow",
+   "status": "pending",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "attendee.py::add_attendee",
+    "cli.py::add"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "d267d35f",
+   "plan": "Speaker priority experiment: attendees get a speaker flag (a",
+   "title": "Implement prioritized session waitlist insertion",
+   "status": "pending",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "session.py::join_waitlist",
+    "session.py::Waitlist"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "d267d35f",
+   "plan": "Speaker priority experiment: attendees get a speaker flag (a",
+   "title": "Thread speaker priority through join path",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "attendee.py::Attendee",
+    "session.py::join_session"
+   ],
+   "n_matched": 1,
+   "n_outside_footprint": 1
+  },
+  {
+   "session": "d267d35f",
+   "plan": "Speaker priority experiment: attendees get a speaker flag (a",
+   "title": "Add priority behavior tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_priority.py"
+   ],
+   "n_matched": 2,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Add shared clash helper",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/slots.py::ranges_clash"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Route registration checks through helper",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/registration.py::clash check logic",
+    "confplan/slots.py::ranges_clash"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Implement room clash audit",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "confplan/storage.py::room_clashes"
+   ],
+   "n_matched": 2,
+   "n_outside_footprint": 1
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Expose room audit command",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "confplan/cli.py"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Add slot comparison tests",
+   "status": "pending",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_slots.py"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Add registration clash tests",
+   "status": "pending",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_clashes.py"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Add room audit tests",
+   "status": "pending",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_storage.py",
+    "tests/test_clashes.py"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "4658a7a7",
+   "plan": "Normalize slot comparison for cross-track sessions: a shared",
+   "title": "Add CLI audit tests",
+   "status": "pending",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_storage.py",
+    "tests/test_catalog.py"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  }
+ ],
+ "flags": [
+  {
+   "flag": "over-claim",
+   "step": "Wire slot validation into models",
+   "detail": "1 of 14 matched ops touched nothing in ['confplan/models.py::Session', 'confplan/slots.py::parse_slot', 'confplan/slots.py::format_slot']"
+  },
+  {
+   "flag": "over-claim",
+   "step": "Implement room CLI commands",
+   "detail": "3 of 8 matched ops touched nothing in ['confplan/cli.py::room_add', 'confplan/cli.py::room_list']"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Route CLI through Catalog",
+   "detail": "predicted ['confplan/cli.py'], matched nothing"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Add speaker flag to attendee add flow",
+   "detail": "predicted ['attendee.py::add_attendee', 'cli.py::add'], matched nothing"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Implement prioritized session waitlist insertion",
+   "detail": "predicted ['session.py::join_waitlist', 'session.py::Waitlist'], matched nothing"
+  },
+  {
+   "flag": "over-claim",
+   "step": "Thread speaker priority through join path",
+   "detail": "1 of 1 matched ops touched nothing in ['attendee.py::Attendee', 'session.py::join_session']"
+  },
+  {
+   "flag": "over-claim",
+   "step": "Implement room clash audit",
+   "detail": "1 of 2 matched ops touched nothing in ['confplan/storage.py::room_clashes']"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Add slot comparison tests",
+   "detail": "predicted ['tests/test_slots.py'], matched nothing"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Add registration clash tests",
+   "detail": "predicted ['tests/test_clashes.py'], matched nothing"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Add room audit tests",
+   "detail": "predicted ['tests/test_storage.py', 'tests/test_clashes.py'], matched nothing"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Add CLI audit tests",
+   "detail": "predicted ['tests/test_storage.py', 'tests/test_catalog.py'], matched nothing"
+  },
+  {
+   "flag": "file-level-footprint",
+   "detail": "21 of 36 steps predicted a bare path, so any edit to that file fulfils them"
+  }
+ ]
+}

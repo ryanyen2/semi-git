@@ -1,0 +1,55 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 · op_feature_merge         1 feature(s)
+    2 ✓ op_edit_save             survivor.py (rework)
+    3 ✓ op_revert_undo_probe     36abf70110af
+    4 ✓ op_revert                d33327bc7b5d
+    5 ✓ op_feature_split         af-me1a3701a91
+    6 ✓ op_revert                5ccc73867abb
+    7 ✓ op_feature_split         f-19e4d531a38b
+    8 ✗ op_revert                a12495ffb1df
+        no_empty_phantom: blank tracked file(s) left behind: ['survivor.py']
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_add_file              v4_mod_10.py
+   11 ✓ op_revert                19e4d531a38b
+   12 ✓ op_edit_save             survivor.py (add)
+   13 ✓ op_edit_save             v4_mod_0.py (rework)
+   14 ✓ op_revert                e6ea659aefbe
+   15 ✓ op_revert                f0f71374e09c
+   16 ✓ op_revert_keep_dependents 72f70c2fbacc
+   17 ✗ op_revert_restore_probe  e20811f5bd51
+        revert_restore_unexplained_drift: revert e20811f5bd51 then restoring everything it removed left 1 file(s) different from before: ['survivor.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+   18 ✓ op_edit_save             gone.py (rework)
+   19 ✓ op_revert                40e468219543
+   20 ✓ op_edit_save             v4_mod_10.py (rework)
+   21 ✓ op_add_file              v4_mod_21.py
+   22 ✓ op_revert_undo_probe     704d04dac832
+   23 ✓ op_feature_rename        af-me1a3701a91
+   24 ✗ op_revert_restore_probe  58b3790c4c09
+        restore_resurrects_layout: restoring what revert 58b3790c4c09 removed also pulled back 3 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['40e468219543', '842c7a499722', 'e6ea659aefbe']
+   25 ✓ op_edit_save             v4_mod_21.py (rework)
+   26 ✓ op_feature_merge         af-me1a3701a91<-af-mca134932f3
+   27 ✓ op_edit_save             v4_mod_9.py (rework)
+   28 ✗ op_revert_restore_probe  7fa52afc06b7
+        restore_resurrects_layout: restoring what revert 7fa52afc06b7 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['c7199aa260b1']
+   29 ✓ op_add_file              v4_mod_29.py
+   30 ✓ op_edit_save             gone.py (rework)
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_edit_save             v4_mod_10.py (rework)
+   33 ✓ op_undo                  
+   34 ✓ op_edit_save             v4_mod_9.py (rework)
+   35 ✓ op_edit_save             v4_mod_0.py (rework)
+   36 ✓ op_restore               a12495ffb1df
+   37 ✓ op_add_file              v4_mod_37.py
+   38 ✓ op_restore               f842abade606
+   39 ✓ op_revert_undo_probe     18859c493117
+   40 ✓ op_restore               d33327bc7b5d
+   41 ✓ op_revert_keep_dependents 72f70c2fbacc
+   42 ✓ op_revert_undo_probe     1343136b1b04
+   43 ✓ op_restore               e5ebb829ef87
+   44 ✓ op_revert_undo_probe     813b31c14a6b
+   45 ✓ op_restore               d33327bc7b5d
+   46 ✓ op_revert_undo_probe     f7b38c9455a0
+   47 ✓ op_edit_save             gone.py (rework)
+   48 ✓ op_feature_merge         af-me1a3701a91<-af-m198290c1dc
+   49 ✓ op_revert                842c7a499722
+removed_paths seed 1104: 50 ops applied, 4 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1104.json

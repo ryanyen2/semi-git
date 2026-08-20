@@ -1,0 +1,35 @@
+    0 ✓ op_revert_keep_dependents f8dc37eb66f2
+    1 ✓ op_revert                7646c3cb07ad
+    2 ✓ op_feature_split         f-10d36ff6be9e
+    3 ✓ op_feature_split         f-10d36ff6be9e
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_feature_rename        af-md04b4d226b
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_revert_undo_probe     301e32de9770
+    8 ✓ op_feature_rename        af-m01dcf54483
+    9 ✓ op_revert                3456efddc820
+   10 ✓ op_edit_save             v4_mod_6.py (rework)
+   11 ✓ op_restore               3456efddc820
+   12 · op_restore               nothing addressable excluded
+   13 ✓ op_feature_rename        af-md04b4d226b
+   14 ✓ op_edit_save             v4_mod_4.py (rework)
+   15 ✓ op_revert_undo_probe     f8dc37eb66f2
+   16 ✓ op_edit_save             v4_mod_4.py (rework)
+   17 ✓ op_edit_save             v4_mod_4.py (rework)
+   18 ✓ op_revert_undo_probe     8958d91742a1
+   19 ✓ op_revert                b2c93f7d74a8
+   20 · op_restore               nothing addressable excluded
+   21 ✓ op_edit_save             v4_mod_6.py (rework)
+   22 ✓ op_edit_save             v4_mod_6.py (rework)
+   23 ✓ op_revert_undo_probe     ee38ffccb59b
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_add_file              v4_mod_25.py
+   26 ✓ op_undo                  
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_undo                  
+   29 ✓ op_feature_split         af-md34339d570
+   30 ✓ op_edit_save             v4_mod_6.py (rework)
+   31 ✓ op_edit_save             v4_mod_6.py (rework)
+   32 ✗ op_revert_restore_probe  10d36ff6be9e
+        restore_resurrects_layout: restoring what revert 10d36ff6be9e removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['7646c3cb07ad']
+ts_export_decorated seed 1106: 33 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-ts_export_decorated-seed1106.json

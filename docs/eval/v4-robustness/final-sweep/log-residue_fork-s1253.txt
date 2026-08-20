@@ -1,0 +1,57 @@
+    0 ✓ op_revert_restore_probe  59f13ee08dd0
+    1 ✓ op_undo                  
+    2 ✓ op_revert_keep_dependents 5558bb5afdd7
+    3 ✓ op_feature_rename        f-5558bb5afdd7
+    4 ✓ op_edit_save             a.py (add)
+    5 ✓ op_revert_undo_probe     5558bb5afdd7
+    6 ✓ op_revert                32818370aaf9
+    7 ✗ op_revert_restore_probe  5558bb5afdd7
+        restore_resurrects_content: restoring what revert 5558bb5afdd7 removed also pulled back 1 op(s) carrying user code that were already out: ['32818370aaf9']
+    8 · op_feature_merge         1 feature(s)
+    9 ✓ op_revert_undo_probe     5558bb5afdd7
+   10 ✓ op_revert_restore_probe  e98ca554a61b
+   11 ✓ op_restore               59f13ee08dd0
+   12 ✓ op_revert                1bf8d56e9372
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_revert                32818370aaf9
+   15 ✓ op_restore               32818370aaf9
+   16 ✗ op_edit_save             a.py (rework)
+        fsck_advisory_chain_gaps: 1 new, 1 live: ["a.py::run"]
+        settled (save refused, git restore): ['M a.py']
+   17 ✓ op_revert                59f13ee08dd0
+   18 ✓ op_revert_undo_probe     f9234cb3dd0a
+   19 ✓ op_restore               59f13ee08dd0
+   20 ✓ op_revert_keep_dependents f9234cb3dd0a
+   21 ✓ op_revert_keep_dependents 569d93c0e7cf
+   22 ✓ op_edit_save             a.py (rework)
+   23 ✗ op_revert_restore_probe  f9234cb3dd0a
+        restore_resurrects_layout: restoring what revert f9234cb3dd0a removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['147f94ee5e8c']
+   24 ✓ op_revert_undo_probe     1b40ce89c508
+   25 ✓ op_feature_merge         f-5558bb5afdd7<-af-m6e31d80f97
+   26 ✓ op_feature_split         f-5558bb5afdd7
+   27 ✓ op_revert                f1f1d5d66cfb
+   28 ✓ op_restore               78281f80b218
+   29 ✓ op_add_file              v4_mod_29.py
+   30 ✓ op_revert_restore_probe  1343136b1b04
+   31 ✓ op_edit_save             v4_mod_13.py (rework)
+   32 ✓ op_feature_split         f-59f13ee08dd0
+   33 ✓ op_edit_save             v4_mod_29.py (rework)
+   34 ✓ op_feature_rename        af-mdb0878c430
+   35 ✓ op_feature_merge         f-f9234cb3dd0a<-af-mdb0878c430
+   36 ✓ op_edit_save             v4_mod_13.py (rework)
+   37 ✓ op_restore               78281f80b218
+   38 ✓ op_feature_rename        f-5558bb5afdd7
+   39 ✓ op_undo                  
+   40 ✓ op_revert_undo_probe     e0a42c9c64fa
+   41 ✓ op_edit_save             v4_mod_29.py (rework)
+   42 ✓ op_revert                f5c2bf3f6471
+   43 ✗ op_revert_restore_probe  7d5d719d1c5d
+        restore_resurrects_layout: restoring what revert 7d5d719d1c5d removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['12e29dd6cd3b']
+   44 · op_revert_undo_probe     revert offered no undo
+   45 ✓ op_revert_restore_probe  1bf8d56e9372
+   46 ✓ op_undo                  
+   47 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   48 ✓ op_feature_merge         f-59f13ee08dd0<-f-5558bb5afdd7
+   49 ✓ op_edit_save             v4_mod_13.py (rework)
+residue_fork seed 1253: 50 ops applied, 4 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-residue_fork-seed1253.json

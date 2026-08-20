@@ -1,0 +1,24 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_undo                  
+    2 ✓ op_restore               19e4d531a38b
+    3 ✓ op_feature_rename        f-19e4d531a38b
+    4 ✓ op_feature_rename        f-19e4d531a38b
+    5 ✓ op_revert_undo_probe     94681116b737
+    6 ✓ op_feature_split         f-19e4d531a38b
+    7 ✓ op_edit_save             slugify.py (rework)
+    8 ✓ op_feature_merge         f-me89a40fad5c<-f-19e4d531a38b
+    9 ✓ op_edit_save             v4_mod_0.py (rework)
+   10 ✓ op_edit_save             v4_mod_0.py (rework)
+   11 ✓ op_edit_save             v4_mod_0.py (rework)
+   12 · op_restore               nothing addressable excluded
+   13 · op_restore               nothing addressable excluded
+   14 · op_restore               nothing addressable excluded
+   15 ✓ op_edit_save             v4_mod_0.py (rework)
+   16 ✓ op_undo                  
+   17 ✓ op_revert                3896e5b8f12b
+   18 ✓ op_feature_rename        f-me89a40fad5c
+   19 ✓ op_edit_save             slugify.py (rework)
+   20 ✓ op_revert_keep_dependents c55128b27293
+   21 ✓ op_undo                  
+   22 ✓ op_revert_keep_dependents 813b31c14a6b
+diverged_chain seed 1159: 23 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-diverged_chain-seed1159.json

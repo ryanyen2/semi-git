@@ -1,0 +1,27 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_edit_save             a.py (rework)
+    2 · op_restore               nothing addressable excluded
+    3 ✓ op_undo                  
+    4 ✓ op_restore               58d98f9891fd
+    5 ✓ op_revert_undo_probe     54f60db116c9
+    6 ✓ op_revert_undo_probe     1bf8d56e9372
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_revert                85daff11b8f2
+   11 ✗ op_revert_restore_probe  19e4d531a38b
+        restore_resurrects_layout: restoring what revert 19e4d531a38b removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['121421e662ed']
+   12 ✓ op_edit_save             v4_mod_0.py (rework)
+   13 ✓ op_revert_keep_dependents 54f60db116c9
+   14 ✗ op_revert_restore_probe  fb1dc3756108
+        revert_restore_unexplained_drift: revert fb1dc3756108 then restoring everything it removed left 1 file(s) different from before: ['v4_mod_8.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_8.py']
+   15 ✓ op_revert                be01450490a9
+   16 ✓ op_edit_save             a.py (rework)
+   17 ✓ op_undo                  
+   18 ✓ op_revert_undo_probe     ffa4c883cdb6
+   19 · op_feature_merge         1 feature(s)
+   20 ✓ op_revert_restore_probe  5b6324ac8470
+   21 ✓ op_feature_rename        f-19e4d531a38b
+   22 ✓ op_revert                6946a0cb2aef
+residue_fork seed 1185: 23 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-residue_fork-seed1185.json

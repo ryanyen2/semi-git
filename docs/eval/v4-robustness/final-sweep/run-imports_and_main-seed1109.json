@@ -1,0 +1,480 @@
+{
+ "label": "imports_and_main",
+ "seed": 1109,
+ "requested_ops": 35,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/imports_and_main-s1109/imports_and_main/imports_and_main",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [],
+ "applied": 35,
+ "refused": 3,
+ "skipped": 4,
+ "with_violations": 1,
+ "tracebacks": 0,
+ "settles": 0,
+ "store_ops_seen": 19,
+ "commits_seen": 20,
+ "script": [
+  "op_revert",
+  "op_feature_split",
+  "op_undo",
+  "op_restore",
+  "op_feature_rename",
+  "op_revert_undo_probe",
+  "op_restore",
+  "op_undo",
+  "op_edit_save",
+  "op_feature_split",
+  "op_revert_undo_probe",
+  "op_edit_save",
+  "op_feature_rename",
+  "op_revert_keep_dependents",
+  "op_revert_keep_dependents",
+  "op_revert_keep_dependents",
+  "op_revert_restore_probe",
+  "op_revert",
+  "op_revert_keep_dependents",
+  "op_restore",
+  "op_edit_save",
+  "op_undo",
+  "op_edit_save",
+  "op_revert_restore_probe",
+  "op_undo",
+  "op_feature_split",
+  "op_restore",
+  "op_revert_undo_probe",
+  "op_add_file",
+  "op_revert",
+  "op_edit_save",
+  "op_revert_restore_probe",
+  "op_edit_save",
+  "op_feature_merge",
+  "op_add_file"
+ ],
+ "log": [
+  {
+   "op": "revert",
+   "target": "868c1d84346d",
+   "rc": 0,
+   "out": " \u25b8 rewind  868c1d84346d60046aae1a6d82583899db25a7a9c8481f377e1cdecf96cef038\n\n removes 1 edit(s) \u00b7 1 file(s): app.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 0,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-2d609a0f1083",
+   "rc": 1,
+   "out": "\u2717 cannot split 'f-2d609a0f10837fc143086179a0a93d90dd904af5afc50b8cf59a54f51be019d0': stop_split\n",
+   "err": "",
+   "i": 1,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 161abc9: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 2,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 3,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-2d609a0f1083",
+   "rc": 0,
+   "out": "\u2713 renamed f-2d609a0f10837fc143086179a0a93d90dd904af5afc50b8cf59a54f51be019d0: 'add module docstring, imports, const, fn, and __main__ guard' \u2192 'v4 label 4'\n",
+   "err": "",
+   "i": 4,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "3934033824cb",
+   "rc": 0,
+   "removed": 3,
+   "returned": true,
+   "out": "edits removed\n\n removes 3 edit(s) across 1 symbol(s) \u00b7 1 file(s): app.py\n  \u2713 revert applied \u2014 3 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo e25617c: restored the prior ideal \u2014 3 op(s) restored\n",
+   "err": "",
+   "i": 5,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 6,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature rename\n",
+   "err": "",
+   "i": 7,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "app.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save d2d66ac \"v4 edit 8\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 8,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-2d609a0f1083",
+   "rc": 0,
+   "out": "\u2713 split f-2d609a0f10837fc143086179a0a93d90dd904af5afc50b8cf59a54f51be019d0 \u2192 f-2d609a0f10837fc143086179a0a93d90dd904af5afc50b8cf59a54f51be019d0 + f-3934033824cb8d3119f720869444c14e72e6105fa0ec248279a1e6586056be11\n",
+   "err": "",
+   "i": 9,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "5d3c6964b2f8",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "\n\n \u00b7 1 other feature(s) unchanged\n removes 1 edit(s) \u00b7 1 file(s): app.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo 31a225b: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 10,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "app.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 45c2888 \"v4 edit 11\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 11,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-2d609a0f1083",
+   "rc": 0,
+   "out": "\u2713 renamed f-2d609a0f10837fc143086179a0a93d90dd904af5afc50b8cf59a54f51be019d0: 'add module docstring, imports, const, fn, and __main__ guard' \u2192 'v4 label 12'\n",
+   "err": "",
+   "i": 12,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "5d3c6964b2f8",
+   "rc": 0,
+   "out": "c6964b2f8e1645d175ecf935ad5b73f929177b3a2997261141ebf460faff8 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: f2d0cfe1a559\n    edit the working tree, then: sgt fulfill f2d0cfe1a559 --from-tree\n",
+   "err": "",
+   "i": 13,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "5d3c6964b2f8",
+   "rc": 0,
+   "out": "c6964b2f8e1645d175ecf935ad5b73f929177b3a2997261141ebf460faff8 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: f2d0cfe1a559\n    edit the working tree, then: sgt fulfill f2d0cfe1a559 --from-tree\n",
+   "err": "",
+   "i": 14,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "9cbc06439871",
+   "rc": 0,
+   "out": "c064398713f5170827920d85f63ff6a52cf1321e26f8c5a36abfcbcfe52df \u2014 removes 2 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 3a297cbb29c8\n    edit the working tree, then: sgt fulfill 3a297cbb29c8 --from-tree\n",
+   "err": "",
+   "i": 15,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "5d3c6964b2f8",
+   "rc": 0,
+   "removed": 1,
+   "restored": 1,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "ts cached -- run `sgt log --refresh` to name them)\n\n \u00b7 1 other feature(s) unchanged\n removes 1 edit(s) \u00b7 1 file(s): app.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "restore_out": [
+    "5d3c6964b2f8: 73f929177b3a2997261141ebf460faff8\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 16,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "2d609a0f1083",
+   "rc": 0,
+   "out": " \u25b8 rewind  v4 label 12  2d609a0f  \u2591\u2591\u2591  3\u21920 edits\n      sgt revert 2d609a0f\n\n   (no checkpoints cached -- run `sgt log --refresh` to name them)\n\n \u00b7 1 other feature(s) unchanged\n removes 3 edit(s) \u00b7 1 file(s): app.py\n  \u2713 revert applied \u2014 3 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 17,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "898342492a26",
+   "rc": 0,
+   "out": "342492a265e9648eb5c0105bdbf76e64eef5df8c85c349b5ccee65728a2df \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 4366b3db939f\n    edit the working tree, then: sgt fulfill 4366b3db939f --from-tree\n",
+   "err": "",
+   "i": 18,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 19,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "app.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 181b469 \"v4 edit 20\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 20,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 79c9cbc: restored the prior ideal \u2014 1 op(s) back to pending\n",
+   "err": "",
+   "i": 21,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "app.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 2e84d08 \"v4 edit 22\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 22,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "898342492a26",
+   "rc": 0,
+   "removed": 0,
+   "restored": 2,
+   "returned": false,
+   "restore_failures": [],
+   "resurrected": [
+    "5df78118e201",
+    "868c1d84346d"
+   ],
+   "resurrected_content": [
+    "868c1d84346d"
+   ],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "ur edit): app.py::run\n  \u2713 revert applied \u2014 0 symbol(s) changed, no whole edit removed. (`sgt undo` reverses this.)\n  \u26a0 kept unchanged (the removal overlaps later edits \u2014 needs your edit): app.py::run\n",
+   "err": "",
+   "restore_out": [
+    "898342492a26: 6e64eef5df8c85c349b5ccee65728a2df\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 23,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "restore_resurrects_content",
+     "detail": "restoring what revert 898342492a26 removed also pulled back 1 op(s) carrying user code that were already out: ['868c1d84346d']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 1497203: restored the prior ideal \u2014 1 op(s) back to pending\n",
+   "err": "",
+   "i": 24,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-2d609a0f1083",
+   "rc": 1,
+   "out": "\u2717 'f-2d609a0f10837fc143086179a0a93d90dd904af5afc50b8cf59a54f51be019d0' has too few members to split\n",
+   "err": "",
+   "i": 25,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "9c4eb498e304",
+   "rc": 2,
+   "out": "p.py::run is live\n    one live version per symbol: ea8bb504 (save 2e84d08 \"v4 edit 22\") is live;\n    9c4eb498 (save 181b469 \"v4 edit 20\") waits behind it as a ghost.\n      swap       sgt revert ea8bb504   then   sgt restore 9c4eb498\n      reconcile  sgt resolve app.py::run   (combine both versions)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 26,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "9cbc06439871",
+   "rc": 0,
+   "removed": 0,
+   "skipped": "revert offered no undo",
+   "out": "e moved. (nothing was recorded, so there is nothing to reverse.)\n  \u26a0 kept unchanged (the removal overlaps later edits \u2014 needs your edit): app.py::run\n",
+   "err": "",
+   "i": 27,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_28.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;220;146;65mf48c290\u001b[0m \"v4 add module 28\"\n  \u2514\u2500 \u001b[38;2;220;146;65m\u25cb\u001b[0m \u001b[38;2;220;146;65mnew feature\u001b[0m \u001b[2m(af-m8bc62be) \u2014 unnamed; name it: sgt feature rename af-m8bc62be \"<label>\"\u001b[0m  v4_mod_28.py::only_symbol_28\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 28,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "5df78118e201",
+   "rc": 0,
+   "out": "rd (split)  39340338  \u2588\u2588\u2588\u2588\u2591  5\u21924 edits\n      sgt revert 5df78118\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add module docstring, imports, const\u2026    \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/8 edits removed\n\n \u00b7 2 other feature(s) unchanged\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 29,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "v4_mod_28.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 1585b74 \"v4 edit 30\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 30,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "7413dc419ac6",
+   "rc": 0,
+   "removed": 1,
+   "restored": 1,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": " 28                         \u2588\u2588\u2591  \u00b7 1/3 edits removed\n\n \u00b7 2 other feature(s) unchanged\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "restore_out": [
+    "7413dc419ac6: ea6b5c6f2ca3e4516284582f1a1d64b99\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 31,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "v4_mod_28.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 8e8ea98 \"v4 edit 32\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 32,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-2d609a0f1083<-f-3934033824cb",
+   "rc": 0,
+   "out": "\u2713 merged f-3934033824cb8d3119f720869444c14e72e6105fa0ec248279a1e6586056be11 into f-2d609a0f10837fc143086179a0a93d90dd904af5afc50b8cf59a54f51be019d0 (9 op(s), 2 member(s))\n",
+   "err": "",
+   "i": 33,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_34.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;230;128;160m5975528\u001b[0m \"v4 add module 34\"\n  \u2514\u2500 \u001b[38;2;230;128;160m\u25cb\u001b[0m \u001b[38;2;230;128;160mnew feature\u001b[0m \u001b[2m(af-m6451a08) \u2014 unnamed; name it: sgt feature rename af-m6451a08 \"<label>\"\u001b[0m  v4_mod_34.py::only_symbol_34\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 34,
+   "target_kind": null,
+   "violations": []
+  }
+ ]
+}

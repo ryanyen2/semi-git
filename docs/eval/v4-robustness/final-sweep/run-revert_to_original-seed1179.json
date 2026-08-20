@@ -1,0 +1,433 @@
+{
+ "label": "revert_to_original",
+ "seed": 1179,
+ "requested_ops": 37,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/revert_to_original-s1179/revert_to_original/revert_to_original",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [],
+ "applied": 37,
+ "refused": 5,
+ "skipped": 20,
+ "with_violations": 1,
+ "tracebacks": 0,
+ "settles": 2,
+ "store_ops_seen": 13,
+ "commits_seen": 6,
+ "script": [
+  "op_restore",
+  "op_edit_save",
+  "op_revert_restore_probe",
+  "op_feature_rename",
+  "op_add_file",
+  "op_undo",
+  "op_edit_save",
+  "op_restore",
+  "op_revert",
+  "op_revert",
+  "op_feature_rename",
+  "op_edit_save",
+  "op_revert_undo_probe",
+  "op_revert_restore_probe",
+  "op_edit_save",
+  "op_revert_keep_dependents",
+  "op_revert_keep_dependents",
+  "op_edit_save",
+  "op_revert",
+  "op_edit_save",
+  "op_edit_save",
+  "op_restore",
+  "op_revert_keep_dependents",
+  "op_edit_save",
+  "op_revert_undo_probe",
+  "op_restore",
+  "op_feature_merge",
+  "op_revert_undo_probe",
+  "op_feature_rename",
+  "op_feature_rename",
+  "op_edit_save",
+  "op_revert_keep_dependents",
+  "op_undo",
+  "op_revert_undo_probe",
+  "op_edit_save",
+  "op_undo",
+  "op_edit_save"
+ ],
+ "log": [
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 0,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "a.py (rework)",
+   "rc": 1,
+   "out": "\u2717 put() would overwrite uncommitted changes: ['a.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)\n",
+   "err": "",
+   "i": 1,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M a.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "\u2717 put() would overwrite uncommitted changes: ['a.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)"
+   }
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "ee1211142a8b",
+   "rc": 0,
+   "removed": 5,
+   "restored": 6,
+   "returned": false,
+   "restore_failures": [],
+   "resurrected": [
+    "0bf8f47dd419"
+   ],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": " ee1211142a8b6bc185fce32e85ad54112aacb95214921c419a1229f4936841c9\n\n removes 5 edit(s) across 1 symbol(s) \u00b7 1 file(s): a.py\n  \u2713 revert applied \u2014 5 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "restore_out": [
+    "ee1211142a8b: 12aacb95214921c419a1229f4936841c9\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)",
+    "126303a70181: 6d523e6b1bb6d1223bae81b6e60da3294\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)",
+    "a08a015717cf: 6074cb42887bd8b403aa6e410b4925821\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)",
+    "f19ec32b02e9: 6778467d46da0e3a2c7c200efd7696056\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)",
+    "f82434e5639a: 9e81603b989f360b8734220d625818c36\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 2,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "restore_resurrects_layout",
+     "detail": "restoring what revert ee1211142a8b removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-126303a70181",
+   "rc": 0,
+   "out": "\u2713 renamed f-126303a701811dd558ccf2c8c1431936d523e6b1bb6d1223bae81b6e60da3294: 'add foo' \u2192 'v4 label 3'\n",
+   "err": "",
+   "i": 3,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_4.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;234;132;113ma35376c\u001b[0m \"v4 add module 4\"\n  \u2514\u2500 \u001b[38;2;234;132;113m\u25cb\u001b[0m \u001b[38;2;234;132;113mnew feature\u001b[0m \u001b[2m(af-m4ea7d37) \u2014 unnamed; name it: sgt feature rename af-m4ea7d37 \"<label>\"\u001b[0m  v4_mod_4.py::only_symbol_4\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 4,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 549b102: restored the prior ideal \u2014 4 op(s) back to pending\n",
+   "err": "",
+   "i": 5,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "a.py (rework)",
+   "rc": 1,
+   "out": "\u2717 put() would overwrite uncommitted changes: ['a.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)\n",
+   "err": "",
+   "i": 6,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M a.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "\u2717 put() would overwrite uncommitted changes: ['a.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)"
+   }
+  },
+  {
+   "op": "restore",
+   "target": "98ca5b8cf50a",
+   "rc": 2,
+   "out": "rsion of a.py::foo is live\n    one live version per symbol: f82434e5 (save 34de2a7 \"revert foo to its original body\") is live;\n    98ca5b8c waits behind it as a ghost.\n      swap       sgt revert f82434e5   then   sgt restore 98ca5b8c\n      reconcile  sgt resolve a.py::foo   (combine both versions)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 7,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "ee1211142a8b",
+   "rc": 0,
+   "out": "el 3  126303a7  \u2591\u2591\u2591\u2591\u2591  5\u21920 edits\n      sgt revert ee121114\n\n   \u25b8 (0\u2588\u2588\u2588)  @0 add foo                                  \u2591\u2591\u2591\u2591\u2591  \u00b7 removed\n\n \u00b7 1 other feature(s) unchanged\n removes 5 edit(s) across 1 symbol(s) \u00b7 1 file(s): a.py\n  \u2713 revert applied \u2014 5 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 8,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "66521c9c8059",
+   "rc": 0,
+   "out": " \u25b8 rewind  66521c9c8059f4cd85a95576c9becda29476814961cc8e7d18764a3cad6d3224\n\n removes 2 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 2 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 9,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "af-m4ea7d37230",
+   "rc": 0,
+   "out": "\u2713 renamed af-m4ea7d3723045927177760c62bb417d35ac00ead13d9ad9b5a378b1dda478618a: 'only_symbol_4' \u2192 'v4 label 10'\n",
+   "err": "",
+   "i": 10,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 11,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "skipped": "empty ideal",
+   "i": 12,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "skipped": "empty ideal",
+   "i": 13,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 14,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "skipped": "empty ideal",
+   "i": 15,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "skipped": "empty ideal",
+   "i": 16,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 17,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "skipped": "empty ideal",
+   "i": 18,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 19,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 20,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "98ca5b8cf50a",
+   "rc": 1,
+   "out": "\u2717 [restore] 98ca5b8cf50ad8ab6c59b2f014b563709e376dbfda7c490eb2a011edc75458bf \u2014 would include 98ca5b8c (a.py::foo) without the edit(s) it was built on, refused\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 21,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "skipped": "empty ideal",
+   "i": 22,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 23,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "skipped": "empty ideal",
+   "i": 24,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "699d45cd316b",
+   "rc": 1,
+   "out": "\u2717 [restore] 699d45cd316bbfcd7e55bbda1ee89870e070beaf24ff1776f3775b98e8d5fc70 \u2014 would include 699d45cd (a.py::foo) without the edit(s) it was built on, refused\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 25,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "target": "af-m4ea7d37230<-f-126303a70181",
+   "rc": 0,
+   "out": "\u2713 merged f-126303a701811dd558ccf2c8c1431936d523e6b1bb6d1223bae81b6e60da3294 into af-m4ea7d3723045927177760c62bb417d35ac00ead13d9ad9b5a378b1dda478618a (9 op(s), 3 member(s))\n",
+   "err": "",
+   "i": 26,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "skipped": "empty ideal",
+   "i": 27,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "af-m4ea7d37230",
+   "rc": 0,
+   "out": "\u2713 renamed af-m4ea7d3723045927177760c62bb417d35ac00ead13d9ad9b5a378b1dda478618a: 'v4 label 10' \u2192 'v4 label 28'\n",
+   "err": "",
+   "i": 28,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "af-m4ea7d37230",
+   "rc": 0,
+   "out": "\u2713 renamed af-m4ea7d3723045927177760c62bb417d35ac00ead13d9ad9b5a378b1dda478618a: 'v4 label 28' \u2192 'v4 label 29'\n",
+   "err": "",
+   "i": 29,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 30,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "skipped": "empty ideal",
+   "i": 31,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature rename\n",
+   "err": "",
+   "i": 32,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "skipped": "empty ideal",
+   "i": 33,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 34,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature rename\n",
+   "err": "",
+   "i": 35,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "skipped": "no tracked .py file",
+   "i": 36,
+   "target_kind": null,
+   "violations": []
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+    0 · op_feature_merge         1 feature(s)
+    1 ✓ op_undo                  
+    2 ✓ op_feature_split         f-308db8498c58
+    3 ✓ op_revert_undo_probe     3bff00c33c82
+    4 ✓ op_revert_restore_probe  6ce5787543f8
+    5 ✓ op_undo                  
+    6 ✓ op_revert_undo_probe     308db8498c58
+    7 ✓ op_revert_keep_dependents 308db8498c58
+    8 ✓ op_revert_keep_dependents bda07be08e55
+    9 ✗ op_revert_restore_probe  308db8498c58
+        restore_resurrects_layout: restoring what revert 308db8498c58 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['6ce5787543f8']
+   10 ✓ op_revert_keep_dependents 308db8498c58
+   11 ✓ op_revert                6ce5787543f8
+   12 ✗ op_revert_restore_probe  308db8498c58
+        restore_resurrects_layout: restoring what revert 308db8498c58 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['6ce5787543f8']
+   13 ✓ op_revert_undo_probe     6ce5787543f8
+   14 ✓ op_undo                  
+   15 ✓ op_restore               bda07be08e55
+   16 · op_restore               nothing addressable excluded
+   17 · op_restore               nothing addressable excluded
+   18 ✓ op_add_file              v4_mod_18.py
+   19 · op_restore               nothing addressable excluded
+   20 ✓ op_revert                bda07be08e55
+   21 ✓ op_edit_save             v4_mod_18.py (rework)
+   22 ✓ op_add_file              v4_mod_22.py
+   23 ✓ op_undo                  
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_edit_save             v4_mod_24.py (rework)
+   26 ✓ op_revert_undo_probe     8dadf4ce358d
+   27 ✓ op_restore               bda07be08e55
+   28 ✓ op_edit_save             service.py (rework)
+   29 ✓ op_restore               5d14e4454702
+   30 · op_restore               nothing addressable excluded
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_edit_save             v4_mod_18.py (rework)
+   33 ✓ op_edit_save             v4_mod_24.py (rework)
+   34 · op_restore               nothing addressable excluded
+   35 ✓ op_feature_split         af-mdb55886239
+   36 ✗ op_revert_restore_probe  293205a0704a
+        restore_resurrects_layout: restoring what revert 293205a0704a removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['cc74af59cb56']
+   37 ✓ op_revert                33aeb6f6c1f2
+   38 ✓ op_edit_save             v4_mod_22.py (rework)
+   39 ✓ op_feature_merge         f-308db8498c58<-af-m198290c1dc
+   40 ✓ op_revert                cae1dc15d0d7
+   41 ✓ op_edit_save             v4_mod_18.py (rework)
+   42 ✓ op_revert_keep_dependents 5eb8b18d2f8a
+class_with_methods seed 1045: 43 ops applied, 3 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-class_with_methods-seed1045.json

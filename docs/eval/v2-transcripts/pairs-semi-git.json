@@ -1,0 +1,83 @@
+{
+ "symbols_file": "symbols-semi-git.json",
+ "repo": "/private/tmp/v2/semi-git",
+ "coverage": {
+  "gt_symbols": 1686,
+  "known_to_sgt": 1225,
+  "fraction": 0.7266,
+  "sgt_members_by_record_kind": {
+   "substantive": 746,
+   "residue": 4834,
+   "anchor": 0
+  },
+  "gt_only_examples": [
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/ingest.py::_theirs_ideal",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/ingest.py::ingest",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/ingest.py::recover_base",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/land.py::_blocked",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/log.py::LogEntry",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/log.py::append",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/log.py::ideal_for_sha",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/log.py::log_ref",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/core/sync/log.py::read",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/store/gitbind.py::checkout_branch",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/store/gitbind.py::fetch",
+   ".claude/worktrees/d5-d1-d6-vcs-options/sgt/store/gitbind.py::fetch_ref"
+  ]
+ },
+ "clusters": {
+  "requests": 85,
+  "features": 46
+ },
+ "pairs": {
+  "universe_pairs": 749700,
+  "gt_positive": 43692,
+  "sgt_positive": 380378,
+  "agree": 27594,
+  "positive_base_rate": 0.0583
+ },
+ "primary": {
+  "precision": 0.0725,
+  "recall": 0.6316,
+  "f1": 0.1301,
+  "null_f1_all_one_feature": 0.1101,
+  "beats_null": true,
+  "file_baseline_f1": 0.1461,
+  "file_baseline_precision": 0.3995,
+  "file_baseline_recall": 0.0894,
+  "beats_file_baseline": false
+ },
+ "diagnostic_grounded_subset": {
+  "n_symbols": 118,
+  "requests": 47,
+  "features": 11,
+  "universe_pairs": 6903,
+  "gt_positive": 505,
+  "sgt_positive": 3357,
+  "positive_base_rate": 0.0732,
+  "null_f1_all_one_feature": 0.1363,
+  "precision": 0.1212,
+  "recall": 0.8059,
+  "f1": 0.2108
+ },
+ "diagnostic_intent_label_grouping": {
+  "n_symbols": 1225,
+  "requests": 85,
+  "features": 36,
+  "universe_pairs": 749700,
+  "gt_positive": 43692,
+  "sgt_positive": 382650,
+  "positive_base_rate": 0.0583,
+  "null_f1_all_one_feature": 0.1101,
+  "precision": 0.0779,
+  "recall": 0.682,
+  "f1": 0.1398
+ },
+ "secondary": {
+  "ari_unambiguous_subset": 0.0229,
+  "ari_n": 935,
+  "split_error_rate": 0.5294,
+  "median_features_per_request": 2,
+  "max_features_per_request": 13
+ }
+}

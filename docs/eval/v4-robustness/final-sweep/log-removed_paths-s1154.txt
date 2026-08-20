@@ -1,0 +1,37 @@
+    0 ✓ op_feature_split         f-53ba468f48d5
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_edit_save             survivor.py (rework)
+    3 ✓ op_revert_undo_probe     a12495ffb1df
+    4 ✓ op_undo                  
+    5 ✓ op_restore               f842abade606
+    6 ✓ op_undo                  
+    7 ✓ op_edit_save             survivor.py (rework)
+    8 ✓ op_restore               f842abade606
+    9 ✓ op_revert_keep_dependents 53ba468f48d5
+   10 ✓ op_edit_save             survivor.py (rework)
+   11 ✓ op_undo                  
+   12 ✓ op_undo                  
+   13 ✓ op_restore               329badc2c5f3
+   14 ✓ op_edit_save             survivor.py (rework)
+   15 ✓ op_edit_save             survivor.py (rework)
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_revert_keep_dependents 40e468219543
+   18 ✓ op_edit_save             v4_mod_16.py (rework)
+   19 ✓ op_undo                  
+   20 ✓ op_add_file              v4_mod_20.py
+   21 ✓ op_restore               bf100fa9e7f0
+   22 ✓ op_edit_save             survivor.py (rework)
+   23 ✓ op_revert_undo_probe     53ba468f48d5
+   24 ✓ op_restore               bf100fa9e7f0
+   25 ✓ op_restore               bf100fa9e7f0
+   26 ✓ op_revert_undo_probe     bd0a33191ded
+   27 ✓ op_revert_keep_dependents 5ccc73867abb
+   28 ✓ op_revert_keep_dependents ee1174ac338e
+   29 ✓ op_feature_merge         af-m5fec7e5af4<-af-me1a3701a91
+   30 ✓ op_edit_save             v4_mod_20.py (rework)
+   31 ✗ op_revert                5ccc73867abb
+        no_empty_phantom: blank tracked file(s) left behind: ['gone.py']
+   32 ✓ op_revert_restore_probe  e18e92011047
+   33 ✓ op_revert_keep_dependents e18e92011047
+   34 ✓ op_revert_restore_probe  e20811f5bd51
+removed_paths seed 1154: 35 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1154.json

@@ -1,0 +1,47 @@
+    0 ✓ op_edit_save             w.py (rework)
+    1 ✓ op_revert_keep_dependents 8ba1fc7a9102
+    2 ✓ op_revert                e16c25543289
+    3 ✗ op_revert                ef822afbd855
+        no_empty_phantom: blank tracked file(s) left behind: ['w.py']
+    4 ✓ op_restore               07c25fc34735
+    5 ✓ op_revert_keep_dependents e16c25543289
+    6 ✓ op_revert_restore_probe  e9df8e9536f0
+    7 ✓ op_revert                07c25fc34735
+    8 ✓ op_restore               07c25fc34735
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_edit_save             w.py (rework)
+   11 ✓ op_undo                  
+   12 ✓ op_revert                e16c25543289
+   13 · op_feature_rename        no features
+   14 ✗ op_revert_restore_probe  ef822afbd855
+        revert_restore_unexplained_drift: revert ef822afbd855 then restoring everything it removed left 1 file(s) different from before: ['w.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+   15 ✓ op_revert_restore_probe  8ba1fc7a9102
+   16 ✓ op_revert_undo_probe     8ba1fc7a9102
+   17 ✓ op_edit_save             w.py (add)
+   18 ✓ op_edit_save             w.py (rework)
+   19 ✓ op_undo                  
+   20 ✓ op_feature_rename        af-mb2c9963171
+   21 ✓ op_revert_keep_dependents 19a89f3255a9
+   22 ✓ op_feature_rename        af-mb2c9963171
+   23 ✓ op_edit_save             w.py (rework)
+   24 ✓ op_revert_keep_dependents 19a89f3255a9
+   25 ✓ op_edit_save             w.py (rework)
+   26 ✓ op_revert                fc3b5f8f9671
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_feature_merge         af-mba12d3e962<-af-mb2c9963171
+   29 ✓ op_revert_restore_probe  ef822afbd855
+   30 ✓ op_revert_keep_dependents c10615b63a9b
+   31 ✓ op_revert                c10615b63a9b
+   32 ✓ op_revert                8ba1fc7a9102
+   33 ✓ op_restore               07c25fc34735
+   34 ✓ op_edit_save             w.py (rework)
+   35 ✓ op_revert_keep_dependents e9df8e9536f0
+   36 ✓ op_revert                7fdb7631e59c
+   37 ✓ op_revert_restore_probe  7def9f1b6e72
+   38 ✓ op_revert                7cdb116c7c3d
+   39 ✓ op_edit_save             w.py (rework)
+   40 ✓ op_restore               c10615b63a9b
+   41 ✓ op_revert_keep_dependents 07c25fc34735
+   42 ✓ op_feature_split         af-maf91971643
+   43 ✓ op_edit_save             w.py (rework)
+property_pair seed 1026: 44 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-property_pair-seed1026.json

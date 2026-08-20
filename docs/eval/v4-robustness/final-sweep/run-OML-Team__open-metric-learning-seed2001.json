@@ -1,0 +1,874 @@
+{
+ "label": "OML-Team__open-metric-learning",
+ "seed": 2001,
+ "requested_ops": 50,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/OML-Team__open-metric-learning-s2001/OML-Team__open-metric-learning/OML-Team__open-metric-learning",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [
+  {
+   "oracle": "fsck_advisory_chain_gaps",
+   "detail": "112 new, 112 live: [\"CONTRIBUTING.md\", \"Makefile\", \"README.md\", \"ci/Dockerfile\"]",
+   "recoverability": false
+  },
+  {
+   "oracle": "fsck_tree",
+   "detail": "exit 1: 16 newly drifted path(s): ['oml/datasets/audios.py', 'oml/datasets/dataframe.py', 'oml/interfaces/datasets.py', 'oml/models/audio/ecapa_tdnn/external/model.py']",
+   "recoverability": false
+  },
+  {
+   "oracle": "orphan_layout",
+   "detail": "48 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/datasets/audios.py::__residue__::AudioBaseDataset', 'oml/datasets/audios.py::__residue__::AudioLabeledDataset', 'oml/datasets/audios.py::__residue__::AudioQueryGalleryDataset', 'oml/datasets/audios.py::__residue__::AudioQueryGalleryLabeledDataset']",
+   "recoverability": false
+  }
+ ],
+ "applied": 50,
+ "refused": 26,
+ "skipped": 2,
+ "with_violations": 8,
+ "tracebacks": 0,
+ "settles": 10,
+ "store_ops_seen": 6028,
+ "commits_seen": 1,
+ "script": [
+  "op_restore",
+  "op_revert",
+  "op_edit_save",
+  "op_undo",
+  "op_feature_merge",
+  "op_restore",
+  "op_restore",
+  "op_revert_restore_probe",
+  "op_undo",
+  "op_undo",
+  "op_add_file",
+  "op_edit_save",
+  "op_undo",
+  "op_edit_save",
+  "op_feature_merge",
+  "op_revert_keep_dependents",
+  "op_undo",
+  "op_revert",
+  "op_revert",
+  "op_feature_merge",
+  "op_revert_keep_dependents",
+  "op_add_file",
+  "op_revert_restore_probe",
+  "op_revert_keep_dependents",
+  "op_add_file",
+  "op_undo",
+  "op_edit_save",
+  "op_revert_undo_probe",
+  "op_revert_undo_probe",
+  "op_edit_save",
+  "op_add_file",
+  "op_feature_merge",
+  "op_revert",
+  "op_revert_undo_probe",
+  "op_undo",
+  "op_revert",
+  "op_undo",
+  "op_edit_save",
+  "op_revert",
+  "op_revert_undo_probe",
+  "op_feature_split",
+  "op_revert_restore_probe",
+  "op_revert",
+  "op_feature_merge",
+  "op_undo",
+  "op_feature_merge",
+  "op_revert_undo_probe",
+  "op_restore",
+  "op_revert",
+  "op_restore"
+ ],
+ "log": [
+  {
+   "op": "restore",
+   "target": "5b3976078262",
+   "rc": 1,
+   "out": "\u2717 [restore] 5b3976078262b557b14f07211b37c7f331bb3c26d08bfc8d3b7c61a5ffb39da6 \u2014 would include 0c38d25f (oml/utils/io.py::calc_folder_hash) without the edit(s) it was built on, refused (+13 more)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 186,
+   "i": 0,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "71 new, 133 live: [\"docs/readme/acknowledgments.md\", \"docs/source/postprocessing/home.rst\", \"docs/source/postprocessing/siamese_examples.rst\", \"docs/source/postprocessing/stir_paper.rst\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 32 newly drifted path(s): ['docs/readme/examples_source/extractor/train_val_img_txt.md', 'docs/source/postprocessing/postprocessing_home.rst', 'oml/datasets/images.py', 'oml/datasets/pairs.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "89 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/datasets/images.py::__residue__::ImageBaseDataset', 'oml/datasets/images.py::__residue__::ImageLabeledDataset', 'oml/datasets/images.py::__residue__::ImageQueryGalleryDataset', 'oml/datasets/images.py::__residue__::ImageQueryGalleryLabeledDataset']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert",
+   "target": "10c5b4db98c7",
+   "rc": 1,
+   "out": "est_text_models.py', 'tests/test_oml/test_retrieval_results/test_retrieval_results.py', 'tests/test_oml/test_utils/test_misc.py', 'tests/test_oml/test_utils/test_misc_torch.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 1,
+   "target_kind": "layout",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "780 new, 899 live: [\"docs/readme/contributing.md\", \"docs/readme/documentation.md\", \"docs/readme/examples.md\", \"docs/readme/examples_source/extractor/retrieval_usage.md\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 25 newly drifted path(s): ['ci/requirements_dev.txt', 'docs/readme/examples_source/zoo/models_usage.md', 'docs/source/postprocessing/pipelines.rst', 'docs/source/postprocessing/python_examples.rst']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "50 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/lightning/modules/extractor.py::__residue__::ExtractorModule', 'oml/lightning/modules/extractor.py::__residue__::ExtractorModuleDDP', 'oml/lightning/pipelines/parser.py::__residue__::parse_logger_from_config', 'oml/lightning/pipelines/predict.py::__residue__::extractor_prediction_pipeline']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "test_dict_to_tensorboard_converter.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 2,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "250 new, 1064 live: [\"docs/readme/extra_materials.md\", \"docs/readme/get_started_config.md\", \"docs/readme/python_examples.md\", \"docs/readme/usage_with_pml.md\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 30 newly drifted path(s): ['examples/datasets_converters/README.md', 'examples/extractor_cars/README.md', 'examples/extractor_cub/README.md', 'examples/extractor_inshop/README.md']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "34 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/postprocessing/train_extractor.py::__residue__::main_hydra', 'examples/postprocessing/train_postprocessor.py::__residue__::main_hydra', 'examples/postprocessing/validate_extractor.py::__residue__::main_hydra', 'examples/postprocessing/validate_postprocessor.py::__residue__::main_hydra']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_oml/test_utils/test_dict_to_tensorboard_converter.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 nothing to undo -- no recorded ideal edits\n",
+   "err": "",
+   "i": 3,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "98 new, 917 live: [\"examples/README.md\", \"examples/cars/configs/train_cars.yaml\", \"examples/cars/configs/val_cars.yaml\", \"examples/cars/convert_cars.py::build_cars196_df\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 38 newly drifted path(s): ['docs/source/contents/postprocessing.rst', 'docs/source/from_readme/contributing.rst', 'examples/inshop/configs/train_inshop_arcface.yaml', 'examples/inshop/configs/train_inshop_with_mlp.yaml']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "101 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/datasets/list_.py::__residue__::ListDataset', 'oml/ddp/utils.py::__residue__::get_world_size_safe', 'oml/ddp/utils.py::__residue__::is_main_process', 'oml/functional/label_smoothing.py::__residue__::label_smoothing']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-06e7dd8a1fe6<-f-00be50346047",
+   "rc": 0,
+   "out": "\u2713 merged f-00be50346047dc933e5365fb7dbc86692ac49d5c519878435817d78a7d90d2e7 into f-06e7dd8a1fe654a40841bb63001866c82723acee684d93dc0baad98b309f0739 (82 op(s), 36 member(s))\n",
+   "err": "",
+   "i": 4,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "111 new, 859 live: [\"examples/sop/configs/train_sop.yaml\", \"oml/analysis/__init__.py::__residue__::\\u0000HEAD\\u0000\", \"oml/analysis/visualisation.py::RetrievalVisualizer\", \"oml/analysis/visualisation.py::RetrievalVisualizer.__init__\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 41 newly drifted path(s): ['docs/readme/zoo.md', 'docs/source/datasets.rst', 'docs/source/ddp.rst', 'docs/source/examples/config_advanced.md']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "76 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/ddp/patching.py::__residue__::DDPSamplerWrapper', 'oml/ddp/patching.py::__residue__::_Sampler2Dataset', 'oml/ddp/patching.py::__residue__::extract_loader_parameters', 'oml/ddp/patching.py::__residue__::patch_dataloader_to_ddp']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "52076a715cd9",
+   "rc": 1,
+   "out": "\u2717 [restore] 52076a715cd9f35ff418249c62e72202c63a4d38c35fea44bcc5f25ef40d623e \u2014 would include 52076a71 (tests/test_oml/test_metrics/test_embedding_metrics.py::worst_case) without the edit(s) it was built on, refused (+1 more)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 169,
+   "i": 5,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "201 new, 951 live: [\"configs/criterion/triplet_plain.yaml\", \"configs/criterion/triplet_with_miner_and_memory.yaml\", \"configs/miner/all_triplets.yaml\", \"configs/miner/hard_cluster.yaml\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 29 newly drifted path(s): ['ci/Dockerfile', 'configs/optimizer/adamw.yaml', 'configs/sampler/sequential_balance.yaml', 'configs/sampler/sequential_category_balance.yaml']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "41 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/cub/convert_cub.py::__residue__::build_cub_df', 'examples/inshop/convert_inshop.py::__residue__::build_inshop_df', 'examples/sop/convert_sop.py::__residue__::build_sop_df', 'oml/lightning/entrypoints/train.py::__residue__::pl_train']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "0d6e1b90200e",
+   "rc": 1,
+   "out": "\u2717 [restore] 0d6e1b90200e61feec453ea520859f92eea707a093758f56457f65046a9ef526 \u2014 would include 0d6e1b90 (tests/test_runs/test_pipelines/test_pipelines.py::test_train) without the edit(s) it was built on, refused\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 1548,
+   "i": 6,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "27 new, 500 live: [\"oml/miners/inbactch_hard_cluster.py::__anchor__::HardClusterMiner\", \"oml/miners/inbactch_hard_cluster.py::__residue__::\\u0000HEAD\\u0000\", \"oml/miners/inbactch_hard_cluster.py::__residue__::AllTripletsMiner\", \"oml/miners/inbactch_hard_cluster.py::__residue__::HardTripletsMiner\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 79 newly drifted path(s): ['Makefile', 'README.md', 'configs/criterion/triplet.yaml', 'configs/criterion/triplet_with_miner.yaml']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "5 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['tests/test_oml/test_registry/test_registry.py::__residue__::test_registry', 'tests/test_oml/test_samplers/test_balanced_sampler.py::__residue__::check_balance_batch_sampler_epoch', 'tests/test_oml/test_samplers/test_balanced_sampler.py::__residue__::generate_valid_labels', 'tests/test_oml/test_samplers/test_balanced_sampler.py::__residue__::input_for_balance_batch_sampler']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "fcbf76c019a7",
+   "rc": 1,
+   "removed": 0,
+   "restored": 0,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "st_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "restore_out": [
+    "fcbf76c019a7: db1dfd56f40c986afb24c477400441ae3\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 1,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 7,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature merge\n",
+   "err": "",
+   "i": 8,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 nothing to undo -- no recorded ideal edits\n",
+   "err": "",
+   "i": 9,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_10.py",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 10,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "?? v4_mod_10.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "uns/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']"
+   }
+  },
+  {
+   "op": "edit_save",
+   "target": "__init__.py (add)",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 11,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M oml/models/vit_clip/external/__init__.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "uns/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']"
+   }
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 nothing to undo -- no recorded ideal edits\n",
+   "err": "",
+   "i": 12,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "run_retrieval_experiment_ddp.py (rework)",
+   "rc": 0,
+   "out": "\u2713 nothing to save -- no uncommitted ops\n",
+   "err": "",
+   "i": 13,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "1 new, 501 live: [\"tests/test_runs/test_ddp_cases/run_retrieval_experiment_ddp.py::create_pred_and_gt_labels\"]",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_runs/test_ddp_cases/run_retrieval_experiment_ddp.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 0,
+    "save_out": "\u2713 nothing to save -- no uncommitted ops"
+   }
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-097d850489c6<-f-00be50346047",
+   "rc": 0,
+   "out": "\u2713 merged f-00be50346047dc933e5365fb7dbc86692ac49d5c519878435817d78a7d90d2e7 into f-097d850489c6a04b761bf8fd5e7c6a07ef005c1a03b70e1495592ba8c0b68fed (74 op(s), 34 member(s))\n",
+   "err": "",
+   "i": 14,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "0f8212977dbb",
+   "rc": 0,
+   "out": "212977dbb0ed39c184be58dad9f91707097b0395081bf83e82bc7893425e4 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 47ad7ddee375\n    edit the working tree, then: sgt fulfill 47ad7ddee375 --from-tree\n",
+   "err": "",
+   "i": 15,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature merge\n",
+   "err": "",
+   "i": 16,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "3e0550be9115",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 17,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "cceeb9a40944",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 18,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-06c808f85df6<-f-246271cb2d1d",
+   "rc": 0,
+   "out": "\u2713 merged f-246271cb2d1d500fcb6993ea9bc4fbb7c52e2ed090eeef15914fd18f1594ce12 into f-06c808f85df6d9116c0c2efaae1c450a74b96ffa03efcdceb88136b6c9bb6aa8 (65 op(s), 48 member(s))\n",
+   "err": "",
+   "i": 19,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "bb46e4000251",
+   "rc": 0,
+   "out": "6e4000251363ca3ecfb7b67279d515762c22177887e035f1f77b99c7e6254 \u2014 removes 2 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 4ea2bf150ed3\n    edit the working tree, then: sgt fulfill 4ea2bf150ed3 --from-tree\n",
+   "err": "",
+   "i": 20,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_21.py",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 21,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "?? v4_mod_21.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "uns/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']"
+   }
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "f9474b59bf20",
+   "rc": 1,
+   "removed": 0,
+   "restored": 0,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "st_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "restore_out": [
+    "f9474b59bf20: 04c08fea4a2657d0599be34f431ebca43\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 1,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 22,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "b7f15a94e34c",
+   "rc": 0,
+   "out": "15a94e34cdc5c4fbd7c044670d8aaad9471fab5bd231fc6a7c3bf272f9f6a \u2014 removes 7 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 14d274c00baa\n    edit the working tree, then: sgt fulfill 14d274c00baa --from-tree\n",
+   "err": "",
+   "i": 23,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_24.py",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 24,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "?? v4_mod_24.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "uns/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']"
+   }
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature merge\n",
+   "err": "",
+   "i": 25,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "model.py (rework)",
+   "rc": 0,
+   "out": "\u2713 nothing to save -- no uncommitted ops\n",
+   "err": "",
+   "i": 26,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M oml/models/vit_unicom/external/model.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 0,
+    "save_out": "\u2713 nothing to save -- no uncommitted ops"
+   }
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "8071a6e2fb29",
+   "rc": 0,
+   "removed": 0,
+   "skipped": "revert offered no undo",
+   "out": "ed, so there is nothing to reverse.)\n  \u26a0 kept unchanged (the removal overlaps later edits \u2014 needs your edit): examples/inshop/configs/val_inshop.yaml\n",
+   "err": "",
+   "i": 27,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "2e0ffa86fbff",
+   "rc": 1,
+   "removed": 0,
+   "returned": true,
+   "out": "pelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n | \u2713 nothing to undo -- no recorded ideal edits\n",
+   "err": "",
+   "i": 28,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "test_accumulator.py (rework)",
+   "rc": 1,
+   "out": "\u2717 put() would overwrite uncommitted changes: ['tests/test_oml/test_metrics/test_accumulator.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)\n",
+   "err": "",
+   "i": 29,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_oml/test_metrics/test_accumulator.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "uncommitted changes: ['tests/test_oml/test_metrics/test_accumulator.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)"
+   }
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_30.py",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 30,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "?? v4_mod_30.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": "uns/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']"
+   }
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-06e7dd8a1fe6<-f-1120d04fdc2a",
+   "rc": 0,
+   "out": "\u2713 merged f-1120d04fdc2ad4fee519a82e2565f5228966a1d4cf99e699ee16f4d9d7645a97 into f-06e7dd8a1fe654a40841bb63001866c82723acee684d93dc0baad98b309f0739 (28 op(s), 20 member(s))\n",
+   "err": "",
+   "i": 31,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "a23aa060e3d4",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 32,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "82fe40e4b650",
+   "rc": 1,
+   "removed": 0,
+   "returned": true,
+   "out": "pelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n | \u2713 undo: reverted feature merge\n",
+   "err": "",
+   "i": 33,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 nothing to undo -- no recorded ideal edits\n",
+   "err": "",
+   "i": 34,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "811ac78b424c",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 35,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 nothing to undo -- no recorded ideal edits\n",
+   "err": "",
+   "i": 36,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "test_metrics_reduce.py (rework)",
+   "rc": 0,
+   "out": "\u2713 nothing to save -- no uncommitted ops\n",
+   "err": "",
+   "i": 37,
+   "target_kind": null,
+   "violations": [],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_oml/test_functional/test_metrics/test_metrics_reduce.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 0,
+    "save_out": "\u2713 nothing to save -- no uncommitted ops"
+   }
+  },
+  {
+   "op": "revert",
+   "target": "d75795870f17",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 38,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "a7615a9e9094",
+   "rc": 0,
+   "removed": 0,
+   "skipped": "revert offered no undo",
+   "out": "orded, so there is nothing to reverse.)\n  \u26a0 kept unchanged (the removal overlaps later edits \u2014 needs your edit): oml/__init__.py::__residue__::\u0000HEAD\u0000\n",
+   "err": "",
+   "i": 39,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-0bb8120dca0e",
+   "rc": 0,
+   "out": "\u2713 split f-0bb8120dca0e8da68c0f0a709af14b3e3ba0516bfca1850f719f0462846113c2 \u2192 f-0bb8120dca0e8da68c0f0a709af14b3e3ba0516bfca1850f719f0462846113c2 + f-mdfd680256b23ca5c732e5145e28335566011a6740996f0e7d33d21a186cfef42\n",
+   "err": "",
+   "i": 40,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "050882dc449e",
+   "rc": 1,
+   "removed": 0,
+   "restored": 0,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "st_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "restore_out": [
+    "050882dc449e: b120c41e4890e60a4f06f4ae6ecc21536\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 1,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 41,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "919befed807f",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 42,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-1eaa84bada0d<-f-0899c727547b",
+   "rc": 0,
+   "out": "\u2713 merged f-0899c727547bd8abab6aea67c8b56f3e79a3efeee6dd70b3b92f882a9990bf6c into f-1eaa84bada0d2e6ef88abb9682acdbaff763713f44d3225c1651809e41052d18 (30 op(s), 20 member(s))\n",
+   "err": "",
+   "i": 43,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature merge\n",
+   "err": "",
+   "i": 44,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-03f6cabf584b<-f-14e4b6bbe88a",
+   "rc": 0,
+   "out": "\u2713 merged f-14e4b6bbe88abd6ecfecd4b54e616fda3e434aab762e5964854a9d561de2271b into f-03f6cabf584b359d0a30fc6ada4068ee128848c4c9b406cb059c31b080bc20e4 (44 op(s), 30 member(s))\n",
+   "err": "",
+   "i": 45,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "a79e48c858df",
+   "rc": 1,
+   "removed": 0,
+   "returned": true,
+   "out": "pelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n | \u2713 undo: reverted feature merge\n",
+   "err": "",
+   "i": 46,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "5936b92d32dc",
+   "rc": 1,
+   "out": "\u2717 [restore] 5936b92d32dcc8c4bfb75a0b785e010811295d5d9305ae8e9a48374022d3e1ed \u2014 would leave two live versions of oml/datasets/triplet.py::TriDataset.__getitem__: 2fa0c49e and 61c4278c both claim the same next version, refused\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 47,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "809a4e38d0cd",
+   "rc": 1,
+   "out": "ml/test_utils/test_misc_torch.py', 'tests/test_runs/test_code_from_markdown.py', 'tests/test_runs/test_pipelines/predict.py', 'tests/test_runs/test_pipelines/test_pipelines.py', 'tests/test_runs/test_pipelines/train_with_sequence.py', 'tests/test_runs/test_pipelines/validate2.py', 'tests/utils.py']\n",
+   "err": "",
+   "i": 48,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "9705c18de4f7",
+   "rc": 1,
+   "out": "\u2717 [restore] 9705c18de4f763c2c5e397a57d8da545cda0b4c7c18d933ac74d3e51f10dbffd \u2014 would leave two live versions of oml/lightning/entrypoints/train_postprocessor.py::pl_train_postprocessor: 0378bfd9 and 5cb466dc both claim the same next version, refused (+2 more symbol(s))\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 49,
+   "target_kind": "entity",
+   "violations": []
+  }
+ ]
+}

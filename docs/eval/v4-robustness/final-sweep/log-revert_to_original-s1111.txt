@@ -1,0 +1,28 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_revert                f19ec32b02e9
+    2 ✓ op_undo                  
+    3 ✓ op_revert                f82434e5639a
+    4 ✓ op_edit_save             a.py (rework)
+    5 ✓ op_restore               f82434e5639a
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_feature_rename        f-126303a70181
+    8 ✓ op_revert                301e32de9770
+    9 ✓ op_undo                  
+   10 ✓ op_revert_keep_dependents f92d799c965d
+   11 ✓ op_undo                  
+   12 ✓ op_feature_split         f-126303a70181
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_revert                5f6434c626c4
+   15 ✓ op_edit_save             v4_mod_13.py (rework)
+   16 ✓ op_restore               f82434e5639a
+   17 ✓ op_revert                66521c9c8059
+   18 ✓ op_revert                ee1211142a8b
+   19 ✓ op_edit_save             v4_mod_13.py (rework)
+   20 ✓ op_undo                  
+   21 ✓ op_restore               f19ec32b02e9
+   22 ✓ op_feature_split         af-m6e31d80f97
+   23 ✓ op_feature_rename        f-m1a57a51d982
+   24 ✓ op_edit_save             a.py (rework)
+   25 ✓ op_restore               19e4d531a38b
+   26 ✓ op_edit_save             v4_mod_13.py (rework)
+revert_to_original seed 1111: 27 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-revert_to_original-seed1111.json

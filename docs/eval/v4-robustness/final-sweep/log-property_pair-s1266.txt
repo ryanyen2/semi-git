@@ -1,0 +1,40 @@
+    0 ✓ op_feature_split         f-7def9f1b6e72
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_revert_restore_probe  146eebdde27a
+    3 ✓ op_revert                127c7f593a49
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_revert_undo_probe     db0e4b75f728
+    6 ✓ op_revert_restore_probe  8958d91742a1
+    7 ✓ op_edit_save             w.py (rework)
+    8 ✓ op_revert_undo_probe     db0e4b75f728
+    9 ✓ op_feature_merge         af-m178f40e40d<-af-md2dff31351
+   10 ✓ op_undo                  
+   11 ✓ op_restore               127c7f593a49
+   12 · op_restore               nothing addressable excluded
+   13 ✗ op_revert_restore_probe  e16c25543289
+        restore_resurrects_layout: restoring what revert e16c25543289 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['ef822afbd855']
+   14 ✓ op_undo                  
+   15 ✓ op_add_file              v4_mod_15.py
+   16 ✓ op_edit_save             v4_mod_1.py (rework)
+   17 ✓ op_feature_split         af-m178f40e40d
+   18 ✓ op_revert_undo_probe     0442c989d468
+   19 ✓ op_feature_merge         af-m4ea7d37230<-af-m90fe05fe07
+   20 ✓ op_restore               9fa73c27eb73
+   21 ✓ op_revert_undo_probe     e9df8e9536f0
+   22 ✓ op_feature_split         af-m4ea7d37230
+   23 · op_restore               nothing addressable excluded
+   24 ✓ op_undo                  
+   25 · op_restore               nothing addressable excluded
+   26 ✓ op_feature_split         af-m4ea7d37230
+   27 · op_restore               nothing addressable excluded
+   28 ✓ op_revert                a51880e1ebdd
+   29 · op_restore               nothing addressable excluded
+   30 ✓ op_revert                f9169952772e
+   31 ✓ op_revert                e9df8e9536f0
+   32 ✓ op_feature_rename        f-3456efddc820
+   33 ✓ op_edit_save             w.py (rework)
+   34 · op_restore               nothing addressable excluded
+   35 ✓ op_revert_undo_probe     db0e4b75f728
+   36 ✓ op_feature_merge         af-md2dff31351<-af-m178f40e40d
+   37 ✓ op_add_file              v4_mod_37.py
+property_pair seed 1266: 38 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-property_pair-seed1266.json

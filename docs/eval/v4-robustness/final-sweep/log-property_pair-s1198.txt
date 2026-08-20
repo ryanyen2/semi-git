@@ -1,0 +1,32 @@
+    0 ✓ op_revert                e16c25543289
+    1 ✗ op_revert                ef822afbd855
+        no_empty_phantom: blank tracked file(s) left behind: ['w.py']
+    2 ✓ op_edit_save             w.py (add)
+    3 · op_feature_merge         1 feature(s)
+    4 ✓ op_revert_restore_probe  32b3d7ee6e9f
+    5 ✓ op_edit_save             w.py (rework)
+    6 ✓ op_revert_keep_dependents 6f095a805d04
+    7 ✓ op_edit_save             w.py (rework)
+    8 ✓ op_revert                6f095a805d04
+    9 ✓ op_restore               e16c25543289
+   10 · op_restore               nothing addressable excluded
+   11 · op_restore               nothing addressable excluded
+   12 ✓ op_revert                dcf753a81677
+   13 · op_restore               nothing addressable excluded
+   14 ✓ op_feature_rename        f-08c6e467e840
+   15 ✓ op_edit_save             w.py (rework)
+   16 · op_restore               nothing addressable excluded
+   17 ✓ op_edit_save             w.py (rework)
+   18 ✓ op_revert_undo_probe     8ba1fc7a9102
+   19 ✓ op_revert_restore_probe  ab2db4d5a5f6
+   20 ✓ op_edit_save             w.py (rework)
+   21 ✓ op_undo                  
+   22 ✓ op_revert_keep_dependents 7def9f1b6e72
+   23 ✓ op_edit_save             w.py (rework)
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_feature_merge         af-m178f40e40d<-f-08c6e467e840
+   26 ✓ op_undo                  
+   27 ✓ op_revert_keep_dependents 7def9f1b6e72
+   28 ✓ op_feature_rename        af-m178f40e40d
+   29 ✓ op_restore               3fea6f76e91f
+property_pair seed 1198: 30 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-property_pair-seed1198.json

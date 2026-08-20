@@ -1,0 +1,25 @@
+    0 ✓ op_revert_keep_dependents a08a015717cf
+    1 ✓ op_revert                bf4a507b207e
+    2 ✓ op_restore               bf4a507b207e
+    3 ✓ op_revert                bf4a507b207e
+    4 · op_feature_split         no features
+    5 · op_edit_save             no tracked .py file
+    6 · op_edit_save             no tracked .py file
+    7 ✓ op_restore               bf4a507b207e
+    8 · op_edit_save             a.py is not utf-8
+    9 · op_feature_rename        no features
+   10 ✓ op_revert                126303a70181
+   11 · op_feature_rename        no features
+   12 · op_restore               nothing addressable excluded
+   13 ✓ op_revert                66521c9c8059
+   14 · op_restore               nothing addressable excluded
+   15 ✓ op_revert                a08a015717cf
+   16 · op_feature_rename        no features
+   17 · op_restore               nothing addressable excluded
+   18 · op_edit_save             a.py is not utf-8
+   19 ✗ op_revert_restore_probe  bf4a507b207e
+        restore_resurrects_layout: restoring what revert bf4a507b207e removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['126303a70181', 'a08a015717cf']
+   20 ✓ op_revert_undo_probe     126303a70181
+   21 · op_feature_split         no features
+   22 ✓ op_revert                bf4a507b207e
+latin1_encoded seed 1254: 23 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1254.json

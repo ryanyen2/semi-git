@@ -1,0 +1,48 @@
+    0 ✓ op_revert                fa19a62eb22c
+    1 ✓ op_edit_save             slugify.py (rework)
+    2 ✓ op_undo                  
+    3 ✓ op_revert_undo_probe     83071043df5f
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_undo                  
+    6 ✗ op_revert_restore_probe  bac2657449ec
+        restore_resurrects_layout: restoring what revert bac2657449ec removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['fa19a62eb22c']
+    7 ✓ op_revert_undo_probe     94681116b737
+    8 ✓ op_feature_split         f-23cdd075582d
+    9 ✓ op_feature_merge         f-746c67188554<-f-23cdd075582d
+   10 ✓ op_revert_restore_probe  bac2657449ec
+   11 ✓ op_revert_restore_probe  23cdd075582d
+   12 ✓ op_edit_save             slugify.py (rework)
+   13 ✓ op_revert                fa19a62eb22c
+   14 ✓ op_revert                94681116b737
+   15 ✓ op_edit_save             slugify.py (rework)
+   16 ✓ op_restore               3456efddc820
+   17 ✓ op_edit_save             slugify.py (rework)
+   18 ✓ op_feature_rename        af-m4ea7d37230
+   19 ✓ op_revert                8958d91742a1
+   20 ✓ op_edit_save             v4_mod_4.py (rework)
+   21 ✓ op_revert                db0e4b75f728
+   22 ✓ op_feature_split         f-746c67188554
+   23 ✗ op_revert_restore_probe  bac2657449ec
+        restore_resurrects_layout: restoring what revert bac2657449ec removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['9028aff2d7f3', '94681116b737']
+   24 · op_revert_undo_probe     revert offered no undo
+   25 ✓ op_feature_rename        f-2a78745d2593
+   26 ✓ op_feature_merge         f-746c67188554<-af-m4ea7d37230
+   27 ✓ op_revert_keep_dependents 4c45d06dcfad
+   28 ✓ op_revert                9028aff2d7f3
+   29 ✓ op_add_file              v4_mod_29.py
+   30 ✓ op_edit_save             slugify.py (rework)
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_edit_save             v4_mod_4.py (rework)
+   33 ✓ op_feature_merge         f-746c67188554<-f-2a78745d2593
+   34 ✓ op_undo                  
+   35 ✓ op_add_file              v4_mod_35.py
+   36 ✓ op_revert                05092eeb6e95
+   37 ✓ op_restore               746c67188554
+   38 ✓ op_revert                41ee7a3682db
+   39 ✓ op_restore               746c67188554
+   40 ✓ op_revert_keep_dependents 2a78745d2593
+   41 ✓ op_undo                  
+   42 ✓ op_feature_split         af-m198290c1dc
+   43 ✓ op_feature_rename        f-2a78745d2593
+   44 ✓ op_revert                41ee7a3682db
+diverged_chain seed 1076: 45 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-diverged_chain-seed1076.json

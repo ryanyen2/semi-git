@@ -1,0 +1,56 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_feature_rename        f-126303a70181
+    2 · op_restore               nothing addressable excluded
+    3 ✓ op_feature_rename        f-126303a70181
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_feature_split         f-126303a70181
+    6 ✓ op_revert                126303a70181
+    7 ✓ op_undo                  
+    8 · op_restore               nothing addressable excluded
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_revert                f19ec32b02e9
+   11 · op_revert_undo_probe     revert offered no undo
+   12 ✓ op_revert_undo_probe     66521c9c8059
+   13 ✓ op_undo                  
+   14 · op_restore               nothing addressable excluded
+   15 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   16 ✗ op_revert_restore_probe  ee1211142a8b
+        restore_resurrects_layout: restoring what revert ee1211142a8b removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']
+   17 ✓ op_revert                f82434e5639a
+   18 ✓ op_edit_save             a.py (rework)
+   19 ✓ op_add_file              v4_mod_19.py
+   20 ✓ op_revert                750d60975bcc
+   21 ✓ op_edit_save             v4_mod_19.py (rework)
+   22 ✓ op_revert_keep_dependents f19ec32b02e9
+   23 ✓ op_feature_rename        f-126303a70181
+   24 ✓ op_restore               2a3ae949b75a
+   25 ✓ op_revert_keep_dependents e8615f03cab2
+   26 ✓ op_revert                ee1211142a8b
+   27 ✓ op_revert_undo_probe     6b78435194ea
+   28 ✗ op_revert_restore_probe  66521c9c8059
+        revert_restore_unexplained_drift: revert 66521c9c8059 then restoring everything it removed left 1 file(s) different from before: ['a.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['a.py']
+   29 ✓ op_restore               f19ec32b02e9
+   30 ✓ op_revert                ee1211142a8b
+   31 ✓ op_feature_merge         af-maea3dce2de<-f-126303a70181
+   32 ✓ op_undo                  
+   33 ✓ op_revert_undo_probe     d01add51746d
+   34 ✓ op_revert                d01add51746d
+   35 ✓ op_restore               f82434e5639a
+   36 ✓ op_revert_keep_dependents 0bf8f47dd419
+   37 ✓ op_revert                f19ec32b02e9
+   38 · op_revert_undo_probe     revert offered no undo
+   39 ✓ op_restore               d01add51746d
+   40 ✓ op_feature_split         f-126303a70181
+   41 ✓ op_revert_undo_probe     126303a70181
+   42 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   43 ✓ op_undo                  
+   44 ✓ op_revert                ee1211142a8b
+   45 ✓ op_revert_undo_probe     d01add51746d
+   46 ✓ op_revert_undo_probe     0bf8f47dd419
+   47 ✓ op_add_file              v4_mod_47.py
+   48 ✓ op_feature_merge         f-126303a70181<-af-m9afbaf9ce2
+   49 ✓ op_restore               2a3ae949b75a
+revert_to_original seed 1005: 50 ops applied, 2 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-revert_to_original-seed1005.json
