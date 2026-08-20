@@ -74,3 +74,6 @@ web/public/bundles/
 # Firebase CLI noise
 firebase-debug.log
 firestore-debug.log
+
+# pdflatex run from the repo root instead of paper/ leaves this behind
+texput.log
