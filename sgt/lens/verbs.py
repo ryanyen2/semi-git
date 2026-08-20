@@ -533,6 +533,18 @@ def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, st
         ]
         if len(hits) == 1:
             feature_id = hits[0]
+    if feature_id is None and ref:
+        # A unique *label* prefix, for the same reason ids accept one. Labels get a
+        # disambiguating suffix when two features share a name -- "Waitlist Promotion" is stored as
+        # "Waitlist Promotion · notify.py" -- so a user typing the part they were shown, and the
+        # part that means anything to them, matched nothing. Ambiguity still declines to guess.
+        needle = ref.casefold()
+        hits = [
+            nid for nid, nd in nodes.items()
+            if not nd["children"] and str(nd.get("label", "")).casefold().startswith(needle)
+        ]
+        if len(hits) == 1:
+            feature_id = hits[0]
     if feature_id is None:
         return None
     op_ids = frozenset(op for op, leaf in result["op_leaf"].items() if leaf == feature_id)

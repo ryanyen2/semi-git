@@ -1,0 +1,209 @@
+{
+  "version": "answer-key-v2",
+  "_note": "Load this into the study console under Setup. It is deliberately not compiled into the website: a participant with devtools open must not be able to read the answers out of the JavaScript. Sources: docs/study/testbed-spec.md and docs/study/build-log-*.md.",
+  "episodes": [
+    {
+      "id": "E1",
+      "shape": "scaffold",
+      "author": "agent",
+      "coursecraft": "models (Course, Section, Student), JSON store, CLI skeleton",
+      "confplan": "models (Talk, Session, Attendee), JSON store, CLI skeleton"
+    },
+    {
+      "id": "E2",
+      "shape": "model feature",
+      "author": "agent",
+      "coursecraft": "rooms and weekly time-slot grid",
+      "confplan": "rooms and two-day slot grid"
+    },
+    {
+      "id": "E3",
+      "shape": "feature",
+      "author": "human",
+      "coursecraft": "add and list courses and sections",
+      "confplan": "add and list talks and sessions"
+    },
+    {
+      "id": "E4",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "student enrollment command",
+      "confplan": "attendee registration command"
+    },
+    {
+      "id": "E5",
+      "shape": "bugfix",
+      "author": "human",
+      "coursecraft": "id reuse after delete corrupts the store",
+      "confplan": "id reuse after delete corrupts the store"
+    },
+    {
+      "id": "E6",
+      "shape": "feature",
+      "author": "human",
+      "coursecraft": "section capacity limits",
+      "confplan": "session capacity limits"
+    },
+    {
+      "id": "E7",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "time-conflict detection on enroll",
+      "confplan": "clash detection on register"
+    },
+    {
+      "id": "E8",
+      "shape": "tangled save",
+      "author": "human",
+      "coursecraft": "course search and filter, plus an unrelated date-parsing fix in the same save",
+      "confplan": "talk search and filter, plus the same unrelated fix"
+    },
+    {
+      "id": "E9",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "prerequisite enforcement",
+      "confplan": "series-dependency enforcement"
+    },
+    {
+      "id": "E10",
+      "shape": "refactor",
+      "author": "agent",
+      "coursecraft": "extract storage into a repository class",
+      "confplan": "extract storage into a repository class"
+    },
+    {
+      "id": "E11",
+      "shape": "feature F",
+      "author": "agent",
+      "coursecraft": "waitlist: join when a section is full",
+      "confplan": "waitlist: join when a session is full"
+    },
+    {
+      "id": "E12",
+      "shape": "dependent of F",
+      "author": "agent",
+      "coursecraft": "auto-promotion when a seat frees",
+      "confplan": "auto-promotion when a seat frees"
+    },
+    {
+      "id": "E13",
+      "shape": "interleaved keeper fix",
+      "author": "human",
+      "coursecraft": "back-to-back slots wrongly flagged as conflicts",
+      "confplan": "adjacent slots wrongly flagged as clashes"
+    },
+    {
+      "id": "E14",
+      "shape": "feature touching F",
+      "author": "agent",
+      "coursecraft": "drop command, with a cascade that triggers promotion",
+      "confplan": "unregister command, same cascade"
+    },
+    {
+      "id": "E15",
+      "shape": "tangled keeper",
+      "author": "human",
+      "coursecraft": "timetable export (markdown and csv), co-saved with a small waitlist message fix",
+      "confplan": "program export, co-saved with the same small fix"
+    },
+    {
+      "id": "E16",
+      "shape": "abandoned experiment",
+      "author": "agent",
+      "coursecraft": "priority enrollment for seniors, then reverted",
+      "confplan": "speaker-priority registration, then reverted"
+    },
+    {
+      "id": "E17",
+      "shape": "regression refactor",
+      "author": "agent",
+      "coursecraft": "normalize slot comparison for cross-listed sections; silently makes boundary-touching slots overlap",
+      "confplan": "normalize slot comparison across rooms; the same silent change"
+    },
+    {
+      "id": "E18",
+      "shape": "feature",
+      "author": "agent",
+      "coursecraft": "instructor schedule view",
+      "confplan": "speaker schedule view"
+    },
+    {
+      "id": "E19",
+      "shape": "feature",
+      "author": "human",
+      "coursecraft": "enrollment statistics report",
+      "confplan": "registration statistics report"
+    },
+    {
+      "id": "E20",
+      "shape": "bugfix",
+      "author": "human",
+      "coursecraft": "export escaping bug",
+      "confplan": "export escaping bug"
+    },
+    {
+      "id": "E21",
+      "shape": "dependent of F",
+      "author": "agent",
+      "coursecraft": "waitlist notification digest built on promotion events",
+      "confplan": "waitlist notification digest built on promotion events"
+    },
+    {
+      "id": "E22",
+      "shape": "polish",
+      "author": "human",
+      "coursecraft": "README and CLI help text",
+      "confplan": "README and CLI help text"
+    }
+  ],
+  "requestKeys": {
+    "r1": {
+      "coursecraft": "E8. git 9f5f7e5 / sgt 079fa49, authored 2026-07-10. Search plus a one-line day-parsing fix (day.capitalize() in slots.parse_slot) landed together, in a change whose message mentions only search.",
+      "confplan": "E8. git d0711a1 / sgt 7ede859 \"add talk search\", authored 2026-07-10. Search plus silent lowercase-day leniency in slots.parse_slot.",
+      "_choicesNote": "Indexes into the option arrays in web/src/study/tasks.ts, which are the same in both projects. q1=0 one piece of work: both arrived in the same change. q2=1 the week of 6 July: 2026-07-10 is the Friday of the week beginning Monday 6 July. q3=1 the day-name change: the same change adds day.capitalize() to parse_slot.",
+      "choices": {
+        "coursecraft": {
+          "q1": 0,
+          "q2": 1,
+          "q3": 1
+        },
+        "confplan": {
+          "q1": 0,
+          "q2": 1,
+          "q3": 1
+        }
+      }
+    },
+    "r2": {
+      "coursecraft": "E11 waitlist, with E12 promotion, E14 drop cascade and E21 notices on top. E13 and E15 are interleaved keepers and must survive.",
+      "confplan": "E11 waitlist (f85493e + 1911a8f), E12 promotion (d4051d6), cancel cascade (f8de0fd), notices (b4e06f2). Keepers: de52f62 back-to-back, 4f9b974 agenda export."
+    },
+    "r3": {
+      "coursecraft": "E14 drop command comes back, without the promotion cascade.",
+      "confplan": "E14 unregister command comes back, without the promotion cascade."
+    }
+  },
+  "_rubricsNote": "r1 has no rubric on purpose. Its three questions are closed, so they are scored from `requestKeys.r1.choices` by the analysis and there is nothing left for a person to judge; a rubric here would have the facilitator grade by hand exactly what the key already grades.",
+  "rubrics": {
+    "r2": [
+      {
+        "id": "gone",
+        "label": "Waitlist gone: joining, promotion and notices all removed",
+        "points": 1
+      },
+      {
+        "id": "intact",
+        "label": "Everything else still passes, and the app still starts",
+        "points": 1
+      }
+    ],
+    "r3": [
+      {
+        "id": "drop",
+        "label": "Dropping works again, with no promotion when a seat frees",
+        "points": 1
+      }
+    ]
+  }
+}

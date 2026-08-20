@@ -53,11 +53,16 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
     const verb = res.verb ? res.verb[0].toUpperCase() + res.verb.slice(1) : "Edit";
     const paths = Object.keys(res.files);
     if (paths.length === 0) {
-      vscode.window.showInformationMessage(`${verb} ${res.target}: no file changes.`);
+      vscode.window.showInformationMessage(`${verb} ${res.target}: would change no files.`);
       return 0;
     }
     const token = String(this.seq++);
-    const label = `${verb}: ${res.target}`;
+    // The tab title has to say which of the two things this is. It used to read
+    // `test_waitlist.py — Revert: f-10462e17…`, which a pilot participant read as a receipt for a
+    // revert that had already happened -- it is in fact the proposal, opened *before* the confirm.
+    // "PREVIEW" leads the label because a tab strip truncates the tail, and it stays true after
+    // the user applies (it is still the preview of that edit) where a "not applied yet" would not.
+    const label = `PREVIEW ${verb}: ${res.target}`;
     for (const path of paths) {
       const left = this.uri(token, "current", path);
       const right = this.uri(token, "predicted", path);

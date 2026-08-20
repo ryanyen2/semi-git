@@ -29,6 +29,7 @@ import * as vscode from "vscode";
 import { colorForNode } from "./color";
 import { FoldFrontier } from "./sgt";
 import { Store } from "./store";
+import { SelectionView } from "./types";
 
 export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
@@ -41,8 +42,43 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       store.onDidChange(() => void this.pushState()),
       // Identity colors are theme-aware (color.ts's OKLCH lightness shifts light<->dark), so a
       // theme switch needs the rail's node colors recomputed -- same trigger blame.ts uses.
-      vscode.window.onDidChangeActiveColorTheme(() => void this.pushState())
+      vscode.window.onDidChangeActiveColorTheme(() => void this.pushState()),
+      this.watchAgentActions()
     );
+  }
+
+  /**
+   * Paint what an agent is doing, while it does it.
+   *
+   * The rail already knows how to show the consequence of a revert or a restore
+   * before it happens -- that is the hover preview. It just had no way to hear
+   * about one it did not start. The MCP server writes the verb and target to
+   * `.sgt/local/pending_action.json` around every ideal-edit tool call, so an
+   * agent asked to "take the waitlist out" produces the same ghost paint the
+   * participant would have got by hovering it themselves.
+   *
+   * Watching a file rather than holding a socket, because the agent and the
+   * editor are separate processes that start and stop independently, and a
+   * missed hint is worth nothing while a wedged connection would cost the rail.
+   */
+  private watchAgentActions(): vscode.Disposable {
+    const watcher = vscode.workspace.createFileSystemWatcher("**/.sgt/local/pending_action.json");
+    const read = async (uri: vscode.Uri) => {
+      try {
+        const raw = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString("utf8");
+        const action = JSON.parse(raw) as { verb?: string; ref?: string; state?: string; ts?: number };
+        if (!action.verb || !action.ref) return;
+        // A note left by a previous session is not news. The rail should never
+        // open showing a revert somebody's agent ran yesterday.
+        if (typeof action.ts === "number" && Date.now() - action.ts > 60_000) return;
+        void this.view?.webview.postMessage({ type: "agentAction", ...action });
+      } catch {
+        // A half-written file: the next event carries the whole thing.
+      }
+    };
+    watcher.onDidCreate(read);
+    watcher.onDidChange(read);
+    return watcher;
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -92,6 +128,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         <span class="plans-label">Plans 0/0</span>
       </button>
       <span id="driftChip" class="drift-chip" hidden></span>
+    </div>
+    <div class="tb-zone tb-find">
+      <input id="findBox" class="find-box" type="search" spellcheck="false"
+             placeholder="find… e.g. the thing that formats dates"
+             title="describe what you are looking for; Enter to search, Esc to clear" />
+      <div id="findResults" class="find-results" hidden></div>
     </div>
     <div id="titlebarActions" class="titlebar-actions">
       <button id="inspectorToggle" title="Hide detail panel">◧</button>
@@ -196,7 +238,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.revertSelection(msg.refs);
         return;
       case "revertCheckpoint":
-        await this.revertCheckpoint(msg.ref, msg.label);
+        await this.revertCheckpoint(msg.ref);
         return;
       case "applyVerb":
         await this.apply(msg.verb, msg.args);
@@ -209,6 +251,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case "requestFold":
         await this.requestFold(msg.featureId, msg.ref, msg.seq);
+        return;
+      case "find":
+        await this.find(msg.query, msg.seq);
         return;
       case "scrubPlayhead":
         await this.scrubPlayhead(msg.commitIndex, msg.seq);
@@ -287,13 +332,30 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // current state (mine-on-contact), so reverting them sequentially is correct, and we STOP on the
   // first refusal (e.g. a fork) rather than pressing on into an inconsistent partial. One confirm
   // up front covers the batch.
+  //
+  // That confirm used to be a bare count of the rows the user had ticked, which is the one number
+  // they already knew. Because there is no set-revert to `--emit`, the honest feedforward for the
+  // batch is the union closure `sgt feature select` reports -- how many edits actually go once
+  // dependencies are pulled in, which files get rewritten, and whose other work is dragged along --
+  // computed before the first mutation, when it is still all true.
   private async revertSelection(refs: string[]): Promise<void> {
     if (!refs?.length) {
       return;
     }
+    let selection: SelectionView;
+    try {
+      selection = await this.store.sgt.select(refs);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    if (!selection.ok) {
+      vscode.window.showWarningMessage(selection.message || `Cannot revert ${refs.length} selected feature(s).`);
+      return;
+    }
     const ok = await vscode.window.showWarningMessage(
-      `Revert ${refs.length} selected feature(s)? Each is reverted and committed in turn; stops if one refuses.`,
-      { modal: true },
+      `Revert ${refs.length} selected feature(s)?`,
+      { modal: true, detail: this.selectionConsequence(refs, selection) },
       "Revert all"
     );
     if (ok !== "Revert all") {
@@ -302,7 +364,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     let done = 0;
     for (const ref of refs) {
       try {
-        await this.store.sgt.mutate(["revert", ref]);
+        await this.store.sgt.confirmedMutate(["revert", ref]);
         done++;
       } catch (e: any) {
         this.store.invalidate();
@@ -314,29 +376,45 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     vscode.window.showInformationMessage(`Reverted ${done} feature(s).`);
   }
 
+  /**
+   * The consequence block the multi-select revert confirm carries as its `detail`.
+   *
+   * `pulled` is the part a count can never show: a feature the user did not tick whose ops come
+   * out anyway because the ticked ones are built on them. It is also the answer to "which other
+   * features are unaffected" -- everything not named here.
+   */
+  private selectionConsequence(refs: string[], sel: SelectionView): string {
+    const cap = (xs: string[], n = 6) =>
+      xs.slice(0, n).join(", ") + (xs.length > n ? `, +${xs.length - n} more` : "");
+    const pulled = sel.pulled.filter((p) => p.feature_id && !refs.includes(p.feature_id));
+    const pulledOps = pulled.reduce((n, p) => n + p.op_count, 0);
+    return [
+      `${sel.direct_op_count} edit(s) selected; ${sel.closure_op_count} come out once what depends on them is included.`,
+      sel.files.length ? `Rewrites ${sel.files.length} file(s): ${cap(sel.files)}` : "No file changes.",
+      pulled.length
+        ? `Drags in ${pulledOps} edit(s) from ${pulled.length} other feature(s) you did not select.`
+        : "No other feature's work is dragged in.",
+      "Nothing is applied yet. Each feature is then reverted and committed in turn, stopping if one refuses.",
+    ].join("\n");
+  }
+
   // Rewind a single feature-scoped checkpoint (an intent segment). `ref` is `<feature>@<n>`, which
   // `sgt revert` resolves to that segment's deterministic op-set -- the same exact ideal-edit path
-  // as any other revert. A checkpoint-specific confirm (not the multi-feature one) so the user
-  // sees exactly which chapter they're undoing.
-  private async revertCheckpoint(ref: string, label: string): Promise<void> {
+  // as any other revert.
+  //
+  // This used to confirm and apply here, with no preview at all: the one destructive verb in the
+  // product where the GUI was weaker than the CLI, which never applies a revert without printing
+  // the before/after first. A pilot participant rewound a checkpoint and could not say what they
+  // had rewound to. `sgt.revert` already emits the dry run, opens the resulting diff, and spells
+  // the consequences in its confirm -- and its selection ladder resolves a checkpoint ref exactly
+  // as it resolves a feature id -- so route to it instead, the same way `apply()` does. The
+  // webview's `label` is dropped on purpose: the emit hands back the checkpoint's own display
+  // label (`Waitlist Priority@2: Promote On Cancel`), which cannot drift from what was reverted.
+  private async revertCheckpoint(ref: string): Promise<void> {
     if (!ref) {
       return;
     }
-    const ok = await vscode.window.showWarningMessage(
-      `Rewind checkpoint "${label}"? This removes its ops (and anything built on them) and commits.`,
-      { modal: true },
-      "Rewind"
-    );
-    if (ok !== "Rewind") {
-      return;
-    }
-    try {
-      await this.store.sgt.mutate(["revert", ref]);
-      vscode.window.showInformationMessage(`Rewound checkpoint "${label}".`);
-    } catch (e: any) {
-      vscode.window.showWarningMessage(`Could not rewind "${label}": ${e.message}`);
-    }
-    this.store.invalidate();
+    await vscode.commands.executeCommand("sgt.revert", ref);
   }
 
   private async renamePrompt(feature: string): Promise<void> {
@@ -607,6 +685,22 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       });
     } catch (e: any) {
       void this.view?.webview.postMessage({ type: "foldResult", seq, featureId, error: e.message });
+    }
+  }
+
+  /**
+   * `sgt find`, from the box in the title bar.
+   *
+   * Report-only, and slow enough to want a sequence number: the semantic rung
+   * embeds the query, so a fast typist can have three of these in flight and
+   * the second one must not paint over the third.
+   */
+  private async find(query: string, seq: number): Promise<void> {
+    try {
+      const view = await this.store.sgt.find(String(query || ""));
+      void this.view?.webview.postMessage({ type: "findResult", seq, ...view });
+    } catch (e: any) {
+      void this.view?.webview.postMessage({ type: "findResult", seq, ok: false, hits: [], message: e.message });
     }
   }
 

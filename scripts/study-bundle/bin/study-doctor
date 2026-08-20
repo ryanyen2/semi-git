@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+STUDY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+[ -f "$STUDY_HOME/study.env" ] && . "$STUDY_HOME/study.env"
+: "${STUDY_PY:=$STUDY_HOME/work/.venv/bin/python}"
+export STUDY_HOME STUDY_CODE="${STUDY_CODE:-}"
+exec "$STUDY_PY" "$STUDY_HOME/telemetry/doctor.py" "$@"

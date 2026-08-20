@@ -13,22 +13,73 @@ including the later work that depends on it.
 Your job is to use those two things and to leave the parts that belong to the human alone. The rest
 of this file is about doing that without wasting their context window or their time.
 
+## The shape of what you are reading
+
+Two paragraphs of model, because the reads below only make sense against it.
+
+git stores your code as commits of line-diffs. sgt re-reads those same commits and breaks each one
+into **ops** — one op per changed symbol (a function, a class): what it touched, the version it
+started from, the version it produced, what it was built on. It replays the ops it holds, symbol by
+symbol, to rebuild your files. The live subset of ops is the **ideal** (valid = every op's
+prerequisites are in, and no symbol has two competing versions); the files on disk are just that
+ideal **folded** back into text, so they never drift from the history the way a stale diff can.
+Related ops are grouped into **features** — the unit you and the human actually think in.
+
+```
+git:    commit ──── commit ──── commit           lines & diffs
+                       │  sgt re-reads each commit
+                       ▼
+ops:      ⋯ e4  e5  e6  e7  e8  e9 ⋯              one op = one symbol's edit
+            └──┬──┘ └──┬──┘ └─┬──┘
+features:    "drop"  "waitlist" "clash"          ops that change together
+                       │  the currently-live subset = the ideal
+                       ▼
+        ideal ──fold──▶  the files you see on disk
+```
+
+Two things this buys you that a diff cannot, and they are the reason to reach for sgt at all: the
+recorded **reason** a symbol is the way it is (`sgt_recall`), and the exact **cost of removing**
+something — the count of later ops built on top that would come out with it (`sgt_show`).
+
+`sgt log --map` draws this as one lane per feature, foundations at the top, over a shared
+commit-time axis. A lane's glyphs (`▁▂▃▄▅▆▇█`, dim `·` for quiet) read as *how busy* that stretch
+was and *when*; the `@n` chips are its checkpoints, and `@n` is the handle a human hands to
+`sgt revert`; a `◇` is a step a plan predicted but no code fills yet.
+
+```
+          c0 ───────────────────────────── cN
+ enrollment
+   3f9a  waitlist promotion   ·▂▃····▅█·   @1 seed  @3 promote-on-free
+   7c21  enrollment drop      ···▃▄······   @2 drop
+ scheduling
+   a4d0  slot-clash guard     ▂···▆······   @1 ranges_clash
+   b8e1  bulk import          ·······◇      ← ◇ = planned, no code yet
+```
+
+That grid is meant to be *drawn* — live in a terminal or the workbench — not read by you as text; see
+"Showing sgt output to a human" below before you ever put it in a transcript. You read the model
+through the narrow tools next.
+
 ## Orient with one call
 
 Before your first edit, run this. It works in any harness that has a shell, so it does not depend on
 MCP being wired up:
 
 ```bash
-python -m scripts.sgt_brief
+sgt now --json
 ```
 
-It prints a short block: whether anything blocks sgt, whether there is unsaved work, what needs a
-human decision, what was recently done, and the one suggested next action. Exit status 2 means the
-repo is not sgt-tracked, so use plain git and stop reading here.
+It prints what was asked for, whether there is unsaved work, what needs a human decision, what was
+recently done, and the one suggested next action.
 
-Use it rather than assembling the same picture yourself. Measured on a 290-commit repo, the brief is
-about 80 tokens; the three reads it replaces (`sgt_now` + `sgt_log` + `sgt_status`) total about
-5,200. You would spend most of that on detail you are not going to act on.
+Check for a `.sgt/` directory before you rely on any of it. In a repo that was never `sgt init`ed,
+`sgt now` still exits 0 and returns an empty-but-valid payload, so an empty result does not tell you
+whether the repo is untracked or simply clean. If there is no `.sgt/`, use plain git and stop
+reading here.
+
+Use it rather than assembling the same picture yourself. Measured on a 290-commit repo, `sgt_now` is
+about 530 tokens, and reading `sgt_now` plus `sgt_log` plus `sgt_status` together costs about 5,200.
+You would spend most of that on detail you are not going to act on.
 
 Two lines in the brief mean **stop and tell the human** rather than working around them:
 
@@ -49,7 +100,7 @@ more than the exact number: the first three stay flat as history grows, the last
 |---|---|---|
 | Why is this code the way it is | `sgt_recall` | ~10 tokens + matches |
 | What happened outside the plan | `sgt_drift` | ~10 tokens |
-| Where am I, is anyone mid-something | `scripts/sgt_brief` | ~80 tokens, flat |
+| Where am I, is anyone mid-something | `sgt_now` | ~530 tokens, flat |
 | What needs a human right now | `sgt_now` | ~530 tokens, flat |
 | What is this id, what would a revert cost | `sgt_show` | ~720 tokens |
 | What did this file look like back then | `sgt_show` with `at` | small |
@@ -123,8 +174,7 @@ is not universal either: `sgt now` and `sgt log` take it, `sgt show` does not ne
 In a harness with only a shell (Codex, a bare CLI runner), every read above has a `--json`
 equivalent: `sgt show <sel> --json`, `sgt now --json`, `sgt log --json`, `sgt log --summary --json`.
 The plan loop is `sgt plan intake|status|resume|adopt|done|abandon`, and matching happens on the
-human's `sgt save`. `scripts/sgt_brief` works unchanged. See `references/cli-fallback.md` for the
-tool-to-command mapping.
+human's `sgt save`. See `references/cli-fallback.md` for the tool-to-command mapping.
 
 ## References
 

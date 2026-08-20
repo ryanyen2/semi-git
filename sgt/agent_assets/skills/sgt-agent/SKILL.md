@@ -13,6 +13,53 @@ including the later work that depends on it.
 Your job is to use those two things and to leave the parts that belong to the human alone. The rest
 of this file is about doing that without wasting their context window or their time.
 
+## The shape of what you are reading
+
+Two paragraphs of model, because the reads below only make sense against it.
+
+git stores your code as commits of line-diffs. sgt re-reads those same commits and breaks each one
+into **ops** — one op per changed symbol (a function, a class): what it touched, the version it
+started from, the version it produced, what it was built on. It replays the ops it holds, symbol by
+symbol, to rebuild your files. The live subset of ops is the **ideal** (valid = every op's
+prerequisites are in, and no symbol has two competing versions); the files on disk are just that
+ideal **folded** back into text, so they never drift from the history the way a stale diff can.
+Related ops are grouped into **features** — the unit you and the human actually think in.
+
+```
+git:    commit ──── commit ──── commit           lines & diffs
+                       │  sgt re-reads each commit
+                       ▼
+ops:      ⋯ e4  e5  e6  e7  e8  e9 ⋯              one op = one symbol's edit
+            └──┬──┘ └──┬──┘ └─┬──┘
+features:    "drop"  "waitlist" "clash"          ops that change together
+                       │  the currently-live subset = the ideal
+                       ▼
+        ideal ──fold──▶  the files you see on disk
+```
+
+Two things this buys you that a diff cannot, and they are the reason to reach for sgt at all: the
+recorded **reason** a symbol is the way it is (`sgt_recall`), and the exact **cost of removing**
+something — the count of later ops built on top that would come out with it (`sgt_show`).
+
+`sgt log --map` draws this as one lane per feature, foundations at the top, over a shared
+commit-time axis. A lane's glyphs (`▁▂▃▄▅▆▇█`, dim `·` for quiet) read as *how busy* that stretch
+was and *when*; the `@n` chips are its checkpoints, and `@n` is the handle a human hands to
+`sgt revert`; a `◇` is a step a plan predicted but no code fills yet.
+
+```
+          c0 ───────────────────────────── cN
+ enrollment
+   3f9a  waitlist promotion   ·▂▃····▅█·   @1 seed  @3 promote-on-free
+   7c21  enrollment drop      ···▃▄······   @2 drop
+ scheduling
+   a4d0  slot-clash guard     ▂···▆······   @1 ranges_clash
+   b8e1  bulk import          ·······◇      ← ◇ = planned, no code yet
+```
+
+That grid is meant to be *drawn* — live in a terminal or the workbench — not read by you as text; see
+"Showing sgt output to a human" below before you ever put it in a transcript. You read the model
+through the narrow tools next.
+
 ## Orient with one call
 
 Before your first edit, run this. It works in any harness that has a shell, so it does not depend on

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Remove the projects and the session's keys from this machine.
+#
+# It refuses to run until everything recorded has been delivered, because the
+# one irreversible mistake available at this point is deleting a session that
+# was never uploaded.
+set -euo pipefail
+
+STUDY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+[ -f "$STUDY_HOME/study.env" ] && . "$STUDY_HOME/study.env"
+: "${STUDY_PY:=$STUDY_HOME/work/.venv/bin/python}"
+export STUDY_HOME STUDY_CODE="${STUDY_CODE:-}"
+
+echo "Making sure everything has reached us first."
+if ! "$STUDY_HOME/bin/study-sync" --final; then
+    echo
+    echo "Not everything has arrived, so nothing has been deleted."
+    echo "Tell your facilitator and leave this folder where it is."
+    exit 1
+fi
+
+echo
+echo "This will delete:"
+echo "  $STUDY_HOME/work          the project"
+echo "  $STUDY_HOME/practice      the warm-up copy"
+echo "  $STUDY_HOME/toolenv       the tool it installed"
+echo "  $STUDY_HOME/.claude-study the assistant profile and the session key"
+echo "  $STUDY_HOME/.vscode-study the editor profile and its extension"
+echo
+echo "It keeps the log of what you did, which has already been delivered."
+echo
+printf "Type yes to go ahead: "
+read -r answer
+if [ "$answer" != "yes" ]; then
+    echo "Nothing deleted."
+    exit 0
+fi
+
+rm -rf "$STUDY_HOME/work" "$STUDY_HOME/practice" "$STUDY_HOME/toolenv" \
+       "$STUDY_HOME/.claude-study" "$STUDY_HOME/.vscode-study"
+rm -f "$STUDY_HOME/study.env"
+
+echo
+echo "Done. Your own assistant setup and everything outside this folder were never touched."
+echo "You can delete the whole folder now if you like."
