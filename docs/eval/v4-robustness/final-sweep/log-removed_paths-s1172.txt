@@ -1,0 +1,42 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_undo                  
+    2 · op_feature_merge         1 feature(s)
+    3 ✓ op_revert                53ba468f48d5
+    4 ✓ op_feature_rename        f-53ba468f48d5
+    5 ✓ op_feature_split         f-53ba468f48d5
+    6 ✗ op_revert_undo_probe     5ccc73867abb
+        no_empty_phantom: blank tracked file(s) left behind: ['gone.py']
+    7 ✓ op_restore               a12495ffb1df
+    8 ✓ op_edit_save             gone.py (add)
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_edit_save             survivor.py (rework)
+   11 ✓ op_feature_split         af-m39f4027d0b
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_edit_save             survivor.py (rework)
+   14 ✓ op_revert_restore_probe  40e468219543
+   15 ✓ op_edit_save             survivor.py (rework)
+   16 ✓ op_revert_keep_dependents 36abf70110af
+   17 ✓ op_revert_keep_dependents 3ebd50f5369b
+   18 · op_restore               nothing addressable excluded
+   19 ✓ op_revert_restore_probe  e6ea659aefbe
+   20 ✓ op_undo                  
+   21 ✓ op_edit_save             survivor.py (rework)
+   22 ✓ op_revert                5ccc73867abb
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_feature_merge         af-me1a3701a91<-af-mc53a15aaf6
+   25 ✓ op_feature_rename        af-mf380eccfa3
+   26 ✓ op_feature_merge         f-m1743b3146f9<-af-m39f4027d0b
+   27 ✓ op_revert                9d93ffa1f31d
+   28 ✓ op_revert_restore_probe  0fce861cfd5c
+   29 ✓ op_feature_rename        af-mf380eccfa3
+   30 · op_restore               nothing addressable excluded
+   31 ✓ op_undo                  
+   32 ✓ op_feature_rename        af-mf380eccfa3
+   33 ✓ op_revert_undo_probe     0b86d3148f46
+   34 ✓ op_undo                  
+   35 ✗ op_revert_restore_probe  f7b38c9455a0
+        revert_restore_roundtrip: revert f7b38c9455a0 removed 2 op(s); after restoring all of them 1 op(s) are still out of the ideal, though every tracked file composes the same bytes as before
+   36 ✓ op_undo                  
+   37 · op_restore               nothing addressable excluded
+   38 ✓ op_undo                  
+removed_paths seed 1172: 39 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1172.json

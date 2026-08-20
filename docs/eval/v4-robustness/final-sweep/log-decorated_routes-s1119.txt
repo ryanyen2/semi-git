@@ -1,0 +1,29 @@
+    0 ✓ op_edit_save             routes.py (rework)
+    1 ✓ op_undo                  
+    2 ✓ op_revert_undo_probe     1a808351b6c6
+    3 ✓ op_revert_undo_probe     68c863034640
+    4 ✓ op_edit_save             routes.py (rework)
+    5 ✓ op_restore               d620bf867672
+    6 ✓ op_revert                7c69d164214d
+    7 ✗ op_edit_save             routes.py (rework)
+        fsck_advisory_chain_gaps: 1 new, 1 live: ["routes.py::handle_a"]
+        settled (save refused, git restore): ['M routes.py']
+    8 ✓ op_undo                  
+    9 ✓ op_feature_rename        f-1a808351b6c6
+   10 ✓ op_revert_undo_probe     832736908299
+   11 ✓ op_add_file              v4_mod_11.py
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_feature_split         af-mb32ff0ce36
+   14 ✓ op_feature_rename        af-mb32ff0ce36
+   15 ✓ op_revert                441275e32106
+   16 ✓ op_edit_save             routes.py (rework)
+   17 ✓ op_add_file              v4_mod_17.py
+   18 ✓ op_revert                17459403971d
+   19 ✓ op_edit_save             routes.py (rework)
+   20 ✓ op_restore               bfa7ce5a0468
+   21 ✓ op_edit_save             v4_mod_17.py (rework)
+   22 ✓ op_revert_undo_probe     832736908299
+   23 ✓ op_revert                68c863034640
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_edit_save             v4_mod_24.py (rework)
+decorated_routes seed 1119: 26 ops applied, 1 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-decorated_routes-seed1119.json

@@ -1,0 +1,38 @@
+    0 ✓ op_revert_undo_probe     7ea7de8f7f45
+    1 ✓ op_revert                9b55c37b1810
+    2 ✓ op_add_file              v4_mod_2.py
+    3 ✓ op_edit_save             v4_mod_2.py (rework)
+    4 ✓ op_revert_restore_probe  66521c9c8059
+    5 ✓ op_edit_save             a.py (rework)
+    6 ✓ op_revert_keep_dependents 991adef74a8b
+    7 ✓ op_revert_restore_probe  7c0811430a95
+    8 ✓ op_edit_save             v4_mod_2.py (rework)
+    9 ✓ op_restore               9b55c37b1810
+   10 ✓ op_add_file              v4_mod_10.py
+   11 ✓ op_feature_split         f-0069a0f02f45
+   12 ✓ op_undo                  
+   13 ✓ op_feature_split         f-0069a0f02f45
+   14 ✓ op_revert_restore_probe  1ff78887dc16
+   15 ✓ op_revert_undo_probe     0069a0f02f45
+   16 ✓ op_undo                  
+   17 ✓ op_revert_restore_probe  0069a0f02f45
+   18 ✓ op_revert                0069a0f02f45
+   19 ✓ op_feature_merge         f-0069a0f02f45<-f-m8d1c7fde8bc
+   20 ✓ op_revert_undo_probe     72f70c2fbacc
+   21 ✓ op_edit_save             v4_mod_2.py (rework)
+   22 ✓ op_revert_undo_probe     7c0811430a95
+   23 ✓ op_restore               9b55c37b1810
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_revert                33aeb6f6c1f2
+   26 ✓ op_revert_keep_dependents fa566ee46d45
+   27 ✓ op_revert_undo_probe     d58cc79f1b2a
+   28 ✓ op_undo                  
+   29 ✓ op_edit_save             v4_mod_10.py (rework)
+   30 ✓ op_add_file              v4_mod_30.py
+   31 ✓ op_revert_keep_dependents 491a9acce1a8
+   32 ✗ op_revert_restore_probe  352384585f58
+        restore_resurrects_layout: restoring what revert 352384585f58 removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['7ea7de8f7f45', '991adef74a8b']
+   33 ✓ op_revert_restore_probe  fc7594968d92
+   34 ✓ op_feature_merge         af-mc1b9525eba<-f-0069a0f02f45
+   35 ✓ op_edit_save             v4_mod_30.py (rework)
+commuting_features seed 1074: 36 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-commuting_features-seed1074.json

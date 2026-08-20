@@ -1,0 +1,26 @@
+    0 ✓ op_revert_keep_dependents 59f13ee08dd0
+    1 ✓ op_revert_keep_dependents 1bf8d56e9372
+    2 ✓ op_revert_keep_dependents 5558bb5afdd7
+    3 ✓ op_feature_split         f-1bf8d56e9372
+    4 ✓ op_undo                  
+    5 ✓ op_add_file              v4_mod_5.py
+    6 ✓ op_revert_undo_probe     1bf8d56e9372
+    7 ✓ op_edit_save             v4_mod_5.py (rework)
+    8 ✓ op_revert_keep_dependents 0e94a6bf178a
+    9 ✓ op_revert_undo_probe     fb0c56ff0322
+   10 ✓ op_revert_keep_dependents 1bf8d56e9372
+   11 ✓ op_revert                5558bb5afdd7
+   12 ✓ op_edit_save             a.py (rework)
+   13 · op_restore               nothing addressable excluded
+   14 ✓ op_undo                  
+   15 ✓ op_feature_rename        f-1bf8d56e9372
+   16 ✓ op_revert_keep_dependents 1bf8d56e9372
+   17 ✓ op_revert                1bf8d56e9372
+   18 ✓ op_feature_rename        af-m3c278302f8
+   19 ✓ op_revert_undo_probe     0e94a6bf178a
+   20 ✓ op_feature_merge         af-m3c278302f8<-f-1bf8d56e9372
+   21 ✓ op_revert_restore_probe  0e94a6bf178a
+   22 ✓ op_undo                  
+   23 ✓ op_revert                70cd693e2d93
+   24 ✓ op_revert_keep_dependents fb0c56ff0322
+residue_fork seed 1103: 25 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-residue_fork-seed1103.json

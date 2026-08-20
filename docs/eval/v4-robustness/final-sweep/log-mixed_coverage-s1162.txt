@@ -1,0 +1,43 @@
+    0 ✓ op_revert_keep_dependents 6214b6086466
+    1 ✓ op_edit_save             pkg.py (rework)
+    2 ✓ op_edit_save             util.py (rework)
+    3 ✓ op_revert_undo_probe     95aecb0c0c67
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_revert                4ea3ecdfa2b8
+    6 ✓ op_revert_undo_probe     3456efddc820
+    7 ✓ op_add_file              v4_mod_7.py
+    8 · op_restore               nothing addressable excluded
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_add_file              v4_mod_10.py
+   11 ✓ op_revert_keep_dependents 95aecb0c0c67
+   12 · op_feature_merge         1 feature(s)
+   13 ✓ op_revert_restore_probe  d7a7a19a0fc7
+   14 ✓ op_revert                7b08d1652d8f
+   15 ✓ op_edit_save             v4_mod_7.py (rework)
+   16 ✓ op_undo                  
+   17 ✓ op_undo                  
+   18 ✓ op_edit_save             v4_mod_7.py (rework)
+   19 ✓ op_restore               dfe0a1279120
+   20 ✓ op_add_file              v4_mod_20.py
+   21 ✓ op_revert_keep_dependents be01450490a9
+   22 ✓ op_feature_split         af-m5fec7e5af4
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_restore               dfe0a1279120
+   25 ✓ op_revert_keep_dependents 0442c989d468
+   26 ✓ op_add_file              v4_mod_26.py
+   27 ✓ op_feature_split         af-m02874a11fa
+   28 ✓ op_restore               dfe0a1279120
+   29 ✓ op_revert_undo_probe     6946a0cb2aef
+   30 ✓ op_revert_restore_probe  ed486171e602
+   31 ✓ op_revert_keep_dependents b968a2f6bc90
+   32 ✓ op_revert                55e614d35a64
+   33 ✓ op_edit_save             util.py (rework)
+   34 ✓ op_restore               dfe0a1279120
+   35 ✓ op_edit_save             v4_mod_23.py (rework)
+   36 ✓ op_edit_save             v4_mod_4.py (rework)
+   37 ✓ op_restore               dfe0a1279120
+   38 ✓ op_feature_split         af-m3e6c1ac9cc
+   39 ✓ op_edit_save             v4_mod_23.py (rework)
+   40 ✓ op_feature_split         f-0027224b0d5f
+   41 ✓ op_restore               dfe0a1279120
+mixed_coverage seed 1162: 42 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-mixed_coverage-seed1162.json

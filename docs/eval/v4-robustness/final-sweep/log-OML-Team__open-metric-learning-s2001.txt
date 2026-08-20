@@ -1,0 +1,87 @@
+oracles already unhappy right after init:
+  fsck_advisory_chain_gaps: 112 new, 112 live: ["CONTRIBUTING.md", "Makefile", "README.md", "ci/Dockerfile"]
+  fsck_tree: exit 1: 16 newly drifted path(s): ['oml/datasets/audios.py', 'oml/datasets/dataframe.py', 'oml/interfaces/datasets.py', 'oml/models/audio/ecapa_tdnn/external/model.py']
+  orphan_layout: 48 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/datasets/audios.py::__residue__::AudioBaseDataset', 'oml/datasets/audios.py::__residue__::AudioLabeledDataset', 'oml/datasets/audios.py::__residue__::AudioQueryGalleryDataset', 'oml/datasets/audios.py::__residue__::AudioQueryGalleryLabeledDataset']
+    0 ✗ op_restore               5b3976078262
+        fsck_advisory_chain_gaps: 71 new, 133 live: ["docs/readme/acknowledgments.md", "docs/source/postprocessing/home.rst", "docs/source/postprocessing/siamese_examples.rst", "docs/source/postprocessing/stir_paper.rst"]
+        fsck_tree: exit 1: 32 newly drifted path(s): ['docs/readme/examples_source/extractor/train_val_img_txt.md', 'docs/source/postprocessing/postprocessing_home.rst', 'oml/datasets/images.py', 'oml/datasets/pairs.py']
+        orphan_layout: 89 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/datasets/images.py::__residue__::ImageBaseDataset', 'oml/datasets/images.py::__residue__::ImageLabeledDataset', 'oml/datasets/images.py::__residue__::ImageQueryGalleryDataset', 'oml/datasets/images.py::__residue__::ImageQueryGalleryLabeledDataset']
+    1 ✗ op_revert                10c5b4db98c7
+        fsck_advisory_chain_gaps: 780 new, 899 live: ["docs/readme/contributing.md", "docs/readme/documentation.md", "docs/readme/examples.md", "docs/readme/examples_source/extractor/retrieval_usage.md"]
+        fsck_tree: exit 1: 25 newly drifted path(s): ['ci/requirements_dev.txt', 'docs/readme/examples_source/zoo/models_usage.md', 'docs/source/postprocessing/pipelines.rst', 'docs/source/postprocessing/python_examples.rst']
+        orphan_layout: 50 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/lightning/modules/extractor.py::__residue__::ExtractorModule', 'oml/lightning/modules/extractor.py::__residue__::ExtractorModuleDDP', 'oml/lightning/pipelines/parser.py::__residue__::parse_logger_from_config', 'oml/lightning/pipelines/predict.py::__residue__::extractor_prediction_pipeline']
+    2 ✗ op_edit_save             test_dict_to_tensorboard_converter.py (rework)
+        fsck_advisory_chain_gaps: 250 new, 1064 live: ["docs/readme/extra_materials.md", "docs/readme/get_started_config.md", "docs/readme/python_examples.md", "docs/readme/usage_with_pml.md"]
+        fsck_tree: exit 1: 30 newly drifted path(s): ['examples/datasets_converters/README.md', 'examples/extractor_cars/README.md', 'examples/extractor_cub/README.md', 'examples/extractor_inshop/README.md']
+        orphan_layout: 34 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/postprocessing/train_extractor.py::__residue__::main_hydra', 'examples/postprocessing/train_postprocessor.py::__residue__::main_hydra', 'examples/postprocessing/validate_extractor.py::__residue__::main_hydra', 'examples/postprocessing/validate_postprocessor.py::__residue__::main_hydra']
+        settled (save refused, git restore): ['M tests/test_oml/test_utils/test_dict_to_tensorboard_converter.py']
+    3 ✗ op_undo                  
+        fsck_advisory_chain_gaps: 98 new, 917 live: ["examples/README.md", "examples/cars/configs/train_cars.yaml", "examples/cars/configs/val_cars.yaml", "examples/cars/convert_cars.py::build_cars196_df"]
+        fsck_tree: exit 1: 38 newly drifted path(s): ['docs/source/contents/postprocessing.rst', 'docs/source/from_readme/contributing.rst', 'examples/inshop/configs/train_inshop_arcface.yaml', 'examples/inshop/configs/train_inshop_with_mlp.yaml']
+        orphan_layout: 101 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/datasets/list_.py::__residue__::ListDataset', 'oml/ddp/utils.py::__residue__::get_world_size_safe', 'oml/ddp/utils.py::__residue__::is_main_process', 'oml/functional/label_smoothing.py::__residue__::label_smoothing']
+    4 ✗ op_feature_merge         f-06e7dd8a1fe6<-f-00be50346047
+        fsck_advisory_chain_gaps: 111 new, 859 live: ["examples/sop/configs/train_sop.yaml", "oml/analysis/__init__.py::__residue__::\u0000HEAD\u0000", "oml/analysis/visualisation.py::RetrievalVisualizer", "oml/analysis/visualisation.py::RetrievalVisualizer.__init__"]
+        fsck_tree: exit 1: 41 newly drifted path(s): ['docs/readme/zoo.md', 'docs/source/datasets.rst', 'docs/source/ddp.rst', 'docs/source/examples/config_advanced.md']
+        orphan_layout: 76 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['oml/ddp/patching.py::__residue__::DDPSamplerWrapper', 'oml/ddp/patching.py::__residue__::_Sampler2Dataset', 'oml/ddp/patching.py::__residue__::extract_loader_parameters', 'oml/ddp/patching.py::__residue__::patch_dataloader_to_ddp']
+    5 ✗ op_restore               52076a715cd9
+        fsck_advisory_chain_gaps: 201 new, 951 live: ["configs/criterion/triplet_plain.yaml", "configs/criterion/triplet_with_miner_and_memory.yaml", "configs/miner/all_triplets.yaml", "configs/miner/hard_cluster.yaml"]
+        fsck_tree: exit 1: 29 newly drifted path(s): ['ci/Dockerfile', 'configs/optimizer/adamw.yaml', 'configs/sampler/sequential_balance.yaml', 'configs/sampler/sequential_category_balance.yaml']
+        orphan_layout: 41 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/cub/convert_cub.py::__residue__::build_cub_df', 'examples/inshop/convert_inshop.py::__residue__::build_inshop_df', 'examples/sop/convert_sop.py::__residue__::build_sop_df', 'oml/lightning/entrypoints/train.py::__residue__::pl_train']
+    6 ✗ op_restore               0d6e1b90200e
+        fsck_advisory_chain_gaps: 27 new, 500 live: ["oml/miners/inbactch_hard_cluster.py::__anchor__::HardClusterMiner", "oml/miners/inbactch_hard_cluster.py::__residue__::\u0000HEAD\u0000", "oml/miners/inbactch_hard_cluster.py::__residue__::AllTripletsMiner", "oml/miners/inbactch_hard_cluster.py::__residue__::HardTripletsMiner"]
+        fsck_tree: exit 1: 79 newly drifted path(s): ['Makefile', 'README.md', 'configs/criterion/triplet.yaml', 'configs/criterion/triplet_with_miner.yaml']
+        orphan_layout: 5 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['tests/test_oml/test_registry/test_registry.py::__residue__::test_registry', 'tests/test_oml/test_samplers/test_balanced_sampler.py::__residue__::check_balance_batch_sampler_epoch', 'tests/test_oml/test_samplers/test_balanced_sampler.py::__residue__::generate_valid_labels', 'tests/test_oml/test_samplers/test_balanced_sampler.py::__residue__::input_for_balance_batch_sampler']
+    7 ✓ op_revert_restore_probe  fcbf76c019a7
+    8 ✓ op_undo                  
+    9 ✓ op_undo                  
+   10 ✓ op_add_file              v4_mod_10.py
+        settled (save refused, git restore): ['?? v4_mod_10.py']
+   11 ✓ op_edit_save             __init__.py (add)
+        settled (save refused, git restore): ['M oml/models/vit_clip/external/__init__.py']
+   12 ✓ op_undo                  
+   13 ✗ op_edit_save             run_retrieval_experiment_ddp.py (rework)
+        fsck_advisory_chain_gaps: 1 new, 501 live: ["tests/test_runs/test_ddp_cases/run_retrieval_experiment_ddp.py::create_pred_and_gt_labels"]
+        settled (save refused, git restore): ['M tests/test_runs/test_ddp_cases/run_retrieval_experiment_ddp.py']
+   14 ✓ op_feature_merge         f-097d850489c6<-f-00be50346047
+   15 ✓ op_revert_keep_dependents 0f8212977dbb
+   16 ✓ op_undo                  
+   17 ✓ op_revert                3e0550be9115
+   18 ✓ op_revert                cceeb9a40944
+   19 ✓ op_feature_merge         f-06c808f85df6<-f-246271cb2d1d
+   20 ✓ op_revert_keep_dependents bb46e4000251
+   21 ✓ op_add_file              v4_mod_21.py
+        settled (save refused, git restore): ['?? v4_mod_21.py']
+   22 ✓ op_revert_restore_probe  f9474b59bf20
+   23 ✓ op_revert_keep_dependents b7f15a94e34c
+   24 ✓ op_add_file              v4_mod_24.py
+        settled (save refused, git restore): ['?? v4_mod_24.py']
+   25 ✓ op_undo                  
+   26 ✓ op_edit_save             model.py (rework)
+        settled (save refused, git restore): ['M oml/models/vit_unicom/external/model.py']
+   27 · op_revert_undo_probe     revert offered no undo
+   28 ✓ op_revert_undo_probe     2e0ffa86fbff
+   29 ✓ op_edit_save             test_accumulator.py (rework)
+        settled (save refused, git restore): ['M tests/test_oml/test_metrics/test_accumulator.py']
+   30 ✓ op_add_file              v4_mod_30.py
+        settled (save refused, git restore): ['?? v4_mod_30.py']
+   31 ✓ op_feature_merge         f-06e7dd8a1fe6<-f-1120d04fdc2a
+   32 ✓ op_revert                a23aa060e3d4
+   33 ✓ op_revert_undo_probe     82fe40e4b650
+   34 ✓ op_undo                  
+   35 ✓ op_revert                811ac78b424c
+   36 ✓ op_undo                  
+   37 ✓ op_edit_save             test_metrics_reduce.py (rework)
+        settled (save refused, git restore): ['M tests/test_oml/test_functional/test_metrics/test_metrics_reduce.py']
+   38 ✓ op_revert                d75795870f17
+   39 · op_revert_undo_probe     revert offered no undo
+   40 ✓ op_feature_split         f-0bb8120dca0e
+   41 ✓ op_revert_restore_probe  050882dc449e
+   42 ✓ op_revert                919befed807f
+   43 ✓ op_feature_merge         f-1eaa84bada0d<-f-0899c727547b
+   44 ✓ op_undo                  
+   45 ✓ op_feature_merge         f-03f6cabf584b<-f-14e4b6bbe88a
+   46 ✓ op_revert_undo_probe     a79e48c858df
+   47 ✓ op_restore               5936b92d32dc
+   48 ✓ op_revert                809a4e38d0cd
+   49 ✓ op_restore               9705c18de4f7
+OML-Team__open-metric-learning seed 2001: 50 ops applied, 8 with an oracle failure, 0 traceback(s), 10 tree(s) settled → /tmp/v4-final/run-OML-Team__open-metric-learning-seed2001.json

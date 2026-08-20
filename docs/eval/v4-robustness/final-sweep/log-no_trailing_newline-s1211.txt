@@ -1,0 +1,38 @@
+    0 ✓ op_revert                4e1ecc43fc48
+    1 ✓ op_undo                  
+    2 ✓ op_revert_keep_dependents ee1211142a8b
+    3 ✓ op_add_file              v4_mod_3.py
+    4 ✓ op_feature_split         f-4e1ecc43fc48
+    5 ✓ op_edit_save             a.py (rework)
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_edit_save             v4_mod_3.py (rework)
+    8 ✓ op_revert                a08a015717cf
+    9 ✓ op_revert                ee1211142a8b
+   10 ✓ op_edit_save             v4_mod_3.py (rework)
+   11 ✓ op_revert                97727880928f
+   12 ✗ op_revert_restore_probe  66521c9c8059
+        revert_restore_unexplained_drift: revert 66521c9c8059 then restoring everything it removed left 1 file(s) different from before: ['a.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['a.py']
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_revert_keep_dependents 1b40ce89c508
+   15 ✓ op_edit_save             v4_mod_13.py (rework)
+   16 ✓ op_revert_restore_probe  4bd5071cd7e3
+   17 ✓ op_edit_save             v4_mod_13.py (rework)
+   18 ✓ op_undo                  
+   19 ✓ op_edit_save             v4_mod_13.py (rework)
+   20 ✓ op_edit_save             v4_mod_13.py (rework)
+   21 ✓ op_revert_restore_probe  8008e6eaeb0c
+   22 ✓ op_revert                569d93c0e7cf
+   23 ✗ op_revert_restore_probe  c71c370e1587
+        revert_restore_unexplained_drift: revert c71c370e1587 then restoring everything it removed left 1 file(s) different from before: ['v4_mod_3.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_3.py']
+   24 ✓ op_edit_save             v4_mod_3.py (add)
+   25 ✓ op_restore               17c310f3252f
+   26 ✓ op_edit_save             a.py (add)
+   27 ✓ op_revert                f9234cb3dd0a
+   28 ✓ op_edit_save             v4_mod_13.py (rework)
+        settled (save refused, git restore): ['M v4_mod_13.py']
+   29 ✓ op_restore               ee1211142a8b
+   30 ✓ op_revert_restore_probe  17c310f3252f
+   31 ✓ op_add_file              v4_mod_31.py
+no_trailing_newline seed 1211: 32 ops applied, 2 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-no_trailing_newline-seed1211.json

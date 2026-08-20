@@ -1,0 +1,1313 @@
+{
+ "repo": "/private/tmp/v2/eico",
+ "seed": 20260814,
+ "per_stratum": 15,
+ "coded_by": "author",
+ "populations": {
+  "false_negative": 8121,
+  "false_positive": 4428
+ },
+ "request_text": {
+  "d6700599-514e-41a3-9a73-87726307a6cb": "All 7 tasks for U9 are now complete \u2014 the only thing left out of scope is the actual paid LLM eval run; how much the estimated cost will be; are we running swe verifieid bench?",
+  "80868040-35e7-464a-8f04-e8303171e773": "ok kick off, making sure we log properly for analyzing the decision making process",
+  "51e3c25b-617d-4634-95b2-fa3085b5c3a4": "note them down and explain to me what the result means or implied (be rigor and candid instead of self-fooling) i wonder does that mean we should be able to fan out more subagents from the orchestraor; my understanding about the workflow is that a orchestrator agent will plan the tasks, fan out mult",
+  "e4764619-d2da-4c70-bc2d-0bd62be5920c": "kernel is deterministic? how do we decide the verdict? and why its per file, i thought we want per entity based on parsed tree?",
+  "a0cee3cd-9ed9-47ad-98ef-a2c87730a01f": "what? fact check, and reply me in plain language, dont say something like \"It's actually two layers, not a contradiction\" or \"describes the container, not the resolution\" just say the sentence....",
+  "aba433bb-b51e-441e-8bb1-5d591ca0dae1": "why do we not have the cross-file check? arent we supposed to have the dependency graph across the codebase? or thats something we planned... or is there any tradeoff",
+  "3e5bf33d-6a45-4815-9d63-c69ad0af9c99": "i told u never talk to me with this type of sentence structure: \"isnt AAA its BBB\", \"its BBB, not AAA\"... just be straightforward, wrtie the full sentence; ...ok now lets run more expeirment to see how it works, I wonder if the result showing any benefits of our approaches compare to baseline though",
+  "e1448355-da69-4ffc-8579-73789f6be0c1": "i wonder if it makes sense to compare with codecrdt?https://arxiv.org/html/2510.18893v1 or this https://arxiv.org/html/2606.10662v1 or say copy how they setup the expeirment",
+  "1a830100-fea3-46c7-b503-473d9a4c9fca": "implement the codebase cleanup plan ~/.claude/plans/cheeky-knitting-biscuit.md",
+  "190c6778-15aa-4b80-842b-b1fa9bd3f5ea": "whats the contribution of this paper? and whats the current pipeline, architecture? I kinda lost track given how much difference in changing these days; correct me if Im wrong, but my understanding of this paper is that we try to coordinate multiple agents concurrent editing on one codebase, current",
+  "d89081ed-0fdf-4a7a-a0c6-2c46c570993a": "explain to me in plain language about what the docs/plans/2026-07-07-003-*.md is about, steps to achieve, how do we get data for RLHF, whats the reward, and reward function, etc... from highlevel to lowelevel math (dont assume i know the symbol or concepts), explain to me first and then walk me thor",
+  "79959fbe-15b3-49ad-811d-c0f6a029a94b": "ok in two sentneces, waht we are training, whats the goal, whats the reward; in plain language",
+  "b3f2e9fe-6a4f-407a-beab-bdb01d93ce7e": "whats the current status of the project? is it possible to dispatch multiple parallel agents and working on the sew bench now? whats the piplein (we have a dispatcher? and how do subagents work together?) rpely in super concise, short and plain language",
+  "da2da058-9573-4a3e-aa70-ad75f89f6782": "is this the true optimized pipeline? like why do we need coordinator and is the verdict really robust? if we change the edit_file(path....) to path that is file:ast entity, and based on the concurrent program dependency graph, shouldnt we be able to know whats the possibel conflicts and each subagen",
+  "9330f240-d938-4217-806d-a759f733915a": "noo i dont think its about guessing whether theres conflict, so I would assume that throughout implemnetation, they might be able to access a shared \"state\" of the doc that clearly showing whats being touched and what event should they register, it might be something like web socket protocol ish thi",
+  "f408ee5e-91ce-406a-bbc3-4bbe656ab2ce": "so i guess if we are the one writing and maintaining the lefger, we can record it in a structured way that borrow some reactive programming literature that comes free with the reactive part instead of adding another layer? but how abut conflict resolution and concurrent editing? please think deeper ",
+  "e9539a98-a1f8-4a25-b56b-5af42ae9df71": "is it possible that we can develop our own multi-user reactive programming? think mathematically",
+  "bd2fa9ad-e30d-4e6c-b9d3-4b356c0432d5": "ok so lets step back first and think about this, what we want is basically a pipeline/architecture that can streamline the parralel coding agents working on same codebase that can outperform exsiting approach such as DeLM https://github.com/yuzhenmao/DeLM or other parallele agent works",
+  "c27a6be1-5a88-4836-9fcb-bbefa153c5a7": "ok so lets step back first and think about this, what we want is basically a pipeline/architecture that can streamline the parralel coding agents working on same codebase that can outperform exsiting approach such as DeLM https://github.com/yuzhenmao/DeLM or other parallele agent works; so lets see ",
+  "725732e9-15df-4b4f-8b3d-1c256f2f213b": "isnt this super slow and how it different from those loop.md defining how to dispatch agents and work together, etc...",
+  "51981a6f-5679-4f6c-86ce-c255f03f9a8d": "so are we now thinking of adjusting the pipeline to have a mroe reactive programming construct?",
+  "7b06e56f-eb44-4770-bd0c-053c25bc3edc": "so are we now thinking of adjusting the pipeline to have a mroe reactive programming construct?",
+  "621c6593-9b47-4470-b57e-7cb689b64b9e": "ok sure",
+  "88c32859-a19f-48a9-b1dc-c12dae522b4c": "how about using the LITELLM_BASE_URL and LITELLM_AUTH_TOKEN in the .env",
+  "bebef0c7-ede0-48d0-af7e-6d70515d13bc": "i feel like we can use the longbench, the paper also mentioned that there no split for the swe bench tasks (LongBench-v2 Multi-Doc QA)",
+  "d2c04e1d-38bd-495b-980b-d726f7c719d7": "resu,e",
+  "a63de923-4df2-4100-bcb1-933c93533c8e": "resume",
+  "513a848d-7984-4ead-9d75-ef218f433071": "it kept stopping",
+  "dad7203d-5a5a-48eb-8759-3cc3b37e9af2": "ok?",
+  "64c3f6e8-305d-4caf-8847-7bea80cf2b6e": "we were saying using the \u276f i feel like we can use the longbench, the paper also mentioned that there no split for the swe bench tasks (LongBench-v2 Multi-Doc QA) so that we can get the actual subagents dispatch",
+  "bac9ad8a-fc1c-4bf2-8325-71c879274305": "yep again, stopped",
+  "2a062510-07d7-4f75-8e16-8ff7c1115744": "stucked again",
+  "d1cd29fe-e2bb-49d2-81a4-fa6c2d00cb31": "maybe using the @/Users/ryanyen2/.claude/skills/paper_search/ skill to see if theres benchmark or realted paper that can be the baseline",
+  "b368bb42-1d54-4a3a-9195-a6a77dce5e14": "i dont think codecrdt has repo, based on your expertise in publishing these kinda paper (maybe COLM?) how should we design the experiement?",
+  "2cba545c-4952-450f-9e4d-19534415ff8c": "is it actually slower? whats the experiment/conditions/setup ... and explain me the result in short... alos provide insights on which part dragging it slow",
+  "4e0dfa79-df0e-4729-be58-e8cf19f5448d": "two things, based on the above observation abuot the gate tying to hold the entire subagent task, how can we solve it, say maybe can we write code from a more skeleton way like those sketch based approah for code generation in proramming synthesis; and anothet thing is that can we compare with some ",
+  "1a6f968a-a41d-42fd-aee4-40b866529f0e": "ok for the sketch based generation one, I feel like there are something there, and I feel like its not actaully typed holes as those programming sysntehsis, for us the priority is based on the \"confidence/entropy/uncertainty...\" and possibility of \"conflict\"? that is more native to our problem + how",
+  "1346405f-4374-4bf9-a311-24cce1d2f02e": "read the coagent paper in depth and tell me in plain language about how they work and whats the difference we had (not the surface level); also i wonder how logprob shows the uncertainty of tokens not the uncertainty of code statements or even higher level invariants/decisions, or realted research w",
+  "e567f6db-a9c3-476e-807a-ba76cc4bf8ee": "ok now lets step back, think about the reactive programming style we talked about before, the entropy mentioned, the possible concuerrency or serialization algorithm, etc... instead of being a Frankestein, syntheisze the plan to improve the current pipeline to hopefully, able to beat the baseline (c",
+  "0cf008f6-b55f-4006-a546-d03291065255": "for the granularity, if we choose block, then we can only create code that is block like? then thats not realistic isnt it? we can also choose program slice so not chunk by chunk but slice by slice? idk... we need to be practical still instead of assuming user write functional programming; the secon",
+  "0ec173d1-5007-4836-9d0d-6064efc5a18a": "start U3",
+  "1c14aa0c-dc93-489d-a2f9-ced6996c1c24": "move on until all Us donw",
+  "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e": "move on until all Us done",
+  "ac329cea-e168-484f-a3e4-b08750d4ce46": "resume",
+  "7834f3ff-f9cb-4903-be86-56dee13f6601": "explain to me in one sentence, whats the current pipeline, why design this way, how it works; cocncise, candid, and plain language",
+  "874e80c4-0e33-4de5-8e39-ce5d348cd923": "i thought we were saying that holding might cause slower as the dependnecies could become really intricate and always letting it stopped? the real parallel collaboration with fast communication in the middle is not possible? i feel like by sharing state or definining the minimal protocol of communic",
+  "4854aa4f-16bf-4b3b-9249-dbbe355a6788": "wait i thought the newest implementation beat the baseline? no",
+  "60140b27-2cfc-4703-91bc-a40ef5987ebc": "wait i thought the newest implementation beat the baseline? be candid and dont use \"its A... not B...\" \"not... but...\" sentence and using plain concise term to describe",
+  "1d7c4501-e1ad-44f7-babc-02215c0bc7b4": "why it did not win against a live baseline? diagnose from the researcher perspective, dont guess, actually logging information you need and run tests and see why its the issue; we also should use single agent (agentic pipeline rather than single LLM call as baseline)",
+  "3181f73d-ef6c-4961-9b08-e1af60ad5b22": "sure lets dot it",
+  "75988565-32d7-473d-87b6-a4e768b0214a": "sure lets do it",
+  "788d09f8-288e-4064-8108-65246cf195bb": "so its not running parallel?",
+  "1c92a88a-d42a-4f23-8ce7-d24ab0f0e4e3": "so its not running parallel? and how do we able to improve the planner? i dont quite understand whats the issue? explain to me in plain, concise text",
+  "8bd8c4c6-7cea-438a-80d8-83d60a6f798d": "i think we had a plan about how to improve the planner, while that required training, we might able to learn something from that and utilize the harness or prompt engineering for it?",
+  "9841bf5a-dadd-45cb-96d2-dd3373ba028f": "sure lets do that",
+  "f82dbb29-5414-4a82-9d2c-42509c87df05": "(a)",
+  "8df40060-0c7b-4157-8281-c410934c49bf": "resume",
+  "af6528f6-b45f-4eb0-8ae6-a117b2677fd3": "resume",
+  "ef8f2cb7-9d2e-451e-b7fd-574c9ae954b1": "i thought we are doing this \"To get a real parallel wall-clock win, each region would need many sequential round-trips (deep iterative work), so two long chains running concurrently beat one agent doing both serially. \" why not?",
+  "9539cb3f-0113-4619-a611-341990fcaa07": "no, you should stop fooling ourselves by making the baseline weaker and only find the tasks we flavored; but instead, looking at all the prior architecture and experiement eico did, understand, learn from it, reflect deeply, and propose changes",
+  "3f699f2b-4ba2-48c8-9735-456367ef0a46": "i dont think I really care if the gate is strong or not, but that as long as it able to finish the task correctly and fastly with parallel agents working then its ok; its just a problem of crdt + code dependencies (program slices) and it matters in terms of how we slice them, how we shcedule them, h",
+  "f55e04fb-e760-4a60-80e6-d3d42aa8aa37": "i thnk the biggest issue is that yeah the code implemented based on the theory and yes its there, but is it work really? when its putting into test with the becnhmark test does it behave the same way as expected? is it too coarse, is it too fuzzy, is the program slice overlapped, is the dependency t"
+ },
+ "sample": [
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/arms/base.py::input_digest",
+    "experiments/agent_eval/arms/crdt.py::crdt_merge"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/arms/base.py::input_digest": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "experiments/agent_eval/arms/crdt.py::crdt_merge": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/arms/base.py::input_digest": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "experiments/agent_eval/arms/crdt.py::crdt_merge": [
+     [
+      "f-00015a2a1f2098009021746c21c426ed114804287b9d9cbcc3cc173b886cc1f1",
+      "eico test \u00b7 agent_eval"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/arms/base.py::input_digest": [
+     "residue"
+    ],
+    "experiments/agent_eval/arms/crdt.py::crdt_merge": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/arms/crdt.py::crdt_arm",
+    "experiments/agent_eval/report.py::TierAggregate"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/arms/crdt.py::crdt_arm": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "experiments/agent_eval/report.py::TierAggregate": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/arms/crdt.py::crdt_arm": [
+     [
+      "f-00015a2a1f2098009021746c21c426ed114804287b9d9cbcc3cc173b886cc1f1",
+      "eico test \u00b7 agent_eval"
+     ]
+    ],
+    "experiments/agent_eval/report.py::TierAggregate": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/arms/crdt.py::crdt_arm": [
+     "residue"
+    ],
+    "experiments/agent_eval/report.py::TierAggregate": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/oracle.py::_semantic",
+    "tests/kernel/test_entropy_conflict.py::test_n_gt_2_unrelated_component_closes_earlier_under_bounds"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/oracle.py::_semantic": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_n_gt_2_unrelated_component_closes_earlier_under_bounds": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/oracle.py::_semantic": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_n_gt_2_unrelated_component_closes_earlier_under_bounds": [
+     [
+      "f-088ad5fb18dc2721853903c885f65760bb93febc2d01159c473066c37fde15a7",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/oracle.py::_semantic": [
+     "residue"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_n_gt_2_unrelated_component_closes_earlier_under_bounds": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/oracle.py::mutation_test",
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/oracle.py::mutation_test": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/oracle.py::mutation_test": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy": [
+     [
+      "f-088ad5fb18dc2721853903c885f65760bb93febc2d01159c473066c37fde15a7",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/oracle.py::mutation_test": [
+     "residue"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/report.py::render_report",
+    "tests/kernel/test_hazard_scheduler.py::test_high_hazard_region_lands_in_skeleton"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/report.py::render_report": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_high_hazard_region_lands_in_skeleton": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/report.py::render_report": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_high_hazard_region_lands_in_skeleton": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/report.py::render_report": [
+     "residue",
+     "substantive"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_high_hazard_region_lands_in_skeleton": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/schedule_independence.py::ScheduleIndependence",
+    "tests/agent_eval/test_arms.py::test_all_arms_reconcile_identical_inputs_under_one_config"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/schedule_independence.py::ScheduleIndependence": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_arms.py::test_all_arms_reconcile_identical_inputs_under_one_config": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/schedule_independence.py::ScheduleIndependence": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "tests/agent_eval/test_arms.py::test_all_arms_reconcile_identical_inputs_under_one_config": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/schedule_independence.py::ScheduleIndependence": [
+     "residue"
+    ],
+    "tests/agent_eval/test_arms.py::test_all_arms_reconcile_identical_inputs_under_one_config": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/schedule_independence.py::_orders",
+    "tests/kernel/test_hazard_scheduler.py::test_fixing_the_hot_region_drops_neighbours_below_threshold"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/schedule_independence.py::_orders": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_fixing_the_hot_region_drops_neighbours_below_threshold": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/schedule_independence.py::_orders": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_fixing_the_hot_region_drops_neighbours_below_threshold": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/schedule_independence.py::_orders": [
+     "residue"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_fixing_the_hot_region_drops_neighbours_below_threshold": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "experiments/agent_eval/seeder.py::covers",
+    "tests/agent_eval/test_continuous_ladder.py::test_red_component_bisects_only_its_own_window_and_spares_promoted_ones"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/seeder.py::covers": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ],
+    "tests/agent_eval/test_continuous_ladder.py::test_red_component_bisects_only_its_own_window_and_spares_promoted_ones": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/seeder.py::covers": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "tests/agent_eval/test_continuous_ladder.py::test_red_component_bisects_only_its_own_window_and_spares_promoted_ones": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/seeder.py::covers": [
+     "residue"
+    ],
+    "tests/agent_eval/test_continuous_ladder.py::test_red_component_bisects_only_its_own_window_and_spares_promoted_ones": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "kernel/depgraph/graph.py::DependenceGraph",
+    "tests/kernel/test_depgraph.py::test_from_coordinator_views_buffered_and_committed_effects"
+   ],
+   "same_file": false,
+   "requests": {
+    "kernel/depgraph/graph.py::DependenceGraph": [
+     "0ec173d1-5007-4836-9d0d-6064efc5a18a"
+    ],
+    "tests/kernel/test_depgraph.py::test_from_coordinator_views_buffered_and_committed_effects": [
+     "0ec173d1-5007-4836-9d0d-6064efc5a18a"
+    ]
+   },
+   "features": {
+    "kernel/depgraph/graph.py::DependenceGraph": [
+     [
+      "f-m36c477081d215cda3092c9e3aaa05d540bf8768bf60e5ea3d4dbbc2d0920fb6a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 scheduler"
+     ]
+    ],
+    "tests/kernel/test_depgraph.py::test_from_coordinator_views_buffered_and_committed_effects": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "kernel/depgraph/graph.py::DependenceGraph": [
+     "residue"
+    ],
+    "tests/kernel/test_depgraph.py::test_from_coordinator_views_buffered_and_committed_effects": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "kernel/harness/footprints.py::measure_component_close",
+    "tests/agent_eval/test_report.py::test_fanout_task_with_speedup_and_zero_corruption_is_a_win"
+   ],
+   "same_file": false,
+   "requests": {
+    "kernel/harness/footprints.py::measure_component_close": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_report.py::test_fanout_task_with_speedup_and_zero_corruption_is_a_win": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "kernel/harness/footprints.py::measure_component_close": [
+     [
+      "f-09b3993f0d4d93d4534e7b07c52e62e105bc9886d02c143e8d19ab7936447dec",
+      "kernel/harness (structural)"
+     ]
+    ],
+    "tests/agent_eval/test_report.py::test_fanout_task_with_speedup_and_zero_corruption_is_a_win": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "kernel/harness/footprints.py::measure_component_close": [
+     "residue"
+    ],
+    "tests/agent_eval/test_report.py::test_fanout_task_with_speedup_and_zero_corruption_is_a_win": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "kernel/harness/footprints.py::measure_component_close",
+    "tests/kernel/test_hazard_scheduler.py::test_interaction_graph_is_computed_from_real_footprints"
+   ],
+   "same_file": false,
+   "requests": {
+    "kernel/harness/footprints.py::measure_component_close": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_interaction_graph_is_computed_from_real_footprints": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "kernel/harness/footprints.py::measure_component_close": [
+     [
+      "f-09b3993f0d4d93d4534e7b07c52e62e105bc9886d02c143e8d19ab7936447dec",
+      "kernel/harness (structural)"
+     ]
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_interaction_graph_is_computed_from_real_footprints": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "kernel/harness/footprints.py::measure_component_close": [
+     "residue"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_interaction_graph_is_computed_from_real_footprints": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "kernel/scheduler/hazard.py::Schedule",
+    "tests/kernel/test_entropy_conflict.py::test_two_agent_single_conflict_shows_no_bound_effect"
+   ],
+   "same_file": false,
+   "requests": {
+    "kernel/scheduler/hazard.py::Schedule": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_two_agent_single_conflict_shows_no_bound_effect": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "kernel/scheduler/hazard.py::Schedule": [
+     [
+      "f-m36c477081d215cda3092c9e3aaa05d540bf8768bf60e5ea3d4dbbc2d0920fb6a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 scheduler"
+     ]
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_two_agent_single_conflict_shows_no_bound_effect": [
+     [
+      "f-088ad5fb18dc2721853903c885f65760bb93febc2d01159c473066c37fde15a7",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "kernel/scheduler/hazard.py::Schedule": [
+     "residue"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_two_agent_single_conflict_shows_no_bound_effect": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "kernel/scheduler/hazard.py::regions_from_edits",
+    "tests/kernel/test_hazard_scheduler.py::test_end_to_end_from_real_edits"
+   ],
+   "same_file": false,
+   "requests": {
+    "kernel/scheduler/hazard.py::regions_from_edits": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_end_to_end_from_real_edits": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "kernel/scheduler/hazard.py::regions_from_edits": [
+     [
+      "f-m36c477081d215cda3092c9e3aaa05d540bf8768bf60e5ea3d4dbbc2d0920fb6a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 scheduler"
+     ]
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_end_to_end_from_real_edits": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "kernel/scheduler/hazard.py::regions_from_edits": [
+     "residue"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_end_to_end_from_real_edits": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/agent_eval/test_arms.py::test_mtpo_is_order_sensitive_on_interdependent_tier",
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_arms.py::test_mtpo_is_order_sensitive_on_interdependent_tier": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_arms.py::test_mtpo_is_order_sensitive_on_interdependent_tier": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_arms.py::test_mtpo_is_order_sensitive_on_interdependent_tier": [
+     "residue"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/agent_eval/test_migration_corpus.py::test_acceptance_is_red_on_before_green_on_gold",
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_migration_corpus.py::test_acceptance_is_red_on_before_green_on_gold": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_migration_corpus.py::test_acceptance_is_red_on_before_green_on_gold": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy": [
+     [
+      "f-088ad5fb18dc2721853903c885f65760bb93febc2d01159c473066c37fde15a7",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_migration_corpus.py::test_acceptance_is_red_on_before_green_on_gold": [
+     "residue"
+    ],
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "experiments/agent_eval/arms/lww.py::_order_key",
+    "experiments/agent_eval/delm_baseline.py::_compact_text"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/arms/lww.py::_order_key": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "experiments/agent_eval/delm_baseline.py::_compact_text": [
+     "621c6593-9b47-4470-b57e-7cb689b64b9e"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/arms/lww.py::_order_key": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "experiments/agent_eval/delm_baseline.py::_compact_text": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/arms/lww.py::_order_key": [
+     "residue"
+    ],
+    "experiments/agent_eval/delm_baseline.py::_compact_text": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "experiments/agent_eval/corpus/migration.py::_t1l_migrated",
+    "experiments/agent_eval/oracle.py::_semantic"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/corpus/migration.py::_t1l_migrated": [
+     "f82dbb29-5414-4a82-9d2c-42509c87df05"
+    ],
+    "experiments/agent_eval/oracle.py::_semantic": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/corpus/migration.py::_t1l_migrated": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "experiments/agent_eval/oracle.py::_semantic": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/corpus/migration.py::_t1l_migrated": [
+     "residue",
+     "substantive"
+    ],
+    "experiments/agent_eval/oracle.py::_semantic": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "experiments/agent_eval/delm_baseline.py::_walk_files",
+    "experiments/agent_eval/oracle.py::_mutate_flip_number"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/delm_baseline.py::_walk_files": [
+     "621c6593-9b47-4470-b57e-7cb689b64b9e"
+    ],
+    "experiments/agent_eval/oracle.py::_mutate_flip_number": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/delm_baseline.py::_walk_files": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "experiments/agent_eval/oracle.py::_mutate_flip_number": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/delm_baseline.py::_walk_files": [
+     "residue"
+    ],
+    "experiments/agent_eval/oracle.py::_mutate_flip_number": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "experiments/agent_eval/kernel_pipeline.py::plan_subtasks",
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+   ],
+   "same_file": true,
+   "requests": {
+    "experiments/agent_eval/kernel_pipeline.py::plan_subtasks": [
+     "88c32859-a19f-48a9-b1dc-c12dae522b4c",
+     "e1448355-da69-4ffc-8579-73789f6be0c1"
+    ],
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e",
+     "9539cb3f-0113-4619-a611-341990fcaa07",
+     "9841bf5a-dadd-45cb-96d2-dd3373ba028f"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/kernel_pipeline.py::plan_subtasks": [
+     [
+      "f-1db97c153e5359a700ec106bb8cf537eadd2db81435651346c0d414d28de66e3",
+      "experiments/agent_eval (structural) \u00b7 agent_eval"
+     ]
+    ],
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline": [
+     [
+      "f-1db97c153e5359a700ec106bb8cf537eadd2db81435651346c0d414d28de66e3",
+      "experiments/agent_eval (structural) \u00b7 agent_eval"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/kernel_pipeline.py::plan_subtasks": [
+     "residue"
+    ],
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "experiments/agent_eval/report.py::eico_outcome",
+    "experiments/agent_eval/seeder.py::seeded_paths"
+   ],
+   "same_file": false,
+   "requests": {
+    "experiments/agent_eval/report.py::eico_outcome": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "experiments/agent_eval/seeder.py::seeded_paths": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e",
+     "9539cb3f-0113-4619-a611-341990fcaa07",
+     "9841bf5a-dadd-45cb-96d2-dd3373ba028f"
+    ]
+   },
+   "features": {
+    "experiments/agent_eval/report.py::eico_outcome": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ],
+    "experiments/agent_eval/seeder.py::seeded_paths": [
+     [
+      "f-00964bc46eae19438ee24ef24c10f8088d76f4a631be0318b84170683339c618",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "experiments/agent_eval/report.py::eico_outcome": [
+     "residue"
+    ],
+    "experiments/agent_eval/seeder.py::seeded_paths": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_advisory_delivery.py::_FakeTrace",
+    "tests/agent_eval/test_seeder.py::FakeTrace"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_advisory_delivery.py::_FakeTrace": [
+     "9539cb3f-0113-4619-a611-341990fcaa07"
+    ],
+    "tests/agent_eval/test_seeder.py::FakeTrace": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_advisory_delivery.py::_FakeTrace": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_seeder.py::FakeTrace": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_advisory_delivery.py::_FakeTrace": [
+     "residue"
+    ],
+    "tests/agent_eval/test_seeder.py::FakeTrace": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_advisory_delivery.py::test_delivery_is_deduped_across_turns",
+    "tests/agent_eval/test_arms.py::test_lww_drops_a_disjoint_coedit_too"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_advisory_delivery.py::test_delivery_is_deduped_across_turns": [
+     "9539cb3f-0113-4619-a611-341990fcaa07"
+    ],
+    "tests/agent_eval/test_arms.py::test_lww_drops_a_disjoint_coedit_too": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_advisory_delivery.py::test_delivery_is_deduped_across_turns": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_arms.py::test_lww_drops_a_disjoint_coedit_too": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_advisory_delivery.py::test_delivery_is_deduped_across_turns": [
+     "residue"
+    ],
+    "tests/agent_eval/test_arms.py::test_lww_drops_a_disjoint_coedit_too": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_arms.py::test_arms_diverge_only_where_there_is_contention",
+    "tests/agent_eval/test_buffered_continue.py::test_quitting_after_first_buffered_would_lose_the_rest"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_arms.py::test_arms_diverge_only_where_there_is_contention": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_buffered_continue.py::test_quitting_after_first_buffered_would_lose_the_rest": [
+     "9539cb3f-0113-4619-a611-341990fcaa07"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_arms.py::test_arms_diverge_only_where_there_is_contention": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_buffered_continue.py::test_quitting_after_first_buffered_would_lose_the_rest": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_arms.py::test_arms_diverge_only_where_there_is_contention": [
+     "residue"
+    ],
+    "tests/agent_eval/test_buffered_continue.py::test_quitting_after_first_buffered_would_lose_the_rest": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_arms.py::test_crdt_is_order_insensitive",
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_arms.py::test_crdt_is_order_insensitive": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_arms.py::test_crdt_is_order_insensitive": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_arms.py::test_crdt_is_order_insensitive": [
+     "residue"
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_arms.py::test_disjoint_fanout_is_lossless_for_every_arm",
+    "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_arms.py::test_disjoint_fanout_is_lossless_for_every_arm": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it": [
+     "9539cb3f-0113-4619-a611-341990fcaa07"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_arms.py::test_disjoint_fanout_is_lossless_for_every_arm": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_arms.py::test_disjoint_fanout_is_lossless_for_every_arm": [
+     "residue"
+    ],
+    "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_arms.py::test_mtpo_order_insensitive_on_disjoint_edits",
+    "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_arms.py::test_mtpo_order_insensitive_on_disjoint_edits": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_arms.py::test_mtpo_order_insensitive_on_disjoint_edits": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_arms.py::test_mtpo_order_insensitive_on_disjoint_edits": [
+     "residue"
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_oracle.py::test_mutation_report_records_escaped_mutants",
+    "tests/agent_eval/test_reactive_dispatch.py::_overlap"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_oracle.py::test_mutation_report_records_escaped_mutants": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::_overlap": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_oracle.py::test_mutation_report_records_escaped_mutants": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::_overlap": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_oracle.py::test_mutation_report_records_escaped_mutants": [
+     "residue"
+    ],
+    "tests/agent_eval/test_reactive_dispatch.py::_overlap": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_reactive_dispatch.py::_subtask",
+    "tests/agent_eval/test_report.py::test_empty_gradeable_task_is_ungradeable_not_a_pass"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_reactive_dispatch.py::_subtask": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ],
+    "tests/agent_eval/test_report.py::test_empty_gradeable_task_is_ungradeable_not_a_pass": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_reactive_dispatch.py::_subtask": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_report.py::test_empty_gradeable_task_is_ungradeable_not_a_pass": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_reactive_dispatch.py::_subtask": [
+     "residue"
+    ],
+    "tests/agent_eval/test_report.py::test_empty_gradeable_task_is_ungradeable_not_a_pass": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/agent_eval/test_report.py::test_full_frontier_report_is_internally_consistent",
+    "tests/agent_eval/test_seeder.py::test_seed_covers_every_gold_patch_symbol"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/agent_eval/test_report.py::test_full_frontier_report_is_internally_consistent": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ],
+    "tests/agent_eval/test_seeder.py::test_seed_covers_every_gold_patch_symbol": [
+     "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e"
+    ]
+   },
+   "features": {
+    "tests/agent_eval/test_report.py::test_full_frontier_report_is_internally_consistent": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ],
+    "tests/agent_eval/test_seeder.py::test_seed_covers_every_gold_patch_symbol": [
+     [
+      "f-m7e5af9dcab790dc35232f06330b12584f9782c1cf11cfd37bce70b533fc6943a",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 agent_eval 3"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/agent_eval/test_report.py::test_full_frontier_report_is_internally_consistent": [
+     "residue"
+    ],
+    "tests/agent_eval/test_seeder.py::test_seed_covers_every_gold_patch_symbol": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/kernel/test_canonical_order.py::test_commuting_edits_all_land_and_are_byte_identical",
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/kernel/test_canonical_order.py::test_commuting_edits_all_land_and_are_byte_identical": [
+     "0cf008f6-b55f-4006-a546-d03291065255"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled": [
+     "ac329cea-e168-484f-a3e4-b08750d4ce46"
+    ]
+   },
+   "features": {
+    "tests/kernel/test_canonical_order.py::test_commuting_edits_all_land_and_are_byte_identical": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled": [
+     [
+      "f-me5aad5c0048e6d03dc9e90cce20242b031cd245cad3cc146415a5d13d7104065",
+      "WS1 coordination info-sharing + in-flight kernel WIP \u00b7 kernel 2"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/kernel/test_canonical_order.py::test_commuting_edits_all_land_and_are_byte_identical": [
+     "residue"
+    ],
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  }
+ ]
+}

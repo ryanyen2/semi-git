@@ -1,0 +1,39 @@
+    0 · op_edit_save             no tracked .py file
+    1 ✓ op_revert                5b2d3969788a
+    2 · op_restore               nothing addressable excluded
+    3 · op_edit_save             no tracked .py file
+    4 ✓ op_feature_split         f-10d36ff6be9e
+    5 · op_edit_save             no tracked .py file
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_feature_split         af-m01dcf54483
+    8 ✓ op_revert                699b8251cb9a
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_revert_restore_probe  99b8de213413
+   11 ✓ op_edit_save             v4_mod_9.py (rework)
+   12 ✓ op_feature_merge         af-m01dcf54483<-af-mc9b0769788
+   13 ✓ op_revert                d068113acb07
+   14 ✓ op_undo                  
+   15 ✓ op_revert_keep_dependents f8dc37eb66f2
+   16 ✗ op_revert_restore_probe  d8db33dac867
+        restore_resurrects_layout: restoring what revert d8db33dac867 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['612ea8eb675c']
+   17 ✓ op_restore               699b8251cb9a
+   18 ✓ op_feature_rename        af-m01dcf54483
+   19 ✓ op_revert_restore_probe  99b8de213413
+   20 ✓ op_add_file              v4_mod_20.py
+   21 ✓ op_revert_undo_probe     301e32de9770
+   22 ✓ op_add_file              v4_mod_22.py
+   23 ✓ op_undo                  
+   24 ✓ op_revert                1a0fbfd1f1ee
+   25 ✓ op_edit_save             v4_mod_9.py (rework)
+   26 ✓ op_undo                  
+   27 ✓ op_revert_restore_probe  7f042a795a66
+   28 ✓ op_undo                  
+   29 ✓ op_edit_save             v4_mod_20.py (rework)
+   30 ✓ op_revert                699b8251cb9a
+   31 ✓ op_restore               5d14e4454702
+   32 ✓ op_revert                7646c3cb07ad
+   33 ✓ op_revert                a356cbc27e41
+   34 ✓ op_revert_keep_dependents d068113acb07
+   35 ✓ op_edit_save             v4_mod_6.py (rework)
+   36 ✓ op_restore               699b8251cb9a
+ts_export_decorated seed 1260: 37 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-ts_export_decorated-seed1260.json

@@ -1,0 +1,1557 @@
+{
+ "repo": "/private/tmp/v2/semi-git",
+ "seed": 20260814,
+ "per_stratum": 15,
+ "coded_by": "author",
+ "populations": {
+  "false_negative": 16098,
+  "false_positive": 352784
+ },
+ "request_text": {
+  "b3a8c27a-31e9-4dce-9c62-b181f57d418c": "there are some issues in the vscode and server: 1) the oracle kept saying unconfigured in the vscode extension, whats that? ; 2) the style is not matched to the vscode modern color scheme, both light and dark theme; 3) the startup of the sgt extension is super slow, seems like there are some issues;",
+  "66046ca5-d7c3-4b94-bc41-280b4ce595a1": "there are some issues in the vscode and server: 1) the oracle kept saying unconfigured in the vscode extension, whats that? ; 2) the style is not matched to the vscode modern color scheme, both light and dark theme; 3) the startup of the sgt extension is super slow, seems like there are some issues;",
+  "6f582916-48ba-4b37-af0b-c9e5b58f940d": "ok move on fixing the css and making sure all the information is nicely encoded with its transition, animation (the style should be minimalist and do not have useless animation, style, and insted of keep adding UI, info card, etc... think about how to encode in the main visualization compoennt, show",
+  "f9dbba87-d21d-4e3e-a775-407c54866616": "resume, implement based on the plan",
+  "52985d80-4c3c-4d35-bbec-88301d20c1da": "resume",
+  "2592102b-d658-4a50-a3dd-3846243a4fc0": "so everytime I did an action, the progress bar keep on running and seems like its refreshing or rerunning something; and that takes around 3 or 4 minutes to settled... i wonder whats the issue, is it also that it regenerate everything? i also found that the claude code running sgt takes forever long",
+  "d5b32758-03ac-4582-abe6-031dc9cd676b": "resume",
+  "c5a416b8-471e-4796-8137-5d64e7f34af3": "ohh i merged prior PR already though, wheres the new fixed then? help me merged to main directly",
+  "6a1aaa4d-78dc-4419-be47-1dceecc3eeda": "sure do (1) then (2)",
+  "7ad23771-8c6a-4c21-bbf2-7a4ea56a906a": "resume",
+  "c357f954-a74e-4d75-ae9d-88d62367fae2": "found a severe usauability issue, so I found that we the sgt plugin, the claude code easily go over the context window limit (1M), which means we need to optimize the for context and speed up the retirval speed, minimize to only required information for concurretn session; not just for implenent the",
+  "7c548858-edad-4779-8021-b02bda84257d": "resume",
+  "7c3dc7c2-43dd-4001-b6ca-28c75f50079e": "Save this report as a plan doc under docs/plans/",
+  "db7b99c2-5d4e-46dd-ae28-e38e4159bce3": "resume",
+  "204060bf-9120-4b5d-9e04-53ddae332c25": "resume",
+  "4eec06fc-3558-4376-b200-398a9890f738": "clean code, then commit and merge; push to main",
+  "c365d94f-004e-4f0b-89f7-526154926679": "why the test take so long?",
+  "87909687-e5a2-48b2-99c8-c9ccaadad180": "im trying to understand the difference of how sgt construct operations and version control compared to /Users/ryanyen2/Downloads/1226-3696-1-CE\\ \\(1\\).pdf ; i cant really understand the math in the lazy merging paper and I wonder how crdt working in their case; my shallow understanding is that they ",
+  "757a0457-cdce-4404-bf92-3b1ac08eba2f": "so if we consider a person working on a blank repos, can we somehow force sgt being constructed in the way that is merge complete? also how do the sgt current deal with the rename/refactor wrong or low confident guessing? and another claim that I thought we had is that the operations are communitati",
+  "983a63d6-3e9a-4c62-83a2-76af12e19a7d": "yeah explain the concept and details of brnach, merge and fork in our case",
+  "df380a5b-15df-43e6-8f9f-995bff0defaf": "We are on a worktree focusing on the operation clustering and mapping to intern, here is the sumary from the last claude code session (Implemented the intent-clustering overlay plan end-to-end in the worktree, 8 commits (U1\u2013U8): - U1/U2 (sgt/intent/group.py): deterministic rung-0/1 partition (Intent",
+  "c3e05566-7ade-44ef-a10c-5430fe5c3f62": "isnt the literal string parsing matching a bit fragile because we might get very messy commit message that has auth but refer to very different thing? or is it that because we first cluster them basedon the ops each commit touched then find common theme among them give us the possibly more accurate ",
+  "b6fea8e4-d7bf-48de-a578-f07cfbb33cca": "yeahh look for approaches that can tighten the rung 1, dont be lazy",
+  "85d844e6-4f39-44b6-afa7-694ead253612": "clean up the code, remove outdated test cases, and then commit chanhes, merbe back to main with the (no need to do the test)",
+  "5e54c77c-a202-482e-9823-a2101866b657": "saw the error \"spawn sgt ENOENT\", im in /Users/ryanyen2/repos/programasweights-python ; wonder whats the issue or its a setup issue",
+  "6ef6a116-2c5f-4a48-af28-9ca57fb38a85": "i did source ~/repos/semi-git/.venv/bin/activate first",
+  "096f75bb-e94b-47a9-a2c9-b8882a3abd82": "i did source ~/repos/semi-git/.venv/bin/activate first already",
+  "da25238e-f19b-4e04-86f3-bb09fe09bc1d": "how difficult will it be to migrate things to rust entirely with all the features (wahts treadeoff we will have), reply in plain candid concise language",
+  "388b9213-f32b-4670-b65a-fd9197fbc15d": "how difficult will it be to migrate things to rust entirely with all the features (wahts treadeoff we will have), reply in plain candid concise language",
+  "d6bc9413-99be-4ca8-b3ce-8bf6094f7b9e": "lets first stick with Python, but the pain point is that its too slow, all the operations, start up, grouping/clustering/laeblling are not optimized; I found that because dependencies kinda very messy and all over the place, so even we claim to have incemental update, most of the time everything got",
+  "6aea26e1-6272-4cd9-b42a-74b57bcb1b9e": "move on",
+  "c4937259-7541-441a-9bcb-1834860855fa": "resume",
+  "6e5034d2-524b-4fa6-a9f7-38c1d88a1b8e": "i think you have to write batch by batch, otherwise it will go over the context window",
+  "37df4bef-f0fe-428b-839d-d18ecde16be0": "its too long and I really hate the wordings and tone, it seemsl liek you are writing to me (for exmaple, \"One scenario, reused at every step. It is small enough to draw and specific enough that each system's answer to it is a fact, not an opinion.\") not to reader, and we need to write way way more c",
+  "23af1a28-ee15-43d8-a38f-f33bffdf2f99": "based on these, we should also think about what are somethings we can improve on our side inspired by others, write a plan doc and makes concrete reference to their cide and architectural suggestion) we dont patch our code, but think more architecturally and cohesively and even that means we might n",
+  "938b93b0-6771-4bb2-8d5c-ded8d563f3f8": "i want to write down, based on the above knowledge, a paragraph in the literature review for my paper semantic-git, return in latex, two paragraphs long, and we need to first introduce them then say whats sgt is or is not (not just lay it out like bullet point) but somehow very cohesvie, and using c",
+  "ef939026-9030-4492-8b54-c33d02154e60": "even more concise, its also a bit hard to follow since its a bit too in-depth to the architecture side, we can focus more on the difference brought by the architecture (implication) instead of just comparing architecture",
+  "af047464-c751-49cc-a6b5-0852d985a01f": "if jj assign id per commit, then is it possible for us to use jj edit on the commit that is recorded by git rather than jj?",
+  "472adf80-aa8b-4bbc-9ccc-81f9c2f85c6c": "resume",
+  "3c4b3394-c00f-4cc3-a651-19398bec5895": "resume, though the current action u r doing kept get getting the \"output_config.format: Extra inputs are not permitted\" so avoid that",
+  "d646d4ce-4460-4bbd-9dbc-f7596040ddb2": "im not sure if im correct but jj allow user to edit history better because of recording all ops log, but we might not need to do that in sgt? to be able to go back and edit history? and support nice undo system? or we loosing something too compared to jj? reply in plain language, candid, faithful",
+  "fdf5201c-8cac-4027-bf6f-69bba33db938": "sgt is really close to the https://github.com/ataraxy-labs/sem isnt it?",
+  "3b9747e0-bcf5-49fa-ade9-ae0edbe5071a": "I want to write a motivation of moving the version control to higher level semantic ops, here is the opening but its really fragmanted and not cohesive, make it more fluent and natively written, fix grammars, filling in blank with facts and then tighten it: Most distributed version control tools are",
+  "6c4cd4a7-50dc-469e-8da2-bd1526b46887": "next paragraph, starts with \"This paper thus...\" talking high level about our approach, mentioned about sem in the middle (not to introduce it or compare to it, but cite it when mention about entity level) we need to make our thesis cleaner (can refer to the /Users/ryanyen2/repos/semi-git/docs/plans",
+  "79e9daea-1a13-4c9b-a785-2c3791466df2": "one line summary of what the system is? currently seems a bit too neaty gritty about the design where we can explain later in the design section",
+  "fece16cd-d27b-4f2a-98c1-6685ec6d8449": "ok then write the following, i think its hard to know why \"Every operation, saving, reverting, editing, restoring, and undoing, takes such a selection as its argument, so the developer acts on the same semantic units they reason about when writing a specification.\" we have to explain it clear about ",
+  "869fbeee-273b-4e71-8fc5-50781205ef40": "I said avoid this type of sentence \"This is what makes feature-level editing possible.\" also we might want to ground with an example to show how it works on user end; here is the first hald I edited: This paper thus presents semantic-git (sgt), a version control system whose unit of history is the d",
+  "b48d7c19-1e0a-4054-8606-190b0c25dc58": "now its so hard to undersand, the wordings and the narrative are just confusing, we can make it to two paragraphs rethink about narrative and how we can convey the best of this idea from higher level abstraction to lower level",
+  "242c3e11-051c-45e4-80b8-605fe25ffd74": "looking at the '/Users/ryanyen2/repos/semi-git/docs/plans/2026-07-18-001-refactor-vcs-inspired-architecture-options-plan.md', seems like 1, 5, 6 are more coupled and 3, 4 are either or? explain to me in plain language in traditinoal chinese while using english term and keywords",
+  "eedc9945-4f69-454c-bdf0-676bf8d98ca3": "but whats the treadoff of choosing D4 instead of D3? cnadidly consiely explain",
+  "931fb1b0-a3fb-4bf4-a7cc-46722a49ae5f": "theres also new changes from the main, update that to the tree first then start implementing",
+  "6416584e-8e74-4aca-898b-ba5170cd3ffa": "merge work tree to main",
+  "500c21ea-389a-4e46-a5a0-32aa193d039f": "confirmed, plan",
+  "5da2e318-1a05-4c58-baff-7429f9d00aec": "A",
+  "fbb5851b-ab08-4e24-aa27-706cc60d7d22": "merge",
+  "72e020b7-fb12-459b-a33d-24c9d7a3ecfc": "whats the difference between sgt checkpoint and drift? also if the sgt save is commit, what sgt commit really mean? i also wonder how hard it is for our model to have this edit feature, thouhg in our case, the edit is not editing a certain snapshot but to edit the certain node and all its upset? tho",
+  "a744ab06-daf7-47c7-83e8-e5495267305b": "what would be the quivalent of jj new target for sgt? is it kinda branching?",
+  "667cb0d5-3f46-4fe1-8fa4-abf1dc125915": "ok so i wonder what sgt's new architecture can really bring us compared to jj? like what it can do that jj cant",
+  "aa13f765-ddf2-4a1d-84ab-067f8f392ee1": "we only guarantee the code work if the code is correct when they commit? like if the code has syntax error or issues, if I revert to a certain feature, we do not able to gurantee the code works (or back to the exact replica of that piece of code?); if I do revert without dependencies (just retract t",
+  "23bb7a45-62b4-4069-95c2-5f2b46eef5ff": "based on the above conversations, and deeper analysis on the sgt workflow (compared to jj/gitbulter), what will be something good to adjust to (not that we want to copy them, but that we can amplify the benefits of our approaches that we did not leverage, or that pitfalls of our current workflow) fo",
+  "7910d0cd-ea49-46d7-9327-e5b0306f7d91": "i wonder why do we need worktree? if all the ops are associative, isnt it possible that we can just natively support multiple agents working together?",
+  "68812d2f-6579-46a4-bfbb-b7fafe1a195c": "revisit the question and answer it more accurately; I meant why do we need git worktree (session is to create git worktree?) while we able to make sure edits are conflict free?",
+  "9d447451-4169-44bb-866d-9e1cca73ea5a": "ok now, revisit jj, and think about what can we learn from their user model; I think the current sgt has too many commands and just hard to remember or use; not intuitive; for the jj its clean becasue they just need to remmeber \"open a clean commit\" > accumulated changes > commit; and the slogan abo",
+  "51574ccf-e952-4e10-9bd4-0e2853f5aca0": "Ilove this reframe, lets do /ce-plan also i think having a good support over the tui can also make the experience better, including how do we show features, how to let them autocomplete features (fuzzy search), multi-select, etc... think about tehe visualization and aboout the user workflow and thin",
+  "3b508bec-7924-411d-9b7a-f9743f60f9c5": "there are some known flaky tests that causing the test so long, actually many tests took more than 5 min and causing the whole development cycle super slow; drop the legacy tests and also update the very long tests (smaller set) or other way that can still acehive the same purpose instead of keep on",
+  "b21beff7-7123-40a6-9673-559dd27bd7ee": "Check on background task bmn05onq3 (full pytest suite run, log at /tmp/pytest_full_verify3.log) and report results to the user if not already reported.",
+  "a6617754-a7bb-4952-a601-ea5f4487fdef": "resume",
+  "05d2d803-1afa-46d9-a53b-98830ad855c9": "fix",
+  "18f0a060-2038-4a48-af12-4f50ff3be11a": "you should try removing the .sgt folder and redo; also currently the latest commits have huge updates on the commands, the vscode extension required update too to suppoort the simplified user mental model",
+  "58e237b9-60c5-442a-87ef-1c11de6973b5": "you should try removing the .sgt folder and redo; also currently the latest commits have huge updates on the commands, the vscode extension required update too to suppoort the simplified user mental model",
+  "0db3494b-bba9-416f-8c40-f35cafd9c397": "ok done from the other edits",
+  "23bb1121-61d6-41b4-bf18-742b4feed3b5": "sure",
+  "18c90d57-ef44-49b9-a35a-7c6f8a237be6": "u can do it",
+  "309e8954-9cf2-4697-a8da-882e183fe88c": "3",
+  "4e7f52e2-b8ef-4c68-874b-8655353bf2bb": "we made some edits based on the '/Users/ryanyen2/repos/semi-git/docs/plans/2026-07-20-001-refactor-semantic-user-model-and-tui-plan.md' and seems like now all the commands are even more difficult to type because required sgt advanced command?",
+  "ed14c3c8-44bf-4acf-8440-0ad681173c08": "merge back to main; making sure the things we workd on throughout 1) commands simplification; 2) vscode, cli update ; 3) test speedify are all kept; clean up the code with @/Users/ryanyen2/.claude/skills/code-simplifier/ and remvoe legacy code; cleanup the code to be the cleanest possible",
+  "d49cba5f-0a23-41b0-99cc-80d6450de0f4": "first explain to me whats the concurrent user daily workflow; what mindset should they hold and what commands in combination they should use, what are some common commands (args) and the usage sceanrio they suported; reply in short, plain language, candid, no jargon",
+  "4119f3ba-91ef-4e39-92b5-8247119b8a40": "update @docs/guide/ and @README.md ; make it more readable too, no jargon no shallow incomlpete sentence, just plain text concisely, canddily describing things; focus on the purpose of communication to user",
+  "b9c12875-7a19-4d79-a58b-01274936f90b": "think a bit more on the design of the graph visualization, instead of just copying the commit graph which does not maeks sense for us; while we might able to show the so called history based graph, but how should we encode it because a certain point of the history is a set of ops (that might be huge",
+  "489f4f34-d38e-4639-9d86-95c32c47ed3e": "replace, open up a new branch, implement until all details design has been considered; all possible user workflows are supported clearly, all required info being surfaced that not cluttered; .... dont ask me as i will be away now; you should simulate user workflow and then looking at the printed ter",
+  "c4e5f5ca-c1d4-4971-b4be-2ada3dfb80cc": "dont mind the invsriant as that might not hold with the new architecture and userwokflow, reevaluate and take it more as a consideration; after that, just go through each stages until all done; always think before touching code, always follow the best practice of coding described in @CLAUDE.md",
+  "65efd4a2-07d2-4f12-87fe-2819894195c5": "stage B first, instead of planning ahead, kept a stageB_plan.md, updating the plan and iteratiing on it thorughout implementation, while also kept some implementation notes, etc... constantly reflect what we need from the intent clustering, how developers would want it, and whether the design allow ",
+  "a37b040c-b134-4097-98e9-32c531144d36": "commit stage b then start stagec; stage c required your expertise in diagram layout algorithm and using some of the algo to compact the tree such as Common Subexpression Elimination or using Stage Chaining or lazy evaluation, etc... to make sure the user experience is smooth and the visualization is",
+  "fa9258c0-b34a-4cba-a85f-db8c0d613632": "sure move on",
+  "627583be-ccf4-48da-93b6-c003de418964": "commit then go until all steps done, then clean up the code, update docs",
+  "92518ca1-f5aa-4802-83e2-30b9ac34db9f": "so im working on stage A - C; and mostly done; currently im trying out using this current repository for testing but I saw that the when sgt graph, it shows the raw ops wihout clustering or llm labelling (I also want to use the litellm, claude, instead of the openai api key); whats the reaosn? how s",
+  "8dcd0c03-a40f-42f2-ba87-cb0992079e34": "maybe only when user around the playhead and drag is scrubbing, otherwise just click event; also the indentation is not correctly refelcting the actual tree structure, the level one and two seems like in the same level visually.",
+  "d4a725ef-5654-42c5-a727-fe88f1740da1": "the terminal says ``sgt: `intent` moved to `sgt advanced intent'' even i already did the `(semi-git) \u279c programasweights-python git:(main) \u2717 source ~/repos/semi-git/.venv/bin/activate` but i think its because it links to the wrong version; anyway first commit things (everything) then merged back to m",
+  "43d5c81e-e56d-4509-ae43-3e84c7595640": "resume",
+  "30bbe8b2-6163-42dc-9edb-39cd091cc2a7": "i found it a bit confusing about the user workflow, so if I want to see the full graph that has both intent and feature cluster i need to run intent build then run sgt map --rebuild then run sgt graph? what??? and then I see the graph looks nonsense, and the intent is hard to maintain because I do n",
+  "b6606dca-dbf5-47dd-9487-5fbde984e79e": "why it went to fallback? i think we supposed to have all the env key isnt it? thats the thnig we need to fix, instead of doing something like this stupid but not generlizable approach",
+  "1d92f4db-8722-485c-aacb-5baf9063f29d": "im thinking of changing the graph so that each lens is a feature (the tree of features will be on the left) and in each row, showing ops across time that is chunked by intent group, and the lane should show op-chunks that direction means time, opacity meand desntity of ops within chunks (so chunk os",
+  "5b5bba31-2b6f-4cf0-8051-fd8e4c339a70": "just to see if i understand correctly, so is it that the left and right still connected? like each feature has a timeline? I also feel like we might able to design the generaiton pipeline or algorithm better so that the feature and chunk of ops are closer (like theres less cross feautres chunks exis",
+  "77abb259-f0a0-40b0-9463-3ffb53bb2965": "resume",
+  "83e46531-ab07-4519-9805-dc22de5206ff": "theres warning when trying to render graph, and the speed is too slow, try to optimize the LLM call and reduce the context, also adjust the graph drawing algorithm or data structure; also currenrly the vscode extension has the chunks rendered, but need ot pay more attention on the details /Users/rya",
+  "bc7f9a6c-b047-47e4-8d2e-c0692feec6eb": "theres warning when trying to render graph, and the speed is too slow, try to optimize the LLM call and reduce the context, also adjust the graph drawing algorithm or data structure; also currenrly the vscode extension has the chunks rendered, but need ot pay more attention on the details /Users/rya",
+  "420652cf-a7fe-47db-92e9-33fb1ea18e6b": "resume",
+  "1bc13297-734b-4d26-a18b-a21948abb62c": "same as tui, so hard to read Tip: Use /btw to ask a quick side question without interrupting Claude's current work",
+  "2357e00f-9716-4ff4-b073-09b99902fe7e": "i found the current graph/log/status/episodes/map very confusing and entangled; here I would like to propose a fundmental chnages of the concepts that all architecture required refactor, so before I did that, you should consider my proposal, discuss with me whihc is not accurate or not possible, whi",
+  "646a62e3-6441-447b-9750-016849e5e6a6": "1. curation history can be invisible unless the operation touches the code; 2. playhead can be view only, but need bubble menu showing the possible operation to do; 3. confiemd about the revert repair; .... after the change, I would suppose that we can merge all the status/log/graph/episode/map into",
+  "69720370-94bd-4ace-8db4-59cb5764182b": "dont confirm my conclusino, you should propose idea that can solve the issue based on ur expertise",
+  "facce2c2-2a9f-42ab-9301-27f7d4f2d6e0": "my other sessions result came in and was planing to consolidate the graph to one single cohesive one; however, when trying out sgt log any args, its just shown a bunch of has number? also the vscode extension did not load the graph (sgt status --json failed: sgt: `status` folded into `sgt log --summ",
+  "efc8904c-18b4-4f05-9817-325548f7cffd": "(a)",
+  "8e692bb6-ddfe-4265-bd63-874da94344ef": "resume",
+  "2cd807af-5b4f-488e-90cf-d618ef5cbcc6": "resume",
+  "b37df9d8-ae9a-450a-8f1e-0e1c18982ee3": "ok move on",
+  "f0c23bd2-6f84-4fb9-8053-e676e01ed788": "summarize in plain concise language whats the session doing, whats the log of workflow (commands send, action...) workflow tried",
+  "e144fd3e-3389-4781-96b7-56682d687755": "ok draft a plan to solve these issues and improve the UI/UX by designing with @/Users/ryanyen2/.claude/skills/design-taste-frontend/",
+  "e9618fb5-a16f-4074-87ed-14207e88f46a": "work on all of them until donwe",
+  "17290be3-106b-45eb-b0c4-f9aaacc8a0ca": "work on all of them until done",
+  "77a9f6b4-4a4d-4eee-aa1c-a5e52968d42b": "hers my understantding about the workflow, and lemme know if i understand wrong and what might be ux issue; (1) I manully editing code -> sgt save -> sgt graph see where my changes allocated to; (2) sgt plan -> claude code implementing it -> check on the drift with sgt drift, then resolve it?; (3) I",
+  "6fb8a7dc-96a3-4fb2-9489-2c78d2704060": "i feel like we should do something more like each sgt ops are two steps, so its kinda like when I perform an operation, I can see the focus view of the preview of the effect to the sgt log (graph) where I can hit enter to confirm or adjust it or esc to leave; all operations should have this kind of ",
+  "b3cb4411-7db1-484d-b82d-70899bfbd5ad": "sure extend",
+  "6868f49b-ed17-4715-9fc4-1d35b02d68ef": "resume",
+  "3c51e3bb-1fdf-433b-be64-468bae7d6512": "start the deferred sync/land/propose/resolve feedforward; think about the user experience and design of graph; test it directly by printing out or using the test-workspace/livehub for testing",
+  "1c4599b6-06c9-41a3-bea1-1cf5675e3760": "do all three other without stopping, removing the legacy code",
+  "5fd63389-bc0b-4f91-8cd3-3c12ba7867b4": "update docs/ getting started, workflow, readme, etc... and do end -to end test with the /Users/ryanyen2/repos/test-workspace/livehub codebase, and making sure you print out the graph, and see whether the info is correct (and informative!!) dont fool yourself just becuase being lazy;",
+  "2922e6af-b264-4193-a0e5-99ec893bae4e": "fix all bugs then commit, push, merge to main; remove all legacy code",
+  "4e553d00-d477-492b-b131-ee23caecea20": "yeahh we need to make it consistent",
+  "cbd2d58e-1b2e-4ff6-adc9-abd49b604cef": "start fixing bugs",
+  "5fd95fdb-2f7d-4b77-977f-7629fdc4fb1e": "sure",
+  "2b09aa7a-7357-447f-accc-bfd2f832702a": "ok",
+  "89da5c01-7f95-4191-93dd-43b791e0c173": "work on the open items",
+  "b3086008-03ab-4569-a1f5-c955d9cb8cb6": "sure, make sure the redesign follows the best practice of Apple design guidelines, support the user workflow that user should be clearly knowing what are they looking at, what can they do next, and the flow of action is streamlined and clear",
+  "6ccc37df-e31e-4908-b1cd-7bd68ebde147": "I am curious how the user workflow now should be? when working with claude code, when editing code manually, when reverting things, restore/ undo, or work with others.... provide a storyboard like concise and real world use case that we can use to describe in the video that people can quickly grasp ",
+  "34afa115-2af4-41c1-9cf2-3dd32c4fe585": "i hate how promotional this sound, I want more candid demonstration, im demoing to the git builders, experienced developers who loves to see how I typed out commands, actually works on something that the current git cant; not some toy example and shallow narration; be more candid, and also talk more",
+  "39766272-4c22-4198-8e6d-f09b2d991bf3": "i need actual user workflow",
+  "a2761035-1f70-498e-b7a6-5b145b4ea70b": "i need actual user workflow, demo 4 + 1 is nice, but I need more feature level ops not just ast entity level revert; we can using the /Users/ryanyen2/repos/test-workspace/livehub as example",
+  "3d15eae3-63ab-47b2-8777-db62b07c7071": "i need actual user workflow, demo 4 + 1 is nice, but I need more feature level ops not just ast entity level revert; we can using the /Users/ryanyen2/repos/test-workspace/livehub as example",
+  "f2b039e9-ad30-41d8-89a4-2da3f02b1872": "i got a q, correct me if im wrong dont follow me; so I wonder what happend if I revert a function to a certain history, and then save some new commit then restore? also when do we commit? is sgt save add + commit? then why do we have so many ops? or ops transaction is being recorded every touches? b",
+  "dc6a142c-e138-4f0b-9cf4-dc6cb50c3ff7": "how cherry pick works then? also fork is somehow like branch? but it only fork a certain entity? or it forks the current set of ops? ok so is it true that we actually dont care about the trajectory of ops but only care about the certain ops at certain moment? or way we do care? so we still kind of d",
+  "39dcd3f8-6077-47cd-bc5b-58b787a76f36": "explain a bit more on this \"What we don't care about is commit order / time.\" ... and I wonder if our current visualization in the workbench panel (vscode extension) and the tui graph is too focus on the time spectrum that actually conflict with what sgt really is?",
+  "4cc30377-11d0-47e7-a350-9d177c948360": "yeah read carefully first then suggest",
+  "4927cd7c-daf9-4a56-8533-c4e999cda98b": "i just wonder if user really care about ops level detail, like whats the chance of them gonna actuallly just revert a single function",
+  "ad71142c-b40f-464b-ae68-65bd771d3d82": "I want to write an introduction for this paper, and we want to foucs more on the user interaction angle but yet we also want to be clear in terms of whats the current issues of latest approaches (like this https://arxiv.org/abs/1311.3903) ; and here is the draft one that being criticized of not able",
+  "8f395172-7cf0-4569-a13c-8db6581d1022": "i do not want emdash or colon, no half-ass underspecified setnence allowed like, for example, \"the categorical model that underpins Pijul makes this precise, ...\" or \"a line-level diff is a faithful trace of the work:...\" always directly straight to the point, no promotional word, no flowry word, no",
+  "d0762908-a113-4d23-920e-d25acf8f11c8": "i dont like these, a bit too low level detail, where as readers prob still not quite fully understand how it works; \"Two parts of this design were not obvious to us at the start. The first is that the developer, not sgt, decides what a feature contains. We first grouped operations into features auto",
+  "e91d61af-1606-4f00-833f-ac0f1e4c5353": "you misunderstand it, this paragraph should also convey the second why by demonstration it directly; like the current last pargraph talk about how we design sgt and whats the units of sgt... and now readers are like: \"ok how it works, and why design this way\" so we demonstrate a strong use case (act",
+  "0ac0275e-bd43-48af-a9f5-20a9a53d8119": "it seems oodly complicated, redesign the scenario please, also we want fork, revert, restore back.... rewrite entirely, and do not compare with jj/pijul now",
+  "2d2780f4-87d2-4a66-b5ad-e9b06cfe533d": "maybe no fork? of we can showcase cherrypick ops? but that required LLM? wait... discuss with me first, provide me three different narrative in short and I picked",
+  "116bfa8d-90f3-4ee3-9e4b-c732599c04be": "A but we need to make the scenario clear that git cant do it cleanly,... and we can illustrate by checkpoint, for example whats the changes, etc...",
+  "3de9df7f-d84f-461a-9ba3-cbfd7d12af1e": "A but we need to make the scenario clear that git cant do it cleanly,... and we can illustrate by checkpoint, for example whats the changes, etc... make sure its cohesvie and well connnected with the prior paragraphs' writing; need to have an opening, and notice that we are writing one paragraph wit",
+  "4ece81ff-8ccb-43ee-81ce-1d4ddfca0f4f": "i like it, but the last action is a bit unclear about slow query is fixed, so if the slow query is fixed then restore, I think jj can just edit that commit and then create a branch then rebase it isnt it? and also if we restore isnt it gonna cause conflict?",
+  "80c93c41-cec0-4923-b4de-6af3d37ec6fd": "i had a hard time understand whats going on",
+  "8bbf3b24-ceb0-450f-bdec-644e83ac1ecf": "i had a hard time understand whats going on; just revised paragraph without any explaination",
+  "bef060db-210a-44a1-accb-22c6d92bab10": "currently theres always preview and aciton but using --emit for preview, without for action? and I wonder cant we remove this arg and somehow default always showing the preview, and user enter to accept... kind of like those terminal startup (react) interactive linear multi-steps/choices thingy? ove",
+  "72dff69a-e359-484b-ab20-4568e1d4e59c": "the preview will also be great to show the graph preview, not just text (focused view ofthe affected graph with visual design that, for example the existing graph is in dimmed and the changes about to take shows in opacity:1?) hard to show the revert thoug.... think about the design that can best sh",
+  "bab241b6-5d7d-48c7-81b8-d675e7f22b26": "the preview will also be great to show the graph preview, not just text (focused view ofthe affected graph with visual design that, for example the existing graph is in dimmed and the changes about to take shows in opacity:1?) hard to show the revert thoug.... think about the design that can best sh",
+  "c519454a-6605-4282-b902-aafaf5c3f280": "the terminal has no animation so the visual design is important (the viusal of the preview of the action)",
+  "989eacc7-dc2d-4fb3-ab37-78f9dee11a56": "i need to preapre two slides, up to three mintues showcase of what I had to everyone in the research lab, so that people can quickly grasp what problme im solving, and why design such way (not using git)l; look up some guidelines for elevator pitch, but not being sounds like a jerk, be candid and st",
+  "ae029058-9979-480e-a8ce-ab03c8cb3102": "resume",
+  "5825093b-c54c-48d0-af42-1d8f97afd8c2": "i dont think sgt is a good software name or comand (hard to type), we should have something easy to type like ss ....; then whats the software name that can be abbreviate to ss that capture the menaing of \"semantics\"... latin word, chinese, japanese... anything, fun and catchy",
+  "4aeaec62-5172-4624-8c3b-e40ce1aaaf80": "then we prob need something else thats easy to type and not registered in linux/mac/window",
+  "1ff5c12b-ac31-4425-bf73-6cec6119662f": "then we prob need something else thats easy to type and not registered in linux/mac/window; maybe some words origin from the ancient chinese book ish like shi jing/dao de jing, etc...",
+  "56fb73b0-02d3-4840-ac46-11ddf69e2da2": "sure lets check if yi is registered",
+  "d0f164db-9eca-4658-bcbd-8f6bc2005c12": "how do we know if the function change the name, like will that be count within the same entity's ops? be faithfl",
+  "50c9e6ef-8204-4a8a-9d8d-8b525bab3603": "source /Users/ryanyen2/repos/semi-git/.venv/bin/activate",
+  "3077b60a-872c-4c5e-9750-e1ee88f227d8": "I also want to contribute, or at lease provie a more robust and optimied method for the llm clustering and labelling part instead of just prompt based non controllable, wahts the current algorithm for the incremental update? and incremental subtree relabelling? how do we know if the current save gon",
+  "86e3a9b1-20e3-4a3d-9d77-089a83f348c4": "what is leiden",
+  "f53bab18-a166-4353-9209-d8f491ab541b": "i guess this is difficult for user to precieve is it? like from the graph theres no way user could know or predict what might this change contribute to? \"So a save joins an existing cluster if it edits something already clustered, or couples strongly to something already clustered. It only creates a",
+  "382f85c0-d278-4d52-89ce-d040bcc8f1e7": "ok if we want to make the LLM pipeline more robust and that chanegs are more incremental (only required changes being made to the subtree, or checkpoints, etc...) how would we able to improve it; algortihm wise, mathematical wise, or even some NLP technique about cache, etc... using the @/Users/ryan",
+  "0bb0452b-7356-48ea-ac4f-80ae463f412e": "i dont understand the third row, wahts the cpm? whats the current issue and how the methods searches solve it? explain to me in plain language and provide me enough context to comprehend",
+  "001d4ae4-9256-4064-b126-b98a8115ff81": "<bash-input>git pull</bash-input>",
+  "9b500bb2-7686-45d0-b7f1-3ff4cebf887a": "<bash-stdout>Updating 6f7e722..fcbcded Fast-forward ...poral-prior-clustering-and-graded-reuse-plan.md | 393 +++++++++++++++++++++ 1 file changed, 393 insertions(+) create mode 100644 docs/plans/2026-07-28-001-feat-temporal-prior-clustering-and-graded-reuse-plan.md</bash-stdout><bash-stderr></bash-s",
+  "b54d77a4-f6bc-4e6d-9994-e1f04996ff0d": "how do we decide the constnat for all codebase? i def dont want user tune it every time; and whats phase D about? reply me in short concsie, plain text",
+  "392ecda7-02ac-4cd3-a619-6eb0d006d1de": "ok lets do test, using the .env and make sure its correct",
+  "996c7bed-ab59-4331-be8c-ea00d133805b": "ok run actual test on the /Users/ryanyen2/repos/test-workspace/livehub to make sure the graph is constructed correctly, and make some changes trying to edit somewhere fuzzy or adding bunch of code and see whethet the algorithm worked as expected",
+  "75fd609c-35c5-4fdb-b19f-bf94e18a191f": "we no need git reset but using sgt is fine too isnt it",
+  "3f761989-4289-4354-a6be-38db70c0584e": "wait so, scrubbing the playhead to certain commit is not actually reset but appending new commit called revert?",
+  "18d65169-cd0e-4c8e-9709-a50eda1ba0c3": "wait so, scrubbing the playhead to certain commit is = sgt revert but not actually reset but appending new commit called revert?",
+  "251c4da0-c419-408a-9d98-643a2e6c30b4": "whats the actual difference with ot without --to? and like what the graph will become when doing either or? i guess theres also one which is to only revert this feature without touching other features that dependes on? print out the preview graph and then lets reason if this makes clear sense to us ",
+  "803157f6-bf8c-466a-ab8d-b3bb5cc592b1": "resume",
+  "b20fb21d-3af0-4f6f-9264-0e76aa881e98": "i thought we had some fixes trying to make the label more stable but its still an issue? i think these two issues hindr the usability a lot, and thats what we actually need to fix, think carefully on the solution",
+  "feed5750-0caf-4398-bedd-0aab9caeaa2e": "so the plan '/Users/ryanyen2/repos/semi-git/docs/plans/2026-07-28-001-feat-temporal-prior-clustering-and-graded-reuse-plan.md' did not consider about the problem in layer 1?",
+  "b9c98da5-8ee7-4ac7-a921-37536cf8fc77": "ok i need you to launch multiple subagents to looking into every single problem we talked about above; icluding the presentation (showing the label of checkpoints also mean enlarge the color blocks by adjusting the layout algo; currently showing the hash instead of label, whihc is unreadable, etc.. ",
+  "3c9883c4-516e-44c8-9f5f-392bcd00ab78": "i thought the preview will show the graph (the log --map) in terms of how the map will become after with visual annotations (we did work on this before no?) but currently still showing a bunch of text",
+  "18bf30d1-68a6-47db-8bfd-5de964c51d45": "so how user using the @n?",
+  "a2ff3451-9e1a-4b31-91e9-7e0189c65f0f": "so how user using the @n? in commands, what commands can it be used for? restore too?",
+  "cba9601a-8e4b-4dce-8555-e40bffdcec68": "i wonder whther for both graph, the issue is that when there are too many commits on certain features then its might overflow? and how about the branch/worktree, how will we represent that?",
+  "2101b469-e262-4b19-97bf-2626e2227701": "maybe lets first truncate the label if overflow, and prioritize showcasing the last k's (3) checkpoints; and make sure we also layout nicely when user want to have a mroe focused view on a feature category, where we layout the timeline and full commit (defatul vertical); and I would choose B (sublen",
+  "b397fcf7-51af-45d3-84cf-b523c42d72a7": "I wonder whether theres the concept of branch in sgt? and is conflict a valid state in sgt (like jj?) do we have the evil merge problem? and I assume we do not have the staging area alrteady? Im basically trying to write similar things as how jj or pijul compare with git https://docs.jj-vcs.dev/late",
+  "58ab6aec-e9e7-42d0-acb4-223ee5eb9281": "be faithful to the actual code rather than any docs",
+  "c42e462b-0345-4f66-ae4c-b295dbc2f50c": "now im looking at another blog and wonedeing how about sgt http://www.rockstarprogrammer.org/post/2008/apr/06/differences-between-mercurial-and-git/; 1) are our history mutable? 2) i dont quite undertsand the articles' point of view on the branch management, explain that clearly to me first then com",
+  "c7e3215c-cfb1-43fd-8413-9d298a2db6ab": "here is the text that you can refer to for the blog The Differences Between Mercurial and Git I realized recently that I've been using distributed revision control for several years now. It's always been an exciting landscape for me, although it's been a bit lonely. I used gnu arch for most of my co",
+  "974fbb38-8d6d-49eb-9c7b-d73bb9798287": "how about comparing with darcs and pijul; 1) quote from pijul when comparing to git, given we have the ops are we still suffering the same critiques? \"However, Git doesn\u2019t guarantee the associative change property, even if A, B, and C do not conflict. Specifically, Git (and relatives) can sometimes ",
+  "da3f225a-87d9-4f20-b160-43d5f6a63efa": "yes lets go to write up, be concise and plain no jargon; not just comparing one - one, but synthesize it, focusing on why and form the user perspecrive whats this implies as this is HCI paper; we should talk about the design of sgt, and then in each design choices we talk about why (some inspired fo",
+  "08335893-fc8a-48aa-b284-938e1fe3a1d4": "for the part two, we should aslo talk about collaboration (remote), the and the integration with LLM (planning, revert \"NL descriptino\")... and for the writeup its better but still have those awkward half-ass sentence like \"sgt begins from a different commitment.\" that need to be replaced with the a",
+  "16396aee-01f3-4de6-ae3e-8c147ab70a7a": "the cahcing and indexing is better, lets do that example for the part two; you can wirte the second paragraph by going to this test workspace /Users/ryanyen2/repos/test-workspace/codebase-indexing and actually working there as users, (there might be some bugs so note that down or fix it) and for the",
+  "7ffef41c-9911-4931-9866-ec5293b4cdcc": "do the fix",
+  "883f3f0d-9f53-40d7-b735-cf77167e2dfb": "the prior session just stopped unexpectedly and this was the goal \"theres many issues recongized and pointed out in the '/Users/ryanyen2/repos/semi-git/docs/plans/2026-07-31-001-fix-workflow-hardening-plan.md' plan, I need you to launch multiple subagents to fix each bugs, notice that some of the bu",
+  "0f3646a0-04db-4c07-bf66-13cba21797c4": "commited and then merged to main",
+  "acf4908f-7a91-490e-914f-8c88384d3600": "notice that there are a concurrent branch working on the intenrt layer (just pushed), pull first and then reevaluate the phases and then start phase 1-5 one by one; always think before you code, read before you code",
+  "c746583d-6ea3-4dcd-9bb7-d76bcdb455c6": "wait, first explain to me whats each phases were doing? ans why 1.2 is deferred, in short and plain language with traditional chinese and englisht term",
+  "26d4fe22-467d-4227-b538-4fedb1044925": "whats f1's spike... what a jargon",
+  "063085b2-d049-4a7c-89b4-28f412a18a66": "ok sure move on; ok before that, we has a new push from other collaborators working on the intent layer, pull and merge carefuelly, revaluate the plan; think!",
+  "bb6ce520-55ce-4433-92b5-c3b0770cebe1": "proceed",
+  "bad91648-80eb-48eb-99d4-3d5ab1cc2b2a": "commit",
+  "9597a1f7-5e16-44a7-8859-0e35ceb9a01d": "clean up the code with @/Users/ryanyen2/.claude/skills/code-simplifier/ and commit, merge/push to main",
+  "9534e360-6dd8-4023-b43d-40fb4148849c": "if the test is outdated then remove; if not then see whats the issue",
+  "c2dd1c46-df48-46d3-93c3-e77fecf638e8": "sure, commit",
+  "fd3c327d-676a-41e4-929f-be80a3023523": "merge and push to main, there are some changes about the intnet layer thing, so be aware that",
+  "38050995-8954-4b63-b465-abc523c50e2a": "I assumed we havent done the M2 and M3? whats the result of phase1.2? are we good? (im actually a bit confuse about where we are right now, what are we doing...) explain to me clearly with no jargon; concise and candid",
+  "d13b803c-113f-4bf4-bf1b-b139eaf656a8": "currently we had done the P1 but the P2to P5 need some dogfooding, we can use the /Users/ryanyen2/repos/test-workspace/codebase-indexing or /Users/ryanyen2/repos/test-workspace/livehub to try out, notice that this step is one of the most important section to do alignement to users language, we need ",
+  "397a011f-c5e8-4592-b869-00f4edc65cb4": "currently we had done the P1 but the P2to P5 need some dogfooding, we can use the /Users/ryanyen2/repos/test-workspace/codebase-indexing or /Users/ryanyen2/repos/test-workspace/livehub to try out, notice that this step is one of the most important section to do alignement to users language, we need ",
+  "532cf70e-dfc9-491e-bf84-f13b4e771a83": "ok",
+  "9196da07-78f9-4db6-85e9-6deef57a7064": "ok next",
+  "c3e98405-ce92-42eb-94cb-d62aad441b53": "i dont understand the problem, explain to me shortly about what we were doing, why this is a problem, ish context that I can make informative decisiosn across options; use traditional chinese and english term",
+  "ab842aa3-5b38-4667-a131-27a29c48d0a4": "ok then maybe we actually need to use the actual time for the commit order; to make informative chunks;",
+  "4c23e32f-7adc-4739-9523-7de80e136e9b": "clean up the codewith @/Users/ryanyen2/.claude/skills/code-simplifier/ , optimize the algo, making sure we consider all possible users edge cases with code reviewer",
+  "c4f3366e-20e0-4f0e-89a2-4fb31142d5cd": "commit and push/merge; also explain to me clearly in traditional chinese with english term using plain text describing whats been added, whats that means from user perspective, hows it changes the pipeline of feature/checkpoint construction, etc...",
+  "1a4baf4f-97d5-40eb-a845-3c87d519a3ca": "is this solved? \u76ee\u524d\u9084\u6c92\u63a5\u5230 save beat\uff08\u5b58\u6a94\u90a3\u4e00\u523b\uff09\u81ea\u52d5\u8dd1\u3002 \u539f\u56e0\u5f88\u8aa0\u5be6\uff1a\u73fe\u5728\u8a9e\u6599\uff08corpus\uff09\u9084\u592a\u5c11\uff0c\u76f4\u63a5\u8dd1\u6703\u56e0\u70ba cold-start \u800c\u5beb\u51fa\u5047 ALIGN\uff0c\u6c61\u67d3 recall()/for_op()\u3002\u6240\u4ee5\u73fe\u968e\u6bb5\u5b83\u662f\u624b\u52d5\u547c\u53eb\u7684\uff08write=False \u53ef\u505a dry run \u53ea\u8a55\u5206\u4e0d\u5beb\u5165\uff09\uff0c\u7b49\u8a9e\u6599\u7d2f\u7a4d\u5230\u5920\u6210\u719f\u3001EM \u80fd\u7a69\u5b9a\u6821\u6e96\uff0c\u624d\u6703\u63a5\u9032 porcelain._save\uff08\u653e\u5728 auto_retire_open \u65c1\u908a\uff09\u3002",
+  "bcf805f2-0dd1-4226-aace-53d58deb616f": "is this solved? \"\u76ee\u524d\u9084\u6c92\u63a5\u5230 save beat\uff08\u5b58\u6a94\u90a3\u4e00\u523b\uff09\u81ea\u52d5\u8dd1\u3002 \u539f\u56e0\u5f88\u8aa0\u5be6\uff1a\u73fe\u5728\u8a9e\u6599\uff08corpus\uff09\u9084\u592a\u5c11\uff0c\u76f4\u63a5\u8dd1\u6703\u56e0\u70ba cold-start \u800c\u5beb\u51fa\u5047 ALIGN\uff0c\u6c61\u67d3 recall()/for_op()\u3002\u6240\u4ee5\u73fe\u968e\u6bb5\u5b83\u662f\u624b\u52d5\u547c\u53eb\u7684\uff08write=False \u53ef\u505a dry run \u53ea\u8a55\u5206\u4e0d\u5beb\u5165\uff09\uff0c\u7b49\u8a9e\u6599\u7d2f\u7a4d\u5230\u5920\u6210\u719f\u3001EM \u80fd\u7a69\u5b9a\u6821\u6e96\uff0c\u624d\u6703\u63a5\u9032 porcelain._save\uff08\u653e\u5728 auto_retire_open \u65c1\u908a)\"",
+  "700a870c-a057-4d99-8129-168a68e137e3": "i dont undersatnd those words, cold-start? em calibration? what are those referring to? explain to me with no jargon in plain language so that I understand whats the current progress and understand whats left from the intent ledger plan, whats deferred and why, and decide what to do next",
+  "35381744-d0f0-4b49-bf86-ac5885c151e4": "resume",
+  "b5ac1357-68c6-4869-8a8b-f72d0a70455a": "im a little bit confuse because I thought its supposed to showing something like conflict in git where user have to pick on version over another (in a merge editor or what), but currently its just showing ohh theres drift... and that git has move on without conlifct and sgt still stuck at that momen",
+  "2de80943-78d6-4782-bbd7-2e9804451820": "resume",
+  "5f84de44-66d2-4294-8467-6b7c43de7af7": "resume",
+  "9c39a43d-6a1c-47d9-8c9e-8bba20c774ce": "sure",
+  "03c8dfb5-7db2-4008-bd5f-669d4122e8b2": "lets fix these three things and alos the \"sgt's auto-matcher didn't recognize the code you wrote as fulfilling the step\" bug? first of all, lets clean up the workspace to do step by step like developer to showcase how to cleanup these \"unresolved\" plans (if its bugs then just revmoe it), and if ther",
+  "7417c7fd-388a-4444-9a06-b70a3cb6e2e3": "so, teach me whats the pipeline, plan, and other thing... how it works with claude code, determine done or not done, decide subtasks, etc... how user work with these ongoing plan, close, resolve, etc.... in super short, concise, one single paragraph that is plain, no jargon, faithful to actual code ",
+  "4c78d613-1838-4e0e-9d60-3250dadf67c3": "I need to make a very short demo that can best introduce the sgt, and its only 1 minute long video, which means I have to explain the concept, the UI clealry, the operation, etc... and if we using one small codebase as example, we might also takses some time to introduce that codebase we are working",
+  "075480ef-1fc5-4523-9f34-844fe7dface8": "I need to make a very short demo that can best introduce the sgt, and its only 1 minute long video, which means I have to explain the concept, the UI clealry, the operation, etc... and if we using one small codebase as example, we might also takses some time to introduce that codebase we are working",
+  "c285fae9-4165-4d35-87eb-ad35da370378": "i dont like this example its so hard to tell what the codebase is, what are these three features, why there, why we do certain things, and there is no integration with the agentic process which is they key I want to demosntrate (with claude code mcp), also as i mentioend, no one goann manipulate one",
+  "685622fa-8e06-40f3-bdeb-52b0d44b4088": "i need you to actually run these workflows yourself, making sure everything is correct and copy the .env from this to new test folder, making sure the sgt setup, wired with claude code, etc... go through each step, checkout logs, debug, see the print out graph, and check whether the render makes sen",
+  "607d4c3c-e6b5-4dba-a800-a64e961c060a": "im describing my system and seems like there are some inaccurate usage of words due to my misunderstanding of the mechanisms and details; correct me and then provide a revision of my sentence with more accurate description faithful to the code (not doc); and provide me enough knowledge based on what",
+  "d16f81b6-081e-440a-9a4c-9ec2dfdd1d81": "i need to understand more clearly about how \"Leiden community detection with the Constant Potts Model (CPM)\" actually works, explain to me clearly, concisely, candidly, no jargon and from high to low level; also rewrite the pitch again to be less jargon, we dont have to introduce all the details to ",
+  "3385498f-a5f0-4fca-9e68-cd62db747ae7": "sure",
+  "d86e28f9-eb34-445b-bae3-c040cc8a53d6": "ok heres my thought on the scripts, help me fix grammar, more cohesive and accurate without leaving audience confusion; .... => todays lets talk about version control, last week I was debugging an issue for the organizations server about the apiclient and price cache .... (what issue)... and theres ",
+  "21674428-3c92-495f-9ce0-0a5b369224a8": "im trying to understand the scenario here... why stale price? whats going on",
+  "023b562f-5b7e-48d9-8e99-68a28dc0ce0b": "im trying to understand the scenario here... why stale price? whats going on",
+  "dffbfa00-1512-455e-b3f9-d1f588dec21b": "im trying to understand the scenario here... why stale price? whats going on... rpely in short",
+  "0d2662a7-d855-4e3f-94bf-00253b81f457": "/goal here is the analysis of the session that not yet done, and we need to finish all of them until everythigns done; notice that throughout the implementation, I need you to put your shoes as users, where analyzing how will I use it, how will I percieve the information, what is needed for me, do I",
+  "3eaac767-ec89-456e-a9a9-124a2ba63baa": "summarize what you did (whats changeds form the user angle) candid, concise, plain text... i only care how user workflow or experience changes",
+  "c052dbf6-ff67-435f-9b24-573b1d5bf689": "i actually think that we need to support way better agentic experience, by prompting and skills with @.claude/skills/skill-creator/ , scripts, etc...) for example we can take reference to how this works https://github.com/EveryInc/compound-engineering-plugin/tree/main/skills/ce-plan and ce-work http",
+  "c8a8b838-504b-4f6b-a92c-c3a5d4ad5672": "go run the skill creator eval loop, its ok to spawn agents, after that commit... ohhh wait before that, I think we are falling behind the refactor/phase-0-repair branch that need to first be merged then do a throough check on the conlfict (syntactially and semantically)",
+  "3593a621-c078-4240-8019-117f82492c82": "whats the current progress of the porject, is the getting started doc, readme up to date, faithful to code? I also want to make sure the project is product ready and that user can start using it; write a concise but cohesive system walkthrough storyboard that can best showcase the system (that only ",
+  "e45ce512-42ea-4bcf-aaac-2172eab8666b": "im trying to run the sgt at the testing workspace (im about to run the study and trying to see how users can set up sgt easily) but currently saw the output of sgt advanced forks --json failed: spawn sgt ENOENT sgt plan status --json --full failed: spawn sgt ENOENT sgt log --summary --json failed: s",
+  "31eb875d-3c8e-4b8d-a21f-93e57c7e6c6f": "\u279c confplan git:(main) \u2717 rm -rf .venv && uv tool install semi-git \u00d7 No solution found when resolving dependencies: \u2570\u2500\u25b6 Because semi-git was not found in the package registry and you require semi-git, we can conclude that your requirements are unsatisfiable.",
+  "ca2e123b-351c-4e5c-8b70-5e9b82f5883c": "we got the issue from the github thats why its not pubvlished to pypi; also we want to make sure the github workflow tight correctly to the pypi ; deplyment error: sgt/tui/consequence.py:18: ModuleNotFoundError =========================== short test summary info ============================ FAILED t",
+  "912b0eec-5f9b-41d8-9698-3b4ef8f08bc9": "why is it so slow? it took 30 mintues already? can which one taking the most time, is there any outdated one we shall remove?",
+  "9c7c5dce-ae35-442e-b774-525f640ab460": "pull first then commit, then try; i think its there already; install from uv and test if correct; setting up in the test worksapce /Users/ryanyen2/repos/sgt-study/confplan",
+  "1c2c2ccd-1f48-4879-bc0c-ec5d0a72212b": "Im working on this reaearch project and currently trying to write a paper about how it works and why we want it; the writeup should always follow the /revising-writing skill and always go deep into why we want this and why we design this way, have some personal take and dont avoid using the subject.",
+  "1dbd1f2e-12b7-4224-9275-0a347f478d81": "theres weird line break for all the writing; also I really dont like this style where many short and prententious statement and read not cohesvie at all, for example \"The operations a version control system offers are defined over lines and commits. \" itself is ok, but as a connection sentecne betwe",
+  "0bec2aa1-73ed-44de-93c5-199a4dd13ff1": "ok move on",
+  "f182af8a-129b-4949-b851-7a2a2a84e7c2": "resume",
+  "8af015f5-adba-413f-9194-d21c27d85b44": "reusme",
+  "b5940ec8-29d1-4c17-b448-7929e5da8420": "reusme",
+  "b3492a9f-4e62-4517-b90f-93287bb75e38": "work on the rest, also this is the revision of the first pargraph of the literature review to give you the sense of whay kind of style I hate and I would like... try to analyze waht I have chnaged and why... and then apply the same rules to the rest of the writign... overall I would also say its a b",
+  "f22116cf-b908-416a-b7a2-90a64dfe2efa": "its just a reference of style for you to go down into evey single sections and makes changes on the writing style; Im just using those pasted text as example of before and after; and also substantially trimming the non related content, remain the paper concise, easy to read, but grounded to facts, l",
+  "323e7f2d-7cfe-4cdd-915e-4e8e1418964f": "we have the technical evaluation plan, first explain to me shortly in traditional chinese (with english term) about what its describing, what we plan to do, no jargon, super concise, just high level.. including describing the purpose of it",
+  "ab81d034-76e2-48eb-beb0-2e973f5bfc91": "ohh its here docs/plans/2026-08-14-001-technical-evaluation-execution-plan.md",
+  "2caa720d-ab77-4657-bf6c-d29e2d88dae8": "source /Users/ryanyen2/repos/semi-git/.venv/bin/activate"
+ },
+ "sample": [
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "editor/vscode/dev/smoke.js::preventDefault",
+    "editor/vscode/media/workbench.js::onHover"
+   ],
+   "same_file": false,
+   "requests": {
+    "editor/vscode/dev/smoke.js::preventDefault": [
+     "1bc13297-734b-4d26-a18b-a21948abb62c"
+    ],
+    "editor/vscode/media/workbench.js::onHover": [
+     "1bc13297-734b-4d26-a18b-a21948abb62c",
+     "489f4f34-d38e-4639-9d86-95c32c47ed3e",
+     "bab241b6-5d7d-48c7-81b8-d675e7f22b26"
+    ]
+   },
+   "features": {
+    "editor/vscode/dev/smoke.js::preventDefault": [
+     [
+      "f-02f3e8cfcc9d676a28f0722a1cb5cc07ed6fcfdcb065cf8082cb0b7935a14532",
+      "check constructor disconnect"
+     ]
+    ],
+    "editor/vscode/media/workbench.js::onHover": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "editor/vscode/dev/smoke.js::preventDefault": [
+     "residue"
+    ],
+    "editor/vscode/media/workbench.js::onHover": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "editor/vscode/media/workbench.js::render",
+    "tests/test_graph_layout.py::test_op_count_is_lane_magnitude_and_span_is_first_last"
+   ],
+   "same_file": false,
+   "requests": {
+    "editor/vscode/media/workbench.js::render": [
+     "1dbd1f2e-12b7-4224-9275-0a347f478d81",
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "4119f3ba-91ef-4e39-92b5-8247119b8a40",
+     "489f4f34-d38e-4639-9d86-95c32c47ed3e",
+     "627583be-ccf4-48da-93b6-c003de418964",
+     "89da5c01-7f95-4191-93dd-43b791e0c173",
+     "f9dbba87-d21d-4e3e-a775-407c54866616"
+    ],
+    "tests/test_graph_layout.py::test_op_count_is_lane_magnitude_and_span_is_first_last": [
+     "489f4f34-d38e-4639-9d86-95c32c47ed3e"
+    ]
+   },
+   "features": {
+    "editor/vscode/media/workbench.js::render": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/test_graph_layout.py::test_op_count_is_lane_magnitude_and_span_is_first_last": [
+     [
+      "f-1e70c20b977fd72704dcc67b672790e97a0f4678a0bb7400c34fcfff5fd94aa1",
+      "intent clustering (Stage B) + revert legibility + Gantt +\u2026"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "editor/vscode/media/workbench.js::render": [
+     "residue"
+    ],
+    "tests/test_graph_layout.py::test_op_count_is_lane_magnitude_and_span_is_first_last": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/cli/ideal_edit.py::_resolve_via_intent",
+    "tests/intent/test_align_session.py::test_non_human_chat_turns_are_not_aligned"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/cli/ideal_edit.py::_resolve_via_intent": [
+     "700a870c-a057-4d99-8129-168a68e137e3",
+     "7ffef41c-9911-4931-9866-ec5293b4cdcc",
+     "ab81d034-76e2-48eb-beb0-2e973f5bfc91"
+    ],
+    "tests/intent/test_align_session.py::test_non_human_chat_turns_are_not_aligned": [
+     "700a870c-a057-4d99-8129-168a68e137e3"
+    ]
+   },
+   "features": {
+    "sgt/cli/ideal_edit.py::_resolve_via_intent": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/intent/test_align_session.py::test_non_human_chat_turns_are_not_aligned": [
+     [
+      "f-06944f867e77aff2daa4b808e3fbe8c2fe5f8d0ba83a255d49c5c558faf37f1a",
+      "align_session orchestrator over real turns + ops"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/cli/ideal_edit.py::_resolve_via_intent": [
+     "residue"
+    ],
+    "tests/intent/test_align_session.py::test_non_human_chat_turns_are_not_aligned": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/cli/inspect.py::_graph",
+    "tests/tui/test_graph.py::test_render_lane_leads_with_handle_and_marks_checkpoints_on_the_lane"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/cli/inspect.py::_graph": [
+     "30bbe8b2-6163-42dc-9edb-39cd091cc2a7",
+     "77abb259-f0a0-40b0-9463-3ffb53bb2965"
+    ],
+    "tests/tui/test_graph.py::test_render_lane_leads_with_handle_and_marks_checkpoints_on_the_lane": [
+     "30bbe8b2-6163-42dc-9edb-39cd091cc2a7",
+     "77abb259-f0a0-40b0-9463-3ffb53bb2965"
+    ]
+   },
+   "features": {
+    "sgt/cli/inspect.py::_graph": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/tui/test_graph.py::test_render_lane_leads_with_handle_and_marks_checkpoints_on_the_lane": [
+     [
+      "f-0e99c4893f947cc6e260fe2ae623cceed3d9b9a55339438f2b5b4e6430059ea4",
+      "get_client load_env"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/cli/inspect.py::_graph": [
+     "residue"
+    ],
+    "tests/tui/test_graph.py::test_render_lane_leads_with_handle_and_marks_checkpoints_on_the_lane": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/core/oplog.py::append",
+    "tests/test_cli_git_passthrough.py::test_refuses_tree_mutating_subcommand_naming_the_sgt_verb"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/core/oplog.py::append": [
+     "a6617754-a7bb-4952-a601-ea5f4487fdef"
+    ],
+    "tests/test_cli_git_passthrough.py::test_refuses_tree_mutating_subcommand_naming_the_sgt_verb": [
+     "a6617754-a7bb-4952-a601-ea5f4487fdef"
+    ]
+   },
+   "features": {
+    "sgt/core/oplog.py::append": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/test_cli_git_passthrough.py::test_refuses_tree_mutating_subcommand_naming_the_sgt_verb": [
+     [
+      "f-055dc37d4f35d330303a3304692f0cb5d36352aaf6fbd4eee962f4425fc18ef9",
+      "U18: CLI restructure \u2014 argparse subcommand package + `sgt\u2026 \u00b7 test_cli_git_passthrough.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/core/oplog.py::append": [
+     "residue"
+    ],
+    "tests/test_cli_git_passthrough.py::test_refuses_tree_mutating_subcommand_naming_the_sgt_verb": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/core/sync/land.py::land",
+    "tests/loop/test_plan_ownership.py::test_concurrent_intakes_do_not_lose_a_plan"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/core/sync/land.py::land": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457",
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "3b508bec-7924-411d-9b7a-f9743f60f9c5",
+     "3c51e3bb-1fdf-433b-be64-468bae7d6512",
+     "7ffef41c-9911-4931-9866-ec5293b4cdcc",
+     "a6617754-a7bb-4952-a601-ea5f4487fdef",
+     "bb6ce520-55ce-4433-92b5-c3b0770cebe1"
+    ],
+    "tests/loop/test_plan_ownership.py::test_concurrent_intakes_do_not_lose_a_plan": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457"
+    ]
+   },
+   "features": {
+    "sgt/core/sync/land.py::land": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/loop/test_plan_ownership.py::test_concurrent_intakes_do_not_lose_a_plan": [
+     [
+      "f-02bd58c00912c1579231145c72284b96f1430e660052e58fd9de9719c60fa24d",
+      "Add comprehensive tests for plan ownership, CLI commands,\u2026 \u00b7 loop"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/core/sync/land.py::land": [
+     "residue"
+    ],
+    "tests/loop/test_plan_ownership.py::test_concurrent_intakes_do_not_lose_a_plan": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/intent/segment.py::_finish_segment",
+    "tests/intent/test_theme_segment.py::test_op_membership_is_preserved_through_overlay"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/intent/segment.py::_finish_segment": [
+     "d4a725ef-5654-42c5-a727-fe88f1740da1"
+    ],
+    "tests/intent/test_theme_segment.py::test_op_membership_is_preserved_through_overlay": [
+     "d4a725ef-5654-42c5-a727-fe88f1740da1"
+    ]
+   },
+   "features": {
+    "sgt/intent/segment.py::_finish_segment": [
+     [
+      "f-0b482ec40ff11e2d383f5225f8d72193328675c9aec6e4b120e2334efb8707ad",
+      "Add tests for intent relabeling, segment handling, and th\u2026 \u00b7 intent 2"
+     ]
+    ],
+    "tests/intent/test_theme_segment.py::test_op_membership_is_preserved_through_overlay": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/intent/segment.py::_finish_segment": [
+     "residue"
+    ],
+    "tests/intent/test_theme_segment.py::test_op_membership_is_preserved_through_overlay": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/intent/theme_segment.py::SegmentPlan",
+    "tests/intent/test_segment.py::test_ops_of_a_feature_in_one_commit_form_one_run"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/intent/theme_segment.py::SegmentPlan": [
+     "d4a725ef-5654-42c5-a727-fe88f1740da1"
+    ],
+    "tests/intent/test_segment.py::test_ops_of_a_feature_in_one_commit_form_one_run": [
+     "77abb259-f0a0-40b0-9463-3ffb53bb2965",
+     "d4a725ef-5654-42c5-a727-fe88f1740da1"
+    ]
+   },
+   "features": {
+    "sgt/intent/theme_segment.py::SegmentPlan": [
+     [
+      "f-2862e5bcacf25b67447abfe916c120a4bfa6235fd50e0409648028212e82def5",
+      "Add tests for intent relabeling, segment handling, and th\u2026 \u00b7 intent 3"
+     ]
+    ],
+    "tests/intent/test_segment.py::test_ops_of_a_feature_in_one_commit_form_one_run": [
+     [
+      "f-038ea363784dac89f919813d8eb1488f041ee4de29e2b62fd85e6b2468d363b1",
+      "Add tests for intent relabeling, segment handling, and th\u2026 \u00b7 intent"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/intent/theme_segment.py::SegmentPlan": [
+     "residue"
+    ],
+    "tests/intent/test_segment.py::test_ops_of_a_feature_in_one_commit_form_one_run": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/loop/match.py::_real_symbols",
+    "sgt/tui/graph.py::render_verb_preview_lines"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/loop/match.py::_real_symbols": [
+     "b37df9d8-ae9a-450a-8f1e-0e1c18982ee3"
+    ],
+    "sgt/tui/graph.py::render_verb_preview_lines": [
+     "3c51e3bb-1fdf-433b-be64-468bae7d6512",
+     "3c9883c4-516e-44c8-9f5f-392bcd00ab78",
+     "ab81d034-76e2-48eb-beb0-2e973f5bfc91",
+     "b37df9d8-ae9a-450a-8f1e-0e1c18982ee3",
+     "bab241b6-5d7d-48c7-81b8-d675e7f22b26",
+     "c519454a-6605-4282-b902-aafaf5c3f280"
+    ]
+   },
+   "features": {
+    "sgt/loop/match.py::_real_symbols": [
+     [
+      "f-1980e003177583100fe58f106decac63975789c587936bda8698244d663f3f73",
+      "sgt/loop (structural)"
+     ]
+    ],
+    "sgt/tui/graph.py::render_verb_preview_lines": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/loop/match.py::_real_symbols": [
+     "residue"
+    ],
+    "sgt/tui/graph.py::render_verb_preview_lines": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/repair/api_backend.py::ApiBackend",
+    "tests/intent/test_intent_cli.py::test_prompt_hook_installs_with_an_absolute_sgt_path"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/repair/api_backend.py::ApiBackend": [
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "92518ca1-f5aa-4802-83e2-30b9ac34db9f"
+    ],
+    "tests/intent/test_intent_cli.py::test_prompt_hook_installs_with_an_absolute_sgt_path": [
+     "35381744-d0f0-4b49-bf86-ac5885c151e4"
+    ]
+   },
+   "features": {
+    "sgt/repair/api_backend.py::ApiBackend": [
+     [
+      "f-060599cf5342b28cf4c5eb8771b060d27c2ea79373219ac0cfc52647fcb4e8d4",
+      "compelte U7: revert_keep_dependents now drafts real hollo\u2026"
+     ]
+    ],
+    "tests/intent/test_intent_cli.py::test_prompt_hook_installs_with_an_absolute_sgt_path": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/repair/api_backend.py::ApiBackend": [
+     "residue"
+    ],
+    "tests/intent/test_intent_cli.py::test_prompt_hook_installs_with_an_absolute_sgt_path": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/select/resolve.py::Selection",
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/select/resolve.py::Selection": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457"
+    ],
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457"
+    ]
+   },
+   "features": {
+    "sgt/select/resolve.py::Selection": [
+     [
+      "f-02bd58c00912c1579231145c72284b96f1430e660052e58fd9de9719c60fa24d",
+      "Add comprehensive tests for plan ownership, CLI commands,\u2026 \u00b7 loop"
+     ]
+    ],
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle": [
+     [
+      "f-023d9bf50591e7ce5655da134a849d606564736b8127da645259df3c3db0ffdf",
+      "Add comprehensive tests for plan ownership, CLI commands,\u2026 \u00b7 test_show.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/select/resolve.py::Selection": [
+     "residue"
+    ],
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "sgt/tui/graph.py::_time_ruler",
+    "tests/intent/test_segment.py::test_resolve_checkpoint_bad_specs_return_none"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/tui/graph.py::_time_ruler": [
+     "2cd807af-5b4f-488e-90cf-d618ef5cbcc6",
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "5f84de44-66d2-4294-8467-6b7c43de7af7",
+     "c519454a-6605-4282-b902-aafaf5c3f280",
+     "facce2c2-2a9f-42ab-9301-27f7d4f2d6e0"
+    ],
+    "tests/intent/test_segment.py::test_resolve_checkpoint_bad_specs_return_none": [
+     "2cd807af-5b4f-488e-90cf-d618ef5cbcc6",
+     "d4a725ef-5654-42c5-a727-fe88f1740da1"
+    ]
+   },
+   "features": {
+    "sgt/tui/graph.py::_time_ruler": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/intent/test_segment.py::test_resolve_checkpoint_bad_specs_return_none": [
+     [
+      "f-038ea363784dac89f919813d8eb1488f041ee4de29e2b62fd85e6b2468d363b1",
+      "Add tests for intent relabeling, segment handling, and th\u2026 \u00b7 intent"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/tui/graph.py::_time_ruler": [
+     "residue"
+    ],
+    "tests/intent/test_segment.py::test_resolve_checkpoint_bad_specs_return_none": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/cli/test_preview_symmetry.py::test_rename_and_move_share_the_same_gate",
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/cli/test_preview_symmetry.py::test_rename_and_move_share_the_same_gate": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457"
+    ],
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457"
+    ]
+   },
+   "features": {
+    "tests/cli/test_preview_symmetry.py::test_rename_and_move_share_the_same_gate": [
+     [
+      "f-02bd58c00912c1579231145c72284b96f1430e660052e58fd9de9719c60fa24d",
+      "Add comprehensive tests for plan ownership, CLI commands,\u2026 \u00b7 loop"
+     ]
+    ],
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle": [
+     [
+      "f-023d9bf50591e7ce5655da134a849d606564736b8127da645259df3c3db0ffdf",
+      "Add comprehensive tests for plan ownership, CLI commands,\u2026 \u00b7 test_show.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/cli/test_preview_symmetry.py::test_rename_and_move_share_the_same_gate": [
+     "residue"
+    ],
+    "tests/test_show.py::test_show_reports_a_feature_by_id_label_or_short_handle": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/core/test_land.py::test_red_land_leaves_no_trace_transactional",
+    "tests/store/test_gitbind.py::test_detect_orphans_flags_out_of_band_commit"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/core/test_land.py::test_red_land_leaves_no_trace_transactional": [
+     "2922e6af-b264-4193-a0e5-99ec893bae4e"
+    ],
+    "tests/store/test_gitbind.py::test_detect_orphans_flags_out_of_band_commit": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457",
+     "2922e6af-b264-4193-a0e5-99ec893bae4e",
+     "5da2e318-1a05-4c58-baff-7429f9d00aec"
+    ]
+   },
+   "features": {
+    "tests/core/test_land.py::test_red_land_leaves_no_trace_transactional": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/store/test_gitbind.py::test_detect_orphans_flags_out_of_band_commit": [
+     [
+      "f-0075822850e2457f6c2c7b85d55ff59eb310ea412ea02f863cff90280db01198",
+      "GitError format_trailer init_store"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/core/test_land.py::test_red_land_leaves_no_trace_transactional": [
+     "residue"
+    ],
+    "tests/store/test_gitbind.py::test_detect_orphans_flags_out_of_band_commit": [
+     "residue",
+     "substantive"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/intent/test_activity.py::test_record_then_retrieve_round_trips",
+    "tests/test_so_what.py::test_multiple_forks_count_the_extras"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/intent/test_activity.py::test_record_then_retrieve_round_trips": [
+     "35381744-d0f0-4b49-bf86-ac5885c151e4"
+    ],
+    "tests/test_so_what.py::test_multiple_forks_count_the_extras": [
+     "35381744-d0f0-4b49-bf86-ac5885c151e4"
+    ]
+   },
+   "features": {
+    "tests/intent/test_activity.py::test_record_then_retrieve_round_trips": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/test_so_what.py::test_multiple_forks_count_the_extras": [
+     [
+      "f-0336312f930b9edba54959a71083f2bbe2ee6fb22aa61f7dd87c2390f36eb411",
+      "Ownership ledger grid, consequence pane, and full legacy-\u2026 \u00b7 test_so_what.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/intent/test_activity.py::test_record_then_retrieve_round_trips": [
+     "residue"
+    ],
+    "tests/test_so_what.py::test_multiple_forks_count_the_extras": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "editor/vscode/media/workbench.js::findRow",
+    "tests/core/test_opindex.py::test_index_ops_matches_all_ops_modulo_images"
+   ],
+   "same_file": false,
+   "requests": {
+    "editor/vscode/media/workbench.js::findRow": [
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "489f4f34-d38e-4639-9d86-95c32c47ed3e"
+    ],
+    "tests/core/test_opindex.py::test_index_ops_matches_all_ops_modulo_images": [
+     "7c3dc7c2-43dd-4001-b6ca-28c75f50079e"
+    ]
+   },
+   "features": {
+    "editor/vscode/media/workbench.js::findRow": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/core/test_opindex.py::test_index_ops_matches_all_ops_modulo_images": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "editor/vscode/media/workbench.js::findRow": [
+     "residue"
+    ],
+    "tests/core/test_opindex.py::test_index_ops_matches_all_ops_modulo_images": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "editor/vscode/media/workbench.js::render",
+    "sgt/lens/cluster.py::_structural_edges_at"
+   ],
+   "same_file": false,
+   "requests": {
+    "editor/vscode/media/workbench.js::render": [
+     "1dbd1f2e-12b7-4224-9275-0a347f478d81",
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "4119f3ba-91ef-4e39-92b5-8247119b8a40",
+     "489f4f34-d38e-4639-9d86-95c32c47ed3e",
+     "627583be-ccf4-48da-93b6-c003de418964",
+     "89da5c01-7f95-4191-93dd-43b791e0c173",
+     "f9dbba87-d21d-4e3e-a775-407c54866616"
+    ],
+    "sgt/lens/cluster.py::_structural_edges_at": [
+     "6aea26e1-6272-4cd9-b42a-74b57bcb1b9e"
+    ]
+   },
+   "features": {
+    "editor/vscode/media/workbench.js::render": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "sgt/lens/cluster.py::_structural_edges_at": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "editor/vscode/media/workbench.js::render": [
+     "residue"
+    ],
+    "sgt/lens/cluster.py::_structural_edges_at": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "editor/vscode/src/store.ts::Store",
+    "tests/lens/test_label.py::test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm"
+   ],
+   "same_file": false,
+   "requests": {
+    "editor/vscode/src/store.ts::Store": [
+     "05d2d803-1afa-46d9-a53b-98830ad855c9",
+     "2922e6af-b264-4193-a0e5-99ec893bae4e",
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "58e237b9-60c5-442a-87ef-1c11de6973b5",
+     "700a870c-a057-4d99-8129-168a68e137e3",
+     "89da5c01-7f95-4191-93dd-43b791e0c173"
+    ],
+    "tests/lens/test_label.py::test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm": [
+     "9b500bb2-7686-45d0-b7f1-3ff4cebf887a",
+     "d5b32758-03ac-4582-abe6-031dc9cd676b"
+    ]
+   },
+   "features": {
+    "editor/vscode/src/store.ts::Store": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/lens/test_label.py::test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "editor/vscode/src/store.ts::Store": [
+     "residue"
+    ],
+    "tests/lens/test_label.py::test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "editor/vscode/src/types.ts::PlanSession",
+    "sgt/cli/porcelain.py::_save"
+   ],
+   "same_file": false,
+   "requests": {
+    "editor/vscode/src/types.ts::PlanSession": [
+     "b3086008-03ab-4569-a1f5-c955d9cb8cb6"
+    ],
+    "sgt/cli/porcelain.py::_save": [
+     "35381744-d0f0-4b49-bf86-ac5885c151e4",
+     "5f84de44-66d2-4294-8467-6b7c43de7af7",
+     "700a870c-a057-4d99-8129-168a68e137e3",
+     "7ffef41c-9911-4931-9866-ec5293b4cdcc",
+     "bb6ce520-55ce-4433-92b5-c3b0770cebe1"
+    ]
+   },
+   "features": {
+    "editor/vscode/src/types.ts::PlanSession": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "sgt/cli/porcelain.py::_save": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "editor/vscode/src/types.ts::PlanSession": [
+     "residue",
+     "substantive"
+    ],
+    "sgt/cli/porcelain.py::_save": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "scripts/measure_agent_cost.py::_a_symbol",
+    "sgt/lens/authored.py::merge_feature"
+   ],
+   "same_file": false,
+   "requests": {
+    "scripts/measure_agent_cost.py::_a_symbol": [
+     "c052dbf6-ff67-435f-9b24-573b1d5bf689"
+    ],
+    "sgt/lens/authored.py::merge_feature": [
+     "b21beff7-7123-40a6-9673-559dd27bd7ee"
+    ]
+   },
+   "features": {
+    "scripts/measure_agent_cost.py::_a_symbol": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "sgt/lens/authored.py::merge_feature": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "scripts/measure_agent_cost.py::_a_symbol": [
+     "residue"
+    ],
+    "sgt/lens/authored.py::merge_feature": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "sgt/api.py::_grid_labels",
+    "tests/core/test_migrate.py::_init_bare"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/api.py::_grid_labels": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457",
+     "b37df9d8-ae9a-450a-8f1e-0e1c18982ee3"
+    ],
+    "tests/core/test_migrate.py::_init_bare": [
+     "acf4908f-7a91-490e-914f-8c88384d3600"
+    ]
+   },
+   "features": {
+    "sgt/api.py::_grid_labels": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/core/test_migrate.py::_init_bare": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/api.py::_grid_labels": [
+     "residue"
+    ],
+    "tests/core/test_migrate.py::_init_bare": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "sgt/api.py::forks_view",
+    "sgt/core/lens.py::_save_ideal_table"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/api.py::forks_view": [
+     "b5ac1357-68c6-4869-8a8b-f72d0a70455a"
+    ],
+    "sgt/core/lens.py::_save_ideal_table": [
+     "acf4908f-7a91-490e-914f-8c88384d3600"
+    ]
+   },
+   "features": {
+    "sgt/api.py::forks_view": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "sgt/core/lens.py::_save_ideal_table": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/api.py::forks_view": [
+     "residue"
+    ],
+    "sgt/core/lens.py::_save_ideal_table": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "sgt/api.py::verb_preview_view",
+    "sgt/core/sync/materialize.py::save_fork_records"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/api.py::verb_preview_view": [
+     "2cd807af-5b4f-488e-90cf-d618ef5cbcc6",
+     "d4a725ef-5654-42c5-a727-fe88f1740da1"
+    ],
+    "sgt/core/sync/materialize.py::save_fork_records": [
+     "0d2662a7-d855-4e3f-94bf-00253b81f457"
+    ]
+   },
+   "features": {
+    "sgt/api.py::verb_preview_view": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "sgt/core/sync/materialize.py::save_fork_records": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/api.py::verb_preview_view": [
+     "residue"
+    ],
+    "sgt/core/sync/materialize.py::save_fork_records": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "sgt/cli/inspect.py::_cmd_fsck",
+    "sgt/core/lens.py::commit_materialized"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/cli/inspect.py::_cmd_fsck": [
+     "db7b99c2-5d4e-46dd-ae28-e38e4159bce3"
+    ],
+    "sgt/core/lens.py::commit_materialized": [
+     "bb6ce520-55ce-4433-92b5-c3b0770cebe1",
+     "facce2c2-2a9f-42ab-9301-27f7d4f2d6e0"
+    ]
+   },
+   "features": {
+    "sgt/cli/inspect.py::_cmd_fsck": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "sgt/core/lens.py::commit_materialized": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/cli/inspect.py::_cmd_fsck": [
+     "residue"
+    ],
+    "sgt/core/lens.py::commit_materialized": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "sgt/cli/inspect.py::_now",
+    "tests/core/test_opindex.py::test_is_stale_false_immediately_after_rebuild"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/cli/inspect.py::_now": [
+     "03c8dfb5-7db2-4008-bd5f-669d4122e8b2",
+     "0d2662a7-d855-4e3f-94bf-00253b81f457",
+     "5f84de44-66d2-4294-8467-6b7c43de7af7",
+     "c8a8b838-504b-4f6b-a92c-c3a5d4ad5672"
+    ],
+    "tests/core/test_opindex.py::test_is_stale_false_immediately_after_rebuild": [
+     "7c3dc7c2-43dd-4001-b6ca-28c75f50079e"
+    ]
+   },
+   "features": {
+    "sgt/cli/inspect.py::_now": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/core/test_opindex.py::test_is_stale_false_immediately_after_rebuild": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/cli/inspect.py::_now": [
+     "residue"
+    ],
+    "tests/core/test_opindex.py::test_is_stale_false_immediately_after_rebuild": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "sgt/entities/graph.py::read_entity_sources",
+    "tests/test_rail.py::_run"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/entities/graph.py::read_entity_sources": [
+     "c519454a-6605-4282-b902-aafaf5c3f280"
+    ],
+    "tests/test_rail.py::_run": [
+     "627583be-ccf4-48da-93b6-c003de418964"
+    ]
+   },
+   "features": {
+    "sgt/entities/graph.py::read_entity_sources": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/test_rail.py::_run": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/entities/graph.py::read_entity_sources": [
+     "residue"
+    ],
+    "tests/test_rail.py::_run": [
+     "residue",
+     "substantive"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "sgt/tui/graph.py::_lane_sub_bins",
+    "tests/core/test_sync.py::_init_bare"
+   ],
+   "same_file": false,
+   "requests": {
+    "sgt/tui/graph.py::_lane_sub_bins": [
+     "c519454a-6605-4282-b902-aafaf5c3f280"
+    ],
+    "tests/core/test_sync.py::_init_bare": [
+     "acf4908f-7a91-490e-914f-8c88384d3600"
+    ]
+   },
+   "features": {
+    "sgt/tui/graph.py::_lane_sub_bins": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/core/test_sync.py::_init_bare": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "sgt/tui/graph.py::_lane_sub_bins": [
+     "residue",
+     "substantive"
+    ],
+    "tests/core/test_sync.py::_init_bare": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/core/test_rewrite.py::test_revert_keep_dependents_refuses_an_unresolvable_target",
+    "tests/lens/test_cohesion_harness.py::test_continuation_rate_drops_when_an_old_leaf_dies"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/core/test_rewrite.py::test_revert_keep_dependents_refuses_an_unresolvable_target": [
+     "a6617754-a7bb-4952-a601-ea5f4487fdef"
+    ],
+    "tests/lens/test_cohesion_harness.py::test_continuation_rate_drops_when_an_old_leaf_dies": [
+     "77abb259-f0a0-40b0-9463-3ffb53bb2965"
+    ]
+   },
+   "features": {
+    "tests/core/test_rewrite.py::test_revert_keep_dependents_refuses_an_unresolvable_target": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/lens/test_cohesion_harness.py::test_continuation_rate_drops_when_an_old_leaf_dies": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/core/test_rewrite.py::test_revert_keep_dependents_refuses_an_unresolvable_target": [
+     "residue"
+    ],
+    "tests/lens/test_cohesion_harness.py::test_continuation_rate_drops_when_an_old_leaf_dies": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/lens/test_tree.py::_StubLabeler",
+    "tests/test_cli.py::test_state_shows_frontier_and_coverage"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/lens/test_tree.py::_StubLabeler": [
+     "65efd4a2-07d2-4f12-87fe-2819894195c5",
+     "6aea26e1-6272-4cd9-b42a-74b57bcb1b9e",
+     "9b500bb2-7686-45d0-b7f1-3ff4cebf887a"
+    ],
+    "tests/test_cli.py::test_state_shows_frontier_and_coverage": [
+     "db7b99c2-5d4e-46dd-ae28-e38e4159bce3"
+    ]
+   },
+   "features": {
+    "tests/lens/test_tree.py::_StubLabeler": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/test_cli.py::test_state_shows_frontier_and_coverage": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/lens/test_tree.py::_StubLabeler": [
+     "residue"
+    ],
+    "tests/test_cli.py::test_state_shows_frontier_and_coverage": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_api.py::test_state_view_coverage_fraction_on_mixed_fixture",
+    "tests/tui/test_graph.py::test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_api.py::test_state_view_coverage_fraction_on_mixed_fixture": [
+     "db7b99c2-5d4e-46dd-ae28-e38e4159bce3"
+    ],
+    "tests/tui/test_graph.py::test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified": [
+     "c519454a-6605-4282-b902-aafaf5c3f280"
+    ]
+   },
+   "features": {
+    "tests/test_api.py::test_state_view_coverage_fraction_on_mixed_fixture": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ],
+    "tests/tui/test_graph.py::test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified": [
+     [
+      "f-m2db02b6f263b52331d642c3ae1886da434b40c00b1c7e2dca5ac0a20337c49c3",
+      "main collectCheckpoints collectDriftMarks"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_api.py::test_state_view_coverage_fraction_on_mixed_fixture": [
+     "residue"
+    ],
+    "tests/tui/test_graph.py::test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  }
+ ]
+}

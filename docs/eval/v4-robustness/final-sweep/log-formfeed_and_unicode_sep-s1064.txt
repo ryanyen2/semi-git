@@ -1,0 +1,33 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_edit_save             v4_mod_0.py (rework)
+    2 · op_restore               nothing addressable excluded
+    3 · op_restore               nothing addressable excluded
+    4 ✓ op_edit_save             v4_mod_0.py (rework)
+    5 ✓ op_edit_save             a.py (rework)
+    6 ✓ op_feature_split         f-19e4d531a38b
+    7 ✓ op_revert_restore_probe  48f3d6a8b91d
+    8 ✓ op_revert_keep_dependents 54f60db116c9
+    9 ✓ op_edit_save             a.py (rework)
+   10 ✓ op_revert                66521c9c8059
+   11 ✓ op_revert_restore_probe  1c8861fd738c
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_revert_restore_probe  66f4a7a053b8
+   14 ✓ op_revert                fbcc8db8ae8b
+   15 ✓ op_feature_split         f-mb34f78ff5c3
+   16 ✓ op_revert_restore_probe  48f3d6a8b91d
+   17 ✓ op_revert                a08a015717cf
+   18 · op_restore               nothing addressable excluded
+   19 · op_restore               nothing addressable excluded
+   20 ✓ op_revert_undo_probe     db29e8434a1e
+   21 ✓ op_revert_keep_dependents 813b31c14a6b
+   22 ✓ op_revert                0fce861cfd5c
+   23 ✓ op_edit_save             v4_mod_0.py (rework)
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_edit_save             v4_mod_0.py (rework)
+   26 ✓ op_feature_merge         af-mc1b9525eba<-f-mb34f78ff5c3
+   27 ✓ op_revert_keep_dependents 39bc8466d27a
+   28 ✓ op_revert_restore_probe  17459403971d
+   29 · op_restore               nothing addressable excluded
+   30 · op_restore               nothing addressable excluded
+   31 ✓ op_feature_split         af-mf380eccfa3
+formfeed_and_unicode_sep seed 1064: 32 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-formfeed_and_unicode_sep-seed1064.json

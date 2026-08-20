@@ -1,0 +1,1688 @@
+{
+ "edits_file": "docs/eval/v2-transcripts/edits-CodeNav.json",
+ "repo": "/Users/ryanyen2/repos/CodeNav",
+ "match_rate": 0.7821,
+ "gate": 0.7,
+ "gate_passed": true,
+ "stats": {
+  "eligible": 156,
+  "ineligible: no extractor for this language": 46,
+  "ineligible: outside the repo": 1,
+  "matched": 122,
+  "requests with >=1 eligible edit": 7,
+  "unmatched": 34,
+  "unmatched: located, but outside every entity span": 32,
+  "unmatched: old text in no blob and not in the replayed state": 1
+ },
+ "how_matched": {
+  "replayed": 70,
+  "located-in-blob": 30,
+  "written-body": 21,
+  "fragment": 1
+ },
+ "n_requests_with_symbols": 7,
+ "requests": [
+  {
+   "request_id": "59e54563-9690-435e-989e-1d728b51890c",
+   "session": "68a3ebc2-6db7-409f-ba25-1048971daa01",
+   "ts": "2026-08-05T19:25:16.951Z",
+   "text": "do global install, make sure all version update... and check on the /Users/ryanyen2/repos/test-workspace/livehub by rebuilding it, making some changes to codoc, see if status capture correctly, and making sure the mcp, codoc its using, wheel are all up to date",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "59287640-41c0-45d7-84b5-432f0910739d",
+   "session": "68a3ebc2-6db7-409f-ba25-1048971daa01",
+   "ts": "2026-08-06T18:28:31.234Z",
+   "text": "pull, merge, cleanup then push",
+   "n_edits": 26,
+   "n_eligible": 25,
+   "symbols": [
+    "codoc/loop/activity.py::epoch_written_files",
+    "codoc/loop/sdk_realize.py::RealizeMonitor",
+    "codoc/loop/sdk_realize.py::RealizeMonitor.__init__",
+    "codoc/loop/sdk_realize.py::RealizeMonitor._record_touch",
+    "codoc/loop/sdk_realize.py::RealizeMonitor.on_tool_use",
+    "codoc/loop/status.py::realizing_is_fresh",
+    "codoc/loop/status.py::refresh_status",
+    "codoc/loop/watch.py::process_batch",
+    "codoc/serve/payload.py::build_browser_payload",
+    "tests/loop/test_close_epoch.py::_write",
+    "tests/loop/test_close_epoch.py::test_closes_matching_stale_epoch",
+    "tests/loop/test_close_epoch.py::test_closes_same_id_when_confirmed_stale_under_lock",
+    "tests/loop/test_close_epoch.py::test_empty_expected_id_matches_any_open_epoch",
+    "tests/loop/test_close_epoch.py::test_noop_when_already_closed_and_cleared",
+    "tests/loop/test_close_epoch.py::test_refuses_when_a_newer_session_took_the_slot",
+    "tests/loop/test_close_epoch.py::test_refuses_when_same_id_but_freshly_rewritten",
+    "tests/loop/test_inbox_status.py::test_realize_md_outranks_code_drift",
+    "tests/loop/test_watch.py::test_mcp_render_with_stale_hash_does_not_route_to_loop_b",
+    "vscode-codoc/src/state/status-model.ts::DisplayStatus",
+    "vscode-codoc/src/state/status-model.ts::leaseStatus",
+    "vscode-codoc/src/state/status-model.ts::realizeQueueSize",
+    "vscode-codoc/src/state/workspace-state.ts::WorkspaceState",
+    "vscode-codoc/src/state/workspace-state.ts::WorkspaceState._reload",
+    "vscode-codoc/src/state/workspace-state.ts::WorkspaceState.constructor",
+    "vscode-codoc/src/state/workspace-state.ts::if",
+    "vscode-codoc/src/test/status-model.test.ts::realizing"
+   ],
+   "edit_detail": [
+    {
+     "path": "codoc/loop/activity.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/activity.py::epoch_written_files"
+     ]
+    },
+    {
+     "path": "codoc/loop/watch.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/watch.py::process_batch"
+     ]
+    },
+    {
+     "path": "codoc/loop/watch.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/loop/test_close_epoch.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/loop/test_close_epoch.py::_write",
+      "tests/loop/test_close_epoch.py::test_closes_matching_stale_epoch",
+      "tests/loop/test_close_epoch.py::test_closes_same_id_when_confirmed_stale_under_lock",
+      "tests/loop/test_close_epoch.py::test_empty_expected_id_matches_any_open_epoch",
+      "tests/loop/test_close_epoch.py::test_noop_when_already_closed_and_cleared",
+      "tests/loop/test_close_epoch.py::test_refuses_when_a_newer_session_took_the_slot",
+      "tests/loop/test_close_epoch.py::test_refuses_when_same_id_but_freshly_rewritten"
+     ]
+    },
+    {
+     "path": "tests/loop/test_watch.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "tests/loop/test_watch.py::test_mcp_render_with_stale_hash_does_not_route_to_loop_b"
+     ]
+    },
+    {
+     "path": "codoc/loop/status.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/status.py::realizing_is_fresh"
+     ]
+    },
+    {
+     "path": "codoc/loop/sdk_realize.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/sdk_realize.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/sdk_realize.py::RealizeMonitor",
+      "codoc/loop/sdk_realize.py::RealizeMonitor.__init__"
+     ]
+    },
+    {
+     "path": "codoc/loop/sdk_realize.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/sdk_realize.py::RealizeMonitor",
+      "codoc/loop/sdk_realize.py::RealizeMonitor._record_touch"
+     ]
+    },
+    {
+     "path": "codoc/loop/sdk_realize.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/sdk_realize.py::RealizeMonitor",
+      "codoc/loop/sdk_realize.py::RealizeMonitor.on_tool_use"
+     ]
+    },
+    {
+     "path": "tests/loop/test_inbox_status.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "tests/loop/test_inbox_status.py::test_realize_md_outranks_code_drift"
+     ]
+    },
+    {
+     "path": "tests/loop/test_sdk_realize.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/status.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/status.py::refresh_status"
+     ]
+    },
+    {
+     "path": "codoc/serve/payload.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/serve/payload.py::build_browser_payload"
+     ]
+    },
+    {
+     "path": "codoc/serve/payload.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/serve/payload.py::build_browser_payload"
+     ]
+    },
+    {
+     "path": "tests/serve/test_payload.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/state/status-model.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/state/status-model.ts::DisplayStatus",
+      "vscode-codoc/src/state/status-model.ts::leaseStatus",
+      "vscode-codoc/src/state/status-model.ts::realizeQueueSize"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/workspace-state.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/state/workspace-state.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/workspace-state.ts::WorkspaceState"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/workspace-state.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/workspace-state.ts::WorkspaceState",
+      "vscode-codoc/src/state/workspace-state.ts::WorkspaceState._reload"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/workspace-state.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/state/workspace-state.ts",
+     "how": "located-in-blob",
+     "symbols": [
+      "vscode-codoc/src/state/workspace-state.ts::WorkspaceState",
+      "vscode-codoc/src/state/workspace-state.ts::WorkspaceState.constructor"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/workspace-state.ts",
+     "how": "fragment",
+     "symbols": [
+      "vscode-codoc/src/state/workspace-state.ts::if"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/workspace-state.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/workspace-state.ts::WorkspaceState",
+      "vscode-codoc/src/state/workspace-state.ts::WorkspaceState._reload"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/test/status-model.test.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/test/status-model.test.ts::realizing"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "12b9cfe0-1959-4752-b29d-f0fa80f8f8b8",
+   "session": "a6fe9a2e-3294-4538-8042-516142532472",
+   "ts": "2026-07-31T15:02:15.804Z",
+   "text": "I need to write up the system section for this software and submitting to the most profound HCI/System conference and plannign to win the best paper; the way of describing system, is not by, for exmaple, writeing a readme or writing normal academic paper or blog post; it is important to describe the",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "36824109-0126-4e49-b881-c46b408fb0ce",
+   "session": "a6fe9a2e-3294-4538-8042-516142532472",
+   "ts": "2026-07-31T15:44:03.069Z",
+   "text": "1) the writing is not the style I want, its currently a bunch of underspecified sentence, I would rather have a longer sentence but with plain language and straightforward to the point... bad example: \"A codebase carries intent that lives nowhere the code can hold it, and that intent drifts silently",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "b76421a6-38c2-4735-964f-b76350cf7326",
+   "session": "a6fe9a2e-3294-4538-8042-516142532472",
+   "ts": "2026-07-31T15:56:15.093Z",
+   "text": "ok now lets start writing, we want to write in plain langugae, no jargon, no flowry word, dont sound pretentiously deep but just on the surface level, write candidly, explain clearly, illustratively; write up a version, then check if there are fuzzy or incomplete sentence or other violations, adjust",
+   "n_edits": 8,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "09705609-fd58-4956-9728-1b4874d8d059",
+   "session": "a6fe9a2e-3294-4538-8042-516142532472",
+   "ts": "2026-07-31T17:19:07.050Z",
+   "text": "ok I think you still misinterpret me, the design section will be something like this paper when they talk about the design concepts https://arxiv.org/html/2508.04889v2 or this https://rrrima.me/fairycursor.pdf papers' seciton five; we need to always talk about higher level then using this use case t",
+   "n_edits": 18,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "5d5f481f-54bf-4688-b23a-672f31a939e6",
+   "session": "a6fe9a2e-3294-4538-8042-516142532472",
+   "ts": "2026-08-01T12:31:40.593Z",
+   "text": "i still dont like the style of writing, i think it sounds a bit too pretentious, I like this person style (though the consstraint I mentioned still exisit such as no jargon, no emdash/colon, dont use too much ;, no \"not.. but...\" sentence, no shallow incomplete hook sentence, etc...) https://tomasp.",
+   "n_edits": 3,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "5d5f481f-54bf-4688-b23a-672f31a939e6",
+   "session": "a6fe9a2e-3294-4538-8042-516142532472",
+   "ts": "2026-08-01T15:57:17.192Z",
+   "text": "<bash-input>code .</bash-input>",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "5d5f481f-54bf-4688-b23a-672f31a939e6",
+   "session": "a6fe9a2e-3294-4538-8042-516142532472",
+   "ts": "2026-08-01T15:57:18.597Z",
+   "text": "<bash-stdout>(Bash completed with no output)</bash-stdout><bash-stderr></bash-stderr>",
+   "n_edits": 49,
+   "n_eligible": 43,
+   "symbols": [
+    "codoc/loop/loop_a.py::heal_tree_integrity",
+    "codoc/loop/loop_b.py::_apply_edits",
+    "codoc/loop/loop_b.py::_in_flight_directive_ids",
+    "codoc/store/db.py::Store",
+    "codoc/store/db.py::Store._migrate",
+    "codoc/store/db.py::Store.open",
+    "tests/serve/test_concurrency.py::_set_version",
+    "tests/serve/test_concurrency.py::test_a_settle_is_acknowledged_and_held",
+    "tests/serve/test_concurrency.py::test_a_settle_never_writes_the_daemon_s_projection",
+    "tests/serve/test_concurrency.py::test_a_stale_settle_is_not_refused_because_it_carries_no_change",
+    "tests/serve/test_concurrency.py::test_the_concurrency_claim_rides_on_the_command",
+    "tests/serve/test_concurrency.py::test_the_payload_version_still_reports_the_hub_s_state",
+    "tests/serve/test_concurrency.py::test_two_sessions_editing_one_feature_each_state_their_own_base",
+    "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider",
+    "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider.advanceKnownStore",
+    "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider.buildPayload",
+    "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider.settleDoc",
+    "vscode-codoc/src/state/commands-from-doc.ts::commandsForSettle",
+    "vscode-codoc/src/state/commands-from-doc.ts::settleCommands",
+    "vscode-codoc/src/state/known-store.ts::KnownText",
+    "vscode-codoc/src/state/known-store.ts::advanceKnown",
+    "vscode-codoc/src/state/known-store.ts::advanceKnown.edit",
+    "vscode-codoc/src/state/known-store.ts::emptyKnownStore",
+    "vscode-codoc/src/state/known-store.ts::pruneKnown",
+    "vscode-codoc/src/test/command-emitter.test.ts::doc",
+    "vscode-codoc/src/test/command-emitter.test.ts::feat",
+    "vscode-codoc/src/test/commands-from-doc.sequence.props.test.ts::randomEdit",
+    "vscode-codoc/src/test/known-store.test.ts::setDesc",
+    "vscode-codoc/src/test/known-store.test.ts::unit",
+    "vscode-codoc/src/webview/command-emitter.ts::CommandEmitter",
+    "vscode-codoc/src/webview/command-emitter.ts::commandMessage",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.observe",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.record",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.settle",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.token",
+    "vscode-codoc/src/webview/host-bridge.ts::NetworkBridge",
+    "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge",
+    "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge.flush",
+    "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge.setState",
+    "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::WholeDocEditorHandle",
+    "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::WholeDocEditorOptions",
+    "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor",
+    "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor.commitNow",
+    "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor.flushPendingProjection",
+    "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor.settleNow"
+   ],
+   "edit_detail": [
+    {
+     "path": "vscode-codoc/src/state/known-store.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/state/known-store.ts::KnownText",
+      "vscode-codoc/src/state/known-store.ts::advanceKnown",
+      "vscode-codoc/src/state/known-store.ts::advanceKnown.edit",
+      "vscode-codoc/src/state/known-store.ts::emptyKnownStore",
+      "vscode-codoc/src/state/known-store.ts::pruneKnown"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/commands-from-doc.ts",
+     "how": "located-in-blob",
+     "symbols": [
+      "vscode-codoc/src/state/commands-from-doc.ts::commandsForSettle"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/commands-from-doc.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/commands-from-doc.ts::commandsForSettle"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/commands-from-doc.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/state/commands-from-doc.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/commands-from-doc.ts::settleCommands"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/commands-from-doc.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/providers/tree-editor.ts",
+     "how": "located-in-blob",
+     "symbols": [
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/providers/tree-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider",
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider.buildPayload"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/providers/tree-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider",
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider.advanceKnownStore"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/providers/tree-editor.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "located-in-blob",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::WholeDocEditorOptions"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::WholeDocEditorHandle"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor",
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor.settleNow"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor",
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor.commitNow"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor",
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor.flushPendingProjection"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/tiptap/whole-doc-editor.ts::mountWholeDocEditor"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/test/known-store.test.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/test/known-store.test.ts::setDesc",
+      "vscode-codoc/src/test/known-store.test.ts::unit"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/test/known-store.test.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/test/commands-from-doc.sequence.props.test.ts",
+     "how": "located-in-blob",
+     "symbols": [
+      "vscode-codoc/src/test/commands-from-doc.sequence.props.test.ts::randomEdit"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/commands-from-doc.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/commands-from-doc.ts::settleCommands"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/commands-from-doc.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/providers/tree-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider",
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider.settleDoc"
+     ]
+    },
+    {
+     "path": "codoc/store/db.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/store/db.py::Store",
+      "codoc/store/db.py::Store._migrate"
+     ]
+    },
+    {
+     "path": "codoc/store/db.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/store/db.py::Store",
+      "codoc/store/db.py::Store._migrate"
+     ]
+    },
+    {
+     "path": "codoc/store/db.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/store/db.py::Store",
+      "codoc/store/db.py::Store.open"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/loop_a.py::heal_tree_integrity"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/loop_a.py::heal_tree_integrity"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_b.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/loop_b.py::_apply_edits"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_b.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/loop_b.py::_in_flight_directive_ids"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/host-bridge.ts",
+     "how": "located-in-blob",
+     "symbols": [
+      "vscode-codoc/src/webview/host-bridge.ts::NetworkBridge"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/host-bridge.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge",
+      "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge.flush"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/host-bridge.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge",
+      "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge.flush"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/host-bridge.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/host-bridge.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge",
+      "vscode-codoc/src/webview/host-bridge.ts::createNetworkBridge.setState"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/command-emitter.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/webview/command-emitter.ts::CommandEmitter",
+      "vscode-codoc/src/webview/command-emitter.ts::commandMessage",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.observe",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.record",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.settle",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.token"
+     ]
+    },
+    {
+     "path": "tests/serve/test_concurrency.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/serve/test_concurrency.py::_set_version",
+      "tests/serve/test_concurrency.py::test_a_settle_is_acknowledged_and_held",
+      "tests/serve/test_concurrency.py::test_a_settle_never_writes_the_daemon_s_projection",
+      "tests/serve/test_concurrency.py::test_a_stale_settle_is_not_refused_because_it_carries_no_change",
+      "tests/serve/test_concurrency.py::test_the_concurrency_claim_rides_on_the_command",
+      "tests/serve/test_concurrency.py::test_the_payload_version_still_reports_the_hub_s_state",
+      "tests/serve/test_concurrency.py::test_two_sessions_editing_one_feature_each_state_their_own_base"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/test/command-emitter.test.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/test/command-emitter.test.ts::doc",
+      "vscode-codoc/src/test/command-emitter.test.ts::feat"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/providers/tree-editor.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider",
+      "vscode-codoc/src/providers/tree-editor.ts::CodocTreeEditorProvider.settleDoc"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/known-store.ts",
+     "how": "",
+     "symbols": []
+    }
+   ]
+  },
+  {
+   "request_id": "937a1d92-680a-4cd3-91c7-4924734ae252",
+   "session": "66db9d81-1281-41e3-9144-077264015e6f",
+   "ts": "2026-08-09T03:14:44.855Z",
+   "text": "its good, clean the code then merge to main",
+   "n_edits": 3,
+   "n_eligible": 3,
+   "symbols": [
+    "codoc/store/db.py::Store",
+    "codoc/store/db.py::Store.open",
+    "vscode-codoc/src/state/edit-provenance.ts::EditProvenance",
+    "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.constructor",
+    "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.observe",
+    "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.record",
+    "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.settle",
+    "vscode-codoc/src/webview/command-emitter.ts::CommandEmitter",
+    "vscode-codoc/src/webview/command-emitter.ts::commandMessage",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.observe",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.record",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.settle",
+    "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.token"
+   ],
+   "edit_detail": [
+    {
+     "path": "vscode-codoc/src/state/edit-provenance.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/state/edit-provenance.ts::EditProvenance",
+      "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.constructor",
+      "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.observe",
+      "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.record",
+      "vscode-codoc/src/state/edit-provenance.ts::EditProvenance.settle"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/command-emitter.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/webview/command-emitter.ts::CommandEmitter",
+      "vscode-codoc/src/webview/command-emitter.ts::commandMessage",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.observe",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.record",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.settle",
+      "vscode-codoc/src/webview/command-emitter.ts::createCommandEmitter.token"
+     ]
+    },
+    {
+     "path": "codoc/store/db.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/store/db.py::Store",
+      "codoc/store/db.py::Store.open"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "21da4155-9068-4170-a2f5-6aa4a802c455",
+   "session": "66db9d81-1281-41e3-9144-077264015e6f",
+   "ts": "2026-08-09T12:43:02.302Z",
+   "text": "theres fix of the doc from the fix/edit-tracking... merge to main too",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "186bf352-3dfe-4aed-b06b-9546349c62ef",
+   "session": "21b1253f-5fff-45c1-b7e0-4a5f63c8070f",
+   "ts": "2026-08-10T23:52:15.138Z",
+   "text": "how difficult it is to support the mandarin version of codoc, or other languages, for both system and doc generation...",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "ad7b269d-d82f-4fa7-882c-7be60d9fb34f",
+   "session": "21b1253f-5fff-45c1-b7e0-4a5f63c8070f",
+   "ts": "2026-08-11T00:03:04.468Z",
+   "text": "ok lets ship the content language first, and making sure that all the downstream logics get updated, and making sure the skills/mcp registered the language switch too... dont be lazy",
+   "n_edits": 61,
+   "n_eligible": 54,
+   "symbols": [
+    "codoc/agent/base.py::expand_doclang",
+    "codoc/agent/base.py::load_prompt",
+    "codoc/agent/base.py::load_prompt._expand",
+    "codoc/agent/tree_update.py::propose_tree_update",
+    "codoc/cli/main.py::install_hooks_cmd",
+    "codoc/doclang.py::DocLanguage",
+    "codoc/doclang.py::DocLanguage.is_default",
+    "codoc/doclang.py::ScriptClass",
+    "codoc/doclang.py::_generic",
+    "codoc/doclang.py::_ngrams",
+    "codoc/doclang.py::_segment",
+    "codoc/doclang.py::char_budget",
+    "codoc/doclang.py::chars_per_word",
+    "codoc/doclang.py::clause_chars",
+    "codoc/doclang.py::config_path",
+    "codoc/doclang.py::dominant_script",
+    "codoc/doclang.py::embedder_model_for",
+    "codoc/doclang.py::has_cjk",
+    "codoc/doclang.py::known_codes",
+    "codoc/doclang.py::norm_key",
+    "codoc/doclang.py::prompt_directive",
+    "codoc/doclang.py::read_config",
+    "codoc/doclang.py::resolve",
+    "codoc/doclang.py::script_mix",
+    "codoc/doclang.py::script_of",
+    "codoc/doclang.py::terms",
+    "codoc/doclang.py::tokens",
+    "codoc/doclang.py::workspace_doc_language",
+    "codoc/doclang.py::write_config",
+    "codoc/loop/apply.py::preserved_ratio",
+    "codoc/loop/bootstrap.py::_write_codoc_gitignore",
+    "codoc/loop/divergence.py::_tokens",
+    "codoc/loop/divergence.py::text_overlap",
+    "codoc/loop/intent.py::_terms",
+    "codoc/loop/loop_a.py::_norm_title",
+    "codoc/loop/loop_a.py::_placeholder_owner",
+    "codoc/loop/loop_a.py::apply_changeset",
+    "codoc/loop/loop_b.py::_norm_title",
+    "codoc/loop/loop_b.py::build_realize_prompt",
+    "codoc/loop/migrate.py::MigrationResult",
+    "codoc/loop/migrate.py::MigrationResult.changed",
+    "codoc/loop/migrate.py::MigrationResult.summary",
+    "codoc/loop/migrate.py::migrate_workspace",
+    "codoc/loop/phase.py::intent_gloss",
+    "codoc/loop/title_dedup.py::make_loop_embedder",
+    "codoc/mcp/tools.py::_dead_refs",
+    "codoc/mcp/tools.py::_script_mismatch",
+    "tests/test_doclang.py::codoc_dir",
+    "tests/test_doclang.py::test_blank_env_var_does_not_override",
+    "tests/test_doclang.py::test_char_budget_is_identity_for_latin_and_scales_for_cjk",
+    "tests/test_doclang.py::test_char_budget_never_collapses_to_nothing",
+    "tests/test_doclang.py::test_chars_per_word_blends_a_mixed_string",
+    "tests/test_doclang.py::test_clause_chars_reproduces_the_latin_constant",
+    "tests/test_doclang.py::test_clause_chars_shrinks_for_logographic_text",
+    "tests/test_doclang.py::test_code_agent_directive_exempts_the_source_code",
+    "tests/test_doclang.py::test_corrupt_config_degrades_to_the_default",
+    "tests/test_doclang.py::test_defaults_to_english_with_no_config",
+    "tests/test_doclang.py::test_directive_names_the_language_and_protects_identifiers",
+    "tests/test_doclang.py::test_directive_offers_safe_quotation_marks",
+    "tests/test_doclang.py::test_dominant_script",
+    "tests/test_doclang.py::test_english_directive_is_empty",
+    "tests/test_doclang.py::test_env_var_overrides_the_committed_setting",
+    "tests/test_doclang.py::test_generic_profile_knows_thai_is_unspaced",
+    "tests/test_doclang.py::test_hangul_is_not_treated_as_unspaced",
+    "tests/test_doclang.py::test_non_english_profiles_use_a_multilingual_embedder",
+    "tests/test_doclang.py::test_norm_key_does_not_fold_simplified_and_traditional",
+    "tests/test_doclang.py::test_norm_key_folds_full_width_forms",
+    "tests/test_doclang.py::test_norm_key_is_unchanged_for_ascii",
+    "tests/test_doclang.py::test_reads_the_committed_setting",
+    "tests/test_doclang.py::test_resolve_tags",
+    "tests/test_doclang.py::test_script_mix_ignores_punctuation_and_digits",
+    "tests/test_doclang.py::test_terms_drops_lone_cjk_function_words",
+    "tests/test_doclang.py::test_terms_is_non_empty_for_cjk",
+    "tests/test_doclang.py::test_terms_keeps_a_latin_identifier_inside_cjk_prose",
+    "tests/test_doclang.py::test_terms_matches_the_old_latin_behaviour",
+    "tests/test_doclang.py::test_tokens_is_more_lenient_than_terms",
+    "tests/test_doclang.py::test_tokens_matches_the_old_latin_behaviour",
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile",
+    "tests/test_doclang.py::test_write_config_merges_and_stays_readable",
+    "tests/test_doclang_integration.py::codoc_dir",
+    "tests/test_doclang_integration.py::test_a_chinese_placeholder_adopts_the_symbol_it_planned",
+    "tests/test_doclang_integration.py::test_a_chinese_rewrite_is_still_a_rewrite",
+    "tests/test_doclang_integration.py::test_a_generic_word_alone_does_not_adopt",
+    "tests/test_doclang_integration.py::test_a_small_chinese_repair_is_recognised_as_a_repair",
+    "tests/test_doclang_integration.py::test_an_ambiguous_match_declines_rather_than_guesses",
+    "tests/test_doclang_integration.py::test_an_equivalent_chinese_rewording_is_still_faithful",
+    "tests/test_doclang_integration.py::test_both_loops_share_one_normalizer",
+    "tests/test_doclang_integration.py::test_chinese_tree_round_trips",
+    "tests/test_doclang_integration.py::test_chinese_tree_with_citations_and_author_signals_round_trips",
+    "tests/test_doclang_integration.py::test_correct_chinese_prose_with_citations_is_not_flagged",
+    "tests/test_doclang_integration.py::test_divergence_can_actually_fire_on_chinese_prose",
+    "tests/test_doclang_integration.py::test_doc_projection_holds_readable_characters",
+    "tests/test_doclang_integration.py::test_english_amend_behaviour_is_unchanged",
+    "tests/test_doclang_integration.py::test_english_prompts_are_unchanged_by_the_feature",
+    "tests/test_doclang_integration.py::test_english_prompts_have_no_gap_where_the_block_would_go",
+    "tests/test_doclang_integration.py::test_english_prose_in_a_chinese_tree_is_flagged_but_applied",
+    "tests/test_doclang_integration.py::test_english_repo_gets_no_instruction_paragraph",
+    "tests/test_doclang_integration.py::test_every_prompt_expands_the_marker",
+    "tests/test_doclang_integration.py::test_full_width_variants_share_one_dedup_key",
+    "tests/test_doclang_integration.py::test_mcp_reads_report_the_language",
+    "tests/test_doclang_integration.py::test_migrate_leaves_a_customized_gitignore_alone",
+    "tests/test_doclang_integration.py::test_migrate_makes_an_old_workspace_track_the_language",
+    "tests/test_doclang_integration.py::test_nested_chinese_tree_round_trips",
+    "tests/test_doclang_integration.py::test_non_english_prompts_carry_the_directive",
+    "tests/test_doclang_integration.py::test_the_directive_rides_in_the_cached_prefix",
+    "tests/test_doclang_integration.py::test_tree_codoc_is_written_as_utf8"
+   ],
+   "edit_detail": [
+    {
+     "path": "codoc/doclang.py",
+     "how": "written-body",
+     "symbols": [
+      "codoc/doclang.py::DocLanguage",
+      "codoc/doclang.py::DocLanguage.is_default",
+      "codoc/doclang.py::ScriptClass",
+      "codoc/doclang.py::_generic",
+      "codoc/doclang.py::_ngrams",
+      "codoc/doclang.py::_segment",
+      "codoc/doclang.py::char_budget",
+      "codoc/doclang.py::chars_per_word",
+      "codoc/doclang.py::clause_chars",
+      "codoc/doclang.py::config_path",
+      "codoc/doclang.py::dominant_script",
+      "codoc/doclang.py::embedder_model_for",
+      "codoc/doclang.py::has_cjk",
+      "codoc/doclang.py::known_codes",
+      "codoc/doclang.py::norm_key",
+      "codoc/doclang.py::prompt_directive",
+      "codoc/doclang.py::read_config",
+      "codoc/doclang.py::resolve",
+      "codoc/doclang.py::script_mix",
+      "codoc/doclang.py::script_of",
+      "codoc/doclang.py::terms",
+      "codoc/doclang.py::tokens",
+      "codoc/doclang.py::workspace_doc_language",
+      "codoc/doclang.py::write_config"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::script_mix"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::terms"
+     ]
+    },
+    {
+     "path": "codoc/loop/filenames.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::config_path"
+     ]
+    },
+    {
+     "path": "codoc/loop/bootstrap.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/bootstrap.py::_write_codoc_gitignore"
+     ]
+    },
+    {
+     "path": "codoc/loop/bootstrap.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/agent/base.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/agent/base.py::load_prompt",
+      "codoc/agent/base.py::load_prompt._expand"
+     ]
+    },
+    {
+     "path": "codoc/agent/base.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::prompt_directive"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::prompt_directive"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::prompt_directive"
+     ]
+    },
+    {
+     "path": "codoc/agent/base.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/agent/base.py::load_prompt"
+     ]
+    },
+    {
+     "path": "codoc/agent/base.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/agent/base.py::expand_doclang",
+      "codoc/agent/base.py::load_prompt"
+     ]
+    },
+    {
+     "path": "codoc/agent/tree_update.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/agent/tree_update.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/agent/tree_update.py::propose_tree_update"
+     ]
+    },
+    {
+     "path": "codoc/agent/bootstrap_agent.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/loop_a.py::apply_changeset"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/loop_a.py::apply_changeset"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/loop_a.py::_norm_title"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_b.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/loop_b.py::_norm_title"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/loop_a.py::_placeholder_owner"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/loop_a.py::_placeholder_owner"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_a.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/loop_b.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/loop_b.py::build_realize_prompt"
+     ]
+    },
+    {
+     "path": "codoc/loop/loop_b.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/migrate.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/migrate.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/migrate.py::MigrationResult",
+      "codoc/loop/migrate.py::MigrationResult.changed",
+      "codoc/loop/migrate.py::MigrationResult.summary"
+     ]
+    },
+    {
+     "path": "codoc/loop/migrate.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/migrate.py::migrate_workspace"
+     ]
+    },
+    {
+     "path": "codoc/loop/intent.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/intent.py::_terms"
+     ]
+    },
+    {
+     "path": "codoc/loop/divergence.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/divergence.py::_tokens",
+      "codoc/loop/divergence.py::text_overlap"
+     ]
+    },
+    {
+     "path": "codoc/loop/apply.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/apply.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/apply.py::preserved_ratio"
+     ]
+    },
+    {
+     "path": "codoc/loop/apply.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/apply.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/why.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/title_dedup.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/title_dedup.py::make_loop_embedder"
+     ]
+    },
+    {
+     "path": "codoc/loop/phase.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/loop/phase.py::intent_gloss"
+     ]
+    },
+    {
+     "path": "codoc/loop/phase.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/mcp/tools.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/mcp/tools.py::_dead_refs"
+     ]
+    },
+    {
+     "path": "codoc/mcp/tools.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/mcp/tools.py::_script_mismatch"
+     ]
+    },
+    {
+     "path": "codoc/cli/main.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/cli/main.py::install_hooks_cmd"
+     ]
+    },
+    {
+     "path": "codoc/cli/main.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/test_doclang.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/test_doclang.py::codoc_dir",
+      "tests/test_doclang.py::test_blank_env_var_does_not_override",
+      "tests/test_doclang.py::test_char_budget_is_identity_for_latin_and_scales_for_cjk",
+      "tests/test_doclang.py::test_char_budget_never_collapses_to_nothing",
+      "tests/test_doclang.py::test_chars_per_word_blends_a_mixed_string",
+      "tests/test_doclang.py::test_clause_chars_reproduces_the_latin_constant",
+      "tests/test_doclang.py::test_clause_chars_shrinks_for_logographic_text",
+      "tests/test_doclang.py::test_code_agent_directive_exempts_the_source_code",
+      "tests/test_doclang.py::test_corrupt_config_degrades_to_the_default",
+      "tests/test_doclang.py::test_defaults_to_english_with_no_config",
+      "tests/test_doclang.py::test_directive_names_the_language_and_protects_identifiers",
+      "tests/test_doclang.py::test_directive_offers_safe_quotation_marks",
+      "tests/test_doclang.py::test_dominant_script",
+      "tests/test_doclang.py::test_english_directive_is_empty",
+      "tests/test_doclang.py::test_env_var_overrides_the_committed_setting",
+      "tests/test_doclang.py::test_generic_profile_knows_thai_is_unspaced",
+      "tests/test_doclang.py::test_hangul_is_not_treated_as_unspaced",
+      "tests/test_doclang.py::test_non_english_profiles_use_a_multilingual_embedder",
+      "tests/test_doclang.py::test_norm_key_does_not_fold_simplified_and_traditional",
+      "tests/test_doclang.py::test_norm_key_folds_full_width_forms",
+      "tests/test_doclang.py::test_norm_key_is_unchanged_for_ascii",
+      "tests/test_doclang.py::test_reads_the_committed_setting",
+      "tests/test_doclang.py::test_resolve_tags",
+      "tests/test_doclang.py::test_script_mix_ignores_punctuation_and_digits",
+      "tests/test_doclang.py::test_terms_drops_lone_cjk_function_words",
+      "tests/test_doclang.py::test_terms_is_non_empty_for_cjk",
+      "tests/test_doclang.py::test_terms_keeps_a_latin_identifier_inside_cjk_prose",
+      "tests/test_doclang.py::test_terms_matches_the_old_latin_behaviour",
+      "tests/test_doclang.py::test_tokens_is_more_lenient_than_terms",
+      "tests/test_doclang.py::test_tokens_matches_the_old_latin_behaviour",
+      "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile",
+      "tests/test_doclang.py::test_write_config_merges_and_stays_readable"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/test_doclang_integration.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/test_doclang_integration.py::codoc_dir",
+      "tests/test_doclang_integration.py::test_a_chinese_placeholder_adopts_the_symbol_it_planned",
+      "tests/test_doclang_integration.py::test_a_chinese_rewrite_is_still_a_rewrite",
+      "tests/test_doclang_integration.py::test_a_generic_word_alone_does_not_adopt",
+      "tests/test_doclang_integration.py::test_a_small_chinese_repair_is_recognised_as_a_repair",
+      "tests/test_doclang_integration.py::test_an_ambiguous_match_declines_rather_than_guesses",
+      "tests/test_doclang_integration.py::test_an_equivalent_chinese_rewording_is_still_faithful",
+      "tests/test_doclang_integration.py::test_both_loops_share_one_normalizer",
+      "tests/test_doclang_integration.py::test_chinese_tree_round_trips",
+      "tests/test_doclang_integration.py::test_chinese_tree_with_citations_and_author_signals_round_trips",
+      "tests/test_doclang_integration.py::test_correct_chinese_prose_with_citations_is_not_flagged",
+      "tests/test_doclang_integration.py::test_divergence_can_actually_fire_on_chinese_prose",
+      "tests/test_doclang_integration.py::test_doc_projection_holds_readable_characters",
+      "tests/test_doclang_integration.py::test_english_amend_behaviour_is_unchanged",
+      "tests/test_doclang_integration.py::test_english_prompts_are_unchanged_by_the_feature",
+      "tests/test_doclang_integration.py::test_english_prose_in_a_chinese_tree_is_flagged_but_applied",
+      "tests/test_doclang_integration.py::test_english_repo_gets_no_instruction_paragraph",
+      "tests/test_doclang_integration.py::test_every_prompt_expands_the_marker",
+      "tests/test_doclang_integration.py::test_full_width_variants_share_one_dedup_key",
+      "tests/test_doclang_integration.py::test_mcp_reads_report_the_language",
+      "tests/test_doclang_integration.py::test_migrate_leaves_a_customized_gitignore_alone",
+      "tests/test_doclang_integration.py::test_migrate_makes_an_old_workspace_track_the_language",
+      "tests/test_doclang_integration.py::test_nested_chinese_tree_round_trips",
+      "tests/test_doclang_integration.py::test_non_english_prompts_carry_the_directive",
+      "tests/test_doclang_integration.py::test_the_directive_rides_in_the_cached_prefix",
+      "tests/test_doclang_integration.py::test_tree_codoc_is_written_as_utf8"
+     ]
+    },
+    {
+     "path": "codoc/agent/base.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/agent/base.py::expand_doclang"
+     ]
+    },
+    {
+     "path": "tests/test_doclang_integration.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/test_doclang_integration.py::test_english_prompts_are_unchanged_by_the_feature"
+     ]
+    },
+    {
+     "path": "tests/test_doclang_integration.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/test_doclang_integration.py::test_english_prompts_have_no_gap_where_the_block_would_go"
+     ]
+    },
+    {
+     "path": "codoc/agent/base.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/agent/base.py::expand_doclang"
+     ]
+    },
+    {
+     "path": "tests/test_doclang_integration.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/test_doclang_integration.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/test_doclang_integration.py::test_a_small_chinese_repair_is_recognised_as_a_repair"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::terms"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93",
+   "session": "21b1253f-5fff-45c1-b7e0-4a5f63c8070f",
+   "ts": "2026-08-11T03:31:17.551Z",
+   "text": "making sure that the vscode extension, tui also support the display of different languages content, and an icon button to switch, actually i think its fine if user want billingual too... it makes more sense when using chinese to describe but using english term/keywords, etc... depends on users prefe",
+   "n_edits": 20,
+   "n_eligible": 20,
+   "symbols": [
+    "codoc/cli/main.py::history",
+    "codoc/doclang.py::detect_prose_language",
+    "codoc/doclang.py::embedder_model_for",
+    "codoc/doclang.py::is_mixed_prose",
+    "codoc/doclang.py::prompt_directive",
+    "codoc/doclang.py::prose_script",
+    "codoc/doclang.py::strip_code_spans",
+    "codoc/mcp/tools.py::_script_mismatch",
+    "codoc/mcp/tools.py::doc_language_block$2",
+    "tests/test_doclang_bilingual.py::_mk",
+    "tests/test_doclang_bilingual.py::codoc_dir",
+    "tests/test_doclang_bilingual.py::test_a_fragment_is_never_judged",
+    "tests/test_doclang_bilingual.py::test_a_new_node_is_judged_against_the_repo_default",
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo",
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged",
+    "tests/test_doclang_bilingual.py::test_an_english_tree_is_never_advised",
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged",
+    "tests/test_doclang_bilingual.py::test_detect_prose_language_in_a_chinese_tree",
+    "tests/test_doclang_bilingual.py::test_detection_is_symmetric_about_the_default",
+    "tests/test_doclang_bilingual.py::test_directive_blesses_mixed_technical_vocabulary",
+    "tests/test_doclang_bilingual.py::test_directive_separates_originating_from_editing",
+    "tests/test_doclang_bilingual.py::test_english_directive_is_still_empty",
+    "tests/test_doclang_bilingual.py::test_language_tag_for_is_the_display_tag",
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions",
+    "tests/test_doclang_bilingual.py::test_no_signal_keeps_the_default",
+    "tests/test_doclang_bilingual.py::test_prose_letters_ignores_code",
+    "tests/test_doclang_bilingual.py::test_sidecar_carries_the_tree_language_and_node_exceptions",
+    "tests/test_doclang_bilingual.py::test_the_hold_gloss_follows_the_nodes_own_language",
+    "vscode-codoc/src/state/doc-language.ts::readCodocConfig",
+    "vscode-codoc/src/state/doc-language.ts::shortLanguageLabel",
+    "vscode-codoc/src/state/doc-language.ts::writeDocLanguage",
+    "vscode-codoc/src/webview/doc-lang.ts::langAttrFor",
+    "vscode-codoc/src/webview/doc-lang.ts::languageName",
+    "vscode-codoc/src/webview/doc-lang.ts::shortLanguageLabel",
+    "vscode-codoc/src/webview/doc-view.ts::renderAll",
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar"
+   ],
+   "edit_detail": [
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::embedder_model_for"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::prompt_directive"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::prompt_directive"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::prose_script",
+      "codoc/doclang.py::strip_code_spans"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::detect_prose_language"
+     ]
+    },
+    {
+     "path": "codoc/doclang.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/doclang.py::detect_prose_language",
+      "codoc/doclang.py::is_mixed_prose"
+     ]
+    },
+    {
+     "path": "codoc/mcp/tools.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/mcp/tools.py::_script_mismatch"
+     ]
+    },
+    {
+     "path": "codoc/mcp/tools.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/mcp/tools.py::doc_language_block$2"
+     ]
+    },
+    {
+     "path": "codoc/codoc_file/render.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/loop/phase.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "vscode-codoc/src/state/doc-language.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/state/doc-language.ts::readCodocConfig",
+      "vscode-codoc/src/state/doc-language.ts::shortLanguageLabel",
+      "vscode-codoc/src/state/doc-language.ts::writeDocLanguage"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/doc-language.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/doc-language.ts::writeDocLanguage"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/doc-lang.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/webview/doc-lang.ts::langAttrFor",
+      "vscode-codoc/src/webview/doc-lang.ts::languageName",
+      "vscode-codoc/src/webview/doc-lang.ts::shortLanguageLabel"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/doc-language.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/state/doc-language.ts::shortLanguageLabel"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/doc-view.ts",
+     "how": "located-in-blob",
+     "symbols": [
+      "vscode-codoc/src/webview/doc-view.ts::renderAll"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/doc-view.ts",
+     "how": "replayed",
+     "symbols": [
+      "vscode-codoc/src/webview/doc-view.ts::renderToolbar"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/webview/doc-view.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/cli/main.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/cli/main.py::history"
+     ]
+    },
+    {
+     "path": "tests/test_doclang_bilingual.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/test_doclang_bilingual.py::_mk",
+      "tests/test_doclang_bilingual.py::codoc_dir",
+      "tests/test_doclang_bilingual.py::test_a_fragment_is_never_judged",
+      "tests/test_doclang_bilingual.py::test_a_new_node_is_judged_against_the_repo_default",
+      "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo",
+      "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged",
+      "tests/test_doclang_bilingual.py::test_an_english_tree_is_never_advised",
+      "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged",
+      "tests/test_doclang_bilingual.py::test_detect_prose_language_in_a_chinese_tree",
+      "tests/test_doclang_bilingual.py::test_detection_is_symmetric_about_the_default",
+      "tests/test_doclang_bilingual.py::test_directive_blesses_mixed_technical_vocabulary",
+      "tests/test_doclang_bilingual.py::test_directive_separates_originating_from_editing",
+      "tests/test_doclang_bilingual.py::test_english_directive_is_still_empty",
+      "tests/test_doclang_bilingual.py::test_language_tag_for_is_the_display_tag",
+      "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions",
+      "tests/test_doclang_bilingual.py::test_no_signal_keeps_the_default",
+      "tests/test_doclang_bilingual.py::test_prose_letters_ignores_code",
+      "tests/test_doclang_bilingual.py::test_sidecar_carries_the_tree_language_and_node_exceptions",
+      "tests/test_doclang_bilingual.py::test_the_hold_gloss_follows_the_nodes_own_language"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/test/doc-lang.test.ts",
+     "how": "",
+     "symbols": []
+    }
+   ]
+  },
+  {
+   "request_id": "4a76be4b-c707-4d84-83ad-b7e005d0b426",
+   "session": "21b1253f-5fff-45c1-b7e0-4a5f63c8070f",
+   "ts": "2026-08-11T13:30:38.085Z",
+   "text": "so if I already had the codoc in english, how should I rebuild it to chinese? currently there is a button to switch lamguage but not really reacting to it",
+   "n_edits": 7,
+   "n_eligible": 6,
+   "symbols": [
+    "codoc/agent/translate.py::propose_translations",
+    "codoc/cli/main.py::_echo_language_mix",
+    "codoc/loop/translate.py::Skipped",
+    "codoc/loop/translate.py::TranslateResult",
+    "codoc/loop/translate.py::TranslateResult.summary",
+    "codoc/loop/translate.py::_apply_one",
+    "codoc/loop/translate.py::_needs_translation",
+    "codoc/loop/translate.py::check_translation",
+    "codoc/loop/translate.py::translate_tree",
+    "tests/loop/test_translate.py::_seed",
+    "tests/loop/test_translate.py::_translator",
+    "tests/loop/test_translate.py::_translator._p",
+    "tests/loop/test_translate.py::codoc_dir",
+    "tests/loop/test_translate.py::test_a_colliding_title_is_refused",
+    "tests/loop/test_translate.py::test_a_dropped_code_citation_is_refused",
+    "tests/loop/test_translate.py::test_a_dropped_external_link_is_refused",
+    "tests/loop/test_translate.py::test_a_dropped_focus_span_is_refused",
+    "tests/loop/test_translate.py::test_a_failed_batch_does_not_sink_the_run",
+    "tests/loop/test_translate.py::test_a_failed_batch_does_not_sink_the_run.boom",
+    "tests/loop/test_translate.py::test_a_faithful_translation_passes",
+    "tests/loop/test_translate.py::test_a_node_does_not_collide_with_its_own_current_title",
+    "tests/loop/test_translate.py::test_a_refused_node_is_reported_and_left_alone",
+    "tests/loop/test_translate.py::test_a_short_description_is_not_language_checked",
+    "tests/loop/test_translate.py::test_a_translated_citation_target_is_refused",
+    "tests/loop/test_translate.py::test_blank_output_is_refused",
+    "tests/loop/test_translate.py::test_dry_run_writes_nothing",
+    "tests/loop/test_translate.py::test_limit_bounds_a_trial_run",
+    "tests/loop/test_translate.py::test_limit_bounds_a_trial_run.spy",
+    "tests/loop/test_translate.py::test_no_realize_directive_is_queued",
+    "tests/loop/test_translate.py::test_the_event_still_records_that_the_loop_wrote_the_words",
+    "tests/loop/test_translate.py::test_the_previous_wording_survives_in_the_ledger",
+    "tests/loop/test_translate.py::test_the_prior_writer_role_is_preserved",
+    "tests/loop/test_translate.py::test_the_translation_lands_in_the_store_and_the_render",
+    "tests/loop/test_translate.py::test_translates_only_what_is_not_already_in_the_language",
+    "tests/loop/test_translate.py::test_translates_only_what_is_not_already_in_the_language.spy",
+    "tests/loop/test_translate.py::test_untranslated_prose_is_refused"
+   ],
+   "edit_detail": [
+    {
+     "path": "vscode-codoc/src/state/doc-language.ts",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "codoc/agent/translate.py",
+     "how": "written-body",
+     "symbols": [
+      "codoc/agent/translate.py::propose_translations"
+     ]
+    },
+    {
+     "path": "codoc/loop/translate.py",
+     "how": "written-body",
+     "symbols": [
+      "codoc/loop/translate.py::Skipped",
+      "codoc/loop/translate.py::TranslateResult",
+      "codoc/loop/translate.py::TranslateResult.summary",
+      "codoc/loop/translate.py::_apply_one",
+      "codoc/loop/translate.py::_needs_translation",
+      "codoc/loop/translate.py::check_translation",
+      "codoc/loop/translate.py::translate_tree"
+     ]
+    },
+    {
+     "path": "codoc/cli/main.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "codoc/cli/main.py::_echo_language_mix"
+     ]
+    },
+    {
+     "path": "codoc/loop/translate.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/loop/translate.py::check_translation"
+     ]
+    },
+    {
+     "path": "tests/loop/test_translate.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/loop/test_translate.py::_seed",
+      "tests/loop/test_translate.py::_translator",
+      "tests/loop/test_translate.py::_translator._p",
+      "tests/loop/test_translate.py::codoc_dir",
+      "tests/loop/test_translate.py::test_a_colliding_title_is_refused",
+      "tests/loop/test_translate.py::test_a_dropped_code_citation_is_refused",
+      "tests/loop/test_translate.py::test_a_dropped_external_link_is_refused",
+      "tests/loop/test_translate.py::test_a_dropped_focus_span_is_refused",
+      "tests/loop/test_translate.py::test_a_failed_batch_does_not_sink_the_run",
+      "tests/loop/test_translate.py::test_a_failed_batch_does_not_sink_the_run.boom",
+      "tests/loop/test_translate.py::test_a_faithful_translation_passes",
+      "tests/loop/test_translate.py::test_a_node_does_not_collide_with_its_own_current_title",
+      "tests/loop/test_translate.py::test_a_refused_node_is_reported_and_left_alone",
+      "tests/loop/test_translate.py::test_a_short_description_is_not_language_checked",
+      "tests/loop/test_translate.py::test_a_translated_citation_target_is_refused",
+      "tests/loop/test_translate.py::test_blank_output_is_refused",
+      "tests/loop/test_translate.py::test_dry_run_writes_nothing",
+      "tests/loop/test_translate.py::test_limit_bounds_a_trial_run",
+      "tests/loop/test_translate.py::test_limit_bounds_a_trial_run.spy",
+      "tests/loop/test_translate.py::test_no_realize_directive_is_queued",
+      "tests/loop/test_translate.py::test_the_event_still_records_that_the_loop_wrote_the_words",
+      "tests/loop/test_translate.py::test_the_previous_wording_survives_in_the_ledger",
+      "tests/loop/test_translate.py::test_the_prior_writer_role_is_preserved",
+      "tests/loop/test_translate.py::test_the_translation_lands_in_the_store_and_the_render",
+      "tests/loop/test_translate.py::test_translates_only_what_is_not_already_in_the_language",
+      "tests/loop/test_translate.py::test_translates_only_what_is_not_already_in_the_language.spy",
+      "tests/loop/test_translate.py::test_untranslated_prose_is_refused"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "069762bf-dc9d-4d1b-b992-5f11ee2d6d69",
+   "session": "21b1253f-5fff-45c1-b7e0-4a5f63c8070f",
+   "ts": "2026-08-11T13:54:21.917Z",
+   "text": "but after I translated i cannot switch back to english? even the dropdown showing english as option to click",
+   "n_edits": 5,
+   "n_eligible": 5,
+   "symbols": [
+    "codoc/cli/main.py::translate",
+    "tests/loop/test_translate.py::test_limit_bounds_a_trial_run",
+    "vscode-codoc/src/state/codoc-config.ts::readDocLanguage",
+    "vscode-codoc/src/test/codoc-config.test.ts::write"
+   ],
+   "edit_detail": [
+    {
+     "path": "codoc/cli/main.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/cli/main.py::translate"
+     ]
+    },
+    {
+     "path": "codoc/cli/main.py",
+     "how": "replayed",
+     "symbols": [
+      "codoc/cli/main.py::translate"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/state/codoc-config.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/state/codoc-config.ts::readDocLanguage"
+     ]
+    },
+    {
+     "path": "vscode-codoc/src/test/codoc-config.test.ts",
+     "how": "written-body",
+     "symbols": [
+      "vscode-codoc/src/test/codoc-config.test.ts::write"
+     ]
+    },
+    {
+     "path": "tests/loop/test_translate.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/loop/test_translate.py::test_limit_bounds_a_trial_run"
+     ]
+    }
+   ]
+  }
+ ]
+}

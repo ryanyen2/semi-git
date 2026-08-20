@@ -1,0 +1,43 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_revert                de8a3537aed1
+    2 ✓ op_feature_split         f-ce259f0defb1
+    3 ✓ op_revert                ce259f0defb1
+    4 ✓ op_edit_save             ov.py (add)
+        settled (save refused, git restore): ['M ov.py']
+    5 · op_revert_keep_dependents empty ideal
+    6 ✓ op_edit_save             ov.py (add)
+        settled (save refused, git restore): ['M ov.py']
+    7 · op_revert                empty ideal
+    8 · op_feature_merge         1 feature(s)
+    9 ✓ op_restore               5ee4ff30e6b5
+   10 ✓ op_restore               de8a3537aed1
+   11 ✓ op_feature_rename        f-ce259f0defb1
+   12 ✓ op_revert                2d057b564232
+   13 ✓ op_revert_keep_dependents 575bde27ed78
+   14 ✓ op_undo                  
+   15 ✓ op_feature_rename        f-ce259f0defb1
+   16 ✓ op_edit_save             ov.py (rework)
+   17 ✓ op_edit_save             ov.py (rework)
+   18 ✓ op_undo                  
+   19 ✓ op_revert_keep_dependents 575bde27ed78
+   20 ✓ op_edit_save             ov.py (rework)
+   21 ✓ op_restore               54ad85ab0f89
+   22 ✓ op_feature_merge         af-m240f1f2306<-f-ce259f0defb1
+   23 ✓ op_feature_merge         af-mef64f08142<-af-m240f1f2306
+   24 ✓ op_undo                  
+   25 ✓ op_revert_undo_probe     de8a3537aed1
+   26 ✓ op_edit_save             ov.py (rework)
+   27 ✓ op_revert_keep_dependents 54ad85ab0f89
+   28 ✓ op_feature_split         af-mef64f08142
+   29 ✓ op_undo                  
+   30 ✓ op_revert_undo_probe     de8a3537aed1
+   31 ✓ op_restore               aee121452b8f
+   32 ✓ op_revert_undo_probe     10e1ad11620f
+   33 ✓ op_feature_merge         af-m240f1f2306<-af-mef64f08142
+   34 ✓ op_add_file              v4_mod_34.py
+   35 ✓ op_restore               aee121452b8f
+   36 ✓ op_revert_undo_probe     40b8a985412f
+   37 ✓ op_restore               aee121452b8f
+   38 ✓ op_undo                  
+   39 ✓ op_edit_save             ov.py (rework)
+overload_group seed 1061: 40 ops applied, 0 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-overload_group-seed1061.json

@@ -1,0 +1,38 @@
+    0 ✓ op_revert_keep_dependents 126303a70181
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_revert_restore_probe  026fba3b609d
+    3 ✓ op_revert_restore_probe  126303a70181
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_edit_save             v4_mod_1.py (rework)
+    6 ✓ op_edit_save             v4_mod_1.py (rework)
+    7 ✓ op_undo                  
+    8 ✗ op_revert_restore_probe  bf4a507b207e
+        restore_resurrects_layout: restoring what revert bf4a507b207e removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']
+    9 ✓ op_feature_rename        f-026fba3b609d
+   10 ✓ op_revert                ef4523885161
+   11 ✓ op_revert_keep_dependents a08a015717cf
+   12 ✓ op_revert_keep_dependents 66521c9c8059
+   13 ✓ op_revert                146eebdde27a
+   14 ✓ op_edit_save             v4_mod_1.py (rework)
+   15 ✓ op_revert                a08a015717cf
+   16 ✓ op_restore               ef4523885161
+   17 ✓ op_add_file              v4_mod_17.py
+   18 ✓ op_feature_rename        af-ma4e357a76f
+   19 ✓ op_revert                3549561cc039
+   20 ✓ op_restore               a49e958c1df1
+   21 ✓ op_revert_keep_dependents 7457ba96181f
+   22 ✓ op_revert_restore_probe  d2085870f0a8
+   23 ✓ op_undo                  
+   24 ✓ op_revert                b448e6db0f8a
+   25 ✓ op_edit_save             v4_mod_17.py (rework)
+   26 ✓ op_restore               b448e6db0f8a
+   27 ✓ op_feature_rename        af-ma4e357a76f
+   28 ✓ op_undo                  
+   29 ✓ op_edit_save             v4_mod_17.py (rework)
+   30 ✓ op_feature_split         f-026fba3b609d
+   31 ✓ op_edit_save             v4_mod_17.py (rework)
+   32 ✓ op_restore               ef4523885161
+   33 ✓ op_feature_split         af-ma4e357a76f
+   34 ✓ op_edit_save             v4_mod_17.py (rework)
+   35 · op_edit_save             a.py is not utf-8
+latin1_encoded seed 1099: 36 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1099.json

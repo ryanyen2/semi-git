@@ -1,0 +1,439 @@
+{
+  "repo": "unode/firefox_decrypt",
+  "stars": 2471,
+  "band": "1000..2500",
+  "license": "GPL-3.0",
+  "status": "ok",
+  "clone": {
+    "cmd": "git clone --quiet https://github.com/unode/firefox_decrypt.git",
+    "rc": 0,
+    "seconds": 0.5,
+    "timed_out": false,
+    "out": "",
+    "err": ""
+  },
+  "head_sha": "fd3869e3f4e656f0dccfd7169d8bd22d982ce3e6",
+  "tree": {
+    "files_total": 95,
+    "files_py": 7,
+    "py_bytes": 56265,
+    "commits": 344
+  },
+  "loadavg_at_init": 8.36474609375,
+  "init": {
+    "cmd": "sgt init",
+    "rc": 0,
+    "seconds": 10.7,
+    "timed_out": false,
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `sgt now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up\n",
+    "err": ""
+  },
+  "backfill": {
+    "reached_genesis": true,
+    "complete": true,
+    "chunks": 14,
+    "seconds": 154.1,
+    "capped": false,
+    "cap_s": 1800,
+    "progress": [
+      {
+        "chunk": 1,
+        "seconds": 16.4,
+        "ops": 80
+      },
+      {
+        "chunk": 2,
+        "seconds": 29.0,
+        "ops": 121
+      },
+      {
+        "chunk": 3,
+        "seconds": 39.5,
+        "ops": 164
+      },
+      {
+        "chunk": 4,
+        "seconds": 49.8,
+        "ops": 220
+      },
+      {
+        "chunk": 5,
+        "seconds": 60.8,
+        "ops": 276
+      },
+      {
+        "chunk": 6,
+        "seconds": 71.2,
+        "ops": 339
+      },
+      {
+        "chunk": 7,
+        "seconds": 81.6,
+        "ops": 416
+      },
+      {
+        "chunk": 8,
+        "seconds": 92.6,
+        "ops": 500
+      },
+      {
+        "chunk": 9,
+        "seconds": 104.1,
+        "ops": 558
+      },
+      {
+        "chunk": 10,
+        "seconds": 116.3,
+        "ops": 597
+      },
+      {
+        "chunk": 11,
+        "seconds": 128.2,
+        "ops": 653
+      },
+      {
+        "chunk": 12,
+        "seconds": 139.1,
+        "ops": 720
+      },
+      {
+        "chunk": 13,
+        "seconds": 149.6,
+        "ops": 791
+      },
+      {
+        "chunk": 14,
+        "seconds": 154.0,
+        "ops": 833
+      }
+    ]
+  },
+  "summary": {
+    "files": 106,
+    "symbols": 258,
+    "features": 0,
+    "coverage_fraction": 0.04597701149425287,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "drift": {
+      "any": true,
+      "paths": [
+        "AUTHORS",
+        "CHANGELOG.md",
+        "CONTRIBUTORS.md",
+        "README",
+        "firefox_decrypt.py",
+        "pyproject.toml",
+        "tests/bash_tap.sh",
+        "tests/bash_tap_fd.sh",
+        "tests/csv.t",
+        "tests/csv_46.t",
+        "tests/direct_profile_20.t",
+        "tests/direct_profile_46.t",
+        "tests/direct_profile_59.t",
+        "tests/direct_profile_nopass.t",
+        "tests/json.t",
+        "tests/list_profiles.t",
+        "tests/list_single_profile_20.t",
+        "tests/list_single_profile_46.t",
+        "tests/non_interactive_choice.t",
+        "tests/non_interactive_choice_20.t",
+        "tests/non_interactive_choice_46.t",
+        "tests/non_interactive_choice_missing.t",
+        "tests/non_interactive_choice_nopass.t",
+        "tests/problems",
+        "tests/profile_choice_46.t",
+        "tests/profile_ini.t",
+        "tests/profile_ini_20.t",
+        "tests/profile_ini_46.t",
+        "tests/profile_ini_59.t",
+        "tests/profile_ini_nopass.t",
+        "tests/run_all",
+        "tests/simpletap/__init__.py",
+        "tests/simpletap/__main__.py",
+        "tests/simpletap/fdecrypt.py",
+        "tests/simpletap/result.py",
+        "tests/simpletap/runner.py",
+        "tests/tabular.t",
+        "tests/tabular_46.t",
+        "tests/test_data/outputs/list.output",
+        "tests/test_data/outputs/list_single_20.output",
+        "tests/test_data/outputs/list_single_46.output",
+        "tests/test_data/outputs/non_interactive_choice_missing.output",
+        "tests/test_data/profiles.ini",
+        "tests/test_data/test_profile_firefox_20/cert8.db",
+        "tests/test_data/test_profile_firefox_20/signons.sqlite",
+        "tests/test_data/test_profile_firefox_46/cert8.db",
+        "tests/test_data/test_profile_firefox_46/logins.json",
+        "tests/test_data/test_profile_firefox_nopassword/cert8.db",
+        "tests/test_data/test_profile_firefox_nopassword/key3.db",
+        "tests/test_data/test_profile_firefox_nopassword/logins.json",
+        "tests/version.t",
+        "wercker.yml"
+      ]
+    },
+    "unmanaged": [],
+    "backstop_kept": [
+      ".all-contributorsrc",
+      ".github/ISSUE_TEMPLATE/bug_report.md",
+      ".github/ISSUE_TEMPLATE/feature_request.md",
+      ".github/ISSUE_TEMPLATE/i-didn-t-find-documentation-on-how-to---.md",
+      ".github/workflows/main.yml",
+      ".gitignore",
+      "README.md",
+      "tests/direct_profile.t",
+      "tests/list_single_profile.t",
+      "tests/test_data/test_profile_firefox_nopassword_46/cert8.db",
+      "tests/test_data/test_profile_firefox_nopassword_46/key3.db",
+      "tests/test_data/test_profile_firefox_nopassword_46/logins.json"
+    ],
+    "forks": {
+      "open": 0,
+      "records": []
+    },
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true,
+      "history_rewritten": false
+    }
+  },
+  "fsck": {
+    "ok": true,
+    "checked": 833,
+    "bad_hash": [],
+    "corrupt": [],
+    "chain_gaps": [
+      "CHANGELOG.md@ccb0dd6a7bc7698fbd40f731dea338c107cec4ac",
+      "README.md@e3a7be9767996ad0ad6247dd2a1451d35808017b",
+      "firefox_decrypt.py::Exit@2d8cd6882fa776686981e01369bfabd1ec14bc95",
+      "firefox_decrypt.py::JsonCredentials.__iter__@d1c3f1163cdc7061f30e9adc9e1732024d71ca87",
+      "firefox_decrypt.py::JsonCredentials@98bcde64be95964a83318134f88deaf6776e9b4f",
+      "firefox_decrypt.py::NSSDecoder.SECItem@3631869d94bbf877859617c0a683249482cff50e",
+      "firefox_decrypt.py::NSSDecoder.decode@6116a52f1e00f3593b397729aab72a4820f6e4cc",
+      "firefox_decrypt.py::NSSDecoder.find_nss@224d401840d0a8b1d0a02c6dd036c52fd3d99688",
+      "firefox_decrypt.py::NSSDecoder.find_nss@4a1f686b807581d7aeb19a20ca43bbbb6b2adb0d",
+      "firefox_decrypt.py::NSSDecoder.handle_error@ccbbc261c46cba6fa477d09425fc2a66cb29c8c6",
+      "firefox_decrypt.py::NSSDecoder.load_libnss@8a21d28c798f50c269c354653fa55d2b7cff3f4f",
+      "firefox_decrypt.py::NSSDecoder.load_libnss@e5147205d889d598af993fa5bfe7613c52a98ddd",
+      "firefox_decrypt.py::NSSDecoder@e45418bad0d10076b9dd3a032f339802c62adaf3",
+      "firefox_decrypt.py::NSSInteraction.authenticate@a7eaf58c18138e5a2579a4649c4879d02c128cb4",
+      "firefox_decrypt.py::NSSInteraction.decrypt_passwords@5a6834dc6bac08c25465ddec56365facf409ef0c",
+      "firefox_decrypt.py::NSSInteraction.load_profile@0b2ad2b1d06c887cf790c1dec58a372fded24e0b",
+      "firefox_decrypt.py::NSSInteraction@de168d1ed6fd9fb4546ea255b6146417a05f35eb",
+      "firefox_decrypt.py::NSSProxy.PK11SlotInfo@88b49ef5ce3bde293b92ccaffbf3ba0ea9cc41c0",
+      "firefox_decrypt.py::NSSProxy.__init__@32841ac67b3d47b8a25abd888e70defdb44e0dab",
+      "firefox_decrypt.py::NSSProxy.handle_error@173a24abcee3bbbb6e5b30bffbbcc359810d8e63",
+      "firefox_decrypt.py::NSSProxy@ba20ba0513ae760b918e65b52ee98e2b8955578f",
+      "firefox_decrypt.py::__anchor__::get_version@1b604e2a5090ca1cd3971b4c8d687b8e45db476c",
+      "firefox_decrypt.py::__residue__::\u0000HEAD\u0000@b1317fe4417b887f751df5ea6dfaae1fb8d7123e",
+      "firefox_decrypt.py::__residue__::get_version@86e4405d73d78b63e0617606f1941c8847fb0b87",
+      "firefox_decrypt.py::__residue__::py2_decode@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "firefox_decrypt.py::__residue__::py2_encode@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "firefox_decrypt.py::__residue__::type_decode@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "firefox_decrypt.py::ask_password@a238c54ec38acc1c23805aacdf97db7458844a02",
+      "firefox_decrypt.py::export_pass@3831235eeb30e31437385f4fc74890eedba21e32",
+      "firefox_decrypt.py::get_profile@fd38ebfa40d068c142d17a67b7cce995e19f4912",
+      "firefox_decrypt.py::get_version.internal_version@64df66a4b1c287fd5c5584b213778d2c94e5f64b",
+      "firefox_decrypt.py::get_version@b15a580d540b1cb4bfbfd068cc81a6e071f97e60",
+      "firefox_decrypt.py::main@09a444ef2c9a2dca5389c0ea5396fae6507e6c2c",
+      "firefox_decrypt.py::parse_sys_args@3909bca76ec03125eb5c24f897db64ec5f6a4462",
+      "firefox_decrypt.py::py2_decode@75792460e1796a2f0631ef3ef07e32d241e1481e",
+      "firefox_decrypt.py::py2_encode@b4ba2c16ee5aa48552ad580cd6198388d1af6871",
+      "firefox_decrypt.py::type_decode@9001b633fe04f9980087e91e8a5234c43d644582",
+      "tests/direct_profile.t@0748b8b2dfae411e6a7af03a759ef5dcf6819821",
+      "tests/direct_profile_non-ascii.t@bc924c019df6c32c72e875dec47bb9b665e4e59f",
+      "tests/list_single_profile.t@375e40fca473ddbfa6313278126dedf92f20eb4d",
+      "tests/profile_ini_non-ascii.t@74aacab7dbd549aa57aaaafc93c86311293d2c0c",
+      "tests/test_data/outputs/list.output@1122efb162dea271e5115990e3ec3ad90d079449",
+      "tests/test_data/profiles.ini@2b312628da2bd2343dc4c165bdfc25fff6b4b6c1"
+    ],
+    "invalid_ideals": [],
+    "unreachable_witnesses": [],
+    "mixed_versions": [],
+    "pending_land": [],
+    "op_index_stale": false,
+    "stale_sessions": []
+  },
+  "fsck_tree": {
+    "drift": [
+      "AUTHORS",
+      "CHANGELOG.md",
+      "CONTRIBUTORS.md",
+      "README",
+      "firefox_decrypt.py",
+      "pyproject.toml",
+      "tests/bash_tap.sh",
+      "tests/bash_tap_fd.sh",
+      "tests/csv.t",
+      "tests/csv_46.t",
+      "tests/direct_profile_20.t",
+      "tests/direct_profile_46.t",
+      "tests/direct_profile_59.t",
+      "tests/direct_profile_nopass.t",
+      "tests/json.t",
+      "tests/list_profiles.t",
+      "tests/list_single_profile_20.t",
+      "tests/list_single_profile_46.t",
+      "tests/non_interactive_choice.t",
+      "tests/non_interactive_choice_20.t",
+      "tests/non_interactive_choice_46.t",
+      "tests/non_interactive_choice_missing.t",
+      "tests/non_interactive_choice_nopass.t",
+      "tests/problems",
+      "tests/profile_choice_46.t",
+      "tests/profile_ini.t",
+      "tests/profile_ini_20.t",
+      "tests/profile_ini_46.t",
+      "tests/profile_ini_59.t",
+      "tests/profile_ini_nopass.t",
+      "tests/run_all",
+      "tests/simpletap/__init__.py",
+      "tests/simpletap/__main__.py",
+      "tests/simpletap/fdecrypt.py",
+      "tests/simpletap/result.py",
+      "tests/simpletap/runner.py",
+      "tests/tabular.t",
+      "tests/tabular_46.t",
+      "tests/test_data/outputs/list.output",
+      "tests/test_data/outputs/list_single_20.output",
+      "tests/test_data/outputs/list_single_46.output",
+      "tests/test_data/outputs/non_interactive_choice_missing.output",
+      "tests/test_data/profiles.ini",
+      "tests/test_data/test_profile_firefox_20/cert8.db",
+      "tests/test_data/test_profile_firefox_20/signons.sqlite",
+      "tests/test_data/test_profile_firefox_46/cert8.db",
+      "tests/test_data/test_profile_firefox_46/logins.json",
+      "tests/test_data/test_profile_firefox_nopassword/cert8.db",
+      "tests/test_data/test_profile_firefox_nopassword/key3.db",
+      "tests/test_data/test_profile_firefox_nopassword/logins.json",
+      "tests/version.t",
+      "wercker.yml"
+    ],
+    "unmanaged": [],
+    "backstop_kept": [
+      ".all-contributorsrc",
+      ".github/ISSUE_TEMPLATE/bug_report.md",
+      ".github/ISSUE_TEMPLATE/feature_request.md",
+      ".github/ISSUE_TEMPLATE/i-didn-t-find-documentation-on-how-to---.md",
+      ".github/workflows/main.yml",
+      ".gitignore",
+      "README.md",
+      "tests/direct_profile.t",
+      "tests/list_single_profile.t",
+      "tests/test_data/test_profile_firefox_nopassword_46/cert8.db",
+      "tests/test_data/test_profile_firefox_nopassword_46/key3.db",
+      "tests/test_data/test_profile_firefox_nopassword_46/logins.json"
+    ],
+    "staged": [],
+    "unseeded": []
+  },
+  "symbols": {
+    "ok": true,
+    "data": {
+      "symbol_kinds": {
+        "anchor": 42,
+        "whole_file": 99,
+        "residue": 52,
+        "entity": 22,
+        "nested": 46
+      },
+      "paths": 106,
+      "paths_with_entities": 4,
+      "paths_whole_file_only": 102,
+      "live_ops": 272,
+      "has_probe": false,
+      "entity_paths": [
+        "firefox_decrypt.py",
+        "tests/simpletap/fdecrypt.py",
+        "tests/simpletap/result.py",
+        "tests/simpletap/runner.py"
+      ]
+    },
+    "failure": null
+  },
+  "reconstruction": {
+    "tracked_files": 106,
+    "drifted_files": 52,
+    "rate": 0.5094,
+    "drifted_paths": [
+      "AUTHORS",
+      "CHANGELOG.md",
+      "CONTRIBUTORS.md",
+      "README",
+      "firefox_decrypt.py",
+      "pyproject.toml",
+      "tests/bash_tap.sh",
+      "tests/bash_tap_fd.sh",
+      "tests/csv.t",
+      "tests/csv_46.t",
+      "tests/direct_profile_20.t",
+      "tests/direct_profile_46.t",
+      "tests/direct_profile_59.t",
+      "tests/direct_profile_nopass.t",
+      "tests/json.t",
+      "tests/list_profiles.t",
+      "tests/list_single_profile_20.t",
+      "tests/list_single_profile_46.t",
+      "tests/non_interactive_choice.t",
+      "tests/non_interactive_choice_20.t"
+    ]
+  },
+  "coverage_fraction_paths": 0.04597701149425287,
+  "edit": {
+    "path": "firefox_decrypt.py",
+    "save": {
+      "cmd": "sgt save -m v3 probe edit",
+      "rc": 1,
+      "seconds": 8.9,
+      "timed_out": false,
+      "out": "\u2717 put() would overwrite uncommitted changes: ['firefox_decrypt.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)\n",
+      "err": ""
+    },
+    "recorded_symbol": false,
+    "drift_after": 52,
+    "drift_paths_after": [
+      "AUTHORS",
+      "CHANGELOG.md",
+      "CONTRIBUTORS.md",
+      "README",
+      "firefox_decrypt.py",
+      "pyproject.toml",
+      "tests/bash_tap.sh",
+      "tests/bash_tap_fd.sh",
+      "tests/csv.t",
+      "tests/csv_46.t",
+      "tests/direct_profile_20.t",
+      "tests/direct_profile_46.t",
+      "tests/direct_profile_59.t",
+      "tests/direct_profile_nopass.t",
+      "tests/json.t",
+      "tests/list_profiles.t",
+      "tests/list_single_profile_20.t",
+      "tests/list_single_profile_46.t",
+      "tests/non_interactive_choice.t",
+      "tests/non_interactive_choice_20.t"
+    ],
+    "symbols_after": {
+      "symbol_kinds": {
+        "anchor": 42,
+        "whole_file": 99,
+        "residue": 52,
+        "entity": 22,
+        "nested": 46
+      },
+      "paths": 106,
+      "paths_with_entities": 4,
+      "paths_whole_file_only": 102,
+      "live_ops": 272,
+      "has_probe": false,
+      "entity_paths": [
+        "firefox_decrypt.py",
+        "tests/simpletap/fdecrypt.py",
+        "tests/simpletap/result.py",
+        "tests/simpletap/runner.py"
+      ]
+    }
+  }
+}

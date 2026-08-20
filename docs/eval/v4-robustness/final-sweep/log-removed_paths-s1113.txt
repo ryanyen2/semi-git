@@ -1,0 +1,60 @@
+    0 ✓ op_edit_save             survivor.py (rework)
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✗ op_revert_undo_probe     5ccc73867abb
+        no_empty_phantom: blank tracked file(s) left behind: ['gone.py']
+    3 ✓ op_edit_save             gone.py (add)
+    4 ✓ op_edit_save             v4_mod_1.py (rework)
+    5 · op_feature_merge         1 feature(s)
+    6 ✓ op_edit_save             v4_mod_1.py (rework)
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_edit_save             v4_mod_1.py (rework)
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_feature_rename        f-026fba3b609d
+   11 ✓ op_edit_save             gone.py (rework)
+   12 ✓ op_revert_restore_probe  e05d8e092539
+   13 ✓ op_undo                  
+   14 ✓ op_edit_save             v4_mod_1.py (rework)
+   15 ✓ op_edit_save             survivor.py (rework)
+   16 ✓ op_feature_rename        f-026fba3b609d
+   17 ✓ op_restore               e05d8e092539
+   18 ✓ op_revert                53ba468f48d5
+   19 ✓ op_revert_restore_probe  2048ae4b90c0
+   20 ✓ op_edit_save             survivor.py (rework)
+   21 ✓ op_revert                2abc992c509f
+   22 ✓ op_revert_undo_probe     01f8d1c22c41
+   23 ✓ op_revert                e6ea659aefbe
+   24 ✓ op_revert                026fba3b609d
+   25 ✗ op_revert_restore_probe  5ccc73867abb
+        revert_restore_unexplained_drift: revert 5ccc73867abb then restoring everything it removed left 1 file(s) different from before: ['gone.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+   26 ✓ op_revert                d33327bc7b5d
+   27 ✓ op_edit_save             survivor.py (rework)
+        settled (save refused, git restore): ['M survivor.py']
+   28 ✓ op_undo                  
+   29 ✓ op_revert_undo_probe     01f8d1c22c41
+   30 ✓ op_revert_keep_dependents 36abf70110af
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✗ op_revert_restore_probe  bd404f84829a
+        revert_restore_unexplained_drift: revert bd404f84829a then restoring everything it removed left 1 file(s) different from before: ['gone.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+   33 ✓ op_revert_keep_dependents 97453535c60c
+   34 ✓ op_add_file              v4_mod_34.py
+   35 ✗ op_revert_restore_probe  01f8d1c22c41
+        revert_restore_unexplained_drift: revert 01f8d1c22c41 then restoring everything it removed left 1 file(s) different from before: ['gone.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+   36 ✗ op_revert_restore_probe  3ebd50f5369b
+        revert_restore_unexplained_drift: revert 3ebd50f5369b then restoring everything it removed left 1 file(s) different from before: ['survivor.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['survivor.py']
+   37 ✗ op_revert_restore_probe  e9fe107b1d52
+        restore_resurrects_layout: restoring what revert e9fe107b1d52 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['6b60f8a67a5d']
+   38 ✓ op_undo                  
+   39 ✓ op_revert_restore_probe  36abf70110af
+   40 ✗ op_undo                  
+        orphan_layout: 1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['survivor.py::__residue__::drop']
+   41 ✓ op_feature_rename        f-026fba3b609d
+   42 ✓ op_edit_save             survivor.py (add)
+        settled (save refused, git restore): ['M survivor.py']
+   43 ✓ op_revert_keep_dependents 58b3790c4c09
+   44 ✓ op_revert                d33327bc7b5d
+   45 ✓ op_restore               2048ae4b90c0
+   46 ✓ op_revert_restore_probe  70d73a73fd9a
+   47 ✓ op_revert_restore_probe  2048ae4b90c0
+   48 ✓ op_revert                38b703cef279
+removed_paths seed 1113: 49 ops applied, 7 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1113.json

@@ -1,0 +1,539 @@
+{
+  "repo": "searxng/searx-instances",
+  "stars": 200,
+  "band": "100..200",
+  "license": "LGPL-3.0",
+  "status": "ok",
+  "clone": {
+    "cmd": "git clone --quiet https://github.com/searxng/searx-instances.git",
+    "rc": 0,
+    "seconds": 0.6,
+    "timed_out": false,
+    "out": "",
+    "err": ""
+  },
+  "head_sha": "b50411e2e5077554eddc2135495a525545c77ea4",
+  "tree": {
+    "files_total": 27,
+    "files_py": 10,
+    "py_bytes": 30238,
+    "commits": 1038
+  },
+  "loadavg_at_init": 7.59716796875,
+  "init": {
+    "cmd": "sgt init",
+    "rc": 0,
+    "seconds": 10.7,
+    "timed_out": false,
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `sgt now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up\n",
+    "err": ""
+  },
+  "backfill": {
+    "reached_genesis": true,
+    "complete": true,
+    "chunks": 39,
+    "seconds": 401.9,
+    "capped": false,
+    "cap_s": 1800,
+    "progress": [
+      {
+        "chunk": 1,
+        "seconds": 10.4,
+        "ops": 71
+      },
+      {
+        "chunk": 2,
+        "seconds": 20.7,
+        "ops": 95
+      },
+      {
+        "chunk": 3,
+        "seconds": 31.1,
+        "ops": 119
+      },
+      {
+        "chunk": 4,
+        "seconds": 41.5,
+        "ops": 144
+      },
+      {
+        "chunk": 5,
+        "seconds": 52.0,
+        "ops": 169
+      },
+      {
+        "chunk": 6,
+        "seconds": 62.6,
+        "ops": 195
+      },
+      {
+        "chunk": 7,
+        "seconds": 73.1,
+        "ops": 220
+      },
+      {
+        "chunk": 8,
+        "seconds": 83.3,
+        "ops": 245
+      },
+      {
+        "chunk": 9,
+        "seconds": 93.9,
+        "ops": 271
+      },
+      {
+        "chunk": 10,
+        "seconds": 104.2,
+        "ops": 296
+      },
+      {
+        "chunk": 11,
+        "seconds": 114.5,
+        "ops": 321
+      },
+      {
+        "chunk": 12,
+        "seconds": 125.1,
+        "ops": 346
+      },
+      {
+        "chunk": 13,
+        "seconds": 135.3,
+        "ops": 369
+      },
+      {
+        "chunk": 14,
+        "seconds": 145.9,
+        "ops": 393
+      },
+      {
+        "chunk": 15,
+        "seconds": 156.6,
+        "ops": 419
+      },
+      {
+        "chunk": 16,
+        "seconds": 167.2,
+        "ops": 445
+      },
+      {
+        "chunk": 17,
+        "seconds": 177.5,
+        "ops": 456
+      },
+      {
+        "chunk": 18,
+        "seconds": 188.0,
+        "ops": 482
+      },
+      {
+        "chunk": 19,
+        "seconds": 198.2,
+        "ops": 508
+      },
+      {
+        "chunk": 20,
+        "seconds": 208.8,
+        "ops": 535
+      },
+      {
+        "chunk": 21,
+        "seconds": 219.3,
+        "ops": 555
+      },
+      {
+        "chunk": 22,
+        "seconds": 230.0,
+        "ops": 582
+      },
+      {
+        "chunk": 23,
+        "seconds": 240.5,
+        "ops": 609
+      },
+      {
+        "chunk": 24,
+        "seconds": 251.2,
+        "ops": 633
+      },
+      {
+        "chunk": 25,
+        "seconds": 261.7,
+        "ops": 659
+      },
+      {
+        "chunk": 26,
+        "seconds": 272.4,
+        "ops": 685
+      },
+      {
+        "chunk": 27,
+        "seconds": 282.8,
+        "ops": 715
+      },
+      {
+        "chunk": 28,
+        "seconds": 293.4,
+        "ops": 741
+      },
+      {
+        "chunk": 29,
+        "seconds": 304.2,
+        "ops": 767
+      },
+      {
+        "chunk": 30,
+        "seconds": 314.8,
+        "ops": 795
+      },
+      {
+        "chunk": 31,
+        "seconds": 325.2,
+        "ops": 815
+      },
+      {
+        "chunk": 32,
+        "seconds": 335.9,
+        "ops": 839
+      },
+      {
+        "chunk": 33,
+        "seconds": 346.7,
+        "ops": 865
+      },
+      {
+        "chunk": 34,
+        "seconds": 357.1,
+        "ops": 888
+      },
+      {
+        "chunk": 35,
+        "seconds": 367.6,
+        "ops": 926
+      },
+      {
+        "chunk": 36,
+        "seconds": 378.3,
+        "ops": 952
+      },
+      {
+        "chunk": 37,
+        "seconds": 389.1,
+        "ops": 991
+      },
+      {
+        "chunk": 38,
+        "seconds": 400.6,
+        "ops": 1329
+      },
+      {
+        "chunk": 39,
+        "seconds": 401.9,
+        "ops": 1330
+      }
+    ]
+  },
+  "summary": {
+    "files": 24,
+    "symbols": 234,
+    "features": 0,
+    "coverage_fraction": 0.4583333333333333,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "drift": {
+      "any": true,
+      "paths": [
+        "Makefile",
+        "README.md",
+        "instances.yml",
+        "list/import_rst.py",
+        "list/model.py",
+        "list/parse.py",
+        "requirements-dev.txt",
+        "requirements-update.txt",
+        "requirements.txt",
+        "searxinstances/__main__.py",
+        "searxinstances/__version__.py",
+        "searxinstances/check.py",
+        "searxinstances/model.py",
+        "searxinstances/update.py",
+        "searxinstances/utils/editor.py",
+        "searxstats/list/import_rst.py",
+        "searxstats/list/model.py",
+        "setup.py"
+      ]
+    },
+    "unmanaged": [],
+    "backstop_kept": [
+      ".github/ISSUE_TEMPLATE/add-instance.yaml",
+      ".github/ISSUE_TEMPLATE/config.yml",
+      ".github/ISSUE_TEMPLATE/delete-instance.md",
+      ".github/ISSUE_TEMPLATE/edit-instance.md",
+      ".github/workflows/ci.yml",
+      ".github/workflows/detect-previous-instance.yml",
+      ".github/workflows/welcome-new-instance.yml",
+      ".gitignore",
+      ".pylintrc",
+      "searxinstances/instances.yml"
+    ],
+    "forks": {
+      "open": 0,
+      "records": []
+    },
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true,
+      "history_rewritten": false
+    }
+  },
+  "fsck": {
+    "ok": true,
+    "checked": 1330,
+    "bad_hash": [],
+    "corrupt": [],
+    "chain_gaps": [
+      "README.md@7923cfc57991a313c1375f28db844574a9159bdc",
+      "requirements-dev.txt@98d14bcfddf2ae4b2b432a08a238bea2e9985e7e",
+      "requirements-update.txt@ee5347ebf7ecbb7a885e53da71490500e5e824ee",
+      "requirements.txt@ed964e6e274294c34d597d395eaaccc2f8bde2a3",
+      "searxinstances/check.py::check@c1949d83b7e4abc7e848f937d032ff9c03cd2a13",
+      "searxinstances/check.py::run_instance_diff@8597525952b97e0d37dc0226a730a617f77cde33",
+      "searxinstances/model.py::Instance.__init__@e0735bf9aa36260e581f91338d399a4a40c07368",
+      "searxinstances/model.py::Instance.to_json@29fe2970229f9a6881abf883a065ba3b53d81566",
+      "searxinstances/model.py::Instance.yaml_representer@9b175a91490cc329e06e81f1b44f892acb9acfd5",
+      "searxinstances/model.py::Instance@e2f0fa6ac836fef20824f6f43b471e6e601e4231",
+      "searxinstances/model.py::__anchor__::AdditionalUrlList@b62defba6902d7b95d2d341c7dc99dbb605a7f0a",
+      "searxinstances/model.py::__anchor__::load@ac8d4877f03cc340ac4e459339e53058d42240b7",
+      "searxinstances/model.py::__residue__::\u0000HEAD\u0000@ec24e88f238043e67f24a1aa64a064ee039b44a0",
+      "searxinstances/model.py::__residue__::ILDumper@d3f1138f6d600e1a62505351722771796e76c810",
+      "searxinstances/model.py::__residue__::ILLoader@71853c6197a6a7f222db0f1978c7cb232b87c5ee",
+      "searxinstances/model.py::__residue__::InstanceList@18f6ad69d8309f2621a338abcc2b16b946d5f845",
+      "searxinstances/model.py::__residue__::ObjectEncoder@a4cd51209c62c6e7486e08e227d2c7d4fe46b316",
+      "searxinstances/model.py::__residue__::load@71853c6197a6a7f222db0f1978c7cb232b87c5ee",
+      "searxinstances/model.py::__residue__::save@da57f262528559c39af42b43b8156365ada4c584",
+      "searxinstances/model.py::load@5c48fef2ed18c93cff6ccbe264b2f0144bff1a8f",
+      "searxinstances/utils/import_rst.py::__residue__::\u0000HEAD\u0000@2d67c6edac2ba0cf5688119ee02aa6bdbcad786c",
+      "searxinstances/utils/import_rst.py::__residue__::get_host@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxinstances/utils/import_rst.py::__residue__::get_instance_comment@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxinstances/utils/import_rst.py::__residue__::get_instance_comments@71853c6197a6a7f222db0f1978c7cb232b87c5ee",
+      "searxinstances/utils/import_rst.py::__residue__::import_instance@3f3d2d8955322f325af6db2238355fa07007ebd9",
+      "searxinstances/utils/import_rst.py::__residue__::import_instance_urls@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxinstances/utils/import_rst.py::__residue__::main@aece87ee925257adebda1370f08cd2b015a3fb90",
+      "searxinstances/utils/import_rst.py::__residue__::normalize_url@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxinstances/utils/import_rst.py::get_host@353abd519409e2af6b5a9ca2b62be86237a6ec96",
+      "searxinstances/utils/import_rst.py::get_instance_comment@d83850520fa46452412916b9b7d255851bdaeb10",
+      "searxinstances/utils/import_rst.py::get_instance_comments@36e9bdd2d41e58aee2a3ff718b72a495a29ad68b",
+      "searxinstances/utils/import_rst.py::import_instance@d154cfb70540e01acacdaa80666b52aa0d9af413",
+      "searxinstances/utils/import_rst.py::import_instance_urls@b2d21eb2457186a7c1edc3865e161221f3903f8a",
+      "searxinstances/utils/import_rst.py::main@332d0b2d8e982a46649f1524f3c36e565c88afc0",
+      "searxinstances/utils/import_rst.py::normalize_url@36046e9c66b7e4496984367e29e6d6c9a208a2cd",
+      "searxstats/list/import_rst.py::__residue__::\u0000HEAD\u0000@308fff56f0988e7c9791ea8a207e9cb67410a73b",
+      "searxstats/list/import_rst.py::__residue__::import_instance_urls@cf0c6d7693f5e49fc13bf8aeedf267a4f4991d6e",
+      "searxstats/list/model.py::__residue__::\u0000HEAD\u0000@dc154be23ca6853e702d25df2a987de1ef404427",
+      "searxstats/list/model.py::__residue__::ILDumper@992a841de0a2a4fdf512cf6287213ebbf0285d4a",
+      "searxstats/list/model.py::__residue__::save@5b00849695feec804483e8add12b365e3a5fbf83",
+      "searxstats/list/parse.py::__residue__::\u0000HEAD\u0000@cf240146b3aae5a8b6e6e3af40c66269e356071c",
+      "searxstats/list/parse.py::__residue__::apply_add_request@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxstats/list/parse.py::__residue__::apply_remove_request@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxstats/list/parse.py::__residue__::apply_requests@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxstats/list/parse.py::__residue__::load_requests@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "searxstats/list/parse.py::__residue__::main@aece87ee925257adebda1370f08cd2b015a3fb90",
+      "searxstats/list/parse.py::__residue__::normalize_url@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "setup.py::__residue__::find_version@52f39a2ee8689d946e954d920fda38ee993ae307"
+    ],
+    "invalid_ideals": [],
+    "unreachable_witnesses": [],
+    "mixed_versions": [],
+    "pending_land": [],
+    "op_index_stale": false,
+    "stale_sessions": []
+  },
+  "fsck_tree": {
+    "drift": [
+      "Makefile",
+      "README.md",
+      "instances.yml",
+      "list/import_rst.py",
+      "list/model.py",
+      "list/parse.py",
+      "requirements-dev.txt",
+      "requirements-update.txt",
+      "requirements.txt",
+      "searxinstances/__main__.py",
+      "searxinstances/__version__.py",
+      "searxinstances/check.py",
+      "searxinstances/model.py",
+      "searxinstances/update.py",
+      "searxinstances/utils/editor.py",
+      "searxstats/list/import_rst.py",
+      "searxstats/list/model.py",
+      "setup.py"
+    ],
+    "unmanaged": [],
+    "backstop_kept": [
+      ".github/ISSUE_TEMPLATE/add-instance.yaml",
+      ".github/ISSUE_TEMPLATE/config.yml",
+      ".github/ISSUE_TEMPLATE/delete-instance.md",
+      ".github/ISSUE_TEMPLATE/edit-instance.md",
+      ".github/workflows/ci.yml",
+      ".github/workflows/detect-previous-instance.yml",
+      ".github/workflows/welcome-new-instance.yml",
+      ".gitignore",
+      ".pylintrc",
+      "searxinstances/instances.yml"
+    ],
+    "staged": [],
+    "unseeded": []
+  },
+  "symbols": {
+    "ok": true,
+    "data": {
+      "symbol_kinds": {
+        "residue": 93,
+        "anchor": 80,
+        "entity": 73,
+        "whole_file": 10,
+        "nested": 49
+      },
+      "paths": 27,
+      "paths_with_entities": 12,
+      "paths_whole_file_only": 15,
+      "live_ops": 308,
+      "has_probe": false,
+      "entity_paths": [
+        "list/import_rst.py",
+        "list/model.py",
+        "list/parse.py",
+        "searxinstances/__main__.py",
+        "searxinstances/model.py",
+        "searxinstances/update.py",
+        "searxinstances/utils/editor.py",
+        "searxstats/list/import_rst.py",
+        "searxstats/list/model.py",
+        "searxstats/list/parse.py",
+        "setup.py",
+        "tests/test_update.py"
+      ]
+    },
+    "failure": null
+  },
+  "reconstruction": {
+    "tracked_files": 24,
+    "drifted_files": 18,
+    "rate": 0.25,
+    "drifted_paths": [
+      "Makefile",
+      "README.md",
+      "instances.yml",
+      "list/import_rst.py",
+      "list/model.py",
+      "list/parse.py",
+      "requirements-dev.txt",
+      "requirements-update.txt",
+      "requirements.txt",
+      "searxinstances/__main__.py",
+      "searxinstances/__version__.py",
+      "searxinstances/check.py",
+      "searxinstances/model.py",
+      "searxinstances/update.py",
+      "searxinstances/utils/editor.py",
+      "searxstats/list/import_rst.py",
+      "searxstats/list/model.py",
+      "setup.py"
+    ]
+  },
+  "coverage_fraction_paths": 0.4583333333333333,
+  "edit": {
+    "path": "searxinstances/update.py",
+    "save": {
+      "cmd": "sgt save -m v3 probe edit",
+      "rc": 1,
+      "seconds": 1.8,
+      "timed_out": false,
+      "out": "\u2717 put() would overwrite uncommitted changes: ['searxinstances/update.py'] (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)\n",
+      "err": ""
+    },
+    "recorded_symbol": false,
+    "drift_after": 18,
+    "drift_paths_after": [
+      "Makefile",
+      "README.md",
+      "instances.yml",
+      "list/import_rst.py",
+      "list/model.py",
+      "list/parse.py",
+      "requirements-dev.txt",
+      "requirements-update.txt",
+      "requirements.txt",
+      "searxinstances/__main__.py",
+      "searxinstances/__version__.py",
+      "searxinstances/check.py",
+      "searxinstances/model.py",
+      "searxinstances/update.py",
+      "searxinstances/utils/editor.py",
+      "searxstats/list/import_rst.py",
+      "searxstats/list/model.py",
+      "setup.py"
+    ],
+    "symbols_after": {
+      "symbol_kinds": {
+        "residue": 93,
+        "anchor": 80,
+        "entity": 73,
+        "whole_file": 10,
+        "nested": 49
+      },
+      "paths": 27,
+      "paths_with_entities": 12,
+      "paths_whole_file_only": 15,
+      "live_ops": 308,
+      "has_probe": false,
+      "entity_paths": [
+        "list/import_rst.py",
+        "list/model.py",
+        "list/parse.py",
+        "searxinstances/__main__.py",
+        "searxinstances/model.py",
+        "searxinstances/update.py",
+        "searxinstances/utils/editor.py",
+        "searxstats/list/import_rst.py",
+        "searxstats/list/model.py",
+        "searxstats/list/parse.py",
+        "setup.py",
+        "tests/test_update.py"
+      ]
+    }
+  },
+  "reconstruction_honest": {
+    "in_scope_files": 18,
+    "tracked_files": 27,
+    "failed": 12,
+    "honest_rate": 0.3333,
+    "claimed_rate": 0.25,
+    "drift_in_scope": 11,
+    "backstop_in_scope": 1,
+    "backstop_out_of_scope": 9,
+    "zombie": 7,
+    "other_classes": {
+      "staged": 0,
+      "unseeded": 0,
+      "unmanaged": 0
+    },
+    "samples": {
+      "backstop_in_scope": [
+        "searxinstances/instances.yml"
+      ],
+      "zombie": [
+        "instances.yml",
+        "list/import_rst.py",
+        "list/model.py",
+        "list/parse.py",
+        "searxinstances/__main__.py",
+        "searxstats/list/import_rst.py",
+        "searxstats/list/model.py"
+      ]
+    }
+  }
+}

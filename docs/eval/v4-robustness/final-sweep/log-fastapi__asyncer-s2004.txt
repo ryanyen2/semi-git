@@ -1,0 +1,73 @@
+oracles already unhappy right after init:
+  fsck_advisory_chain_gaps: 14 new, 14 live: ["README.md", "docs/css/termynal.css", "docs/help.md", "docs/index.md"]
+  fsck_tree: exit 1: 2 newly drifted path(s): ['scripts/prepare_release.py', 'tests/test_prepare_release.py']
+  orphan_layout: 19 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['scripts/prepare_release.py::__residue__::bump_version', 'scripts/prepare_release.py::__residue__::current_version', 'scripts/prepare_release.py::__residue__::get_current_version', 'scripts/prepare_release.py::__residue__::get_release_notes_body']
+    0 ✗ op_restore               1cd3784d28dd
+        fsck_advisory_chain_gaps: 14 new, 27 live: ["CONTRIBUTING.md", "SECURITY.md", "asyncer-slim/README.md", "asyncer/__init__.py::__residue__::\u0000HEAD\u0000"]
+    1 ✗ op_revert_undo_probe     60e7d59eec4f
+        fsck_advisory_chain_gaps: 68 new, 94 live: ["asyncer/_compat.py::__residue__::\u0000HEAD\u0000", "asyncer/_compat.py::run_sync", "asyncer/_main.py::SoonValue", "asyncer/_main.py::SoonValue.__init__"]
+        fsck_tree: exit 1: 2 newly drifted path(s): ['docs/js/custom.js', 'scripts/docs.py']
+        orphan_layout: 1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['docs/js/custom.js::__residue__::openLinksInNewTab']
+    2 ✗ op_add_file              v4_mod_2.py
+        fsck_advisory_chain_gaps: 51 new, 144 live: ["docs/js/custom.js::setupTermynal", "docs/js/custom.js::setupTermynal.createTermynals", "docs_src/tutorial/asyncify/tutorial001.py::__residue__::\u0000HEAD\u0000", "docs_src/tutorial/asyncify/tutorial001.py::do_sync_work"]
+        settled (save refused, git restore): ['?? v4_mod_2.py']
+    3 ✗ op_revert                e0295ef4c76e
+        fsck_advisory_chain_gaps: 13 new, 134 live: ["CITATION.cff", "asyncer/_main.py::asyncify.wrapper", "asyncer/_main.py::syncify", "asyncer/_main.py::syncify.wrapper"]
+        fsck_tree: exit 1: 4 newly drifted path(s): ['asyncer/_compat.py', 'mkdocs.maybe-insiders.yml', 'tests/test_param_cancellable.py', 'tests/test_syncify_no_raise.py']
+        orphan_layout: 5 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['asyncer/_compat.py::__residue__::run_sync', 'tests/test_param_cancellable.py::__residue__::test_abandon_on_cancel_no', 'tests/test_param_cancellable.py::__residue__::test_cancellable_warns', 'tests/test_syncify_no_raise.py::__residue__::Report']
+    4 ✗ op_undo                  
+        fsck_advisory_chain_gaps: 6 new, 127 live: ["asyncer/_main.py::TaskGroup.soonify.wrapper", "asyncer/_main.py::TaskGroup.soonify.wrapper.value_wrapper", "scripts/format.sh", "scripts/publish.sh"]
+        fsck_tree: exit 1: 1 newly drifted path(s): ['asyncer/_main.py']
+    5 ✗ op_undo                  
+        fsck_advisory_chain_gaps: 3 new, 106 live: ["asyncer/_main.py::__anchor__::PendingType", "docs/img/logo-margin/logo-margin-vector.svg", "docs/js/termynal.js::Termynal.init"]
+        fsck_tree: exit 1: 12 newly drifted path(s): ['docs/release-notes.md', 'docs_src/tutorial/asyncify/tutorial001.py', 'docs_src/tutorial/asyncify/tutorial002.py', 'docs_src/tutorial/first_steps/tutorial001.py']
+    6 ✓ op_restore               3d63151892c7
+    7 ✓ op_feature_rename        f-132fd761539c
+    8 ✓ op_edit_save             conftest.py (rework)
+        settled (save refused, git restore): ['M tests/conftest.py']
+    9 ✓ op_restore               d41037698d5e
+   10 ✓ op_feature_rename        f-08b66d62e659
+   11 · op_revert_undo_probe     revert offered no undo
+   12 ✓ op_undo                  
+   13 ✓ op_feature_rename        f-09701b80f218
+   14 ✓ op_revert_keep_dependents cbf0ec3436ce
+   15 ✓ op_undo                  
+   16 ✓ op_edit_save             test_prepare_release.py (rework)
+        settled (save refused, git restore): ['M tests/test_prepare_release.py']
+   17 ✓ op_undo                  
+   18 ✓ op_restore               4081c5d3f84b
+   19 ✓ op_revert                7308660d1301
+   20 ✓ op_revert_undo_probe     1994465629f7
+   21 ✓ op_edit_save             test_tutorial001.py (rework)
+        settled (save refused, git restore): ['M tests/test_tutorial/test_syncify/test_tutorial001.py']
+   22 ✓ op_edit_save             __init__.py (add)
+        settled (save refused, git restore): ['M tests/__init__.py']
+   23 ✓ op_edit_save             test_prepare_release.py (rework)
+        settled (save refused, git restore): ['M tests/test_prepare_release.py']
+   24 ✓ op_feature_rename        f-10dadc597753
+   25 ✓ op_restore               d9f5686d3949
+   26 ✓ op_revert                aca370eced8b
+   27 ✓ op_undo                  
+   28 ✓ op_revert                27cac91c06bf
+   29 ✓ op_restore               22ff5169538f
+   30 ✓ op_revert_restore_probe  e9c0186d99e9
+   31 ✓ op_revert                6cc5e5342cb2
+   32 ✓ op_restore               60465f529470
+   33 ✓ op_revert_keep_dependents 0946e673c0cb
+   34 ✓ op_revert                3cb789abd0e8
+   35 ✓ op_restore               3d63151892c7
+   36 ✓ op_restore               b339246dd9df
+   37 ✓ op_restore               22ff5169538f
+   38 ✓ op_restore               9c96f8203541
+   39 ✓ op_feature_merge         f-12e921bb25e3<-f-3396b8761283
+   40 ✓ op_restore               502fdc181bed
+   41 ✓ op_revert_keep_dependents 5f298823fbc4
+   42 · op_revert_undo_probe     revert offered no undo
+   43 ✓ op_restore               686afeb1e9e2
+   44 ✓ op_feature_merge         f-12e921bb25e3<-f-08b66d62e659
+   45 · op_revert_undo_probe     revert offered no undo
+   46 ✓ op_restore               932c75a9a5bb
+   47 ✓ op_feature_rename        f-08922f94ac30
+   48 ✓ op_undo                  
+   49 ✓ op_revert_undo_probe     872450b2595c
+fastapi__asyncer seed 2004: 50 ops applied, 6 with an oracle failure, 0 traceback(s), 6 tree(s) settled → /tmp/v4-final/run-fastapi__asyncer-seed2004.json

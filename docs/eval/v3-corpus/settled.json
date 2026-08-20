@@ -1,0 +1,86 @@
+{
+  "note": [
+    "The paper quotes a 33-repository corpus. This directory holds 30 run.json payloads.",
+    "The difference is not a discrepancy: 35 repositories were mined, 5 came back",
+    "backfill_capped, psycopg is dropped as a documented incomplete mine (~16h to genesis),",
+    "and Complex-YOLOv3 is void (perfect 1.00 against a mismatched tree). So the 33 = the 30",
+    "here, minus Complex-YOLOv3, plus the 4 capped repositories driven to completion.",
+    "Those 4 have no run.json here because their clones did not survive; their settled values",
+    "are recorded below with the ledger line that reports each one.",
+    "",
+    "Two payloads here also predate the F72 fix to sgt's tracked-path lister (git ls-files",
+    "C-quotes non-ASCII names, the pre-fix lister mis-parsed them and is_file() swallowed the",
+    "result), so their fsck_tree lists omit files sgt cannot reproduce and their rates are",
+    "~10 points too high. The corrected values are recorded below. Regenerating them from the",
+    "payloads would need fsck --tree re-run under the current lens, which mines on contact.",
+    "",
+    "verify.py reproduces every published corpus figure from this file plus the payloads."
+  ],
+  "excluded": {
+    "psycopg__psycopg": "documented incomplete mine: 160 commits in 2442s against 3801 (~16h to genesis); ledger 6020",
+    "ghimiredhikura__Complex-YOLOv3": "void: measured 1.00 on a store whose recorded commit did not match the tree; in this directory but out of the 33"
+  },
+  "settled_rows": {
+    "Picovoice__porcupine": {"honest": 0.6737, "commits": 1525, "retention": 0.81, "was": 0.1343, "source": "ledger 5866"},
+    "google__praxis": {"honest": 0.1681, "commits": 1943, "retention": 0.60, "was": 0.0177, "source": "ledger 5867"},
+    "otto-torino__django-baton": {"honest": 0.5795, "commits": 1249, "retention": 0.45, "was": 0.2652, "source": "ledger 5868"},
+    "pyparsing__pyparsing": {"honest": 0.4491, "commits": 1722, "retention": 0.50, "source": "ledger 6018; commits from ledger 3934; retention (grounded 6881 / store 13765) from ledger 6017"}
+  },
+  "corrections": {
+    "yanshengjia__ml-road": {
+      "honest": 0.6071, "was": 0.7143, "reason": "F72: three PDFs with non-ASCII names",
+      "source": "ledger 5181", "remeasured": "scope 28, failed 11 (drift 33 of which 28 in scope, backstop_kept 11 fresh vs 8 stored)"
+    },
+    "nikmcfly__MiroFish-Offline": {
+      "honest": 0.7938, "was": 0.8866, "reason": "F72: nine CJK-named PNGs",
+      "source": "ledger 5182", "remeasured": "scope 97, failed 20 (drift 11 + backstop_kept 14 fresh vs 5 stored, 5 overlapping)"
+    },
+    "how_to_remeasure": [
+      "Both values are re-measured, not only quoted. fsck_tree mines on contact, so copy the",
+      "clone first and never run this against /tmp/v3 itself:",
+      "  cp -R /tmp/v3/<repo> /tmp/check",
+      "  ft = sgt.core.lens.fsck_tree(Path('/tmp/check'))",
+      "  scope  = {p for p in tracked_paths if not through_symlink(p)",
+      "            and tiers.resolve_tier(p, cfg) != 'ignored'}",
+      "  failed = (set(ft['drift']) | set(ft['backstop_kept'])) & scope",
+      "  rate   = 1 - len(failed)/len(scope)",
+      "Both come back to four decimals. The stored payloads differ from fresh only in",
+      "backstop_kept, by exactly the files F72's path-lister fix stopped swallowing."
+    ]
+  },
+  "published": {
+    "n": 33,
+    "median_honest": 0.3333,
+    "rho_honest_commits": -0.349,
+    "rho_honest_commits_mature": 0.042,
+    "mature_threshold_commits": 500
+  },
+  "published_within_tolerance": {
+    "rho_honest_retention": 0.549,
+    "median_retention": 0.79,
+    "tolerance": 0.01,
+    "why": [
+      "retention.py recomputes grounded/store from the archived stores and gives",
+      "rho = +0.544 and median 0.788, not the published +0.549 and 0.79. Two known reasons,",
+      "neither resolvable from committed material: the four settled rows survive in the ledger",
+      "at two decimals only, and the original script's 'grounded' differs slightly from",
+      "order._grounded over the whole store -- bleak comes back 1697 grounded of an identical",
+      "4901-op store where the ledger recorded 1693. The _grounded rewrite predates the",
+      "measurement (2026-07-18), so the algorithm is not the difference; the candidate set is,",
+      "and the script that chose it lived in /tmp. Checked with a tolerance for that reason."
+    ]
+  },
+  "open": [
+    "Resolved: the ledger's two MiroFish rates were two different corrections to the same",
+    "published 0.8866, never composed -- 0.7835 is the F65 scope pass (21 failures of 97) and",
+    "0.7938 the F72 lister rescore (20 of 97). Re-measuring on a copy under the current product",
+    "gives 0.7938 exactly, so that is the settled value; the one-file gap is a classification",
+    "difference under the pre-F72 lister and does not move any rank statistic.",
+    "",
+    "run.json records the store size (fsck.checked) but no grounded count, so retention had no",
+    "committed inputs at all. retention.py now recomputes it from the archived stores, which",
+    "closes the gap to a tolerance rather than to an exact match; see",
+    "published_within_tolerance above. Reconciling the last ~0.005 needs the definition of",
+    "'grounded' used by the original script, which did not survive /tmp."
+  ]
+}

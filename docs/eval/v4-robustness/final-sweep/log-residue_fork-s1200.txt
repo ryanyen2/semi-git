@@ -1,0 +1,39 @@
+    0 · op_feature_merge         1 feature(s)
+    1 ✓ op_undo                  
+    2 ✓ op_edit_save             a.py (rework)
+    3 ✓ op_revert_restore_probe  f5c2bf3f6471
+    4 ✓ op_undo                  
+    5 ✓ op_add_file              v4_mod_5.py
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_feature_merge         af-m01dcf54483<-af-m3c278302f8
+    8 ✓ op_feature_rename        af-m01dcf54483
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_edit_save             a.py (rework)
+   11 ✓ op_add_file              v4_mod_11.py
+   12 · op_restore               nothing addressable excluded
+   13 ✓ op_revert_keep_dependents d068113acb07
+   14 ✓ op_add_file              v4_mod_14.py
+   15 ✓ op_revert_keep_dependents 301e32de9770
+   16 ✓ op_feature_merge         af-mb32ff0ce36<-f-1bf8d56e9372
+   17 ✓ op_edit_save             v4_mod_6.py (rework)
+   18 ✓ op_revert_keep_dependents be64e45ab1dc
+   19 ✓ op_add_file              v4_mod_19.py
+   20 ✓ op_edit_save             a.py (rework)
+   21 ✓ op_undo                  
+   22 ✓ op_edit_save             v4_mod_19.py (rework)
+   23 ✓ op_restore               353a87bea7fa
+   24 ✓ op_revert                301e32de9770
+   25 ✗ op_revert_restore_probe  628909ee1ee3
+        restore_resurrects_layout: restoring what revert 628909ee1ee3 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['2e0d5729d1d5']
+   26 ✓ op_revert                d99fb0c45dc9
+   27 ✓ op_edit_save             v4_mod_5.py (rework)
+   28 ✓ op_edit_save             v4_mod_5.py (rework)
+   29 ✓ op_revert_undo_probe     2872e634def8
+   30 ✓ op_edit_save             v4_mod_14.py (rework)
+   31 ✓ op_undo                  
+   32 ✓ op_revert_keep_dependents e8615f03cab2
+   33 ✓ op_restore               756d6337ab74
+   34 ✓ op_feature_split         af-maea3dce2de
+   35 ✓ op_revert                fb0c56ff0322
+   36 ✓ op_revert_undo_probe     ecd75336f0f5
+residue_fork seed 1200: 37 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-residue_fork-seed1200.json

@@ -1,0 +1,51 @@
+    0 ✓ op_revert                47ea3e4bb3c8
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_add_file              v4_mod_2.py
+    3 ✓ op_revert                9189a4620595
+    4 ✓ op_revert_undo_probe     ddd0cc977fe8
+    5 ✓ op_revert                87f82580ba5b
+    6 ✓ op_revert_undo_probe     46d106b7667b
+    7 ✓ op_undo                  
+    8 ✓ op_revert                d38efde51b59
+    9 · op_feature_merge         1 feature(s)
+   10 ✓ op_revert_restore_probe  ae37c76fe624
+   11 · op_restore               nothing addressable excluded
+   12 ✓ op_undo                  
+   13 ✓ op_revert                ebb6df067b36
+   14 ✓ op_add_file              v4_mod_14.py
+   15 ✓ op_revert                5e17f640318a
+   16 ✓ op_revert_undo_probe     a6a77260b93c
+   17 ✓ op_revert                b47a71f812b4
+   18 ✓ op_revert_undo_probe     a2c062dcc191
+   19 ✓ op_edit_save             b.py (rework)
+   20 ✓ op_revert_undo_probe     b63b907d5173
+   21 ✓ op_feature_split         af-m4b31b23310
+   22 ✓ op_revert                3aaaa3478689
+   23 ✓ op_restore               ae37c76fe624
+   24 ✓ op_undo                  
+   25 ✓ op_revert_keep_dependents ddd0cc977fe8
+   26 ✓ op_restore               ae37c76fe624
+   27 ✓ op_revert                71cef381c805
+   28 · op_restore               nothing addressable excluded
+   29 ✓ op_undo                  
+   30 ✓ op_revert_restore_probe  a24255df0edc
+   31 ✓ op_feature_split         af-m613e8bb6e3
+   32 · op_restore               nothing addressable excluded
+   33 ✓ op_revert                8acb4aabf760
+   34 ✓ op_revert                e2bce17b967d
+   35 ✓ op_add_file              v4_mod_35.py
+   36 ✓ op_revert                91cb13541de9
+   37 ✓ op_revert                126303a70181
+   38 ✓ op_revert_restore_probe  71cef381c805
+   39 ✓ op_restore               8acb4aabf760
+   40 ✓ op_revert                101ceb533560
+   41 ✓ op_revert                46d106b7667b
+   42 ✓ op_restore               e2bce17b967d
+   43 ✓ op_undo                  
+   44 ✓ op_edit_save             v4_mod_35.py (rework)
+   45 ✓ op_restore               e2bce17b967d
+   46 ✓ op_revert                01183d43dbc3
+   47 ✓ op_revert                e35fadd42272
+   48 ✓ op_revert_keep_dependents 71cef381c805
+   49 · op_restore               nothing addressable excluded
+linear_history seed 1040: 50 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-linear_history-seed1040.json

@@ -1,0 +1,45 @@
+    0 ✓ op_edit_save             slugify.py (rework)
+    1 ✓ op_revert                83071043df5f
+    2 · op_feature_merge         0 feature(s)
+    3 · op_edit_save             no tracked .py file
+    4 ✓ op_revert_keep_dependents 9789f3ea3dba
+    5 ✓ op_restore               83071043df5f
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_undo                  
+    8 ✓ op_revert_undo_probe     fa19a62eb22c
+    9 ✓ op_restore               c84e9209ba72
+   10 ✓ op_revert                9789f3ea3dba
+   11 ✓ op_edit_save             slugify.py (rework)
+   12 ✓ op_revert                3bfd6a872e09
+   13 ✓ op_undo                  
+   14 ✓ op_feature_split         af-m6d487130ae
+   15 ✓ op_revert_restore_probe  3bfd6a872e09
+   16 ✓ op_revert_restore_probe  fa19a62eb22c
+   17 ✓ op_undo                  
+   18 ✓ op_edit_save             slugify.py (rework)
+   19 ✓ op_edit_save             slugify.py (rework)
+   20 ✓ op_edit_save             slugify.py (rework)
+   21 ✓ op_revert_undo_probe     bac2657449ec
+   22 ✓ op_revert                94681116b737
+   23 ✓ op_revert_keep_dependents d8dd42079403
+   24 ✓ op_revert_undo_probe     83071043df5f
+   25 ✓ op_feature_rename        af-m01dcf54483
+   26 ✓ op_feature_rename        af-m01dcf54483
+   27 ✓ op_restore               d068113acb07
+   28 ✗ op_revert_restore_probe  d8dd42079403
+        restore_resurrects_layout: restoring what revert d8dd42079403 removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['9028aff2d7f3', '94681116b737']
+   29 ✓ op_add_file              v4_mod_29.py
+   30 ✓ op_revert                47eb27cee43f
+   31 · op_revert_undo_probe     revert offered no undo
+   32 ✓ op_undo                  
+   33 · op_restore               nothing addressable excluded
+   34 ✓ op_edit_save             v4_mod_6.py (rework)
+   35 ✓ op_feature_rename        af-m01dcf54483
+   36 ✓ op_add_file              v4_mod_36.py
+   37 ✓ op_revert_keep_dependents 9028aff2d7f3
+   38 ✓ op_revert_keep_dependents bac2657449ec
+   39 ✓ op_feature_rename        af-m01dcf54483
+   40 ✓ op_edit_save             v4_mod_36.py (rework)
+   41 ✓ op_revert                94681116b737
+   42 · op_restore               nothing addressable excluded
+diverged_chain seed 1125: 43 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-diverged_chain-seed1125.json

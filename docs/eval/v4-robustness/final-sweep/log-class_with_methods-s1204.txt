@@ -1,0 +1,28 @@
+    0 ✓ op_revert                bda07be08e55
+    1 ✓ op_revert                6ce5787543f8
+    2 · op_revert                empty ideal
+    3 ✓ op_add_file              v4_mod_3.py
+    4 ✓ op_edit_save             v4_mod_3.py (rework)
+    5 ✓ op_revert                84e078c19268
+    6 ✓ op_revert                50afa70e3ab4
+    7 ✓ op_revert_restore_probe  c71c370e1587
+    8 ✓ op_revert                97727880928f
+    9 · op_feature_rename        no features
+   10 · op_feature_split         no features
+   11 ✓ op_edit_save             v4_mod_3.py (rework)
+        settled (save refused, git restore): ['M v4_mod_3.py']
+   12 ✗ op_revert_undo_probe     6bf6967fcf24
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_3.py']
+   13 ✓ op_restore               497543cbfa4b
+   14 ✓ op_revert                97727880928f
+   15 ✓ op_add_file              v4_mod_15.py
+   16 ✗ op_edit_save             v4_mod_3.py (rework)
+        fsck_tree: exit 1: 1 newly drifted path(s): ['v4_mod_3.py']
+        settled (save refused, git restore): ['M v4_mod_3.py']
+   17 ✓ op_edit_save             v4_mod_3.py (rework)
+        settled (save refused, git restore): ['M v4_mod_3.py']
+   18 ✓ op_revert                a51880e1ebdd
+   19 ✓ op_revert_keep_dependents b29daedb129f
+   20 ✓ op_edit_save             v4_mod_15.py (rework)
+   21 ✓ op_restore               497543cbfa4b
+class_with_methods seed 1204: 22 ops applied, 2 with an oracle failure, 0 traceback(s), 3 tree(s) settled → /tmp/v4-final/run-class_with_methods-seed1204.json

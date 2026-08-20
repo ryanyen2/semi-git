@@ -1,0 +1,41 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_edit_save             ov.py (rework)
+    2 ✓ op_revert                1c8861fd738c
+    3 ✓ op_add_file              v4_mod_3.py
+    4 ✓ op_undo                  
+    5 ✓ op_revert                ce259f0defb1
+    6 ✓ op_revert                54f60db116c9
+    7 ✓ op_feature_rename        f-10e1ad11620f
+    8 ✓ op_edit_save             ov.py (rework)
+    9 ✓ op_revert                10e1ad11620f
+   10 ✓ op_edit_save             ov.py (rework)
+        settled (save refused, git restore): ['M ov.py']
+   11 ✓ op_edit_save             ov.py (rework)
+        settled (save refused, git restore): ['M ov.py']
+   12 ✓ op_restore               de8a3537aed1
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_restore               d587a902e529
+   15 ✓ op_revert                10e1ad11620f
+   16 ✗ op_revert_restore_probe  f9234cb3dd0a
+        restore_resurrects_layout: restoring what revert f9234cb3dd0a removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['147f94ee5e8c']
+   17 ✓ op_edit_save             v4_mod_13.py (rework)
+   18 ✓ op_restore               6786aa010215
+   19 ✓ op_edit_save             ov.py (rework)
+   20 ✓ op_revert                569d93c0e7cf
+   21 ✓ op_edit_save             v4_mod_13.py (rework)
+   22 ✓ op_revert                72d92e4d8d89
+   23 ✓ op_undo                  
+   24 ✓ op_revert                6786aa010215
+   25 ✓ op_revert_keep_dependents f9234cb3dd0a
+   26 ✓ op_revert_restore_probe  de8a3537aed1
+   27 ✓ op_undo                  
+   28 ✓ op_revert_restore_probe  de8a3537aed1
+   29 ✓ op_undo                  
+   30 ✓ op_edit_save             v4_mod_13.py (rework)
+   31 ✓ op_revert_keep_dependents f9234cb3dd0a
+   32 ✓ op_feature_split         af-m6e31d80f97
+   33 ✓ op_edit_save             ov.py (rework)
+   34 ✓ op_revert_undo_probe     f9234cb3dd0a
+   35 ✓ op_revert                66407bf29aaa
+   36 ✓ op_edit_save             v4_mod_13.py (rework)
+overload_group seed 1025: 37 ops applied, 1 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-overload_group-seed1025.json

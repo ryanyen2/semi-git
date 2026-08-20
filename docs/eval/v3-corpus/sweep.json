@@ -1,0 +1,58 @@
+{
+  "completed": 30,
+  "skipped": [
+    {
+      "repo": "otto-torino/django-baton",
+      "status": "backfill_capped"
+    },
+    {
+      "repo": "pyparsing/pyparsing",
+      "status": "backfill_capped"
+    },
+    {
+      "repo": "google/praxis",
+      "status": "backfill_capped"
+    },
+    {
+      "repo": "psycopg/psycopg",
+      "status": "backfill_capped"
+    },
+    {
+      "repo": "Picovoice/porcupine",
+      "status": "backfill_capped"
+    }
+  ],
+  "init_failure_fraction": 0.1429,
+  "reconstruction_rates": [
+    0.1061,
+    0.2343,
+    0.875,
+    0.25,
+    1.0,
+    0.8316,
+    0.2632,
+    0.2286,
+    0.3918,
+    0.3182,
+    0.2687,
+    0.34,
+    0.2321,
+    0.3388,
+    0.875,
+    0.2114,
+    0.1528,
+    0.097,
+    0.0625,
+    0.2353,
+    0.0844,
+    0.2471,
+    0.2273,
+    0.5094,
+    0.7848,
+    0.2208,
+    0.6333,
+    0.2453,
+    0.1475,
+    0.8061
+  ]
+}

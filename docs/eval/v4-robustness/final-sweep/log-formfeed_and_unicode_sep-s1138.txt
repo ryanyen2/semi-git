@@ -1,0 +1,39 @@
+    0 ✓ op_revert                66f4a7a053b8
+    1 ✓ op_restore               66f4a7a053b8
+    2 ✓ op_revert                72a5046c556a
+    3 ✓ op_edit_save             a.py (rework)
+    4 ✓ op_undo                  
+    5 ✓ op_revert_keep_dependents 66521c9c8059
+    6 ✓ op_revert                a08a015717cf
+    7 ✓ op_revert_undo_probe     66f4a7a053b8
+    8 ✓ op_revert                66f4a7a053b8
+    9 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   10 · op_feature_rename        no features
+   11 ✓ op_revert_keep_dependents 66521c9c8059
+   12 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   13 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   14 ✓ op_undo                  
+   15 ✓ op_edit_save             a.py (rework)
+   16 ✓ op_revert_restore_probe  fbcc8db8ae8b
+   17 ✓ op_revert_keep_dependents 66521c9c8059
+   18 ✓ op_revert                fbcc8db8ae8b
+   19 ✓ op_restore               a28e2c1309eb
+   20 ✓ op_revert                66521c9c8059
+   21 ✓ op_restore               a28e2c1309eb
+   22 ✓ op_revert_undo_probe     5926a81b6665
+   23 ✓ op_revert_restore_probe  5926a81b6665
+   24 ✓ op_feature_split         af-m4b31b23310
+   25 ✓ op_revert                5926a81b6665
+   26 ✓ op_add_file              v4_mod_26.py
+   27 ✓ op_feature_rename        af-m4b31b23310
+   28 ✓ op_undo                  
+   29 ✓ op_restore               362163b005a4
+   30 ✓ op_edit_save             v4_mod_26.py (rework)
+   31 ✓ op_revert_undo_probe     66f4a7a053b8
+   32 ✓ op_revert_keep_dependents 86ed4570f1e8
+   33 ✓ op_restore               557800506cfe
+   34 ✓ op_revert_undo_probe     86ed4570f1e8
+formfeed_and_unicode_sep seed 1138: 35 ops applied, 0 with an oracle failure, 0 traceback(s), 3 tree(s) settled → /tmp/v4-final/run-formfeed_and_unicode_sep-seed1138.json

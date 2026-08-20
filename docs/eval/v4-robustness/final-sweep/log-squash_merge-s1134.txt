@@ -1,0 +1,52 @@
+    0 ✓ op_feature_split         f-126303a70181
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_add_file              v4_mod_2.py
+    3 ✓ op_revert                491a9acce1a8
+    4 ✓ op_revert_restore_probe  9e6da1d1af5b
+    5 ✓ op_edit_save             a.py (rework)
+    6 ✓ op_revert_undo_probe     66521c9c8059
+    7 ✓ op_revert_restore_probe  ee1211142a8b
+    8 ✓ op_revert                ee1211142a8b
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_feature_merge         f-126303a70181<-af-m2a1b12873b
+   11 ✓ op_revert_undo_probe     9e6da1d1af5b
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_edit_save             v4_mod_12.py (rework)
+   14 ✓ op_revert_undo_probe     1a0fbfd1f1ee
+   15 ✓ op_revert_undo_probe     17459403971d
+   16 ✓ op_edit_save             v4_mod_9.py (rework)
+   17 ✓ op_restore               ee1211142a8b
+   18 ✓ op_restore               491a9acce1a8
+   19 ✓ op_revert_keep_dependents b40faf60cef7
+   20 ✓ op_add_file              v4_mod_20.py
+   21 ✓ op_revert_undo_probe     9e6da1d1af5b
+   22 ✓ op_revert_undo_probe     1ff78887dc16
+   23 ✓ op_revert_keep_dependents ee1174ac338e
+   24 ✓ op_revert_keep_dependents 1ff78887dc16
+   25 ✓ op_revert_keep_dependents 7f042a795a66
+   26 ✓ op_undo                  
+   27 ✓ op_edit_save             v4_mod_9.py (rework)
+   28 ✓ op_revert                d8db33dac867
+   29 ✓ op_revert_keep_dependents 126303a70181
+   30 ✓ op_revert_restore_probe  2d33399ea8dc
+   31 ✓ op_restore               3f0a52756b18
+   32 ✓ op_revert_keep_dependents 612ea8eb675c
+   33 ✓ op_revert_undo_probe     71cef381c805
+   34 ✓ op_edit_save             a.py (rework)
+   35 ✓ op_restore               df7447554de9
+   36 ✓ op_restore               7f9e642020d8
+   37 ✓ op_revert_keep_dependents 441275e32106
+   38 ✓ op_revert_undo_probe     c9381393933c
+   39 ✓ op_revert                5b6324ac8470
+   40 ✓ op_revert_keep_dependents df7447554de9
+   41 ✓ op_revert_undo_probe     7f042a795a66
+   42 ✓ op_feature_split         af-mc9b0769788
+   43 ✓ op_revert_restore_probe  39bc8466d27a
+   44 · op_restore               nothing addressable excluded
+   45 ✓ op_revert_keep_dependents db1bae843fe9
+   46 ✗ op_revert_restore_probe  ee1211142a8b
+        restore_resurrects_layout: restoring what revert ee1211142a8b removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']
+   47 ✓ op_revert                7f042a795a66
+   48 ✓ op_revert                c9381393933c
+   49 ✓ op_add_file              v4_mod_49.py
+squash_merge seed 1134: 50 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-squash_merge-seed1134.json

@@ -1,0 +1,939 @@
+{
+ "repo": "/private/tmp/v1/cp",
+ "counts": {
+  "commit_count": 26,
+  "save_count": 25,
+  "bookkeeping_count": 1,
+  "op_count": 347,
+  "feature_count": 20
+ },
+ "episodes_mapped": 26,
+ "rows": [
+  {
+   "commit_index": 0,
+   "sha": "81d329d",
+   "episode": "E0 seed",
+   "subject": "init repo",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "README.md"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 1,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 1,
+   "sha": "3f27ee7",
+   "episode": "E1 scaffold",
+   "subject": "scaffold confplan: models, JSON store, CLI init",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Data Storage": [
+     "confplan/cli.py::cmd_init",
+     "confplan/storage.py::load_data",
+     "confplan/storage.py::save_data",
+     "tests/test_storage.py::test_missing_file_loads_empty",
+     "tests/test_storage.py::test_round_trip"
+    ],
+    "Conference Models": [
+     "confplan/models.py::Attendee",
+     "confplan/models.py::Session",
+     "confplan/models.py::Talk"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser",
+     "confplan/cli.py::main"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference Scheduling": [
+     "confplan/storage.py::next_id"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Catalog Storage"
+   ],
+   "n_features_substantive": 5,
+   "n_edit_records": 12,
+   "n_anchor_records": 11,
+   "n_residue_records": 17
+  },
+  {
+   "commit_index": 2,
+   "sha": "a36401a",
+   "episode": "E2 slots",
+   "subject": "rooms and the two-day slot grid with parsing",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Speaker Availability": [
+     "confplan/slots.py::SlotError",
+     "confplan/slots.py::_minutes",
+     "confplan/slots.py::format_slot",
+     "confplan/slots.py::parse_slot",
+     "tests/test_slots.py::test_bad_slots_rejected",
+     "tests/test_slots.py::test_parse_and_format_round_trip"
+    ],
+    "Conference Models": [
+     "confplan/models.py::Room",
+     "confplan/models.py::Session"
+    ],
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_room_add",
+     "confplan/cli.py::cmd_room_list"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Catalog Storage"
+   ],
+   "n_features_substantive": 5,
+   "n_edit_records": 12,
+   "n_anchor_records": 11,
+   "n_residue_records": 12
+  },
+  {
+   "commit_index": 3,
+   "sha": "be3e582",
+   "episode": "E3 catalog",
+   "subject": "talk and session commands",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_session_add",
+     "confplan/cli.py::cmd_session_list",
+     "confplan/cli.py::cmd_session_remove",
+     "confplan/cli.py::cmd_talk_add",
+     "confplan/cli.py::cmd_talk_list",
+     "tests/test_catalog.py::_ns",
+     "tests/test_catalog.py::test_add_and_list_talk",
+     "tests/test_catalog.py::test_session_lifecycle"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Talk Catalog": [
+     "tests/test_catalog.py::store"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 4,
+   "n_edit_records": 11,
+   "n_anchor_records": 10,
+   "n_residue_records": 10
+  },
+  {
+   "commit_index": 4,
+   "sha": "251d744",
+   "episode": "E4 register",
+   "subject": "attendee badges and session registration",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Session Registration": [
+     "confplan/cli.py::cmd_register",
+     "confplan/registration.py::RegistrationError",
+     "confplan/registration.py::_by_id",
+     "confplan/registration.py::get_attendee",
+     "confplan/registration.py::get_session",
+     "confplan/registration.py::register",
+     "tests/test_register.py::test_register_adds_entry",
+     "tests/test_register.py::test_register_rejects_unknown_and_duplicate"
+    ],
+    "init repo": [
+     "confplan/registration.py::registrations_of",
+     "pytest.ini"
+    ],
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_attendee_add",
+     "confplan/cli.py::cmd_attendee_list"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ],
+    "Data Storage": [
+     "tests/test_register.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Attendee Registration",
+    "Registration Entries"
+   ],
+   "n_features_substantive": 5,
+   "n_edit_records": 14,
+   "n_anchor_records": 13,
+   "n_residue_records": 15
+  },
+  {
+   "commit_index": 5,
+   "sha": "285f28c",
+   "episode": "E5 id fix",
+   "subject": "fix id reuse after removing a session",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference Scheduling": [
+     "confplan/storage.py::next_id",
+     "tests/test_storage.py::test_ids_never_reused_after_remove"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Data Storage"
+   ],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 6,
+   "sha": "35350fb",
+   "episode": "E6 capacity",
+   "subject": "session capacity limits",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "confplan/registration.py::headcount",
+     "confplan/registration.py::register",
+     "pytest.ini",
+     "tests/test_capacity.py::test_full_session_rejects_registration"
+    ],
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_session_add",
+     "tests/test_catalog.py::test_session_lifecycle"
+    ],
+    "Conference Models": [
+     "confplan/models.py::Session"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 4,
+   "n_edit_records": 8,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 7,
+   "sha": "d7ffe42",
+   "episode": "E7 clashes",
+   "subject": "reject clashing registrations",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "confplan/registration.py::register",
+     "confplan/slots.py::overlaps",
+     "pytest.ini",
+     "tests/test_clashes.py::test_other_day_is_fine",
+     "tests/test_clashes.py::test_overlapping_sessions_rejected"
+    ],
+    "Data Storage": [
+     "tests/test_clashes.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Attendee Registration",
+    "Session Clashes",
+    "Speaker Availability"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 6,
+   "n_anchor_records": 5,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 8,
+   "sha": "7ede859",
+   "episode": "E8 TANGLE search",
+   "subject": "add talk search",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_search",
+     "tests/test_search.py::store",
+     "tests/test_search.py::test_search_matches_code_and_title",
+     "tests/test_search.py::test_search_miss_reports"
+    ],
+    "Speaker Availability": [
+     "confplan/slots.py::parse_slot",
+     "tests/test_slots.py::test_lowercase_day_accepted"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 4,
+   "n_edit_records": 8,
+   "n_anchor_records": 7,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 9,
+   "sha": "645868e",
+   "episode": "E9 series",
+   "subject": "series talks require their earlier parts",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "confplan/registration.py::missing_requirements",
+     "confplan/registration.py::register",
+     "pytest.ini",
+     "tests/test_series.py::test_missing_series_part_rejected",
+     "tests/test_series.py::test_series_satisfied_by_registration"
+    ],
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_talk_add",
+     "tests/test_catalog.py::test_add_and_list_talk",
+     "tests/test_catalog.py::test_session_lifecycle",
+     "tests/test_search.py::store"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ],
+    "Data Storage": [
+     "tests/test_series.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Series Registration"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 11,
+   "n_anchor_records": 5,
+   "n_residue_records": 5
+  },
+  {
+   "commit_index": 10,
+   "sha": "8c4d1b9",
+   "episode": "E10 refactor",
+   "subject": "extract Catalog class for persistence",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_attendee_add",
+     "confplan/cli.py::cmd_attendee_list",
+     "confplan/cli.py::cmd_init",
+     "confplan/cli.py::cmd_register",
+     "confplan/cli.py::cmd_room_add",
+     "confplan/cli.py::cmd_room_list",
+     "confplan/cli.py::cmd_search",
+     "confplan/cli.py::cmd_session_add",
+     "confplan/cli.py::cmd_session_list",
+     "confplan/cli.py::cmd_session_remove",
+     "confplan/cli.py::cmd_talk_add",
+     "confplan/cli.py::cmd_talk_list",
+     "confplan/storage.py::Catalog",
+     "confplan/storage.py::Catalog.__init__",
+     "confplan/storage.py::Catalog.load",
+     "confplan/storage.py::Catalog.save",
+     "tests/test_storage.py::test_catalog_round_trip"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Data Storage"
+   ],
+   "n_features_substantive": 1,
+   "n_edit_records": 17,
+   "n_anchor_records": 4,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 11,
+   "sha": "f85493e",
+   "episode": "E11 waitlist (logic)",
+   "subject": "waitlist for full sessions with stable join order",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Waitlist Priority": [
+     "confplan/registration.py::join_waitlist",
+     "confplan/registration.py::register",
+     "confplan/registration.py::waitlist_for",
+     "tests/test_waitlist.py::test_capacity_error_mentions_waitlist",
+     "tests/test_waitlist.py::test_join_order_is_stable",
+     "tests/test_waitlist.py::test_join_rules"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Data Storage": [
+     "tests/test_waitlist.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Catalog Storage",
+    "Waitlist Queue"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 8,
+   "n_anchor_records": 7,
+   "n_residue_records": 8
+  },
+  {
+   "commit_index": 12,
+   "sha": "1911a8f",
+   "episode": "E11 waitlist (CLI)",
+   "subject": "wire waitlist commands into the CLI",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Waitlist Priority": [
+     "confplan/cli.py::cmd_waitlist_join",
+     "confplan/cli.py::cmd_waitlist_show"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Conference Scheduling"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 3,
+   "n_anchor_records": 3,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 13,
+   "sha": "d4051d6",
+   "episode": "E12 promotion",
+   "subject": "promote from the queue when a seat frees",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_waitlist_promote",
+     "confplan/promotion.py::promote_next",
+     "tests/test_promotion.py::_free_seat",
+     "tests/test_promotion.py::test_first_in_queue_promoted",
+     "tests/test_promotion.py::test_ineligible_attendee_keeps_spot",
+     "tests/test_promotion.py::test_no_promotion_while_full"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ],
+    "Data Storage": [
+     "tests/test_promotion.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Waitlist Promotion"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 9,
+   "n_anchor_records": 8,
+   "n_residue_records": 10
+  },
+  {
+   "commit_index": 14,
+   "sha": "de52f62",
+   "episode": "E13 keeper fix",
+   "subject": "back-to-back sessions are not a clash",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "confplan/slots.py::overlaps",
+     "tests/test_clashes.py::test_back_to_back_is_fine"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 15,
+   "sha": "f8de0fd",
+   "episode": "E14 cancel cascade",
+   "subject": "cancel frees the seat and promotes the queue",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Registration Cancel \u00b7 test_cancel.py": [
+     "confplan/cli.py::cmd_cancel",
+     "confplan/registration.py::cancel",
+     "tests/test_cancel.py::test_cancel_promotes_from_queue",
+     "tests/test_cancel.py::test_cancel_requires_registration"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Waitlist Priority": [
+     "tests/test_cancel.py::store"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Registration Cancel \u00b7 test_cancel.py 2"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 7,
+   "n_anchor_records": 7,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 16,
+   "sha": "4f9b974",
+   "episode": "E15 TANGLE export",
+   "subject": "agenda export",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Agenda Export \u00b7 export.py": [
+     "confplan/cli.py::cmd_agenda",
+     "confplan/export.py::export_csv",
+     "confplan/export.py::export_markdown",
+     "tests/test_export.py::test_csv_lists_every_session",
+     "tests/test_export.py::test_markdown_agenda_sorted_by_weekend_position"
+    ],
+    "init repo": [
+     "confplan/registration.py::register",
+     "pytest.ini",
+     "tests/test_export.py::data"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Agenda Export \u00b7 test_export.py",
+    "Registration Cancel \u00b7 test_cancel.py"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 9,
+   "n_anchor_records": 7,
+   "n_residue_records": 9
+  },
+  {
+   "commit_index": 17,
+   "sha": "dfdcce6",
+   "episode": "E16 experiment",
+   "subject": "speaker priority in session queues",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Waitlist Priority": [
+     "confplan/registration.py::waitlist_for",
+     "confplan/registration.py::waitlist_for._rank",
+     "tests/test_priority.py::test_speakers_jump_the_queue"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference Models": [
+     "confplan/models.py::Attendee"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ],
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_attendee_add"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 5,
+   "n_edit_records": 7,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 18,
+   "sha": "a8cd83f",
+   "episode": "E16 revert (bk)",
+   "subject": "sgt revert f-02c4a091@3",
+   "bookkeeping": true,
+   "features_substantive": {},
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 0,
+   "n_edit_records": 0,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 19,
+   "sha": "704e7a4",
+   "episode": "E17 REGRESSION (helper)",
+   "subject": "normalize slot comparison for cross-track sessions and room audits",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_room_audit",
+     "confplan/scheduling.py::room_clashes",
+     "confplan/slots.py::ranges_clash",
+     "tests/test_rooms.py::test_same_room_overlap_is_a_clash",
+     "tests/test_rooms.py::test_unscheduled_sessions_ignored"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Speaker Availability"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 7,
+   "n_anchor_records": 7,
+   "n_residue_records": 8
+  },
+  {
+   "commit_index": 20,
+   "sha": "6ca9a53",
+   "episode": "E17 REGRESSION (route)",
+   "subject": "route registration clash checks through the shared helper",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "confplan/registration.py::register"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 1,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 21,
+   "sha": "25905db",
+   "episode": "E18 speaker view",
+   "subject": "speaker schedule view",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Speaker Availability": [
+     "confplan/cli.py::cmd_speaker",
+     "tests/test_speaker.py::test_speaker_view_sorted_by_weekend"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Agenda Export \u00b7 export.py"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 4,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 22,
+   "sha": "7f5c84c",
+   "episode": "E19 stats",
+   "subject": "registration stats report",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "confplan/cli.py::cmd_stats",
+     "pytest.ini",
+     "tests/test_stats.py::test_stats_reports_fill"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Speaker Availability"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 4,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 23,
+   "sha": "970a8be",
+   "episode": "E20 export fix",
+   "subject": "escape pipes in agenda export",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Agenda Export \u00b7 export.py": [
+     "confplan/export.py::export_markdown",
+     "tests/test_export.py::test_markdown_escapes_pipes"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 24,
+   "sha": "b4e06f2",
+   "episode": "E21 notices",
+   "subject": "seat notices when the queue promotes",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Conference Scheduling": [
+     "confplan/cli.py::cmd_notices",
+     "confplan/notify.py::clear_notices",
+     "confplan/notify.py::pending_notices",
+     "confplan/promotion.py::promote_next",
+     "tests/test_notify.py::test_promotion_queues_a_notice"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 3,
+   "n_edit_records": 7,
+   "n_anchor_records": 5,
+   "n_residue_records": 7
+  },
+  {
+   "commit_index": 25,
+   "sha": "4241cd0",
+   "episode": "E22 polish",
+   "subject": "README and help text",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "README.md"
+    ],
+    "Conference CLI": [
+     "confplan/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 2,
+   "n_edit_records": 2,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  }
+ ],
+ "feature_spans": {
+  "Agenda Export \u00b7 export.py": [
+   "E15 TANGLE export",
+   "E20 export fix"
+  ],
+  "Conference CLI": [
+   "E1 scaffold",
+   "E11 waitlist (CLI)",
+   "E12 promotion",
+   "E14 cancel cascade",
+   "E15 TANGLE export",
+   "E16 experiment",
+   "E17 REGRESSION (helper)",
+   "E18 speaker view",
+   "E19 stats",
+   "E2 slots",
+   "E21 notices",
+   "E22 polish",
+   "E3 catalog",
+   "E4 register",
+   "E6 capacity",
+   "E8 TANGLE search",
+   "E9 series"
+  ],
+  "Conference Models": [
+   "E1 scaffold",
+   "E16 experiment",
+   "E2 slots",
+   "E6 capacity"
+  ],
+  "Conference Scheduling": [
+   "E1 scaffold",
+   "E10 refactor",
+   "E12 promotion",
+   "E16 experiment",
+   "E17 REGRESSION (helper)",
+   "E2 slots",
+   "E21 notices",
+   "E3 catalog",
+   "E4 register",
+   "E5 id fix",
+   "E6 capacity",
+   "E8 TANGLE search",
+   "E9 series"
+  ],
+  "Data Storage": [
+   "E1 scaffold",
+   "E11 waitlist (logic)",
+   "E12 promotion",
+   "E4 register",
+   "E7 clashes",
+   "E9 series"
+  ],
+  "Registration Cancel \u00b7 test_cancel.py": [
+   "E14 cancel cascade"
+  ],
+  "Session Registration": [
+   "E4 register"
+  ],
+  "Speaker Availability": [
+   "E18 speaker view",
+   "E2 slots",
+   "E8 TANGLE search"
+  ],
+  "Talk Catalog": [
+   "E3 catalog"
+  ],
+  "Waitlist Priority": [
+   "E11 waitlist (CLI)",
+   "E11 waitlist (logic)",
+   "E14 cancel cascade",
+   "E16 experiment"
+  ],
+  "init repo": [
+   "E0 seed",
+   "E1 scaffold",
+   "E11 waitlist (logic)",
+   "E12 promotion",
+   "E13 keeper fix",
+   "E14 cancel cascade",
+   "E15 TANGLE export",
+   "E16 experiment",
+   "E17 REGRESSION (helper)",
+   "E17 REGRESSION (route)",
+   "E18 speaker view",
+   "E19 stats",
+   "E2 slots",
+   "E21 notices",
+   "E22 polish",
+   "E3 catalog",
+   "E4 register",
+   "E6 capacity",
+   "E7 clashes",
+   "E8 TANGLE search",
+   "E9 series"
+  ]
+ },
+ "flags": [
+  {
+   "episode": "E1 scaffold",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Data Storage, Conference Models, Conference CLI, init repo, Conference Scheduling"
+  },
+  {
+   "episode": "E2 slots",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Speaker Availability, Conference Models, Conference Scheduling, init repo, Conference CLI"
+  },
+  {
+   "episode": "E3 catalog",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Conference Scheduling, init repo, Talk Catalog, Conference CLI"
+  },
+  {
+   "episode": "E4 register",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Session Registration, init repo, Conference Scheduling, Conference CLI, Data Storage"
+  },
+  {
+   "episode": "E6 capacity",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: init repo, Conference Scheduling, Conference Models, Conference CLI"
+  },
+  {
+   "episode": "E8 TANGLE search",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Conference Scheduling, Speaker Availability, init repo, Conference CLI"
+  },
+  {
+   "episode": "E9 series",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: init repo, Conference Scheduling, Conference CLI, Data Storage"
+  },
+  {
+   "episode": "E11 waitlist (logic)",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Waitlist Priority, init repo, Data Storage"
+  },
+  {
+   "episode": "E12 promotion",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Conference Scheduling, init repo, Conference CLI, Data Storage"
+  },
+  {
+   "episode": "E14 cancel cascade",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Registration Cancel \u00b7 test_cancel.py, init repo, Waitlist Priority, Conference CLI"
+  },
+  {
+   "episode": "E15 TANGLE export",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Agenda Export \u00b7 export.py, init repo, Conference CLI"
+  },
+  {
+   "episode": "E16 experiment",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Waitlist Priority, init repo, Conference Models, Conference CLI, Conference Scheduling"
+  },
+  {
+   "episode": "E17 REGRESSION (helper)",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Conference Scheduling, init repo, Conference CLI"
+  },
+  {
+   "episode": "E18 speaker view",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Speaker Availability, init repo, Conference CLI"
+  },
+  {
+   "episode": "E21 notices",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Conference Scheduling, init repo, Conference CLI"
+  },
+  {
+   "feature": "Conference CLI",
+   "flag": "lump",
+   "detail": "spans 17 episodes: E1 scaffold, E11 waitlist (CLI), E12 promotion, E14 cancel cascade, E15 TANGLE export, E16 experiment, E17 REGRESSION (helper), E18 speaker view, E19 stats, E2 slots, E21 notices, E22 polish, E3 catalog, E4 register, E6 capacity, E8 TANGLE search, E9 series"
+  },
+  {
+   "feature": "Conference Models",
+   "flag": "lump",
+   "detail": "spans 4 episodes: E1 scaffold, E16 experiment, E2 slots, E6 capacity"
+  },
+  {
+   "feature": "Conference Scheduling",
+   "flag": "lump",
+   "detail": "spans 13 episodes: E1 scaffold, E10 refactor, E12 promotion, E16 experiment, E17 REGRESSION (helper), E2 slots, E21 notices, E3 catalog, E4 register, E5 id fix, E6 capacity, E8 TANGLE search, E9 series"
+  },
+  {
+   "feature": "Data Storage",
+   "flag": "lump",
+   "detail": "spans 6 episodes: E1 scaffold, E11 waitlist (logic), E12 promotion, E4 register, E7 clashes, E9 series"
+  },
+  {
+   "feature": "Waitlist Priority",
+   "flag": "lump",
+   "detail": "spans 4 episodes: E11 waitlist (CLI), E11 waitlist (logic), E14 cancel cascade, E16 experiment"
+  },
+  {
+   "feature": "init repo",
+   "flag": "lump",
+   "detail": "spans 21 episodes: E0 seed, E1 scaffold, E11 waitlist (logic), E12 promotion, E13 keeper fix, E14 cancel cascade, E15 TANGLE export, E16 experiment, E17 REGRESSION (helper), E17 REGRESSION (route), E18 speaker view, E19 stats, E2 slots, E21 notices, E22 polish, E3 catalog, E4 register, E6 capacity, E7 clashes, E8 TANGLE search, E9 series"
+  },
+  {
+   "flag": "file-path-label",
+   "detail": "Agenda Export \u00b7 export.py, Registration Cancel \u00b7 test_cancel.py"
+  }
+ ]
+}

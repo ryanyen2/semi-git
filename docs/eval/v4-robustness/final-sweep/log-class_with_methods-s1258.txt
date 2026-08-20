@@ -1,0 +1,45 @@
+    0 ✓ op_edit_save             service.py (rework)
+    1 · op_feature_merge         1 feature(s)
+    2 ✓ op_revert_keep_dependents bda07be08e55
+    3 ✓ op_revert_undo_probe     308db8498c58
+    4 ✓ op_edit_save             service.py (rework)
+    5 ✓ op_feature_merge         af-mf703ed067f<-af-m0fbd1c282a
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_revert                bda07be08e55
+    8 ✓ op_revert_keep_dependents cae03a295f59
+    9 · op_edit_save             no tracked .py file
+   10 ✗ op_revert_restore_probe  cae03a295f59
+        revert_restore_unexplained_drift: revert cae03a295f59 then restoring everything it removed left 1 file(s) different from before: ['service.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['service.py']
+   11 ✓ op_add_file              v4_mod_11.py
+   12 ✓ op_feature_rename        af-mf703ed067f
+   13 ✓ op_undo                  
+   14 ✓ op_revert                6fe9634f1d0b
+   15 ✓ op_revert_restore_probe  2872e634def8
+   16 ✓ op_restore               33a421745095
+   17 ✓ op_revert_undo_probe     cae03a295f59
+   18 ✓ op_edit_save             v4_mod_11.py (rework)
+   19 ✓ op_restore               a12085bab688
+   20 ✓ op_add_file              v4_mod_20.py
+   21 ✓ op_add_file              v4_mod_21.py
+   22 · op_restore               nothing addressable excluded
+   23 ✓ op_undo                  
+   24 ✓ op_revert_undo_probe     ed486171e602
+   25 ✓ op_edit_save             v4_mod_11.py (rework)
+   26 ✓ op_restore               18859c493117
+   27 · op_restore               nothing addressable excluded
+   28 ✓ op_feature_split         af-mb32ff0ce36
+   29 ✓ op_revert_restore_probe  ee1174ac338e
+   30 · op_restore               nothing addressable excluded
+   31 ✓ op_feature_split         f-308db8498c58
+   32 ✓ op_edit_save             v4_mod_11.py (rework)
+   33 ✓ op_add_file              v4_mod_33.py
+   34 ✓ op_feature_merge         f-308db8498c58<-af-mf703ed067f
+   35 ✓ op_revert                84587d9450b7
+   36 ✓ op_revert_restore_probe  d7cc9e9ebcab
+   37 ✓ op_edit_save             service.py (rework)
+   38 ✓ op_revert_undo_probe     0ee14cde13c0
+   39 ✓ op_revert                3bff00c33c82
+   40 ✓ op_revert                33a421745095
+   41 ✓ op_edit_save             service.py (rework)
+class_with_methods seed 1258: 42 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-class_with_methods-seed1258.json

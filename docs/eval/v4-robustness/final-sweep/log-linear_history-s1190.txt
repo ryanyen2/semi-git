@@ -1,0 +1,35 @@
+    0 ✓ op_revert_keep_dependents 25459cad2014
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_feature_split         f-004014efad04
+    3 ✓ op_feature_merge         f-ma644e313a28<-f-004014efad04
+    4 ✓ op_feature_rename        f-ma644e313a28
+    5 · op_restore               nothing addressable excluded
+    6 ✓ op_revert_undo_probe     6302d788bba6
+    7 ✓ op_feature_rename        f-ma644e313a28
+    8 ✓ op_revert_restore_probe  126303a70181
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_edit_save             v4_mod_9.py (rework)
+   11 ✓ op_edit_save             c.py (rework)
+   12 ✓ op_feature_merge         f-ma644e313a28<-af-m23d178de00
+   13 ✓ op_revert_keep_dependents 75d46e6e116a
+   14 ✓ op_feature_merge         af-m4b31b23310<-af-mc9b0769788
+   15 ✓ op_revert_keep_dependents 1a0fbfd1f1ee
+   16 ✓ op_revert_restore_probe  9189a4620595
+   17 ✓ op_revert                25459cad2014
+   18 ✓ op_edit_save             b.py (rework)
+   19 ✓ op_revert_restore_probe  b63b907d5173
+   20 ✓ op_feature_merge         f-ma644e313a28<-af-m4b31b23310
+   21 · op_feature_merge         1 feature(s)
+   22 ✓ op_undo                  
+   23 ✗ op_revert_restore_probe  ae37c76fe624
+        restore_resurrects_layout: restoring what revert ae37c76fe624 removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['25459cad2014', 'a48817bebd14']
+   24 ✓ op_edit_save             v4_mod_9.py (rework)
+   25 · op_restore               nothing addressable excluded
+   26 ✓ op_revert_undo_probe     46d106b7667b
+   27 · op_restore               nothing addressable excluded
+   28 ✓ op_add_file              v4_mod_28.py
+   29 ✓ op_add_file              v4_mod_29.py
+   30 ✓ op_revert_restore_probe  27d3d901e561
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_edit_save             v4_mod_28.py (rework)
+linear_history seed 1190: 33 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-linear_history-seed1190.json

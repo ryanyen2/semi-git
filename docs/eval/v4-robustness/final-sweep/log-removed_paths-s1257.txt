@@ -1,0 +1,48 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_add_file              v4_mod_2.py
+    3 ✓ op_revert_undo_probe     78ea467f7213
+    4 ✓ op_undo                  
+    5 ✓ op_undo                  
+    6 ✓ op_revert                70d73a73fd9a
+    7 ✓ op_feature_rename        f-36abf70110af
+    8 ✓ op_undo                  
+    9 ✓ op_revert_undo_probe     58b3790c4c09
+   10 ✓ op_revert_keep_dependents 01f8d1c22c41
+   11 ✗ op_revert_restore_probe  36abf70110af
+        restore_resurrects_content: restoring what revert 36abf70110af removed also pulled back 1 op(s) carrying user code that were already out: ['70d73a73fd9a']
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_undo                  
+   14 ✓ op_add_file              v4_mod_14.py
+   15 ✗ op_revert_restore_probe  bd404f84829a
+        revert_restore_unexplained_drift: revert bd404f84829a then restoring everything it removed left 1 file(s) different from before: ['gone.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+        no_empty_phantom: blank tracked file(s) left behind: ['gone.py']
+   16 ✓ op_revert                bd404f84829a
+   17 ✓ op_revert                e20811f5bd51
+   18 ✓ op_edit_save             v4_mod_14.py (rework)
+   19 ✓ op_revert_keep_dependents 01f8d1c22c41
+   20 ✓ op_revert_keep_dependents 2db4f51f9682
+   21 ✓ op_restore               127c7f593a49
+   22 ✓ op_revert_undo_probe     01f8d1c22c41
+   23 ✓ op_edit_save             v4_mod_14.py (rework)
+   24 ✓ op_feature_split         af-m39f4027d0b
+   25 ✓ op_revert                6e3b6d2cc6c8
+   26 ✓ op_feature_split         af-mf380eccfa3
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_edit_save             survivor.py (rework)
+   29 ✓ op_feature_merge         af-mf380eccfa3<-f-36abf70110af
+   30 ✓ op_revert_undo_probe     127c7f593a49
+   31 ✓ op_undo                  
+   32 ✓ op_revert_undo_probe     bf22e30e9296
+   33 ✓ op_revert                bf22e30e9296
+   34 ✓ op_add_file              v4_mod_34.py
+   35 ✓ op_feature_split         af-m39f4027d0b
+   36 ✓ op_undo                  
+   37 ✓ op_edit_save             v4_mod_1.py (rework)
+   38 ✓ op_undo                  
+   39 ✓ op_revert_keep_dependents e6ea659aefbe
+   40 ✓ op_revert                f7b38c9455a0
+   41 ✓ op_edit_save             v4_mod_27.py (rework)
+   42 ✓ op_revert_keep_dependents 58b3790c4c09
+   43 ✓ op_revert                e6ea659aefbe
+removed_paths seed 1257: 44 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1257.json

@@ -1,0 +1,28 @@
+    0 ✓ op_revert                66521c9c8059
+    1 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+    2 ✓ op_revert_undo_probe     f82434e5639a
+    3 ✓ op_undo                  
+    4 ✓ op_restore               98ca5b8cf50a
+    5 ✓ op_feature_split         f-126303a70181
+    6 ✓ op_feature_split         f-126303a70181
+    7 ✓ op_revert_undo_probe     f82434e5639a
+    8 ✓ op_feature_merge         f-126303a70181<-f-98ca5b8cf50a
+    9 ✓ op_revert_keep_dependents 126303a70181
+   10 ✓ op_revert_undo_probe     ee1211142a8b
+   11 ✓ op_add_file              v4_mod_11.py
+   12 ✓ op_revert_restore_probe  f19ec32b02e9
+   13 ✓ op_edit_save             v4_mod_11.py (rework)
+   14 ✓ op_edit_save             v4_mod_11.py (rework)
+   15 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   16 ✓ op_edit_save             v4_mod_11.py (rework)
+   17 ✗ op_revert_restore_probe  ee1211142a8b
+        restore_resurrects_layout: restoring what revert ee1211142a8b removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']
+   18 ✓ op_revert                6fe9634f1d0b
+   19 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   20 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   21 ✓ op_restore               2a3ae949b75a
+revert_to_original seed 1073: 22 ops applied, 1 with an oracle failure, 0 traceback(s), 4 tree(s) settled → /tmp/v4-final/run-revert_to_original-seed1073.json

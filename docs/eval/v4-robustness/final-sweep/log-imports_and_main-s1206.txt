@@ -1,0 +1,24 @@
+    0 ✓ op_revert                5d3c6964b2f8
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_revert                3934033824cb
+    3 · op_revert_undo_probe     empty ideal
+    4 ✓ op_restore               3934033824cb
+    5 ✓ op_add_file              v4_mod_5.py
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_feature_split         f-0e94a6bf178a
+    8 ✓ op_revert_undo_probe     5ee479420c26
+    9 ✓ op_feature_merge         f-0e94a6bf178a<-f-370f2e23be24
+   10 ✓ op_edit_save             v4_mod_6.py (rework)
+   11 ✓ op_revert                991926d57719
+   12 ✓ op_revert_undo_probe     0e94a6bf178a
+   13 ✓ op_revert_keep_dependents 2d609a0f1083
+   14 ✓ op_edit_save             app.py (rework)
+   15 ✓ op_revert                7308cdb05d95
+   16 · op_feature_merge         1 feature(s)
+   17 ✓ op_restore               7308cdb05d95
+   18 ✓ op_revert_undo_probe     7308cdb05d95
+   19 ✓ op_revert                301e32de9770
+   20 ✓ op_undo                  
+   21 ✓ op_revert_undo_probe     d068113acb07
+   22 · op_restore               nothing addressable excluded
+imports_and_main seed 1206: 23 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-imports_and_main-seed1206.json

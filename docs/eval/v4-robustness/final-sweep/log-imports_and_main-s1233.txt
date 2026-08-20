@@ -1,0 +1,47 @@
+    0 ✓ op_revert                2d609a0f1083
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_add_file              v4_mod_2.py
+    3 ✓ op_revert                71cef381c805
+    4 ✓ op_undo                  
+    5 ✓ op_revert_restore_probe  71cef381c805
+    6 ✓ op_edit_save             app.py (rework)
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_revert_restore_probe  868c1d84346d
+    9 ✓ op_revert                868c1d84346d
+   10 · op_restore               nothing addressable excluded
+   11 · op_feature_merge         1 feature(s)
+   12 · op_feature_merge         1 feature(s)
+   13 ✗ op_revert_restore_probe  1ff78887dc16
+        restore_resurrects_content: restoring what revert 1ff78887dc16 removed also pulled back 1 op(s) carrying user code that were already out: ['868c1d84346d']
+   14 ✓ op_revert_keep_dependents ebb6df067b36
+   15 ✓ op_edit_save             v4_mod_2.py (rework)
+   16 ✓ op_undo                  
+   17 ✓ op_revert                1ff78887dc16
+   18 ✓ op_undo                  
+   19 ✓ op_revert_undo_probe     3934033824cb
+   20 ✓ op_feature_split         f-1ff78887dc16
+   21 ✓ op_edit_save             app.py (rework)
+   22 ✓ op_feature_rename        f-m0a659d0c289
+   23 ✓ op_revert                ebb6df067b36
+   24 ✓ op_edit_save             v4_mod_7.py (rework)
+   25 ✓ op_restore               042c57504922
+   26 ✓ op_revert                5d3c6964b2f8
+   27 ✓ op_revert_keep_dependents 3934033824cb
+   28 ✓ op_edit_save             v4_mod_7.py (rework)
+   29 ✓ op_revert_undo_probe     6834ab7490e9
+   30 ✓ op_revert_undo_probe     ebb6df067b36
+   31 ✓ op_revert_keep_dependents ebb6df067b36
+   32 ✓ op_feature_merge         f-1ff78887dc16<-f-m0a659d0c289
+   33 ✓ op_revert_undo_probe     5f602bf0eebb
+   34 ✗ op_revert_restore_probe  1ff78887dc16
+        restore_resurrects_content: restoring what revert 1ff78887dc16 removed also pulled back 1 op(s) carrying user code that were already out: ['5d3c6964b2f8']
+   35 ✓ op_add_file              v4_mod_35.py
+   36 ✓ op_edit_save             v4_mod_35.py (rework)
+   37 ✗ op_revert_restore_probe  491a9acce1a8
+        restore_resurrects_layout: restoring what revert 491a9acce1a8 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['21ba1644e551']
+   38 ✓ op_edit_save             app.py (rework)
+   39 ✓ op_revert                ebb6df067b36
+   40 ✓ op_feature_merge         af-mc18be9938d<-f-1ff78887dc16
+   41 ✓ op_feature_rename        af-mc18be9938d
+   42 ✓ op_revert                05092eeb6e95
+imports_and_main seed 1233: 43 ops applied, 3 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-imports_and_main-seed1233.json

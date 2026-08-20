@@ -1,0 +1,40 @@
+    0 ✓ op_revert                ebfad9b63df6
+    1 ✓ op_revert                66521c9c8059
+    2 ✓ op_restore               ebfad9b63df6
+    3 ✓ op_edit_save             a.py (rework)
+    4 · op_restore               nothing addressable excluded
+    5 · op_restore               nothing addressable excluded
+    6 ✓ op_revert_restore_probe  a08a015717cf
+    7 ✓ op_feature_rename        f-320660079e31
+    8 ✓ op_edit_save             a.py (rework)
+    9 ✓ op_edit_save             a.py (rework)
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_undo                  
+   12 · op_feature_merge         1 feature(s)
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_edit_save             v4_mod_13.py (rework)
+   15 ✓ op_edit_save             a.py (rework)
+   16 ✓ op_revert_undo_probe     4c9aa5b4a944
+   17 ✓ op_undo                  
+   18 ✓ op_feature_rename        f-320660079e31
+   19 ✓ op_revert                cf71fb5af07a
+   20 ✓ op_revert_keep_dependents 1b40ce89c508
+   21 ✓ op_revert_restore_probe  d7b65ae970f5
+   22 ✓ op_feature_rename        f-320660079e31
+   23 ✓ op_edit_save             v4_mod_13.py (rework)
+   24 ✓ op_restore               beaf0263d606
+   25 ✓ op_revert_undo_probe     3dabf448058e
+   26 ✓ op_restore               1f6cd0daa07d
+   27 ✓ op_edit_save             v4_mod_13.py (rework)
+   28 ✓ op_restore               1f6cd0daa07d
+   29 ✓ op_revert                66ffd6d287ec
+   30 ✓ op_revert_keep_dependents 2c3618d9b732
+   31 ✓ op_revert_keep_dependents d7b65ae970f5
+   32 ✓ op_add_file              v4_mod_32.py
+   33 ✓ op_feature_merge         f-320660079e31<-af-m6e31d80f97
+   34 ✗ op_revert_restore_probe  2c3618d9b732
+        restore_resurrects_layout: restoring what revert 2c3618d9b732 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['cd99aa65c31c']
+   35 ✓ op_revert                f72b56d1855d
+   36 ✓ op_edit_save             v4_mod_32.py (rework)
+   37 ✓ op_feature_split         f-320660079e31
+crlf_endings seed 1195: 38 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-crlf_endings-seed1195.json

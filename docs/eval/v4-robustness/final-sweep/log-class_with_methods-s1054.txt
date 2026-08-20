@@ -1,0 +1,39 @@
+    0 ✓ op_edit_save             service.py (rework)
+    1 ✓ op_revert_undo_probe     308db8498c58
+    2 ✓ op_edit_save             service.py (rework)
+    3 · op_restore               nothing addressable excluded
+    4 ✓ op_undo                  
+    5 ✓ op_edit_save             service.py (rework)
+    6 ✓ op_revert_undo_probe     308db8498c58
+    7 ✓ op_revert_undo_probe     06cdcab78df4
+    8 ✓ op_restore               79914f10570a
+    9 ✓ op_revert                308db8498c58
+   10 ✓ op_restore               79914f10570a
+   11 ✓ op_feature_split         f-06cdcab78df4
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✗ op_revert_restore_probe  06cdcab78df4
+        restore_by_id_refused: revert 06cdcab78df4 removed 2 op(s); `restore <op-id>` refused for 1 of them and only `restore <file::symbol>` recovered the bytes. Refusals: ['06cdcab78df4 rc=1  — would leave two live versions of service.py::Service: 06cdcab7 and 79914f10 both claim the same next version, refused']
+   14 ✓ op_revert_restore_probe  308db8498c58
+   15 ✓ op_revert_keep_dependents 17459403971d
+   16 ✓ op_revert                6ce5787543f8
+   17 ✓ op_edit_save             v4_mod_12.py (rework)
+   18 ✓ op_restore               79914f10570a
+   19 ✓ op_feature_merge         af-mf380eccfa3<-af-mf703ed067f
+   20 ✓ op_restore               06cdcab78df4
+   21 ✓ op_undo                  
+   22 ✓ op_feature_split         af-mf380eccfa3
+   23 ✓ op_revert_undo_probe     39bc8466d27a
+   24 ✓ op_revert_keep_dependents 17459403971d
+   25 ✓ op_revert                308db8498c58
+   26 ✓ op_feature_merge         af-mf380eccfa3<-af-m0fbd1c282a
+   27 ✓ op_revert_keep_dependents 0fce861cfd5c
+   28 ✓ op_revert                79914f10570a
+   29 ✓ op_revert                bed61cf83ec1
+   30 ✓ op_revert_keep_dependents 0fce861cfd5c
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_revert_undo_probe     441275e32106
+   33 ✓ op_restore               bed61cf83ec1
+   34 ✓ op_revert_restore_probe  39bc8466d27a
+   35 ✓ op_edit_save             service.py (rework)
+   36 ✓ op_revert                0fce861cfd5c
+class_with_methods seed 1054: 37 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-class_with_methods-seed1054.json

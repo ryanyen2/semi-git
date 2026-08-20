@@ -1,0 +1,1872 @@
+{
+  "queries": [
+    "language:Python stars:100..200 pushed:>=2025-08-16 fork:false",
+    "language:Python stars:200..500 pushed:>=2025-08-16 fork:false",
+    "language:Python stars:500..1000 pushed:>=2025-08-16 fork:false",
+    "language:Python stars:1000..2500 pushed:>=2025-08-16 fork:false",
+    "language:Python stars:2500..5000 pushed:>=2025-08-16 fork:false"
+  ],
+  "sort": "stars desc within each band (pinned; see module docstring)",
+  "bands": [
+    "100..200",
+    "200..500",
+    "500..1000",
+    "1000..2500",
+    "2500..5000"
+  ],
+  "per_band": 40,
+  "seed": 20260814,
+  "hits_requested": 200,
+  "hits_returned": 200,
+  "dropped_no_license": [
+    {
+      "full_name": "TokenRollAI/minicc",
+      "clone_url": "https://github.com/TokenRollAI/minicc.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": null,
+      "pushed_at": "2025-12-18T06:41:42Z",
+      "size_kb": 576,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "casouri/tree-sitter-module",
+      "clone_url": "https://github.com/casouri/tree-sitter-module.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": null,
+      "pushed_at": "2026-04-16T16:08:46Z",
+      "size_kb": 154,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "elzobrito/ESAA-Security",
+      "clone_url": "https://github.com/elzobrito/ESAA-Security.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": null,
+      "pushed_at": "2026-06-26T18:14:40Z",
+      "size_kb": 956,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "disforw/goveelife",
+      "clone_url": "https://github.com/disforw/goveelife.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": null,
+      "pushed_at": "2026-08-10T01:03:39Z",
+      "size_kb": 339,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "notdls/known-breaches",
+      "clone_url": "https://github.com/notdls/known-breaches.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": null,
+      "pushed_at": "2026-08-16T00:02:19Z",
+      "size_kb": 131656,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "amirmushichge/tribeV2_ViralAnalyser",
+      "clone_url": "https://github.com/amirmushichge/tribeV2_ViralAnalyser.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": null,
+      "pushed_at": "2026-06-08T13:11:01Z",
+      "size_kb": 360,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "OpenBMB/CPM-Live",
+      "clone_url": "https://github.com/OpenBMB/CPM-Live.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": null,
+      "pushed_at": "2026-07-07T14:16:31Z",
+      "size_kb": 1174,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "MiniMax-AI/VTP",
+      "clone_url": "https://github.com/MiniMax-AI/VTP.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-04-15T07:09:46Z",
+      "size_kb": 4437,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "Anttwo/MILo",
+      "clone_url": "https://github.com/Anttwo/MILo.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-04-03T12:56:56Z",
+      "size_kb": 9419,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "Accenture/mcp-bench",
+      "clone_url": "https://github.com/Accenture/mcp-bench.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": null,
+      "pushed_at": "2025-10-07T17:22:43Z",
+      "size_kb": 23503,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "NiklasRosenstein/pydoc-markdown",
+      "clone_url": "https://github.com/NiklasRosenstein/pydoc-markdown.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-16T01:32:47Z",
+      "size_kb": 4273,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "hasherezade/ida_ifl",
+      "clone_url": "https://github.com/hasherezade/ida_ifl.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": null,
+      "pushed_at": "2026-06-25T18:54:46Z",
+      "size_kb": 349,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "MuLabPKU/TransArch",
+      "clone_url": "https://github.com/MuLabPKU/TransArch.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": null,
+      "pushed_at": "2026-07-14T06:40:30Z",
+      "size_kb": 450,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "caiyuanhao1998/Open-OmniVCus",
+      "clone_url": "https://github.com/caiyuanhao1998/Open-OmniVCus.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": null,
+      "pushed_at": "2026-01-03T17:31:13Z",
+      "size_kb": 309172,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "NVlabs/GENMO",
+      "clone_url": "https://github.com/NVlabs/GENMO.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-06-23T20:58:10Z",
+      "size_kb": 10853,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "VOLTTRON/volttron",
+      "clone_url": "https://github.com/VOLTTRON/volttron.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-07-10T22:52:36Z",
+      "size_kb": 154834,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "skelsec/msldap",
+      "clone_url": "https://github.com/skelsec/msldap.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-02-11T19:06:05Z",
+      "size_kb": 661,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "kyuz0/amd-strix-halo-vllm-toolboxes",
+      "clone_url": "https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": null,
+      "pushed_at": "2026-08-16T15:25:12Z",
+      "size_kb": 7458,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "WILLOSCAR/research-units-pipeline-skills",
+      "clone_url": "https://github.com/WILLOSCAR/research-units-pipeline-skills.git",
+      "stars": 497,
+      "band": "200..500",
+      "license": null,
+      "pushed_at": "2026-08-16T02:00:28Z",
+      "size_kb": 16342,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "microsoft/aurora",
+      "clone_url": "https://github.com/microsoft/aurora.git",
+      "stars": 999,
+      "band": "500..1000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-04T19:27:52Z",
+      "size_kb": 22495,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "AKCodez/hackingtool-plugin",
+      "clone_url": "https://github.com/AKCodez/hackingtool-plugin.git",
+      "stars": 999,
+      "band": "500..1000",
+      "license": null,
+      "pushed_at": "2026-04-25T16:32:05Z",
+      "size_kb": 1059,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "pydot/pydot",
+      "clone_url": "https://github.com/pydot/pydot.git",
+      "stars": 999,
+      "band": "500..1000",
+      "license": null,
+      "pushed_at": "2026-08-01T07:52:08Z",
+      "size_kb": 3369,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "RuoJi6/audit-skills",
+      "clone_url": "https://github.com/RuoJi6/audit-skills.git",
+      "stars": 999,
+      "band": "500..1000",
+      "license": null,
+      "pushed_at": "2026-06-16T03:50:50Z",
+      "size_kb": 3357,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "freekmurze/dotfiles",
+      "clone_url": "https://github.com/freekmurze/dotfiles.git",
+      "stars": 998,
+      "band": "500..1000",
+      "license": null,
+      "pushed_at": "2026-08-16T12:43:41Z",
+      "size_kb": 10117,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "target/strelka",
+      "clone_url": "https://github.com/target/strelka.git",
+      "stars": 997,
+      "band": "500..1000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-08T18:32:39Z",
+      "size_kb": 31097,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "sehmaschine/django-filebrowser",
+      "clone_url": "https://github.com/sehmaschine/django-filebrowser.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-10T08:14:31Z",
+      "size_kb": 5765,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "Fadi002/de4py",
+      "clone_url": "https://github.com/Fadi002/de4py.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-12T11:33:21Z",
+      "size_kb": 18190,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "mnh-jansson/m18-protocol",
+      "clone_url": "https://github.com/mnh-jansson/m18-protocol.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": null,
+      "pushed_at": "2025-10-13T01:06:21Z",
+      "size_kb": 919,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "jackwener/wechat-article-to-markdown",
+      "clone_url": "https://github.com/jackwener/wechat-article-to-markdown.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": null,
+      "pushed_at": "2026-03-22T04:09:05Z",
+      "size_kb": 293,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "henry123-boy/SpaTrackerV2",
+      "clone_url": "https://github.com/henry123-boy/SpaTrackerV2.git",
+      "stars": 993,
+      "band": "500..1000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-02-27T09:13:24Z",
+      "size_kb": 9595,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "SafeAILab/EAGLE",
+      "clone_url": "https://github.com/SafeAILab/EAGLE.git",
+      "stars": 2500,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-02-20T02:53:29Z",
+      "size_kb": 72176,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "Farama-Foundation/Minigrid",
+      "clone_url": "https://github.com/Farama-Foundation/Minigrid.git",
+      "stars": 2497,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-06T05:37:37Z",
+      "size_kb": 19201,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "jackwener/xiaohongshu-cli",
+      "clone_url": "https://github.com/jackwener/xiaohongshu-cli.git",
+      "stars": 2496,
+      "band": "1000..2500",
+      "license": null,
+      "pushed_at": "2026-03-21T05:50:37Z",
+      "size_kb": 172,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "boston-dynamics/spot-sdk",
+      "clone_url": "https://github.com/boston-dynamics/spot-sdk.git",
+      "stars": 2495,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-11T16:40:38Z",
+      "size_kb": 262694,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "ehmatthes/pcc_3e",
+      "clone_url": "https://github.com/ehmatthes/pcc_3e.git",
+      "stars": 2495,
+      "band": "1000..2500",
+      "license": null,
+      "pushed_at": "2026-03-24T15:31:24Z",
+      "size_kb": 31901,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "janhq/ichigo",
+      "clone_url": "https://github.com/janhq/ichigo.git",
+      "stars": 2491,
+      "band": "1000..2500",
+      "license": null,
+      "pushed_at": "2025-11-26T22:03:38Z",
+      "size_kb": 21895,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "swaroopch/byte-of-python",
+      "clone_url": "https://github.com/swaroopch/byte-of-python.git",
+      "stars": 2487,
+      "band": "1000..2500",
+      "license": null,
+      "pushed_at": "2026-08-04T04:23:06Z",
+      "size_kb": 6076,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "pretix/pretix",
+      "clone_url": "https://github.com/pretix/pretix.git",
+      "stars": 2486,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-14T18:15:40Z",
+      "size_kb": 905570,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "cisagov/Malcolm",
+      "clone_url": "https://github.com/cisagov/Malcolm.git",
+      "stars": 2485,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-09T17:00:14Z",
+      "size_kb": 265047,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "24mlight/A_Share_investment_Agent",
+      "clone_url": "https://github.com/24mlight/A_Share_investment_Agent.git",
+      "stars": 2476,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-05-26T14:40:51Z",
+      "size_kb": 2814,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "mckinsey/causalnex",
+      "clone_url": "https://github.com/mckinsey/causalnex.git",
+      "stars": 2473,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-10T14:48:10Z",
+      "size_kb": 23913,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "python-gitlab/python-gitlab",
+      "clone_url": "https://github.com/python-gitlab/python-gitlab.git",
+      "stars": 2471,
+      "band": "1000..2500",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-16T08:54:19Z",
+      "size_kb": 6468,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "Instagram/MonkeyType",
+      "clone_url": "https://github.com/Instagram/MonkeyType.git",
+      "stars": 5000,
+      "band": "2500..5000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-02-11T02:19:15Z",
+      "size_kb": 773,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "lincolnloop/python-qrcode",
+      "clone_url": "https://github.com/lincolnloop/python-qrcode.git",
+      "stars": 4929,
+      "band": "2500..5000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-03-25T03:05:38Z",
+      "size_kb": 992,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "pytorch/executorch",
+      "clone_url": "https://github.com/pytorch/executorch.git",
+      "stars": 4919,
+      "band": "2500..5000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-16T19:37:15Z",
+      "size_kb": 372044,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "hynek/structlog",
+      "clone_url": "https://github.com/hynek/structlog.git",
+      "stars": 4916,
+      "band": "2500..5000",
+      "license": "NOASSERTION",
+      "pushed_at": "2026-08-06T13:02:34Z",
+      "size_kb": 6608,
+      "why": "no license -- all rights reserved"
+    },
+    {
+      "full_name": "crimera/twitter-apk",
+      "clone_url": "https://github.com/crimera/twitter-apk.git",
+      "stars": 4914,
+      "band": "2500..5000",
+      "license": null,
+      "pushed_at": "2026-07-25T05:53:39Z",
+      "size_kb": 6528,
+      "why": "no license -- all rights reserved"
+    }
+  ],
+  "candidates": [
+    {
+      "full_name": "pudo/dataset",
+      "clone_url": "https://github.com/pudo/dataset.git",
+      "stars": 4871,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-07-22T12:53:43Z",
+      "size_kb": 812
+    },
+    {
+      "full_name": "SpecterOps/Nemesis",
+      "clone_url": "https://github.com/SpecterOps/Nemesis.git",
+      "stars": 994,
+      "band": "500..1000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-07-31T20:11:26Z",
+      "size_kb": 61779
+    },
+    {
+      "full_name": "nikmcfly/MiroFish-Offline",
+      "clone_url": "https://github.com/nikmcfly/MiroFish-Offline.git",
+      "stars": 2471,
+      "band": "1000..2500",
+      "license": "AGPL-3.0",
+      "pushed_at": "2026-03-24T18:52:43Z",
+      "size_kb": 7895
+    },
+    {
+      "full_name": "searxng/searx-instances",
+      "clone_url": "https://github.com/searxng/searx-instances.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "LGPL-3.0",
+      "pushed_at": "2026-08-15T12:23:27Z",
+      "size_kb": 772
+    },
+    {
+      "full_name": "ghimiredhikura/Complex-YOLOv3",
+      "clone_url": "https://github.com/ghimiredhikura/Complex-YOLOv3.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "GPL-3.0",
+      "pushed_at": "2025-09-17T04:22:17Z",
+      "size_kb": 29163
+    },
+    {
+      "full_name": "FullControlXYZ/fullcontrol",
+      "clone_url": "https://github.com/FullControlXYZ/fullcontrol.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "GPL-3.0",
+      "pushed_at": "2025-11-19T09:53:40Z",
+      "size_kb": 10747
+    },
+    {
+      "full_name": "bentoml/llm-optimizer",
+      "clone_url": "https://github.com/bentoml/llm-optimizer.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-14T17:51:54Z",
+      "size_kb": 186
+    },
+    {
+      "full_name": "shibing624/text2vec",
+      "clone_url": "https://github.com/shibing624/text2vec.git",
+      "stars": 4976,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-02-14T14:59:10Z",
+      "size_kb": 16109
+    },
+    {
+      "full_name": "gusmanb/logicanalyzer",
+      "clone_url": "https://github.com/gusmanb/logicanalyzer.git",
+      "stars": 4913,
+      "band": "2500..5000",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-02-11T18:23:40Z",
+      "size_kb": 208035
+    },
+    {
+      "full_name": "piglei/ai-vocabulary-builder",
+      "clone_url": "https://github.com/piglei/ai-vocabulary-builder.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-05-27T00:40:17Z",
+      "size_kb": 979
+    },
+    {
+      "full_name": "otto-torino/django-baton",
+      "clone_url": "https://github.com/otto-torino/django-baton.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-08-09T13:52:27Z",
+      "size_kb": 75586
+    },
+    {
+      "full_name": "pyparsing/pyparsing",
+      "clone_url": "https://github.com/pyparsing/pyparsing.git",
+      "stars": 2483,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-08-12T05:47:19Z",
+      "size_kb": 17151
+    },
+    {
+      "full_name": "Trampoline-AI/fractal",
+      "clone_url": "https://github.com/Trampoline-AI/fractal.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-07-16T18:53:32Z",
+      "size_kb": 3145
+    },
+    {
+      "full_name": "yanshengjia/ml-road",
+      "clone_url": "https://github.com/yanshengjia/ml-road.git",
+      "stars": 4910,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-01T12:36:17Z",
+      "size_kb": 312112
+    },
+    {
+      "full_name": "Kosinkadink/ComfyUI-Advanced-ControlNet",
+      "clone_url": "https://github.com/Kosinkadink/ComfyUI-Advanced-ControlNet.git",
+      "stars": 999,
+      "band": "500..1000",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-07-28T11:39:29Z",
+      "size_kb": 463
+    },
+    {
+      "full_name": "fastapi/asyncer",
+      "clone_url": "https://github.com/fastapi/asyncer.git",
+      "stars": 2482,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-08-12T07:19:23Z",
+      "size_kb": 1975
+    },
+    {
+      "full_name": "youweiliang/evit",
+      "clone_url": "https://github.com/youweiliang/evit.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-06-30T04:59:08Z",
+      "size_kb": 2804
+    },
+    {
+      "full_name": "OML-Team/open-metric-learning",
+      "clone_url": "https://github.com/OML-Team/open-metric-learning.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "Apache-2.0",
+      "pushed_at": "2025-11-26T19:20:52Z",
+      "size_kb": 2641
+    },
+    {
+      "full_name": "martin-rizzo/AmazingZImageWorkflow",
+      "clone_url": "https://github.com/martin-rizzo/AmazingZImageWorkflow.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "Unlicense",
+      "pushed_at": "2026-01-15T12:38:18Z",
+      "size_kb": 55892
+    },
+    {
+      "full_name": "google/praxis",
+      "clone_url": "https://github.com/google/praxis.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-10T07:21:12Z",
+      "size_kb": 4543
+    },
+    {
+      "full_name": "hbldh/bleak",
+      "clone_url": "https://github.com/hbldh/bleak.git",
+      "stars": 2493,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-08-05T05:56:38Z",
+      "size_kb": 3652
+    },
+    {
+      "full_name": "greatscottgadgets/facedancer",
+      "clone_url": "https://github.com/greatscottgadgets/facedancer.git",
+      "stars": 1000,
+      "band": "500..1000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-05-22T08:51:50Z",
+      "size_kb": 756
+    },
+    {
+      "full_name": "psycopg/psycopg",
+      "clone_url": "https://github.com/psycopg/psycopg.git",
+      "stars": 2472,
+      "band": "1000..2500",
+      "license": "LGPL-3.0",
+      "pushed_at": "2026-08-01T07:53:25Z",
+      "size_kb": 7711
+    },
+    {
+      "full_name": "Firepal/stammer",
+      "clone_url": "https://github.com/Firepal/stammer.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2025-10-19T20:35:44Z",
+      "size_kb": 26881
+    },
+    {
+      "full_name": "KaiyangZhou/deep-person-reid",
+      "clone_url": "https://github.com/KaiyangZhou/deep-person-reid.git",
+      "stars": 4896,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-01-09T05:23:24Z",
+      "size_kb": 9720
+    },
+    {
+      "full_name": "johnhuang316/code-index-mcp",
+      "clone_url": "https://github.com/johnhuang316/code-index-mcp.git",
+      "stars": 1000,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-07-27T08:14:15Z",
+      "size_kb": 1381
+    },
+    {
+      "full_name": "Den4ikAI/ruaccent",
+      "clone_url": "https://github.com/Den4ikAI/ruaccent.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-07-17T18:53:48Z",
+      "size_kb": 98
+    },
+    {
+      "full_name": "unode/firefox_decrypt",
+      "clone_url": "https://github.com/unode/firefox_decrypt.git",
+      "stars": 2471,
+      "band": "1000..2500",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-02-23T11:27:05Z",
+      "size_kb": 536
+    },
+    {
+      "full_name": "bilibili/Index-anisora",
+      "clone_url": "https://github.com/bilibili/Index-anisora.git",
+      "stars": 2500,
+      "band": "1000..2500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-16T08:14:26Z",
+      "size_kb": 663670
+    },
+    {
+      "full_name": "Taxuspt/garmin_mcp",
+      "clone_url": "https://github.com/Taxuspt/garmin_mcp.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-08-04T18:29:56Z",
+      "size_kb": 798
+    },
+    {
+      "full_name": "Picovoice/porcupine",
+      "clone_url": "https://github.com/Picovoice/porcupine.git",
+      "stars": 4913,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-12T19:22:06Z",
+      "size_kb": 379936
+    },
+    {
+      "full_name": "going-doer/Paper2Code",
+      "clone_url": "https://github.com/going-doer/Paper2Code.git",
+      "stars": 4878,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-03-25T01:00:05Z",
+      "size_kb": 6809
+    },
+    {
+      "full_name": "uralbash/sqlalchemy_mptt",
+      "clone_url": "https://github.com/uralbash/sqlalchemy_mptt.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-06-22T15:24:11Z",
+      "size_kb": 473
+    },
+    {
+      "full_name": "graphite-project/docker-graphite-statsd",
+      "clone_url": "https://github.com/graphite-project/docker-graphite-statsd.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-03-05T21:54:58Z",
+      "size_kb": 400
+    },
+    {
+      "full_name": "JetAstra/SDAR",
+      "clone_url": "https://github.com/JetAstra/SDAR.git",
+      "stars": 497,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-07-29T06:58:02Z",
+      "size_kb": 22669
+    },
+    {
+      "full_name": "pytest-dev/pytest-flask",
+      "clone_url": "https://github.com/pytest-dev/pytest-flask.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-08-14T01:29:33Z",
+      "size_kb": 275
+    },
+    {
+      "full_name": "bnahill/PyCortexMDebug",
+      "clone_url": "https://github.com/bnahill/PyCortexMDebug.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "GPL-3.0",
+      "pushed_at": "2025-12-05T02:08:58Z",
+      "size_kb": 142
+    },
+    {
+      "full_name": "Floxu1/UAC-SNI-Spoofer-Windows",
+      "clone_url": "https://github.com/Floxu1/UAC-SNI-Spoofer-Windows.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-08-16T15:19:26Z",
+      "size_kb": 23182
+    },
+    {
+      "full_name": "dschep/ntfy",
+      "clone_url": "https://github.com/dschep/ntfy.git",
+      "stars": 4976,
+      "band": "2500..5000",
+      "license": "GPL-3.0",
+      "pushed_at": "2025-10-27T21:46:13Z",
+      "size_kb": 9225
+    },
+    {
+      "full_name": "MoonshotAI/checkpoint-engine",
+      "clone_url": "https://github.com/MoonshotAI/checkpoint-engine.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-08-12T05:59:00Z",
+      "size_kb": 416
+    },
+    {
+      "full_name": "alibaba/unified-audio",
+      "clone_url": "https://github.com/alibaba/unified-audio.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-07T05:43:04Z",
+      "size_kb": 21628
+    },
+    {
+      "full_name": "shinnytech/tqsdk-python",
+      "clone_url": "https://github.com/shinnytech/tqsdk-python.git",
+      "stars": 4954,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-06-11T07:38:08Z",
+      "size_kb": 57000
+    },
+    {
+      "full_name": "althack/vscode_ros2_workspace",
+      "clone_url": "https://github.com/althack/vscode_ros2_workspace.git",
+      "stars": 993,
+      "band": "500..1000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-08T07:22:43Z",
+      "size_kb": 1669
+    },
+    {
+      "full_name": "SolaWing/xcode-build-server",
+      "clone_url": "https://github.com/SolaWing/xcode-build-server.git",
+      "stars": 998,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-01-31T05:54:29Z",
+      "size_kb": 92
+    },
+    {
+      "full_name": "vinci1it2000/formulas",
+      "clone_url": "https://github.com/vinci1it2000/formulas.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "EUPL-1.1",
+      "pushed_at": "2026-08-07T20:43:57Z",
+      "size_kb": 6335
+    },
+    {
+      "full_name": "dedsec1121fk/DedSec",
+      "clone_url": "https://github.com/dedsec1121fk/DedSec.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-08-16T19:58:09Z",
+      "size_kb": 907934
+    },
+    {
+      "full_name": "CJackHwang/AIstudioProxyAPI",
+      "clone_url": "https://github.com/CJackHwang/AIstudioProxyAPI.git",
+      "stars": 2485,
+      "band": "1000..2500",
+      "license": "AGPL-3.0",
+      "pushed_at": "2026-04-22T12:20:26Z",
+      "size_kb": 9299
+    },
+    {
+      "full_name": "sktime/pytorch-forecasting",
+      "clone_url": "https://github.com/sktime/pytorch-forecasting.git",
+      "stars": 4971,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-13T07:53:59Z",
+      "size_kb": 44855
+    },
+    {
+      "full_name": "s3tools/s3cmd",
+      "clone_url": "https://github.com/s3tools/s3cmd.git",
+      "stars": 4901,
+      "band": "2500..5000",
+      "license": "GPL-2.0",
+      "pushed_at": "2025-10-22T23:26:17Z",
+      "size_kb": 5358
+    },
+    {
+      "full_name": "jazzband/django-silk",
+      "clone_url": "https://github.com/jazzband/django-silk.git",
+      "stars": 4990,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-13T04:03:46Z",
+      "size_kb": 7471
+    },
+    {
+      "full_name": "sepandhaghighi/art",
+      "clone_url": "https://github.com/sepandhaghighi/art.git",
+      "stars": 2496,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-08-10T01:33:08Z",
+      "size_kb": 8029
+    },
+    {
+      "full_name": "xnuinside/codegraph",
+      "clone_url": "https://github.com/xnuinside/codegraph.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-05-19T21:32:31Z",
+      "size_kb": 5803
+    },
+    {
+      "full_name": "tsukumijima/tweepy-authlib",
+      "clone_url": "https://github.com/tsukumijima/tweepy-authlib.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2025-11-11T19:06:03Z",
+      "size_kb": 191
+    },
+    {
+      "full_name": "stravalib/stravalib",
+      "clone_url": "https://github.com/stravalib/stravalib.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-01T04:54:11Z",
+      "size_kb": 5667
+    },
+    {
+      "full_name": "microsoft/PIKE-RAG",
+      "clone_url": "https://github.com/microsoft/PIKE-RAG.git",
+      "stars": 2480,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2025-09-10T09:10:28Z",
+      "size_kb": 6851
+    },
+    {
+      "full_name": "awslabs/aws-cfn-template-flip",
+      "clone_url": "https://github.com/awslabs/aws-cfn-template-flip.git",
+      "stars": 999,
+      "band": "500..1000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-12T10:42:45Z",
+      "size_kb": 326
+    },
+    {
+      "full_name": "google-research/arco-era5",
+      "clone_url": "https://github.com/google-research/arco-era5.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-06T10:20:36Z",
+      "size_kb": 8189
+    },
+    {
+      "full_name": "MGdaasLab/WHartTest",
+      "clone_url": "https://github.com/MGdaasLab/WHartTest.git",
+      "stars": 994,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-07-17T03:47:36Z",
+      "size_kb": 152047
+    },
+    {
+      "full_name": "benedekrozemberczki/awesome-decision-tree-papers",
+      "clone_url": "https://github.com/benedekrozemberczki/awesome-decision-tree-papers.git",
+      "stars": 2473,
+      "band": "1000..2500",
+      "license": "CC0-1.0",
+      "pushed_at": "2025-12-28T23:17:27Z",
+      "size_kb": 925
+    },
+    {
+      "full_name": "awesome-dsh-plugin/awesome-dsh-plugin",
+      "clone_url": "https://github.com/awesome-dsh-plugin/awesome-dsh-plugin.git",
+      "stars": 4968,
+      "band": "2500..5000",
+      "license": "CC0-1.0",
+      "pushed_at": "2026-08-16T17:20:02Z",
+      "size_kb": 54401
+    },
+    {
+      "full_name": "ets-labs/python-dependency-injector",
+      "clone_url": "https://github.com/ets-labs/python-dependency-injector.git",
+      "stars": 4907,
+      "band": "2500..5000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-08-11T12:25:27Z",
+      "size_kb": 40995
+    },
+    {
+      "full_name": "cocotb/cocotb",
+      "clone_url": "https://github.com/cocotb/cocotb.git",
+      "stars": 2472,
+      "band": "1000..2500",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-08-14T12:49:25Z",
+      "size_kb": 12690
+    },
+    {
+      "full_name": "mateogon/pdf-narrator",
+      "clone_url": "https://github.com/mateogon/pdf-narrator.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-02-26T04:01:45Z",
+      "size_kb": 4564
+    },
+    {
+      "full_name": "RookieEnough/Morphe-AutoBuilds",
+      "clone_url": "https://github.com/RookieEnough/Morphe-AutoBuilds.git",
+      "stars": 997,
+      "band": "500..1000",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-08-11T16:23:20Z",
+      "size_kb": 873
+    },
+    {
+      "full_name": "wgsxm/PartCrafter",
+      "clone_url": "https://github.com/wgsxm/PartCrafter.git",
+      "stars": 2470,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-04-16T18:41:43Z",
+      "size_kb": 43852
+    },
+    {
+      "full_name": "nschaetti/EchoTorch",
+      "clone_url": "https://github.com/nschaetti/EchoTorch.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-07-17T23:03:46Z",
+      "size_kb": 54983
+    },
+    {
+      "full_name": "ningzimu/codex-ppt-skill",
+      "clone_url": "https://github.com/ningzimu/codex-ppt-skill.git",
+      "stars": 4897,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-07-30T15:13:45Z",
+      "size_kb": 45457
+    },
+    {
+      "full_name": "togethercomputer/RedPajama-Data",
+      "clone_url": "https://github.com/togethercomputer/RedPajama-Data.git",
+      "stars": 4976,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-06-03T16:00:12Z",
+      "size_kb": 2097
+    },
+    {
+      "full_name": "MasoniteFramework/orm",
+      "clone_url": "https://github.com/MasoniteFramework/orm.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-06-07T17:52:15Z",
+      "size_kb": 3368
+    },
+    {
+      "full_name": "bitsadmin/wesng",
+      "clone_url": "https://github.com/bitsadmin/wesng.git",
+      "stars": 4919,
+      "band": "2500..5000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-08-14T18:25:09Z",
+      "size_kb": 332081
+    },
+    {
+      "full_name": "Fokkyp/SoftwareCopyright-Skill",
+      "clone_url": "https://github.com/Fokkyp/SoftwareCopyright-Skill.git",
+      "stars": 4873,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-07-18T14:26:36Z",
+      "size_kb": 1738
+    },
+    {
+      "full_name": "probml/dynamax",
+      "clone_url": "https://github.com/probml/dynamax.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-08-01T14:37:40Z",
+      "size_kb": 279668
+    },
+    {
+      "full_name": "metabrainz/listenbrainz-server",
+      "clone_url": "https://github.com/metabrainz/listenbrainz-server.git",
+      "stars": 993,
+      "band": "500..1000",
+      "license": "GPL-2.0",
+      "pushed_at": "2026-08-14T06:53:49Z",
+      "size_kb": 61006
+    },
+    {
+      "full_name": "rudybear/renderdoc-skill",
+      "clone_url": "https://github.com/rudybear/renderdoc-skill.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-02-28T00:00:31Z",
+      "size_kb": 33
+    },
+    {
+      "full_name": "zilliztech/memsearch",
+      "clone_url": "https://github.com/zilliztech/memsearch.git",
+      "stars": 2479,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-08-15T09:18:08Z",
+      "size_kb": 26520
+    },
+    {
+      "full_name": "pe-st/garmin-connect-export",
+      "clone_url": "https://github.com/pe-st/garmin-connect-export.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-04-06T12:09:07Z",
+      "size_kb": 597
+    },
+    {
+      "full_name": "icip-cas/PPTAgent",
+      "clone_url": "https://github.com/icip-cas/PPTAgent.git",
+      "stars": 4922,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-10T20:52:31Z",
+      "size_kb": 198999
+    },
+    {
+      "full_name": "borgbase/vorta",
+      "clone_url": "https://github.com/borgbase/vorta.git",
+      "stars": 2495,
+      "band": "1000..2500",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-08-16T09:04:26Z",
+      "size_kb": 11036
+    },
+    {
+      "full_name": "Teichlab/celltypist",
+      "clone_url": "https://github.com/Teichlab/celltypist.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-05-22T21:50:29Z",
+      "size_kb": 23306
+    },
+    {
+      "full_name": "trailofbits/graphtage",
+      "clone_url": "https://github.com/trailofbits/graphtage.git",
+      "stars": 2478,
+      "band": "1000..2500",
+      "license": "LGPL-3.0",
+      "pushed_at": "2026-08-04T18:42:40Z",
+      "size_kb": 9536
+    },
+    {
+      "full_name": "fhamborg/news-please",
+      "clone_url": "https://github.com/fhamborg/news-please.git",
+      "stars": 2479,
+      "band": "1000..2500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-04-14T21:17:42Z",
+      "size_kb": 3140
+    },
+    {
+      "full_name": "rlaope/oh-my-hermes",
+      "clone_url": "https://github.com/rlaope/oh-my-hermes.git",
+      "stars": 993,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-08-16T16:47:07Z",
+      "size_kb": 97536
+    },
+    {
+      "full_name": "wagtail/wagtail-ai",
+      "clone_url": "https://github.com/wagtail/wagtail-ai.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-08-12T08:04:56Z",
+      "size_kb": 814
+    },
+    {
+      "full_name": "cogu/autosar",
+      "clone_url": "https://github.com/cogu/autosar.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-08-10T14:43:44Z",
+      "size_kb": 2197
+    },
+    {
+      "full_name": "InternLM/HuixiangDou",
+      "clone_url": "https://github.com/InternLM/HuixiangDou.git",
+      "stars": 2499,
+      "band": "1000..2500",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2025-11-24T11:17:29Z",
+      "size_kb": 12253
+    },
+    {
+      "full_name": "Misaka-blog/chromego_merge",
+      "clone_url": "https://github.com/Misaka-blog/chromego_merge.git",
+      "stars": 999,
+      "band": "500..1000",
+      "license": "WTFPL",
+      "pushed_at": "2026-08-16T18:13:57Z",
+      "size_kb": 121121
+    },
+    {
+      "full_name": "QwenLM/Qwen3-ASR-Toolkit",
+      "clone_url": "https://github.com/QwenLM/Qwen3-ASR-Toolkit.git",
+      "stars": 998,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-02-05T05:35:03Z",
+      "size_kb": 1952
+    },
+    {
+      "full_name": "Pwnsat/FlatSat",
+      "clone_url": "https://github.com/Pwnsat/FlatSat.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "GPL-2.0",
+      "pushed_at": "2026-08-09T05:12:32Z",
+      "size_kb": 32969
+    },
+    {
+      "full_name": "LTH14/JiT",
+      "clone_url": "https://github.com/LTH14/JiT.git",
+      "stars": 2495,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2025-12-08T07:11:31Z",
+      "size_kb": 67568
+    },
+    {
+      "full_name": "pytest-dev/pytest-testinfra",
+      "clone_url": "https://github.com/pytest-dev/pytest-testinfra.git",
+      "stars": 2478,
+      "band": "1000..2500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-20T20:32:30Z",
+      "size_kb": 1206
+    },
+    {
+      "full_name": "PytorchConnectomics/pytorch_connectomics",
+      "clone_url": "https://github.com/PytorchConnectomics/pytorch_connectomics.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-08-15T04:39:26Z",
+      "size_kb": 101207
+    },
+    {
+      "full_name": "huggingface/nanoVLM",
+      "clone_url": "https://github.com/huggingface/nanoVLM.git",
+      "stars": 4987,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2025-10-27T13:16:05Z",
+      "size_kb": 13694
+    },
+    {
+      "full_name": "jazzband/geojson",
+      "clone_url": "https://github.com/jazzband/geojson.git",
+      "stars": 993,
+      "band": "500..1000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-06-06T03:39:01Z",
+      "size_kb": 414
+    },
+    {
+      "full_name": "python-jsonschema/jsonschema",
+      "clone_url": "https://github.com/python-jsonschema/jsonschema.git",
+      "stars": 4972,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-15T15:11:52Z",
+      "size_kb": 3843
+    },
+    {
+      "full_name": "napalm-automation/napalm",
+      "clone_url": "https://github.com/napalm-automation/napalm.git",
+      "stars": 2486,
+      "band": "1000..2500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-12T20:44:53Z",
+      "size_kb": 8265
+    },
+    {
+      "full_name": "SamMorrowDrums/remarkable-mcp",
+      "clone_url": "https://github.com/SamMorrowDrums/remarkable-mcp.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-08-14T23:50:31Z",
+      "size_kb": 5005
+    },
+    {
+      "full_name": "hplt-project/sacremoses",
+      "clone_url": "https://github.com/hplt-project/sacremoses.git",
+      "stars": 497,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-02-06T10:10:50Z",
+      "size_kb": 750
+    },
+    {
+      "full_name": "SolaceLabs/solace-agent-mesh",
+      "clone_url": "https://github.com/SolaceLabs/solace-agent-mesh.git",
+      "stars": 4955,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-12T12:52:20Z",
+      "size_kb": 34714
+    },
+    {
+      "full_name": "ail-project/ail-framework",
+      "clone_url": "https://github.com/ail-project/ail-framework.git",
+      "stars": 995,
+      "band": "500..1000",
+      "license": "AGPL-3.0",
+      "pushed_at": "2026-08-14T14:39:09Z",
+      "size_kb": 103753
+    },
+    {
+      "full_name": "googlemaps/google-maps-services-python",
+      "clone_url": "https://github.com/googlemaps/google-maps-services-python.git",
+      "stars": 4970,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-14T20:59:18Z",
+      "size_kb": 1055
+    },
+    {
+      "full_name": "dave-code-ruiz/elkbledom",
+      "clone_url": "https://github.com/dave-code-ruiz/elkbledom.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-08-07T09:12:39Z",
+      "size_kb": 310
+    },
+    {
+      "full_name": "jimmc414/cctrace",
+      "clone_url": "https://github.com/jimmc414/cctrace.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-01-06T16:33:25Z",
+      "size_kb": 699
+    },
+    {
+      "full_name": "kdeldycke/mail-deduplicate",
+      "clone_url": "https://github.com/kdeldycke/mail-deduplicate.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "GPL-2.0",
+      "pushed_at": "2026-08-16T07:22:44Z",
+      "size_kb": 10086
+    },
+    {
+      "full_name": "no5ix/realtime-server",
+      "clone_url": "https://github.com/no5ix/realtime-server.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-06-23T16:20:54Z",
+      "size_kb": 134323
+    },
+    {
+      "full_name": "IINemo/lm-polygraph",
+      "clone_url": "https://github.com/IINemo/lm-polygraph.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-08-04T13:24:06Z",
+      "size_kb": 19881
+    },
+    {
+      "full_name": "syssi/xiaomi_airpurifier",
+      "clone_url": "https://github.com/syssi/xiaomi_airpurifier.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-09T06:57:32Z",
+      "size_kb": 542
+    },
+    {
+      "full_name": "preset-io/promptimize",
+      "clone_url": "https://github.com/preset-io/promptimize.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-05-25T21:07:55Z",
+      "size_kb": 128
+    },
+    {
+      "full_name": "Kozea/Radicale",
+      "clone_url": "https://github.com/Kozea/Radicale.git",
+      "stars": 4911,
+      "band": "2500..5000",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-08-16T10:51:23Z",
+      "size_kb": 7627
+    },
+    {
+      "full_name": "huggingface/evaluate",
+      "clone_url": "https://github.com/huggingface/evaluate.git",
+      "stars": 2476,
+      "band": "1000..2500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-06T13:22:00Z",
+      "size_kb": 2182
+    },
+    {
+      "full_name": "Azumi67/Wireguard-panel",
+      "clone_url": "https://github.com/Azumi67/Wireguard-panel.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "Apache-2.0",
+      "pushed_at": "2025-12-31T07:06:26Z",
+      "size_kb": 3850
+    },
+    {
+      "full_name": "ericwtodd/function_vectors",
+      "clone_url": "https://github.com/ericwtodd/function_vectors.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-04-30T15:21:22Z",
+      "size_kb": 3278
+    },
+    {
+      "full_name": "googlefonts/noto-emoji",
+      "clone_url": "https://github.com/googlefonts/noto-emoji.git",
+      "stars": 4878,
+      "band": "2500..5000",
+      "license": "OFL-1.1",
+      "pushed_at": "2025-09-15T22:36:48Z",
+      "size_kb": 489250
+    },
+    {
+      "full_name": "SCIR-HI/Huatuo-Llama-Med-Chinese",
+      "clone_url": "https://github.com/SCIR-HI/Huatuo-Llama-Med-Chinese.git",
+      "stars": 4985,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-07-04T05:56:23Z",
+      "size_kb": 11208
+    },
+    {
+      "full_name": "arabcoders/ytptube",
+      "clone_url": "https://github.com/arabcoders/ytptube.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2026-08-16T18:51:51Z",
+      "size_kb": 23987
+    },
+    {
+      "full_name": "tiangolo/uvicorn-gunicorn-starlette-docker",
+      "clone_url": "https://github.com/tiangolo/uvicorn-gunicorn-starlette-docker.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-08-14T07:13:03Z",
+      "size_kb": 266
+    },
+    {
+      "full_name": "google-deepmind/alphageometry",
+      "clone_url": "https://github.com/google-deepmind/alphageometry.git",
+      "stars": 4880,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-01-13T19:18:14Z",
+      "size_kb": 203
+    },
+    {
+      "full_name": "CodeClash-ai/CodeClash",
+      "clone_url": "https://github.com/CodeClash-ai/CodeClash.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-07-16T21:14:35Z",
+      "size_kb": 5216
+    },
+    {
+      "full_name": "bigai-nlco/LooGLE",
+      "clone_url": "https://github.com/bigai-nlco/LooGLE.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-08-06T01:57:04Z",
+      "size_kb": 7508
+    },
+    {
+      "full_name": "NVlabs/GDPO",
+      "clone_url": "https://github.com/NVlabs/GDPO.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-05-20T08:59:00Z",
+      "size_kb": 6768
+    },
+    {
+      "full_name": "sumingyd/IPTV-Scanner-Editor-Pro",
+      "clone_url": "https://github.com/sumingyd/IPTV-Scanner-Editor-Pro.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-08-09T08:16:53Z",
+      "size_kb": 357489
+    },
+    {
+      "full_name": "MechanicalSoup/MechanicalSoup",
+      "clone_url": "https://github.com/MechanicalSoup/MechanicalSoup.git",
+      "stars": 4890,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-04T02:43:34Z",
+      "size_kb": 721
+    },
+    {
+      "full_name": "BedirT/ACM-ICPC-Preparation",
+      "clone_url": "https://github.com/BedirT/ACM-ICPC-Preparation.git",
+      "stars": 2491,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-07-31T20:30:36Z",
+      "size_kb": 2276
+    },
+    {
+      "full_name": "RomelTorres/alpha_vantage",
+      "clone_url": "https://github.com/RomelTorres/alpha_vantage.git",
+      "stars": 4895,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-07-26T20:31:57Z",
+      "size_kb": 1227
+    },
+    {
+      "full_name": "phenom-films/dayu_widgets",
+      "clone_url": "https://github.com/phenom-films/dayu_widgets.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-08-03T20:39:00Z",
+      "size_kb": 88063
+    },
+    {
+      "full_name": "aipotheosis-labs/aci",
+      "clone_url": "https://github.com/aipotheosis-labs/aci.git",
+      "stars": 4877,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-05-28T11:32:35Z",
+      "size_kb": 20937
+    },
+    {
+      "full_name": "pypeit/PypeIt",
+      "clone_url": "https://github.com/pypeit/PypeIt.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-08-13T20:34:23Z",
+      "size_kb": 1515878
+    },
+    {
+      "full_name": "stanislav-web/OpenDoor",
+      "clone_url": "https://github.com/stanislav-web/OpenDoor.git",
+      "stars": 996,
+      "band": "500..1000",
+      "license": "GPL-3.0",
+      "pushed_at": "2026-08-10T09:05:32Z",
+      "size_kb": 56387
+    },
+    {
+      "full_name": "vivisect/vivisect",
+      "clone_url": "https://github.com/vivisect/vivisect.git",
+      "stars": 997,
+      "band": "500..1000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-15T06:34:02Z",
+      "size_kb": 15587
+    },
+    {
+      "full_name": "RDFLib/rdflib",
+      "clone_url": "https://github.com/RDFLib/rdflib.git",
+      "stars": 2495,
+      "band": "1000..2500",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-08-14T09:50:05Z",
+      "size_kb": 24685
+    },
+    {
+      "full_name": "RhinoSecurityLabs/IAMActionHunter",
+      "clone_url": "https://github.com/RhinoSecurityLabs/IAMActionHunter.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-02-10T19:13:02Z",
+      "size_kb": 132
+    },
+    {
+      "full_name": "KimiNewt/pyshark",
+      "clone_url": "https://github.com/KimiNewt/pyshark.git",
+      "stars": 2493,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-03-22T14:39:09Z",
+      "size_kb": 572
+    },
+    {
+      "full_name": "ungoogled-software/ungoogled-chromium-windows",
+      "clone_url": "https://github.com/ungoogled-software/ungoogled-chromium-windows.git",
+      "stars": 2469,
+      "band": "1000..2500",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-08-12T17:39:25Z",
+      "size_kb": 4483
+    },
+    {
+      "full_name": "TheMistoAI/ComfyUI-Anyline",
+      "clone_url": "https://github.com/TheMistoAI/ComfyUI-Anyline.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2025-09-05T11:18:56Z",
+      "size_kb": 25565
+    },
+    {
+      "full_name": "SuanmoSuanyangTechnology/MemoryBear",
+      "clone_url": "https://github.com/SuanmoSuanyangTechnology/MemoryBear.git",
+      "stars": 4962,
+      "band": "2500..5000",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-14T10:31:41Z",
+      "size_kb": 105952
+    },
+    {
+      "full_name": "rodmarkun/SmolML",
+      "clone_url": "https://github.com/rodmarkun/SmolML.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-07-22T20:41:26Z",
+      "size_kb": 9565
+    },
+    {
+      "full_name": "yuxiaopeng/Github-Ranking-AI",
+      "clone_url": "https://github.com/yuxiaopeng/Github-Ranking-AI.git",
+      "stars": 498,
+      "band": "200..500",
+      "license": "MIT",
+      "pushed_at": "2026-08-16T03:57:23Z",
+      "size_kb": 36745
+    },
+    {
+      "full_name": "YuzheZhang-1999/DiffTSR",
+      "clone_url": "https://github.com/YuzheZhang-1999/DiffTSR.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "Apache-2.0",
+      "pushed_at": "2025-11-15T14:48:32Z",
+      "size_kb": 112387
+    },
+    {
+      "full_name": "franckferman/MetaDetective",
+      "clone_url": "https://github.com/franckferman/MetaDetective.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "AGPL-3.0",
+      "pushed_at": "2026-07-15T17:38:43Z",
+      "size_kb": 19814
+    },
+    {
+      "full_name": "harbor-framework/terminal-bench",
+      "clone_url": "https://github.com/harbor-framework/terminal-bench.git",
+      "stars": 499,
+      "band": "200..500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-08-13T19:06:27Z",
+      "size_kb": 406475
+    },
+    {
+      "full_name": "pinterest/api-quickstart",
+      "clone_url": "https://github.com/pinterest/api-quickstart.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-04-13T23:36:53Z",
+      "size_kb": 595
+    },
+    {
+      "full_name": "amchii/tg-signer",
+      "clone_url": "https://github.com/amchii/tg-signer.git",
+      "stars": 998,
+      "band": "500..1000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-05-18T08:03:33Z",
+      "size_kb": 298
+    },
+    {
+      "full_name": "baidu/ERNIE-Image",
+      "clone_url": "https://github.com/baidu/ERNIE-Image.git",
+      "stars": 500,
+      "band": "200..500",
+      "license": "Apache-2.0",
+      "pushed_at": "2026-04-17T02:32:44Z",
+      "size_kb": 13437
+    },
+    {
+      "full_name": "openmm/spice-dataset",
+      "clone_url": "https://github.com/openmm/spice-dataset.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-02-25T15:54:25Z",
+      "size_kb": 779065
+    },
+    {
+      "full_name": "RealOrangeOne/docker-db-auto-backup",
+      "clone_url": "https://github.com/RealOrangeOne/docker-db-auto-backup.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-08-16T17:30:02Z",
+      "size_kb": 141
+    },
+    {
+      "full_name": "microsoft/muzic",
+      "clone_url": "https://github.com/microsoft/muzic.git",
+      "stars": 4947,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-05T21:14:33Z",
+      "size_kb": 155386
+    },
+    {
+      "full_name": "HarleyCoops/Math-To-Manim",
+      "clone_url": "https://github.com/HarleyCoops/Math-To-Manim.git",
+      "stars": 2474,
+      "band": "1000..2500",
+      "license": "MIT",
+      "pushed_at": "2026-08-13T21:23:05Z",
+      "size_kb": 206525
+    },
+    {
+      "full_name": "airbus/scikit-decide",
+      "clone_url": "https://github.com/airbus/scikit-decide.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-07-03T20:26:48Z",
+      "size_kb": 29670
+    },
+    {
+      "full_name": "sublimehq/package_control",
+      "clone_url": "https://github.com/sublimehq/package_control.git",
+      "stars": 4882,
+      "band": "2500..5000",
+      "license": "MIT",
+      "pushed_at": "2026-08-15T13:42:03Z",
+      "size_kb": 3924
+    },
+    {
+      "full_name": "dpgaspar/Flask-AppBuilder",
+      "clone_url": "https://github.com/dpgaspar/Flask-AppBuilder.git",
+      "stars": 4958,
+      "band": "2500..5000",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-07-10T15:26:46Z",
+      "size_kb": 46266
+    },
+    {
+      "full_name": "scikit-learn-contrib/category_encoders",
+      "clone_url": "https://github.com/scikit-learn-contrib/category_encoders.git",
+      "stars": 2497,
+      "band": "1000..2500",
+      "license": "BSD-3-Clause",
+      "pushed_at": "2026-07-31T23:40:58Z",
+      "size_kb": 45495
+    },
+    {
+      "full_name": "asottile/astpretty",
+      "clone_url": "https://github.com/asottile/astpretty.git",
+      "stars": 200,
+      "band": "100..200",
+      "license": "MIT",
+      "pushed_at": "2026-07-15T12:45:05Z",
+      "size_kb": 290
+    },
+    {
+      "full_name": "cloudtools/troposphere",
+      "clone_url": "https://github.com/cloudtools/troposphere.git",
+      "stars": 4945,
+      "band": "2500..5000",
+      "license": "BSD-2-Clause",
+      "pushed_at": "2026-08-14T14:05:49Z",
+      "size_kb": 7923
+    },
+    {
+      "full_name": "hzwer/Practical-RIFE",
+      "clone_url": "https://github.com/hzwer/Practical-RIFE.git",
+      "stars": 993,
+      "band": "500..1000",
+      "license": "MIT",
+      "pushed_at": "2025-11-20T03:55:42Z",
+      "size_kb": 3104
+    }
+  ]
+}

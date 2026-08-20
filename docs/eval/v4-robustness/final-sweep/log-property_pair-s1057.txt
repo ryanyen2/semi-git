@@ -1,0 +1,33 @@
+    0 ✓ op_revert_undo_probe     e9df8e9536f0
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_edit_save             w.py (rework)
+    3 ✓ op_revert                e16c25543289
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_restore               e16c25543289
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_revert                e16c25543289
+    8 ✗ op_edit_save             w.py (rework)
+        fsck_tree: exit 1: 1 newly drifted path(s): ['w.py']
+        settled (save refused, git restore): ['M w.py']
+    9 ✓ op_revert_keep_dependents 0442c989d468
+   10 ✓ op_undo                  
+   11 ✗ op_revert_restore_probe  d068113acb07
+        restore_resurrects_layout: restoring what revert d068113acb07 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['f99d6e049729']
+   12 ✓ op_restore               ad2d7bd67c0d
+   13 ✓ op_revert                ad2d7bd67c0d
+   14 ✓ op_add_file              v4_mod_14.py
+   15 ✓ op_edit_save             w.py (rework)
+   16 ✓ op_edit_save             v4_mod_6.py (rework)
+   17 ✓ op_add_file              v4_mod_17.py
+   18 ✓ op_revert_undo_probe     5f6434c626c4
+   19 ✓ op_edit_save             v4_mod_17.py (rework)
+   20 ✓ op_edit_save             w.py (rework)
+   21 ✓ op_revert_undo_probe     5f6434c626c4
+   22 ✓ op_revert_restore_probe  f99d6e049729
+   23 ✓ op_feature_split         f-0442c989d468
+   24 ✓ op_feature_split         f-0442c989d468
+   25 ✓ op_revert_undo_probe     d1e11475bac8
+   26 ✓ op_restore               ad2d7bd67c0d
+   27 ✓ op_revert_undo_probe     5f6434c626c4
+   28 ✓ op_revert_restore_probe  d068113acb07
+property_pair seed 1057: 29 ops applied, 2 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-property_pair-seed1057.json

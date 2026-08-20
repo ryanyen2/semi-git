@@ -1,0 +1,30 @@
+  chunk   1     10.9s     901 ops
+  chunk   2     23.5s     916 ops
+  chunk   3     33.8s     952 ops
+  chunk   4     44.3s     974 ops
+  chunk   5     55.9s     983 ops
+  chunk   6     66.4s    1016 ops
+  chunk   7     76.8s    1034 ops
+  chunk   8     90.6s    1087 ops
+  chunk   9    103.1s    1102 ops
+  chunk  10    113.9s    1129 ops
+  chunk  11    125.2s    1183 ops
+  chunk  12    136.4s    1224 ops
+  chunk  13    147.4s    1240 ops
+  chunk  14    159.0s    1293 ops
+  chunk  15    169.6s    1338 ops
+  chunk  16    180.2s    1391 ops
+  chunk  17    190.8s    1425 ops
+  chunk  18    201.7s    1554 ops
+  chunk  19    212.4s    1627 ops
+  chunk  20    223.1s    1800 ops
+  chunk  21    234.1s    2014 ops
+  chunk  22    239.8s    2021 ops
+{
+  "reached_genesis": true,
+  "complete": true,
+  "chunks": 22,
+  "seconds": 239.8,
+  "capped": false,
+  "cap_s": 1800.0
+}

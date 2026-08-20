@@ -1,0 +1,44 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_edit_save             v4_mod_0.py (rework)
+    2 · op_restore               nothing addressable excluded
+    3 ✓ op_revert                66f4a7a053b8
+    4 · op_feature_merge         1 feature(s)
+    5 ✓ op_edit_save             v4_mod_0.py (rework)
+    6 ✓ op_edit_save             a.py (rework)
+    7 · op_feature_merge         1 feature(s)
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_undo                  
+   10 ✓ op_undo                  
+   11 ✓ op_edit_save             a.py (rework)
+   12 ✓ op_revert_undo_probe     1c8861fd738c
+   13 ✓ op_revert_undo_probe     19e4d531a38b
+   14 ✓ op_edit_save             v4_mod_0.py (rework)
+   15 ✓ op_edit_save             a.py (rework)
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_edit_save             v4_mod_16.py (rework)
+   18 ✓ op_feature_split         af-m7798385f8c
+   19 ✓ op_revert                1c8861fd738c
+   20 ✓ op_restore               85daff11b8f2
+   21 ✓ op_revert                e9a06dec4dd5
+   22 ✓ op_revert_restore_probe  66521c9c8059
+   23 ✓ op_edit_save             v4_mod_16.py (rework)
+   24 ✓ op_undo                  
+   25 ✓ op_restore               41c4a56cdf2e
+   26 ✓ op_feature_split         af-m5577c8370c
+   27 ✓ op_revert_undo_probe     655b4b8aea07
+   28 ✓ op_edit_save             v4_mod_8.py (rework)
+   29 ✓ op_edit_save             a.py (rework)
+   30 ✓ op_revert_restore_probe  655b4b8aea07
+   31 ✓ op_restore               84329ce1cfcd
+   32 ✓ op_revert_restore_probe  e9a06dec4dd5
+   33 ✓ op_edit_save             v4_mod_8.py (rework)
+   34 ✓ op_edit_save             v4_mod_16.py (rework)
+   35 ✓ op_revert_undo_probe     38570fc2fd4d
+   36 ✓ op_revert_undo_probe     54f60db116c9
+   37 ✓ op_undo                  
+   38 ✓ op_edit_save             v4_mod_8.py (rework)
+   39 ✓ op_feature_split         af-m7798385f8c
+   40 ✓ op_edit_save             v4_mod_8.py (rework)
+   41 ✓ op_add_file              v4_mod_41.py
+   42 ✓ op_revert_restore_probe  dee5380ec4ef
+formfeed_and_unicode_sep seed 1272: 43 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-formfeed_and_unicode_sep-seed1272.json

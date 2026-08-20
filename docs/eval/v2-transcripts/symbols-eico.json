@@ -1,0 +1,2374 @@
+{
+ "edits_file": "docs/eval/v2-transcripts/edits-eico.json",
+ "repo": "/Users/ryanyen2/repos/eico",
+ "match_rate": 0.7647,
+ "gate": 0.7,
+ "gate_passed": true,
+ "stats": {
+  "eligible": 153,
+  "ineligible: no extractor for this language": 36,
+  "ineligible: outside the repo": 17,
+  "matched": 117,
+  "requests with >=1 eligible edit": 12,
+  "unmatched": 36,
+  "unmatched: located, but outside every entity span": 30,
+  "unmatched: old text in no blob and not in the replayed state": 3
+ },
+ "how_matched": {
+  "replayed": 71,
+  "written-body": 33,
+  "located-in-blob": 13
+ },
+ "n_requests_with_symbols": 11,
+ "requests": [
+  {
+   "request_id": "d6700599-514e-41a3-9a73-87726307a6cb",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-14T20:59:24.942Z",
+   "text": "All 7 tasks for U9 are now complete \u2014 the only thing left out of scope is the actual paid LLM eval run; how much the estimated cost will be; are we running swe verifieid bench?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "80868040-35e7-464a-8f04-e8303171e773",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-14T21:35:29.656Z",
+   "text": "ok kick off, making sure we log properly for analyzing the decision making process",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "51e3c25b-617d-4634-95b2-fa3085b5c3a4",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-14T23:23:00.237Z",
+   "text": "note them down and explain to me what the result means or implied (be rigor and candid instead of self-fooling) i wonder does that mean we should be able to fan out more subagents from the orchestraor; my understanding about the workflow is that a orchestrator agent will plan the tasks, fan out mult",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "e4764619-d2da-4c70-bc2d-0bd62be5920c",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-14T23:26:15.720Z",
+   "text": "kernel is deterministic? how do we decide the verdict? and why its per file, i thought we want per entity based on parsed tree?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "a0cee3cd-9ed9-47ad-98ef-a2c87730a01f",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-14T23:34:31.295Z",
+   "text": "what? fact check, and reply me in plain language, dont say something like \"It's actually two layers, not a contradiction\" or \"describes the container, not the resolution\" just say the sentence....",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "aba433bb-b51e-441e-8bb1-5d591ca0dae1",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-14T23:41:43.522Z",
+   "text": "why do we not have the cross-file check? arent we supposed to have the dependency graph across the codebase? or thats something we planned... or is there any tradeoff",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "3e5bf33d-6a45-4815-9d63-c69ad0af9c99",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-14T23:58:23.425Z",
+   "text": "i told u never talk to me with this type of sentence structure: \"isnt AAA its BBB\", \"its BBB, not AAA\"... just be straightforward, wrtie the full sentence; ...ok now lets run more expeirment to see how it works, I wonder if the result showing any benefits of our approaches compare to baseline though",
+   "n_edits": 2,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "e1448355-da69-4ffc-8579-73789f6be0c1",
+   "session": "0379acd6-f3df-49a9-874f-56434a131ca5",
+   "ts": "2026-07-15T00:07:48.038Z",
+   "text": "i wonder if it makes sense to compare with codecrdt?https://arxiv.org/html/2510.18893v1 or this https://arxiv.org/html/2606.10662v1 or say copy how they setup the expeirment",
+   "n_edits": 12,
+   "n_eligible": 4,
+   "symbols": [
+    "experiments/agent_eval/kernel_pipeline.py::plan_subtasks",
+    "kernel/ladder/commit_ladder.py::CommitLadder",
+    "kernel/ladder/commit_ladder.py::CommitLadder._byte_faithful_replay",
+    "tests/kernel/test_commit_ladder.py::trunk"
+   ],
+   "edit_detail": [
+    {
+     "path": "kernel/ladder/commit_ladder.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/ladder/commit_ladder.py",
+     "how": "replayed",
+     "symbols": [
+      "kernel/ladder/commit_ladder.py::CommitLadder",
+      "kernel/ladder/commit_ladder.py::CommitLadder._byte_faithful_replay"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::plan_subtasks"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_commit_ladder.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "tests/kernel/test_commit_ladder.py::trunk"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "1a830100-fea3-46c7-b503-473d9a4c9fca",
+   "session": "73dbe33e-c3eb-410d-81ce-0fdfdedb62dd",
+   "ts": "2026-07-15T19:00:13.073Z",
+   "text": "implement the codebase cleanup plan ~/.claude/plans/cheeky-knitting-biscuit.md",
+   "n_edits": 12,
+   "n_eligible": 5,
+   "symbols": [
+    "kernel/harness/baselines.py::_git_merge_file"
+   ],
+   "edit_detail": [
+    {
+     "path": "kernel/harness/llm_merger.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/harness/wasted_work.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/harness/baselines.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/harness/baselines.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/harness/baselines.py",
+     "how": "replayed",
+     "symbols": [
+      "kernel/harness/baselines.py::_git_merge_file"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "190c6778-15aa-4b80-842b-b1fa9bd3f5ea",
+   "session": "73dbe33e-c3eb-410d-81ce-0fdfdedb62dd",
+   "ts": "2026-07-16T15:47:41.663Z",
+   "text": "whats the contribution of this paper? and whats the current pipeline, architecture? I kinda lost track given how much difference in changing these days; correct me if Im wrong, but my understanding of this paper is that we try to coordinate multiple agents concurrent editing on one codebase, current",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "d89081ed-0fdf-4a7a-a0c6-2c46c570993a",
+   "session": "73dbe33e-c3eb-410d-81ce-0fdfdedb62dd",
+   "ts": "2026-07-16T15:53:08.564Z",
+   "text": "explain to me in plain language about what the docs/plans/2026-07-07-003-*.md is about, steps to achieve, how do we get data for RLHF, whats the reward, and reward function, etc... from highlevel to lowelevel math (dont assume i know the symbol or concepts), explain to me first and then walk me thor",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "79959fbe-15b3-49ad-811d-c0f6a029a94b",
+   "session": "73dbe33e-c3eb-410d-81ce-0fdfdedb62dd",
+   "ts": "2026-07-16T17:24:10.882Z",
+   "text": "ok in two sentneces, waht we are training, whats the goal, whats the reward; in plain language",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "b3f2e9fe-6a4f-407a-beab-bdb01d93ce7e",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T16:19:16.903Z",
+   "text": "whats the current status of the project? is it possible to dispatch multiple parallel agents and working on the sew bench now? whats the piplein (we have a dispatcher? and how do subagents work together?) rpely in super concise, short and plain language",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "da2da058-9573-4a3e-aa70-ad75f89f6782",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T16:30:46.607Z",
+   "text": "is this the true optimized pipeline? like why do we need coordinator and is the verdict really robust? if we change the edit_file(path....) to path that is file:ast entity, and based on the concurrent program dependency graph, shouldnt we be able to know whats the possibel conflicts and each subagen",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "9330f240-d938-4217-806d-a759f733915a",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T16:41:53.582Z",
+   "text": "noo i dont think its about guessing whether theres conflict, so I would assume that throughout implemnetation, they might be able to access a shared \"state\" of the doc that clearly showing whats being touched and what event should they register, it might be something like web socket protocol ish thi",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "f408ee5e-91ce-406a-bbc3-4bbe656ab2ce",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T18:35:43.994Z",
+   "text": "so i guess if we are the one writing and maintaining the lefger, we can record it in a structured way that borrow some reactive programming literature that comes free with the reactive part instead of adding another layer? but how abut conflict resolution and concurrent editing? please think deeper ",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "e9539a98-a1f8-4a25-b56b-5af42ae9df71",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T20:42:07.035Z",
+   "text": "is it possible that we can develop our own multi-user reactive programming? think mathematically",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "bd2fa9ad-e30d-4e6c-b9d3-4b356c0432d5",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T21:03:37.156Z",
+   "text": "ok so lets step back first and think about this, what we want is basically a pipeline/architecture that can streamline the parralel coding agents working on same codebase that can outperform exsiting approach such as DeLM https://github.com/yuzhenmao/DeLM or other parallele agent works",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "c27a6be1-5a88-4836-9fcb-bbefa153c5a7",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T21:05:05.656Z",
+   "text": "ok so lets step back first and think about this, what we want is basically a pipeline/architecture that can streamline the parralel coding agents working on same codebase that can outperform exsiting approach such as DeLM https://github.com/yuzhenmao/DeLM or other parallele agent works; so lets see ",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "725732e9-15df-4b4f-8b3d-1c256f2f213b",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-23T21:58:19.596Z",
+   "text": "isnt this super slow and how it different from those loop.md defining how to dispatch agents and work together, etc...",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "51981a6f-5679-4f6c-86ce-c255f03f9a8d",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T18:31:14.004Z",
+   "text": "so are we now thinking of adjusting the pipeline to have a mroe reactive programming construct?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "7b06e56f-eb44-4770-bd0c-053c25bc3edc",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T18:47:55.222Z",
+   "text": "so are we now thinking of adjusting the pipeline to have a mroe reactive programming construct?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "621c6593-9b47-4470-b57e-7cb689b64b9e",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T18:52:43.761Z",
+   "text": "ok sure",
+   "n_edits": 13,
+   "n_eligible": 13,
+   "symbols": [
+    "experiments/agent_eval/delm_baseline.py::SharedLessons",
+    "experiments/agent_eval/delm_baseline.py::SharedLessons.__init__",
+    "experiments/agent_eval/delm_baseline.py::SharedLessons.note",
+    "experiments/agent_eval/delm_baseline.py::SharedLessons.read_all",
+    "experiments/agent_eval/delm_baseline.py::SharedLessons.record_body",
+    "experiments/agent_eval/delm_baseline.py::SharedLessons.render_peer_digest",
+    "experiments/agent_eval/delm_baseline.py::_compact_text",
+    "experiments/agent_eval/delm_baseline.py::_dispatch",
+    "experiments/agent_eval/delm_baseline.py::_run_one_solver",
+    "experiments/agent_eval/delm_baseline.py::_walk_files",
+    "experiments/agent_eval/delm_baseline.py::parse_note_body",
+    "experiments/agent_eval/delm_baseline.py::run_delm",
+    "experiments/agent_eval/run_eval.py::_parse_arms",
+    "experiments/agent_eval/run_eval.py::main",
+    "experiments/agent_eval/run_eval.py::run_one_task",
+    "experiments/agent_eval/tasks.py::_fetch_swebench_row",
+    "experiments/agent_eval/verify_instance.py::main",
+    "experiments/agent_eval/verify_instance.py::verify"
+   ],
+   "edit_detail": [
+    {
+     "path": "experiments/agent_eval/delm_baseline.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/delm_baseline.py::SharedLessons",
+      "experiments/agent_eval/delm_baseline.py::SharedLessons.__init__",
+      "experiments/agent_eval/delm_baseline.py::SharedLessons.note",
+      "experiments/agent_eval/delm_baseline.py::SharedLessons.read_all",
+      "experiments/agent_eval/delm_baseline.py::SharedLessons.record_body",
+      "experiments/agent_eval/delm_baseline.py::SharedLessons.render_peer_digest",
+      "experiments/agent_eval/delm_baseline.py::_compact_text",
+      "experiments/agent_eval/delm_baseline.py::_dispatch",
+      "experiments/agent_eval/delm_baseline.py::_run_one_solver",
+      "experiments/agent_eval/delm_baseline.py::_walk_files",
+      "experiments/agent_eval/delm_baseline.py::parse_note_body",
+      "experiments/agent_eval/delm_baseline.py::run_delm"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::run_one_task"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::run_one_task"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::_parse_arms"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::main"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::main"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::main"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::main"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/tasks.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/tasks.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/tasks.py::_fetch_swebench_row"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/tasks.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/tasks.py::_fetch_swebench_row"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/verify_instance.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/verify_instance.py::main",
+      "experiments/agent_eval/verify_instance.py::verify"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "88c32859-a19f-48a9-b1dc-c12dae522b4c",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T19:49:58.025Z",
+   "text": "how about using the LITELLM_BASE_URL and LITELLM_AUTH_TOKEN in the .env",
+   "n_edits": 10,
+   "n_eligible": 8,
+   "symbols": [
+    "experiments/agent_eval/delm_baseline.py::_run_one_solver",
+    "experiments/agent_eval/kernel_pipeline.py::plan_subtasks",
+    "experiments/agent_eval/kernel_pipeline.py::run_coder",
+    "experiments/agent_eval/solo_agent.py::run_solo"
+   ],
+   "edit_detail": [
+    {
+     "path": "experiments/agent_eval/instrumentation.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/solo_agent.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/solo_agent.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/solo_agent.py::run_solo"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::plan_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_coder"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/delm_baseline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/delm_baseline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/delm_baseline.py::_run_one_solver"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "bebef0c7-ede0-48d0-af7e-6d70515d13bc",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T19:58:38.456Z",
+   "text": "i feel like we can use the longbench, the paper also mentioned that there no split for the swe bench tasks (LongBench-v2 Multi-Doc QA)",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "d2c04e1d-38bd-495b-980b-d726f7c719d7",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T20:01:25.211Z",
+   "text": "resu,e",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "a63de923-4df2-4100-bcb1-933c93533c8e",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T20:01:27.339Z",
+   "text": "resume",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "513a848d-7984-4ead-9d75-ef218f433071",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T20:05:12.638Z",
+   "text": "it kept stopping",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "dad7203d-5a5a-48eb-8759-3cc3b37e9af2",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T20:35:56.399Z",
+   "text": "ok?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "64c3f6e8-305d-4caf-8847-7bea80cf2b6e",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T20:40:21.931Z",
+   "text": "we were saying using the \u276f i feel like we can use the longbench, the paper also mentioned that there no split for the swe bench tasks (LongBench-v2 Multi-Doc QA) so that we can get the actual subagents dispatch",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "bac9ad8a-fc1c-4bf2-8325-71c879274305",
+   "session": "cf6bdc5f-4c1d-43d9-a50d-34b46ab5a789",
+   "ts": "2026-07-28T20:52:38.470Z",
+   "text": "yep again, stopped",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "64c3f6e8-305d-4caf-8847-7bea80cf2b6e",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-28T20:40:21.931Z",
+   "text": "we were saying using the \u276f i feel like we can use the longbench, the paper also mentioned that there no split for the swe bench tasks (LongBench-v2 Multi-Doc QA) so that we can get the actual subagents dispatch",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "bac9ad8a-fc1c-4bf2-8325-71c879274305",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-28T20:52:38.470Z",
+   "text": "yep again, stopped",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "2a062510-07d7-4f75-8e16-8ff7c1115744",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-28T21:57:59.581Z",
+   "text": "stucked again",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "d1cd29fe-e2bb-49d2-81a4-fa6c2d00cb31",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-28T22:47:14.231Z",
+   "text": "maybe using the @/Users/ryanyen2/.claude/skills/paper_search/ skill to see if theres benchmark or realted paper that can be the baseline",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "b368bb42-1d54-4a3a-9195-a6a77dce5e14",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-29T13:08:22.752Z",
+   "text": "i dont think codecrdt has repo, based on your expertise in publishing these kinda paper (maybe COLM?) how should we design the experiement?",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "2cba545c-4952-450f-9e4d-19534415ff8c",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-29T13:13:25.593Z",
+   "text": "is it actually slower? whats the experiment/conditions/setup ... and explain me the result in short... alos provide insights on which part dragging it slow",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "4e0dfa79-df0e-4729-be58-e8cf19f5448d",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-29T18:12:20.453Z",
+   "text": "two things, based on the above observation abuot the gate tying to hold the entire subagent task, how can we solve it, say maybe can we write code from a more skeleton way like those sketch based approah for code generation in proramming synthesis; and anothet thing is that can we compare with some ",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "1a6f968a-a41d-42fd-aee4-40b866529f0e",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-29T19:19:26.213Z",
+   "text": "ok for the sketch based generation one, I feel like there are something there, and I feel like its not actaully typed holes as those programming sysntehsis, for us the priority is based on the \"confidence/entropy/uncertainty...\" and possibility of \"conflict\"? that is more native to our problem + how",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "1346405f-4374-4bf9-a311-24cce1d2f02e",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-30T15:07:14.631Z",
+   "text": "read the coagent paper in depth and tell me in plain language about how they work and whats the difference we had (not the surface level); also i wonder how logprob shows the uncertainty of tokens not the uncertainty of code statements or even higher level invariants/decisions, or realted research w",
+   "n_edits": 2,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "e567f6db-a9c3-476e-807a-ba76cc4bf8ee",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-30T15:55:04.739Z",
+   "text": "ok now lets step back, think about the reactive programming style we talked about before, the entropy mentioned, the possible concuerrency or serialization algorithm, etc... instead of being a Frankestein, syntheisze the plan to improve the current pipeline to hopefully, able to beat the baseline (c",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "0cf008f6-b55f-4006-a546-d03291065255",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-30T22:54:12.155Z",
+   "text": "for the granularity, if we choose block, then we can only create code that is block like? then thats not realistic isnt it? we can also choose program slice so not chunk by chunk but slice by slice? idk... we need to be practical still instead of assuming user write functional programming; the secon",
+   "n_edits": 12,
+   "n_eligible": 3,
+   "symbols": [
+    "experiments/agent_eval/metrics.py::PipelineMetrics",
+    "experiments/agent_eval/metrics.py::PipelineMetrics.amdahl_speedup",
+    "experiments/agent_eval/metrics.py::PipelineMetrics.as_dict",
+    "experiments/agent_eval/metrics.py::PipelineMetrics.ideal_speedup",
+    "experiments/agent_eval/metrics.py::PipelineMetrics.p_calls",
+    "experiments/agent_eval/metrics.py::PipelineMetrics.p_time",
+    "experiments/agent_eval/metrics.py::PipelineMetrics.predicted_speedup",
+    "experiments/agent_eval/metrics.py::_calls_by_agent",
+    "experiments/agent_eval/metrics.py::_critical_path",
+    "experiments/agent_eval/metrics.py::_critical_path.longest",
+    "experiments/agent_eval/metrics.py::_p_fraction",
+    "experiments/agent_eval/metrics.py::_plan_subtasks",
+    "experiments/agent_eval/metrics.py::_wall_clock",
+    "experiments/agent_eval/metrics.py::_wasted_work",
+    "experiments/agent_eval/metrics.py::amdahl_speedup",
+    "experiments/agent_eval/metrics.py::artifact_hash",
+    "experiments/agent_eval/metrics.py::compute_metrics",
+    "experiments/agent_eval/metrics.py::compute_metrics._dur",
+    "experiments/agent_eval/metrics.py::observed_speedup",
+    "experiments/agent_eval/metrics.py::read_events",
+    "tests/agent_eval/test_metrics.py::_model_call",
+    "tests/agent_eval/test_metrics.py::_parallel_trace",
+    "tests/agent_eval/test_metrics.py::_plan",
+    "tests/agent_eval/test_metrics.py::_serial_trace",
+    "tests/agent_eval/test_metrics.py::test_all_serial_trace_has_no_parallelism",
+    "tests/agent_eval/test_metrics.py::test_amdahl_and_observed_speedup_edges",
+    "tests/agent_eval/test_metrics.py::test_critical_path_never_exceeds_total",
+    "tests/agent_eval/test_metrics.py::test_cyclic_plan_does_not_hang",
+    "tests/agent_eval/test_metrics.py::test_diamond_critical_path_is_longest_chain",
+    "tests/agent_eval/test_metrics.py::test_fully_parallel_trace_approaches_full_parallelism",
+    "tests/agent_eval/test_metrics.py::test_hash_changes_only_when_committed_bytes_differ",
+    "tests/agent_eval/test_metrics.py::test_identical_artifacts_hash_identically_regardless_of_key_order",
+    "tests/agent_eval/test_metrics.py::test_orchestrator_calls_are_a_serial_prefix",
+    "tests/agent_eval/test_metrics.py::test_parallel_predicted_speedup_grows_with_agents",
+    "tests/agent_eval/test_metrics.py::test_solo_trace_with_no_plan_is_serial",
+    "tests/agent_eval/test_metrics.py::test_wasted_work_counts_verdicts_and_drops",
+    "tests/kernel/test_canonical_order.py::_all_schedules",
+    "tests/kernel/test_canonical_order.py::_render_under",
+    "tests/kernel/test_canonical_order.py::test_commuting_edits_all_land_and_are_byte_identical",
+    "tests/kernel/test_canonical_order.py::test_non_commuting_pair_is_byte_identical_across_schedules",
+    "tests/kernel/test_canonical_order.py::test_three_disjoint_edits_are_order_independent",
+    "tests/kernel/test_canonical_order.py::test_three_way_forced_chain_has_one_winner_regardless_of_permutation"
+   ],
+   "edit_detail": [
+    {
+     "path": "tests/kernel/test_canonical_order.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/kernel/test_canonical_order.py::_all_schedules",
+      "tests/kernel/test_canonical_order.py::_render_under",
+      "tests/kernel/test_canonical_order.py::test_commuting_edits_all_land_and_are_byte_identical",
+      "tests/kernel/test_canonical_order.py::test_non_commuting_pair_is_byte_identical_across_schedules",
+      "tests/kernel/test_canonical_order.py::test_three_disjoint_edits_are_order_independent",
+      "tests/kernel/test_canonical_order.py::test_three_way_forced_chain_has_one_winner_regardless_of_permutation"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/metrics.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/metrics.py::PipelineMetrics",
+      "experiments/agent_eval/metrics.py::PipelineMetrics.amdahl_speedup",
+      "experiments/agent_eval/metrics.py::PipelineMetrics.as_dict",
+      "experiments/agent_eval/metrics.py::PipelineMetrics.ideal_speedup",
+      "experiments/agent_eval/metrics.py::PipelineMetrics.p_calls",
+      "experiments/agent_eval/metrics.py::PipelineMetrics.p_time",
+      "experiments/agent_eval/metrics.py::PipelineMetrics.predicted_speedup",
+      "experiments/agent_eval/metrics.py::_calls_by_agent",
+      "experiments/agent_eval/metrics.py::_critical_path",
+      "experiments/agent_eval/metrics.py::_critical_path.longest",
+      "experiments/agent_eval/metrics.py::_p_fraction",
+      "experiments/agent_eval/metrics.py::_plan_subtasks",
+      "experiments/agent_eval/metrics.py::_wall_clock",
+      "experiments/agent_eval/metrics.py::_wasted_work",
+      "experiments/agent_eval/metrics.py::amdahl_speedup",
+      "experiments/agent_eval/metrics.py::artifact_hash",
+      "experiments/agent_eval/metrics.py::compute_metrics",
+      "experiments/agent_eval/metrics.py::compute_metrics._dur",
+      "experiments/agent_eval/metrics.py::observed_speedup",
+      "experiments/agent_eval/metrics.py::read_events"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_metrics.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_metrics.py::_model_call",
+      "tests/agent_eval/test_metrics.py::_parallel_trace",
+      "tests/agent_eval/test_metrics.py::_plan",
+      "tests/agent_eval/test_metrics.py::_serial_trace",
+      "tests/agent_eval/test_metrics.py::test_all_serial_trace_has_no_parallelism",
+      "tests/agent_eval/test_metrics.py::test_amdahl_and_observed_speedup_edges",
+      "tests/agent_eval/test_metrics.py::test_critical_path_never_exceeds_total",
+      "tests/agent_eval/test_metrics.py::test_cyclic_plan_does_not_hang",
+      "tests/agent_eval/test_metrics.py::test_diamond_critical_path_is_longest_chain",
+      "tests/agent_eval/test_metrics.py::test_fully_parallel_trace_approaches_full_parallelism",
+      "tests/agent_eval/test_metrics.py::test_hash_changes_only_when_committed_bytes_differ",
+      "tests/agent_eval/test_metrics.py::test_identical_artifacts_hash_identically_regardless_of_key_order",
+      "tests/agent_eval/test_metrics.py::test_orchestrator_calls_are_a_serial_prefix",
+      "tests/agent_eval/test_metrics.py::test_parallel_predicted_speedup_grows_with_agents",
+      "tests/agent_eval/test_metrics.py::test_solo_trace_with_no_plan_is_serial",
+      "tests/agent_eval/test_metrics.py::test_wasted_work_counts_verdicts_and_drops"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "0ec173d1-5007-4836-9d0d-6064efc5a18a",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-31T17:13:53.500Z",
+   "text": "start U3",
+   "n_edits": 7,
+   "n_eligible": 6,
+   "symbols": [
+    "kernel/depgraph/graph.py::DependenceGraph",
+    "kernel/depgraph/graph.py::DependenceGraph.__init__",
+    "kernel/depgraph/graph.py::DependenceGraph._build",
+    "kernel/depgraph/graph.py::DependenceGraph._node_key",
+    "kernel/depgraph/graph.py::DependenceGraph._nodes_couple",
+    "kernel/depgraph/graph.py::DependenceGraph.coupled",
+    "kernel/depgraph/graph.py::DependenceGraph.effects_of",
+    "kernel/depgraph/graph.py::DependenceGraph.forward_closure",
+    "kernel/depgraph/graph.py::DependenceGraph.from_coordinator",
+    "kernel/depgraph/graph.py::DependenceGraph.node_of",
+    "kernel/depgraph/graph.py::DependenceGraph.nodes",
+    "kernel/depgraph/graph.py::DependenceGraph.refine",
+    "kernel/depgraph/graph.py::DependenceGraph.refined_symbols",
+    "kernel/depgraph/graph.py::DependenceGraph.snapshot",
+    "kernel/depgraph/graph.py::DependenceGraph.version",
+    "kernel/depgraph/graph.py::_refined_key",
+    "kernel/depgraph/graph.py::_symbol_key",
+    "tests/kernel/test_depgraph.py::_config_handlers",
+    "tests/kernel/test_depgraph.py::_distinct_symbol_pairs",
+    "tests/kernel/test_depgraph.py::_two_records",
+    "tests/kernel/test_depgraph.py::test_closure_agrees_with_connected_components_ground_truth",
+    "tests/kernel/test_depgraph.py::test_disjoint_edits_have_empty_mutual_closure",
+    "tests/kernel/test_depgraph.py::test_edit_to_symbol_pulls_referencing_ops_into_closure",
+    "tests/kernel/test_depgraph.py::test_from_coordinator_views_buffered_and_committed_effects",
+    "tests/kernel/test_depgraph.py::test_fully_disjoint_corpus_has_no_edges",
+    "tests/kernel/test_depgraph.py::test_refinement_splits_symbol_and_localizes_coupling",
+    "tests/kernel/test_depgraph.py::test_unrelated_symbol_stays_out_of_closure"
+   ],
+   "edit_detail": [
+    {
+     "path": "kernel/depgraph/__init__.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/depgraph/graph.py",
+     "how": "written-body",
+     "symbols": [
+      "kernel/depgraph/graph.py::DependenceGraph",
+      "kernel/depgraph/graph.py::DependenceGraph.__init__",
+      "kernel/depgraph/graph.py::DependenceGraph._build",
+      "kernel/depgraph/graph.py::DependenceGraph._node_key",
+      "kernel/depgraph/graph.py::DependenceGraph._nodes_couple",
+      "kernel/depgraph/graph.py::DependenceGraph.coupled",
+      "kernel/depgraph/graph.py::DependenceGraph.effects_of",
+      "kernel/depgraph/graph.py::DependenceGraph.forward_closure",
+      "kernel/depgraph/graph.py::DependenceGraph.from_coordinator",
+      "kernel/depgraph/graph.py::DependenceGraph.node_of",
+      "kernel/depgraph/graph.py::DependenceGraph.nodes",
+      "kernel/depgraph/graph.py::DependenceGraph.refine",
+      "kernel/depgraph/graph.py::DependenceGraph.refined_symbols",
+      "kernel/depgraph/graph.py::DependenceGraph.snapshot",
+      "kernel/depgraph/graph.py::DependenceGraph.version",
+      "kernel/depgraph/graph.py::_refined_key",
+      "kernel/depgraph/graph.py::_symbol_key"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_depgraph.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/kernel/test_depgraph.py::_config_handlers",
+      "tests/kernel/test_depgraph.py::_distinct_symbol_pairs",
+      "tests/kernel/test_depgraph.py::_two_records",
+      "tests/kernel/test_depgraph.py::test_closure_agrees_with_connected_components_ground_truth",
+      "tests/kernel/test_depgraph.py::test_disjoint_edits_have_empty_mutual_closure",
+      "tests/kernel/test_depgraph.py::test_edit_to_symbol_pulls_referencing_ops_into_closure",
+      "tests/kernel/test_depgraph.py::test_from_coordinator_views_buffered_and_committed_effects",
+      "tests/kernel/test_depgraph.py::test_fully_disjoint_corpus_has_no_edges",
+      "tests/kernel/test_depgraph.py::test_refinement_splits_symbol_and_localizes_coupling",
+      "tests/kernel/test_depgraph.py::test_unrelated_symbol_stays_out_of_closure"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_depgraph.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/kernel/test_depgraph.py::_config_handlers"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_depgraph.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/kernel/test_depgraph.py::test_unrelated_symbol_stays_out_of_closure"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_depgraph.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/kernel/test_depgraph.py::test_refinement_splits_symbol_and_localizes_coupling"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "1c14aa0c-dc93-489d-a2f9-ced6996c1c24",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-31T17:38:09.934Z",
+   "text": "move on until all Us donw",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "4b7ca31a-cc8b-4a4c-9285-7ae6922ec76e",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-31T17:38:12.194Z",
+   "text": "move on until all Us done",
+   "n_edits": 29,
+   "n_eligible": 26,
+   "symbols": [
+    "experiments/agent_eval/corpus/migration.py::_structural_trace",
+    "experiments/agent_eval/corpus/migration.py::disjoint_fanout_task",
+    "experiments/agent_eval/corpus/migration.py::interdependent_ripple_task",
+    "experiments/agent_eval/corpus/migration.py::measured_p",
+    "experiments/agent_eval/corpus/migration.py::shared_read_task",
+    "experiments/agent_eval/corpus/migration.py::shared_signature_task",
+    "experiments/agent_eval/coupling_filter.py::verify_coupled",
+    "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks",
+    "experiments/agent_eval/kernel_pipeline.py::_promote_paths_with_pending",
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline",
+    "experiments/agent_eval/seeder.py::_top_level_symbols",
+    "experiments/agent_eval/seeder.py::covers",
+    "experiments/agent_eval/seeder.py::seed_subtasks",
+    "experiments/agent_eval/seeder.py::seeded_paths",
+    "experiments/agent_eval/seeder.py::touched_symbols",
+    "experiments/agent_eval/tasks.py::EvalTask",
+    "experiments/agent_eval/tasks.py::data_pipeline_task",
+    "experiments/agent_eval/tasks.py::swebench_pylint_task",
+    "experiments/agent_eval/tasks.py::web_api_task",
+    "tests/agent_eval/test_continuous_ladder.py::_FakeTrace",
+    "tests/agent_eval/test_continuous_ladder.py::_FakeTrace.__init__",
+    "tests/agent_eval/test_continuous_ladder.py::_FakeTrace.emit",
+    "tests/agent_eval/test_continuous_ladder.py::_fresh_proxy",
+    "tests/agent_eval/test_continuous_ladder.py::_head_file",
+    "tests/agent_eval/test_continuous_ladder.py::_log",
+    "tests/agent_eval/test_continuous_ladder.py::_noop_runner",
+    "tests/agent_eval/test_continuous_ladder.py::test_incremental_result_is_byte_identical_to_tail_only",
+    "tests/agent_eval/test_continuous_ladder.py::test_incremental_result_is_byte_identical_to_tail_only._apply",
+    "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing",
+    "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing.on_complete",
+    "tests/agent_eval/test_continuous_ladder.py::test_red_component_bisects_only_its_own_window_and_spares_promoted_ones",
+    "tests/agent_eval/test_continuous_ladder.py::test_red_component_that_cannot_reduce_leaves_promoted_components_intact",
+    "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner",
+    "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner.on_complete",
+    "tests/agent_eval/test_continuous_ladder.py::test_three_sequential_components_yield_three_incremental_commits",
+    "tests/agent_eval/test_continuous_ladder.py::trunk",
+    "tests/agent_eval/test_kernel_pipeline_smoke.py::test_run_kernel_pipeline_respects_dependency_order_and_promotes",
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace",
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace.__init__",
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace.emit",
+    "tests/agent_eval/test_reactive_dispatch.py::FakeTrace.of_kind",
+    "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner",
+    "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner.__call__",
+    "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner.__init__",
+    "tests/agent_eval/test_reactive_dispatch.py::_overlap",
+    "tests/agent_eval/test_reactive_dispatch.py::_run",
+    "tests/agent_eval/test_reactive_dispatch.py::_subtask",
+    "tests/agent_eval/test_reactive_dispatch.py::test_cyclic_plan_dispatches_anyway_and_terminates",
+    "tests/agent_eval/test_reactive_dispatch.py::test_dependent_starts_after_dependency_lands",
+    "tests/agent_eval/test_reactive_dispatch.py::test_diamond_schedules_fork_and_join",
+    "tests/agent_eval/test_reactive_dispatch.py::test_independent_region_does_not_wait_for_a_slow_sibling",
+    "tests/agent_eval/test_reactive_dispatch.py::test_independent_region_does_not_wait_for_a_slow_sibling.timed",
+    "tests/agent_eval/test_reactive_dispatch.py::test_pure_fanout_reactive_trace_is_fully_parallel",
+    "tests/agent_eval/test_reactive_dispatch.py::test_reactive_trace_has_critical_path_below_total",
+    "tests/agent_eval/test_reactive_dispatch.py::test_two_independent_subtasks_run_concurrently",
+    "tests/agent_eval/test_seeder.py::FakeTrace",
+    "tests/agent_eval/test_seeder.py::FakeTrace.__init__",
+    "tests/agent_eval/test_seeder.py::FakeTrace.emit",
+    "tests/agent_eval/test_seeder.py::FakeTrace.of_kind",
+    "tests/agent_eval/test_seeder.py::_model_calls",
+    "tests/agent_eval/test_seeder.py::test_blank_or_missing_file_is_still_one_region",
+    "tests/agent_eval/test_seeder.py::test_n_file_task_seeds_n_regions_with_zero_model_calls",
+    "tests/agent_eval/test_seeder.py::test_seed_covers_every_gold_patch_symbol",
+    "tests/agent_eval/test_seeder.py::test_seeder_records_strictly_fewer_upfront_calls_than_orchestrator",
+    "tests/agent_eval/test_seeder.py::test_single_file_task_seeds_one_region",
+    "tests/agent_eval/test_seeder.py::test_symbol_granularity_splits_a_file_into_per_symbol_regions",
+    "tests/agent_eval/test_seeder.py::test_symbols_are_the_projected_top_level_entities",
+    "tests/agent_eval/test_seeder.py::test_touched_symbols_names_only_the_changed_entities"
+   ],
+   "edit_detail": [
+    {
+     "path": "experiments/agent_eval/seeder.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/seeder.py::_top_level_symbols",
+      "experiments/agent_eval/seeder.py::covers",
+      "experiments/agent_eval/seeder.py::seed_subtasks",
+      "experiments/agent_eval/seeder.py::seeded_paths",
+      "experiments/agent_eval/seeder.py::touched_symbols"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_seeder.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_seeder.py::FakeTrace",
+      "tests/agent_eval/test_seeder.py::FakeTrace.__init__",
+      "tests/agent_eval/test_seeder.py::FakeTrace.emit",
+      "tests/agent_eval/test_seeder.py::FakeTrace.of_kind",
+      "tests/agent_eval/test_seeder.py::_model_calls",
+      "tests/agent_eval/test_seeder.py::test_blank_or_missing_file_is_still_one_region",
+      "tests/agent_eval/test_seeder.py::test_n_file_task_seeds_n_regions_with_zero_model_calls",
+      "tests/agent_eval/test_seeder.py::test_seed_covers_every_gold_patch_symbol",
+      "tests/agent_eval/test_seeder.py::test_seeder_records_strictly_fewer_upfront_calls_than_orchestrator",
+      "tests/agent_eval/test_seeder.py::test_single_file_task_seeds_one_region",
+      "tests/agent_eval/test_seeder.py::test_symbol_granularity_splits_a_file_into_per_symbol_regions",
+      "tests/agent_eval/test_seeder.py::test_symbols_are_the_projected_top_level_entities",
+      "tests/agent_eval/test_seeder.py::test_touched_symbols_names_only_the_changed_entities"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/metrics.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_reactive_dispatch.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_reactive_dispatch.py::FakeTrace",
+      "tests/agent_eval/test_reactive_dispatch.py::FakeTrace.__init__",
+      "tests/agent_eval/test_reactive_dispatch.py::FakeTrace.emit",
+      "tests/agent_eval/test_reactive_dispatch.py::FakeTrace.of_kind",
+      "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner",
+      "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner.__call__",
+      "tests/agent_eval/test_reactive_dispatch.py::RecordingRunner.__init__",
+      "tests/agent_eval/test_reactive_dispatch.py::_overlap",
+      "tests/agent_eval/test_reactive_dispatch.py::_run",
+      "tests/agent_eval/test_reactive_dispatch.py::_subtask",
+      "tests/agent_eval/test_reactive_dispatch.py::test_cyclic_plan_dispatches_anyway_and_terminates",
+      "tests/agent_eval/test_reactive_dispatch.py::test_dependent_starts_after_dependency_lands",
+      "tests/agent_eval/test_reactive_dispatch.py::test_diamond_schedules_fork_and_join",
+      "tests/agent_eval/test_reactive_dispatch.py::test_independent_region_does_not_wait_for_a_slow_sibling",
+      "tests/agent_eval/test_reactive_dispatch.py::test_independent_region_does_not_wait_for_a_slow_sibling.timed",
+      "tests/agent_eval/test_reactive_dispatch.py::test_pure_fanout_reactive_trace_is_fully_parallel",
+      "tests/agent_eval/test_reactive_dispatch.py::test_reactive_trace_has_critical_path_below_total",
+      "tests/agent_eval/test_reactive_dispatch.py::test_two_independent_subtasks_run_concurrently"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_promote_paths_with_pending"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_continuous_ladder.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_continuous_ladder.py::_FakeTrace",
+      "tests/agent_eval/test_continuous_ladder.py::_FakeTrace.__init__",
+      "tests/agent_eval/test_continuous_ladder.py::_FakeTrace.emit",
+      "tests/agent_eval/test_continuous_ladder.py::_fresh_proxy",
+      "tests/agent_eval/test_continuous_ladder.py::_head_file",
+      "tests/agent_eval/test_continuous_ladder.py::_log",
+      "tests/agent_eval/test_continuous_ladder.py::_noop_runner",
+      "tests/agent_eval/test_continuous_ladder.py::test_incremental_result_is_byte_identical_to_tail_only",
+      "tests/agent_eval/test_continuous_ladder.py::test_incremental_result_is_byte_identical_to_tail_only._apply",
+      "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing",
+      "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing.on_complete",
+      "tests/agent_eval/test_continuous_ladder.py::test_red_component_bisects_only_its_own_window_and_spares_promoted_ones",
+      "tests/agent_eval/test_continuous_ladder.py::test_red_component_that_cannot_reduce_leaves_promoted_components_intact",
+      "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner",
+      "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner.on_complete",
+      "tests/agent_eval/test_continuous_ladder.py::test_three_sequential_components_yield_three_incremental_commits",
+      "tests/agent_eval/test_continuous_ladder.py::trunk"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_continuous_ladder.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_continuous_ladder.py::test_three_sequential_components_yield_three_incremental_commits"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_continuous_ladder.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_continuous_ladder.py::test_incremental_result_is_byte_identical_to_tail_only",
+      "tests/agent_eval/test_continuous_ladder.py::test_incremental_result_is_byte_identical_to_tail_only._apply"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_continuous_ladder.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_continuous_ladder.py::test_incremental_result_is_byte_identical_to_tail_only"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_kernel_pipeline_smoke.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "tests/agent_eval/test_kernel_pipeline_smoke.py::test_run_kernel_pipeline_respects_dependency_order_and_promotes"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/tasks.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/tasks.py::EvalTask"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/tasks.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/tasks.py::swebench_pylint_task"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/tasks.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/tasks.py::web_api_task"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/tasks.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/tasks.py::data_pipeline_task"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/coupling_filter.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/coupling_filter.py::verify_coupled"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/corpus/migration.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/corpus/migration.py::_structural_trace",
+      "experiments/agent_eval/corpus/migration.py::disjoint_fanout_task",
+      "experiments/agent_eval/corpus/migration.py::interdependent_ripple_task",
+      "experiments/agent_eval/corpus/migration.py::measured_p",
+      "experiments/agent_eval/corpus/migration.py::shared_read_task",
+      "experiments/agent_eval/corpus/migration.py::shared_signature_task"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "ac329cea-e168-484f-a3e4-b08750d4ce46",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-07-31T18:49:17.763Z",
+   "text": "resume",
+   "n_edits": 37,
+   "n_eligible": 35,
+   "symbols": [
+    "experiments/agent_eval/arms/base.py::ArmConfig",
+    "experiments/agent_eval/arms/base.py::ArmResult",
+    "experiments/agent_eval/arms/base.py::_edits_for",
+    "experiments/agent_eval/arms/base.py::input_digest",
+    "experiments/agent_eval/arms/base.py::run_all_arms",
+    "experiments/agent_eval/arms/crdt.py::crdt_arm",
+    "experiments/agent_eval/arms/crdt.py::crdt_merge",
+    "experiments/agent_eval/arms/lww.py::_order_key",
+    "experiments/agent_eval/arms/lww.py::lww_arm",
+    "experiments/agent_eval/arms/lww.py::lww_merge",
+    "experiments/agent_eval/arms/mtpo.py::_launch_order",
+    "experiments/agent_eval/arms/mtpo.py::mtpo_arm",
+    "experiments/agent_eval/arms/mtpo.py::mtpo_merge",
+    "experiments/agent_eval/oracle.py::CorruptionVerdict",
+    "experiments/agent_eval/oracle.py::MutationReport",
+    "experiments/agent_eval/oracle.py::_imports_ok",
+    "experiments/agent_eval/oracle.py::_materialize",
+    "experiments/agent_eval/oracle.py::_mutate_drop_last_param",
+    "experiments/agent_eval/oracle.py::_mutate_flip_number",
+    "experiments/agent_eval/oracle.py::_mutate_stub_body",
+    "experiments/agent_eval/oracle.py::_parses",
+    "experiments/agent_eval/oracle.py::_plant_mutants",
+    "experiments/agent_eval/oracle.py::_semantic",
+    "experiments/agent_eval/oracle.py::evaluate_corruption",
+    "experiments/agent_eval/oracle.py::mutation_test",
+    "experiments/agent_eval/report.py::ArmOutcome",
+    "experiments/agent_eval/report.py::FrontierReport",
+    "experiments/agent_eval/report.py::FrontierReport.as_dict",
+    "experiments/agent_eval/report.py::TaskFrontier",
+    "experiments/agent_eval/report.py::TierAggregate",
+    "experiments/agent_eval/report.py::aggregate_by_tier",
+    "experiments/agent_eval/report.py::arm_outcome",
+    "experiments/agent_eval/report.py::bootstrap_ci",
+    "experiments/agent_eval/report.py::build_frontier",
+    "experiments/agent_eval/report.py::classify",
+    "experiments/agent_eval/report.py::classify._frontier",
+    "experiments/agent_eval/report.py::eico_outcome",
+    "experiments/agent_eval/report.py::frontier_report",
+    "experiments/agent_eval/report.py::is_pass",
+    "experiments/agent_eval/report.py::render_report",
+    "experiments/agent_eval/run_eval.py::main",
+    "experiments/agent_eval/schedule_independence.py::ScheduleIndependence",
+    "experiments/agent_eval/schedule_independence.py::_agents_of",
+    "experiments/agent_eval/schedule_independence.py::_artifact_hash",
+    "experiments/agent_eval/schedule_independence.py::_order_edits",
+    "experiments/agent_eval/schedule_independence.py::_orders",
+    "experiments/agent_eval/schedule_independence.py::eico_commit",
+    "experiments/agent_eval/schedule_independence.py::measure_schedule_independence",
+    "kernel/harness/entropy_conflict.py::EntropyMeasurement",
+    "kernel/harness/entropy_conflict.py::GateVerdict",
+    "kernel/harness/entropy_conflict.py::SampleAccess",
+    "kernel/harness/entropy_conflict.py::_entropy_bits",
+    "kernel/harness/entropy_conflict.py::_spearman",
+    "kernel/harness/entropy_conflict.py::_spearman.ranks",
+    "kernel/harness/entropy_conflict.py::calibration_curve",
+    "kernel/harness/entropy_conflict.py::commute_class",
+    "kernel/harness/entropy_conflict.py::entropy_conflict_correlation",
+    "kernel/harness/entropy_conflict.py::gate_decision",
+    "kernel/harness/entropy_conflict.py::measure_cell_entropy",
+    "kernel/harness/entropy_conflict.py::probe_sample_access",
+    "kernel/harness/footprints.py::measure_component_close",
+    "kernel/harness/footprints.py::measure_footprints",
+    "kernel/scheduler/hazard.py::RegionDecision",
+    "kernel/scheduler/hazard.py::RegionInput",
+    "kernel/scheduler/hazard.py::Schedule",
+    "kernel/scheduler/hazard.py::Schedule.speculative_fraction",
+    "kernel/scheduler/hazard.py::interaction_graph",
+    "kernel/scheduler/hazard.py::naive_schedule",
+    "kernel/scheduler/hazard.py::regions_from_edits",
+    "kernel/scheduler/hazard.py::schedule_regions",
+    "kernel/scheduler/hazard.py::schedule_regions.hazard_of",
+    "kernel/scheduler/hazard.py::schedule_regions.pi_of",
+    "tests/agent_eval/test_arms.py::test_all_arms_reconcile_identical_inputs_under_one_config",
+    "tests/agent_eval/test_arms.py::test_arms_diverge_only_where_there_is_contention",
+    "tests/agent_eval/test_arms.py::test_crdt_is_correct_on_a_disjoint_coedit",
+    "tests/agent_eval/test_arms.py::test_crdt_is_order_insensitive",
+    "tests/agent_eval/test_arms.py::test_crdt_merges_cleanly_but_is_corrupt_on_shared_write",
+    "tests/agent_eval/test_arms.py::test_disjoint_fanout_is_lossless_for_every_arm",
+    "tests/agent_eval/test_arms.py::test_lww_drops_a_disjoint_coedit_too",
+    "tests/agent_eval/test_arms.py::test_lww_silently_overwrites_a_shared_write",
+    "tests/agent_eval/test_arms.py::test_mtpo_commits_differently_under_two_launch_orders",
+    "tests/agent_eval/test_arms.py::test_mtpo_is_order_sensitive_on_interdependent_tier",
+    "tests/agent_eval/test_arms.py::test_mtpo_order_insensitive_on_disjoint_edits",
+    "tests/agent_eval/test_migration_corpus.py::test_acceptance_is_red_on_before_green_on_gold",
+    "tests/agent_eval/test_migration_corpus.py::test_control_is_low_p_reported_alongside_migration_p",
+    "tests/agent_eval/test_migration_corpus.py::test_each_task_exposes_before_after_tests_subtasks_tier",
+    "tests/agent_eval/test_migration_corpus.py::test_t0_has_disjoint_per_file_footprints",
+    "tests/agent_eval/test_migration_corpus.py::test_t1_shared_read_does_not_couple",
+    "tests/agent_eval/test_migration_corpus.py::test_t2_forces_two_agents_onto_a_shared_signature",
+    "tests/agent_eval/test_migration_corpus.py::test_t3_interdependent_is_one_three_agent_component",
+    "tests/agent_eval/test_oracle.py::test_commuting_task_is_schedule_independent_under_crdt",
+    "tests/agent_eval/test_oracle.py::test_commuting_task_is_schedule_independent_under_eico",
+    "tests/agent_eval/test_oracle.py::test_crdt_clean_merge_on_shared_write_is_flagged_corrupt",
+    "tests/agent_eval/test_oracle.py::test_gold_is_never_flagged_as_corruption",
+    "tests/agent_eval/test_oracle.py::test_lww_dropping_a_disjoint_edit_is_flagged_corrupt",
+    "tests/agent_eval/test_oracle.py::test_mutation_report_records_escaped_mutants",
+    "tests/agent_eval/test_oracle.py::test_mutation_testing_catch_rate_meets_threshold",
+    "tests/agent_eval/test_oracle.py::test_non_commuting_task_converges_under_canonical_tiebreak",
+    "tests/agent_eval/test_oracle.py::test_non_commuting_task_is_order_sensitive_under_mtpo",
+    "tests/agent_eval/test_oracle.py::test_planted_invariant_break_is_flagged_corrupt",
+    "tests/agent_eval/test_report.py::_mk",
+    "tests/agent_eval/test_report.py::test_aggregation_marks_an_ungradeable_arm_column_none",
+    "tests/agent_eval/test_report.py::test_bootstrap_ci_has_spread_on_heterogeneous_input",
+    "tests/agent_eval/test_report.py::test_contention_task_eico_beats_crdt_on_corruption_axis",
+    "tests/agent_eval/test_report.py::test_empty_gradeable_task_is_ungradeable_not_a_pass",
+    "tests/agent_eval/test_report.py::test_fanout_task_with_speedup_and_zero_corruption_is_a_win",
+    "tests/agent_eval/test_report.py::test_full_frontier_report_is_internally_consistent",
+    "tests/agent_eval/test_report.py::test_interdependent_tier_is_a_corruption_axis_win",
+    "tests/agent_eval/test_report.py::test_kill_criterion_trips_when_a_high_p_fanout_cannot_win",
+    "tests/agent_eval/test_report.py::test_low_p_control_is_no_win_expected_and_a_pass",
+    "tests/agent_eval/test_report.py::test_low_p_fanout_loss_does_not_trip_the_kill_criterion",
+    "tests/agent_eval/test_report.py::test_low_p_fanout_loss_does_not_trip_the_kill_criterion._Stub",
+    "tests/agent_eval/test_report.py::test_per_tier_aggregation_matches_hand_computed_fixture",
+    "tests/agent_eval/test_report.py::test_ungradeable_wins_nothing_even_with_a_clean_eico",
+    "tests/kernel/test_entropy_conflict.py::_fake_close",
+    "tests/kernel/test_entropy_conflict.py::_measurements_with_correlation",
+    "tests/kernel/test_entropy_conflict.py::_measurements_with_correlation.mk",
+    "tests/kernel/test_entropy_conflict.py::_measurements_without_correlation",
+    "tests/kernel/test_entropy_conflict.py::_measurements_without_correlation.mk",
+    "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy",
+    "tests/kernel/test_entropy_conflict.py::test_disjoint_variants_commute_and_score_zero_entropy",
+    "tests/kernel/test_entropy_conflict.py::test_gate_go_when_entropy_correlates",
+    "tests/kernel/test_entropy_conflict.py::test_gate_go_when_footprints_change_outcomes_even_if_entropy_flat",
+    "tests/kernel/test_entropy_conflict.py::test_gate_no_go_records_honest_negative_and_degradation",
+    "tests/kernel/test_entropy_conflict.py::test_n_gt_2_unrelated_component_closes_earlier_under_bounds",
+    "tests/kernel/test_entropy_conflict.py::test_sample_access_falls_back_to_sampling_with_cost_recorded",
+    "tests/kernel/test_entropy_conflict.py::test_sample_access_falls_back_to_sampling_with_cost_recorded.fake_sampler",
+    "tests/kernel/test_entropy_conflict.py::test_sample_access_offline_is_zero_cost_and_nonblocking",
+    "tests/kernel/test_entropy_conflict.py::test_sample_access_uses_logprobs_when_available",
+    "tests/kernel/test_entropy_conflict.py::test_spearman_is_exact_on_known_series",
+    "tests/kernel/test_entropy_conflict.py::test_surface_only_variants_collapse_to_one_class",
+    "tests/kernel/test_entropy_conflict.py::test_two_agent_single_conflict_shows_no_bound_effect",
+    "tests/kernel/test_entropy_conflict.py::test_variants_commuting_differently_score_nonzero_entropy",
+    "tests/kernel/test_hazard_scheduler.py::_fanout_with_one_hotspot",
+    "tests/kernel/test_hazard_scheduler.py::test_compatible_interaction_stays_speculative",
+    "tests/kernel/test_hazard_scheduler.py::test_degraded_mode_over_coordinates_relative_to_full",
+    "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled",
+    "tests/kernel/test_hazard_scheduler.py::test_disjoint_region_fills_speculatively",
+    "tests/kernel/test_hazard_scheduler.py::test_end_to_end_from_real_edits",
+    "tests/kernel/test_hazard_scheduler.py::test_fixing_the_hot_region_drops_neighbours_below_threshold",
+    "tests/kernel/test_hazard_scheduler.py::test_high_hazard_region_lands_in_skeleton",
+    "tests/kernel/test_hazard_scheduler.py::test_interaction_graph_is_computed_from_real_footprints",
+    "tests/kernel/test_hazard_scheduler.py::test_scheduler_raises_effective_p_over_disabled_ablation",
+    "tests/kernel/test_hazard_scheduler.py::test_tau_from_cost_ratio_moves_the_boundary",
+    "tests/kernel/test_hazard_scheduler.py::test_u7_fail_runs_pi_c_only_and_flags_degradation",
+    "tests/kernel/test_hazard_scheduler.py::test_uncertainty_breaks_ties_in_full_mode"
+   ],
+   "edit_detail": [
+    {
+     "path": "tests/agent_eval/test_migration_corpus.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_migration_corpus.py::test_acceptance_is_red_on_before_green_on_gold",
+      "tests/agent_eval/test_migration_corpus.py::test_control_is_low_p_reported_alongside_migration_p",
+      "tests/agent_eval/test_migration_corpus.py::test_each_task_exposes_before_after_tests_subtasks_tier",
+      "tests/agent_eval/test_migration_corpus.py::test_t0_has_disjoint_per_file_footprints",
+      "tests/agent_eval/test_migration_corpus.py::test_t1_shared_read_does_not_couple",
+      "tests/agent_eval/test_migration_corpus.py::test_t2_forces_two_agents_onto_a_shared_signature",
+      "tests/agent_eval/test_migration_corpus.py::test_t3_interdependent_is_one_three_agent_component"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/corpus/migration.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/agent_eval/test_migration_corpus.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_migration_corpus.py::test_t2_forces_two_agents_onto_a_shared_signature",
+      "tests/agent_eval/test_migration_corpus.py::test_t3_interdependent_is_one_three_agent_component"
+     ]
+    },
+    {
+     "path": "kernel/harness/footprints.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "kernel/harness/footprints.py::measure_footprints"
+     ]
+    },
+    {
+     "path": "kernel/harness/footprints.py",
+     "how": "replayed",
+     "symbols": [
+      "kernel/harness/footprints.py::measure_component_close"
+     ]
+    },
+    {
+     "path": "kernel/harness/entropy_conflict.py",
+     "how": "written-body",
+     "symbols": [
+      "kernel/harness/entropy_conflict.py::EntropyMeasurement",
+      "kernel/harness/entropy_conflict.py::GateVerdict",
+      "kernel/harness/entropy_conflict.py::SampleAccess",
+      "kernel/harness/entropy_conflict.py::_entropy_bits",
+      "kernel/harness/entropy_conflict.py::_spearman",
+      "kernel/harness/entropy_conflict.py::_spearman.ranks",
+      "kernel/harness/entropy_conflict.py::calibration_curve",
+      "kernel/harness/entropy_conflict.py::commute_class",
+      "kernel/harness/entropy_conflict.py::entropy_conflict_correlation",
+      "kernel/harness/entropy_conflict.py::gate_decision",
+      "kernel/harness/entropy_conflict.py::measure_cell_entropy",
+      "kernel/harness/entropy_conflict.py::probe_sample_access"
+     ]
+    },
+    {
+     "path": "kernel/harness/entropy_conflict.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/harness/entropy_conflict.py",
+     "how": "replayed",
+     "symbols": [
+      "kernel/harness/entropy_conflict.py::commute_class"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_entropy_conflict.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/kernel/test_entropy_conflict.py::_fake_close",
+      "tests/kernel/test_entropy_conflict.py::_measurements_with_correlation",
+      "tests/kernel/test_entropy_conflict.py::_measurements_with_correlation.mk",
+      "tests/kernel/test_entropy_conflict.py::_measurements_without_correlation",
+      "tests/kernel/test_entropy_conflict.py::_measurements_without_correlation.mk",
+      "tests/kernel/test_entropy_conflict.py::test_calibration_curve_is_sorted_by_entropy",
+      "tests/kernel/test_entropy_conflict.py::test_disjoint_variants_commute_and_score_zero_entropy",
+      "tests/kernel/test_entropy_conflict.py::test_gate_go_when_entropy_correlates",
+      "tests/kernel/test_entropy_conflict.py::test_gate_go_when_footprints_change_outcomes_even_if_entropy_flat",
+      "tests/kernel/test_entropy_conflict.py::test_gate_no_go_records_honest_negative_and_degradation",
+      "tests/kernel/test_entropy_conflict.py::test_n_gt_2_unrelated_component_closes_earlier_under_bounds",
+      "tests/kernel/test_entropy_conflict.py::test_sample_access_falls_back_to_sampling_with_cost_recorded",
+      "tests/kernel/test_entropy_conflict.py::test_sample_access_falls_back_to_sampling_with_cost_recorded.fake_sampler",
+      "tests/kernel/test_entropy_conflict.py::test_sample_access_offline_is_zero_cost_and_nonblocking",
+      "tests/kernel/test_entropy_conflict.py::test_sample_access_uses_logprobs_when_available",
+      "tests/kernel/test_entropy_conflict.py::test_spearman_is_exact_on_known_series",
+      "tests/kernel/test_entropy_conflict.py::test_surface_only_variants_collapse_to_one_class",
+      "tests/kernel/test_entropy_conflict.py::test_two_agent_single_conflict_shows_no_bound_effect",
+      "tests/kernel/test_entropy_conflict.py::test_variants_commuting_differently_score_nonzero_entropy"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_entropy_conflict.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/kernel/test_entropy_conflict.py::test_two_agent_single_conflict_shows_no_bound_effect"
+     ]
+    },
+    {
+     "path": "kernel/scheduler/__init__.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/scheduler/hazard.py",
+     "how": "written-body",
+     "symbols": [
+      "kernel/scheduler/hazard.py::RegionDecision",
+      "kernel/scheduler/hazard.py::RegionInput",
+      "kernel/scheduler/hazard.py::Schedule",
+      "kernel/scheduler/hazard.py::Schedule.speculative_fraction",
+      "kernel/scheduler/hazard.py::interaction_graph",
+      "kernel/scheduler/hazard.py::naive_schedule",
+      "kernel/scheduler/hazard.py::regions_from_edits",
+      "kernel/scheduler/hazard.py::schedule_regions",
+      "kernel/scheduler/hazard.py::schedule_regions.hazard_of",
+      "kernel/scheduler/hazard.py::schedule_regions.pi_of"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_hazard_scheduler.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/kernel/test_hazard_scheduler.py::_fanout_with_one_hotspot",
+      "tests/kernel/test_hazard_scheduler.py::test_compatible_interaction_stays_speculative",
+      "tests/kernel/test_hazard_scheduler.py::test_degraded_mode_over_coordinates_relative_to_full",
+      "tests/kernel/test_hazard_scheduler.py::test_disabled_ablation_reports_it_is_disabled",
+      "tests/kernel/test_hazard_scheduler.py::test_disjoint_region_fills_speculatively",
+      "tests/kernel/test_hazard_scheduler.py::test_end_to_end_from_real_edits",
+      "tests/kernel/test_hazard_scheduler.py::test_fixing_the_hot_region_drops_neighbours_below_threshold",
+      "tests/kernel/test_hazard_scheduler.py::test_high_hazard_region_lands_in_skeleton",
+      "tests/kernel/test_hazard_scheduler.py::test_interaction_graph_is_computed_from_real_footprints",
+      "tests/kernel/test_hazard_scheduler.py::test_scheduler_raises_effective_p_over_disabled_ablation",
+      "tests/kernel/test_hazard_scheduler.py::test_tau_from_cost_ratio_moves_the_boundary",
+      "tests/kernel/test_hazard_scheduler.py::test_u7_fail_runs_pi_c_only_and_flags_degradation",
+      "tests/kernel/test_hazard_scheduler.py::test_uncertainty_breaks_ties_in_full_mode"
+     ]
+    },
+    {
+     "path": "tests/kernel/test_hazard_scheduler.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/kernel/test_hazard_scheduler.py::test_tau_from_cost_ratio_moves_the_boundary"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/arms/__init__.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/arms/base.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/arms/base.py::ArmConfig",
+      "experiments/agent_eval/arms/base.py::ArmResult",
+      "experiments/agent_eval/arms/base.py::_edits_for",
+      "experiments/agent_eval/arms/base.py::input_digest",
+      "experiments/agent_eval/arms/base.py::run_all_arms"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/arms/lww.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/arms/lww.py::_order_key",
+      "experiments/agent_eval/arms/lww.py::lww_arm",
+      "experiments/agent_eval/arms/lww.py::lww_merge"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/arms/crdt.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/arms/crdt.py::crdt_arm",
+      "experiments/agent_eval/arms/crdt.py::crdt_merge"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/arms/mtpo.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/arms/mtpo.py::_launch_order",
+      "experiments/agent_eval/arms/mtpo.py::mtpo_arm",
+      "experiments/agent_eval/arms/mtpo.py::mtpo_merge"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_arms.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_arms.py::test_all_arms_reconcile_identical_inputs_under_one_config",
+      "tests/agent_eval/test_arms.py::test_arms_diverge_only_where_there_is_contention",
+      "tests/agent_eval/test_arms.py::test_crdt_is_correct_on_a_disjoint_coedit",
+      "tests/agent_eval/test_arms.py::test_crdt_is_order_insensitive",
+      "tests/agent_eval/test_arms.py::test_crdt_merges_cleanly_but_is_corrupt_on_shared_write",
+      "tests/agent_eval/test_arms.py::test_disjoint_fanout_is_lossless_for_every_arm",
+      "tests/agent_eval/test_arms.py::test_lww_drops_a_disjoint_coedit_too",
+      "tests/agent_eval/test_arms.py::test_lww_silently_overwrites_a_shared_write",
+      "tests/agent_eval/test_arms.py::test_mtpo_commits_differently_under_two_launch_orders",
+      "tests/agent_eval/test_arms.py::test_mtpo_is_order_sensitive_on_interdependent_tier",
+      "tests/agent_eval/test_arms.py::test_mtpo_order_insensitive_on_disjoint_edits"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_arms.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/agent_eval/test_arms.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_arms.py::test_crdt_is_correct_on_a_disjoint_coedit"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_arms.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_arms.py::test_disjoint_fanout_is_lossless_for_every_arm"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/oracle.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/oracle.py::CorruptionVerdict",
+      "experiments/agent_eval/oracle.py::MutationReport",
+      "experiments/agent_eval/oracle.py::_imports_ok",
+      "experiments/agent_eval/oracle.py::_materialize",
+      "experiments/agent_eval/oracle.py::_mutate_drop_last_param",
+      "experiments/agent_eval/oracle.py::_mutate_flip_number",
+      "experiments/agent_eval/oracle.py::_mutate_stub_body",
+      "experiments/agent_eval/oracle.py::_parses",
+      "experiments/agent_eval/oracle.py::_plant_mutants",
+      "experiments/agent_eval/oracle.py::_semantic",
+      "experiments/agent_eval/oracle.py::evaluate_corruption",
+      "experiments/agent_eval/oracle.py::mutation_test"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/oracle.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/oracle.py::evaluate_corruption"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/schedule_independence.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/schedule_independence.py::ScheduleIndependence",
+      "experiments/agent_eval/schedule_independence.py::_agents_of",
+      "experiments/agent_eval/schedule_independence.py::_artifact_hash",
+      "experiments/agent_eval/schedule_independence.py::_order_edits",
+      "experiments/agent_eval/schedule_independence.py::_orders",
+      "experiments/agent_eval/schedule_independence.py::eico_commit",
+      "experiments/agent_eval/schedule_independence.py::measure_schedule_independence"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_oracle.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_oracle.py::test_commuting_task_is_schedule_independent_under_crdt",
+      "tests/agent_eval/test_oracle.py::test_commuting_task_is_schedule_independent_under_eico",
+      "tests/agent_eval/test_oracle.py::test_crdt_clean_merge_on_shared_write_is_flagged_corrupt",
+      "tests/agent_eval/test_oracle.py::test_gold_is_never_flagged_as_corruption",
+      "tests/agent_eval/test_oracle.py::test_lww_dropping_a_disjoint_edit_is_flagged_corrupt",
+      "tests/agent_eval/test_oracle.py::test_mutation_report_records_escaped_mutants",
+      "tests/agent_eval/test_oracle.py::test_mutation_testing_catch_rate_meets_threshold",
+      "tests/agent_eval/test_oracle.py::test_non_commuting_task_converges_under_canonical_tiebreak",
+      "tests/agent_eval/test_oracle.py::test_non_commuting_task_is_order_sensitive_under_mtpo",
+      "tests/agent_eval/test_oracle.py::test_planted_invariant_break_is_flagged_corrupt"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/schedule_independence.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/schedule_independence.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/schedule_independence.py::_order_edits",
+      "experiments/agent_eval/schedule_independence.py::eico_commit"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_oracle.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/agent_eval/test_oracle.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_oracle.py::test_non_commuting_task_converges_under_canonical_tiebreak"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/report.py",
+     "how": "written-body",
+     "symbols": [
+      "experiments/agent_eval/report.py::ArmOutcome",
+      "experiments/agent_eval/report.py::FrontierReport",
+      "experiments/agent_eval/report.py::FrontierReport.as_dict",
+      "experiments/agent_eval/report.py::TaskFrontier",
+      "experiments/agent_eval/report.py::TierAggregate",
+      "experiments/agent_eval/report.py::aggregate_by_tier",
+      "experiments/agent_eval/report.py::arm_outcome",
+      "experiments/agent_eval/report.py::bootstrap_ci",
+      "experiments/agent_eval/report.py::build_frontier",
+      "experiments/agent_eval/report.py::classify",
+      "experiments/agent_eval/report.py::classify._frontier",
+      "experiments/agent_eval/report.py::eico_outcome",
+      "experiments/agent_eval/report.py::frontier_report",
+      "experiments/agent_eval/report.py::is_pass",
+      "experiments/agent_eval/report.py::render_report"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::main"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/run_eval.py::main"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_report.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_report.py::_mk",
+      "tests/agent_eval/test_report.py::test_aggregation_marks_an_ungradeable_arm_column_none",
+      "tests/agent_eval/test_report.py::test_bootstrap_ci_has_spread_on_heterogeneous_input",
+      "tests/agent_eval/test_report.py::test_contention_task_eico_beats_crdt_on_corruption_axis",
+      "tests/agent_eval/test_report.py::test_empty_gradeable_task_is_ungradeable_not_a_pass",
+      "tests/agent_eval/test_report.py::test_fanout_task_with_speedup_and_zero_corruption_is_a_win",
+      "tests/agent_eval/test_report.py::test_full_frontier_report_is_internally_consistent",
+      "tests/agent_eval/test_report.py::test_interdependent_tier_is_a_corruption_axis_win",
+      "tests/agent_eval/test_report.py::test_kill_criterion_trips_when_a_high_p_fanout_cannot_win",
+      "tests/agent_eval/test_report.py::test_low_p_control_is_no_win_expected_and_a_pass",
+      "tests/agent_eval/test_report.py::test_low_p_fanout_loss_does_not_trip_the_kill_criterion",
+      "tests/agent_eval/test_report.py::test_low_p_fanout_loss_does_not_trip_the_kill_criterion._Stub",
+      "tests/agent_eval/test_report.py::test_per_tier_aggregation_matches_hand_computed_fixture",
+      "tests/agent_eval/test_report.py::test_ungradeable_wins_nothing_even_with_a_clean_eico"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "7834f3ff-f9cb-4903-be86-56dee13f6601",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-01T12:14:29.228Z",
+   "text": "explain to me in one sentence, whats the current pipeline, why design this way, how it works; cocncise, candid, and plain language",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "874e80c4-0e33-4de5-8e39-ce5d348cd923",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-01T12:19:35.626Z",
+   "text": "i thought we were saying that holding might cause slower as the dependnecies could become really intricate and always letting it stopped? the real parallel collaboration with fast communication in the middle is not possible? i feel like by sharing state or definining the minimal protocol of communic",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "4854aa4f-16bf-4b3b-9249-dbbe355a6788",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-01T22:30:48.533Z",
+   "text": "wait i thought the newest implementation beat the baseline? no",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "60140b27-2cfc-4703-91bc-a40ef5987ebc",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-01T22:31:19.045Z",
+   "text": "wait i thought the newest implementation beat the baseline? be candid and dont use \"its A... not B...\" \"not... but...\" sentence and using plain concise term to describe",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "1d7c4501-e1ad-44f7-babc-02215c0bc7b4",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-02T01:40:01.713Z",
+   "text": "why it did not win against a live baseline? diagnose from the researcher perspective, dont guess, actually logging information you need and run tests and see why its the issue; we also should use single agent (agentic pipeline rather than single LLM call as baseline)",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "3181f73d-ef6c-4961-9b08-e1af60ad5b22",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-02T19:57:47.899Z",
+   "text": "sure lets dot it",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "75988565-32d7-473d-87b6-a4e768b0214a",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-02T19:57:52.881Z",
+   "text": "sure lets do it",
+   "n_edits": 2,
+   "n_eligible": 2,
+   "symbols": [],
+   "edit_detail": [
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/run_eval.py",
+     "how": "",
+     "symbols": []
+    }
+   ]
+  },
+  {
+   "request_id": "788d09f8-288e-4064-8108-65246cf195bb",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-02T20:10:28.302Z",
+   "text": "so its not running parallel?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "1c92a88a-d42a-4f23-8ce7-d24ab0f0e4e3",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-02T20:11:07.078Z",
+   "text": "so its not running parallel? and how do we able to improve the planner? i dont quite understand whats the issue? explain to me in plain, concise text",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "8bd8c4c6-7cea-438a-80d8-83d60a6f798d",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-02T20:29:11.775Z",
+   "text": "i think we had a plan about how to improve the planner, while that required training, we might able to learn something from that and utilize the harness or prompt engineering for it?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "9841bf5a-dadd-45cb-96d2-dd3373ba028f",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-04T14:29:14.650Z",
+   "text": "sure lets do that",
+   "n_edits": 9,
+   "n_eligible": 6,
+   "symbols": [
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline",
+    "experiments/agent_eval/seeder.py::seeded_paths",
+    "tests/agent_eval/test_coupling_seeder.py::_NullTrace",
+    "tests/agent_eval/test_coupling_seeder.py::_NullTrace.__init__",
+    "tests/agent_eval/test_coupling_seeder.py::_NullTrace.emit",
+    "tests/agent_eval/test_coupling_seeder.py::test_groups_report_the_agent_classes",
+    "tests/agent_eval/test_coupling_seeder.py::test_region_count_agrees_with_measured_parallelism",
+    "tests/agent_eval/test_coupling_seeder.py::test_t0_disjoint_fans_out_to_three_regions",
+    "tests/agent_eval/test_coupling_seeder.py::test_t1_shared_read_recovers_two_regions_the_llm_collapsed",
+    "tests/agent_eval/test_coupling_seeder.py::test_t2_shared_signature_merges_to_one_region",
+    "tests/agent_eval/test_coupling_seeder.py::test_t3_interdependent_merges_to_one_region"
+   ],
+   "edit_detail": [
+    {
+     "path": "experiments/agent_eval/seeder.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/seeder.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/seeder.py::seeded_paths"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_coupling_seeder.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_coupling_seeder.py::_NullTrace",
+      "tests/agent_eval/test_coupling_seeder.py::_NullTrace.__init__",
+      "tests/agent_eval/test_coupling_seeder.py::_NullTrace.emit",
+      "tests/agent_eval/test_coupling_seeder.py::test_groups_report_the_agent_classes",
+      "tests/agent_eval/test_coupling_seeder.py::test_region_count_agrees_with_measured_parallelism",
+      "tests/agent_eval/test_coupling_seeder.py::test_t0_disjoint_fans_out_to_three_regions",
+      "tests/agent_eval/test_coupling_seeder.py::test_t1_shared_read_recovers_two_regions_the_llm_collapsed",
+      "tests/agent_eval/test_coupling_seeder.py::test_t2_shared_signature_merges_to_one_region",
+      "tests/agent_eval/test_coupling_seeder.py::test_t3_interdependent_merges_to_one_region"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "f82dbb29-5414-4a82-9d2c-42509c87df05",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-04T14:56:01.891Z",
+   "text": "(a)",
+   "n_edits": 6,
+   "n_eligible": 6,
+   "symbols": [
+    "experiments/agent_eval/corpus/migration.py::_t1l_migrated",
+    "experiments/agent_eval/corpus/migration.py::_t1l_module",
+    "experiments/agent_eval/corpus/migration.py::_t1l_stale",
+    "experiments/agent_eval/corpus/migration.py::large_shared_read_task",
+    "experiments/agent_eval/seeder.py::coupling_seed_subtasks"
+   ],
+   "edit_detail": [
+    {
+     "path": "experiments/agent_eval/seeder.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/seeder.py::coupling_seed_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/corpus/migration.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/corpus/migration.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/corpus/migration.py::_t1l_migrated",
+      "experiments/agent_eval/corpus/migration.py::_t1l_module",
+      "experiments/agent_eval/corpus/migration.py::_t1l_stale",
+      "experiments/agent_eval/corpus/migration.py::large_shared_read_task"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_coupling_seeder.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "tests/agent_eval/test_coupling_seeder.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/corpus/migration.py",
+     "how": "",
+     "symbols": []
+    }
+   ]
+  },
+  {
+   "request_id": "8df40060-0c7b-4157-8281-c410934c49bf",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-05T12:26:51.742Z",
+   "text": "resume",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "af6528f6-b45f-4eb0-8ae6-a117b2677fd3",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-05T12:45:33.099Z",
+   "text": "resume",
+   "n_edits": 1,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "ef8f2cb7-9d2e-451e-b7fd-574c9ae954b1",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-05T12:50:46.631Z",
+   "text": "i thought we are doing this \"To get a real parallel wall-clock win, each region would need many sequential round-trips (deep iterative work), so two long chains running concurrently beat one agent doing both serially. \" why not?",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "9539cb3f-0113-4619-a611-341990fcaa07",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-05T13:40:18.955Z",
+   "text": "no, you should stop fooling ourselves by making the baseline weaker and only find the tasks we flavored; but instead, looking at all the prior architecture and experiement eico did, understand, learn from it, reflect deeply, and propose changes",
+   "n_edits": 46,
+   "n_eligible": 39,
+   "symbols": [
+    "experiments/agent_eval/kernel_pipeline.py::_dispatch_coder",
+    "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks",
+    "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._close_path",
+    "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._launch",
+    "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._ready",
+    "experiments/agent_eval/kernel_pipeline.py::_promote_paths_with_pending",
+    "experiments/agent_eval/kernel_pipeline.py::run_coder",
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline",
+    "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline._on_path_complete",
+    "experiments/agent_eval/seeder.py::seeded_paths",
+    "kernel/ladder/commit_ladder.py::_GradeResult",
+    "kernel/proxy/tools.py::Proxy",
+    "kernel/proxy/tools.py::Proxy._verdict_from",
+    "tests/agent_eval/test_advisory_delivery.py::_FakeTrace",
+    "tests/agent_eval/test_advisory_delivery.py::_FakeTrace.__init__",
+    "tests/agent_eval/test_advisory_delivery.py::_FakeTrace.emit",
+    "tests/agent_eval/test_advisory_delivery.py::_proxy_with_a_live_advisory",
+    "tests/agent_eval/test_advisory_delivery.py::test_advisory_reaches_the_importer_coders_messages",
+    "tests/agent_eval/test_advisory_delivery.py::test_delivery_is_deduped_across_turns",
+    "tests/agent_eval/test_advisory_delivery.py::test_no_delivery_to_the_source_agent_or_an_unrelated_file",
+    "tests/agent_eval/test_buffered_continue.py::_proxy",
+    "tests/agent_eval/test_buffered_continue.py::test_edits_after_a_buffered_verdict_all_land",
+    "tests/agent_eval/test_buffered_continue.py::test_quitting_after_first_buffered_would_lose_the_rest",
+    "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing",
+    "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing.on_complete",
+    "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner",
+    "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner.on_complete",
+    "tests/agent_eval/test_regrade_feedback.py::_FakeTrace",
+    "tests/agent_eval/test_regrade_feedback.py::_FakeTrace.__init__",
+    "tests/agent_eval/test_regrade_feedback.py::_FakeTrace.emit",
+    "tests/agent_eval/test_regrade_feedback.py::_first_red_promote",
+    "tests/agent_eval/test_regrade_feedback.py::_run",
+    "tests/agent_eval/test_regrade_feedback.py::_run.on_complete",
+    "tests/agent_eval/test_regrade_feedback.py::_scripted_runner",
+    "tests/agent_eval/test_regrade_feedback.py::_trunk",
+    "tests/agent_eval/test_regrade_feedback.py::_trunk_of",
+    "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it",
+    "tests/agent_eval/test_regrade_feedback.py::test_without_regrade_a_required_wrong_edit_stays_red",
+    "tests/agent_eval/test_ws2_coupling_planners.py::_FakeTrace",
+    "tests/agent_eval/test_ws2_coupling_planners.py::_FakeTrace.__init__",
+    "tests/agent_eval/test_ws2_coupling_planners.py::_FakeTrace.emit",
+    "tests/agent_eval/test_ws2_coupling_planners.py::test_colocate_merges_the_coupled_files_into_one_region",
+    "tests/agent_eval/test_ws2_coupling_planners.py::test_default_seeder_splits_the_ripple_across_two_independent_regions",
+    "tests/agent_eval/test_ws2_coupling_planners.py::test_sequence_dependency_is_acyclic_and_names_only_real_regions",
+    "tests/agent_eval/test_ws2_coupling_planners.py::test_sequence_wires_a_cross_file_dependency_importer_after_source"
+   ],
+   "edit_detail": [
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "kernel/proxy/tools.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "kernel/proxy/tools.py::Proxy",
+      "kernel/proxy/tools.py::Proxy._verdict_from"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_buffered_continue.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_buffered_continue.py::_proxy",
+      "tests/agent_eval/test_buffered_continue.py::test_edits_after_a_buffered_verdict_all_land",
+      "tests/agent_eval/test_buffered_continue.py::test_quitting_after_first_buffered_would_lose_the_rest"
+     ]
+    },
+    {
+     "path": "kernel/ladder/commit_ladder.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "kernel/ladder/commit_ladder.py::_GradeResult"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks",
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._ready"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline",
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline._on_path_complete"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_regrade_feedback.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_regrade_feedback.py::_FakeTrace",
+      "tests/agent_eval/test_regrade_feedback.py::_FakeTrace.__init__",
+      "tests/agent_eval/test_regrade_feedback.py::_FakeTrace.emit",
+      "tests/agent_eval/test_regrade_feedback.py::_run",
+      "tests/agent_eval/test_regrade_feedback.py::_run.on_complete",
+      "tests/agent_eval/test_regrade_feedback.py::_scripted_runner",
+      "tests/agent_eval/test_regrade_feedback.py::_trunk",
+      "tests/agent_eval/test_regrade_feedback.py::_trunk_of",
+      "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it",
+      "tests/agent_eval/test_regrade_feedback.py::test_without_regrade_a_required_wrong_edit_stays_red"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_regrade_feedback.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_regrade_feedback.py::_trunk_of",
+      "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_regrade_feedback.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_coder"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_coder"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_advisory_delivery.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_advisory_delivery.py::_FakeTrace",
+      "tests/agent_eval/test_advisory_delivery.py::_FakeTrace.__init__",
+      "tests/agent_eval/test_advisory_delivery.py::_FakeTrace.emit",
+      "tests/agent_eval/test_advisory_delivery.py::_proxy_with_a_live_advisory",
+      "tests/agent_eval/test_advisory_delivery.py::test_advisory_reaches_the_importer_coders_messages",
+      "tests/agent_eval/test_advisory_delivery.py::test_delivery_is_deduped_across_turns",
+      "tests/agent_eval/test_advisory_delivery.py::test_no_delivery_to_the_source_agent_or_an_unrelated_file"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks",
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._close_path",
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._ready"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_promote_paths_with_pending",
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_regrade_feedback.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_regrade_feedback.py::_FakeTrace",
+      "tests/agent_eval/test_regrade_feedback.py::_FakeTrace.__init__",
+      "tests/agent_eval/test_regrade_feedback.py::_FakeTrace.emit",
+      "tests/agent_eval/test_regrade_feedback.py::_first_red_promote",
+      "tests/agent_eval/test_regrade_feedback.py::_scripted_runner",
+      "tests/agent_eval/test_regrade_feedback.py::_trunk",
+      "tests/agent_eval/test_regrade_feedback.py::test_regrade_delivers_failure_and_the_coder_fixes_it",
+      "tests/agent_eval/test_regrade_feedback.py::test_without_regrade_a_required_wrong_edit_stays_red"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/seeder.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/seeder.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/seeder.py::seeded_paths"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_coder"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_coder"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "located-in-blob",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_coder"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_coder"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_coder"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks",
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._launch",
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks._ready"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "",
+     "symbols": []
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_ws2_coupling_planners.py",
+     "how": "written-body",
+     "symbols": [
+      "tests/agent_eval/test_ws2_coupling_planners.py::_FakeTrace",
+      "tests/agent_eval/test_ws2_coupling_planners.py::_FakeTrace.__init__",
+      "tests/agent_eval/test_ws2_coupling_planners.py::_FakeTrace.emit",
+      "tests/agent_eval/test_ws2_coupling_planners.py::test_colocate_merges_the_coupled_files_into_one_region",
+      "tests/agent_eval/test_ws2_coupling_planners.py::test_default_seeder_splits_the_ripple_across_two_independent_regions",
+      "tests/agent_eval/test_ws2_coupling_planners.py::test_sequence_dependency_is_acyclic_and_names_only_real_regions",
+      "tests/agent_eval/test_ws2_coupling_planners.py::test_sequence_wires_a_cross_file_dependency_importer_after_source"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::_dispatch_subtasks"
+     ]
+    },
+    {
+     "path": "experiments/agent_eval/kernel_pipeline.py",
+     "how": "replayed",
+     "symbols": [
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline",
+      "experiments/agent_eval/kernel_pipeline.py::run_kernel_pipeline._on_path_complete"
+     ]
+    },
+    {
+     "path": "tests/agent_eval/test_continuous_ladder.py",
+     "how": "replayed",
+     "symbols": [
+      "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing",
+      "tests/agent_eval/test_continuous_ladder.py::test_on_path_complete_fires_once_per_path_at_last_owner_landing.on_complete",
+      "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner",
+      "tests/agent_eval/test_continuous_ladder.py::test_shared_path_fires_on_path_complete_only_after_last_owner.on_complete"
+     ]
+    }
+   ]
+  },
+  {
+   "request_id": "3f699f2b-4ba2-48c8-9735-456367ef0a46",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-06T13:12:55.719Z",
+   "text": "i dont think I really care if the gate is strong or not, but that as long as it able to finish the task correctly and fastly with parallel agents working then its ok; its just a problem of crdt + code dependencies (program slices) and it matters in terms of how we slice them, how we shcedule them, h",
+   "n_edits": 2,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  },
+  {
+   "request_id": "f55e04fb-e760-4a60-80e6-d3d42aa8aa37",
+   "session": "70fc3727-2eb7-47d9-b6ae-b3b381577058",
+   "ts": "2026-08-06T13:43:00.706Z",
+   "text": "i thnk the biggest issue is that yeah the code implemented based on the theory and yes its there, but is it work really? when its putting into test with the becnhmark test does it behave the same way as expected? is it too coarse, is it too fuzzy, is the program slice overlapped, is the dependency t",
+   "n_edits": 0,
+   "n_eligible": 0,
+   "symbols": [],
+   "edit_detail": []
+  }
+ ]
+}

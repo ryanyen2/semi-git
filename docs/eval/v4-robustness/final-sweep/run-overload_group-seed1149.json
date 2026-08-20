@@ -1,0 +1,402 @@
+{
+ "label": "overload_group",
+ "seed": 1149,
+ "requested_ops": 33,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/overload_group-s1149/overload_group/overload_group",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [],
+ "applied": 33,
+ "refused": 2,
+ "skipped": 8,
+ "with_violations": 0,
+ "tracebacks": 0,
+ "settles": 0,
+ "store_ops_seen": 13,
+ "commits_seen": 12,
+ "script": [
+  "op_restore",
+  "op_revert_restore_probe",
+  "op_revert",
+  "op_restore",
+  "op_revert",
+  "op_restore",
+  "op_edit_save",
+  "op_feature_rename",
+  "op_feature_split",
+  "op_edit_save",
+  "op_revert_keep_dependents",
+  "op_restore",
+  "op_edit_save",
+  "op_edit_save",
+  "op_feature_merge",
+  "op_feature_rename",
+  "op_restore",
+  "op_restore",
+  "op_revert_undo_probe",
+  "op_revert_keep_dependents",
+  "op_revert_keep_dependents",
+  "op_feature_rename",
+  "op_revert_keep_dependents",
+  "op_undo",
+  "op_revert_undo_probe",
+  "op_edit_save",
+  "op_add_file",
+  "op_feature_split",
+  "op_feature_split",
+  "op_restore",
+  "op_feature_rename",
+  "op_restore",
+  "op_feature_split"
+ ],
+ "log": [
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 0,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "de8a3537aed1",
+   "rc": 0,
+   "removed": 3,
+   "restored": 3,
+   "returned": true,
+   "restore_failures": [],
+   "resurrected": [],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "de8a3537aed159d67e8faac0c879fc89d85f20b4c0e7423df592d404625bbf98\n\n removes 3 edit(s) across 1 symbol(s) \u00b7 1 file(s): ov.py\n  \u2713 revert applied \u2014 3 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "restore_out": [
+    "de8a3537aed1: 9d85f20b4c0e7423df592d404625bbf98\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)",
+    "10e1ad11620f: 83098257e5441fde9f258c179c8ee81a6\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)",
+    "575bde27ed78: 99f853acfa35a710009ca4fceec8b58d2\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 1,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "10e1ad11620f",
+   "rc": 0,
+   "out": " \u25b8 rewind  10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6\n\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 2,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 3,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "de8a3537aed1",
+   "rc": 0,
+   "out": " \u25b8 rewind  de8a3537aed159d67e8faac0c879fc89d85f20b4c0e7423df592d404625bbf98\n\n removes 2 edit(s) across 1 symbol(s) \u00b7 1 file(s): ov.py\n  \u2713 revert applied \u2014 2 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 4,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "de8a3537aed1",
+   "rc": 0,
+   "out": " \u25b8 restore  de8a3537aed159d67e8faac0c879fc89d85f20b4c0e7423df592d404625bbf98\n\n restores 3 edit(s) across 1 symbol(s) \u00b7 1 file(s): ov.py\n  \u2713 restore applied \u2014 0 edit(s) removed, 3 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "came_back": true,
+   "ideal_delta": 3,
+   "i": 5,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "ov.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save bb01dd2 \"v4 edit 6\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 6,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-10e1ad11620f",
+   "rc": 0,
+   "out": "\u2713 renamed f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6: 'add overload group' \u2192 'v4 label 7'\n",
+   "err": "",
+   "i": 7,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-10e1ad11620f",
+   "rc": 0,
+   "out": "\u2713 split f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6 \u2192 f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6 + f-de8a3537aed159d67e8faac0c879fc89d85f20b4c0e7423df592d404625bbf98\n",
+   "err": "",
+   "i": 8,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "ov.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 21725ed \"v4 edit 9\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 9,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "e5fa0e988ff3",
+   "rc": 0,
+   "out": "a0e988ff35b70a07fe5dcd6f1a19fc9c7164bb52179f4c69566169c2a4276 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 8c884d883b3b\n    edit the working tree, then: sgt fulfill 8c884d883b3b --from-tree\n",
+   "err": "",
+   "i": 10,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 11,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "ov.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save d2f2d7c \"v4 edit 12\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 12,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "ov.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save aa3e286 \"v4 edit 13\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 13,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-10e1ad11620f<-f-de8a3537aed1",
+   "rc": 0,
+   "out": "\u2713 merged f-de8a3537aed159d67e8faac0c879fc89d85f20b4c0e7423df592d404625bbf98 into f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6 (5 op(s), 3 member(s))\n",
+   "err": "",
+   "i": 14,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-10e1ad11620f",
+   "rc": 0,
+   "out": "\u2713 renamed f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6: 'v4 label 7' \u2192 'v4 label 15'\n",
+   "err": "",
+   "i": 15,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 16,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 17,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "575bde27ed78",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "       \u2588\u2588\u2588\u2588\u2591  \u00b7 1/5 edits removed\n\n removes 1 edit(s) \u00b7 1 file(s): ov.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo dc72aec: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 18,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "de8a3537aed1",
+   "rc": 0,
+   "out": "a3537aed159d67e8faac0c879fc89d85f20b4c0e7423df592d404625bbf98 \u2014 removes 7 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: b6a641cd3761\n    edit the working tree, then: sgt fulfill b6a641cd3761 --from-tree\n",
+   "err": "",
+   "i": 19,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "e5fa0e988ff3",
+   "rc": 0,
+   "out": "a0e988ff35b70a07fe5dcd6f1a19fc9c7164bb52179f4c69566169c2a4276 \u2014 removes 3 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: a9b1e8df1f6b\n    edit the working tree, then: sgt fulfill a9b1e8df1f6b --from-tree\n",
+   "err": "",
+   "i": 20,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-10e1ad11620f",
+   "rc": 0,
+   "out": "\u2713 renamed f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6: 'v4 label 15' \u2192 'v4 label 21'\n",
+   "err": "",
+   "i": 21,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "575bde27ed78",
+   "rc": 0,
+   "out": "bde27ed7895b7a490cada9dae3aa99f853acfa35a710009ca4fceec8b58d2 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 85fa0b20e41e\n    edit the working tree, then: sgt fulfill 85fa0b20e41e --from-tree\n",
+   "err": "",
+   "i": 22,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature rename\n",
+   "err": "",
+   "i": 23,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "e5fa0e988ff3",
+   "rc": 0,
+   "removed": 0,
+   "skipped": "revert offered no undo",
+   "out": "file moved. (nothing was recorded, so there is nothing to reverse.)\n  \u26a0 kept unchanged (the removal overlaps later edits \u2014 needs your edit): ov.py::f\n",
+   "err": "",
+   "i": 24,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "ov.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 993fb75 \"v4 edit 25\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 25,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_26.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;148;178;80mc8d1e4b\u001b[0m \"v4 add module 26\"\n  \u2514\u2500 \u001b[38;2;148;178;80m\u25cb\u001b[0m \u001b[38;2;148;178;80mnew feature\u001b[0m \u001b[2m(af-m02874a1) \u2014 unnamed; name it: sgt feature rename af-m02874a1 \"<label>\"\u001b[0m  v4_mod_26.py::only_symbol_26\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 26,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-10e1ad11620f",
+   "rc": 0,
+   "out": "\u2713 split f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6 \u2192 f-10e1ad11620f331cdf6c412015d230183098257e5441fde9f258c179c8ee81a6 + f-00a1bdd53f8b028452c40daed5792a5c72525d579818373a7493f9f669762854\n",
+   "err": "",
+   "i": 27,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "af-m02874a11fa",
+   "rc": 1,
+   "out": "\u2717 'af-m02874a11fa988c1c8c791ce9337298b6bb97cfa5ab29ade8f58011915c5ea2ea' has too few members to split\n",
+   "err": "",
+   "i": 28,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 29,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-00a1bdd53f8b",
+   "rc": 0,
+   "out": "\u2713 renamed f-00a1bdd53f8b028452c40daed5792a5c72525d579818373a7493f9f669762854: 'v4 label 15 (split)' \u2192 'v4 label 30'\n",
+   "err": "",
+   "i": 30,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 31,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-00a1bdd53f8b",
+   "rc": 1,
+   "out": "\u2717 'f-00a1bdd53f8b028452c40daed5792a5c72525d579818373a7493f9f669762854' has too few members to split\n",
+   "err": "",
+   "i": 32,
+   "target_kind": null,
+   "violations": []
+  }
+ ]
+}

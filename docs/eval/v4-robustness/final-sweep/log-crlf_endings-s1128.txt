@@ -1,0 +1,43 @@
+    0 ✓ op_edit_save             a.py (rework)
+    1 ✓ op_edit_save             a.py (rework)
+    2 ✓ op_edit_save             a.py (rework)
+    3 · op_restore               nothing addressable excluded
+    4 ✓ op_edit_save             a.py (rework)
+    5 ✓ op_revert                320660079e31
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_revert                1d2a148aa424
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_revert_restore_probe  f850e49f9c5f
+   10 ✓ op_edit_save             a.py (rework)
+   11 ✓ op_revert                fb1dc3756108
+   12 ✓ op_revert_restore_probe  d7b65ae970f5
+   13 ✓ op_edit_save             a.py (rework)
+   14 ✓ op_revert                f4c431a5d607
+   15 ✓ op_revert                9e1ede97fa03
+   16 ✓ op_restore               9e1ede97fa03
+   17 ✓ op_edit_save             v4_mod_8.py (rework)
+   18 · op_restore               nothing addressable excluded
+   19 ✓ op_revert_undo_probe     9e1ede97fa03
+   20 · op_restore               nothing addressable excluded
+   21 ✓ op_revert                a08a015717cf
+   22 ✓ op_edit_save             a.py (rework)
+   23 ✓ op_revert                ebfad9b63df6
+   24 ✓ op_revert                3dabf448058e
+   25 ✓ op_feature_rename        f-284abf3fb5ea
+   26 · op_feature_merge         1 feature(s)
+   27 ✓ op_revert_keep_dependents 30534bc278f8
+   28 ✓ op_undo                  
+   29 ✓ op_restore               41884469c91e
+   30 ✓ op_add_file              v4_mod_30.py
+   31 ✓ op_feature_rename        af-m64f6d228bb
+   32 ✓ op_add_file              v4_mod_32.py
+   33 ✓ op_add_file              v4_mod_33.py
+   34 ✓ op_edit_save             v4_mod_30.py (rework)
+   35 ✓ op_edit_save             v4_mod_33.py (rework)
+   36 ✓ op_revert_restore_probe  e66344d3b2ca
+   37 ✓ op_feature_merge         af-m64f6d228bb<-af-m445fdd0c87
+   38 ✓ op_revert                d12941f5bfb0
+   39 ✓ op_edit_save             v4_mod_30.py (rework)
+   40 ✓ op_revert_undo_probe     83b985adc6eb
+   41 ✓ op_revert_undo_probe     a8d6d386494d
+crlf_endings seed 1128: 42 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-crlf_endings-seed1128.json

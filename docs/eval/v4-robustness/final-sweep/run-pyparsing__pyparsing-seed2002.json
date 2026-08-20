@@ -1,0 +1,1496 @@
+{
+ "label": "pyparsing__pyparsing",
+ "seed": 2002,
+ "requested_ops": 50,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/pyparsing__pyparsing-s2002/pyparsing__pyparsing/pyparsing__pyparsing",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [],
+ "applied": 50,
+ "refused": 36,
+ "skipped": 2,
+ "with_violations": 50,
+ "tracebacks": 0,
+ "settles": 14,
+ "store_ops_seen": 7951,
+ "commits_seen": 1,
+ "script": [
+  "op_revert_restore_probe",
+  "op_restore",
+  "op_revert_restore_probe",
+  "op_restore",
+  "op_feature_rename",
+  "op_feature_rename",
+  "op_restore",
+  "op_edit_save",
+  "op_revert",
+  "op_restore",
+  "op_feature_split",
+  "op_edit_save",
+  "op_revert_restore_probe",
+  "op_feature_rename",
+  "op_edit_save",
+  "op_edit_save",
+  "op_add_file",
+  "op_revert_keep_dependents",
+  "op_revert",
+  "op_restore",
+  "op_restore",
+  "op_revert_keep_dependents",
+  "op_edit_save",
+  "op_restore",
+  "op_edit_save",
+  "op_revert",
+  "op_feature_split",
+  "op_revert_undo_probe",
+  "op_feature_merge",
+  "op_restore",
+  "op_feature_split",
+  "op_revert_undo_probe",
+  "op_revert",
+  "op_revert",
+  "op_revert",
+  "op_revert_keep_dependents",
+  "op_edit_save",
+  "op_revert",
+  "op_revert",
+  "op_revert_keep_dependents",
+  "op_revert_undo_probe",
+  "op_edit_save",
+  "op_edit_save",
+  "op_edit_save",
+  "op_edit_save",
+  "op_undo",
+  "op_revert_undo_probe",
+  "op_edit_save",
+  "op_add_file",
+  "op_restore"
+ ],
+ "log": [
+  {
+   "op": "revert_restore_probe",
+   "skipped": "empty ideal",
+   "i": 0,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "6 new, 6 live: [\"tests/test_unit.py::Test02_WithoutPackrat.testLocatedExprUsingLocated\", \"tests/test_unit.py::TestCase\", \"tests/test_unit.py::__anchor__::current_method_name\", \"tests/test_unit.py::__residue__::TestCase\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "267b6eb2bc64",
+   "rc": 1,
+   "out": "\u2717 [restore] 267b6eb2bc64c318f5a973ec8b851c030cf7bf8d4b2e4b80a6ed855f603c087d \u2014 would include 267b6eb2 (pyparsing/core.py::_MultipleMatch) without the edit(s) it was built on, refused\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 1,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "15 new, 21 live: [\"pyparsing/common.py::pyparsing_common\", \"pyparsing/core.py::ParserElement\", \"pyparsing/core.py::ParserElement.__mul__\", \"pyparsing/core.py::ParserElement.__mul__.makeOptionalList\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert_restore_probe",
+   "skipped": "empty ideal",
+   "i": 2,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "11 new, 32 live: [\"pyparsing/__init__.py::__residue__::version_info\", \"pyparsing/core.py::Dict\", \"pyparsing/core.py::Dict.postParse\", \"pyparsing/results.py::ParseResults.__getstate__\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['tests/perf_pyparsing.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['tests/perf_pyparsing.py::__residue__::bench_results_accumulator', 'tests/perf_pyparsing.py::__residue__::gen_words_and_ints', 'tests/perf_pyparsing.py::__residue__::results_accumulator']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "2c97644baae3",
+   "rc": 1,
+   "out": "\u2717 [restore] 2c97644baae39b51ae4c18bcde07e0191804ab2ada1fc6b46798c1b01173a89c \u2014 would include 2c97644b (pyparsing/results.py::ParseResults) without the edit(s) it was built on, refused (+3 more)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 3,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "17 new, 49 live: [\"CONTRIBUTING.md\", \"examples/tiny/tiny_parser.py::__residue__::\\u0000HEAD\\u0000\", \"pyparsing/core.py::Word\", \"pyparsing/core.py::Word.parseImpl\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-1690ffd4c6e4",
+   "rc": 0,
+   "out": "\u2713 renamed f-1690ffd4c6e4544cb9c2943f6ebd902a6c59fdb3bd48efb39df4af6bec79df09: 'pytest_report_header' \u2192 'v4 label 4'\n",
+   "err": "",
+   "i": 4,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "8 new, 57 live: [\"pyparsing/common.py::__residue__::\\u0000HEAD\\u0000\", \"pyparsing/common.py::pyparsing_common.as_datetime\", \"pyparsing/core.py::QuotedString\", \"pyparsing/core.py::QuotedString.__init__\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-1690ffd4c6e4",
+   "rc": 0,
+   "out": "\u2713 renamed f-1690ffd4c6e4544cb9c2943f6ebd902a6c59fdb3bd48efb39df4af6bec79df09: 'v4 label 4' \u2192 'v4 label 5'\n",
+   "err": "",
+   "i": 5,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "3 new, 57 live: [\"CHANGES\", \"pyparsing/core.py::__residue__::condition_as_parse_action\", \"pyparsing/core.py::_default_start_debug_action\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "49538f2447db",
+   "rc": 1,
+   "out": "\u2717 [restore] 49538f2447db4d73707baa90fc78a123831d60e439fa510b8dce23e4f95fb392 \u2014 would leave two live versions of tests/test_unit.py::Test02_WithoutPackrat: 72465e36 and 8a748c55 both claim the same next version, refused (+1 more symbol(s))\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 26,
+   "i": 6,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "60 new, 117 live: [\"examples/httpServerLogParser.py::__residue__::\\u0000HEAD\\u0000\", \"examples/httpServerLogParser.py::__residue__::getCmdFields\", \"examples/httpServerLogParser.py::__residue__::getLogLineBNF\", \"examples/httpServerLogParser.py::getCmdFields\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['examples/http_server_log_parser.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/http_server_log_parser.py::__residue__::_get_command_fields', 'examples/http_server_log_parser.py::__residue__::_insert_datetime_from_fields', 'examples/http_server_log_parser.py::__residue__::get_log_line_bnf']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "test_testing.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 7,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "16 new, 134 live: [\"examples/regex_inverter/README.md\", \"pyparsing/helpers.py::match_previous_expr\", \"pyparsing/helpers.py::match_previous_expr.copy_token_to_repeater\", \"pyparsing/helpers.py::match_previous_expr.copy_token_to_repeater.must_match_these_tokens\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['dest/inv_regex.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "14 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['dest/inv_regex.py::__residue__::CharacterRangeEmitter', 'dest/inv_regex.py::__residue__::GroupEmitter', 'dest/inv_regex.py::__residue__::LiteralEmitter', 'dest/inv_regex.py::__residue__::OptionalEmitter']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_testing.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "revert",
+   "target": "5933b2808b86",
+   "rc": 1,
+   "out": " symbol(s) \u00b7 1 file(s): conftest.py\n\u2717 put() would roll back files outside this edit's scope, whose committed content differs from sgt's recorded ideal: ['dest/inv_regex.py', 'examples/http_server_log_parser.py', 'examples/regex_inverter/inv_regex.py', 'pyparsing/util.py', 'tests/perf_pyparsing.py']\n",
+   "err": "",
+   "i": 8,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "151 new, 280 live: [\"LICENSE\", \"README.rst\", \"docs/whats_new_in_3_3.rst\", \"examples/README.md\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 6 newly drifted path(s): ['examples/regex_inverter/inv_regex.py', 'examples/tiny/docs/tiny_repl_transcript.md', 'examples/tiny/tests/test_tiny_ast_nodes.py', 'examples/tiny/tiny_repl.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "26 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/regex_inverter/inv_regex.py::__residue__::CharacterRangeEmitter', 'examples/regex_inverter/inv_regex.py::__residue__::GroupEmitter', 'examples/regex_inverter/inv_regex.py::__residue__::LiteralEmitter', 'examples/regex_inverter/inv_regex.py::__residue__::OptionalEmitter']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "8a787238538c",
+   "rc": 1,
+   "out": "\u2717 [restore] 8a787238538cb80b2707ccfa1dd6ffb4dcd38284d412b16d3428d75e58a6d48e \u2014 would include 5197f95a (pyparsing/results.py::_ParseResultsWithOffset) without the edit(s) it was built on, refused (+1 more)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 69,
+   "i": 9,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "48 new, 294 live: [\"docs/index.rst\", \"examples/tiny/tests/test_tiny.py::test_parse_all_required\", \"examples/tiny/tests/test_tiny_ast_nodes.py::__anchor__::test_assignment_updates_value\", \"examples/tiny/tests/test_tiny_ast_nodes.py::__residue__::\\u0000HEAD\\u0000\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 9 newly drifted path(s): ['examples/tiny/grammar.md', 'examples/tiny/samples/primes_to_100.tiny', 'examples/tiny/tests/test_tiny.py', 'examples/tiny/tests/test_tiny_grammar.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "48 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/tiny/tests/test_tiny.py::__residue__::test_parse_all_required', 'examples/tiny/tests/test_tiny.py::__residue__::test_parse_assign_read_write_in_main', 'examples/tiny/tests/test_tiny.py::__residue__::test_parse_if_then_elseif_else', 'examples/tiny/tests/test_tiny.py::__residue__::test_repeat_until_with_c_style_comment']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_split",
+   "target": "f-1690ffd4c6e4",
+   "rc": 0,
+   "out": "\u2713 split f-1690ffd4c6e4544cb9c2943f6ebd902a6c59fdb3bd48efb39df4af6bec79df09 \u2192 f-1690ffd4c6e4544cb9c2943f6ebd902a6c59fdb3bd48efb39df4af6bec79df09 + f-24654ff0adf463045dc31e644725fd8dda55fefc9398b1a6c58182c089bef0f6\n",
+   "err": "",
+   "i": 10,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "1 new, 218 live: [\"tests/test_testing.py::test_with_line_numbers\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/tiny/tests/test_tiny.py::__residue__::test_parse_assign_read_write', 'examples/tiny/tests/test_tiny.py::__residue__::test_parse_if_then_else', 'examples/tiny/tests/test_tiny.py::__residue__::test_repeat_until_with_comment']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "greetingInGreek.py (add)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 11,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 2 newly drifted path(s): ['pyparsing/__init__.py', 'tests/test_unit.py']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M examples/greetingInGreek.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "0641426e3097",
+   "rc": 1,
+   "removed": 0,
+   "restored": 108,
+   "returned": false,
+   "restore_failures": [],
+   "resurrected": [
+    "0114fe501305",
+    "02dfd7833488",
+    "078e211f9758",
+    "0bb387a8fea4",
+    "0deea015a171",
+    "0e8234811bbc",
+    "0eaba13aef7d",
+    "0f0dc2f8f959",
+    "100058c07e9f",
+    "11eac4fbe5c8",
+    "195b254f658b",
+    "1c66cdee988a",
+    "231c49aa3653",
+    "241fc0b82853",
+    "246fc8733168",
+    "2529d8ad102d",
+    "25c44d00696a",
+    "25c8064e5bc9",
+    "2e0d097efe79",
+    "35c8a365f6cd",
+    "35e06bebca5b",
+    "37faf6028080",
+    "3aea8630fa6a",
+    "40f875bc85d0",
+    "4537a0fc498d",
+    "4af415c7df40",
+    "4bd1a92d8b3c",
+    "4ec5df116b77",
+    "5512d263ce99",
+    "56377ce049d6",
+    "5676b0212083",
+    "56b69c511740",
+    "590e5ee6cc54",
+    "6267da8162ea",
+    "66ada3ca8e52",
+    "685a69645105",
+    "6c6e6ea430d9",
+    "6fcf72c51479",
+    "73494cc5135d",
+    "75b92a8ca8f4",
+    "78d92b19061d",
+    "7b264120eb8e",
+    "7e3ffc9a3663",
+    "8107cbf92b06",
+    "81f8a442e4d2",
+    "820748e9a2ac",
+    "8389b2d0829f",
+    "88f94945a6fa",
+    "89afbca2f189",
+    "8be1ae79cf7b",
+    "8ca17e68dc2c",
+    "8f05b103893d",
+    "9097c7950800",
+    "92ca65c26d73",
+    "96d98b2bcfca",
+    "97acc79a9e82",
+    "9b7314ed926c",
+    "9e3d4d28a76b",
+    "a4a8560c7acd",
+    "a642aedcd8dc",
+    "a93fa3986c96",
+    "aa0309cc0d51",
+    "abc7f2ae78cd",
+    "abd6706e17c5",
+    "ac426f1d7be8",
+    "b29ba49a3e29",
+    "b29d679e4503",
+    "b2dfc122b8c1",
+    "b39d49cbc422",
+    "b585fb1dba4d",
+    "b65348457d6c",
+    "b77883c0342c",
+    "b7f2950c8e77",
+    "b99fe2540caf",
+    "baddb16bb6bf",
+    "be98f67b3c04",
+    "bed0b97cbe66",
+    "c0d95999dfb0",
+    "c3a7549ca0dc",
+    "c4449aa5d41f",
+    "c790f4c5a955",
+    "c9fccc71f20a",
+    "cbb47c6bcbd1",
+    "cf53d88d0188",
+    "cfc32eccd972",
+    "d2c58ee97bc9",
+    "d825a1582d2b",
+    "d8c016282f82",
+    "d90d22e97443",
+    "d9ad7f21fe3f",
+    "daa3733c71b0",
+    "daeb8235df4b",
+    "dc11b66e37d5",
+    "dc27b0e6a3af",
+    "e198b144109e",
+    "e5dbe834518d",
+    "e66fcc8c3548",
+    "ebcfc0313706",
+    "eeccf019c772",
+    "f0157307fccc",
+    "f3334d0125d6",
+    "f50c4331a36e",
+    "f5d591b4ea33",
+    "fba34b72654b",
+    "fdabea1cd346",
+    "fdf342f81457",
+    "fe90cade0712",
+    "fff83fb6d81d"
+   ],
+   "resurrected_content": [
+    "0deea015a171",
+    "1c66cdee988a",
+    "246fc8733168",
+    "25c8064e5bc9",
+    "35c8a365f6cd",
+    "4af415c7df40",
+    "5512d263ce99",
+    "73494cc5135d",
+    "7e3ffc9a3663",
+    "abc7f2ae78cd",
+    "c9fccc71f20a",
+    "cfc32eccd972",
+    "f0157307fccc"
+   ],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "y', 'pyparsing/tools/cvt_pyparsing_pep8_names.py', 'pyparsing/util.py', 'tests/perf_pyparsing.py', 'tests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_unit.py']\n",
+   "err": "",
+   "restore_out": [
+    "0641426e3097: 2c78300cf242f97d07d49f09c8779d0c8\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 1,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 12,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "455 new, 658 live: [\"docs/HowToUsePyparsing.rst\", \"docs/conf.py::__residue__::\\u0000HEAD\\u0000\", \"docs/modules.rst\", \"docs/pyparsing.rst\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 4 newly drifted path(s): ['docs/_static/pyparsing.css', 'pyparsing/tools/cvt_pyparsing_pep8_names.py', 'tests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "47 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['tests/test_pep8_converter.py::__residue__::test_conversion_warnings_for_indentedBlock', 'tests/test_pep8_converter.py::__residue__::test_conversion_warnings_for_locatedExpr', 'tests/test_pre_pep8_deprecation_warnings.py::__residue__::test_ParseResults_asList_kwarg_emits_DeprecationWarning', 'tests/test_pre_pep8_deprecation_warnings.py::__residue__::test_addCondition_emits_DeprecationWarning']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-1690ffd4c6e4",
+   "rc": 0,
+   "out": "\u2713 renamed f-1690ffd4c6e4544cb9c2943f6ebd902a6c59fdb3bd48efb39df4af6bec79df09: 'v4 label 5' \u2192 'v4 label 13'\n",
+   "err": "",
+   "i": 13,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "7 new, 634 live: [\"pyparsing/core.py::Forward._generateDefaultName\", \"pyparsing/core.py::srange\", \"pyparsing/helpers.py::__residue__::locatedExpr\", \"pyparsing/helpers.py::make_html_tags\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['examples/infix_math_parser.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "4 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/infix_math_parser.py::__residue__::InfixExpressionParser', 'pyparsing/util.py::__residue__::deprecate_argument', 'tests/test_pep8_converter.py::__residue__::test_conversion_composed', 'tests/test_pep8_converter.py::__residue__::test_conversion_examples']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "test_pep8_converter.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 14,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "120 new, 724 live: [\"examples/TAP.py::TAPTest\", \"examples/TAP.py::TAPTest.bailedTest\", \"examples/TAP.py::__residue__::\\u0000HEAD\\u0000\", \"examples/TAP.py::__residue__::TAPSummary\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 5 newly drifted path(s): ['examples/adventure_game_parser_diagram.html', 'examples/complex_chemical_formulas_diagram.html', 'examples/parse_python_value.py', 'examples/select_parser.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "2 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/parse_python_value.py::__residue__::main', 'examples/wordsToNum.py::__residue__::make_literal_converter']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_pep8_converter.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "edit_save",
+   "target": "test_pep8_converter.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 15,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "117 new, 871 live: [\"docs/make_sphinx_docs.bat\", \"examples/0README.html\", \"examples/adventureEngine.py::__residue__::\\u0000HEAD\\u0000\", \"examples/bf.py::__residue__::run_program\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 4 newly drifted path(s): ['docs/whats_new_in_3_1.rst', 'pyparsing/core.py', 'pyparsing/diagram/__init__.py', 'readthedocs.yaml']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/core.py::__residue__::_ParseActionIndexError', 'pyparsing/diagram/__init__.py::__residue__::_make_bookmark', 'pyparsing/util.py::__residue__::_GroupConsecutive']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_pep8_converter.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_16.py",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 16,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "27 new, 887 live: [\"examples/mongodb_query_expression.py::__residue__::\\u0000HEAD\\u0000\", \"examples/mongodb_query_expression.py::__residue__::unique\", \"examples/mongodb_query_expression.py::binary_array_comparison_op\", \"examples/mongodb_query_expression.py::binary_comparison_op\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 3 newly drifted path(s): ['examples/mongodb_query_expression_step_0.py', 'tests/test_simple_unit.py', 'tests/test_util.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "7 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/mongodb_query_expression_step_0.py::__residue__::key_phrase', 'examples/mongodb_query_expression_step_0.py::__residue__::main', 'pyparsing/diagram/__init__.py::__residue__::_collapse_verbose_regex', 'pyparsing/util.py::__residue__::make_compressed_re']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "?? v4_mod_16.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "7263ddf25b94",
+   "rc": 0,
+   "out": "3ddf25b948d3ece2e9dfeb3e43ae43e935ff5cc6359aa2385c0fd261b493e \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: e0993ed50765\n    edit the working tree, then: sgt fulfill e0993ed50765 --from-tree\n",
+   "err": "",
+   "i": 17,
+   "target_kind": "layout",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "25 new, 896 live: [\"examples/mongodb_query_expression.py::__anchor__::binary_eq_neq\", \"examples/mongodb_query_expression.py::__residue__::key_phrase\", \"examples/mongodb_query_expression.py::binary_multi_op\", \"pyparsing/core.py::IndentedBlock.parseImpl\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['examples/mongodb_query_expression.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/mongodb_query_expression.py::__residue__::unique', 'tests/test_util.py::__residue__::test_collapse_string_to_ranges', 'tests/test_util.py::__residue__::test_flatten']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert",
+   "target": "34238737634c",
+   "rc": 1,
+   "out": "'pyparsing/diagram/__init__.py', 'pyparsing/tools/cvt_pyparsing_pep8_names.py', 'pyparsing/util.py', 'readthedocs.yaml', 'tests/perf_pyparsing.py', 'tests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n",
+   "err": "",
+   "i": 18,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "54 new, 932 live: [\"examples/lox_parser.py::__residue__::\\u0000HEAD\\u0000@\\u22a5\", \"examples/verilog_parse.py::main\", \"examples/verilog_parse.py::test\", \"pyparsing/core.py::Each.parseImpl\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 3 newly drifted path(s): ['examples/complex_chemical_formulas.py', 'examples/lox_parser.py', 'examples/lucene_grammar.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "13 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/complex_chemical_formulas.py::__residue__::molecular_weight', 'examples/lox_parser.py::__residue__::main', 'examples/mongodb_query_expression.py::__residue__::InvalidExpressionException', 'examples/mongodb_query_expression.py::__residue__::binary_array_comparison_op']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "f7521578ef96",
+   "rc": 1,
+   "out": "\u2717 [restore] f7521578ef96f788f19fdf83ed57dfbfbbd2098926e78e325ad60d779069f9af \u2014 would include 00872ca1 (pyparsing/core.py::WordStart) without the edit(s) it was built on, refused (+179 more)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 6,
+   "i": 19,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "63 new, 997 live: [\"examples/chemical_formulas.py::__residue__::\\u0000HEAD\\u0000\", \"examples/chemical_formulas.py::__residue__::sum_atomic_weights\", \"examples/chemical_formulas.py::__residue__::sum_atomic_weights_by_results_name\", \"examples/chemical_formulas.py::__residue__::sum_atomic_weights_by_re",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 2 newly drifted path(s): ['examples/delta_time.py', 'examples/roman_numerals.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "15 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/delta_time.py::__residue__::_add_computed_time', 'examples/delta_time.py::__residue__::_compute_relative_date', 'examples/delta_time.py::__residue__::_compute_relative_time', 'examples/delta_time.py::__residue__::_compute_timestamp']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "3bc87bae6bda",
+   "rc": 1,
+   "out": "\u2717 [restore] 3bc87bae6bda259d3c206127a830ce6c30604691ec402a0f98772c97903dbc2e \u2014 would leave two live versions of pyparsing/results.py::ParseResults: a8265f96 and b404bdd0 both claim the same next version, refused\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 20,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "67 new, 1040 live: [\"examples/delta_time.py::__anchor__::compute_relative_date\", \"examples/delta_time.py::__anchor__::compute_relative_time\", \"examples/delta_time.py::__anchor__::compute_timestamp\", \"examples/delta_time.py::__residue__::add_computed_time\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 2 newly drifted path(s): ['examples/directx_x_file_parser.py', 'pyparsing/exceptions.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/directx_x_file_parser.py::__residue__::make_template_parser']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "bb79e8ac3f00",
+   "rc": 0,
+   "out": "9e8ac3f0038198b593ef48314ab377a07cd30230bcb0f87fd0d2e889daa79 \u2014 removes 5 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 21f2284a2ce7\n    edit the working tree, then: sgt fulfill 21f2284a2ce7 --from-tree\n",
+   "err": "",
+   "i": 21,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "587 new, 1620 live: [\"examples/TAP.py::TAPSummary\", \"examples/TAP.py::TAPSummary.summary\", \"examples/adventureEngine.py::CloseCommand\", \"examples/adventureEngine.py::CloseCommand._do_command\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['examples/email_parser.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/email_parser.py::__residue__::main']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "nested_markup.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 22,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "93 new, 1714 live: [\"pyparsing/actions.py::__residue__::matchOnlyAtCol\", \"pyparsing/actions.py::__residue__::removeQuotes\", \"pyparsing/actions.py::__residue__::replaceWith\", \"pyparsing/actions.py::__residue__::withAttribute\"]",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M examples/nested_markup.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "restore",
+   "target": "acb006c3a813",
+   "rc": 1,
+   "out": "\u2717 [restore] acb006c3a81360117b53c7b21fe4dfb88c2e499e9b1137da9fd210131e359c36 \u2014 would include acb006c3 (pyparsing_archive.py::ParserElement) without the edit(s) it was built on, refused\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 36,
+   "i": 23,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "56 new, 1751 live: [\"docs/pyparsing_class_diagram.puml\", \"examples/adventureEngine.py::__residue__::playGame\", \"examples/adventureEngine.py::__residue__::use_shovel\", \"examples/adventureEngine.py::__residue__::use_telescope\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 6 newly drifted path(s): ['examples/adventureEngine.py', 'examples/chemical_formulas.py', 'examples/datetime_parse_actions.py', 'examples/excel_expr.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "15 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/adventureEngine.py::__residue__::ExamineCommand', 'examples/adventureEngine.py::__residue__::a_or_an', 'examples/adventureEngine.py::__residue__::enumerate_doors', 'examples/adventureEngine.py::__residue__::enumerate_items']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "video_demo.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 24,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "83 new, 1823 live: [\"examples/adventureEngine.py::AppParseException\", \"examples/adventureEngine.py::CloseCommand._doCommand\", \"examples/adventureEngine.py::CloseCommand.helpDescription\", \"examples/adventureEngine.py::Command\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['tests/test_diagram.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "2 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['tests/test_diagram.py::__residue__::is_run_with_coverage', 'tests/test_diagram.py::__residue__::running_in_debug']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M examples/statemachine/video_demo.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "revert",
+   "target": "231c49aa3653",
+   "rc": 1,
+   "out": "rsing/diagram/__init__.py', 'pyparsing/exceptions.py', 'pyparsing/tools/cvt_pyparsing_pep8_names.py', 'pyparsing/util.py', 'readthedocs.yaml', 'tests/perf_pyparsing.py', 'tests/test_diagram.py', 'tests/test_pep8_converter.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n",
+   "err": "",
+   "i": 25,
+   "target_kind": "layout",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "82 new, 1894 live: [\"examples/invRegex.py::AlternativeEmitter\", \"examples/invRegex.py::AlternativeEmitter.__init__\", \"examples/invRegex.py::AlternativeEmitter.makeGenerator\", \"examples/invRegex.py::AlternativeEmitter.makeGenerator.altGen\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['examples/inv_regex.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "8 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/inv_regex.py::__residue__::handle_alternative', 'examples/inv_regex.py::__residue__::handle_dot', 'examples/inv_regex.py::__residue__::handle_literal', 'examples/inv_regex.py::__residue__::handle_macro']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_split",
+   "target": "f-1690ffd4c6e4",
+   "rc": 1,
+   "out": "\u2717 cannot split 'f-1690ffd4c6e4544cb9c2943f6ebd902a6c59fdb3bd48efb39df4af6bec79df09': stop_split\n",
+   "err": "",
+   "i": 26,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "1 new, 1897 live: [\"tests/test_unit.py::TestCase.assertRaises\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "665c9d7347c0",
+   "rc": 1,
+   "removed": 0,
+   "returned": false,
+   "out": "ests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n | \u2713 undo: reverted feature rename\n",
+   "err": "",
+   "i": 27,
+   "target_kind": "layout",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "146 new, 2024 live: [\"docs/_static/pyparsingClassDiagram_3.0.0.jpg\", \"docs/pyparsing_class_diagram.svg\", \"examples/booleansearchparser.py::ParserTest\", \"examples/booleansearchparser.py::ParserTest.Test\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 3 newly drifted path(s): ['examples/booleansearchparser.py', 'examples/excelExpr.py', 'examples/rosettacode.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "2 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/booleansearchparser.py::__residue__::main', 'examples/rosettacode.py::__residue__::main']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_merge",
+   "target": "f-24654ff0adf4<-f-1690ffd4c6e4",
+   "rc": 0,
+   "out": "\u2713 merged f-1690ffd4c6e4544cb9c2943f6ebd902a6c59fdb3bd48efb39df4af6bec79df09 into f-24654ff0adf463045dc31e644725fd8dda55fefc9398b1a6c58182c089bef0f6 (8 op(s), 6 member(s))\n",
+   "err": "",
+   "i": 28,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "1 new, 2013 live: [\"pyparsing/core.py::Literal.__copy__\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "restore",
+   "target": "df1f4bc3fdef",
+   "rc": 1,
+   "out": "\u2717 [restore] df1f4bc3fdeffdba5154f3fdb7d0b5c92abb6ba92c65ae5dcde7d2f944272dee \u2014 would leave two live versions of pyparsing/exceptions.py::ParseBaseException.explain_exception: 7f715598 and 941508f7 both claim the same next version, refused (+7 more symbol(s))\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 31,
+   "i": 29,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "23 new, 1918 live: [\"examples/verilogParse.py::__residue__::\\u0000HEAD\\u0000\", \"pyparsing/actions.py::__residue__::matchOnlyAtCol@\\u22a5\", \"pyparsing/actions.py::__residue__::removeQuotes@\\u22a5\", \"pyparsing/actions.py::__residue__::replaceWith@\\u22a5\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/util.py::__residue__::replaced_by_pep8']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "feature_split",
+   "target": "f-24654ff0adf4",
+   "rc": 0,
+   "out": "\u2713 split f-24654ff0adf463045dc31e644725fd8dda55fefc9398b1a6c58182c089bef0f6 \u2192 f-24654ff0adf463045dc31e644725fd8dda55fefc9398b1a6c58182c089bef0f6 + f-m9f9df6d32b8d68af2980ac4031785a79f92153fc70d82b35ef37ec36942e504e\n",
+   "err": "",
+   "i": 30,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "72 new, 2003 live: [\"pyparsing/core.py::Forward.ignoreWhitespace@\\u22a5\", \"pyparsing/core.py::Forward.leaveWhitespace@\\u22a5\", \"pyparsing/core.py::ParseElementEnhance.ignoreWhitespace@\\u22a5\", \"pyparsing/core.py::ParseElementEnhance.leaveWhitespace@\\u22a5\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "2c2674b2eb18",
+   "rc": 1,
+   "removed": 0,
+   "returned": false,
+   "out": "ests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n | \u2713 undo: reverted feature split\n",
+   "err": "",
+   "i": 31,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "43 new, 2019 live: [\"docs/pyparsing_class_diagrm.puml\", \"examples/bigquery_view_parser.py::BigQueryViewParser.test\", \"examples/invRegex.py::__residue__::\\u0000HEAD\\u0000\", \"pyparsing/__init__.py::version_info\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 2 newly drifted path(s): ['examples/unicode_denormalizer.py', 'pyproject.toml']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/unicode_denormalizer.py::__residue__::demo', 'examples/unicode_denormalizer.py::__residue__::make_mixed_font', 'examples/unicode_denormalizer.py::__residue__::mix_fstring_expressions']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert",
+   "target": "59797ceeef47",
+   "rc": 1,
+   "out": "/tools/cvt_pyparsing_pep8_names.py', 'pyparsing/util.py', 'pyproject.toml', 'readthedocs.yaml', 'tests/perf_pyparsing.py', 'tests/test_diagram.py', 'tests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n",
+   "err": "",
+   "i": 32,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "8 new, 2018 live: [\"MANIFEST.in\", \"MANIFEST.in_bdist\", \"genEpydoc.bat\", \"makeRelease.bat\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert",
+   "target": "aadf56378a3f",
+   "rc": 0,
+   "out": "zer.py::__residue__::make_mixed_font\n  \u00b7 revert changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)\n  \u26a0 kept unchanged (the removal overlaps later edits \u2014 needs your edit): examples/unicode_denormalizer.py::__residue__::make_mixed_font\n",
+   "err": "",
+   "i": 33,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "13 new, 2042 live: [\"examples/booleansearchparser.py::BooleanSearchParser.evaluateQuotes\", \"examples/booleansearchparser.py::BooleanSearchParser.parser\", \"pyparsing/core.py::Forward.streamline\", \"pyparsing/core.py::Keyword.set_default_keyword_chars\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert",
+   "target": "a4a8560c7acd",
+   "rc": 1,
+   "out": "it__.py', 'pyparsing/exceptions.py', 'pyparsing/tools/cvt_pyparsing_pep8_names.py', 'pyparsing/util.py', 'pyproject.toml', 'readthedocs.yaml', 'tests/perf_pyparsing.py', 'tests/test_diagram.py', 'tests/test_pep8_converter.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n",
+   "err": "",
+   "i": 34,
+   "target_kind": "layout",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "5 new, 2032 live: [\"examples/bigquery_view_parser.py::BigQueryViewParser._get_parser.record_quoted_table_identifier\", \"pyparsing/helpers.py::original_text_for.extractText\", \"tests/test_unit.py::Test02_WithoutPackrat.testDontWarnUngroupedNamedTokensIfUngroupedNamesStartWithNOWARN\", \"tests/test_unit.p",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['tests/test_unit.py::__residue__::Test01b_PyparsingUnitTestUtilitiesTests']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "a466557cffac",
+   "rc": 0,
+   "out": "6557cffac7f9f3629e5fff4e019bdc9fd9fd17e2c049c747501652d75b482 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 8afa3fd56d90\n    edit the working tree, then: sgt fulfill 8afa3fd56d90 --from-tree\n",
+   "err": "",
+   "i": 35,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "15 new, 2037 live: [\"pyparsing/util.py::_FifoCache.__init__.get\", \"pyparsing/util.py::_FifoCache.__init__.set\", \"pyparsing/util.py::_UnboundedCache\", \"pyparsing/util.py::_UnboundedCache.__init__\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "4 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/core.py::__residue__::PositionToken', 'pyparsing/diagram/__init__.py::__residue__::_visible_exprs', 'pyparsing/util.py::__residue__::_collapse_string_to_ranges', 'pyparsing/util.py::__residue__::_escape_regex_range_chars']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "idlParse.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 36,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "5 new, 2045 live: [\"pyparsing/core.py::_PositionToken\", \"pyparsing/core.py::_PositionToken.__init__\", \"pyparsing/core.py::__residue__::_PositionToken\", \"pyparsing/diagram/__init__.py::__anchor__::_to_diagram_element\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "1 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/core.py::__residue__::IndentedBlock']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M examples/idlParse.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "revert",
+   "target": "ab5b7e7d0e80",
+   "rc": 1,
+   "out": "ptions.py', 'pyparsing/tools/cvt_pyparsing_pep8_names.py', 'pyparsing/util.py', 'pyproject.toml', 'readthedocs.yaml', 'tests/perf_pyparsing.py', 'tests/test_diagram.py', 'tests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_util.py']\n",
+   "err": "",
+   "i": 37,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "15 new, 2043 live: [\"pyparsing/core.py::LineStart.__add__\", \"pyparsing/core.py::LineStart.__sub__\", \"pyparsing/core.py::StringStart.__add__\", \"pyparsing/core.py::StringStart.__sub__\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "4 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/core.py::__residue__::_should_enable_warnings', 'pyparsing/core.py::__residue__::autoname_elements', 'tests/test_unit.py::__residue__::Test01a_PyparsingEnvironmentTests', 'tests/test_unit.py::__residue__::TestCase']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert",
+   "target": "36b49ffdd963",
+   "rc": 1,
+   "out": "/tools/cvt_pyparsing_pep8_names.py', 'pyparsing/util.py', 'pyproject.toml', 'readthedocs.yaml', 'tests/perf_pyparsing.py', 'tests/test_diagram.py', 'tests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n",
+   "err": "",
+   "i": 38,
+   "target_kind": "layout",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "5 new, 2044 live: [\"docs/_static/pyparsingClassDiagram.jpg\", \"docs/_static/pyparsingClassDiagram.png\", \"pyparsing/core.py::__compat__\", \"pyparsing/core.py::__residue__::enable_all_warnings\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['docs/pyparsing_class_diagrm.puml']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "2 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/core.py::__residue__::AtLineStart', 'pyparsing/core.py::__residue__::AtStringStart']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "56811c8e0782",
+   "rc": 0,
+   "out": "11c8e07824170f2a1c34d37831fc43b15d3203bdaba20c4d3077c9ed623e8 \u2014 removes 3 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: d9e8078d26d3\n    edit the working tree, then: sgt fulfill d9e8078d26d3 --from-tree\n",
+   "err": "",
+   "i": 39,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "1 new, 2029 live: [\"pyparsing/core.py::__anchor__::FollowedBy\"]",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "301e4a3a6857",
+   "rc": 1,
+   "removed": 0,
+   "returned": false,
+   "out": "ests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n | \u2713 undo: reverted feature merge\n",
+   "err": "",
+   "i": 40,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "26 new, 2038 live: [\"examples/simpleBool.py::BoolAnd\", \"examples/simpleBool.py::BoolBinOp.__bool__\", \"examples/simpleBool.py::BoolNot\", \"examples/simpleBool.py::BoolNot.__bool__\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['examples/urlExtractorNew.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/diagram/__init__.py::__residue__::_apply_diagram_item_enhancements', 'tests/test_unit.py::__residue__::__', 'tests/test_unit.py::__residue__::current_method_name']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "tag_metadata.py (add)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 41,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "11 new, 2026 live: [\"examples/make_diagram.py::__residue__::make_diagram\", \"examples/make_diagram.py::make_diagram\", \"pyparsing/common.py::pyparsing_common.convert_to_date.cvt_fn\", \"pyparsing/core.py::ParserElement.__repr__\"]",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M examples/tag_metadata.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "edit_save",
+   "target": "cvt_pyparsing_pep8_names.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 42,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "57 new, 2094 live: [\"examples/number_words.py::__anchor__::define_numeric_word_range\", \"examples/number_words.py::__residue__::define_numeric_word\", \"examples/number_words.py::__residue__::define_numeric_word_range\", \"examples/number_words.py::define_numeric_word\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 3 newly drifted path(s): ['examples/one_to_ninety_nine.py', 'pyparsing/actions.py', 'pyparsing/helpers.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "34 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/one_to_ninety_nine.py::__residue__::define_numeric_word_range', 'pyparsing/actions.py::__residue__::match_only_at_col', 'pyparsing/actions.py::__residue__::remove_quotes', 'pyparsing/actions.py::__residue__::replace_with']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M pyparsing/tools/cvt_pyparsing_pep8_names.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "edit_save",
+   "target": "datetime_parse_actions.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 43,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "357 new, 2413 live: [\"examples/AcManForm.dfm\", \"examples/LAparser.py::fprocess\", \"examples/btpyparse.py::bracketed\", \"examples/jsonParser.py::__residue__::testPrint\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['examples/number_words.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "3 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/actions.py::__residue__::OnlyOnce', 'pyparsing/core.py::__residue__::Located', 'pyparsing/core.py::__residue__::enable_diag']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M examples/datetime_parse_actions.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "edit_save",
+   "target": "test_testing.py (rework)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 44,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "37 new, 2339 live: [\"docs/_static/json.html\", \"examples/delta_time.py::__residue__::verify_offset\", \"examples/delta_time.py::verify_offset\", \"examples/idlParse.py::__residue__::CORBA_IDL_BNF\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 3 newly drifted path(s): ['examples/TAP.py', 'examples/oc.py', 'examples/sexpParser.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "12 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/TAP.py::__residue__::main', 'examples/delta_time.py::__residue__::main', 'pyparsing/diagram/__init__.py::__residue__::ConverterState', 'pyparsing/diagram/__init__.py::__residue__::EditablePartial']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M tests/test_testing.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo: reverted feature split\n",
+   "err": "",
+   "i": 45,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "44 new, 2335 live: [\"examples/chemicalFormulas.py::__anchor__::cvt_subscript_int\", \"examples/fourFn.py::__residue__::BNF\", \"examples/fourFn.py::__residue__::test\", \"examples/holaMundo.py::__residue__::\\u0000HEAD\\u0000\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 7 newly drifted path(s): ['examples/chemicalFormulas.py', 'examples/holaMundo.py', 'examples/htmlTableParser.py', 'pyparsing/common.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "30 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing/core.py::__residue__::And', 'pyparsing/core.py::__residue__::CloseMatch', 'pyparsing/core.py::__residue__::Each', 'pyparsing/core.py::__residue__::Empty']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "945a1b7ee3df",
+   "rc": 1,
+   "removed": 0,
+   "returned": false,
+   "out": "ests/test_pep8_converter.py', 'tests/test_pre_pep8_deprecation_warnings.py', 'tests/test_simple_unit.py', 'tests/test_unit.py', 'tests/test_util.py']\n | \u2713 undo: reverted feature rename\n",
+   "err": "",
+   "i": 46,
+   "target_kind": "layout",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "1221 new, 3037 live: [\"examples/LAparser.py::UnaryUnsupportedError\", \"examples/LAparser.py::__residue__::\\u0000HEAD\\u0000\", \"examples/LAparser.py::__residue__::UnaryUnsupportedError\", \"examples/LAparser.py::__residue__::_addfunc\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 3 newly drifted path(s): ['pyparsing.py', 'tests/test_examples.py', 'unitTests.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "4 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing.py::__residue__::pyparsing_test', 'tests/test_unit.py::__residue__::Test2_WithoutPackrat', 'unitTests.py::__residue__::UpdateDefaultWhitespace2Test', 'unitTests.py::__residue__::UpdateDefaultWhitespaceTest']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "edit_save",
+   "target": "parse_results_sum_example.py (add)",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 47,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "66 new, 3088 live: [\"pyparsing.py::Forward\", \"pyparsing.py::Forward._setResultsName\", \"pyparsing.py::MatchFirst\", \"pyparsing.py::MatchFirst._setResultsName\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "10 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/booleansearchparser.py::__residue__::BooleanSearchParser', 'examples/booleansearchparser.py::__residue__::ParserTest', 'pyparsing.py::__residue__::__compat__', 'pyparsing.py::__residue__::__diag__']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M examples/parse_results_sum_example.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_48.py",
+   "rc": 1,
+   "out": "\u2717 can't tell yet whether there's anything to save -- this repo's history is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result\n",
+   "err": "",
+   "i": 48,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "61 new, 3103 live: [\"examples/SimpleCalc.py::__residue__::evaluateStack\", \"examples/SimpleCalc.py::evaluateStack\", \"examples/fourFn.py::__anchor__::BNF\", \"examples/fourFn.py::__anchor__::test\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 2 newly drifted path(s): ['examples/bigquery_view_parser.py', 'examples/fourFn.py']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "5 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['examples/bigquery_view_parser.py::__residue__::BigQueryViewParser', 'examples/fourFn.py::__residue__::evaluate_stack', 'unitTests.py::__residue__::EachWithParseFatalExceptionTest', 'unitTests.py::__residue__::EllipsisRepetionTest']",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "?? v4_mod_48.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 1,
+    "save_out": " is still being mined, and until that finishes sgt does not examine the working tree. Re-run `sgt save` (each run mines another chunk) until it reports a result"
+   }
+  },
+  {
+   "op": "restore",
+   "target": "9755d59c8e91",
+   "rc": 1,
+   "out": "\u2717 [restore] 9755d59c8e914c8426fb4a564bf119d99d1b0455f717aad4947c76ea8fde4ab0 \u2014 would leave two live versions of pyparsing/core.py::Regex.sub: 1e2c1a3f and 3fd3ec39 both claim the same next version, refused (+12 more symbol(s))\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 12,
+   "i": 49,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "13 new, 3087 live: [\"examples/eval_arith.py::EvalAddOp.__init__\", \"examples/eval_arith.py::EvalComparisonOp.__init__\", \"examples/eval_arith.py::EvalConstant.__init__\", \"examples/eval_arith.py::EvalConstant.eval\"]",
+     "recoverability": false
+    },
+    {
+     "oracle": "fsck_tree",
+     "detail": "exit 1: 1 newly drifted path(s): ['CONTRIBUTING.md']",
+     "recoverability": false
+    },
+    {
+     "oracle": "orphan_layout",
+     "detail": "8 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['pyparsing.py::__residue__::_SingleCharLiteral', 'pyparsing.py::__residue__::_WordRegex', 'pyparsing.py::__residue__::conditionAsParseAction', 'unitTests.py::__residue__::EnableDebugOnNamedExpressionsTest']",
+     "recoverability": false
+    }
+   ]
+  }
+ ]
+}

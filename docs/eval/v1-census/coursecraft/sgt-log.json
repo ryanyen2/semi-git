@@ -1,0 +1,1713 @@
+{
+ "commits": [
+  {
+   "sha": "b51af3f85bdb75ec94044de495f96e063524da06",
+   "subject": "init repo",
+   "index": 0,
+   "ts": 1786301378,
+   "bookkeeping": false
+  },
+  {
+   "sha": "b9e34c20b9c1616064b0fc41ad939899f4b8b917",
+   "subject": "scaffold coursecraft: models, JSON store, CLI init",
+   "index": 1,
+   "ts": 1782756300,
+   "bookkeeping": false
+  },
+  {
+   "sha": "6db51d1e4a221c073badfa297801be085dce75b3",
+   "subject": "add rooms and weekly time slots with parsing and validation",
+   "index": 2,
+   "ts": 1782915120,
+   "bookkeeping": false
+  },
+  {
+   "sha": "d89bfbf0ad90c2586c502fa14833443d487f7046",
+   "subject": "course and section commands",
+   "index": 3,
+   "ts": 1783024800,
+   "bookkeeping": false
+  },
+  {
+   "sha": "b7e6bc47da6c4eefdfaec956d7ba4f0e2d5d0386",
+   "subject": "student registry and enroll command",
+   "index": 4,
+   "ts": 1783092000,
+   "bookkeeping": false
+  },
+  {
+   "sha": "5d8f5adf47c0842995b8f2efa70eccfba949cde6",
+   "subject": "fix id reuse after removing a section",
+   "index": 5,
+   "ts": 1783343100,
+   "bookkeeping": false
+  },
+  {
+   "sha": "a58003c533827bf1dc79b9207d5e6dff9bb467c4",
+   "subject": "section capacity limits",
+   "index": 6,
+   "ts": 1783452600,
+   "bookkeeping": false
+  },
+  {
+   "sha": "3a5d614317ce65d838248c5f6dcf083e5f422d98",
+   "subject": "sgt undo: restore prior ideal",
+   "index": 7,
+   "ts": 1786301998,
+   "bookkeeping": true
+  },
+  {
+   "sha": "873373f6b0bc6a3948dc48b54302dfaf48cd588a",
+   "subject": "section capacity limits",
+   "index": 8,
+   "ts": 1783452600,
+   "bookkeeping": false
+  },
+  {
+   "sha": "9d6260e3674a4972c13722610439967f893a2603",
+   "subject": "detect time conflicts when enrolling",
+   "index": 9,
+   "ts": 1783532700,
+   "bookkeeping": false
+  },
+  {
+   "sha": "079fa49d27ebfeeed40d4e5f6ccb8519cf3367ff",
+   "subject": "add course search",
+   "index": 10,
+   "ts": 1783720500,
+   "bookkeeping": false
+  },
+  {
+   "sha": "a9f2dc2cfea306d223615d2e52469d55a18831e3",
+   "subject": "enforce course prerequisites at enrollment",
+   "index": 11,
+   "ts": 1783952700,
+   "bookkeeping": false
+  },
+  {
+   "sha": "1590d8cf94b5df55a85482860c9bb0b776fdb6f9",
+   "subject": "extract Repository class for persistence",
+   "index": 12,
+   "ts": 1784052600,
+   "bookkeeping": false
+  },
+  {
+   "sha": "f939953526fb8c9b7130f08f805e5209da27dcd6",
+   "subject": "waitlist for full sections with stable join order",
+   "index": 13,
+   "ts": 1784129700,
+   "bookkeeping": false
+  },
+  {
+   "sha": "2edf58a6edaa5247b3caa2b4a279b7c4fe133f56",
+   "subject": "promote from the waitlist when a seat frees",
+   "index": 14,
+   "ts": 1784209800,
+   "bookkeeping": false
+  },
+  {
+   "sha": "6ac652c50d7beaa0bb4d021a4b33b810f546efff",
+   "subject": "back-to-back sections are not a conflict",
+   "index": 15,
+   "ts": 1784319300,
+   "bookkeeping": false
+  },
+  {
+   "sha": "9a5d94073a1aba1ce9ad897dcf4741b4f26739ea",
+   "subject": "drop command frees the seat and promotes the queue",
+   "index": 16,
+   "ts": 1784567100,
+   "bookkeeping": false
+  },
+  {
+   "sha": "9e0c81b63c7f5578ccdc414e31491832abeab39a",
+   "subject": "timetable export",
+   "index": 17,
+   "ts": 1784662800,
+   "bookkeeping": false
+  },
+  {
+   "sha": "94c228fa6bb668d11d393134fafae4230ac248af",
+   "subject": "priority enrollment for seniors",
+   "index": 18,
+   "ts": 1784744400,
+   "bookkeeping": false
+  },
+  {
+   "sha": "12d911ac53505bc557b22aa4db2c81adb39c9eb4",
+   "subject": "sgt revert f-10462e17@2",
+   "index": 19,
+   "ts": 1784815800,
+   "bookkeeping": true
+  },
+  {
+   "sha": "b924e5a41f61b86bed51c6829294956bab46c739",
+   "subject": "remove leftover priority test after the revert",
+   "index": 20,
+   "ts": 1784816700,
+   "bookkeeping": false
+  },
+  {
+   "sha": "25e91a9a1d220c850defd53f0b5eb66f45c46e79",
+   "subject": "normalize slot comparison for cross-listed sections and room audits",
+   "index": 21,
+   "ts": 1785164400,
+   "bookkeeping": false
+  },
+  {
+   "sha": "4aac0ba068675b1dee5ec075f9b229662572cd68",
+   "subject": "instructor schedule view",
+   "index": 22,
+   "ts": 1785352800,
+   "bookkeeping": false
+  },
+  {
+   "sha": "4c2b05791ef075eec8b6d3ffe4a403817534695c",
+   "subject": "enrollment stats report",
+   "index": 23,
+   "ts": 1785504600,
+   "bookkeeping": false
+  },
+  {
+   "sha": "0ba22cfaea30fa5c66bffb2e2fac2b621285c335",
+   "subject": "escape pipes in markdown export",
+   "index": 24,
+   "ts": 1785782700,
+   "bookkeeping": false
+  },
+  {
+   "sha": "cce175a751e932ce86703ba1981e7171c2f54204",
+   "subject": "seat notices when the waitlist promotes",
+   "index": 25,
+   "ts": 1785960600,
+   "bookkeeping": false
+  },
+  {
+   "sha": "a9efe18fea691d03dbd9352ea247166e4564aab2",
+   "subject": "README and help text",
+   "index": 26,
+   "ts": 1786118400,
+   "bookkeeping": false
+  },
+  {
+   "sha": "e7b2fb0211cf5ca9e41605036b981797a01218e5",
+   "subject": "expand the README",
+   "index": 27,
+   "ts": 1786118700,
+   "bookkeeping": false
+  }
+ ],
+ "cells": [
+  {
+   "feature_id": "af-m0829a33d450fce4a83d0275ce0d181bf7470b5bb28bc6e7d8316b595c058e66b",
+   "commit_index": 21,
+   "op_ids": [
+    "03d2886a8bfa180e0668393bb9c7f8c936731ad8c2dde1c055c8c7fe8e20d6c4",
+    "1a6e76073d82c479022256dd2226b201b605c3d65df6ab3938c527f911b7a9a4",
+    "2dec118fcbd97dbbc2acb2b86c6bbf968efe7f6b9dbe472906c9cb869fda492e",
+    "366231dcdf09493fface3f64fd10a608103cb0aa8ac66c1ecbf420ce8fe75c7e",
+    "406d72a4d85767a2c6f7450778f9806a1b89d5e8a32be9948a1d8a132c4e4da5",
+    "6f95b0cfd21fca3a69e2e659dcb35c785aeda7e66f44203bd3d9503d4a7f6e63",
+    "8e972386785608072ecd8ec74e66fc52e895ef185626c6329d5b9016e064f115",
+    "934e19d806ca4fcbc85007516cb0d17f9286ad14aedb60693ef2cee6ed62a7f7",
+    "96e9d538ba79888393e4d4bf94a6ed6d0535e38d473ce4523ef227409136b20b",
+    "d1f3e6858abce4cd46eb81d4e3dd0425057a5cfcfe61a3c869ea5289c036a969",
+    "f46237125eac317f68e5d2852a606ba705390e6650bc5bd0b2b9f0e4c784d66b",
+    "f6811095778da7a86149c26517fbbd26517572ba8a810312d4cda0cc00f9ab7b",
+    "fcc2f3a59be091dfe482ae8156c6818bf13636d7ee305e970d2c2c227f27f553"
+   ],
+   "op_count": 13,
+   "kinds": {
+    "add": 12,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "af-m1ae9d7f09c92b786fa66ce7cf1bf3810cdefe44a16c424d7ec5103e68f1b16c5",
+   "commit_index": 22,
+   "op_ids": [
+    "61e443633dd7177c42a8c658ae05c556c20f17bb35b104f331690fea5806ec46",
+    "6d4538ba29289abc7d7be5f061dd3feb671b1594620c7794016aafc4f72d9d70",
+    "aef038819dd2fdfe0ff825f262a3b69d1d69a03b620e827de450b800f199e6e9",
+    "c67b805b3cfe3543c15813c3d9b3ed13416b29b7206bbe467d933418910928c9",
+    "ca22a52382971fac96161f0e7717aa3c08d3782cf8de99f851a01e3a4763eda0",
+    "ce175fd7ffface06a1c7b2f271678baeed58881fa51cefa20606d16188d56d29"
+   ],
+   "op_count": 6,
+   "kinds": {
+    "add": 6
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "af-m1ae9d7f09c92b786fa66ce7cf1bf3810cdefe44a16c424d7ec5103e68f1b16c5",
+   "commit_index": 23,
+   "op_ids": [
+    "ff13b67e70cbdaec0562592900b9fab7bbd919a9c8f60ccb673816b42706df41"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "af-m1c654ff6dfc8309c920ffe63665d026e87b6cbd4228c024656fe809a24f27128",
+   "commit_index": 23,
+   "op_ids": [
+    "1c0fb62f5a23fc72376ba0c5c4d31aa13162e4116b2ceaf27cb9d7e6bfedb07f",
+    "4d60cc224831e0223ef86689ea8abb8179f7ef3bbaeb121031f6147aaa95278c",
+    "5576db0e0dbf45ce081b771ed2d567cbfd124939bdb7f464d34d217f9fe0f743",
+    "a9fa939f4b5a40d940f9d76725e3de94711fba29d0203fec77d59f3ea1021de3",
+    "defe980ecb91bbebeb925cacf3283c18127a014302a33d154d1863343ba49f8f",
+    "f4a2455650858f76ffea6a987507f3e75175e544f4c762eaaf3230aff8db7c84"
+   ],
+   "op_count": 6,
+   "kinds": {
+    "add": 6
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "af-m1c654ff6dfc8309c920ffe63665d026e87b6cbd4228c024656fe809a24f27128",
+   "commit_index": 25,
+   "op_ids": [
+    "6bdcbd41a9c276766b5b60172fa8501755d8b2bbc9756196338539cfc80c1203"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-012baa189f44764051a529e58d6d527b2b49a8c6209446f4595a23698b28fd5e",
+   "commit_index": 17,
+   "op_ids": [
+    "012baa189f44764051a529e58d6d527b2b49a8c6209446f4595a23698b28fd5e",
+    "16b2e68e674ed97c437ffe2a6a47e3f1b810e7e82d6c33896d77f1dfd2b3af45",
+    "2072013e15f518c687260538669bea3ce1f2e1c362bce5884f1b9aa72f9e8691",
+    "4782a9bf86a7108090f504d11e8ab34c2f71d6cfe066cd4b5be53cb174554271",
+    "4918324b0ffe52186253e2cf8031b23367b96e74b6dd86c994fa23beb0d57e4e",
+    "4a99f19c7bfaafa7dcba1640587239f58d17b85a78120533bb66c045534f34df",
+    "5335d141bbb0ad9f981b0f0f3caeddb1e4556b079424af99715a33da9231060d",
+    "6146311677c42b8ef0ec7df659dff66c012ffe2a18da4a30c2628e10e96d7142",
+    "670bf38463300707e0178983e53dd2372ed29f752e78b11b4462742e30d4fdb3",
+    "a579e9cd93dcbf5b61b2b35702a2db5c61b322c304db1e4e87b2c35eb1fc0112",
+    "dc31077b9489c81bc9e7e79b7a3efaac8acf77c07056715273443fd68330ad16",
+    "df242a13d78d79ec7c948d36dd0cede4f6dee4d5ae0c359f39e67912b5d802d4",
+    "f2ff08acc926f4ade0d5d4985f98447344343c29a3cd9baf0d21df57607b589d"
+   ],
+   "op_count": 13,
+   "kinds": {
+    "add": 13
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-012baa189f44764051a529e58d6d527b2b49a8c6209446f4595a23698b28fd5e",
+   "commit_index": 22,
+   "op_ids": [
+    "f971827872c59897270d81e2b48b32dbb1c14ca6cd6c8828a109914acb99e76f"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-012baa189f44764051a529e58d6d527b2b49a8c6209446f4595a23698b28fd5e",
+   "commit_index": 24,
+   "op_ids": [
+    "14458cc33773a8b0e6998732df47dc4835a89ca3f83e73ec390164e65c3457bc",
+    "88f22186c5522b0dbf147e4ad32cbf7019b40b8018bcdfc06965ab8712c904f2",
+    "d8beb6c14661d76643102f06c2e94edb3444dac4ffcfda561927126ae559630d",
+    "d98b7b14bc80d05ab74de1247f7eb81749d5315c39226746da3fe369eccfd098"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "extend": 1,
+    "rework": 1,
+    "add": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+   "commit_index": 1,
+   "op_ids": [
+    "08b60d9d0a68310d14c0c4cc2288c46a727a4ef3ccd2312fe2eb019ec836570b",
+    "1ec952eef7e3ae5c32f61340bd32585d9fc58f3e9cd8282ba1bda0cb1fca09ba",
+    "62a308f3d4e98c95d2c94fa7161d1ea0bc3cef2b463399faf669b8ec6110b1bd",
+    "762613f4b38c853369bec4a30945956f141888ed73f917096682ba1d98959591",
+    "b4e2bcf0c9fa0f77192305962d9d5db1fe801514b95cf07be011258ec63c8423",
+    "b7134b674c27e55cdbe50a7d25387bda3302a238935e1c57494a2680fb08967a",
+    "e1c2e9c60cf610a08d5b7e4357b1363b0b979b19ac8ccda4788047d6fc1c6964",
+    "ec5ec72b5142c05660b6d98a5548d80a34fb34b8fd59eb44006f201b57a37938",
+    "f8a88f3bce25f975de6acf7e8850b8fbfdc794a5f59fec92ee5912e7062344e4"
+   ],
+   "op_count": 9,
+   "kinds": {
+    "add": 9
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+   "commit_index": 4,
+   "op_ids": [
+    "0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+    "a4fe8069956ec4a21357a746502bc6e408aea502c46acf76259281be396cdf32",
+    "ba393fece743e637077a980af67b746edf6899030d3914ba3c589e6ae0ead2e6"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+   "commit_index": 5,
+   "op_ids": [
+    "bcb9922124599be3d5f445aeec45f89e0ef9a0ab467f54316db0b006ff239d43"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+   "commit_index": 9,
+   "op_ids": [
+    "13c4f7b1f5483b32555343965992e6a505b9ad0546580c69a6d999d889b4e685",
+    "9f8ac859f5665c25b5c05faf1e0bc1ae12fc4544b6e30b6cbbd400e4ed3bd6ba",
+    "b5ddc8b23da8cf446f5ef903f915b015c9bd7b1797efb9a98c96ed7e27959c45"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+   "commit_index": 11,
+   "op_ids": [
+    "0f5f913f4648d920206926b8bb4424f7803f4538e7950b0a36cd0ee8f160e122",
+    "2bccfa01d111602feb1c5f18a6fd5a6da9eafbffbb676f6977cb9cb8b2a0c868",
+    "ffc9a9253b32343e56ebfaa19986473c36338042863802bdfbd537f7f63bb59b"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+   "commit_index": 12,
+   "op_ids": [
+    "9683ccd22cb9f33c5551e78c9660efa960227acdfac4e1757e82bca939a6675c"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5",
+   "commit_index": 13,
+   "op_ids": [
+    "60749878a6376e94b1ecc982336d81b9d94d62ade7d754c0513e358d0ad0a63c",
+    "98f335909ae8bf7ddbae8b2ec7fba9d350953cef1b15f8f3208cb454fb6bdeda",
+    "e75a5611bf5b3fac0b9a842bd67dcfab70e93cccab8fbc9b4bb4a89413fcb492"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 0,
+   "op_ids": [
+    "30ec7f474914f957e83b4594194fded82df4b5b8a547d3674328833726d65693"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 4,
+   "op_ids": [
+    "414ef5f975fed896d101e16bc3cccc59925c790968c482bf5c1474829e62d36a",
+    "625afb1a803ba8b4fdbbbcedc50da05568d3d082ca8ca177c694d4e1fa4628bb",
+    "7a4ad6a6ee1d306cd9f51dc404f0de7f8ee8bb737208bde813e8bd7a7b50409e"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 6,
+   "op_ids": [
+    "03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+    "0795dd00afa9f1f2f75f87b37651c8f5d20d53335fe7d3bc2d65d5899d363594",
+    "1709b071a278f57d1620d9e87cb3b2d23c1a0d7cca1ebc878093be3abaa1f236",
+    "20fd6881ff340e69c91d8ae773d5ddf497f834706a22f5e81df984654c3bee82",
+    "4c2186d85cffa75f1e4e1ee374969bbf69d6a7906614efd50e2e6ef73404bfa4",
+    "4f1c95a84c52a196b571e8093c7f52aa13b39a5430b4a831508007896d8c5343"
+   ],
+   "op_count": 6,
+   "kinds": {
+    "add": 4,
+    "rework": 1,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 8,
+   "op_ids": [
+    "3050e91fa2efc91c126346df1725d5850df464e3b31c2490e8e1597611502a13",
+    "53b44071f597504188cc08ffa3a8128c8e553cbd3afab979460515b707b377cb",
+    "63e16f19303a58fbd1aa6a7c4d0aeb568b44b3e1e828392e653a4acad417dfc7",
+    "84259864414c19518df297c91c9dd585a07f6e8e62fae0bde82db5ea949f79e6",
+    "b80742e8a951a8933885ad60145a87cd44b48877624f8b5d773485b2d3bf0533",
+    "c37c458ccf7474646c1ba7f8a275e08a77dfc1b85cdd731ac1e5c00bb1f58399"
+   ],
+   "op_count": 6,
+   "kinds": {
+    "add": 4,
+    "extend": 1,
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 9,
+   "op_ids": [
+    "23567edcae3459a4b19a35ec581d3e16390c6a2aeafaf85c2841ff78bb93fcd6",
+    "338140047cbe60750545cf06fa17e0f5ec5e3d268c9220a838abb493c07e11ea",
+    "49a47608e622ace9ceabc0dde063e46ad4eab7bd5dbfde0f3db753fb2d1d3b6c",
+    "6f11b0c5ef2777658b9a3730ed17e987ed3ce58bf470e59c46dbc262b650626a",
+    "94ef5f950137e89174c438a96b9f6b2490e7562b8f77b43de678d73b1f0ea5f9",
+    "a5f822662f06e3eaba65e712c6e1d5526a742b1cad47fb870f74b3382b730b9d"
+   ],
+   "op_count": 6,
+   "kinds": {
+    "extend": 1,
+    "add": 4,
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 11,
+   "op_ids": [
+    "2fa81a00bd3accaf5932cf97e6fd2999cd3709b61019c559e2861d1b55aafd4b",
+    "4d65ef5a72ef96931baa7b51beafbd9045238ded840c8cf3fcecc8f422aeb634",
+    "5c60e761b7998509ab7504a9723673a5a79843c5eb2ca08e7ae761087bee33a4",
+    "986a55b4bf398cca8300d0f4cd4a7d74fb2ff9be049dbdaa7c7c5430c5ae06d3"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "add": 2,
+    "rework": 1,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 15,
+   "op_ids": [
+    "5daff3dc67f6b79b564bf852580d60bbf0a345629f1e029faaaea9e249ae5f74",
+    "706d2141a4cdbd31996c7ff28c78b69ca75c79a743b09a2c94a4caa752df9a3d",
+    "e794e22cfbc46cec91737f0736121dcb5ef137ecf67b499b32060f269c516f69"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 2,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 17,
+   "op_ids": [
+    "97f505cc5f2591d43836b1b8211b057acfea774549101d0c77662a056847ce2b",
+    "d60c78bfa8a01de29178ea7663494b46f83c2d22b53ccc98ad2f72a6e0a07786",
+    "f14252f177d4cb26025855cad4f0c050608e22dc7dc2051258f951d4fde54c6a"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 2,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41",
+   "commit_index": 27,
+   "op_ids": [
+    "81294ab5b5ba7ffe6fe9cc77067f95fe7d83a45cebce48b2d6c3224539f211b0"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-044954f368089515259c84917377ce5f4c5153d5e41541a4b614c74b19126a88",
+   "commit_index": 2,
+   "op_ids": [
+    "2ad006d37d40e1dbc7c9a1ac7a9dba0416013f4115e8983fb2f279c39e176c98",
+    "43635981d81b6f4918a81e46e28899262b64b2e98cc146cf9a445f03b5bf964d",
+    "4c9d4d8e3927f98e8ed82dea20be35c0a36e29c84bb48bdaf288c3cce49ae047",
+    "54a24289a73af22bbc3dda67fa0212ab43b24ebc75d420a38fffc955b1a08d8c",
+    "5ced479ba25a0713f556f89cf8bdc6b66b77aaecbd181428f9e67c862637f5c0",
+    "643a8378b14e9d3475e3af8fe7007a1c4f044bd8f7de3cdda338f66da62da884",
+    "759f725164e8d8dbf7ce7c74295930b09f5e966bb25dd5520d91315aeb3b5174",
+    "8fcf8f57ab37bef4ee37592f989d0b8a16f5c6551b6748f02b9231e24f1a95dd",
+    "b709bab6ee5fdfa4249c25706405274c702dc6026fb8230ae7c74725e619c64e",
+    "bd9de50985be01160b1c995eada3af00fbf95141ac59a1079e3838818672238e",
+    "c40179c058f8ac06ba5dd0b7097fd35eb405935891ef178e01673117b49fe8f8",
+    "c45afeea1126748e9773f2bcf24f2dba70cf639f61fcbcab32286f1e3b060cee",
+    "c8b035631226198081d7088609b72975098dc4791b4c4da303b73ca520bff328",
+    "cba231a8f2d6a690be84bc572f01dd63fb13af7e1913d44450534082ff9be744",
+    "d82fcce217ce868223b765a647976033d1ad75806726f74396c287b191d43a21",
+    "dc78122adb5314082ee2bf930d92119dd844c200f390b765941ba9b62625ccff",
+    "eb0f454b85b67d7ecf0d31f7cd85dc2109e461f12035aac8d8e4aa589c2a9b84",
+    "f57f126c5d46fdc7380fbf9ee002bf7dcf6b09bbb5648217b7476400e9f6cc49"
+   ],
+   "op_count": 18,
+   "kinds": {
+    "add": 18
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-044954f368089515259c84917377ce5f4c5153d5e41541a4b614c74b19126a88",
+   "commit_index": 9,
+   "op_ids": [
+    "189226f50fdeb49413e2a96182cce8fab204b57c9c3efc27f22386ee11e1b831"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-044954f368089515259c84917377ce5f4c5153d5e41541a4b614c74b19126a88",
+   "commit_index": 10,
+   "op_ids": [
+    "044954f368089515259c84917377ce5f4c5153d5e41541a4b614c74b19126a88",
+    "7e2c0dc2aa8964dba3f7d2eecc8cb413b529c3f949dfd91f3358641049df4c26",
+    "b4ef2cfd333c7f7b07dbcfc81b37db216f69de670f026cd532064518725e37ff",
+    "f90282946cde34638532f43ba4e28f884b0f979969eeaa2937f9986ae879e1c9"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "add": 2,
+    "extend": 1,
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-044954f368089515259c84917377ce5f4c5153d5e41541a4b614c74b19126a88",
+   "commit_index": 21,
+   "op_ids": [
+    "839d108f13af24025cc8e7a7228b19334a26a5a9a93fe793080c7e9024a2431d"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 1,
+   "op_ids": [
+    "180aa2d8da36cce0a3e59c61377bd82864ca4fc64f7019668c7df4525fb6cd6e",
+    "c01ab2722d9ddc2208b542e1c9430094f74888a6cdcc758203aa5916a3c1f6d8"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "add": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 2,
+   "op_ids": [
+    "23789ef2c401ae5f61ff2017d4f6fbd27df94297d38ace8e360e8d5597df7d31",
+    "7b6f1bf3841acae88c6342082bd6fc255178acaf9fd58ce798934c4e028e385b",
+    "7f6151a2fc3bee9fb127de00f8e32eaf7c14a05594c719f354a108bba440582e",
+    "88c7e70ed73c211a525b506eea9be95aa32c6e08b28cc8435ff1e791ee1ce2e2",
+    "89e4cd45333b901a7662fc643ca421854bbb3ed976f4449edc707d4b434b9f58",
+    "c269befdad7b7f0fc1c5ea721b97a624aeb492da43209a5ecfc887386087595b"
+   ],
+   "op_count": 6,
+   "kinds": {
+    "add": 6
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 3,
+   "op_ids": [
+    "5213955ace91984e7216a0c3114c4c677b4ac3782f078e1890b6fd63b7604c86",
+    "8e2655e339654c5a133bef85faf84597329add31f055b64b656d623c4dc6dbbc",
+    "a80c0c0d92f31277ef301da72d72dcb08b0180cdde536d380b3d1ffadb58f3e4",
+    "b056304fd6f32a8302313645b1b8667d4ba9d8f5325b004abc535037bf957bee"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "add": 3,
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 4,
+   "op_ids": [
+    "62d4ca07ed89b6264796691ac5b2ca4b7ec562c4bdd44191f28219dbb6aaaf6f",
+    "728abf63b6f87a121bfce88f982882f23dadc97c14d3513c8995556b1b2157f6",
+    "77c4f0e901f061c859f88eabd7cc9ed3329b5be3fda782a1ebd35f30eaa8fdf1",
+    "c4b5c9672d289f86da03a44b0d3ec531dc5d384f9fd4d66b9d80877250ac8f31",
+    "df1d23eefdece58168b6a9c5ffc027afbd69419ed6343f57de0f9b48392fc17b"
+   ],
+   "op_count": 5,
+   "kinds": {
+    "add": 5
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 10,
+   "op_ids": [
+    "1465cea22aa17340dd43ef07761335328f5ec44feb031ffe75b52811aeae9df1",
+    "643b6f81be10eb4457331a9def2a18965172b95c820cabb41dfafe00b2b018c7",
+    "73131390edf9663f93964dfc457739155cb9879d62eadd474d8dae3e310e8d16",
+    "c02fed14aaa8bce2e5e38ed54c56994fd19ba20da0299a2c3c660cbb600814b1",
+    "d30ae76fdf397e04dbe4828e007a297cc95c48e86713d43050aa4b57f8615b42",
+    "e06b8e04bb6fbf0487c130ce7a0b9d71c9cc1a462a17f27eda5fd2a3e69f5002",
+    "f278194c311fe8b61a26e293f30f601df13cf0698021f76438ed0b1b40c9d4c6"
+   ],
+   "op_count": 7,
+   "kinds": {
+    "add": 7
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 12,
+   "op_ids": [
+    "07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+    "1c901405cf4d19d5ddd3571edf07dfd40bee067843d430c8bfc28382a8ba8de9",
+    "61d862fcb8ac2b8b89a2482f16bc05ded205e2430bbab6c67363b7fe0920791c",
+    "e4f7c3d8fd3f8698c4e649effa1f25490a7699bd6b0b91f5e70b70c96f5656d7",
+    "f813d6a6461a6cacd2b0b3596d79fcac7f4b9b89640cefe6e0b7450120eec658"
+   ],
+   "op_count": 5,
+   "kinds": {
+    "add": 4,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 13,
+   "op_ids": [
+    "5c85ec5bf33119787d81b7aab18f327fb8a401e337818878cb80b52c9137b4e0"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 14,
+   "op_ids": [
+    "8289be5b7bad5f69c0b1dcca7009dbfcb1fdb15fe7bad7764fbcede41dc7fbb9"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2",
+   "commit_index": 21,
+   "op_ids": [
+    "a1ba5e4c5e8b730815c45a2f4dc7d0ad084e925e8b8cf6b86e92932552ef2b99"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 1,
+   "op_ids": [
+    "5b8ce653d8e1fe68a13964d7cdd749c6ad5aa05a89e322234bf254f8357c6f77",
+    "93bf499d53c605ca02e7f8ea994c724d761718d06da4463cb50222314c937ca3",
+    "ae81a172bba69f7b3f654247d905eb10dd0a5af982f831e5f0b65c7a09766aa1"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 3,
+   "op_ids": [
+    "086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+    "342041d3ed4c39b524a618de433eb4e5fb3648065521b8e9e14bc1051fdda1bd",
+    "4ac894bf2472822af16fa4bdfdf0630dcaa4d0862b87433e2dd58f217c68a364",
+    "5b81b2f1ff02820224a50546d3d26968efb0cf51256853ab67c9dd6087f87d18",
+    "601f140700c75dd561e7ce6d2c496f86f1719907c33c8d838dde257bd16b0700",
+    "8bebac90a05aee2eb98012f0215bafd96ab65ce8eb6e151253da3f8756ff94b6",
+    "8d2a017fad3ea6a8066e8be33c0cec90a64ff17044d716ab4cc835d1e3fb0d02",
+    "9d457c62dbd1baa7a4ef20ce746f333d4159ec568bc19bcefe6b1aae58b8bec8",
+    "a8e0fb8cb51be6cafb7dad62d8b6892c62e33532878ad565f10c52f5248ddb4e",
+    "cb43965a1bc87e1477f7e3ffa428c2238c3c4582c9c2c34032b649ec3e26723b",
+    "ce28be1eced18a5f36ef274b2131d4638b5eb38c759082ee1432c5efd7a1ba92",
+    "e1cb95988277def4a19fdf6bae3dd5dd48865d575dcb97271bb90ffb651d753f",
+    "e5b674e25fb9310e1e4452b9ea889bfdce0c95a669b27ccd1f5e9af66ba62150",
+    "ed813febe640c0bcc3abf25dbfe58fd7aec5f83a1a7e6ebcfcd13d04898461a5",
+    "f0e42ffd2fe9c6b84f8d2a2e6f5112bdf75e38d3d052bf4e7a75b86d8b40e9b8"
+   ],
+   "op_count": 15,
+   "kinds": {
+    "add": 15
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 4,
+   "op_ids": [
+    "15cd83f2ce37c541fabd076a798c6871f1c69b2008bd5a377faeb9480c62a1ed",
+    "51066d043108db0f394407c94910d84de8e1415036de89275d8af529efbfe548",
+    "b66b98c8da2c5b3169b74161a6abda800cd68cb8a60dfde4ff80e12544c28232"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 5,
+   "op_ids": [
+    "1e20dca5d8d7220449b9134e25318277ed113acda8d2f9fe514ab31a3b0b9069",
+    "372e9e23cb2d7f2d5d2ac362c2553b6000f0b24111951fe34cdd61467be0c5ea",
+    "e1a5ab02ac310a54988c26308f5adeaf0d3e394eab09f3bc5ac0459da231b3c4"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 2,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 6,
+   "op_ids": [
+    "43ed62e90583abf98a7ef8ac9fbe75b127defe2a94d59d3b388f733711bfbbe0"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 8,
+   "op_ids": [
+    "aa38ceda954aec56ed06df8123050d36193779779626d031c5c4afc66a7da1b8"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 10,
+   "op_ids": [
+    "1c2e8ced6028dd8b6ad5470519b03cdd0ba9c37f9390a3e51981549563c933db",
+    "a125f8165b0b86b50681357bf865d4ef7290a47604b7987750fa02ce8809b118",
+    "ab0db5f67e9d3c0bad4e9b2918758c068f2c897445756209b723a76ceccd2649",
+    "af7370b99e46a78097d0e39e91be63f6bfc238ec6d335d66682df01ed6efea41"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "add": 3,
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 11,
+   "op_ids": [
+    "8264a61cde1704d3598563311ef2c0b783277d1839ccd66f976051710c957d18"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 12,
+   "op_ids": [
+    "535479283dde4018a7d7b2fda90d1375b27a7b0a5c2beeb5c1160093e2ff0749"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6",
+   "commit_index": 18,
+   "op_ids": [
+    "988f29e3683294975b0aeba02b558a382706388b476135745c28da1c0bc5d96c"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c",
+   "commit_index": 4,
+   "op_ids": [
+    "b1d6e4fef887e8b63e05dac02cefea0706182306a24cd59659f2e3efaf5837a9",
+    "cf13c68c897ad4db3cecf0f97fcd7e400216bcaa9e5330463e9df0b81faa619f",
+    "f80c4378c3e9eb3ff10efb932adc7eca369a095f207b7b422a13baad29c76d33"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "add": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c",
+   "commit_index": 9,
+   "op_ids": [
+    "9e8b7401e244f7e7f154545923c0ec522776e65ec31ee9a8e8911604ff493279",
+    "fb2a36916e3d101fe816d4bb5768c430bcc19bef7aa24766505fb55a1a9056a1"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "add": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c",
+   "commit_index": 11,
+   "op_ids": [
+    "35e1a65218608a1e60b85256bbd9da04e18a4ca3e353b96bbfbf46e0b08aeda1",
+    "ba00809ca4c3d40e96758caeef840a1fbf16518e07023b0962415ce4fff4f1fe",
+    "f1724ec92a7439914386a4eedf08ad2a4963c1ee92dc9c7f1a83fd88805d2d36",
+    "f2c090bd2eb5b302bbd7ab81bb1954832d7fc22e2e3ad349e2a4a43021b26a6e"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "add": 4
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c",
+   "commit_index": 13,
+   "op_ids": [
+    "09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c",
+   "commit_index": 15,
+   "op_ids": [
+    "1d744793c60331b67fde131bfe790f28931c035639da4236c54989635fb90ab0"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c",
+   "commit_index": 16,
+   "op_ids": [
+    "9c8b0936357ba48b67782353e3aa1761a359274a0c1331b266917648b846be40"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-10845aefb06298eae97dd1c0f47605c7e36f3ea60b1e1c1df60cb90a7ade4e3f",
+   "commit_index": 1,
+   "op_ids": [
+    "10845aefb06298eae97dd1c0f47605c7e36f3ea60b1e1c1df60cb90a7ade4e3f",
+    "37f5a17f6d73ce4578200394d573a105bdb150dae299578710effeba85a2c04a",
+    "7a5c1cc7ac6793110b40730cac635828c6e3679f23fd158793acbf8832dbd1c3",
+    "80d2754b6c7887fb5ce97b0e2931e1847a4eccc68b91a4376386c4c3766d5af8",
+    "85cd98f52b0f5a6262ae06aca0482c2e769bfb95f9dfd56bf94293e51e573c29",
+    "9c506fd315baa63a0e531fc835fa3976cdf32395eb5d836cb3e17fc9f6c3a416",
+    "a3fa718993bc46e30524e771dd5361051e474530b423d37d778dcc4b1df08aa6",
+    "bd22da6d56d620d960bc8f56ee946c5ffafcdc8d838776333ccfd8318a196eda",
+    "c675efc38d36c32c4219d40bf2a0c21fd6714f0595518aff96ef9860268daf47",
+    "c9a4b9eb7d3d54a3af7dda548538cd59341c9cfa68b7a0f439331e508aee4e9a",
+    "da857b95f1c5a85e8e158bb034450f3f46313909f98f12adc288ec07e885175e",
+    "e1836a180bbf50e2c188e14b560dfb1e69f5d4e24dc8b668afab2174b315eef5",
+    "f3bcdee9e585a7fbd58a03135441895175cac1a1221489887a0dc9c39a2fab01"
+   ],
+   "op_count": 13,
+   "kinds": {
+    "add": 13
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-10845aefb06298eae97dd1c0f47605c7e36f3ea60b1e1c1df60cb90a7ade4e3f",
+   "commit_index": 18,
+   "op_ids": [
+    "c579ed9bd9fea54020981d55753c680e48af8c7d76ba31b1ea8768bad6423f53"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6",
+   "commit_index": 1,
+   "op_ids": [
+    "a3931ab68eab4c59bf48a0d2deb193fda3bf5a0e6f5e38290a3c5e1ddb58b358"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6",
+   "commit_index": 4,
+   "op_ids": [
+    "6ecf51e554466363910da29a42aaac86f075ac3ee6f7a6cfec4653f305241017"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6",
+   "commit_index": 14,
+   "op_ids": [
+    "15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6",
+    "21292f01b8573fe17a1f89dc8fab195b1da0d01075cea13820919d530d87bbb2",
+    "25687a67313d882542bf8b8f15b15b07a229cfdd789853dd4fcb352915c10e6b",
+    "2c3a5ae9eb07a4b0015ef7dba3886a4c5da66b08827a612f100fd15ea39c397a",
+    "34df01c98e9a3482cc5f9d0ca47031b2681ac627b47dbf13333ee878759764bc",
+    "3c1aa164f7de85296b6a69fe0720f42d1dc82503664092120e0d900672661478",
+    "48fd8b7f4282b89a1268f5b05afe1e784b072f3c55beb6e821fdcac75ff25300",
+    "4ec2e7459e7c7d5ab7327b711b4e790b661d44b23fdb786238b2e6bdbbe494c6",
+    "5a0c1336d509df5631e39a912168d09c534d0ab3e2bb0872601aa620da2d56eb",
+    "620369751225e6dee92ca19e496210df15533e936a433abf8a6dfe01a878de20",
+    "6cf70f181761f6b729d4a74bd1d101c43f3c3d537850e073805894f144a1a496",
+    "82ec4929a1dc1edbf3336f209a43fb82b17c43f1ba2c5012d2ed087ff96f760c",
+    "8958edb0419d8ea670055393b89a6264c1ec8c23841aabc045350b9028f6f77f",
+    "8a5295267de9bd9789ed63ef012fc1e127f7e181dea84e0349cf041769e8a30e",
+    "90461c36d94e266194393f417c1df995c0a8b4d2a88e74f8c643400e671d4466",
+    "b0370362789b116a2b11901b5258506e1a20a030f7d4ee4e5856af91e1f6d0e6",
+    "b16dcbd6f321d60b6c331602908e06a7cb97b98a3b17326bae4978445d8a01a2",
+    "d413c1fdefd55500898828e6bcba2a66c8ed515cd0517064c8345c8fe167ec38",
+    "dc64a454b65b9509382c68889ea83ae83dcccf4dbf2f01d46d5817b23815dcb9"
+   ],
+   "op_count": 19,
+   "kinds": {
+    "add": 18,
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6",
+   "commit_index": 17,
+   "op_ids": [
+    "4223b9b469ae3988aedd1caacc6e0990bd96add5f860d680bffc48c64608092d"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6",
+   "commit_index": 21,
+   "op_ids": [
+    "0745c369fd5f8934e85e930ac82033e194ec3f2ca0c8d36e3a70ef51fcdd818f"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6",
+   "commit_index": 25,
+   "op_ids": [
+    "039fc32800bab37a29adfd6b51e9e00855c2a53636dcab725a944631712648d2",
+    "074c6b0092084f17eb45fdfcaeb30b44adcba0e293360e276cde4584313befb3",
+    "156acef4106dd831b0b9c840a00c1c9e5de2e81b852769a45da0c9a8c08e9e3a",
+    "2a68e1d4b827b1ce9353acc3aa63fe2da474ca83f3c32e29574ab8497c8b4ac8",
+    "360dfdd85b07dcd813432faad4f8e9b3188f8008e8d0eae5005eda4d0c3a7d22",
+    "57dc5d4663d480a9140bf0d52f1ac4e66051cb71191b3553e3f2a397b303a4ae",
+    "8ce80d3717fb1cdb6013313243bbd1c7596cfafa6de3315acca1f2de9d1d7010",
+    "d44623994f235644ba5de9824616bf7e24b2779ba17e4ac1f6ad217093b4e344",
+    "d556626735e3e460320192d6cf399767302d9c7ed02e5734dc32f6b4bc632d69",
+    "d60c3760f8519a1d6a9616e2628c7e1f1d4dcf4d5485468edfbe2ecda0331413",
+    "e4107040fb91da9160ea63214e2b407b0a19464f477dac2d26e3a44d7d66907c",
+    "f2397b8cfb59aad25c6db93d2b11a0a27ddeed08138bf8944e44186fe529dcdd"
+   ],
+   "op_count": 12,
+   "kinds": {
+    "add": 10,
+    "rework": 1,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-5026825d34b78a6c42774101bb21175d52896343b244f059b3954b584623698f",
+   "commit_index": 3,
+   "op_ids": [
+    "5026825d34b78a6c42774101bb21175d52896343b244f059b3954b584623698f",
+    "6925f11e9bbf4f52c1b2da5d95c32829d4ae42583e1801fb570958b7c857cdbd",
+    "ae4423246f584f948cfee010c1dd5611fcb1766c1458d6effd935977fd586c1c",
+    "d38c2aa5e590f6f4a871954bae05b64799b05546a1ac61391bdff210fcc0ddfd"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "add": 4
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-50eeabea1fdb8342618f6283e543fc5b94e75b9a8ef220a9bc93b559c79fdd6f",
+   "commit_index": 10,
+   "op_ids": [
+    "50eeabea1fdb8342618f6283e543fc5b94e75b9a8ef220a9bc93b559c79fdd6f"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-655b56bb79ee29423f1867d3c690a0eba433ff121b542f18d546306f08cf49e6",
+   "commit_index": 11,
+   "op_ids": [
+    "655b56bb79ee29423f1867d3c690a0eba433ff121b542f18d546306f08cf49e6"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-b3c7a984a0fc2c1c8ffe1140a4a71dd6bb0d999ccc7547aa05052f40b877bbcc",
+   "commit_index": 4,
+   "op_ids": [
+    "3840eb86ebf62e09569a152cd085d6666916707d36f8f843675e4c41b4ace22e",
+    "60a8f20be6c519f4cf221fb74b0f3a5f4d1f0495660876c78c7cce8130f201f8",
+    "8132440f9d9c420613511d0ed2f3e1f1db0b79d13a764bc24e92838e33a9d102",
+    "8a842a54139854948292c7199524b7a93a0074151ea2513f79958becd555447c",
+    "b3c7a984a0fc2c1c8ffe1140a4a71dd6bb0d999ccc7547aa05052f40b877bbcc"
+   ],
+   "op_count": 5,
+   "kinds": {
+    "add": 5
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-cca80773cd22f22fe17981e514410aec0960eaa1b17a55e7da8547dd15d25cc2",
+   "commit_index": 13,
+   "op_ids": [
+    "cca80773cd22f22fe17981e514410aec0960eaa1b17a55e7da8547dd15d25cc2"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-cd2112584852b62cc566003b1bc81cb85ceef382d75098f24c9333345102c9b3",
+   "commit_index": 9,
+   "op_ids": [
+    "cd2112584852b62cc566003b1bc81cb85ceef382d75098f24c9333345102c9b3"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m3d4870cf185e12b12ec856ba2c40df2f15c79d3562cd945bbd2c74a0d48c6f54",
+   "commit_index": 1,
+   "op_ids": [
+    "de2861d4f1b197cbdcae78f94782bcd5c6486898fbad4b40d9d3a7564a782105"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m3d4870cf185e12b12ec856ba2c40df2f15c79d3562cd945bbd2c74a0d48c6f54",
+   "commit_index": 2,
+   "op_ids": [
+    "593b91fcbb30a392cf9e0f4440039f59831f27eb7488ada6f57465793cbf0163"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m3d4870cf185e12b12ec856ba2c40df2f15c79d3562cd945bbd2c74a0d48c6f54",
+   "commit_index": 4,
+   "op_ids": [
+    "2059309f2180f1f65b9a7811bd9d1930d3393d985fb51945fb68a9ee861bb539",
+    "2e9a10cbc39f03e40707fa2f12abf4075078b2213fd905e3af3f662aebf72938",
+    "4c4a4c76e164dcb36b525110e10f20c7e43750388ec86ff85e20cb684303e28a",
+    "7e0f7145a067868800accc2f5473aa73ba046d11b927dea0d9cf7e4af2f3b964",
+    "8ba4468e7dc7dc109feef8e6ee26bc6c274d74f2c9335396f00f62d9ffce3b3c",
+    "b323302f0304fcedc0ce06c55ead74dd1ac85f7173fa6643e2632625dc89ff40",
+    "d67eef26a80e4b9bbe84f74504ec7fa48b22da8cd6cf4680d099c0de014e06da"
+   ],
+   "op_count": 7,
+   "kinds": {
+    "add": 7
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m3d4870cf185e12b12ec856ba2c40df2f15c79d3562cd945bbd2c74a0d48c6f54",
+   "commit_index": 13,
+   "op_ids": [
+    "01bb5a15cf5f8591ef9c4bd4c08465de2ce1d0fc5d17710fb27b57cfdf99a444",
+    "1a3053efe79eceba4361f1eef1180661d86eb26ce390653494ca8e9b4b0b0157",
+    "34f54851da2d9ae4eb7c664a71c5fe5b1d790cdd032a975bcaccba0d30ba50fd",
+    "3e1b2a6aed68daed2af753d954257c3c07d7c7cf6453c3668dd2129fd02453b6",
+    "4e4e7b9e7ed7d4ed50e7f6901a041f81fa20e81be614d3998a8b41bd203d5a84",
+    "5ead8b3d7e7c712ae272a4971fa7ecb82210eb53342df318e0347caea3c4062a",
+    "6254eb29d10b2c5e44a77c89af6e1ef58864a4f77d02a1602a8e99f2e68aba6f",
+    "688f73b25ba0282beb6f40150dacee289ff7fa32fc6bf526c461b3bcc2986db7",
+    "6f7cbf14b07a88badd4cfd92ec3774befe8f2fc39d300f2f1daec9f66ebc8521",
+    "8234c74ed6cd5248f851275797b79b6d145db85d60d0925e92580adb8b0415a9",
+    "9360710711a379c8c4ea82690e43c6ae3873cfdfa2ca6f4a8f8e8bd2a34c4855",
+    "a2bfa97a8c1179987b3d8af9af4a458597d4e69ffd1db466057a2ffa0a08a074",
+    "ad67c0cbe5b54d827a4039ab23134825aaec6a2ff17981ef4736f3c3c8547224",
+    "cd21ce66b3c60788081ec28fec76b02f4245895654f98f2773e689e87f2bd4ed",
+    "cddcad19079e0cab87c95b85c5bc756feeb1faf6914530d1b25ccd96579b8757",
+    "d6123900f77fa27f75220bb9a963e7b61e5cbaabc7016a7efe7d5fa3ced5c9bf"
+   ],
+   "op_count": 16,
+   "kinds": {
+    "add": 14,
+    "rework": 1,
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m3d4870cf185e12b12ec856ba2c40df2f15c79d3562cd945bbd2c74a0d48c6f54",
+   "commit_index": 16,
+   "op_ids": [
+    "2c2bf8e5b31c4f6ee6b074a12aa3e4e3fd87f0fd7ba6a3fac29b129b9e7e6245"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m3d4870cf185e12b12ec856ba2c40df2f15c79d3562cd945bbd2c74a0d48c6f54",
+   "commit_index": 18,
+   "op_ids": [
+    "5882a061ba7baae2e906a038c096b58fe0a2150436a6d0dce44c40af1d5482c9"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "extend": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 1,
+   "op_ids": [
+    "108557c9235296ed3047b81d4b594ca49c1f9ced800b9a2b62d994c205eaf92c",
+    "128db93a5cd1303cf4e417d731dcd18b947176ecc1b1107b749df3080ede122e",
+    "419f8eba744a60541ff8f50dc8b893b4c4ec7444f88d341d73602b42720c1a11",
+    "46d650137aab78cd026147f7c81bf72e7e44a20afced0d59bea3aa04f7b2aba6",
+    "71eb1712c139f22369eff72ea44265b7490364fea0258e15bcc4f94dd03242e3",
+    "b7981c35a8cb6af30b190c03feb903762a22a24580edb9b2ff8de6e3ca2fe370",
+    "bc48e30f3f1d08894932480a8b914c041848a4018b740ad420d848bc46b8ccf2",
+    "c261a2ab53b9c7f58e9f5e97339c399f9dd82c27452f4171b1a17387e30ded36",
+    "ebcf8bb81c04f9ff067e518c1da0571b999105dc06494b81f21460963fa686a1"
+   ],
+   "op_count": 9,
+   "kinds": {
+    "add": 9
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 2,
+   "op_ids": [
+    "08187165b6164635804563025f3021c2900ef2098e425e411f87cced150965d6",
+    "08a832de147b3503606976f5fe4f119f6ba7071be6104885476f68afd3de2105",
+    "8292e049e7a192cc227da71bd25c0182cbf0cef3f4eb8bc93af74d87186ae462",
+    "a33343066aba69f7a43a3f025360d55c4b6bf0fe24e51d2af75c425204346c46",
+    "d7baba8a21d783ba47f3d24485022ff6a0b10e9ac289cae62d6bc53d348803d3"
+   ],
+   "op_count": 5,
+   "kinds": {
+    "rework": 5
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 3,
+   "op_ids": [
+    "a58c480d3c732c95c9e1c425e975bbb768035b2e166d91050925967a1ae772d8",
+    "e148371c66961d49a091d34de4bda0f1bebd539bd9a3bcb4ecc7fbf9bcd442c1"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 4,
+   "op_ids": [
+    "272a78de66c8fac548f1db2fa7f2310dfd9a1d5cac3f399d66478cdd9030043e",
+    "7a477da1ef116dd4d69ba4f273d425c7d9fbb29f0a6606d222e0c5cd7dbdf54b",
+    "d69408f95d421922b4f620cdeb0e1d51eb9116e1de7de666f2fbeb6c2ba9f5cc"
+   ],
+   "op_count": 3,
+   "kinds": {
+    "rework": 3
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 6,
+   "op_ids": [
+    "15d5ddb8b627c7441578c70f2fd62bed85ffc6dd677c8f93ad30d7d7d8e915ab",
+    "2e3c02b26ef3a80c85aabdc3e46717b077666c1a62c240653cbdc34385d61bb2",
+    "5b7bd338a0760b97a604da0309e21f213b021c4e7701282c62eb3c53f3a6060f",
+    "a7e03bbab1ed5aeacc88c6622381fde5735acacca8c0ee035cf69d5b4b1860c7"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "rework": 3,
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 8,
+   "op_ids": [
+    "40424a5d52bd953ee0abc9b1e4aa4cdd4cd692695a1f5899e42d72b64f348fd0",
+    "9b6530b3d188553cb9902a1ec22d27e2d8b6ecbb1ea1772a3004b77cfe2b8a5e",
+    "9e274cad2db092cb3dd3d8c00a78cb357800cb3ed35a505a52e4e5f013e2f990",
+    "a7fc0bfde9d87612c93f4bb7d5283cb2e2eb270382a86122754edc6a6fa965c6"
+   ],
+   "op_count": 4,
+   "kinds": {
+    "rework": 3,
+    "add": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 9,
+   "op_ids": [
+    "523d52d7c71d50d13746d9579366c35a23eaa3dbb271ee36fca7cd8528f0fa1d"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 10,
+   "op_ids": [
+    "ac1f7800b01b289dfa4c9e44ff1a47cf099764a017eb5641c9f63d1dd589b58a",
+    "c084983dad43c3e1130792d2b2f64b9af50b5f9e26f7a15899b8aea3aa57ea85"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 11,
+   "op_ids": [
+    "dfbc0e6d1e07a2682fb89242f6cf99ec37ea57e8fb70c5ebbc3241fa700c5667",
+    "fcd0b577e36623c43962615037fe82af6c8ee9149996ad10792d46a006313e1d"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 13,
+   "op_ids": [
+    "28395b2d528f7937f30ccee6f8c76b7fa4c5388b55d9877f2c511812f001e81c",
+    "a0339601a9441b57231869489e048b110ad0576970d3338ed7ec582284403503"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 14,
+   "op_ids": [
+    "3f596412fe7c31adcc882e8b33f478ef28d26da151a89d5b6caa1140228ac9df",
+    "7e8094f3e982b38cb717c6ee1b6e3069d5aa60b32e0a93d0af433436a92c9591"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 16,
+   "op_ids": [
+    "5dea838927f451897f0bd46c713c2146d78a98ff4a488209a93bd82f2203b320",
+    "8c166f98ebfe52f31e5f1495f3cba329dba1a44f1e8cf9e7e3b21e5de98fbcc6"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 17,
+   "op_ids": [
+    "63c7369282a5b008b010eb29425c45db770d5c3e8181ee40a75c4cf4bd2d4e13",
+    "e43d48794f93056b0d160ab24aae6083646976d9235aadc78ca0c892e157ade1"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 18,
+   "op_ids": [
+    "678aa1baec65844c65dcb49624a627303ad77905a4a5b9d788594ef1328a2829",
+    "de362196e25dccb74e8e6846b00ed4f23b30d4251b363a795dfb29316a11eca3"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 21,
+   "op_ids": [
+    "90cb6cc547768dbdcbafa80158a554ffbdbf20a7d419bf09dd126e60fcc8e959",
+    "d02e0803d50032e6a8eb8f6619771ef3d4d8962d490d504850d1aca0470aa59e"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 22,
+   "op_ids": [
+    "aa5fde14849a018ed3139ca35f6bce65dd104a73086bb5a804c87667f328586c",
+    "d7cffeb96306aea391a7467ad07e432c8ef197c8e87a8487c5163095df752e82"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 23,
+   "op_ids": [
+    "2e8695ba83088e66bf7cd34c83f7d218a9ccf3532df9d50f90e6a5df7ba1a0ab",
+    "dca998a126d45d0f1b64a86ab8b97d0023c6f9750926946b9e960d12d48fa9c0"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 25,
+   "op_ids": [
+    "089f567a8056d81614488190157e0c6c08f078ee793bfe6bb7db5467271e0966",
+    "e7ea030461448bf87ba3f61f624b4c9dd860675a1306b785b8928c65acb2cc35"
+   ],
+   "op_count": 2,
+   "kinds": {
+    "rework": 2
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb",
+   "commit_index": 26,
+   "op_ids": [
+    "6cdbea8acba0d6155e97f2a75730b7169434234a8617c2a6ee3980330c50d570"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-ma89c1043e09031af6213d9f543264ec14b9d752af06730a038af3e03482b5dd4",
+   "commit_index": 16,
+   "op_ids": [
+    "0b7a7ceabb68d3d734771083a31720c7ae244200c4a9ca254f7872ed2367b6ac",
+    "1cc4740a558e8f87735816630b9fba7e2dc5133b251367d47426a7ff050df0c5",
+    "3cd8be62eebcf083e9331140b6d72022f9647b54c820d280f08dde2cf2abccd7",
+    "46494e2a74bdf3baf8125d6c99669e45840fe4b039cff4f74b73f76ba17475e9",
+    "51996685a19c7af31dea1c907893e06ca9864c9357ab5d51c92739228425adc3",
+    "5b2c2e7b1b9a44cc70bf57dc73f89fd912fced9e782839af75357950ff24851f",
+    "5c050690c8d9cb8cb125234c418e379f643c6bdd98908c87c2ecc2d451a68c3d",
+    "5e3c73bf6721e1a4f683e396a47af0bbeca821bd74d7606a9861a1da030ae3c7",
+    "8e589590e70b22c9977d967d63ea31eb8f7c23a85ebdb2ef2687343cc71ac484",
+    "a28795d470f153e924761a5d82f0641988a72d83230d2d74301a055680b4e174",
+    "a5915b64c99ec74b534c5c9acac00a93fb1bed9bd085fb1c84f88902b5831ede",
+    "bf066c1eb67ddcfb77e7bfaa0dc401786bbf42e68ff43390a42ce27bd8e25679",
+    "d4158ac46d09a5379b9fe6a224fa0f704665727d0a7448932fae159e27251e88"
+   ],
+   "op_count": 13,
+   "kinds": {
+    "add": 13
+   },
+   "fidelity": "full"
+  },
+  {
+   "feature_id": "f-ma89c1043e09031af6213d9f543264ec14b9d752af06730a038af3e03482b5dd4",
+   "commit_index": 17,
+   "op_ids": [
+    "aa1775a047f0ee79e2703aeced2419d6e2a7e32a5090d0531dc21d802736eac6"
+   ],
+   "op_count": 1,
+   "kinds": {
+    "rework": 1
+   },
+   "fidelity": "full"
+  }
+ ],
+ "features": {
+  "af-m0829a33d450fce4a83d0275ce0d181bf7470b5bb28bc6e7d8316b595c058e66b": {
+   "label": "normalize slot comparison for cross-listed sections and r\u2026",
+   "op_count": 13
+  },
+  "af-m1ae9d7f09c92b786fa66ce7cf1bf3810cdefe44a16c424d7ec5103e68f1b16c5": {
+   "label": "instructor schedule view",
+   "op_count": 7
+  },
+  "af-m1c654ff6dfc8309c920ffe63665d026e87b6cbd4228c024656fe809a24f27128": {
+   "label": "enrollment stats report",
+   "op_count": 7
+  },
+  "f-012baa189f44764051a529e58d6d527b2b49a8c6209446f4595a23698b28fd5e": {
+   "label": "timetable export",
+   "op_count": 18
+  },
+  "f-0390f5b02d4bbe808397dac5ab1c15694d15ce96b910fe5af16d3ca3a5593be5": {
+   "label": "JSON Storage",
+   "op_count": 23
+  },
+  "f-03cc289fa8b96e159c52f7edc039a903d3d4a8dd3147148d131bfa7d42fcbc41": {
+   "label": "Enrollment Rules",
+   "op_count": 33
+  },
+  "f-044954f368089515259c84917377ce5f4c5153d5e41541a4b614c74b19126a88": {
+   "label": "add rooms and weekly time slots with parsing and validation",
+   "op_count": 24
+  },
+  "f-07273fa41ac27a5dbbae1c3e97c3a9756c0bfea134f37a87b63a1cf35c0bb5e2": {
+   "label": "Course Search",
+   "op_count": 32
+  },
+  "f-086dec067564be031a69c3eb466693a688c24efae403db236f8feafbcbfacde6": {
+   "label": "Course Registry",
+   "op_count": 33
+  },
+  "f-09253ae400149ec9b7b74f9cb9b91e17927b54f6d19b9d3f69ec3bd761ceb11c": {
+   "label": "Prerequisite Checks",
+   "op_count": 12
+  },
+  "f-10845aefb06298eae97dd1c0f47605c7e36f3ea60b1e1c1df60cb90a7ade4e3f": {
+   "label": "scaffold coursecraft: models, JSON store, CLI init",
+   "op_count": 14
+  },
+  "f-15d99310d46ae5d6d53f17b179a5957ae57c681a0a8fdec59ae83dcabd52bbc6": {
+   "label": "Waitlist Promotion",
+   "op_count": 35
+  },
+  "f-5026825d34b78a6c42774101bb21175d52896343b244f059b3954b584623698f": {
+   "label": "course and section commands",
+   "op_count": 4
+  },
+  "f-50eeabea1fdb8342618f6283e543fc5b94e75b9a8ef220a9bc93b559c79fdd6f": {
+   "label": "add course search",
+   "op_count": 1
+  },
+  "f-655b56bb79ee29423f1867d3c690a0eba433ff121b542f18d546306f08cf49e6": {
+   "label": "enforce course prerequisites at enrollment",
+   "op_count": 1
+  },
+  "f-b3c7a984a0fc2c1c8ffe1140a4a71dd6bb0d999ccc7547aa05052f40b877bbcc": {
+   "label": "student registry and enroll command",
+   "op_count": 5
+  },
+  "f-cca80773cd22f22fe17981e514410aec0960eaa1b17a55e7da8547dd15d25cc2": {
+   "label": "waitlist for full sections with stable join order",
+   "op_count": 1
+  },
+  "f-cd2112584852b62cc566003b1bc81cb85ceef382d75098f24c9333345102c9b3": {
+   "label": "detect time conflicts when enrolling",
+   "op_count": 1
+  },
+  "f-m3d4870cf185e12b12ec856ba2c40df2f15c79d3562cd945bbd2c74a0d48c6f54": {
+   "label": "Waitlist Queue",
+   "op_count": 27
+  },
+  "f-m6f029a8cca9a9f5913e8509c824af826d51914e36dcb9b87201340819b0926fb": {
+   "label": "CLI Scaffold",
+   "op_count": 51
+  },
+  "f-ma89c1043e09031af6213d9f543264ec14b9d752af06730a038af3e03482b5dd4": {
+   "label": "drop command frees the seat and promotes the queue",
+   "op_count": 14
+  }
+ },
+ "ghosts": [],
+ "partial_commits": [
+  20
+ ],
+ "commit_count": 28,
+ "save_count": 26,
+ "bookkeeping_count": 2,
+ "op_count": 356,
+ "feature_count": 21
+}

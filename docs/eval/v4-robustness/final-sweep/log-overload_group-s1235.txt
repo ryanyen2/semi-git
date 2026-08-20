@@ -1,0 +1,43 @@
+    0 ✓ op_feature_rename        f-10e1ad11620f
+    1 ✓ op_revert_keep_dependents 10e1ad11620f
+    2 ✓ op_revert_undo_probe     575bde27ed78
+    3 ✓ op_revert_keep_dependents ce259f0defb1
+    4 ✓ op_edit_save             ov.py (rework)
+    5 ✓ op_revert_restore_probe  ce259f0defb1
+    6 ✓ op_revert_restore_probe  ce259f0defb1
+    7 ✓ op_revert_undo_probe     10e1ad11620f
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_edit_save             ov.py (rework)
+   10 ✓ op_revert_undo_probe     69fa8f70daad
+   11 ✓ op_revert_keep_dependents 30534bc278f8
+   12 ✓ op_undo                  
+   13 ✓ op_undo                  
+   14 ✓ op_revert_restore_probe  de8a3537aed1
+   15 ✓ op_revert_undo_probe     ce259f0defb1
+   16 ✓ op_revert_undo_probe     575bde27ed78
+   17 ✓ op_revert_restore_probe  2028764dbbaf
+   18 ✓ op_undo                  
+   19 ✓ op_undo                  
+   20 ✓ op_feature_rename        af-m7798385f8c
+   21 ✓ op_edit_save             ov.py (rework)
+   22 ✓ op_restore               69fa8f70daad
+   23 ✓ op_feature_split         f-10e1ad11620f
+   24 ✓ op_restore               85daff11b8f2
+   25 ✓ op_edit_save             ov.py (rework)
+   26 ✓ op_feature_merge         f-10e1ad11620f<-f-2028764dbbaf
+   27 ✓ op_edit_save             v4_mod_8.py (rework)
+   28 ✓ op_restore               69fa8f70daad
+   29 ✓ op_revert                85daff11b8f2
+   30 ✓ op_revert_restore_probe  4efb1046f8ad
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_revert                2028764dbbaf
+   33 ✓ op_revert                41ee7a3682db
+   34 ✓ op_feature_merge         f-10e1ad11620f<-af-m7798385f8c
+   35 ✓ op_restore               85daff11b8f2
+   36 ✓ op_revert                2028764dbbaf
+   37 ✓ op_restore               69fa8f70daad
+   38 ✓ op_revert                de8a3537aed1
+   39 ✓ op_revert_keep_dependents 85daff11b8f2
+   40 ✓ op_edit_save             v4_mod_31.py (rework)
+   41 ✓ op_revert_keep_dependents 85daff11b8f2
+overload_group seed 1235: 42 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-overload_group-seed1235.json

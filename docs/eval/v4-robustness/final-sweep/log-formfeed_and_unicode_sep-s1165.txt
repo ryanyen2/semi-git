@@ -1,0 +1,45 @@
+    0 ✓ op_revert_undo_probe     a08a015717cf
+    1 ✓ op_edit_save             a.py (rework)
+    2 ✓ op_revert_undo_probe     25459cad2014
+    3 ✓ op_edit_save             a.py (rework)
+    4 · op_feature_merge         1 feature(s)
+    5 ✓ op_revert                f84552190404
+    6 ✓ op_revert_undo_probe     fa27c5eb6492
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_undo                  
+    9 ✓ op_revert                cf71fb5af07a
+   10 ✓ op_edit_save             a.py (rework)
+   11 ✓ op_feature_merge         af-m9af93080ce<-f-25459cad2014
+   12 ✓ op_edit_save             a.py (rework)
+   13 ✓ op_revert_keep_dependents 66521c9c8059
+   14 ✓ op_edit_save             a.py (rework)
+   15 ✓ op_revert_undo_probe     f93d84165e84
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_feature_merge         af-m9af93080ce<-af-m5577c8370c
+   18 ✓ op_revert                25459cad2014
+   19 ✓ op_revert_keep_dependents fbcc8db8ae8b
+   20 ✓ op_add_file              v4_mod_20.py
+   21 ✓ op_revert_undo_probe     bd0a33191ded
+   22 ✓ op_revert_undo_probe     66521c9c8059
+   23 ✓ op_restore               ddef8999567d
+   24 ✓ op_feature_split         af-m9af93080ce
+   25 ✓ op_edit_save             v4_mod_20.py (rework)
+   26 ✓ op_revert_keep_dependents bd0a33191ded
+   27 ✓ op_revert_restore_probe  ddef8999567d
+   28 ✓ op_revert                7f9e642020d8
+   29 ✓ op_restore               f84552190404
+   30 ✓ op_add_file              v4_mod_30.py
+   31 ✗ op_edit_save             a.py (rework)
+        fsck_advisory_chain_gaps: 1 new, 1 live: ["a.py::bar"]
+        settled (save refused, git restore): ['M a.py']
+   32 ✓ op_edit_save             v4_mod_7.py (rework)
+   33 ✓ op_undo                  
+   34 ✓ op_edit_save             v4_mod_7.py (rework)
+   35 ✓ op_edit_save             v4_mod_16.py (rework)
+   36 ✓ op_restore               00ce787ee9c3
+   37 ✗ op_revert_restore_probe  adc35f5aec22
+        restore_resurrects_layout: restoring what revert adc35f5aec22 removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['25459cad2014', 'cd99aa65c31c']
+   38 ✓ op_restore               7f9e642020d8
+   39 ✓ op_edit_save             v4_mod_30.py (rework)
+   40 ✓ op_restore               476115f83b9a
+formfeed_and_unicode_sep seed 1165: 41 ops applied, 2 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-formfeed_and_unicode_sep-seed1165.json

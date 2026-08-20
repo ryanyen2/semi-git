@@ -1,0 +1,31 @@
+    0 ✓ op_revert                f5c2bf3f6471
+    1 · op_restore               nothing addressable excluded
+    2 · op_feature_merge         1 feature(s)
+    3 ✗ op_revert_restore_probe  59f13ee08dd0
+        restore_resurrects_layout: restoring what revert 59f13ee08dd0 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['f5c2bf3f6471']
+    4 ✓ op_edit_save             a.py (rework)
+    5 ✓ op_revert_undo_probe     5558bb5afdd7
+    6 ✓ op_revert_undo_probe     f5c2bf3f6471
+    7 ✓ op_edit_save             a.py (rework)
+    8 · op_restore               nothing addressable excluded
+    9 ✓ op_edit_save             a.py (rework)
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_undo                  
+   12 ✓ op_revert_keep_dependents 1bf8d56e9372
+   13 ✓ op_feature_split         f-1bf8d56e9372
+   14 ✓ op_undo                  
+   15 ✓ op_feature_split         f-1bf8d56e9372
+   16 ✓ op_feature_merge         f-59f13ee08dd0<-f-1bf8d56e9372
+   17 ✓ op_add_file              v4_mod_17.py
+   18 ✓ op_edit_save             v4_mod_17.py (rework)
+   19 ✓ op_edit_save             v4_mod_17.py (rework)
+   20 ✓ op_revert_undo_probe     d1e11475bac8
+   21 ✓ op_restore               b1aef49b832e
+   22 · op_restore               nothing addressable excluded
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_undo                  
+   25 ✓ op_undo                  
+   26 ✓ op_revert_undo_probe     611b7d6a1ef6
+   27 ✓ op_revert                6d8bd452f280
+   28 ✓ op_revert_restore_probe  7457ba96181f
+residue_fork seed 1123: 29 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-residue_fork-seed1123.json

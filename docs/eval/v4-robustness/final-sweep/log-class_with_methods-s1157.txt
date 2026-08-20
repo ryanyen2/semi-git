@@ -1,0 +1,46 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_revert                bda07be08e55
+    2 ✗ op_revert_undo_probe     cae03a295f59
+        no_empty_phantom: blank tracked file(s) left behind: ['service.py']
+    3 ✓ op_edit_save             service.py (add)
+    4 ✓ op_restore               bda07be08e55
+    5 ✓ op_undo                  
+    6 ✓ op_edit_save             service.py (rework)
+    7 ✓ op_revert_undo_probe     beaf47f4d504
+    8 ✓ op_edit_save             service.py (rework)
+    9 ✓ op_revert                acf6e3f6e273
+   10 ✓ op_add_file              v4_mod_10.py
+   11 · op_feature_merge         1 feature(s)
+   12 ✓ op_edit_save             v4_mod_10.py (rework)
+   13 ✓ op_feature_rename        f-704d04dac832
+   14 ✗ op_revert_restore_probe  7fa52afc06b7
+        restore_resurrects_layout: restoring what revert 7fa52afc06b7 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['c7199aa260b1']
+   15 ✓ op_revert_undo_probe     cae03a295f59
+   16 ✓ op_edit_save             service.py (add)
+   17 ✓ op_edit_save             service.py (rework)
+   18 ✓ op_feature_split         af-md2617685bf
+   19 ✓ op_edit_save             v4_mod_10.py (rework)
+   20 ✓ op_revert                c67599f3a2f4
+   21 ✓ op_revert                d4f79866b7ed
+   22 ✓ op_edit_save             service.py (rework)
+   23 ✓ op_feature_merge         f-704d04dac832<-af-md2617685bf
+   24 ✓ op_revert                fb23bfca03ff
+   25 ✓ op_add_file              v4_mod_25.py
+   26 ✓ op_revert_restore_probe  85b6909c3bf1
+   27 ✓ op_restore               d4f79866b7ed
+   28 ✓ op_add_file              v4_mod_28.py
+   29 ✓ op_undo                  
+   30 ✓ op_undo                  
+   31 ✓ op_undo                  
+   32 ✓ op_edit_save             v4_mod_10.py (rework)
+   33 ✓ op_feature_merge         af-m8bc62be610<-f-704d04dac832
+   34 ✓ op_edit_save             v4_mod_10.py (rework)
+   35 ✓ op_edit_save             service.py (rework)
+   36 ✓ op_feature_merge         af-md34339d570<-af-m8bc62be610
+   37 ✓ op_revert                a32b7c0adc65
+   38 ✓ op_edit_save             v4_mod_10.py (rework)
+   39 ✓ op_edit_save             service.py (rework)
+   40 ✓ op_edit_save             v4_mod_25.py (rework)
+        settled (save refused, git restore): ['M v4_mod_25.py']
+   41 ✓ op_revert                bf73dcc515eb
+class_with_methods seed 1157: 42 ops applied, 2 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-class_with_methods-seed1157.json

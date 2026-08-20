@@ -1,0 +1,26 @@
+    0 ✓ op_undo                  
+    1 ✓ op_undo                  
+    2 ✓ op_undo                  
+    3 ✓ op_undo                  
+    4 · op_feature_merge         1 feature(s)
+    5 ✓ op_feature_split         f-126303a70181
+    6 · op_restore               nothing addressable excluded
+    7 · op_edit_save             a.py is not utf-8
+    8 · op_edit_save             a.py is not utf-8
+    9 · op_edit_save             a.py is not utf-8
+   10 · op_edit_save             a.py is not utf-8
+   11 ✓ op_revert_keep_dependents 66521c9c8059
+   12 ✓ op_revert_keep_dependents bf4a507b207e
+   13 ✓ op_add_file              v4_mod_13.py
+   14 ✓ op_edit_save             v4_mod_13.py (rework)
+   15 ✗ op_revert_restore_probe  bf4a507b207e
+        restore_resurrects_layout: restoring what revert bf4a507b207e removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0bf8f47dd419']
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_edit_save             v4_mod_13.py (rework)
+   18 ✓ op_revert_restore_probe  a08a015717cf
+   19 ✓ op_revert_keep_dependents 569d93c0e7cf
+   20 ✗ op_revert_restore_probe  f9234cb3dd0a
+        restore_resurrects_layout: restoring what revert f9234cb3dd0a removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['147f94ee5e8c']
+   21 · op_restore               nothing addressable excluded
+   22 ✓ op_edit_save             v4_mod_13.py (rework)
+latin1_encoded seed 1085: 23 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1085.json

@@ -1,0 +1,34 @@
+    0 ✓ op_edit_save             routes.py (rework)
+    1 ✓ op_edit_save             routes.py (rework)
+    2 ✓ op_revert_keep_dependents fbd81edea7f6
+    3 ✓ op_revert_restore_probe  d620bf867672
+    4 ✓ op_revert_restore_probe  832736908299
+    5 ✓ op_edit_save             routes.py (rework)
+    6 ✓ op_feature_rename        f-1a808351b6c6
+    7 ✓ op_undo                  
+    8 ✓ op_edit_save             routes.py (rework)
+    9 ✓ op_revert_keep_dependents bc4ee665797a
+   10 ✓ op_edit_save             routes.py (rework)
+   11 ✓ op_revert                27c2d01a1faf
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_edit_save             v4_mod_12.py (rework)
+   14 · op_revert_undo_probe     revert offered no undo
+   15 ✓ op_edit_save             v4_mod_12.py (rework)
+   16 · op_restore               nothing addressable excluded
+   17 ✓ op_add_file              v4_mod_17.py
+   18 ✓ op_undo                  
+   19 ✓ op_add_file              v4_mod_19.py
+   20 ✓ op_revert_restore_probe  39bc8466d27a
+   21 ✓ op_revert_restore_probe  750d60975bcc
+   22 ✓ op_edit_save             v4_mod_12.py (rework)
+   23 ✓ op_revert_restore_probe  fda240ecb91f
+   24 ✓ op_undo                  
+   25 ✓ op_undo                  
+   26 ✓ op_edit_save             routes.py (rework)
+   27 ✓ op_undo                  
+   28 ✓ op_undo                  
+   29 ✓ op_edit_save             v4_mod_12.py (rework)
+   30 ✓ op_edit_save             routes.py (rework)
+   31 ✓ op_revert_restore_probe  1f2e0737927d
+   32 ✓ op_edit_save             v4_mod_19.py (rework)
+decorated_routes seed 1228: 33 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-decorated_routes-seed1228.json

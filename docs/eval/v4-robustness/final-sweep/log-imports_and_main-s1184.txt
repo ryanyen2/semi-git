@@ -1,0 +1,42 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_edit_save             v4_mod_1.py (rework)
+    3 ✓ op_revert_keep_dependents 3549561cc039
+    4 ✓ op_edit_save             v4_mod_1.py (rework)
+    5 ✓ op_revert_restore_probe  868c1d84346d
+    6 ✓ op_revert_restore_probe  3549561cc039
+    7 ✓ op_revert_keep_dependents 026fba3b609d
+    8 ✓ op_revert                146eebdde27a
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_revert_keep_dependents 25fc0900e57e
+   11 ✓ op_revert_keep_dependents 868c1d84346d
+   12 ✓ op_feature_rename        f-026fba3b609d
+   13 · op_restore               nothing addressable excluded
+   14 ✓ op_revert_keep_dependents 3549561cc039
+   15 · op_restore               nothing addressable excluded
+   16 · op_restore               nothing addressable excluded
+   17 ✓ op_feature_rename        f-026fba3b609d
+   18 ✓ op_revert                3934033824cb
+   19 ✓ op_undo                  
+   20 ✓ op_edit_save             app.py (rework)
+   21 ✓ op_edit_save             app.py (rework)
+   22 ✓ op_revert_restore_probe  2d609a0f1083
+   23 · op_restore               nothing addressable excluded
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_revert                5d3c6964b2f8
+   26 ✓ op_add_file              v4_mod_26.py
+   27 · op_restore               nothing addressable excluded
+   28 · op_restore               nothing addressable excluded
+   29 · op_restore               nothing addressable excluded
+   30 ✓ op_undo                  
+   31 ✓ op_revert_restore_probe  25fc0900e57e
+   32 ✓ op_revert_keep_dependents d8db33dac867
+   33 ✓ op_edit_save             v4_mod_9.py (rework)
+   34 ✓ op_undo                  
+   35 ✓ op_edit_save             v4_mod_9.py (rework)
+   36 ✓ op_revert_undo_probe     a356cbc27e41
+   37 ✓ op_edit_save             app.py (rework)
+   38 ✓ op_restore               20b19f426d98
+   39 ✓ op_edit_save             v4_mod_24.py (rework)
+   40 ✓ op_revert                026fba3b609d
+imports_and_main seed 1184: 41 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-imports_and_main-seed1184.json

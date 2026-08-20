@@ -1,0 +1,53 @@
+    0 ✓ op_revert_keep_dependents 5558bb5afdd7
+    1 ✓ op_revert                1bf8d56e9372
+    2 · op_restore               nothing addressable excluded
+    3 ✓ op_edit_save             a.py (rework)
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_feature_rename        f-0442c989d468
+    6 ✓ op_revert                3456efddc820
+    7 · op_feature_merge         1 feature(s)
+    8 ✓ op_edit_save             a.py (rework)
+    9 ✓ op_revert_undo_probe     cbf4f679cbf1
+   10 ✓ op_edit_save             a.py (rework)
+   11 ✓ op_feature_split         f-0442c989d468
+   12 ✓ op_undo                  
+   13 ✗ op_revert_restore_probe  cbf4f679cbf1
+        restore_resurrects_layout: restoring what revert cbf4f679cbf1 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['1bf8d56e9372']
+   14 ✓ op_add_file              v4_mod_14.py
+   15 ✗ op_revert_restore_probe  6e3b6d2cc6c8
+        restore_resurrects_layout: restoring what revert 6e3b6d2cc6c8 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['0beb7d3288b5']
+   16 ✓ op_revert                59f13ee08dd0
+   17 ✓ op_revert                6e3b6d2cc6c8
+   18 ✓ op_feature_merge         af-m613e8bb6e3<-f-0442c989d468
+   19 ✓ op_add_file              v4_mod_19.py
+   20 ✓ op_restore               cae9bcebae48
+   21 ✓ op_feature_split         af-m613e8bb6e3
+   22 ✓ op_revert                750d60975bcc
+   23 ✓ op_feature_rename        af-maea3dce2de
+   24 ✓ op_revert_undo_probe     f5c2bf3f6471
+   25 ✓ op_edit_save             a.py (rework)
+   26 ✓ op_feature_merge         f-0442c989d468<-af-maea3dce2de
+   27 ✓ op_revert                0442c989d468
+   28 ✓ op_undo                  
+   29 ✓ op_revert                d99fb0c45dc9
+   30 ✗ op_revert                ecd75336f0f5
+        no_empty_phantom: blank tracked file(s) left behind: ['v4_mod_19.py']
+   31 ✓ op_undo                  
+   32 ✓ op_feature_rename        f-0442c989d468
+   33 ✓ op_add_file              v4_mod_33.py
+   34 ✓ op_restore               6e3b6d2cc6c8
+   35 ✓ op_revert                3aaaa3478689
+   36 ✓ op_edit_save             v4_mod_14.py (rework)
+   37 ✓ op_revert_undo_probe     1a17e528b044
+   38 ✓ op_restore               d99fb0c45dc9
+   39 ✓ op_add_file              v4_mod_39.py
+   40 ✓ op_undo                  
+   41 ✓ op_edit_save             a.py (rework)
+   42 ✓ op_revert_keep_dependents 5558bb5afdd7
+   43 ✓ op_restore               3456efddc820
+   44 ✓ op_revert_undo_probe     851f941d9167
+   45 ✓ op_feature_merge         f-0442c989d468<-af-m445fdd0c87
+   46 ✓ op_edit_save             a.py (rework)
+   47 ✓ op_edit_save             v4_mod_19.py (rework)
+   48 ✓ op_edit_save             v4_mod_33.py (rework)
+residue_fork seed 1081: 49 ops applied, 3 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-residue_fork-seed1081.json

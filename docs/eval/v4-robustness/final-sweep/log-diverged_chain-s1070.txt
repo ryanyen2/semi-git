@@ -1,0 +1,23 @@
+    0 ✓ op_revert                fa19a62eb22c
+    1 ✓ op_edit_save             slugify.py (rework)
+    2 ✓ op_edit_save             slugify.py (rework)
+    3 ✓ op_revert                746c67188554
+    4 ✓ op_revert_undo_probe     83071043df5f
+    5 ✓ op_add_file              v4_mod_5.py
+    6 ✓ op_edit_save             slugify.py (rework)
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_revert                5ee479420c26
+    9 ✓ op_revert_keep_dependents 83071043df5f
+   10 · op_feature_merge         1 feature(s)
+   11 ✓ op_restore               5ee479420c26
+   12 · op_restore               nothing addressable excluded
+   13 · op_restore               nothing addressable excluded
+   14 ✓ op_revert_undo_probe     4664c3328595
+   15 ✓ op_revert_restore_probe  bac2657449ec
+   16 ✓ op_feature_rename        f-23cdd075582d
+   17 ✓ op_edit_save             slugify.py (rework)
+   18 ✓ op_edit_save             v4_mod_5.py (rework)
+   19 ✓ op_undo                  
+   20 ✓ op_feature_rename        af-m3c278302f8
+   21 ✓ op_revert_undo_probe     5ee479420c26
+diverged_chain seed 1070: 22 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-diverged_chain-seed1070.json

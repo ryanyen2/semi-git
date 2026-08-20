@@ -1,0 +1,23 @@
+    0 ✓ op_revert                25459cad2014
+    1 ✓ op_edit_save             a.py (add)
+    2 ✓ op_add_file              v4_mod_2.py
+    3 ✓ op_edit_save             c.py (rework)
+    4 ✓ op_add_file              v4_mod_4.py
+    5 ✓ op_revert_undo_probe     3456efddc820
+    6 · op_restore               nothing addressable excluded
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_edit_save             b.py (rework)
+    9 ✓ op_revert_keep_dependents 9d89cc49f81b
+   10 ✓ op_revert_keep_dependents 9d89cc49f81b
+   11 · op_feature_merge         1 feature(s)
+   12 ✓ op_revert_keep_dependents 3456efddc820
+   13 ✓ op_feature_rename        f-004014efad04
+   14 ✓ op_feature_split         f-004014efad04
+   15 · op_restore               nothing addressable excluded
+   16 ✓ op_revert                47ea3e4bb3c8
+   17 ✓ op_edit_save             b.py (rework)
+   18 ✓ op_undo                  
+   19 ✓ op_feature_rename        f-0442c989d468
+   20 ✓ op_restore               35b65af7df20
+   21 ✓ op_edit_save             b.py (rework)
+linear_history seed 1012: 22 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-linear_history-seed1012.json

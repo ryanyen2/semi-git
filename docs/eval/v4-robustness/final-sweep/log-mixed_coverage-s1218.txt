@@ -1,0 +1,24 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_edit_save             util.py (rework)
+    2 ✓ op_edit_save             pkg.py (rework)
+    3 ✓ op_edit_save             util.py (rework)
+    4 ✓ op_undo                  
+    5 ✓ op_add_file              v4_mod_5.py
+    6 ✓ op_revert                0e94a6bf178a
+    7 ✓ op_revert_keep_dependents 13ded3f03308
+    8 ✓ op_revert_undo_probe     13ded3f03308
+    9 ✓ op_edit_save             v4_mod_5.py (rework)
+   10 ✓ op_restore               060b86323288
+   11 · op_restore               nothing addressable excluded
+   12 · op_feature_merge         1 feature(s)
+   13 ✓ op_edit_save             pkg.py (rework)
+   14 ✓ op_revert_keep_dependents 483f05ca9dbc
+   15 ✓ op_edit_save             pkg.py (rework)
+   16 ✓ op_undo                  
+   17 ✓ op_undo                  
+   18 ✓ op_restore               49eaaba1bd27
+   19 · op_restore               nothing addressable excluded
+   20 ✓ op_revert_keep_dependents 4ea3ecdfa2b8
+   21 · op_restore               nothing addressable excluded
+   22 · op_feature_merge         1 feature(s)
+mixed_coverage seed 1218: 23 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-mixed_coverage-seed1218.json

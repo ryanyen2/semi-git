@@ -1,0 +1,46 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_revert                0027224b0d5f
+    2 ✓ op_revert_restore_probe  13ded3f03308
+    3 ✓ op_revert_keep_dependents d7a7a19a0fc7
+    4 ✓ op_revert_keep_dependents b17bda92bad7
+    5 ✓ op_edit_save             util.py (rework)
+    6 ✓ op_revert                d7a7a19a0fc7
+    7 ✓ op_revert_keep_dependents 483f05ca9dbc
+    8 ✓ op_revert_keep_dependents 483f05ca9dbc
+    9 ✓ op_edit_save             util.py (rework)
+   10 ✓ op_revert                13ded3f03308
+   11 ✓ op_revert                d74442bb3ece
+   12 ✓ op_feature_rename        f-13ded3f03308
+   13 ✓ op_revert_restore_probe  b17bda92bad7
+   14 ✓ op_feature_rename        f-13ded3f03308
+   15 ✓ op_edit_save             util.py (rework)
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_restore               0027224b0d5f
+   18 ✓ op_edit_save             util.py (rework)
+   19 ✓ op_add_file              v4_mod_19.py
+   20 · op_restore               nothing addressable excluded
+   21 ✓ op_edit_save             v4_mod_19.py (rework)
+   22 ✓ op_revert_keep_dependents 0027224b0d5f
+   23 ✓ op_edit_save             v4_mod_19.py (rework)
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_feature_rename        af-m5577c8370c
+   26 ✓ op_revert                1e2b6c91904d
+   27 ✓ op_revert                bd0a33191ded
+   28 ✓ op_feature_rename        af-maea3dce2de
+   29 ✓ op_revert_undo_probe     95aecb0c0c67
+   30 ✓ op_add_file              v4_mod_30.py
+   31 ✓ op_revert_keep_dependents 95aecb0c0c67
+   32 ✓ op_add_file              v4_mod_32.py
+   33 ✗ op_revert_restore_probe  f1ca9013f1f8
+        restore_resurrects_layout: restoring what revert f1ca9013f1f8 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['13ded3f03308']
+   34 ✓ op_revert_keep_dependents d58cc79f1b2a
+   35 ✓ op_revert_restore_probe  d58cc79f1b2a
+   36 ✓ op_revert_restore_probe  6b78435194ea
+   37 ✓ op_edit_save             v4_mod_19.py (rework)
+   38 ✓ op_edit_save             pkg.py (rework)
+   39 ✓ op_revert_restore_probe  b17bda92bad7
+   40 ✓ op_feature_rename        af-maea3dce2de
+   41 ✓ op_add_file              v4_mod_41.py
+   42 ✓ op_revert_undo_probe     f72b56d1855d
+   43 ✓ op_add_file              v4_mod_43.py
+mixed_coverage seed 1003: 44 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-mixed_coverage-seed1003.json

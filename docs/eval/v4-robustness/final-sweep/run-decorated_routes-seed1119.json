@@ -1,0 +1,346 @@
+{
+ "label": "decorated_routes",
+ "seed": 1119,
+ "requested_ops": 26,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/decorated_routes-s1119/decorated_routes/decorated_routes",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [],
+ "applied": 26,
+ "refused": 3,
+ "skipped": 0,
+ "with_violations": 1,
+ "tracebacks": 0,
+ "settles": 1,
+ "store_ops_seen": 31,
+ "commits_seen": 21,
+ "script": [
+  "op_edit_save",
+  "op_undo",
+  "op_revert_undo_probe",
+  "op_revert_undo_probe",
+  "op_edit_save",
+  "op_restore",
+  "op_revert",
+  "op_edit_save",
+  "op_undo",
+  "op_feature_rename",
+  "op_revert_undo_probe",
+  "op_add_file",
+  "op_add_file",
+  "op_feature_split",
+  "op_feature_rename",
+  "op_revert",
+  "op_edit_save",
+  "op_add_file",
+  "op_revert",
+  "op_edit_save",
+  "op_restore",
+  "op_edit_save",
+  "op_revert_undo_probe",
+  "op_revert",
+  "op_add_file",
+  "op_edit_save"
+ ],
+ "log": [
+  {
+   "op": "edit_save",
+   "target": "routes.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 7bdcf4b \"v4 edit 0\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 0,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 96822f9: restored the prior ideal \u2014 1 op(s) back to pending\n",
+   "err": "",
+   "i": 1,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "1a808351b6c6",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "dcca60aa10098b74467be06d37e057cd3c\n\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo adaba44: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 2,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "68c863034640",
+   "rc": 0,
+   "removed": 3,
+   "returned": true,
+   "out": "b69f638efe\n\n removes 3 edit(s) across 1 symbol(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 3 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo b5d5793: restored the prior ideal \u2014 3 op(s) restored\n",
+   "err": "",
+   "i": 3,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "routes.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save f05abdf \"v4 edit 4\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 4,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "d620bf867672",
+   "rc": 2,
+   "out": "e_a is live\n    one live version per symbol: ad9b549b (save f05abdf \"v4 edit 4\") is live;\n    d620bf86 (save 7bdcf4b \"v4 edit 0\") waits behind it as a ghost.\n      swap       sgt revert ad9b549b   then   sgt restore d620bf86\n      reconcile  sgt resolve routes.py::handle_a   (combine both versions)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 5,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "7c69d164214d",
+   "rc": 0,
+   "out": " \u25b8 rewind  7c69d164214d6218416f9f50e1f59085408aeb3e2933d11c4a648f14a1c4c2ff\n\n removes 1 edit(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 6,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "routes.py (rework)",
+   "rc": 0,
+   "out": "\u2713 nothing to save -- no uncommitted ops\n",
+   "err": "",
+   "i": 7,
+   "target_kind": null,
+   "violations": [
+    {
+     "oracle": "fsck_advisory_chain_gaps",
+     "detail": "1 new, 1 live: [\"routes.py::handle_a\"]",
+     "recoverability": false
+    }
+   ],
+   "settled": {
+    "how": "save refused, git restore",
+    "was_dirty": [
+     "M routes.py"
+    ],
+    "still_dirty": [],
+    "save_rc": 0,
+    "save_out": "\u2713 nothing to save -- no uncommitted ops"
+   }
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 2fc5e9f: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 8,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-1a808351b6c6",
+   "rc": 0,
+   "out": "\u2713 renamed f-1a808351b6c64fdfe1d84aea7ac290dcca60aa10098b74467be06d37e057cd3c: 'add two decorated routes' \u2192 'v4 label 9'\n",
+   "err": "",
+   "i": 9,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "832736908299",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "    \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/9 edits removed\n\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo 5661ddf: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 10,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_11.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;75;174;237md6ffb8c\u001b[0m \"v4 add module 11\"\n  \u2514\u2500 \u001b[38;2;75;174;237m\u25cb\u001b[0m \u001b[38;2;75;174;237mnew feature\u001b[0m \u001b[2m(af-mb32ff0c) \u2014 unnamed; name it: sgt feature rename af-mb32ff0c \"<label>\"\u001b[0m  v4_mod_11.py::only_symbol_11\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 11,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_12.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;210;133;203mf041ae2\u001b[0m \"v4 add module 12\"\n  \u2514\u2500 \u001b[38;2;210;133;203m\u25cb\u001b[0m \u001b[38;2;210;133;203mnew feature\u001b[0m \u001b[2m(af-mf380ecc) \u2014 unnamed; name it: sgt feature rename af-mf380ecc \"<label>\"\u001b[0m  v4_mod_12.py::only_symbol_12\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 12,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "af-mb32ff0ce36",
+   "rc": 1,
+   "out": "\u2717 'af-mb32ff0ce3694059b713df36219f2d78f25168324eed21a7d60e097b51adb9f8d' has too few members to split\n",
+   "err": "",
+   "i": 13,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "af-mb32ff0ce36",
+   "rc": 0,
+   "out": "\u2713 renamed af-mb32ff0ce3694059b713df36219f2d78f25168324eed21a7d60e097b51adb9f8d: 'only_symbol_11' \u2192 'v4 label 14'\n",
+   "err": "",
+   "i": 14,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "441275e32106",
+   "rc": 0,
+   "out": "  af-mf380  \u2591\u2591\u2591  3\u21920 edits\n      sgt revert 441275e3\n\n   \u25b8 [0\u2588\u2588\u2588]  @0 v4 add module 12                         \u2591\u2591\u2591  \u00b7 removed\n\n \u00b7 2 other feature(s) unchanged\n removes 3 edit(s) across 1 symbol(s) \u00b7 1 file(s): v4_mod_12.py\n  \u2713 revert applied \u2014 3 edit(s) removed, 1 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 15,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "routes.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save ea28049 \"v4 edit 16\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 16,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_17.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;234;129;136m497b5ee\u001b[0m \"v4 add module 17\"\n  \u2514\u2500 \u001b[38;2;234;129;136m\u25cb\u001b[0m \u001b[38;2;234;129;136mnew feature\u001b[0m \u001b[2m(af-ma4e357a) \u2014 unnamed; name it: sgt feature rename af-ma4e357a \"<label>\"\u001b[0m  v4_mod_17.py::only_symbol_17\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 17,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "17459403971d",
+   "rc": 0,
+   "out": " \u25b8 rewind  17459403971dfd52b23a28642945cecaba7df6bf147ee29db4a2db8aea6ca9e1\n\n removes 2 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 2 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 18,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "routes.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save cba8a91 \"v4 edit 19\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 19,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "bfa7ce5a0468",
+   "rc": 2,
+   "out": "ersion of routes.py::handle_a is live\n    one live version per symbol: 3b0b991d (save cba8a91 \"v4 edit 19\") is live;\n    bfa7ce5a waits behind it as a ghost.\n      swap       sgt revert 3b0b991d   then   sgt restore bfa7ce5a\n      reconcile  sgt resolve routes.py::handle_a   (combine both versions)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 20,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "v4_mod_17.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 2bf5617 \"v4 edit 21\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 21,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "832736908299",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "pt\n\n \u00b7 3 other feature(s) unchanged\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo abf4dd3: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 22,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "68c863034640",
+   "rc": 0,
+   "out": "ated routes                 \u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591  \u00b7 4/9 edits removed\n   \u25b8 [1\u2588\u2588\u2588]  @1 v4 edit 16                               \u2591  \u00b7 removed\n\n \u00b7 3 other feature(s) unchanged\n removes 6 edit(s) across 1 symbol(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 6 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 23,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_24.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;220;130;187mbbdf31f\u001b[0m \"v4 add module 24\"\n  \u2514\u2500 \u001b[38;2;220;130;187m\u25cb\u001b[0m \u001b[38;2;220;130;187mnew feature\u001b[0m \u001b[2m(af-mc1b9525) \u2014 unnamed; name it: sgt feature rename af-mc1b9525 \"<label>\"\u001b[0m  v4_mod_24.py::only_symbol_24\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 24,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "v4_mod_24.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 55496cc \"v4 edit 25\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 25,
+   "target_kind": null,
+   "violations": []
+  }
+ ]
+}

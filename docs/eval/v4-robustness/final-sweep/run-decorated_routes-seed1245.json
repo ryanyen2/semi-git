@@ -1,0 +1,343 @@
+{
+ "label": "decorated_routes",
+ "seed": 1245,
+ "requested_ops": 25,
+ "script_len": 0,
+ "repo": "/tmp/v4-sweep-work/decorated_routes-s1245/decorated_routes/decorated_routes",
+ "system": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "system_at_end": {
+  "harness_version": 9,
+  "harness_sha256": "f37003144958c397",
+  "head": "1acfadcccf8b84e456ae925a561fe92a44a7cca7",
+  "sgt_dirty_sha256": "5dff267d1e2a9a06",
+  "sgt_dirty_lines": 1389
+ },
+ "version_mixed": false,
+ "init_state": [],
+ "applied": 25,
+ "refused": 3,
+ "skipped": 1,
+ "with_violations": 1,
+ "tracebacks": 0,
+ "settles": 0,
+ "store_ops_seen": 14,
+ "commits_seen": 17,
+ "script": [
+  "op_restore",
+  "op_edit_save",
+  "op_undo",
+  "op_revert_undo_probe",
+  "op_revert",
+  "op_undo",
+  "op_edit_save",
+  "op_revert_keep_dependents",
+  "op_revert_undo_probe",
+  "op_restore",
+  "op_feature_rename",
+  "op_revert",
+  "op_add_file",
+  "op_revert",
+  "op_undo",
+  "op_feature_split",
+  "op_edit_save",
+  "op_restore",
+  "op_revert_undo_probe",
+  "op_revert_keep_dependents",
+  "op_revert_restore_probe",
+  "op_revert_undo_probe",
+  "op_feature_split",
+  "op_revert",
+  "op_revert_keep_dependents"
+ ],
+ "log": [
+  {
+   "op": "restore",
+   "skipped": "nothing addressable excluded",
+   "i": 0,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "routes.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 47254a8 \"v4 edit 1\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 1,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo 6ae45a6: restored the prior ideal \u2014 1 op(s) back to pending\n",
+   "err": "",
+   "i": 2,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "832736908299",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "7de6914c6a7a48d1b481a069eda52dc74e\n\n removes 1 edit(s) \u00b7 no file changes\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo fd2222e: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 3,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "27c2d01a1faf",
+   "rc": 0,
+   "out": " \u25b8 rewind  27c2d01a1faf4698acc026976336e9e9be07babb0db094a8ff8475c4057c11e9\n\n removes 1 edit(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 4,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo b5e6575: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 5,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "routes.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 8bb4302 \"v4 edit 6\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 6,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "1a808351b6c6",
+   "rc": 0,
+   "out": "08351b6c64fdfe1d84aea7ac290dcca60aa10098b74467be06d37e057cd3c \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: cd7907b64085\n    edit the working tree, then: sgt fulfill cd7907b64085 --from-tree\n",
+   "err": "",
+   "i": 7,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "a7685b14f474",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "377977fb69\n\n removes 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo e169145: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 8,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "938c9c155695",
+   "rc": 2,
+   "out": "e_a is live\n    one live version per symbol: a7685b14 (save 8bb4302 \"v4 edit 6\") is live;\n    938c9c15 (save 47254a8 \"v4 edit 1\") waits behind it as a ghost.\n      swap       sgt revert a7685b14   then   sgt restore 938c9c15\n      reconcile  sgt resolve routes.py::handle_a   (combine both versions)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 9,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "feature_rename",
+   "target": "f-1a808351b6c6",
+   "rc": 0,
+   "out": "\u2713 renamed f-1a808351b6c64fdfe1d84aea7ac290dcca60aa10098b74467be06d37e057cd3c: 'add two decorated routes' \u2192 'v4 label 10'\n",
+   "err": "",
+   "i": 10,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "27c2d01a1faf",
+   "rc": 0,
+   "out": " \u25b8 rewind  v4 label 10  1a808351  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  8\u21927 edits\n      sgt revert 27c2d01a\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add two decorated routes                 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/9 edits removed\n\n removes 1 edit(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 11,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "add_file",
+   "target": "v4_mod_12.py",
+   "rc": 0,
+   "out": "\u2713 save \u001b[38;2;210;133;203mab1a760\u001b[0m \"v4 add module 12\"\n  \u2514\u2500 \u001b[38;2;210;133;203m\u25cb\u001b[0m \u001b[38;2;210;133;203mnew feature\u001b[0m \u001b[2m(af-mf380ecc) \u2014 unnamed; name it: sgt feature rename af-mf380ecc \"<label>\"\u001b[0m  v4_mod_12.py::only_symbol_12\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 12,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "7c69d164214d",
+   "rc": 0,
+   "out": "10  1a808351  \u2588\u2588\u2588\u2588\u2588\u2588\u2591  7\u21926 edits\n      sgt revert 7c69d164\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add two decorated routes                 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/9 edits removed\n\n \u00b7 1 other feature(s) unchanged\n removes 1 edit(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 13,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "undo",
+   "rc": 0,
+   "out": "\u2713 undo c8b489d: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 14,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-1a808351b6c6",
+   "rc": 0,
+   "out": "\u2713 split f-1a808351b6c64fdfe1d84aea7ac290dcca60aa10098b74467be06d37e057cd3c \u2192 f-1a808351b6c64fdfe1d84aea7ac290dcca60aa10098b74467be06d37e057cd3c + f-27c2d01a1faf4698acc026976336e9e9be07babb0db094a8ff8475c4057c11e9\n",
+   "err": "",
+   "i": 15,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "edit_save",
+   "target": "v4_mod_12.py (rework)",
+   "rc": 0,
+   "out": "\u2713 save 95925ff \"v4 edit 16\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n",
+   "err": "",
+   "i": 16,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "restore",
+   "target": "938c9c155695",
+   "rc": 2,
+   "out": "e_a is live\n    one live version per symbol: a7685b14 (save 8bb4302 \"v4 edit 6\") is live;\n    938c9c15 (save 47254a8 \"v4 edit 1\") waits behind it as a ghost.\n      swap       sgt revert a7685b14   then   sgt restore 938c9c15\n      reconcile  sgt resolve routes.py::handle_a   (combine both versions)\n",
+   "err": "",
+   "came_back": false,
+   "ideal_delta": 0,
+   "i": 17,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "bc4ee665797a",
+   "rc": 0,
+   "removed": 2,
+   "returned": true,
+   "out": ") unchanged\n removes 2 edit(s) across 1 symbol(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 2 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo 1c6b2cf: restored the prior ideal \u2014 2 op(s) restored\n",
+   "err": "",
+   "i": 18,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "68c863034640",
+   "rc": 0,
+   "out": "8630346407f0d8ac749cce0c35e586d2ea6333dca39031ca4a8b69f638efe \u2014 removes 4 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 09700d2e40af\n    edit the working tree, then: sgt fulfill 09700d2e40af --from-tree\n",
+   "err": "",
+   "i": 19,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert_restore_probe",
+   "target": "bc4ee665797a",
+   "rc": 0,
+   "removed": 2,
+   "restored": 3,
+   "returned": false,
+   "restore_failures": [],
+   "resurrected": [
+    "27c2d01a1faf"
+   ],
+   "resurrected_content": [],
+   "drifted_files": [],
+   "restore_by_symbol": [],
+   "out": "  \u2588\u2588\u2588\u2591\u2591  \u00b7 2/5 edits removed\n\n \u00b7 2 other feature(s) unchanged\n removes 2 edit(s) across 1 symbol(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 2 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "restore_out": [
+    "bc4ee665797a: b6ee612d11d4c0f97bcb537c5d56270e2\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)",
+    "1a808351b6c6: tes                 \u2588\u2588\u2588\u2588\u2588  \u00b7 kept\n\n restores 0 edit(s) \u00b7 no file changes\n  \u00b7 restore changed nothing \u2014 no edit left the ideal and no file moved. (nothing was recorded, so there is nothing to reverse.)"
+   ],
+   "drift_behind_lost_op": [],
+   "restore_passes": {
+    "by_id": 2,
+    "by_symbol": 0,
+    "cap_hit": false
+   },
+   "byte_digests": {},
+   "i": 20,
+   "target_kind": "entity",
+   "violations": [
+    {
+     "oracle": "restore_resurrects_layout",
+     "detail": "restoring what revert bc4ee665797a removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['27c2d01a1faf']",
+     "recoverability": false
+    }
+   ]
+  },
+  {
+   "op": "revert_undo_probe",
+   "target": "7c69d164214d",
+   "rc": 0,
+   "removed": 1,
+   "returned": true,
+   "out": "\u00b7 2 other feature(s) unchanged\n removes 1 edit(s) \u00b7 1 file(s): routes.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n | \u2713 undo 362540d: restored the prior ideal \u2014 1 op(s) restored\n",
+   "err": "",
+   "i": 21,
+   "target_kind": "layout",
+   "violations": []
+  },
+  {
+   "op": "feature_split",
+   "target": "f-1a808351b6c6",
+   "rc": 1,
+   "out": "\u2717 cannot split 'f-1a808351b6c64fdfe1d84aea7ac290dcca60aa10098b74467be06d37e057cd3c': stop_split\n",
+   "err": "",
+   "i": 22,
+   "target_kind": null,
+   "violations": []
+  },
+  {
+   "op": "revert",
+   "target": "ab5c6480163f",
+   "rc": 0,
+   "out": " \u25b8 rewind  ab5c6480163ffa048ffdce5f45d49e598cad361cd90a2e24d16d03af4a30bc1f\n\n removes 1 edit(s) across 1 symbol(s) \u00b7 1 file(s): v4_mod_12.py\n  \u2713 revert applied \u2014 1 edit(s) removed, 0 added. (`sgt undo` reverses this.)\n",
+   "err": "",
+   "i": 23,
+   "target_kind": "entity",
+   "violations": []
+  },
+  {
+   "op": "revert --keep-dependents",
+   "target": "39bc8466d27a",
+   "rc": 0,
+   "out": "c8466d27a4bc4b6da3e0a2dc922893fbdbc6b06cc21c906f6fc69213ff548 \u2014 removes 1 op(s); drafted 0 continuation hollow(s) for 0 kept direct dependent(s); carries 0 transitively affected symbol(s) forward unchanged\n    draft: 5c57337ebcc0\n    edit the working tree, then: sgt fulfill 5c57337ebcc0 --from-tree\n",
+   "err": "",
+   "i": 24,
+   "target_kind": "layout",
+   "violations": []
+  }
+ ]
+}

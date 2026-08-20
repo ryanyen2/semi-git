@@ -1,0 +1,39 @@
+    0 ✓ op_add_file              v4_mod_0.py
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_edit_save             v4_mod_0.py (rework)
+    3 ✓ op_undo                  
+    4 ✓ op_restore               79817831100c
+    5 · op_restore               nothing addressable excluded
+    6 ✓ op_revert_keep_dependents 79817831100c
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_feature_rename        f-026fba3b609d
+    9 ✓ op_revert_keep_dependents 813b31c14a6b
+   10 ✓ op_revert_keep_dependents 3549561cc039
+   11 ✓ op_revert                7c69d164214d
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✗ op_revert_restore_probe  026fba3b609d
+        restore_resurrects_layout: restoring what revert 026fba3b609d removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['7c69d164214d']
+   14 ✓ op_undo                  
+   15 ✓ op_feature_rename        af-mf380eccfa3
+   16 ✓ op_revert_undo_probe     17459403971d
+   17 ✓ op_feature_split         f-026fba3b609d
+   18 ✓ op_add_file              v4_mod_18.py
+   19 ✓ op_feature_split         af-mdb55886239
+   20 ✓ op_revert_keep_dependents 8fe1e8ce244d
+   21 ✓ op_undo                  
+   22 ✓ op_feature_split         af-mf380eccfa3
+   23 ✓ op_restore               19e4d531a38b
+   24 ✓ op_feature_split         f-127c7f593a49
+   25 ✓ op_revert                39bc8466d27a
+   26 ✓ op_revert                813b31c14a6b
+   27 ✓ op_restore               127c7f593a49
+   28 ✓ op_restore               bc4ee665797a
+   29 ✓ op_restore               127c7f593a49
+   30 ✓ op_revert_keep_dependents 17459403971d
+   31 ✓ op_undo                  
+   32 ✓ op_edit_save             v4_mod_0.py (rework)
+   33 ✓ op_revert_undo_probe     0fce861cfd5c
+   34 ✓ op_feature_split         af-mdb55886239
+   35 ✓ op_revert                0fce861cfd5c
+   36 ✓ op_undo                  
+decorated_routes seed 1095: 37 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-decorated_routes-seed1095.json

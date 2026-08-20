@@ -1,0 +1,38 @@
+    0 ✓ op_edit_save             survivor.py (rework)
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_revert                e05d8e092539
+    3 ✓ op_add_file              v4_mod_3.py
+    4 ✓ op_restore               e05d8e092539
+    5 ✓ op_add_file              v4_mod_5.py
+    6 · op_restore               nothing addressable excluded
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_add_file              v4_mod_8.py
+    9 ✓ op_revert_undo_probe     0e94a6bf178a
+   10 ✓ op_edit_save             survivor.py (rework)
+   11 ✓ op_feature_split         f-026fba3b609d
+   12 ✓ op_revert                bfc88b7fa323
+   13 ✓ op_revert                3ebd50f5369b
+   14 ✓ op_revert_keep_dependents 0e94a6bf178a
+   15 ✓ op_revert_restore_probe  fb1dc3756108
+   16 ✓ op_edit_save             v4_mod_1.py (rework)
+   17 ✓ op_revert                f7b38c9455a0
+   18 ✗ op_revert_restore_probe  58b3790c4c09
+        revert_restore_unexplained_drift: revert 58b3790c4c09 then restoring everything it removed left 1 file(s) different from before: ['gone.py']. No op is missing from the ideal and no resurrected op wrote these files, so either the round trip returned the op set without the bytes or composition is not deterministic. Reported, not a stop, until reproduced by hand.
+   19 ✓ op_undo                  
+   20 ✗ op_revert_restore_probe  70d73a73fd9a
+        restore_resurrects_layout: restoring what revert 70d73a73fd9a removed also pulled back 2 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['36abf70110af', '3ebd50f5369b']
+   21 ✓ op_edit_save             survivor.py (rework)
+   22 ✓ op_restore               bfc88b7fa323
+   23 ✓ op_edit_save             v4_mod_5.py (rework)
+   24 ✓ op_add_file              v4_mod_24.py
+   25 ✓ op_revert_undo_probe     3ebd50f5369b
+   26 ✓ op_revert_undo_probe     40e468219543
+   27 ✓ op_revert_keep_dependents 09be1c60ddd2
+   28 ✓ op_revert_undo_probe     b65b274a4a71
+   29 ✓ op_revert_keep_dependents 4bf89a81d9a3
+   30 ✓ op_revert_keep_dependents 09be1c60ddd2
+   31 ✓ op_revert                33aeb6f6c1f2
+   32 ✓ op_add_file              v4_mod_32.py
+   33 ✓ op_add_file              v4_mod_33.py
+   34 ✓ op_revert_restore_probe  6ba984cb9733
+removed_paths seed 1142: 35 ops applied, 2 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-removed_paths-seed1142.json

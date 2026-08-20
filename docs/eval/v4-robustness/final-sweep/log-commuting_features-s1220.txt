@@ -1,0 +1,31 @@
+    0 ✓ op_revert                9b55c37b1810
+    1 ✓ op_undo                  
+    2 ✓ op_edit_save             a.py (rework)
+    3 ✓ op_add_file              v4_mod_3.py
+    4 ✓ op_revert_undo_probe     991adef74a8b
+    5 ✓ op_revert_undo_probe     9b55c37b1810
+    6 ✓ op_revert                84e078c19268
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_revert_undo_probe     7ea7de8f7f45
+    9 · op_restore               nothing addressable excluded
+   10 ✓ op_revert_keep_dependents c71c370e1587
+   11 · op_restore               nothing addressable excluded
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_revert                50afa70e3ab4
+   14 ✓ op_revert                17459403971d
+   15 · op_restore               nothing addressable excluded
+   16 ✓ op_revert_undo_probe     97727880928f
+   17 ✓ op_undo                  
+   18 ✓ op_revert_keep_dependents c71c370e1587
+   19 ✓ op_add_file              v4_mod_19.py
+   20 ✓ op_edit_save             v4_mod_19.py (rework)
+   21 ✓ op_edit_save             v4_mod_19.py (rework)
+   22 ✓ op_revert_keep_dependents eeed90b482c2
+   23 ✓ op_revert                6b78435194ea
+   24 ✓ op_feature_split         f-01183d43dbc3
+   25 ✓ op_revert_keep_dependents 750d60975bcc
+   26 ✓ op_edit_save             v4_mod_19.py (rework)
+   27 ✓ op_revert_keep_dependents 7ea7de8f7f45
+   28 ✓ op_revert                441275e32106
+   29 ✓ op_edit_save             a.py (rework)
+commuting_features seed 1220: 30 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-commuting_features-seed1220.json

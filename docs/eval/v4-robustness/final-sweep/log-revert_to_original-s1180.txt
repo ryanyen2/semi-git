@@ -1,0 +1,32 @@
+    0 ✓ op_revert                66521c9c8059
+    1 ✓ op_revert_keep_dependents ee1211142a8b
+    2 ✓ op_revert                f19ec32b02e9
+    3 ✓ op_revert_keep_dependents 126303a70181
+    4 · op_feature_merge         1 feature(s)
+    5 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+    6 ✓ op_feature_split         f-126303a70181
+    7 ✓ op_add_file              v4_mod_7.py
+    8 ✓ op_feature_merge         f-ee1211142a8b<-af-m9af93080ce
+    9 ✓ op_revert                126303a70181
+   10 ✓ op_restore               3f0a52756b18
+   11 ✓ op_restore               3f0a52756b18
+   12 ✓ op_revert                f19ec32b02e9
+   13 ✓ op_revert_restore_probe  a08a015717cf
+   14 ✓ op_edit_save             a.py (rework)
+        settled (save refused, git restore): ['M a.py']
+   15 ✓ op_revert                ee1211142a8b
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_revert_undo_probe     93229f659968
+   18 ✓ op_edit_save             v4_mod_16.py (rework)
+   19 ✓ op_edit_save             v4_mod_16.py (rework)
+   20 ✓ op_restore               ddef8999567d
+   21 ✓ op_undo                  
+   22 ✓ op_edit_save             v4_mod_16.py (rework)
+   23 ✓ op_revert_restore_probe  274ef6704983
+   24 ✓ op_restore               c2114879b5c1
+   25 ✓ op_edit_save             a.py (rework)
+   26 ✓ op_restore               f19ec32b02e9
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_edit_save             v4_mod_16.py (rework)
+revert_to_original seed 1180: 29 ops applied, 0 with an oracle failure, 0 traceback(s), 2 tree(s) settled → /tmp/v4-final/run-revert_to_original-seed1180.json

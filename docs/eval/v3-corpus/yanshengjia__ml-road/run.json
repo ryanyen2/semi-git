@@ -1,0 +1,330 @@
+{
+  "repo": "yanshengjia/ml-road",
+  "stars": 4910,
+  "band": "2500..5000",
+  "license": "MIT",
+  "status": "ok",
+  "clone": {
+    "cmd": "git clone --quiet https://github.com/yanshengjia/ml-road.git",
+    "rc": 0,
+    "seconds": 23.1,
+    "timed_out": false,
+    "out": "",
+    "err": ""
+  },
+  "head_sha": "09181603a2b5ddceb65e02a04274f6a9d66eb66e",
+  "tree": {
+    "files_total": 30,
+    "files_py": 2,
+    "py_bytes": 18630,
+    "commits": 94
+  },
+  "loadavg_at_init": 7.6328125,
+  "init": {
+    "cmd": "sgt init",
+    "rc": 0,
+    "seconds": 12.0,
+    "timed_out": false,
+    "out": "\u2713 initialized sgt kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `sgt now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `sgt init --agent` to wire them up\n",
+    "err": ""
+  },
+  "backfill": {
+    "reached_genesis": true,
+    "complete": true,
+    "chunks": 10,
+    "seconds": 125.8,
+    "capped": false,
+    "cap_s": 1800,
+    "progress": [
+      {
+        "chunk": 1,
+        "seconds": 13.2,
+        "ops": 18
+      },
+      {
+        "chunk": 2,
+        "seconds": 25.4,
+        "ops": 31
+      },
+      {
+        "chunk": 3,
+        "seconds": 39.2,
+        "ops": 42
+      },
+      {
+        "chunk": 4,
+        "seconds": 51.0,
+        "ops": 69
+      },
+      {
+        "chunk": 5,
+        "seconds": 63.1,
+        "ops": 132
+      },
+      {
+        "chunk": 6,
+        "seconds": 75.0,
+        "ops": 146
+      },
+      {
+        "chunk": 7,
+        "seconds": 87.5,
+        "ops": 174
+      },
+      {
+        "chunk": 8,
+        "seconds": 101.5,
+        "ops": 371
+      },
+      {
+        "chunk": 9,
+        "seconds": 118.6,
+        "ops": 404
+      },
+      {
+        "chunk": 10,
+        "seconds": 125.8,
+        "ops": 410
+      }
+    ]
+  },
+  "summary": {
+    "files": 50,
+    "symbols": 170,
+    "features": 0,
+    "coverage_fraction": 0.09302325581395349,
+    "oracle": {
+      "configured": false,
+      "status": "unconfigured"
+    },
+    "drift": {
+      "any": true,
+      "paths": [
+        "README.md",
+        "exp/bptt/truncated_bptt.py",
+        "exp/deep-knowledge-tracing/README.md",
+        "exp/deep-knowledge-tracing/data/0910_a_test.csv",
+        "exp/deep-knowledge-tracing/data/0910_a_train.csv",
+        "exp/deep-knowledge-tracing/data/0910_b_test.csv",
+        "exp/deep-knowledge-tracing/data/0910_b_train.csv",
+        "exp/deep-knowledge-tracing/data/0910_c_test.csv",
+        "exp/deep-knowledge-tracing/data/0910_c_train.csv",
+        "exp/deep-knowledge-tracing/data/2015_builder_test.csv",
+        "exp/deep-knowledge-tracing/data/2015_builder_train.csv",
+        "exp/deep-knowledge-tracing/data/CAT_test.csv",
+        "exp/deep-knowledge-tracing/data/CAT_train.csv",
+        "exp/deep-knowledge-tracing/resources/Deep Knowledge Tracing.pdf",
+        "exp/deep-knowledge-tracing/resources/Going Deeper with Deep Knowledge Tracing.pdf",
+        "keras/README.md",
+        "pytorch/README.md",
+        "research/backpropagation-through-time/README.md",
+        "research/backpropagation-through-time/src/bptt.py",
+        "research/backpropagation-through-time/src/lstm_bptt.py",
+        "research/chinese-character-recognition/README.md",
+        "research/chinese-character-recognition/chinese_character_recognition.py",
+        "research/deep-knowledge-tracing/data/assistments.txt",
+        "research/deep-knowledge-tracing/src/TensorFlowDKT.py",
+        "research/deep-knowledge-tracing/src/data_process.py",
+        "research/deep-knowledge-tracing/src/train_dkt.py",
+        "research/deep-knowledge-tracing/src/truncated_bptt.py",
+        "resources/Speech and Language Processing (2nd Edition).pdf",
+        "resources/The Elements of Statistical Learning.pdf",
+        "resources/gluon_tutorials_zh.pdf",
+        "tensorflow/mnist-handwritten-digit-recognition/README.md",
+        "tensorflow/mnist-handwritten-digit-recognition/src/mnist_softmax.py",
+        "tf-101/README.md"
+      ]
+    },
+    "unmanaged": [],
+    "backstop_kept": [
+      ".github/FUNDING.yml",
+      ".gitignore",
+      "projects/chinese-character-recognition/README.md",
+      "projects/chinese-character-recognition/chinese_character_recognition_bn.py",
+      "projects/mnist-handwritten-digit-recognition/README.md",
+      "projects/mnist-handwritten-digit-recognition/mnist_softmax.py",
+      "resources/Speech and Language Processing (3rd Edition).pdf",
+      "resources/The Elements of Statistical Learning (2nd Edition).pdf"
+    ],
+    "forks": {
+      "open": 0,
+      "records": []
+    },
+    "sync_status": {
+      "complete": true,
+      "reached_genesis": true,
+      "history_rewritten": false
+    }
+  },
+  "fsck": {
+    "ok": true,
+    "checked": 410,
+    "bad_hash": [],
+    "corrupt": [],
+    "chain_gaps": [
+      "exp/deep-knowledge-tracing/student_model.py::__residue__::\u0000HEAD\u0000@80f8cc1d3f80c9c78f92736653eda38378912a3a",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::DataIterator.__init__@276d1b95eb855f842b5f8ada905d53489dbcd391",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::DataIterator.data_augmentation@ec24659aa3d88ee0228934e3895c40e8f5bd2a45",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::DataIterator.input_pipeline@12f378c2c6c3c741839e5f8ab55b0afcaa2f7594",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::DataIterator.size@86ff32839269c7344c1b6f654a45e13d5bb47fc3",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::DataIterator@c2c8bb8b4d1a97cf0b104cc28e1ba1ae2788e4c3",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::build_graph@fc5e802258e482160b7852863cfdb57f03a21d29",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::inference@05c7426c1f203ffe934cdfaa749e81ad2aa2dda6",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::main@6f71c4f0e43e9bc1618f924173484e4e54009dc1",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::train@fa77c2ffdb320b3b049f279a2a541556cdb87ccc",
+      "research/chinese-character-recognition/chinese_character_recognition_bn.py::validation@1719c175e730f4da867048843ee13206ebe8e0e4",
+      "research/deep-knowledge-tracing/2016-edm/src/student_model.py::__residue__::\u0000HEAD\u0000@ebf1d9f3395d4cff34cb8913162689dc2a2cda6b",
+      "research/deep-knowledge-tracing/2016-edm/src/student_model.py::__residue__::HyperParamsConfig@71853c6197a6a7f222db0f1978c7cb232b87c5ee",
+      "research/deep-knowledge-tracing/2016-edm/src/student_model.py::__residue__::StudentModel@71853c6197a6a7f222db0f1978c7cb232b87c5ee",
+      "research/deep-knowledge-tracing/2016-edm/src/student_model.py::__residue__::add_gradient_noise@71853c6197a6a7f222db0f1978c7cb232b87c5ee",
+      "research/deep-knowledge-tracing/2016-edm/src/student_model.py::__residue__::main@44f179d2bf327facbdbb5c1129c8557a99f885e6",
+      "research/deep-knowledge-tracing/2016-edm/src/student_model.py::__residue__::read_data_from_csv_file@71853c6197a6a7f222db0f1978c7cb232b87c5ee",
+      "research/deep-knowledge-tracing/2016-edm/src/student_model.py::__residue__::run_epoch@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "research/deep-knowledge-tracing/README.md@\u22a5@7de18205835d0c912e807fb1ec17b18881ada206",
+      "research/deep-knowledge-tracing/src/preprocess.py::DataGenerator.__init__@9c1576085e889a3abdf9f76edf00aa0cafba4b8f",
+      "research/deep-knowledge-tracing/src/preprocess.py::DataGenerator.next_batch@d3404d84318eabb7a6ea087224e8a167e30e9002",
+      "research/deep-knowledge-tracing/src/preprocess.py::DataGenerator.reset@47bf3aa9bcff0e0793cbacd68ae8ae26a5ea7580",
+      "research/deep-knowledge-tracing/src/preprocess.py::DataGenerator.shuffle@26956a727c291eedb47308dae6b031f1ab0b0b54",
+      "research/deep-knowledge-tracing/src/preprocess.py::DataGenerator@f8c40cc55d917e4381d781fa8a9cdc8aa3539ada",
+      "research/deep-knowledge-tracing/src/preprocess.py::__residue__::\u0000HEAD\u0000@4f1efe9ed7f2fb69b00eb0302374d9e5f97abcc0",
+      "research/deep-knowledge-tracing/src/preprocess.py::__residue__::DataGenerator@adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+      "research/deep-knowledge-tracing/src/preprocess.py::__residue__::format_data@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "research/deep-knowledge-tracing/src/preprocess.py::__residue__::num_to_one_hot@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "research/deep-knowledge-tracing/src/preprocess.py::__residue__::pad_sequences@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "research/deep-knowledge-tracing/src/preprocess.py::__residue__::read_file@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "research/deep-knowledge-tracing/src/preprocess.py::__residue__::split_dataset@7c338ed2840d2bf55f9f5e4eed04f66c80840eb3",
+      "research/deep-knowledge-tracing/src/preprocess.py::format_data@fe5b26aa9cd3c03ffabadcfa2005873e9ad8079a",
+      "research/deep-knowledge-tracing/src/preprocess.py::num_to_one_hot@5cdbe3332f8ae758360e22973dce0d7a1fe4beae",
+      "research/deep-knowledge-tracing/src/preprocess.py::pad_sequences@2d41bec3d760b61a82f0b171d242ce0cbbc2f063",
+      "research/deep-knowledge-tracing/src/preprocess.py::read_file@1bce2892453c98ecd96701ab66981ccd3a48d987",
+      "research/deep-knowledge-tracing/src/preprocess.py::split_dataset@5260330ca2cbd2e328bc4b2c9a492e09930ed8f7",
+      "research/deep-knowledge-tracing/src/student_model.py::__residue__::\u0000HEAD\u0000@9dbf71064949b89c208430d3d4284d8bec9a6dac",
+      "research/deep-knowledge-tracing/src/tf_dkt.py::TensorFlowDKT.__init__@1704c6a067e081e7e5af1ba8e5c08feba583d8a3",
+      "research/deep-knowledge-tracing/src/tf_dkt.py::TensorFlowDKT.assign_lr@a84277a5d613eccd71439b2c879b0d5aaf706ad7",
+      "research/deep-knowledge-tracing/src/tf_dkt.py::TensorFlowDKT.step@f3ed829d5b3e10deaf2bbec378ef5b957785d801",
+      "research/deep-knowledge-tracing/src/tf_dkt.py::TensorFlowDKT@7195885be753db673bd99f3490417290da581416",
+      "research/deep-knowledge-tracing/src/tf_dkt.py::__residue__::\u0000HEAD\u0000@cb1b221ed6335e13e6732cbbbe38456345e1ee43",
+      "research/deep-knowledge-tracing/src/tf_dkt.py::__residue__::TensorFlowDKT@adc83b19e793491b1c6ea0fd8b46cd9f32e592fc",
+      "research/deep-knowledge-tracing/tf-dkt/src/__init__.py::__residue__::\u0000HEAD\u0000@da39a3ee5e6b4b0d3255bfef95601890afd80709",
+      "research/mnist-handwritten-digit-recognition/mnist_softmax.py::main@6bc962c68c5791294e5f20194d8c9f02db3ba439",
+      "resources/Speech and Language Processing (3rd Edition).pdf@41e5edb257f9c761e94bd712f0906d4480cd028e",
+      "tf/README.md@6c237dae1b59ab142338ffc9fd200f5a5b7d3d5e"
+    ],
+    "invalid_ideals": [],
+    "unreachable_witnesses": [],
+    "mixed_versions": [],
+    "pending_land": [],
+    "op_index_stale": false,
+    "stale_sessions": []
+  },
+  "fsck_tree": {
+    "drift": [
+      "README.md",
+      "exp/bptt/truncated_bptt.py",
+      "exp/deep-knowledge-tracing/README.md",
+      "exp/deep-knowledge-tracing/data/0910_a_test.csv",
+      "exp/deep-knowledge-tracing/data/0910_a_train.csv",
+      "exp/deep-knowledge-tracing/data/0910_b_test.csv",
+      "exp/deep-knowledge-tracing/data/0910_b_train.csv",
+      "exp/deep-knowledge-tracing/data/0910_c_test.csv",
+      "exp/deep-knowledge-tracing/data/0910_c_train.csv",
+      "exp/deep-knowledge-tracing/data/2015_builder_test.csv",
+      "exp/deep-knowledge-tracing/data/2015_builder_train.csv",
+      "exp/deep-knowledge-tracing/data/CAT_test.csv",
+      "exp/deep-knowledge-tracing/data/CAT_train.csv",
+      "exp/deep-knowledge-tracing/resources/Deep Knowledge Tracing.pdf",
+      "exp/deep-knowledge-tracing/resources/Going Deeper with Deep Knowledge Tracing.pdf",
+      "keras/README.md",
+      "pytorch/README.md",
+      "research/backpropagation-through-time/README.md",
+      "research/backpropagation-through-time/src/bptt.py",
+      "research/backpropagation-through-time/src/lstm_bptt.py",
+      "research/chinese-character-recognition/README.md",
+      "research/chinese-character-recognition/chinese_character_recognition.py",
+      "research/deep-knowledge-tracing/data/assistments.txt",
+      "research/deep-knowledge-tracing/src/TensorFlowDKT.py",
+      "research/deep-knowledge-tracing/src/data_process.py",
+      "research/deep-knowledge-tracing/src/train_dkt.py",
+      "research/deep-knowledge-tracing/src/truncated_bptt.py",
+      "resources/Speech and Language Processing (2nd Edition).pdf",
+      "resources/The Elements of Statistical Learning.pdf",
+      "resources/gluon_tutorials_zh.pdf",
+      "tensorflow/mnist-handwritten-digit-recognition/README.md",
+      "tensorflow/mnist-handwritten-digit-recognition/src/mnist_softmax.py",
+      "tf-101/README.md"
+    ],
+    "unmanaged": [],
+    "backstop_kept": [
+      ".github/FUNDING.yml",
+      ".gitignore",
+      "projects/chinese-character-recognition/README.md",
+      "projects/chinese-character-recognition/chinese_character_recognition_bn.py",
+      "projects/mnist-handwritten-digit-recognition/README.md",
+      "projects/mnist-handwritten-digit-recognition/mnist_softmax.py",
+      "resources/Speech and Language Processing (3rd Edition).pdf",
+      "resources/The Elements of Statistical Learning (2nd Edition).pdf"
+    ],
+    "staged": [],
+    "unseeded": []
+  },
+  "symbols": {
+    "ok": true,
+    "data": {
+      "symbol_kinds": {
+        "anchor": 39,
+        "whole_file": 54,
+        "residue": 52,
+        "entity": 26,
+        "nested": 31
+      },
+      "paths": 67,
+      "paths_with_entities": 9,
+      "paths_whole_file_only": 58,
+      "live_ops": 182,
+      "has_probe": false,
+      "entity_paths": [
+        "exp/bptt/truncated_bptt.py",
+        "research/backpropagation-through-time/src/bptt.py",
+        "research/backpropagation-through-time/src/lstm_bptt.py",
+        "research/chinese-character-recognition/chinese_character_recognition.py",
+        "research/deep-knowledge-tracing/src/TensorFlowDKT.py",
+        "research/deep-knowledge-tracing/src/data_process.py",
+        "research/deep-knowledge-tracing/src/train_dkt.py",
+        "research/deep-knowledge-tracing/tf-dkt/src/data_process.py",
+        "tensorflow/mnist-handwritten-digit-recognition/src/mnist_softmax.py"
+      ]
+    },
+    "failure": null
+  },
+  "reconstruction": {
+    "tracked_files": 50,
+    "drifted_files": 33,
+    "rate": 0.34,
+    "drifted_paths": [
+      "README.md",
+      "exp/bptt/truncated_bptt.py",
+      "exp/deep-knowledge-tracing/README.md",
+      "exp/deep-knowledge-tracing/data/0910_a_test.csv",
+      "exp/deep-knowledge-tracing/data/0910_a_train.csv",
+      "exp/deep-knowledge-tracing/data/0910_b_test.csv",
+      "exp/deep-knowledge-tracing/data/0910_b_train.csv",
+      "exp/deep-knowledge-tracing/data/0910_c_test.csv",
+      "exp/deep-knowledge-tracing/data/0910_c_train.csv",
+      "exp/deep-knowledge-tracing/data/2015_builder_test.csv",
+      "exp/deep-knowledge-tracing/data/2015_builder_train.csv",
+      "exp/deep-knowledge-tracing/data/CAT_test.csv",
+      "exp/deep-knowledge-tracing/data/CAT_train.csv",
+      "exp/deep-knowledge-tracing/resources/Deep Knowledge Tracing.pdf",
+      "exp/deep-knowledge-tracing/resources/Going Deeper with Deep Knowledge Tracing.pdf",
+      "keras/README.md",
+      "pytorch/README.md",
+      "research/backpropagation-through-time/README.md",
+      "research/backpropagation-through-time/src/bptt.py",
+      "research/backpropagation-through-time/src/lstm_bptt.py"
+    ]
+  },
+  "coverage_fraction_paths": 0.09302325581395349,
+  "edit": {
+    "skipped": "sgt covers no .py path at entity granularity"
+  }
+}

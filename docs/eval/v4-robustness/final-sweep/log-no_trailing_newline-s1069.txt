@@ -1,0 +1,40 @@
+    0 · op_feature_merge         1 feature(s)
+    1 ✓ op_revert_restore_probe  4e1ecc43fc48
+    2 ✓ op_feature_rename        f-4e1ecc43fc48
+    3 · op_restore               nothing addressable excluded
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_edit_save             a.py (rework)
+    6 · op_restore               nothing addressable excluded
+    7 · op_feature_merge         1 feature(s)
+    8 · op_restore               nothing addressable excluded
+    9 ✓ op_revert_keep_dependents 3f0a52756b18
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_edit_save             a.py (rework)
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_edit_save             v4_mod_12.py (rework)
+   14 ✓ op_add_file              v4_mod_14.py
+   15 ✓ op_revert_keep_dependents a6a77260b93c
+   16 ✓ op_revert_keep_dependents 3f0a52756b18
+   17 ✓ op_undo                  
+   18 ✓ op_revert_keep_dependents 2d33399ea8dc
+   19 ✓ op_revert                a08a015717cf
+   20 ✓ op_edit_save             a.py (rework)
+   21 ✓ op_feature_rename        af-mf380eccfa3
+   22 ✓ op_edit_save             a.py (rework)
+   23 ✓ op_revert                ee1211142a8b
+   24 ✗ op_revert_undo_probe     0bf8f47dd419
+        no_empty_phantom: blank tracked file(s) left behind: ['a.py']
+   25 ✓ op_revert_keep_dependents 2d33399ea8dc
+   26 ✓ op_edit_save             a.py (add)
+   27 ✓ op_revert                39bc8466d27a
+   28 ✓ op_revert_undo_probe     0bf8f47dd419
+   29 ✓ op_revert_restore_probe  0fce861cfd5c
+   30 ✓ op_revert                6225c1b4a633
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_revert                b83e1be61a47
+   33 ✓ op_edit_save             a.py (rework)
+   34 ✓ op_undo                  
+   35 ✓ op_edit_save             a.py (rework)
+   36 ✓ op_edit_save             v4_mod_12.py (rework)
+   37 ✓ op_undo                  
+no_trailing_newline seed 1069: 38 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-no_trailing_newline-seed1069.json

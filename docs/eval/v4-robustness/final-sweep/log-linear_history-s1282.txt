@@ -1,0 +1,42 @@
+    0 ✓ op_edit_save             a.py (add)
+    1 ✓ op_add_file              v4_mod_1.py
+    2 ✓ op_feature_rename        f-004014efad04
+    3 ✓ op_revert_keep_dependents a48817bebd14
+    4 ✓ op_revert_restore_probe  6302d788bba6
+    5 ✓ op_revert                439ab3afbd2b
+    6 ✓ op_restore               004014efad04
+    7 ✓ op_revert_restore_probe  66521c9c8059
+    8 ✓ op_undo                  
+    9 ✓ op_edit_save             a.py (rework)
+   10 ✓ op_revert                ee1211142a8b
+   11 ✓ op_feature_rename        f-004014efad04
+   12 ✓ op_add_file              v4_mod_12.py
+   13 ✓ op_revert_undo_probe     a24255df0edc
+   14 ✓ op_restore               d38efde51b59
+   15 ✓ op_add_file              v4_mod_15.py
+   16 ✓ op_revert                441275e32106
+   17 ✓ op_revert_keep_dependents f9169952772e
+   18 ✓ op_restore               441275e32106
+   19 ✓ op_edit_save             v4_mod_15.py (rework)
+   20 ✗ op_edit_save             a.py (rework)
+        fsck_advisory_chain_gaps: 1 new, 1 live: ["a.py::foo"]
+        settled (save refused, git restore): ['M a.py']
+   21 ✓ op_revert                01183d43dbc3
+   22 ✓ op_edit_save             b.py (rework)
+   23 ✓ op_revert                f5eb13272206
+   24 ✓ op_revert_restore_probe  75d46e6e116a
+   25 ✓ op_edit_save             v4_mod_1.py (rework)
+   26 ✓ op_revert                3549561cc039
+   27 ✓ op_revert_restore_probe  3d679378ca9e
+   28 ✓ op_revert                17459403971d
+   29 ✓ op_revert                75d46e6e116a
+   30 ✓ op_undo                  
+   31 ✓ op_undo                  
+   32 ✓ op_restore               8db99d36747d
+   33 ✓ op_revert                27d3d901e561
+   34 ✓ op_revert_keep_dependents a48817bebd14
+   35 ✓ op_revert                b47a71f812b4
+   36 ✗ op_revert_restore_probe  94e05eda6e00
+        restore_resurrects_layout: restoring what revert 94e05eda6e00 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['3549561cc039']
+   37 ✓ op_undo                  
+linear_history seed 1282: 38 ops applied, 2 with an oracle failure, 0 traceback(s), 1 tree(s) settled → /tmp/v4-final/run-linear_history-seed1282.json

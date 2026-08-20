@@ -1,0 +1,1026 @@
+{
+ "repo": "/private/tmp/v1/cc",
+ "counts": {
+  "commit_count": 28,
+  "save_count": 26,
+  "bookkeeping_count": 2,
+  "op_count": 354,
+  "feature_count": 31
+ },
+ "episodes_mapped": 27,
+ "rows": [
+  {
+   "commit_index": 0,
+   "sha": "b51af3f",
+   "episode": "E0 seed",
+   "subject": "init repo",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "README.md"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 1,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 1,
+   "sha": "b9e34c2",
+   "episode": "E1 scaffold",
+   "subject": "scaffold coursecraft: models, JSON store, CLI init",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Data Storage": [
+     "coursecraft/cli.py::cmd_init",
+     "coursecraft/storage.py::load_data",
+     "coursecraft/storage.py::save_data",
+     "tests/test_storage.py::test_missing_file_loads_empty",
+     "tests/test_storage.py::test_round_trip"
+    ],
+    "Course Models": [
+     "coursecraft/models.py::Course",
+     "coursecraft/models.py::Section",
+     "coursecraft/models.py::Student",
+     "coursecraft/models.py::to_dict"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser",
+     "coursecraft/cli.py::main"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Catalog Operations": [
+     "coursecraft/storage.py::next_id"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Repository Storage \u00b7 storage.py",
+    "Repository Storage \u00b7 test_storage.py",
+    "Search Commands"
+   ],
+   "n_features_substantive": 5,
+   "n_edit_records": 13,
+   "n_anchor_records": 12,
+   "n_residue_records": 18
+  },
+  {
+   "commit_index": 2,
+   "sha": "6db51d1",
+   "episode": "E2 slots",
+   "subject": "add rooms and weekly time slots with parsing and validation",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Time Slots": [
+     "coursecraft/slots.py::SlotError",
+     "coursecraft/slots.py::_parse_hhmm",
+     "coursecraft/slots.py::format_slot",
+     "coursecraft/slots.py::parse_slot",
+     "tests/test_slots.py::test_bad_slots_rejected",
+     "tests/test_slots.py::test_parse_and_format_round_trip"
+    ],
+    "Search Commands": [
+     "coursecraft/cli.py::cmd_room_add",
+     "coursecraft/cli.py::cmd_room_list"
+    ],
+    "Course Models": [
+     "coursecraft/models.py::Room",
+     "coursecraft/models.py::Section"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Repository Storage \u00b7 storage.py"
+   ],
+   "n_features_substantive": 5,
+   "n_edit_records": 12,
+   "n_anchor_records": 11,
+   "n_residue_records": 12
+  },
+  {
+   "commit_index": 3,
+   "sha": "d89bfbf",
+   "episode": "E3 catalog",
+   "subject": "course and section commands",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Catalog Operations": [
+     "coursecraft/cli.py::cmd_course_add",
+     "coursecraft/cli.py::cmd_course_list",
+     "coursecraft/cli.py::cmd_section_add",
+     "coursecraft/cli.py::cmd_section_remove",
+     "tests/test_catalog.py::_ns",
+     "tests/test_catalog.py::test_add_and_list_course",
+     "tests/test_catalog.py::test_section_lifecycle"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Search Commands": [
+     "coursecraft/cli.py::cmd_section_list"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ],
+    "Course Catalog": [
+     "tests/test_catalog.py::store"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 5,
+   "n_edit_records": 11,
+   "n_anchor_records": 10,
+   "n_residue_records": 10
+  },
+  {
+   "commit_index": 4,
+   "sha": "b7e6bc4",
+   "episode": "E4 enroll",
+   "subject": "student registry and enroll command",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "coursecraft/cli.py::cmd_enroll",
+     "coursecraft/enrollment.py::EnrollError",
+     "coursecraft/enrollment.py::enroll",
+     "coursecraft/enrollment.py::enrollments_for",
+     "coursecraft/enrollment.py::find_section",
+     "coursecraft/enrollment.py::find_student",
+     "pytest.ini",
+     "tests/test_enroll.py::test_enroll_adds_entry",
+     "tests/test_enroll.py::test_enroll_rejects_unknown_and_duplicate"
+    ],
+    "Data Storage": [
+     "tests/test_enroll.py::data"
+    ],
+    "Search Commands": [
+     "coursecraft/cli.py::cmd_student_list"
+    ],
+    "Catalog Operations": [
+     "coursecraft/cli.py::cmd_student_add"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Enrollment Actions",
+    "Priority Waitlist",
+    "Student Enrollment"
+   ],
+   "n_features_substantive": 5,
+   "n_edit_records": 13,
+   "n_anchor_records": 12,
+   "n_residue_records": 14
+  },
+  {
+   "commit_index": 5,
+   "sha": "5d8f5ad",
+   "episode": "E5 id fix",
+   "subject": "fix id reuse after removing a section",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Catalog Operations": [
+     "coursecraft/storage.py::next_id",
+     "tests/test_storage.py::test_ids_never_reused_after_remove"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Data Storage"
+   ],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 6,
+   "sha": "a58003c",
+   "episode": "(unmapped a58003c)",
+   "subject": "section capacity limits",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "coursecraft/enrollment.py::enroll",
+     "coursecraft/enrollment.py::roster",
+     "pytest.ini",
+     "tests/test_capacity.py::test_full_section_rejects_enrollment"
+    ],
+    "Course Models": [
+     "coursecraft/models.py::Section"
+    ],
+    "Catalog Operations": [
+     "coursecraft/cli.py::cmd_section_add"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 4,
+   "n_edit_records": 7,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 7,
+   "sha": "3a5d614",
+   "episode": "E6 undo (bk)",
+   "subject": "sgt undo: restore prior ideal",
+   "bookkeeping": true,
+   "features_substantive": {},
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 0,
+   "n_edit_records": 0,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 8,
+   "sha": "873373f",
+   "episode": "E6 capacity",
+   "subject": "section capacity limits",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "coursecraft/enrollment.py::enroll",
+     "coursecraft/enrollment.py::roster",
+     "pytest.ini",
+     "tests/test_capacity.py::test_full_section_rejects_enrollment"
+    ],
+    "Catalog Operations": [
+     "coursecraft/cli.py::cmd_section_add",
+     "tests/test_catalog.py::test_section_lifecycle"
+    ],
+    "Course Models": [
+     "coursecraft/models.py::Section"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 4,
+   "n_edit_records": 8,
+   "n_anchor_records": 3,
+   "n_residue_records": 3
+  },
+  {
+   "commit_index": 9,
+   "sha": "9d6260e",
+   "episode": "E7 conflicts",
+   "subject": "detect time conflicts when enrolling",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "coursecraft/enrollment.py::enroll",
+     "coursecraft/slots.py::overlaps",
+     "pytest.ini",
+     "tests/test_conflicts.py::test_different_day_is_fine",
+     "tests/test_conflicts.py::test_overlapping_sections_rejected"
+    ],
+    "Data Storage": [
+     "tests/test_conflicts.py::data"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Enrollment Actions",
+    "Section Conflicts",
+    "Time Slots"
+   ],
+   "n_features_substantive": 2,
+   "n_edit_records": 6,
+   "n_anchor_records": 5,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 10,
+   "sha": "079fa49",
+   "episode": "E8 TANGLE search",
+   "subject": "add course search",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Search Commands": [
+     "coursecraft/cli.py::cmd_search",
+     "tests/test_search.py::test_search_matches_code_and_title",
+     "tests/test_search.py::test_search_miss_reports"
+    ],
+    "Time Slots": [
+     "coursecraft/slots.py::parse_slot",
+     "tests/test_slots.py::test_lowercase_day_accepted"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Catalog Operations": [
+     "tests/test_search.py::store"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 5,
+   "n_edit_records": 8,
+   "n_anchor_records": 7,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 11,
+   "sha": "a9f2dc2",
+   "episode": "E9 prereqs",
+   "subject": "enforce course prerequisites at enrollment",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "coursecraft/enrollment.py::enroll",
+     "coursecraft/enrollment.py::unmet_prereqs",
+     "pytest.ini",
+     "tests/test_prereqs.py::test_missing_prereq_rejected",
+     "tests/test_prereqs.py::test_prereq_satisfied_by_enrollment"
+    ],
+    "Catalog Operations": [
+     "coursecraft/cli.py::cmd_course_add",
+     "tests/test_catalog.py::test_add_and_list_course",
+     "tests/test_catalog.py::test_section_lifecycle",
+     "tests/test_search.py::store"
+    ],
+    "Data Storage": [
+     "tests/test_prereqs.py::data"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Prerequisite Checks"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 11,
+   "n_anchor_records": 5,
+   "n_residue_records": 5
+  },
+  {
+   "commit_index": 12,
+   "sha": "1590d8c",
+   "episode": "E10 refactor",
+   "subject": "extract Repository class for persistence",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Search Commands": [
+     "coursecraft/cli.py::cmd_course_add",
+     "coursecraft/cli.py::cmd_course_list",
+     "coursecraft/cli.py::cmd_enroll",
+     "coursecraft/cli.py::cmd_init",
+     "coursecraft/cli.py::cmd_room_add",
+     "coursecraft/cli.py::cmd_room_list",
+     "coursecraft/cli.py::cmd_search",
+     "coursecraft/cli.py::cmd_section_add",
+     "coursecraft/cli.py::cmd_section_list",
+     "coursecraft/cli.py::cmd_section_remove",
+     "coursecraft/cli.py::cmd_student_add",
+     "coursecraft/cli.py::cmd_student_list",
+     "coursecraft/storage.py::Repository",
+     "coursecraft/storage.py::Repository.__init__",
+     "coursecraft/storage.py::Repository.load",
+     "coursecraft/storage.py::Repository.save",
+     "tests/test_storage.py::test_repository_round_trip"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Catalog Operations",
+    "Data Storage"
+   ],
+   "n_features_substantive": 1,
+   "n_edit_records": 17,
+   "n_anchor_records": 4,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 13,
+   "sha": "f939953",
+   "episode": "E11 waitlist",
+   "subject": "waitlist for full sections with stable join order",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Priority Waitlist": [
+     "coursecraft/cli.py::cmd_waitlist_join",
+     "coursecraft/cli.py::cmd_waitlist_show",
+     "coursecraft/enrollment.py::enroll",
+     "coursecraft/enrollment.py::join_waitlist",
+     "coursecraft/enrollment.py::waitlist_for",
+     "tests/test_waitlist.py::test_full_section_error_mentions_waitlist",
+     "tests/test_waitlist.py::test_join_order_is_stable",
+     "tests/test_waitlist.py::test_join_rules"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Data Storage": [
+     "tests/test_waitlist.py::data"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Repository Storage \u00b7 storage.py",
+    "Search Commands",
+    "Section Waitlist"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 11,
+   "n_anchor_records": 10,
+   "n_residue_records": 10
+  },
+  {
+   "commit_index": 14,
+   "sha": "2edf58a",
+   "episode": "E12 promotion",
+   "subject": "promote from the waitlist when a seat frees",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Promote Next": [
+     "coursecraft/cli.py::cmd_waitlist_promote",
+     "coursecraft/promotion.py::promote_next",
+     "tests/test_promotion.py::_free_seat",
+     "tests/test_promotion.py::test_first_in_queue_promoted",
+     "tests/test_promotion.py::test_ineligible_student_keeps_spot",
+     "tests/test_promotion.py::test_no_promotion_while_full"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Data Storage": [
+     "tests/test_promotion.py::data"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Search Commands",
+    "Waitlist Promotion"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 9,
+   "n_anchor_records": 8,
+   "n_residue_records": 10
+  },
+  {
+   "commit_index": 15,
+   "sha": "6ac652c",
+   "episode": "E13 keeper fix",
+   "subject": "back-to-back sections are not a conflict",
+   "bookkeeping": false,
+   "features_substantive": {
+    "init repo": [
+     "coursecraft/slots.py::overlaps",
+     "tests/test_conflicts.py::test_back_to_back_is_fine"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 16,
+   "sha": "9a5d940",
+   "episode": "E14 drop cascade",
+   "subject": "drop command frees the seat and promotes the queue",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Enrollment Drop": [
+     "coursecraft/cli.py::cmd_drop",
+     "coursecraft/enrollment.py::drop",
+     "tests/test_drop.py::test_drop_promotes_from_waitlist",
+     "tests/test_drop.py::test_drop_requires_enrollment"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ],
+    "Priority Waitlist": [
+     "tests/test_drop.py::store"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Drop Enrollment"
+   ],
+   "n_features_substantive": 4,
+   "n_edit_records": 7,
+   "n_anchor_records": 7,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 17,
+   "sha": "9e0c81b",
+   "episode": "E15 TANGLE export",
+   "subject": "timetable export",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Course Export": [
+     "coursecraft/cli.py::cmd_export",
+     "coursecraft/export.py::export_csv",
+     "coursecraft/export.py::export_markdown",
+     "tests/test_export.py::test_csv_lists_every_section",
+     "tests/test_export.py::test_markdown_timetable_sorted_by_week_position"
+    ],
+    "init repo": [
+     "coursecraft/enrollment.py::enroll",
+     "pytest.ini",
+     "tests/test_export.py::data"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Enrollment Drop",
+    "Schedule Export"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 9,
+   "n_anchor_records": 7,
+   "n_residue_records": 9
+  },
+  {
+   "commit_index": 18,
+   "sha": "94c228f",
+   "episode": "E16 experiment",
+   "subject": "priority enrollment for seniors",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Priority Waitlist": [
+     "coursecraft/enrollment.py::waitlist_for",
+     "coursecraft/enrollment.py::waitlist_for._key",
+     "tests/test_priority.py::test_seniors_jump_the_queue"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Course Models": [
+     "coursecraft/models.py::Student"
+    ],
+    "Catalog Operations": [
+     "coursecraft/cli.py::cmd_student_add"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 5,
+   "n_edit_records": 7,
+   "n_anchor_records": 1,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 19,
+   "sha": "12d911a",
+   "episode": "E16 revert (bk)",
+   "subject": "sgt revert f-10462e17@2",
+   "bookkeeping": true,
+   "features_substantive": {},
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 0,
+   "n_edit_records": 0,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 20,
+   "sha": "b924e5a",
+   "episode": "E16 cleanup",
+   "subject": "remove leftover priority test after the revert",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Priority Waitlist": [
+     "tests/test_priority.py::test_seniors_jump_the_queue"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 1,
+   "n_anchor_records": 0,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 21,
+   "sha": "25e91a9",
+   "episode": "E17 REGRESSION",
+   "subject": "normalize slot comparison for cross-listed sections and room audits",
+   "bookkeeping": false,
+   "features_substantive": {
+    "tests/test_rooms.py": [
+     "coursecraft/cli.py::cmd_room_audit",
+     "coursecraft/enrollment.py::enroll",
+     "coursecraft/scheduling.py::room_clashes",
+     "coursecraft/slots.py::ranges_clash",
+     "tests/test_rooms.py::test_same_room_overlap_is_a_clash",
+     "tests/test_rooms.py::test_unscheduled_sections_ignored"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Search Commands",
+    "Time Slots",
+    "coursecraft/cli.py",
+    "coursecraft/scheduling.py",
+    "coursecraft/slots.py",
+    "tests/test_rooms.py"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 8,
+   "n_anchor_records": 7,
+   "n_residue_records": 6
+  },
+  {
+   "commit_index": 22,
+   "sha": "4aac0ba",
+   "episode": "E18 instructor",
+   "subject": "instructor schedule view",
+   "bookkeeping": false,
+   "features_substantive": {
+    "coursecraft/cli.py": [
+     "coursecraft/cli.py::cmd_instructor",
+     "tests/test_instructor.py::test_instructor_view_sorted_by_week"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "Course Export",
+    "tests/test_instructor.py"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 4,
+   "n_anchor_records": 3,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 23,
+   "sha": "4c2b057",
+   "episode": "E19 stats",
+   "subject": "enrollment stats report",
+   "bookkeeping": false,
+   "features_substantive": {
+    "coursecraft/cli.py": [
+     "coursecraft/cli.py::cmd_stats",
+     "tests/test_stats.py::test_stats_reports_fill"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "coursecraft/cli.py",
+    "tests/test_stats.py"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 4,
+   "n_anchor_records": 3,
+   "n_residue_records": 2
+  },
+  {
+   "commit_index": 24,
+   "sha": "0ba22cf",
+   "episode": "E20 export fix",
+   "subject": "escape pipes in markdown export",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Course Export": [
+     "coursecraft/export.py::export_markdown",
+     "tests/test_export.py::test_markdown_escapes_pipes"
+    ]
+   },
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 1,
+   "n_edit_records": 2,
+   "n_anchor_records": 2,
+   "n_residue_records": 1
+  },
+  {
+   "commit_index": 25,
+   "sha": "cce175a",
+   "episode": "E21 notices",
+   "subject": "seat notices when the waitlist promotes",
+   "bookkeeping": false,
+   "features_substantive": {
+    "Promote Next": [
+     "coursecraft/cli.py::cmd_notices",
+     "coursecraft/notify.py::clear_notices",
+     "coursecraft/notify.py::pending_notices",
+     "coursecraft/promotion.py::promote_next",
+     "tests/test_notify.py::test_promotion_queues_a_notice"
+    ],
+    "init repo": [
+     "pytest.ini"
+    ],
+    "Command Line Interface": [
+     "coursecraft/cli.py::build_parser"
+    ]
+   },
+   "features_bookkeeping_only": [
+    "coursecraft/cli.py"
+   ],
+   "n_features_substantive": 3,
+   "n_edit_records": 7,
+   "n_anchor_records": 5,
+   "n_residue_records": 5
+  },
+  {
+   "commit_index": 26,
+   "sha": "a9efe18",
+   "episode": "E22 polish",
+   "subject": "README and help text",
+   "bookkeeping": false,
+   "features_substantive": {},
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 0,
+   "n_edit_records": 0,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  },
+  {
+   "commit_index": 27,
+   "sha": "e7b2fb0",
+   "episode": "E22 polish (README)",
+   "subject": "expand the README",
+   "bookkeeping": false,
+   "features_substantive": {},
+   "features_bookkeeping_only": [],
+   "n_features_substantive": 0,
+   "n_edit_records": 0,
+   "n_anchor_records": 0,
+   "n_residue_records": 0
+  }
+ ],
+ "feature_spans": {
+  "Catalog Operations": [
+   "(unmapped a58003c)",
+   "E1 scaffold",
+   "E16 experiment",
+   "E3 catalog",
+   "E4 enroll",
+   "E5 id fix",
+   "E6 capacity",
+   "E8 TANGLE search",
+   "E9 prereqs"
+  ],
+  "Command Line Interface": [
+   "(unmapped a58003c)",
+   "E1 scaffold",
+   "E11 waitlist",
+   "E12 promotion",
+   "E14 drop cascade",
+   "E15 TANGLE export",
+   "E16 experiment",
+   "E17 REGRESSION",
+   "E18 instructor",
+   "E19 stats",
+   "E2 slots",
+   "E21 notices",
+   "E3 catalog",
+   "E4 enroll",
+   "E6 capacity",
+   "E8 TANGLE search",
+   "E9 prereqs"
+  ],
+  "Course Catalog": [
+   "E3 catalog"
+  ],
+  "Course Export": [
+   "E15 TANGLE export",
+   "E20 export fix"
+  ],
+  "Course Models": [
+   "(unmapped a58003c)",
+   "E1 scaffold",
+   "E16 experiment",
+   "E2 slots",
+   "E6 capacity"
+  ],
+  "Data Storage": [
+   "E1 scaffold",
+   "E11 waitlist",
+   "E12 promotion",
+   "E4 enroll",
+   "E7 conflicts",
+   "E9 prereqs"
+  ],
+  "Enrollment Drop": [
+   "E14 drop cascade"
+  ],
+  "Priority Waitlist": [
+   "E11 waitlist",
+   "E14 drop cascade",
+   "E16 cleanup",
+   "E16 experiment"
+  ],
+  "Promote Next": [
+   "E12 promotion",
+   "E21 notices"
+  ],
+  "Search Commands": [
+   "E10 refactor",
+   "E2 slots",
+   "E3 catalog",
+   "E4 enroll",
+   "E8 TANGLE search"
+  ],
+  "Time Slots": [
+   "E2 slots",
+   "E8 TANGLE search"
+  ],
+  "coursecraft/cli.py": [
+   "E18 instructor",
+   "E19 stats"
+  ],
+  "init repo": [
+   "(unmapped a58003c)",
+   "E0 seed",
+   "E1 scaffold",
+   "E11 waitlist",
+   "E12 promotion",
+   "E13 keeper fix",
+   "E14 drop cascade",
+   "E15 TANGLE export",
+   "E16 experiment",
+   "E17 REGRESSION",
+   "E18 instructor",
+   "E19 stats",
+   "E2 slots",
+   "E21 notices",
+   "E3 catalog",
+   "E4 enroll",
+   "E6 capacity",
+   "E7 conflicts",
+   "E8 TANGLE search",
+   "E9 prereqs"
+  ],
+  "tests/test_rooms.py": [
+   "E17 REGRESSION"
+  ]
+ },
+ "flags": [
+  {
+   "episode": "E1 scaffold",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Data Storage, Course Models, Command Line Interface, init repo, Catalog Operations"
+  },
+  {
+   "episode": "E2 slots",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Time Slots, Search Commands, Course Models, init repo, Command Line Interface"
+  },
+  {
+   "episode": "E3 catalog",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Catalog Operations, init repo, Search Commands, Command Line Interface, Course Catalog"
+  },
+  {
+   "episode": "E4 enroll",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: init repo, Data Storage, Search Commands, Catalog Operations, Command Line Interface"
+  },
+  {
+   "episode": "(unmapped a58003c)",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: init repo, Course Models, Catalog Operations, Command Line Interface"
+  },
+  {
+   "episode": "E6 capacity",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: init repo, Catalog Operations, Course Models, Command Line Interface"
+  },
+  {
+   "episode": "E8 TANGLE search",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Search Commands, Time Slots, init repo, Catalog Operations, Command Line Interface"
+  },
+  {
+   "episode": "E9 prereqs",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: init repo, Catalog Operations, Data Storage, Command Line Interface"
+  },
+  {
+   "episode": "E11 waitlist",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Priority Waitlist, init repo, Data Storage, Command Line Interface"
+  },
+  {
+   "episode": "E12 promotion",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Promote Next, init repo, Data Storage, Command Line Interface"
+  },
+  {
+   "episode": "E14 drop cascade",
+   "flag": "split",
+   "detail": "4 features hold this episode's edits: Enrollment Drop, init repo, Command Line Interface, Priority Waitlist"
+  },
+  {
+   "episode": "E15 TANGLE export",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Course Export, init repo, Command Line Interface"
+  },
+  {
+   "episode": "E16 experiment",
+   "flag": "split",
+   "detail": "5 features hold this episode's edits: Priority Waitlist, init repo, Course Models, Catalog Operations, Command Line Interface"
+  },
+  {
+   "episode": "E17 REGRESSION",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: tests/test_rooms.py, init repo, Command Line Interface"
+  },
+  {
+   "episode": "E18 instructor",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: coursecraft/cli.py, init repo, Command Line Interface"
+  },
+  {
+   "episode": "E19 stats",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: coursecraft/cli.py, init repo, Command Line Interface"
+  },
+  {
+   "episode": "E21 notices",
+   "flag": "split",
+   "detail": "3 features hold this episode's edits: Promote Next, init repo, Command Line Interface"
+  },
+  {
+   "episode": "E22 polish",
+   "flag": "miss",
+   "detail": "no substantive ops filed for this commit"
+  },
+  {
+   "episode": "E22 polish (README)",
+   "flag": "miss",
+   "detail": "no substantive ops filed for this commit"
+  },
+  {
+   "feature": "Catalog Operations",
+   "flag": "lump",
+   "detail": "spans 8 episodes: E1 scaffold, E16 experiment, E3 catalog, E4 enroll, E5 id fix, E6 capacity, E8 TANGLE search, E9 prereqs"
+  },
+  {
+   "feature": "Command Line Interface",
+   "flag": "lump",
+   "detail": "spans 16 episodes: E1 scaffold, E11 waitlist, E12 promotion, E14 drop cascade, E15 TANGLE export, E16 experiment, E17 REGRESSION, E18 instructor, E19 stats, E2 slots, E21 notices, E3 catalog, E4 enroll, E6 capacity, E8 TANGLE search, E9 prereqs"
+  },
+  {
+   "feature": "Course Models",
+   "flag": "lump",
+   "detail": "spans 4 episodes: E1 scaffold, E16 experiment, E2 slots, E6 capacity"
+  },
+  {
+   "feature": "Data Storage",
+   "flag": "lump",
+   "detail": "spans 6 episodes: E1 scaffold, E11 waitlist, E12 promotion, E4 enroll, E7 conflicts, E9 prereqs"
+  },
+  {
+   "feature": "Priority Waitlist",
+   "flag": "lump",
+   "detail": "spans 4 episodes: E11 waitlist, E14 drop cascade, E16 cleanup, E16 experiment"
+  },
+  {
+   "feature": "Search Commands",
+   "flag": "lump",
+   "detail": "spans 5 episodes: E10 refactor, E2 slots, E3 catalog, E4 enroll, E8 TANGLE search"
+  },
+  {
+   "feature": "init repo",
+   "flag": "lump",
+   "detail": "spans 19 episodes: E0 seed, E1 scaffold, E11 waitlist, E12 promotion, E13 keeper fix, E14 drop cascade, E15 TANGLE export, E16 experiment, E17 REGRESSION, E18 instructor, E19 stats, E2 slots, E21 notices, E3 catalog, E4 enroll, E6 capacity, E7 conflicts, E8 TANGLE search, E9 prereqs"
+  },
+  {
+   "flag": "file-path-label",
+   "detail": "coursecraft/cli.py, tests/test_rooms.py"
+  }
+ ]
+}

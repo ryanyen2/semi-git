@@ -1,0 +1,47 @@
+    0 ✓ op_edit_save             util.py (rework)
+    1 ✓ op_feature_rename        f-0027224b0d5f
+    2 ✓ op_edit_save             pkg.py (rework)
+    3 ✓ op_revert_keep_dependents 0027224b0d5f
+    4 ✓ op_revert_keep_dependents b17bda92bad7
+    5 ✓ op_edit_save             pkg.py (rework)
+    6 ✓ op_edit_save             util.py (rework)
+    7 · op_restore               nothing addressable excluded
+    8 ✓ op_revert_undo_probe     5b74a882622a
+    9 ✓ op_revert_keep_dependents 300a1e9ed828
+   10 ✓ op_undo                  
+   11 ✓ op_revert_keep_dependents 4ea3ecdfa2b8
+   12 ✓ op_restore               300a1e9ed828
+   13 · op_restore               nothing addressable excluded
+   14 ✓ op_revert                d638d3ba7f56
+   15 ✓ op_revert_restore_probe  6214b6086466
+   16 ✓ op_revert                d638d3ba7f56
+   17 ✓ op_revert_undo_probe     b17bda92bad7
+   18 ✓ op_undo                  
+   19 ✓ op_feature_rename        f-0027224b0d5f
+   20 ✓ op_feature_rename        f-0027224b0d5f
+   21 ✓ op_add_file              v4_mod_21.py
+   22 ✓ op_revert_keep_dependents 95aecb0c0c67
+   23 · op_revert_undo_probe     revert offered no undo
+   24 ✓ op_edit_save             v4_mod_21.py (rework)
+   25 ✗ op_revert_restore_probe  483f05ca9dbc
+        restore_resurrects_layout: restoring what revert 483f05ca9dbc removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['6f94c0d75b1d']
+   26 ✓ op_revert_undo_probe     55e614d35a64
+   27 ✓ op_revert_undo_probe     6f94c0d75b1d
+   28 ✓ op_feature_merge         f-0027224b0d5f<-af-m9bd0270434
+   29 ✓ op_edit_save             util.py (rework)
+   30 ✓ op_undo                  
+   31 ✓ op_revert_restore_probe  4ea3ecdfa2b8
+   32 ✓ op_edit_save             v4_mod_21.py (rework)
+   33 ✓ op_add_file              v4_mod_33.py
+   34 ✓ op_revert                57f88cf175ff
+   35 ✓ op_revert_restore_probe  2bad1a933705
+   36 ✓ op_undo                  
+   37 ✓ op_revert                6f94c0d75b1d
+   38 ✓ op_edit_save             v4_mod_33.py (rework)
+   39 ✓ op_edit_save             util.py (rework)
+   40 ✓ op_revert                4773695bfad1
+   41 ✓ op_restore               f6bd24db6f88
+   42 ✓ op_edit_save             util.py (rework)
+   43 ✓ op_feature_merge         af-m445fdd0c87<-f-0027224b0d5f
+   44 ✓ op_edit_save             pkg.py (rework)
+mixed_coverage seed 1278: 45 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-mixed_coverage-seed1278.json

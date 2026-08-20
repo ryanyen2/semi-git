@@ -1,0 +1,445 @@
+{
+ "repo": "/private/tmp/v1c/cc",
+ "n_sessions": 8,
+ "n_steps": 32,
+ "rows": [
+  {
+   "session": "3c99cf85",
+   "plan": "Scaffold coursecraft: dataclass models Course, Section, Stud",
+   "title": "Define core data models",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/models.py"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "3c99cf85",
+   "plan": "Scaffold coursecraft: dataclass models Course, Section, Stud",
+   "title": "Implement JSON storage helpers",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/storage.py"
+   ],
+   "n_matched": 4,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "3c99cf85",
+   "plan": "Scaffold coursecraft: dataclass models Course, Section, Stud",
+   "title": "Wire up CLI init command",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/cli.py"
+   ],
+   "n_matched": 4,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "3c99cf85",
+   "plan": "Scaffold coursecraft: dataclass models Course, Section, Stud",
+   "title": "Add storage round-trip tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_storage.py",
+    "coursecraft/storage.py",
+    "coursecraft/models.py"
+   ],
+   "n_matched": 2,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "5ed4a84b",
+   "plan": "Add rooms and a weekly time-slot grid: Room dataclass plus S",
+   "title": "Add slot parsing utilities",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/slots.py"
+   ],
+   "n_matched": 9,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "5ed4a84b",
+   "plan": "Add rooms and a weekly time-slot grid: Room dataclass plus S",
+   "title": "Extend course models with room and slot",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/models.py::Room",
+    "coursecraft/models.py::Section"
+   ],
+   "n_matched": 4,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "5ed4a84b",
+   "plan": "Add rooms and a weekly time-slot grid: Room dataclass plus S",
+   "title": "Implement room management commands",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/cli.py"
+   ],
+   "n_matched": 6,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "5ed4a84b",
+   "plan": "Add rooms and a weekly time-slot grid: Room dataclass plus S",
+   "title": "Cover slot parsing behavior",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_slots.py"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "e9a935c8",
+   "plan": "Detect schedule conflicts at enrollment time: an overlaps(a,",
+   "title": "Add slot overlap helper",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/slots.py::overlaps"
+   ],
+   "n_matched": 12,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "e9a935c8",
+   "plan": "Detect schedule conflicts at enrollment time: an overlaps(a,",
+   "title": "Reject conflicting enrollments",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/enrollment.py::enroll"
+   ],
+   "n_matched": 20,
+   "n_outside_footprint": 1
+  },
+  {
+   "session": "e9a935c8",
+   "plan": "Detect schedule conflicts at enrollment time: an overlaps(a,",
+   "title": "Cover conflict cases in tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_conflicts.py"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "7f84e7fa",
+   "plan": "Prerequisite enforcement: courses gain a prereqs list (cours",
+   "title": "Add prereq CLI argument",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/cli.py::add_course"
+   ],
+   "n_matched": 45,
+   "n_outside_footprint": 11
+  },
+  {
+   "session": "7f84e7fa",
+   "plan": "Prerequisite enforcement: courses gain a prereqs list (cours",
+   "title": "Persist course prereq data",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/cli.py",
+    "coursecraft"
+   ],
+   "n_matched": 2,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "7f84e7fa",
+   "plan": "Prerequisite enforcement: courses gain a prereqs list (cours",
+   "title": "Implement prerequisite checking",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/enrollment.py::unmet_prereqs",
+    "coursecraft/enrollment.py::enroll"
+   ],
+   "n_matched": 19,
+   "n_outside_footprint": 1
+  },
+  {
+   "session": "7f84e7fa",
+   "plan": "Prerequisite enforcement: courses gain a prereqs list (cours",
+   "title": "Cover prereqs with tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_prereqs.py"
+   ],
+   "n_matched": 8,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "9f52d89f",
+   "plan": "Refactor persistence behind a Repository class: coursecraft/",
+   "title": "Add repository wrapper",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/storage.py::Repository",
+    "coursecraft/storage.py::Repository.load",
+    "coursecraft/storage.py::Repository.save"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "9f52d89f",
+   "plan": "Refactor persistence behind a Repository class: coursecraft/",
+   "title": "Route CLI through repository",
+   "status": "pending",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/cli.py"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "9f52d89f",
+   "plan": "Refactor persistence behind a Repository class: coursecraft/",
+   "title": "Adjust persistence tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_storage.py",
+    "tests/test_cli.py"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "fc01b7f8",
+   "plan": "Waitlist for full sections: waitlist entries with a stable j",
+   "title": "Add waitlist store support",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/enrollment.py"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "fc01b7f8",
+   "plan": "Waitlist for full sections: waitlist entries with a stable j",
+   "title": "Implement waitlist enrollment helpers",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/enrollment.py::join_waitlist",
+    "coursecraft/enrollment.py::waitlist_for"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "fc01b7f8",
+   "plan": "Waitlist for full sections: waitlist entries with a stable j",
+   "title": "Update full-section error messaging",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/enrollment.py"
+   ],
+   "n_matched": 5,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "fc01b7f8",
+   "plan": "Waitlist for full sections: waitlist entries with a stable j",
+   "title": "Add waitlist CLI commands",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/cli.py"
+   ],
+   "n_matched": 6,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "fc01b7f8",
+   "plan": "Waitlist for full sections: waitlist entries with a stable j",
+   "title": "Write waitlist integration tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_waitlist.py"
+   ],
+   "n_matched": 10,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "34944337",
+   "plan": "Priority enrollment experiment: students get a year field (s",
+   "title": "Add year field to student records",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "student.py::Student",
+    "student.py"
+   ],
+   "n_matched": 1,
+   "n_outside_footprint": 1
+  },
+  {
+   "session": "34944337",
+   "plan": "Priority enrollment experiment: students get a year field (s",
+   "title": "Parse --year on student add",
+   "status": "pending",
+   "granularity": "file",
+   "predicted_footprint": [
+    "cli.py::add_student",
+    "cli.py"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "34944337",
+   "plan": "Priority enrollment experiment: students get a year field (s",
+   "title": "Implement priority waitlist ordering",
+   "status": "pending",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "waitlist.py::enqueue",
+    "waitlist.py::get_waitlist"
+   ],
+   "n_matched": 0,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "34944337",
+   "plan": "Priority enrollment experiment: students get a year field (s",
+   "title": "Add priority enrollment tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_priority.py"
+   ],
+   "n_matched": 2,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "2622cf1f",
+   "plan": "Normalize slot comparison for cross-listed sections: a share",
+   "title": "Add shared range-clash helper",
+   "status": "matched",
+   "granularity": "symbol",
+   "predicted_footprint": [
+    "coursecraft/slots.py::ranges_clash"
+   ],
+   "n_matched": 15,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "2622cf1f",
+   "plan": "Normalize slot comparison for cross-listed sections: a share",
+   "title": "Route enrollment conflicts through helper",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/enrollment.py"
+   ],
+   "n_matched": 27,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "2622cf1f",
+   "plan": "Normalize slot comparison for cross-listed sections: a share",
+   "title": "Implement room-clash audit",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/scheduling.py"
+   ],
+   "n_matched": 3,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "2622cf1f",
+   "plan": "Normalize slot comparison for cross-listed sections: a share",
+   "title": "Expose room audit CLI command",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "coursecraft/cli.py"
+   ],
+   "n_matched": 73,
+   "n_outside_footprint": 0
+  },
+  {
+   "session": "2622cf1f",
+   "plan": "Normalize slot comparison for cross-listed sections: a share",
+   "title": "Add slot and conflict tests",
+   "status": "matched",
+   "granularity": "file",
+   "predicted_footprint": [
+    "tests/test_slots.py",
+    "tests/test_conflicts.py"
+   ],
+   "n_matched": 19,
+   "n_outside_footprint": 0
+  }
+ ],
+ "flags": [
+  {
+   "flag": "over-claim",
+   "step": "Reject conflicting enrollments",
+   "detail": "1 of 20 matched ops touched nothing in ['coursecraft/enrollment.py::enroll']"
+  },
+  {
+   "flag": "over-claim",
+   "step": "Add prereq CLI argument",
+   "detail": "11 of 45 matched ops touched nothing in ['coursecraft/cli.py::add_course']"
+  },
+  {
+   "flag": "over-claim",
+   "step": "Implement prerequisite checking",
+   "detail": "1 of 19 matched ops touched nothing in ['coursecraft/enrollment.py::unmet_prereqs', 'coursecraft/enrollment.py::enroll']"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Route CLI through repository",
+   "detail": "predicted ['coursecraft/cli.py'], matched nothing"
+  },
+  {
+   "flag": "over-claim",
+   "step": "Add year field to student records",
+   "detail": "1 of 1 matched ops touched nothing in ['student.py::Student', 'student.py']"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Parse --year on student add",
+   "detail": "predicted ['cli.py::add_student', 'cli.py'], matched nothing"
+  },
+  {
+   "flag": "never-matched",
+   "step": "Implement priority waitlist ordering",
+   "detail": "predicted ['waitlist.py::enqueue', 'waitlist.py::get_waitlist'], matched nothing"
+  },
+  {
+   "flag": "file-level-footprint",
+   "detail": "23 of 32 steps predicted a bare path, so any edit to that file fulfils them"
+  }
+ ]
+}

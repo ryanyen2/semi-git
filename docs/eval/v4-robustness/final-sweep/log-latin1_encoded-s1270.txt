@@ -1,0 +1,34 @@
+    0 · op_restore               nothing addressable excluded
+    1 ✓ op_add_file              v4_mod_1.py
+    2 · op_edit_save             a.py is not utf-8
+    3 ✓ op_revert_undo_probe     bf4a507b207e
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_feature_split         f-026fba3b609d
+    6 · op_restore               nothing addressable excluded
+    7 · op_edit_save             a.py is not utf-8
+    8 ✓ op_feature_rename        f-0bf8f47dd419
+    9 ✓ op_feature_split         f-0bf8f47dd419
+   10 · op_restore               nothing addressable excluded
+   11 ✓ op_revert_undo_probe     a08a015717cf
+   12 ✓ op_revert                bf4a507b207e
+   13 ✓ op_feature_split         f-026fba3b609d
+   14 ✓ op_revert_undo_probe     127c7f593a49
+   15 ✓ op_add_file              v4_mod_15.py
+   16 ✓ op_add_file              v4_mod_16.py
+   17 ✓ op_edit_save             v4_mod_1.py (rework)
+   18 ✓ op_restore               bf4a507b207e
+   19 ✓ op_edit_save             v4_mod_15.py (rework)
+   20 · op_restore               nothing addressable excluded
+   21 · op_edit_save             a.py is not utf-8
+   22 ✓ op_revert_restore_probe  a08a015717cf
+   23 ✓ op_add_file              v4_mod_23.py
+   24 ✓ op_revert                93229f659968
+   25 · op_restore               nothing addressable excluded
+   26 ✓ op_revert_keep_dependents 127c7f593a49
+   27 ✓ op_add_file              v4_mod_27.py
+   28 ✓ op_revert                7cdb116c7c3d
+   29 · op_edit_save             a.py is not utf-8
+   30 ✓ op_restore               7cdb116c7c3d
+   31 ✓ op_revert_keep_dependents 7cdb116c7c3d
+   32 ✓ op_revert                bd0a33191ded
+latin1_encoded seed 1270: 33 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-latin1_encoded-seed1270.json

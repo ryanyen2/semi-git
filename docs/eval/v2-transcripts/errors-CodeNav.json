@@ -1,0 +1,1262 @@
+{
+ "repo": "/private/tmp/v2/CodeNav",
+ "seed": 20260814,
+ "per_stratum": 15,
+ "coded_by": "author",
+ "populations": {
+  "false_negative": 2269,
+  "false_positive": 1823
+ },
+ "request_text": {
+  "59e54563-9690-435e-989e-1d728b51890c": "do global install, make sure all version update... and check on the /Users/ryanyen2/repos/test-workspace/livehub by rebuilding it, making some changes to codoc, see if status capture correctly, and making sure the mcp, codoc its using, wheel are all up to date",
+  "59287640-41c0-45d7-84b5-432f0910739d": "pull, merge, cleanup then push",
+  "12b9cfe0-1959-4752-b29d-f0fa80f8f8b8": "I need to write up the system section for this software and submitting to the most profound HCI/System conference and plannign to win the best paper; the way of describing system, is not by, for exmaple, writeing a readme or writing normal academic paper or blog post; it is important to describe the",
+  "36824109-0126-4e49-b881-c46b408fb0ce": "1) the writing is not the style I want, its currently a bunch of underspecified sentence, I would rather have a longer sentence but with plain language and straightforward to the point... bad example: \"A codebase carries intent that lives nowhere the code can hold it, and that intent drifts silently",
+  "b76421a6-38c2-4735-964f-b76350cf7326": "ok now lets start writing, we want to write in plain langugae, no jargon, no flowry word, dont sound pretentiously deep but just on the surface level, write candidly, explain clearly, illustratively; write up a version, then check if there are fuzzy or incomplete sentence or other violations, adjust",
+  "09705609-fd58-4956-9728-1b4874d8d059": "ok I think you still misinterpret me, the design section will be something like this paper when they talk about the design concepts https://arxiv.org/html/2508.04889v2 or this https://rrrima.me/fairycursor.pdf papers' seciton five; we need to always talk about higher level then using this use case t",
+  "5d5f481f-54bf-4688-b23a-672f31a939e6": "<bash-stdout>(Bash completed with no output)</bash-stdout><bash-stderr></bash-stderr>",
+  "937a1d92-680a-4cd3-91c7-4924734ae252": "its good, clean the code then merge to main",
+  "21da4155-9068-4170-a2f5-6aa4a802c455": "theres fix of the doc from the fix/edit-tracking... merge to main too",
+  "186bf352-3dfe-4aed-b06b-9546349c62ef": "how difficult it is to support the mandarin version of codoc, or other languages, for both system and doc generation...",
+  "ad7b269d-d82f-4fa7-882c-7be60d9fb34f": "ok lets ship the content language first, and making sure that all the downstream logics get updated, and making sure the skills/mcp registered the language switch too... dont be lazy",
+  "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93": "making sure that the vscode extension, tui also support the display of different languages content, and an icon button to switch, actually i think its fine if user want billingual too... it makes more sense when using chinese to describe but using english term/keywords, etc... depends on users prefe",
+  "4a76be4b-c707-4d84-83ad-b7e005d0b426": "so if I already had the codoc in english, how should I rebuild it to chinese? currently there is a button to switch lamguage but not really reacting to it",
+  "069762bf-dc9d-4d1b-b992-5f11ee2d6d69": "but after I translated i cannot switch back to english? even the dropdown showing english as option to click"
+ },
+ "sample": [
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/agent/tree_update.py::propose_tree_update",
+    "codoc/doclang.py::dominant_script"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/agent/tree_update.py::propose_tree_update": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "codoc/doclang.py::dominant_script": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/agent/tree_update.py::propose_tree_update": [
+     [
+      "f-03104f672824ab3b66b5d8d622a3eba245e383d3fda64e331d30c0cd45d03625",
+      "coco_lifespan fresh_memo dirs"
+     ]
+    ],
+    "codoc/doclang.py::dominant_script": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/agent/tree_update.py::propose_tree_update": [
+     "residue"
+    ],
+    "codoc/doclang.py::dominant_script": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/agent/tree_update.py::propose_tree_update",
+    "codoc/loop/loop_b.py::build_realize_prompt"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/agent/tree_update.py::propose_tree_update": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/agent/tree_update.py::propose_tree_update": [
+     [
+      "f-03104f672824ab3b66b5d8d622a3eba245e383d3fda64e331d30c0cd45d03625",
+      "coco_lifespan fresh_memo dirs"
+     ]
+    ],
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     [
+      "f-00dd4c1bffc4a3448185a60e159b24c56720c67e75680200c950495ee1455d39",
+      "spawn_claude dirs CodocStatus"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/agent/tree_update.py::propose_tree_update": [
+     "residue"
+    ],
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/cli/main.py::_echo_language_mix",
+    "tests/loop/test_translate.py::test_a_short_description_is_not_language_checked"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/cli/main.py::_echo_language_mix": [
+     "4a76be4b-c707-4d84-83ad-b7e005d0b426"
+    ],
+    "tests/loop/test_translate.py::test_a_short_description_is_not_language_checked": [
+     "4a76be4b-c707-4d84-83ad-b7e005d0b426"
+    ]
+   },
+   "features": {
+    "codoc/cli/main.py::_echo_language_mix": [
+     [
+      "f-010839c24e8f0f43b7c2c74d65a32a49483223478f1bd8afb000e3fc391780b3",
+      "main version_callback is_likely_binary"
+     ]
+    ],
+    "tests/loop/test_translate.py::test_a_short_description_is_not_language_checked": [
+     [
+      "f-076b9369960c74aa7e7100fae9cb5cf5525ac9a836bdd24f86c4e10370a9c692",
+      "add support for authoring language selection in codoc \u00b7 loop"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/cli/main.py::_echo_language_mix": [
+     "residue"
+    ],
+    "tests/loop/test_translate.py::test_a_short_description_is_not_language_checked": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/doclang.py::_ngrams",
+    "codoc/loop/apply.py::preserved_ratio"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::_ngrams": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "codoc/loop/apply.py::preserved_ratio": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::_ngrams": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "codoc/loop/apply.py::preserved_ratio": [
+     [
+      "f-145335826f1b2c03516cc6a46e3743b90d393903a8009965d3eb03c9371da8b3",
+      "two-loop system (8 phases done, 66 tests passing, not yet\u2026 \u00b7 loop"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::_ngrams": [
+     "residue"
+    ],
+    "codoc/loop/apply.py::preserved_ratio": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/doclang.py::chars_per_word",
+    "codoc/loop/migrate.py::migrate_workspace"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::chars_per_word": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "codoc/loop/migrate.py::migrate_workspace": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::chars_per_word": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "codoc/loop/migrate.py::migrate_workspace": [
+     [
+      "f-03104f672824ab3b66b5d8d622a3eba245e383d3fda64e331d30c0cd45d03625",
+      "coco_lifespan fresh_memo dirs"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::chars_per_word": [
+     "residue"
+    ],
+    "codoc/loop/migrate.py::migrate_workspace": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/doclang.py::embedder_model_for",
+    "codoc/loop/loop_b.py::build_realize_prompt"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::embedder_model_for": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93",
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::embedder_model_for": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     [
+      "f-00dd4c1bffc4a3448185a60e159b24c56720c67e75680200c950495ee1455d39",
+      "spawn_claude dirs CodocStatus"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::embedder_model_for": [
+     "residue"
+    ],
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/doclang.py::prose_script",
+    "vscode-codoc/src/webview/doc-lang.ts::shortLanguageLabel"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::prose_script": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "vscode-codoc/src/webview/doc-lang.ts::shortLanguageLabel": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::prose_script": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "vscode-codoc/src/webview/doc-lang.ts::shortLanguageLabel": [
+     [
+      "f-648ec8e62b08d709bd945fb9d5cae9be9beea9520eb83d3ad7919c073daf65f8",
+      "add support for authoring language selection in codoc \u00b7 src"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::prose_script": [
+     "residue"
+    ],
+    "vscode-codoc/src/webview/doc-lang.ts::shortLanguageLabel": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/loop/apply.py::preserved_ratio",
+    "tests/test_doclang_integration.py::test_an_equivalent_chinese_rewording_is_still_faithful"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/loop/apply.py::preserved_ratio": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_integration.py::test_an_equivalent_chinese_rewording_is_still_faithful": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/loop/apply.py::preserved_ratio": [
+     [
+      "f-145335826f1b2c03516cc6a46e3743b90d393903a8009965d3eb03c9371da8b3",
+      "two-loop system (8 phases done, 66 tests passing, not yet\u2026 \u00b7 loop"
+     ]
+    ],
+    "tests/test_doclang_integration.py::test_an_equivalent_chinese_rewording_is_still_faithful": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/loop/apply.py::preserved_ratio": [
+     "residue"
+    ],
+    "tests/test_doclang_integration.py::test_an_equivalent_chinese_rewording_is_still_faithful": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/loop/intent.py::_terms",
+    "codoc/loop/migrate.py::migrate_workspace"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/loop/intent.py::_terms": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "codoc/loop/migrate.py::migrate_workspace": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/loop/intent.py::_terms": [
+     [
+      "f-02e925fe2a914220894205d12412b5cabfaa5c052604d39b41cc515029d3205e",
+      "Find the why where it was actually written down"
+     ]
+    ],
+    "codoc/loop/migrate.py::migrate_workspace": [
+     [
+      "f-03104f672824ab3b66b5d8d622a3eba245e383d3fda64e331d30c0cd45d03625",
+      "coco_lifespan fresh_memo dirs"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/loop/intent.py::_terms": [
+     "residue"
+    ],
+    "codoc/loop/migrate.py::migrate_workspace": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/loop/loop_b.py::_norm_title",
+    "codoc/loop/title_dedup.py::make_loop_embedder"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/loop/loop_b.py::_norm_title": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "codoc/loop/title_dedup.py::make_loop_embedder": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/loop/loop_b.py::_norm_title": [
+     [
+      "f-00dd4c1bffc4a3448185a60e159b24c56720c67e75680200c950495ee1455d39",
+      "spawn_claude dirs CodocStatus"
+     ]
+    ],
+    "codoc/loop/title_dedup.py::make_loop_embedder": [
+     [
+      "f-06fee29a4c1b1b3dc25dbdb58ecef18e36392e8d4696be1c19174d04cb2a6adc",
+      "phase projection + lifecycle + merge robustness; serve hu\u2026 \u00b7 loop"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/loop/loop_b.py::_norm_title": [
+     "residue"
+    ],
+    "codoc/loop/title_dedup.py::make_loop_embedder": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/loop/loop_b.py::build_realize_prompt",
+    "tests/test_doclang.py::test_resolve_tags"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang.py::test_resolve_tags": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     [
+      "f-00dd4c1bffc4a3448185a60e159b24c56720c67e75680200c950495ee1455d39",
+      "spawn_claude dirs CodocStatus"
+     ]
+    ],
+    "tests/test_doclang.py::test_resolve_tags": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/loop/loop_b.py::build_realize_prompt": [
+     "residue"
+    ],
+    "tests/test_doclang.py::test_resolve_tags": [
+     "residue",
+     "substantive"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "codoc/loop/translate.py::Skipped",
+    "tests/loop/test_translate.py::codoc_dir"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/loop/translate.py::Skipped": [
+     "4a76be4b-c707-4d84-83ad-b7e005d0b426"
+    ],
+    "tests/loop/test_translate.py::codoc_dir": [
+     "4a76be4b-c707-4d84-83ad-b7e005d0b426"
+    ]
+   },
+   "features": {
+    "codoc/loop/translate.py::Skipped": [
+     [
+      "f-39b2b30ca85ca19e3886cebb9a7648bf74fdaefa58d0b5e6c39b7e1f19943cd5",
+      "add support for authoring language selection in codoc \u00b7 loop 2"
+     ]
+    ],
+    "tests/loop/test_translate.py::codoc_dir": [
+     [
+      "f-076b9369960c74aa7e7100fae9cb5cf5525ac9a836bdd24f86c4e10370a9c692",
+      "add support for authoring language selection in codoc \u00b7 loop"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/loop/translate.py::Skipped": [
+     "residue"
+    ],
+    "tests/loop/test_translate.py::codoc_dir": [
+     "residue",
+     "substantive"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo",
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar": [
+     [
+      "f-00030b015c290e24b78713153d6a8d1baffc65dbe49efbf4a5b71157073cdf8d",
+      "v2 refactor phase 1-2 \u00b7 node_modules"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo": [
+     "residue"
+    ],
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/test_doclang_bilingual.py::test_directive_blesses_mixed_technical_vocabulary",
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang_bilingual.py::test_directive_blesses_mixed_technical_vocabulary": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang_bilingual.py::test_directive_blesses_mixed_technical_vocabulary": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar": [
+     [
+      "f-00030b015c290e24b78713153d6a8d1baffc65dbe49efbf4a5b71157073cdf8d",
+      "v2 refactor phase 1-2 \u00b7 node_modules"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang_bilingual.py::test_directive_blesses_mixed_technical_vocabulary": [
+     "residue"
+    ],
+    "vscode-codoc/src/webview/doc-view.ts::renderToolbar": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_negative",
+   "symbols": [
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions",
+    "vscode-codoc/src/webview/doc-lang.ts::langAttrFor"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "vscode-codoc/src/webview/doc-lang.ts::langAttrFor": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "vscode-codoc/src/webview/doc-lang.ts::langAttrFor": [
+     [
+      "f-648ec8e62b08d709bd945fb9d5cae9be9beea9520eb83d3ad7919c073daf65f8",
+      "add support for authoring language selection in codoc \u00b7 src"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions": [
+     "residue"
+    ],
+    "vscode-codoc/src/webview/doc-lang.ts::langAttrFor": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "codoc/doclang.py::DocLanguage",
+    "tests/test_doclang_bilingual.py::test_directive_separates_originating_from_editing"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::DocLanguage": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_directive_separates_originating_from_editing": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::DocLanguage": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_directive_separates_originating_from_editing": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::DocLanguage": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_directive_separates_originating_from_editing": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "codoc/doclang.py::_ngrams",
+    "tests/test_doclang_bilingual.py::test_prose_letters_ignores_code"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::_ngrams": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_prose_letters_ignores_code": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::_ngrams": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_prose_letters_ignores_code": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::_ngrams": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_prose_letters_ignores_code": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "codoc/doclang.py::norm_key",
+    "tests/test_doclang_bilingual.py::test_detect_prose_language_in_a_chinese_tree"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::norm_key": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_detect_prose_language_in_a_chinese_tree": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::norm_key": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_detect_prose_language_in_a_chinese_tree": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::norm_key": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_detect_prose_language_in_a_chinese_tree": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "codoc/doclang.py::read_config",
+    "tests/test_doclang_bilingual.py::test_a_new_node_is_judged_against_the_repo_default"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::read_config": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_a_new_node_is_judged_against_the_repo_default": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::read_config": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_a_new_node_is_judged_against_the_repo_default": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::read_config": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_a_new_node_is_judged_against_the_repo_default": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "codoc/doclang.py::resolve",
+    "tests/test_doclang_bilingual.py::test_english_directive_is_still_empty"
+   ],
+   "same_file": false,
+   "requests": {
+    "codoc/doclang.py::resolve": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_english_directive_is_still_empty": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "codoc/doclang.py::resolve": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_english_directive_is_still_empty": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "codoc/doclang.py::resolve": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_english_directive_is_still_empty": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang.py::test_clause_chars_shrinks_for_logographic_text",
+    "tests/test_doclang_bilingual.py::test_an_english_tree_is_never_advised"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang.py::test_clause_chars_shrinks_for_logographic_text": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_an_english_tree_is_never_advised": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang.py::test_clause_chars_shrinks_for_logographic_text": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_an_english_tree_is_never_advised": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang.py::test_clause_chars_shrinks_for_logographic_text": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_an_english_tree_is_never_advised": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang.py::test_env_var_overrides_the_committed_setting",
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang.py::test_env_var_overrides_the_committed_setting": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang.py::test_env_var_overrides_the_committed_setting": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang.py::test_env_var_overrides_the_committed_setting": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang.py::test_norm_key_does_not_fold_simplified_and_traditional",
+    "tests/test_doclang_bilingual.py::test_sidecar_carries_the_tree_language_and_node_exceptions"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang.py::test_norm_key_does_not_fold_simplified_and_traditional": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_sidecar_carries_the_tree_language_and_node_exceptions": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang.py::test_norm_key_does_not_fold_simplified_and_traditional": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_sidecar_carries_the_tree_language_and_node_exceptions": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang.py::test_norm_key_does_not_fold_simplified_and_traditional": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_sidecar_carries_the_tree_language_and_node_exceptions": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang.py::test_norm_key_is_unchanged_for_ascii",
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang.py::test_norm_key_is_unchanged_for_ascii": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang.py::test_norm_key_is_unchanged_for_ascii": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang.py::test_norm_key_is_unchanged_for_ascii": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile",
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_chinese_prose_with_english_terms_is_never_flagged": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile",
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ],
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ]
+   },
+   "features": {
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang.py::test_unknown_tag_resolves_to_a_usable_generic_profile": [
+     "residue"
+    ],
+    "tests/test_doclang_bilingual.py::test_mcp_rows_tag_only_the_exceptions": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang_bilingual.py::codoc_dir",
+    "tests/test_doclang_integration.py::test_a_generic_word_alone_does_not_adopt"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang_bilingual.py::codoc_dir": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "tests/test_doclang_integration.py::test_a_generic_word_alone_does_not_adopt": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "tests/test_doclang_bilingual.py::codoc_dir": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_integration.py::test_a_generic_word_alone_does_not_adopt": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang_bilingual.py::codoc_dir": [
+     "residue",
+     "substantive"
+    ],
+    "tests/test_doclang_integration.py::test_a_generic_word_alone_does_not_adopt": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang_bilingual.py::test_a_fragment_is_never_judged",
+    "tests/test_doclang_integration.py::test_an_ambiguous_match_declines_rather_than_guesses"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang_bilingual.py::test_a_fragment_is_never_judged": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "tests/test_doclang_integration.py::test_an_ambiguous_match_declines_rather_than_guesses": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "tests/test_doclang_bilingual.py::test_a_fragment_is_never_judged": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_integration.py::test_an_ambiguous_match_declines_rather_than_guesses": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang_bilingual.py::test_a_fragment_is_never_judged": [
+     "residue"
+    ],
+    "tests/test_doclang_integration.py::test_an_ambiguous_match_declines_rather_than_guesses": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo",
+    "tests/test_doclang_integration.py::test_english_prompts_have_no_gap_where_the_block_would_go"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "tests/test_doclang_integration.py::test_english_prompts_have_no_gap_where_the_block_would_go": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_integration.py::test_english_prompts_have_no_gap_where_the_block_would_go": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang_bilingual.py::test_an_amend_is_judged_against_the_node_not_the_repo": [
+     "residue"
+    ],
+    "tests/test_doclang_integration.py::test_english_prompts_have_no_gap_where_the_block_would_go": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  },
+  {
+   "stratum": "false_positive",
+   "symbols": [
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged",
+    "tests/test_doclang_integration.py::test_correct_chinese_prose_with_citations_is_not_flagged"
+   ],
+   "same_file": false,
+   "requests": {
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged": [
+     "5476d03a-a79f-454b-b2f5-bf7ce7f0fe93"
+    ],
+    "tests/test_doclang_integration.py::test_correct_chinese_prose_with_citations_is_not_flagged": [
+     "ad7b269d-d82f-4fa7-882c-7be60d9fb34f"
+    ]
+   },
+   "features": {
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ],
+    "tests/test_doclang_integration.py::test_correct_chinese_prose_with_citations_is_not_flagged": [
+     [
+      "f-032353ec98a336bc676ba967274c0475d8b164c56e7587f41e89c2ed612954a8",
+      "add support for authoring language selection in codoc \u00b7 test_doclang.py"
+     ]
+    ]
+   },
+   "record_kinds": {
+    "tests/test_doclang_bilingual.py::test_an_amend_of_a_chinese_node_in_english_is_flagged": [
+     "residue"
+    ],
+    "tests/test_doclang_integration.py::test_correct_chinese_prose_with_citations_is_not_flagged": [
+     "residue"
+    ]
+   },
+   "identity_events": [],
+   "code": null,
+   "note": null
+  }
+ ]
+}

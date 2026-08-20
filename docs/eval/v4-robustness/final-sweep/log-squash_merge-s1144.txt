@@ -1,0 +1,51 @@
+    0 · op_restore               nothing addressable excluded
+    1 · op_restore               nothing addressable excluded
+    2 ✓ op_revert_undo_probe     c9381393933c
+    3 · op_restore               nothing addressable excluded
+    4 · op_restore               nothing addressable excluded
+    5 ✓ op_edit_save             a.py (rework)
+    6 ✓ op_revert_keep_dependents b40faf60cef7
+    7 ✓ op_edit_save             a.py (rework)
+    8 ✓ op_revert                a304bb4973d8
+    9 ✓ op_add_file              v4_mod_9.py
+   10 ✓ op_revert                d8db33dac867
+   11 ✓ op_edit_save             a.py (rework)
+   12 ✓ op_revert_restore_probe  b40faf60cef7
+   13 · op_feature_merge         1 feature(s)
+   14 ✓ op_revert_undo_probe     66521c9c8059
+   15 ✓ op_restore               d8db33dac867
+   16 ✓ op_revert_keep_dependents eb34ed7f7232
+   17 ✓ op_edit_save             a.py (rework)
+   18 ✓ op_revert_undo_probe     1a0fbfd1f1ee
+   19 ✓ op_restore               a304bb4973d8
+   20 ✓ op_revert                1a0fbfd1f1ee
+   21 ✓ op_revert_restore_probe  66521c9c8059
+   22 ✓ op_revert_restore_probe  a356cbc27e41
+   23 ✓ op_edit_save             a.py (rework)
+   24 ✓ op_revert_keep_dependents d8db33dac867
+   25 ✓ op_restore               a304bb4973d8
+   26 ✓ op_undo                  
+   27 ✓ op_revert                b40faf60cef7
+   28 ✓ op_revert                c9381393933c
+   29 ✓ op_restore               b01e94bf98c3
+   30 ✓ op_revert                a08a015717cf
+   31 ✓ op_add_file              v4_mod_31.py
+   32 ✓ op_add_file              v4_mod_32.py
+   33 ✓ op_edit_save             v4_mod_31.py (rework)
+   34 ✓ op_add_file              v4_mod_34.py
+   35 ✓ op_edit_save             v4_mod_9.py (rework)
+   36 ✓ op_revert_restore_probe  528996a6527f
+   37 ✓ op_add_file              v4_mod_37.py
+   38 ✓ op_restore               a304bb4973d8
+   39 ✓ op_feature_split         af-m198290c1dc
+   40 ✓ op_feature_split         af-mc9b0769788
+   41 ✓ op_add_file              v4_mod_41.py
+   42 ✓ op_feature_split         af-m5da58d2618
+   43 ✓ op_add_file              v4_mod_43.py
+   44 ✓ op_revert_undo_probe     83b985adc6eb
+   45 ✓ op_revert                5b6324ac8470
+   46 ✓ op_undo                  
+   47 ✓ op_undo                  
+   48 ✓ op_revert                5b6324ac8470
+   49 ✓ op_edit_save             v4_mod_34.py (rework)
+squash_merge seed 1144: 50 ops applied, 0 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-squash_merge-seed1144.json

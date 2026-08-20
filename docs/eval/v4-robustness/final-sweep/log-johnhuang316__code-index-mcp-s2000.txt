@@ -1,0 +1,78 @@
+oracles already unhappy right after init:
+  fsck_advisory_chain_gaps: 63 new, 63 live: ["README.md", "pyproject.toml", "src/code_index_mcp/__init__.py::__residue__::\u0000HEAD\u0000", "src/code_index_mcp/indexing/strategies/base_strategy.py::ParsingStrategy"]
+  fsck_tree: exit 1: 15 newly drifted path(s): ['src/code_index_mcp/indexing/sqlite_index_builder.py', 'src/code_index_mcp/server.py', 'tests/indexing/test_parallel_deep_index.py', 'tests/indexing/test_sqlite_index_manager.py']
+  orphan_layout: 59 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['src/code_index_mcp/indexing/sqlite_index_builder.py::__residue__::_compute_parallel_timeout', 'tests/indexing/test_parallel_deep_index.py::__residue__::TestComputeParallelTimeout', 'tests/indexing/test_parallel_deep_index.py::__residue__::TestDeepIndexManagerPassThrough', 'tests/indexing/test_parallel_deep_index.py::__residue__::TestIndexingConfigRoundTrip']
+    0 ✗ op_revert_keep_dependents 5d09429cf947
+        fsck_advisory_chain_gaps: 189 new, 252 live: ["README_ja.md", "README_ko.md", "README_zh.md", "requirements.txt"]
+        fsck_tree: exit 1: 25 newly drifted path(s): ['skills/local/release-prep/SKILL.md', 'skills/local/release-prep/references/release_checklist.md', 'skills/local/release-prep/scripts/run_release_checks.py', 'src/code_index_mcp/indexing/__init__.py']
+        orphan_layout: 81 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['src/code_index_mcp/indexing/__init__.py::__residue__::get_shallow_index_manager', 'src/code_index_mcp/indexing/strategies/csharp_strategy.py::__residue__::CSharpParsingStrategy', 'src/code_index_mcp/indexing/strategies/csharp_strategy.py::__residue__::TraversalContext', 'src/code_index_mcp/indexing/strategies/kotlin_strategy.py::__residue__::KotlinParsingStrategy']
+    1 ✗ op_feature_merge         f-0b8d47eebd83<-f-20bd9699b2cd
+        fsck_advisory_chain_gaps: 74 new, 237 live: ["src/code_index_mcp/indexing/deep_index_manager.py::DeepIndexManager.__init__", "src/code_index_mcp/indexing/deep_index_manager.py::__residue__::\u0000HEAD\u0000", "src/code_index_mcp/indexing/deep_index_manager.py::__residue__::DeepIndexManager", "src/code_index_mcp/indexing/json
+        fsck_tree: exit 1: 15 newly drifted path(s): ['src/code_index_mcp/indexing/deep_index_manager.py', 'src/code_index_mcp/indexing/shallow_index_manager.py', 'src/code_index_mcp/indexing/sqlite_index_manager.py', 'src/code_index_mcp/indexing/sqlite_store.py']
+        orphan_layout: 34 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['src/code_index_mcp/indexing/deep_index_manager.py::__residue__::DeepIndexManager', 'src/code_index_mcp/indexing/shallow_index_manager.py::__residue__::ShallowIndexManager', 'src/code_index_mcp/indexing/sqlite_index_builder.py::__residue__::SQLiteIndexBuilder', 'src/code_index_mcp/indexing/sqlite_index_manager.py::__residue__::SQLiteIndexManager']
+    2 ✗ op_revert_keep_dependents a3460862aabb
+        fsck_advisory_chain_gaps: 780 new, 925 live: ["ARCHITECTURE.md", "CHANGELOG.md", "SCIP_OFFICIAL_STANDARDS.md", "src/code_index_mcp/indexing/index_provider.py::FileInfo"]
+        fsck_tree: exit 1: 21 newly drifted path(s): ['src/code_index_mcp/analyzers/zig_analyzer.py', 'src/code_index_mcp/indexing/index_provider.py', 'src/code_index_mcp/indexing/json_index_builder.py', 'src/code_index_mcp/indexing/models/symbol_info.py']
+        orphan_layout: 28 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['src/code_index_mcp/analyzers/zig_analyzer.py::__residue__::ZigAnalyzer', 'src/code_index_mcp/indexing/index_provider.py::__residue__::IndexMetadata', 'src/code_index_mcp/indexing/json_index_builder.py::__residue__::IndexMetadata', 'src/code_index_mcp/indexing/json_index_builder.py::__residue__::JSONIndexBuilder']
+    3 ✗ op_revert_restore_probe  73b02c3abf51
+        fsck_tree: exit 1: 34 newly drifted path(s): ['README.md', 'README_ja.md', 'README_zh.md', 'pyproject.toml']
+        orphan_layout: 51 dead symbol(s) left their trailing gap live in the ideal, so the fold still splices their blank lines: ['src/code_index_mcp/indexing/qualified_names.py::__residue__::generate_qualified_name', 'src/code_index_mcp/indexing/scip_builder.py::__residue__::SCIPIndexBuilder', 'src/code_index_mcp/project_settings.py::__residue__::_get_available_strategies', 'src/code_index_mcp/scip/strategies/objective_c_strategy.py::__residue__::ObjectiveCStrategy']
+    4 ✓ op_revert_undo_probe     c48edc3406f1
+    5 ✓ op_feature_merge         f-0ce94e701568<-f-10c344388cb9
+    6 ✓ op_add_file              v4_mod_6.py
+        settled (save refused, git restore): ['?? v4_mod_6.py']
+    7 ✓ op_revert_undo_probe     51b3db34464c
+    8 ✓ op_restore               66520950891b
+    9 ✓ op_edit_save             test_symbol_ids.py (rework)
+        settled (save refused, git restore): ['M tests/indexing/test_symbol_ids.py']
+   10 ✓ op_revert_restore_probe  f09c46e4d27b
+   11 ✓ op_add_file              v4_mod_11.py
+        settled (save refused, git restore): ['?? v4_mod_11.py']
+   12 ✓ op_revert_undo_probe     93bdb50493a0
+   13 ✓ op_edit_save             file_watcher_service.py (rework)
+        settled (save refused, git restore): ['M src/code_index_mcp/services/file_watcher_service.py']
+   14 ✓ op_undo                  
+   15 ✓ op_revert_restore_probe  f70624ff35b0
+   16 ✓ op_revert                21c69dd21a31
+   17 ✓ op_revert_keep_dependents b48f3dc67997
+   18 ✓ op_feature_split         f-1b309020e86c
+   19 ✓ op_add_file              v4_mod_19.py
+        settled (save refused, git restore): ['?? v4_mod_19.py']
+   20 ✓ op_revert_undo_probe     58dc2e3611b4
+   21 ✓ op_revert_undo_probe     69ea798dff15
+   22 ✓ op_restore               8931454c1a1f
+   23 ✓ op_restore               9295bbcb1fc6
+   24 ✓ op_revert_keep_dependents ac1836940fbe
+   25 ✓ op_feature_split         f-0d5554bd87fa
+   26 ✓ op_revert_restore_probe  98236352a91a
+   27 ✓ op_feature_merge         f-1b309020e86c<-f-0b8d47eebd83
+   28 ✓ op_revert_restore_probe  e61843675111
+   29 ✓ op_feature_rename        f-27ec8d9e48d6
+   30 ✓ op_restore               c007a238e566
+   31 ✓ op_feature_rename        f-1b309020e86c
+   32 ✓ op_restore               5e23524045ce
+   33 ✓ op_feature_split         f-023b7636e1f0
+   34 ✓ op_add_file              v4_mod_34.py
+        settled (save refused, git restore): ['?? v4_mod_34.py']
+   35 ✓ op_edit_save             __init__.py (add)
+        settled (save refused, git restore): ['M src/code_index_mcp/utils/__init__.py']
+   36 ✓ op_revert_keep_dependents 9a01c7dcba1e
+   37 ✓ op_edit_save             __init__.py (add)
+        settled (save refused, git restore): ['M src/code_index_mcp/tools/filesystem/__init__.py']
+   38 ✓ op_restore               7e8f335faba9
+   39 ✓ op_add_file              v4_mod_39.py
+        settled (save refused, git restore): ['?? v4_mod_39.py']
+   40 ✓ op_revert_keep_dependents f5f6c880fcbe
+   41 ✓ op_feature_rename        f-234d9bb89281
+   42 ✓ op_revert_undo_probe     feea106a1161
+   43 ✓ op_revert                e16868555988
+   44 ✓ op_undo                  
+   45 ✓ op_revert                04b2219464fb
+   46 ✓ op_restore               c510c7ffd0ab
+   47 ✓ op_edit_save             __init__.py (add)
+        settled (save refused, git restore): ['M src/code_index_mcp/tools/__init__.py']
+   48 ✓ op_edit_save             project_config_tool.py (rework)
+        settled (save refused, git restore): ['M src/code_index_mcp/tools/config/project_config_tool.py']
+   49 ✓ op_edit_save             file_matching_tool.py (rework)
+        settled (save refused, git restore): ['M src/code_index_mcp/tools/filesystem/file_matching_tool.py']
+johnhuang316__code-index-mcp seed 2000: 50 ops applied, 4 with an oracle failure, 0 traceback(s), 12 tree(s) settled → /tmp/v4-final/run-johnhuang316__code-index-mcp-seed2000.json

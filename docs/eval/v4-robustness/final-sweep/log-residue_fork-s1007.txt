@@ -1,0 +1,37 @@
+    0 ✓ op_revert_undo_probe     59f13ee08dd0
+    1 ✓ op_revert_undo_probe     f5c2bf3f6471
+    2 · op_restore               nothing addressable excluded
+    3 ✓ op_feature_rename        f-1bf8d56e9372
+    4 ✓ op_revert_restore_probe  5558bb5afdd7
+    5 ✓ op_revert_undo_probe     1bf8d56e9372
+    6 ✓ op_add_file              v4_mod_6.py
+    7 ✓ op_feature_split         af-m01dcf54483
+    8 ✓ op_undo                  
+    9 ✓ op_restore               d068113acb07
+   10 ✓ op_revert_keep_dependents 1bf8d56e9372
+   11 ✓ op_revert                5558bb5afdd7
+   12 ✓ op_feature_rename        af-m01dcf54483
+   13 ✓ op_edit_save             v4_mod_6.py (rework)
+   14 ✓ op_revert_keep_dependents 1bf8d56e9372
+   15 ✓ op_add_file              v4_mod_15.py
+   16 ✓ op_feature_merge         f-1bf8d56e9372<-af-m01dcf54483
+   17 ✓ op_feature_rename        af-m90fe05fe07
+   18 ✓ op_edit_save             a.py (rework)
+   19 ✓ op_feature_merge         f-1bf8d56e9372<-af-m90fe05fe07
+   20 ✓ op_undo                  
+   21 ✓ op_feature_rename        f-1bf8d56e9372
+   22 ✓ op_feature_merge         f-1bf8d56e9372<-af-m90fe05fe07
+   23 ✓ op_undo                  
+   24 ✓ op_revert                d068113acb07
+   25 ✓ op_add_file              v4_mod_25.py
+   26 ✓ op_edit_save             v4_mod_15.py (rework)
+   27 ✓ op_restore               930f6200d160
+   28 ✓ op_edit_save             v4_mod_15.py (rework)
+   29 ✓ op_feature_split         f-1bf8d56e9372
+   30 ✓ op_edit_save             v4_mod_25.py (rework)
+   31 ✓ op_revert_undo_probe     b822f39611ee
+   32 ✓ op_edit_save             v4_mod_15.py (rework)
+   33 ✓ op_revert_keep_dependents 59f13ee08dd0
+   34 ✗ op_revert_restore_probe  a32b7c0adc65
+        restore_resurrects_layout: restoring what revert a32b7c0adc65 removed also pulled back 1 layout op(s) that were already out (anchors/blank residues, which a restore must carry with its entity): ['c802619e8edd']
+residue_fork seed 1007: 35 ops applied, 1 with an oracle failure, 0 traceback(s), 0 tree(s) settled → /tmp/v4-final/run-residue_fork-seed1007.json
