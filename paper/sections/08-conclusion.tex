@@ -30,7 +30,12 @@ who trusts the reports can use them with git directly. Second, the failure mode
 that cost us the most was a command that reported success while doing nothing.
 A silent lie is worse than a crash because a tool that lies quietly erodes the
 basis for trusting anything else it says, and that erosion did not recover
-within a session (Section~\ref{sec:pilot-lessons}). Third, evaluating intent
+within a session (Section~\ref{sec:pilot-lessons}). Any tool that mediates
+between a developer and code they did not write faces this same constraint: the
+developer's inability to verify independently is the reason the tool exists, and
+a tool whose reports cannot be trusted leaves the developer worse off than
+having no tool, because they have spent their verification budget on a false
+assurance. Third, evaluating intent
 recovery against real agentic transcripts is unstable in a way the metric hides.
 The share of contentless turns varies from 0\% to 88\% across our four
 repositories, and a pairwise F1 computed on a history with 88\% continuation
@@ -41,6 +46,6 @@ The second finding generalises further. Durability and legibility require
 different kinds of guarantee. The append-only store ensures that every prior
 state is reachable, and it does so structurally. But the developer still has to
 know which command to type and whether its output told the truth, and the
-architecture provides no structural guarantee of that. Every one of our seven
+architecture provides no structural guarantee of that. Every one of our eight
 self-reporting failures demonstrated this gap: the data was present, and the
 tool's account of how to reach it was wrong.

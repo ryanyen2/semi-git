@@ -37,7 +37,7 @@ Property~1 is architectural and held universally. Properties~2 and~3 are
 behavioural and failed on sequences involving layout records (the gap text
 and ordering facts that sit between functions in a file). The append-only store
 makes durability cheap, so legibility becomes the remaining problem. In every
-one of seven self-reporting failures we found during dogfooding, the data was
+one of eight self-reporting failures we found across the evaluation, the data was
 present and the tool's account of how to reach it was wrong. Any system that
 maintains a semantic record alongside a repository will face this same
 separation, and the lesson is that testing durability (can the bytes be
@@ -112,7 +112,13 @@ that stops passive acceptance of AI-generated code---improve comprehension at
 the cost of goodwill~\cite{kazemitabaar2025}. The fork rule is exactly this
 tradeoff: it stops the developer from accepting a merge they have not
 inspected, and the pilot showed it costs goodwill (the participant declined to
-use the session feature afterwards).
+use the session feature afterwards). Duan et al.\ found that distrust
+propagates between teammates more readily than trust does: one person's negative
+experience, relayed by word of mouth, reduces a colleague's reliance even when
+the colleague's own experience has been positive~\cite{duan2026}. The fork
+rule has been tested only with one person, and this contagion effect suggests
+that a single developer's frustration with it could suppress adoption across a
+team even if the rule's safety guarantee would have helped the others.
 Figure~\ref{fig:fork-cost} shows the amplification visually: the 153 files
 the rule blocks come from just 162 forked functions, and switching the rule off
 recovers them but removes the safety guarantee.
@@ -240,33 +246,45 @@ the case it was designed for (two edits to one function from separate requests,
 neither aware of the other).
 
 sem offers the entity-level answers without the action layer~\cite{sem2026},
-which makes it safe to adopt and safe to abandon. The evaluation suggests this
-may be the right stopping point for a tool that cannot yet guarantee its write
-operations. Every read operation that the pilot participant reached produced
-correct answers; the apparatus pilot showed that reaching them was the harder
-problem, since the primary inspect verb rejected 6 of 10 queries
-(Section~\ref{sec:pilot-apparatus}). The pilot participant independently
-described the same decomposition by rephrasing the revert as ``a fast, accurate
-first pass that leaves me a punch list.'' A tool that reports without acting inherits
+which makes it safe to adopt and safe to abandon. A derived cache that any
+teammate's commit can silently invalidate cannot be the record an operation acts
+on, so sem's placement is a deliberate choice to trade power for safety. The
+evaluation suggests this may be the right stopping point for a tool that cannot
+yet guarantee its write operations: a tool that reports without acting inherits
 property~1 automatically (there is nothing to corrupt) and sidesteps property~3
-entirely (there is no write guard to trigger). It cannot offer the selective
-revert, the restore, or the switch, because those operations require writing the
-subset back to disk. Those operations are what motivated \sgt{}'s decision to
-commit its record, and the evaluation shows they are also where every failure
-lives.
+entirely (there is no write guard to trigger). The pilot confirms the
+consequence: the participant independently described sem's value proposition by
+rephrasing the revert as ``a fast, accurate first pass that leaves me a punch
+list.'' The apparatus pilot showed that the harder problem was reaching the
+answers at all, since the primary inspect verb rejected 6 of 10 queries
+(Section~\ref{sec:pilot-apparatus}). sem does not face this problem because its
+commands accept whatever git already accepts (commit hashes, branch names), so a
+developer's existing vocabulary works without learning a new selector namespace.
+\sgt{} cannot offer the selective
+revert, the restore, or the switch from sem's position, because those operations
+require writing the subset back to disk---the record must be committed alongside
+the code so the rebuild is deterministic. Those operations are what motivated
+\sgt{}'s decision to commit its record, and the evaluation shows they are also
+where every failure lives. The honest reading of this comparison is that \sgt{}
+took on an obligation sem declined, and the obligation has not yet paid for
+itself in the write layer.
 
 GitButler assigns file-level changes to virtual branches~\cite{gitbutler2026},
 which handles the common case where one feature per file suffices. The scenario at the centre of
 this paper---three requests all editing \sym{api.py::handle}---is the case
 where file-level assignment cannot express the grouping. \sgt{}'s function-level
 record handles this case and pays for it with the fork rule, the layout seam,
-and the identity threshold. Whether that trade is worthwhile depends on the
-share of a developer's requests that touch the same function as another
-request, which the evaluation did not measure directly. What it did measure is
-the share of hub functions that absorb unrelated work into a single feature
-label, and on the study repositories that share ranges from 19 symbols
-(\emph{Course Search}, actually the CLI) to 41 (\emph{Waitlist Queue}, actually
-README and entry points).
+and the identity threshold. The comparison teaches a design lesson: every step
+downward in granularity (file to function, commit to edit) introduces a new
+class of consistency problem (layout records, identity tracking, fork
+amplification) that the coarser grain never had to solve, and the evaluation
+evidence for whether that cost is justified remains thin---we measured hub
+absorption (19--41 symbols per shared feature on the study repositories) but not
+the frequency with which real agent sessions produce the multi-request
+single-function case that motivates the finer grain. A tool builder choosing a
+granularity should treat our failure catalogue as a lower bound on the cost of
+going finer, and GitButler's adoption as evidence that the coarser grain
+satisfies most workflows today.
 
 \subsection{Design implication: build the read layer before the write layer}
 
@@ -284,19 +302,33 @@ were unmet, while the read layer (attribution, dependency display, feature
 listing) ran on all 35.
 
 The practical consequence is that a tool in this design space should ship its
-read layer without waiting for write-path stability. The argument has two parts.
-Thimbleby argued that good design delays commitment until the user holds the
-information the commitment requires~\cite{thimbleby1988}, and a developer who
+read layer without waiting for write-path stability. The argument has three
+parts. Thimbleby argued that good design delays commitment until the user holds
+the information the commitment requires~\cite{thimbleby1988}, and a developer who
 has not yet seen the tool's attributions does not hold the information needed to
-decide whether to trust its reverts. But there is a stronger reason. Bainbridge
-observed that automation degrades the skill it replaces, and the degraded skill
-is exactly what the operator needs when the automation
-fails~\cite{bainbridge1983}. A developer using an agent to write code no longer
+decide whether to trust its reverts. Schemmer et al.\ decomposed reliance into
+two independent measures: the rate at which a user follows the system when it is
+right (RAIR), and the rate at which they override it when it is wrong
+(RSR)~\cite{schemmer2022}. A read layer builds RSR directly, because a developer
+who has seen the attribution can judge whether a proposed revert targets the
+right set, and override it when it does not. A write layer shipped without that
+foundation offers no basis for override, and a single visible failure then
+collapses both metrics---the developer stops following even correct
+recommendations because they have no independent basis for distinguishing them.
+But there is a stronger reason. Bainbridge observed that automation degrades the
+skill it replaces, and the degraded skill is exactly what the operator needs when
+the automation fails~\cite{bainbridge1983}. A developer using an agent to write code no longer
 practises the decomposition that a revert requires; the read layer
 (attribution, dependency display, consequence preview) is what restores that
 decomposition, and without it the developer who needs to intervene is in the
 position Bainbridge described: lacking the comprehension the automation took
-from them. A read-only release whose attribution is correct builds both the
+from them. Cao et al.\ found that explanations improve appropriate reliance on
+automation only when they align with the user's prior
+intuition~\cite{cao2024}---a preview that names consequences is useful precisely
+because the read layer has already built the intuition it appeals to (the
+developer knows what the feature contains because they read the attribution).
+Without that prior comprehension, the same preview is an assertion the developer
+cannot evaluate. A read-only release whose attribution is correct builds both the
 trust and the comprehension that a later write release depends on.
 Lee and See's review of trust in automation found that a single visible error
 erodes trust faster than a string of correct outcomes restores

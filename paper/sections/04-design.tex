@@ -192,9 +192,15 @@ al.~\cite{zimmermann2004,ying2004} and a community detection method over the
 resulting graph~\cite{traag2019}. A language model then reads the saves in a group
 and writes the label, which is the descendant of a task attempted before language
 models existed, when Buse and Weimer generated a description of a change out of the
-change itself~\cite{buse2010}. Membership is computed from the code and the label is
-written from the words, and those two steps fail in different ways, so we treat them
-separately.
+change itself~\cite{buse2010}. The label draws from the developer's words rather than
+from the code's identifier names, because those two vocabularies diverge: Nguyen and
+Glassman showed that the naming a model uses in its output and the naming a
+developer uses to describe the same behaviour systematically
+mismatch~\cite{nguyen2024}, so a label derived from identifier names would speak the
+model's language rather than the developer's, and the developer who later searches
+for ``the caching'' would find nothing under whatever the model called its cache
+class. Membership is computed from the code and the label is written from the words,
+and those two steps fail in different ways, so we treat them separately.
 
 We considered asking the developer to confirm the grouping at save time and decided
 against it, because answering that question takes the same knowledge commit hygiene

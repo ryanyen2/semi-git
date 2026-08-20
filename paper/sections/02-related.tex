@@ -24,7 +24,14 @@ All of this work studies the minutes around acceptance: whether the code is
 correct~\cite{perry2023}, whether the developer can tell that it is
 correct~\cite{vasconcelos2025}, whether they trust
 it~\cite{liang2024,cheng2024}, and how much faster they
-finish~\cite{mozannar2024,cui2025}. None of it asks what happens a week later,
+finish~\cite{mozannar2024,cui2025}. Nguyen and Glassman studied what happens
+during acceptance itself and found a systematic vocabulary mismatch: beginning
+programmers and code models read each other's intent through different naming
+conventions, so the developer's description of what they asked for and the
+model's description of what it produced diverge even when the behaviour
+matches~\cite{nguyen2024}. That mismatch compounds over time, because the
+developer who later searches their history must use the model's naming, not
+their own, and cannot tell when the two have drifted apart. None of this work asks what happens a week later,
 when the developer needs to recall what their codebase was, what has changed
 since, and why it is constructed the way it is. Bainbridge identified this
 structure in 1983: automation removes the need for a skill, the skill degrades

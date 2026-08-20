@@ -191,8 +191,13 @@ relative to the condition effect on a twelve-person sample.
 \label{sec:pilot-lessons}
 
 We coded all three pilots' observations against the design commitments of
-Section~\ref{sec:design} and identified six themes that generalise past the
-individual defects.
+Section~\ref{sec:design}, interpreting each through three lenses from the
+automation trust literature: Parasuraman et al.'s four-stage model of
+automation~\cite{parasuraman2000} (which stage failed?), Lee and See's trust
+calibration framework~\cite{lee2004} (what did the failure teach the user about
+the system's reliability?), and Norman's gulfs of evaluation and
+execution~\cite{norman1986} (could the user perceive the state, and could they
+act on it?). Six themes emerged that generalise past the individual defects.
 
 \paragraph{Comprehension held; mutation did not.}
 The comprehension operations---attribution, revert preview, dependency
@@ -259,9 +264,12 @@ accepted AI suggestions on revisitation, and the retention rate dropped further
 after encountering a single incorrect suggestion they had initially
 accepted~\cite{sabouri2025}. Trust is not per-operation but cumulative, and one
 self-reporting failure costs more than the task it belongs to.
-Seven such failures appeared across the full evaluation period,
-three of which we had not found after eight months of daily use and
-found only by auditing the evaluation's own results.
+Eight such failures appeared across the full evaluation period,
+four of which we had not found after eight months of daily use and
+found only by auditing the evaluation's own results---the newest was a revert
+that reported ``removes 0 edits'' and then rewrote two files, a command whose
+entire pitch is legible consequences telling the developer nothing will happen
+before changing their code.
 
 \paragraph{The tool's value was in the punch list.}
 The participant reframed the revert as ``a fast, accurate first pass that
@@ -303,9 +311,15 @@ punish generalisation by teaching a rule that fails on the second
 screen~\cite{carroll1987}. Jackson frames the same requirement as a property of
 the concepts a system exposes: a concept whose state looks different depending on
 which operation queries it has no stable operational
-principle~\cite{jackson2021}. The lesson is that internal consistency is a
-learnability precondition (not merely cosmetic), and a tool whose surfaces
-disagree teaches the user to ignore its numbers.
+principle~\cite{jackson2021}. The problem compounds in a tool whose labels are
+already inferred: Nguyen and Glassman showed that vocabulary mismatch between a
+developer and a model is the norm rather than the exception~\cite{nguyen2024},
+so a developer already arrives at the tool uncertain of the code's naming; a tool
+that then disagrees with itself across its own screens removes the one stable
+reference point (the tool's own output) that could have resolved that
+uncertainty. The lesson is that internal consistency is a learnability
+precondition (not merely cosmetic), and a tool whose surfaces disagree teaches
+the user to ignore its numbers.
 
 \paragraph{Baseline sufficiency reframes the study.}
 The git condition completed every task, including the one we had expected to be
@@ -334,6 +348,21 @@ degraded version of the control. We acknowledge this as a threat and note that
 the pre-registered analysis cannot correct for it post hoc.
 
 \medskip\noindent
+The six themes, read together, describe a tool whose analytical core is sound
+and whose interface to the developer is not yet stable enough to carry the
+analysis through to action. The first three themes (comprehension/mutation
+split, trust erosion, punch-list reframing) all resolve in the same direction:
+the developer can use this tool as a comprehension instrument today, and should
+not trust it as an execution instrument yet. The fourth (vocabulary mismatch)
+explains why even the comprehension layer requires polish before study: a
+developer who cannot navigate to the right screen never reaches the analysis
+that screen provides, and inconsistency between screens teaches them to stop
+reading. The fifth (baseline sufficiency) constrains the study design: both
+conditions finish, so the measurement must be about confidence and error rate
+rather than completion. The sixth (treatment degrades control) constrains the
+interpretation: any advantage we observe in the treatment arm is weakened by a
+confound we cannot remove.
+
 The twenty-one fixes and four design corrections together mean that the study we
 will run differs substantially from the study we would have run two weeks
 earlier. Three consequences follow for its design. First, the primary dependent
