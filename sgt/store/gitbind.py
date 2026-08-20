@@ -400,6 +400,29 @@ def _stat_sig(p: Path) -> tuple[int, int] | None:
     return (st.st_mtime_ns, st.st_size)
 
 
+# Well under ARG_MAX (1 MB on macOS, ~2 MB on Linux) with room for the environment, which shares
+# the same limit -- a commit landing a vendored tree changes tens of thousands of paths at once.
+_ARGV_BUDGET_BYTES = 100_000
+
+
+def _argv_batches(paths: list[str]) -> list[list[str]]:
+    """`paths` split into runs whose encoded bytes fit one command line. Order is preserved and a
+    single over-long path still gets its own batch (git will just report it missing)."""
+    batches: list[list[str]] = []
+    run: list[str] = []
+    used = 0
+    for path in paths:
+        size = len(path.encode("utf-8", "surrogateescape")) + 1  # + the NUL argv separator
+        if run and used + size > _ARGV_BUDGET_BYTES:
+            batches.append(run)
+            run, used = [], 0
+        run.append(path)
+        used += size
+    if run:
+        batches.append(run)
+    return batches
+
+
 class GitBinding:
     """Thin wrapper over the git CLI for one repository."""
 
@@ -706,19 +729,22 @@ class GitBinding:
         ``tree_ish`` -- one ``git ls-tree`` scoped to just those paths, not a full recursive walk.
         Symlinks are unmanaged (R3): their blob is the target-path *string*, so mining consults
         this to skip mode-120000 entries before that string leaks into the DAG as ordinary
-        content. A missing path (deleted at ``tree_ish``) simply doesn't appear in the output."""
-        if not paths:
-            return set()
-        proc = self._git("ls-tree", "-z", tree_ish, "--", *paths, check=False)
-        if proc.returncode != 0:
-            return set()
+        content. A missing path (deleted at ``tree_ish``) simply doesn't appear in the output.
+
+        Batched under an argv byte budget: a single commit that lands a vendored tree changes tens
+        of thousands of paths, and one invocation carrying all of them raises
+        ``OSError: [Errno 7] Argument list too long`` before git runs at all."""
         out: set[str] = set()
-        for entry in proc.stdout.split("\0"):
-            if not entry:
+        for batch in _argv_batches(paths):
+            proc = self._git("ls-tree", "-z", tree_ish, "--", *batch, check=False)
+            if proc.returncode != 0:
                 continue
-            meta, _, path = entry.partition("\t")
-            if meta.split(" ", 1)[0] == "120000":
-                out.add(path)
+            for entry in proc.stdout.split("\0"):
+                if not entry:
+                    continue
+                meta, _, path = entry.partition("\t")
+                if meta.split(" ", 1)[0] == "120000":
+                    out.add(path)
         return out
 
     def history(self, since: str | None = None, target: str = "HEAD") -> list[tuple[str, str | None, str]]:

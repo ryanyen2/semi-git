@@ -30,6 +30,8 @@ def register(subs, parent) -> None:
     p.add_argument("--at", metavar="SPEC", default=None,
                    help="read it as it was at a past point: a commit index (`12`), an op set "
                         "(`op:<id>,...`), or a ref. Omit the selection to list what existed there")
+    p.add_argument("--saves", metavar="N", type=int, default=5,
+                   help="how many saves to list (default 5); the rest are counted, not shown")
     p.set_defaults(func=_cmd_show)
 
 
@@ -51,13 +53,13 @@ def _cmd_show(args) -> int:
               "       sgt show <file> --at 12   that file as it was at commit 12\n"
               "       sgt show --at 12          what existed at commit 12")
         return 2
-    return _show(".", selection, args.as_json)
+    return _show(".", selection, args.as_json, args.saves)
 
 
-def _show(repo: str, target: str, as_json: bool) -> int:
+def _show(repo: str, target: str, as_json: bool, save_limit: int = 5) -> int:
     from sgt.api import show_view
 
-    view = show_view(repo, target)
+    view = show_view(repo, target, save_limit=max(1, save_limit))
     if as_json:
         return _emit_json(view)
     if not view["ok"]:
@@ -91,8 +93,11 @@ def _print_show(view: dict) -> None:
         head = "saves        " if i == 0 else "             "
         print(f'  {head}{save["sha"]}  {save["subject"]}')
     if elided > 0:
-        # Say what isn't shown. Stopping silently at the cap reads as "that was all of them".
-        print(f"               (+{elided} older save(s))")
+        # Say what isn't shown *and* how to see it. Stopping silently at the cap reads as "that was
+        # all of them"; naming a count with no way to reach it is the same problem one step later --
+        # nothing else lists a symbol's saves (`log --focus` lists a feature's checkpoints, `advanced
+        # blame` a file's symbols), so without the flag those saves were unreachable from the CLI.
+        print(f"               (+{elided} older save(s) — `--saves {view['save_count']}` for all)")
 
     _print_consequences(view["consequences"])
     _print_next(view["next"])
@@ -122,9 +127,9 @@ def _print_consequences(cons: dict) -> None:
         if cons["message"]:
             print(f'  {cons["message"]}')
         return
-    removes, dependents = cons["removes"], cons["dependents"]
-    tail = f" — {dependents} of them work built on top" if dependents else ""
-    print(f"  reverting this removes {removes} edit" + ("s" if removes != 1 else "") + tail)
+    from sgt.api import revert_cost
+
+    print(f"  reverting this {revert_cost(cons)}")
     if cons["forked"]:
         print("  ⚠ this selection is forked: two versions of a symbol compete")
     if not cons["ok"] and cons["message"]:

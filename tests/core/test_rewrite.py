@@ -218,7 +218,10 @@ def test_revert_keep_dependents_drops_target_but_keeps_dependent_symbol_live(tmp
 
     draft = rewrite.revert_keep_dependents(repo, helper_op.id)
     assert draft.ok
-    assert set(draft.meta["removed_ids"]) == {helper_op.id, user_op.id}
+    # The dying entity's own anchor and trailing gap ride along (F97) -- `keep=None` keeps the
+    # dependent, so only the target's layout goes.
+    assert set(draft.meta["removed_ids"]) == {helper_op.id, user_op.id} | {
+        o.id for o in ops if any(s.startswith("a.py::__") and "helper" in s for s in o.footprint)}
     assert len(draft.hollow_ids) == 1
     hollow = Store(repo).get_hollow(draft.hollow_ids[0])
     assert "b.py::user" in hollow.footprint
@@ -262,7 +265,8 @@ def test_revert_keep_dependents_carries_transitive_dependent_forward_unchanged(t
 
     draft = rewrite.revert_keep_dependents(repo, helper_op.id)
     assert draft.ok
-    assert set(draft.meta["removed_ids"]) == {helper_op.id, user_op.id, caller_op.id}
+    assert set(draft.meta["removed_ids"]) == {helper_op.id, user_op.id, caller_op.id} | {
+        o.id for o in ops if any(s.startswith("a.py::__") and "helper" in s for s in o.footprint)}
     assert len(draft.hollow_ids) == 1  # only `user` names the removed symbol -- only it needs a rewrite
     hollow = Store(repo).get_hollow(draft.hollow_ids[0])
     assert "b.py::user" in hollow.footprint
@@ -345,6 +349,7 @@ def test_revert_frontier_keep_none_is_a_plain_full_upset_removal(tmp_path):
 
     repo = _fan_repo(tmp_path)
     ops = Store(repo).all_ops()
+    by_id = {o.id: o for o in ops}
     helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
 
     draft = rewrite.revert_keep_dependents(repo, helper_op.id, keep=frozenset())
@@ -352,7 +357,15 @@ def test_revert_frontier_keep_none_is_a_plain_full_upset_removal(tmp_path):
     assert draft.hollow_ids == ()
     assert draft.meta["carry_forward"] == []
     blanket = verbs.plan_revert(repo, helper_op.id, take_dependents=True)
-    assert set(draft.meta["removed_ids"]) == set(blanket.removed)
+    # Every op the blanket removal takes, and the layout facts of the entities it kills on top
+    # (F97). `take_dependents=True` is the raw `ideal \\ ↑X` branch: it bypasses
+    # `plan_subtraction`, so it sweeps no anchors and no gaps, and the fold leaves the orphans
+    # behind (`a.py` folds to `b'\\n'` once its only symbol is gone). The draft route composes the
+    # file the blanket route claims to produce, so this is a superset, not a disagreement.
+    extra = set(draft.meta["removed_ids"]) - set(blanket.removed)
+    assert set(blanket.removed) <= set(draft.meta["removed_ids"])
+    assert extra and all(any("::__" in s for s in by_id[oid].footprint) for oid in extra), (
+        f"the draft removes non-layout ops the blanket does not: {sorted(extra)}")
 
 
 def test_revert_frontier_keeping_only_a_transitive_dependent_drafts_no_hollow(tmp_path):
@@ -1089,3 +1102,31 @@ def test_fulfill_refuses_to_overwrite_uncommitted_work_and_stays_retryable(tmp_p
     (repo / "other.py").write_bytes(committed)
     candidate = rewrite.fulfill(repo, draft.draft_id, from_tree=True)
     assert candidate.op_ids
+
+
+def test_revert_keep_dependents_takes_the_dead_symbols_layout_with_it(tmp_path):
+    """F97. `plan_subtraction` sweeps a dying entity's anchor and trailing gap along with it (F35);
+    `revert_keep_dependents` computes `removed_ids` from `upset_in` alone, which does not reach
+    siblings. The docstring promises the two are equivalent when nothing is kept, and the fold shows
+    what the gap costs: the deleted symbol's blank lines stay in the file."""
+    from sgt.core import lens, verbs
+
+    repo = tmp_path / "repo"
+    corpus._init(repo)
+    corpus._write(repo, "a.py", "def alone():\n    return 1\n\n\ndef other():\n    return 2\n")
+    corpus._commit(repo, "two", 1)
+    get(repo)
+    ops = Store(repo).all_ops()
+    ideal = lens.current_ideal(repo)
+    declared = lens._load_declared(repo)
+    target = next(o for o in ops if o.footprint.keys() == {"a.py::alone"})
+
+    draft = rewrite.revert_keep_dependents(repo, target.id)
+    assert draft.ok and draft.hollow_ids == ()
+    staged = Ideal.from_ops(set(ideal.op_ids) - set(draft.meta["removed_ids"]), ops, declared)
+    preview = verbs.plan_revert(repo, target.id)
+    plain_ops = ops + list(preview.new_ops)
+    plain = Ideal.from_ops(set(preview.after_ids), plain_ops, declared)
+    assert code(staged, ops)["a.py"] == b"def other():\n    return 2\n", (
+        f"orphaned layout left behind: {code(staged, ops)['a.py']!r}")
+    assert code(staged, ops) == code(plain, plain_ops)

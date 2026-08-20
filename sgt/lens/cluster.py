@@ -48,11 +48,17 @@ PATH_SCALE = 0.5  # path (file-cohesion) is a WEAK connective signal: it keeps a
 # isolated symbol out of the god-lane, but must not out-weigh a real co-commit episode (scale 1.0)
 # and turn the clustering into a plain mirror of the folder tree. Tuned in stageB_plan.md.
 SEED = 42  # Leiden's own seed -- deterministic partitions for the same graph+resolution.
-SIGNALS_VERSION = "2"  # bump on any change to the fused-signal recipe (which edge maps feed
+SIGNALS_VERSION = "4"  # bump on any change to the fused-signal recipe (which edge maps feed
 # `_fuse`, or their scales/caps). Stored in the built tree; `tree.build` forces one full recluster
 # when the persisted tree's version differs, so a signal change reaches users without a manual
 # `--rebuild` (dirty-subtree splicing can't detect that an existing leaf should now split).
 # v1 = structural ⊕ co-change ⊕ scope. v2 = + co-commit (episode) + path (file-cohesion) edges.
+# v3 = scope/co-commit read `opindex.earliest_commit_sha` instead of `op.provenance`, so both see
+# work saved through sgt (pending ops carry no provenance; the commit is in its `Sgt-Op:` trailers).
+# v4 = not a signal change but a membership one (`tree._rehome_pseudo_members`): residue/anchor
+# members follow their anchor entity's lane, which retires residue-only "phantom" leaves. A stored
+# tree built before it still holds those leaves and a splice would carry them through verbatim, so
+# the version is what makes an existing tree re-optimize rather than inherit them.
 STABILITY_ALPHA = 0.25  # temporal-prior strength (plan §3.1): each split augments its induced graph
 # with one zero-size "anchor" vertex per previous leaf, tying that leaf's surviving members together
 # with edge weight ω = STABILITY_ALPHA × (mean positive induced edge weight). The augmented-CPM
@@ -114,24 +120,27 @@ def commit_scope(subject: str) -> str | None:
 
 def scope_edges(
     ops: list[Op], subjects: dict[str, str], nodes: set[str], hubs: set[str],
-    scale: float = 10.0, max_scope: int = 80,
+    scale: float = 10.0, max_scope: int = 80, *, sha_of: dict[str, str],
 ) -> dict[tuple[str, str], float]:
     """Intent signal: symbols changed under the same declared scope, even in *different* ops --
     the density plain co-change lacks on a young repo. Weight is down-scaled by scope size so a
-    broad scope contributes weak all-to-all glue, not a blob."""
+    broad scope contributes weak all-to-all glue, not a blob.
+
+    `sha_of` maps op id -> the commit that embodies it (`opindex.earliest_commit_sha`), which is not
+    the same thing as `op.provenance`: work saved through sgt is mined as *pending* and carries no
+    provenance at all, so reading provenance here made this signal blind to sgt's own histories."""
     scope_syms: dict[str, set[str]] = defaultdict(set)
-    scope_of: dict[str, str | None] = {}  # per-sha parse memo: ops share provenance SHAs, so the
-    # regex runs once per commit rather than once per op
+    scope_of: dict[str, str | None] = {}  # per-sha parse memo: ops share commits, so the regex
+    # runs once per commit rather than once per op
     for op in ops:
-        scope = None
-        for sha in op.provenance:
-            subject = subjects.get(sha)
-            if subject:
-                if sha in scope_of:
-                    scope = scope_of[sha]
-                else:
-                    scope = scope_of[sha] = commit_scope(subject)
-                break
+        sha = sha_of.get(op.id)
+        subject = subjects.get(sha) if sha else None
+        if not subject:
+            continue
+        if sha in scope_of:
+            scope = scope_of[sha]
+        else:
+            scope = scope_of[sha] = commit_scope(subject)
         if not scope:
             continue
         for sym in op.footprint:
@@ -150,22 +159,23 @@ def scope_edges(
 
 
 def commit_edges(
-    ops: list[Op], nodes: set[str], hubs: set[str], scale: float = 1.0, max_commit: int = MAX_COMMIT,
+    ops: list[Op], nodes: set[str], hubs: set[str], scale: float = 1.0,
+    max_commit: int = MAX_COMMIT, *, sha_of: dict[str, str],
 ) -> dict[tuple[str, str], float]:
     """Co-commit (episode) signal: symbols advanced in the *same commit*, even when U2's def-use
     untangling split that commit into several single-symbol ops. This recovers the "I changed
     these together" grouping that per-op co-change loses to untangling -- on this repo 4850/4879
     ops touch exactly one symbol, so the op-footprint co-change signal is near-empty, while commits
-    still bind ~18 symbols each (a real episode). Groups alive non-hub symbols by provenance SHA;
-    weight is down-scaled by commit size so a focused commit glues tightly and a broad one glues
-    weakly, and a mega-commit over `max_commit` (a mass import/refactor, not a feature) contributes
-    nothing -- the same size discipline `scope_edges`/co-change already use to avoid blobs."""
+    still bind ~18 symbols each (a real episode). Groups alive non-hub symbols by the commit that
+    embodies them (`sha_of`, see `scope_edges` -- provenance alone misses every op saved through
+    sgt); weight is down-scaled by commit size so a focused commit glues tightly and a broad one
+    glues weakly, and a mega-commit over `max_commit` (a mass import/refactor, not a feature)
+    contributes nothing -- the same size discipline `scope_edges`/co-change already use."""
     commit_syms: dict[str, set[str]] = defaultdict(set)
     for op in ops:
         alive = [sym for sym in op.footprint if sym in nodes and sym not in hubs]
-        if not alive:
-            continue
-        for sha in op.provenance:
+        sha = sha_of.get(op.id)
+        if alive and sha:
             commit_syms[sha].update(alive)
 
     edges: dict[tuple[str, str], float] = defaultdict(float)

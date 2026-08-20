@@ -390,6 +390,30 @@ def test_render_collapsed_subsystems_are_one_meta_lane_each_no_expand_headers():
     assert not any(f in ln for ln in lines for f in ("F1", "F2", "F3"))
 
 
+def test_a_collapsed_group_does_not_print_a_build_local_id_in_the_handle_column():
+    """Every `●` row's handle is a token a verb accepts. A `◈` row's was not.
+
+    A collapsed subsystem's id is `N<k>` -- a DFS counter minted by `tree._register`, positional and
+    therefore different after any reshape -- and no verb resolves it: `resolve_feature` matches leaves
+    only, so on the study fixture `sgt show N2` answers "not a known feature, checkpoint, op, or
+    symbol" for a token the map had just printed in its copy-paste column. The renderer knew the id
+    was short and padded it; it never asked whether it was typeable.
+
+    The group *is* reachable -- by its name, through `--focus` -- so the fix is to print the reachable
+    thing and say the verb, not to invent a stable id for a row that is a fold rather than a feature.
+    """
+    m = {"roots": ["N0"],
+         "nodes": [dict(_node("N0", None, ["F1", "F2"], kind="subsystem"), label="Scheduling"),
+                   _node("F1", "N0", []), _node("F2", "N0", [])],
+         "edges": []}
+    lines = render_graph_lines(m, _grid(("F1", 0), ("F2", 20)), color=False, collapsed=("N0",))
+    row = next(ln for ln in lines if "Scheduling" in ln)
+    # The label may legitimately contain the group's name; the handle column must not carry the id.
+    assert "N0" not in row, row
+    text = "\n".join(lines)
+    assert "--focus" in text, "a folded row needs the verb that opens it"
+
+
 def test_render_frontier_note_present_when_folded():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     lines = render_graph_lines(m, _grid(("A", 0), ("A", 5)), frontier=3, color=False)
@@ -678,6 +702,22 @@ def test_state_banner_renders_forks_with_symbol_and_resolve_remedy():
     text = "\n".join(_state_banner(states, color=False))
     assert "1 open fork(s)" in text and "room.py::apply" in text
     assert "sgt resolve room.py::apply" in text
+
+
+def test_state_banner_separates_cross_version_forks_from_divergent_edits():
+    """F82: a fork whose tips come from two MINER_VERSIONs is the same commit mined twice, not two
+    people editing one symbol. `sgt resolve <symbol>` cannot close it -- only `migrate ops-v3` can --
+    so the banner must not hand the user a hand-merge for each one. Observed on sgt's own repo, where
+    `status` offered 612 hand-merges for 619 cross-version pairs."""
+    states = {"forks": [
+        {"symbol": "room.py::apply", "tips": ["a1", "a2"], "cross_version": False},
+        {"symbol": "blame.ts::render", "tips": ["b1", "b2"], "cross_version": True},
+    ], "rewrites": {"drafts": []}}
+    text = "\n".join(_state_banner(states, color=False))
+    assert "sgt resolve room.py::apply" in text          # the real divergence keeps its remedy
+    assert "sgt resolve blame.ts::render" not in text    # the artifact must not get one
+    assert "sgt advanced migrate ops-v3" in text
+    assert "1 open fork(s)" in text                      # counted honestly: one is a real fork
 
 
 def test_state_banner_renders_merge_op_drafts_with_repair_remedy():

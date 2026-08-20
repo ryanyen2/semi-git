@@ -193,6 +193,25 @@ def test_blob_oid_reads_gitlink_oid_from_tree_when_batch_check_reports_missing(t
     assert gb.blob_oid(sha, "sub") == gitlink_oid  # from ls-tree, not the missing batch-check
 
 
+def test_symlink_paths_survives_more_paths_than_argv_holds(tmp_path):
+    """A commit that changes tens of thousands of files (a vendored tree landing in one go) hands
+    `symlink_paths` a path list whose bytes exceed ARG_MAX, and one `ls-tree` invocation then dies
+    with `OSError: [Errno 7] Argument list too long` before git ever runs. Mining catches nothing,
+    so the commit is never processed -- and because the backward genesis backfill only advances its
+    frontier past commits it processed, the whole repo stalls three commits from HEAD forever while
+    `sgt log` keeps reporting the full history. Batch the invocation instead."""
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "link.py").symlink_to("/etc/hostname")  # points outside the repo
+    (tmp_path / "real.py").write_text("x = 1\n", encoding="utf-8")
+    gb.commit_all("add a symlink beside a real file")
+
+    # ~2.2 MB of argv: over the limit on macOS (1 MB) and on Linux (ARG_MAX ~2 MB). The padding
+    # paths need not exist -- `ls-tree` just omits absent ones, and the crash precedes git anyway.
+    padding = [f"absent/{'d' * 200}/{i:06d}.py" for i in range(10_000)]
+
+    assert gb.symlink_paths("HEAD", [*padding, "link.py", "real.py"]) == {"link.py"}
+
+
 def test_cat_file_batch_restarts_after_its_process_dies(tmp_path):
     """The persistent `cat-file --batch` process is a long-lived optimization; if it dies (objects
     moved underneath us, an OOM kill, a crash) the next read must transparently restart it rather

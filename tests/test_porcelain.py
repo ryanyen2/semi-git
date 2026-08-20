@@ -509,3 +509,26 @@ def test_switch_preserves_a_symlink_in_both_directions(tmp_path):
 
     assert outside.read_text() == "SECRET\n"      # target never clobbered
     assert (repo / "link.txt").is_symlink()        # link survives both switches
+
+
+def test_save_does_not_claim_nothing_to_save_while_the_mine_is_incomplete(tmp_path, capsys, monkeypatch):
+    """F76/F78: while a backfill is still walking, `mine()` skips its dirty pass on every chunk that
+    spends the whole budget on history (`mine.py:791`), so a real working-tree edit is never looked
+    at. `save` must not report that as success -- "nothing to save" is a claim about the user's tree
+    that sgt has not actually checked. Observed on sgt's own repo, where 267 of 351 commits were
+    still unmined and `save` printed `✓ nothing to save` over a freshly added function."""
+    from sgt.core import lens
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    monkeypatch.setattr(lens, "_CHUNK_BUDGET_SECONDS", 0.0)  # every chunk dies before the dirty pass
+    get(repo)
+    assert not lens.sync_status(repo)["complete"]  # the precondition this test is about
+
+    (repo / "c.py").write_text(
+        "def qux():\n    return 'unrelated'\n\n\ndef added_by_user():\n    return 42\n", encoding="utf-8"
+    )
+    with _in(repo):
+        rc = cli.main(["save", "-m", "add added_by_user"])
+    out = capsys.readouterr().out
+    assert "nothing to save" not in out, f"save claimed nothing to save mid-backfill: {out!r}"
+    assert rc != 0 or "added_by_user" in out

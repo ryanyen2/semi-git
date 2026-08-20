@@ -189,11 +189,32 @@ def test_assign_at_save_seeds_a_new_lane_for_a_disconnected_symbol(tmp_path):
     assert load_pins(tmp_path).assign[new_sym] == lane
     assert new_sym in authored.load_authored(tmp_path)[lane].live_members()
     assert persisted["op_leaf"][ideal.frontier(ops)[new_sym]] == lane
-    # The authored label register starts EMPTY -- a guessed file path must not shadow the label a
-    # rebuild computes (`tree.label_tree` only lets a non-empty authored label override). The file
-    # path is only the node's provisional display label for the pre-rebuild grid window.
+    # The authored label register starts EMPTY -- a guessed name must not shadow the label a rebuild
+    # computes (`tree.label_tree` only lets a non-empty authored label override). The provisional name
+    # is only the node's display label for the pre-rebuild grid window, and it names the *symbol*:
+    # labelling the lane "island.py" made two lanes from one save indistinguishable in `log` and made
+    # `sgt show` answer "what is this feature" with a file path.
     assert authored.load_authored(tmp_path)[lane].label == ""
-    assert persisted["nodes"][lane]["label"] == "island.py"
+    assert persisted["nodes"][lane]["label"] == "omega"
+
+
+def test_two_new_lanes_from_one_save_get_distinguishable_provisional_labels(tmp_path):
+    """One save that seeds two lanes must not label them the same thing. Labelling a lane after its
+    file did exactly that whenever the new symbols shared a file, and `sgt log` then printed two rows
+    a participant could not tell apart -- the observed shape of it was a save reporting two `new
+    feature` lanes, one shown as "coursecraft/cli.py" and the other as "coursecraft/enrollment.py",
+    neither carrying the words the user had just typed."""
+    gb, _ = _build_and_map(tmp_path)
+    (tmp_path / "island.py").write_text(
+        "def omega():\n    return 42\n\n\ndef psi():\n    return 43\n", encoding="utf-8")
+    ideal = get(tmp_path)
+    ops = Store(tmp_path).all_ops()
+
+    summary = ledger.assign_at_save(tmp_path, ideal, ops)
+    lanes = {summary["assigned"][s] for s in ("island.py::omega", "island.py::psi")}
+    nodes = tree.load(tmp_path)["nodes"]
+    labels = [nodes[l]["label"] for l in lanes]
+    assert len(set(labels)) == len(labels), f"provisional labels collide: {labels}"
 
 
 def test_assign_at_save_leaves_the_joined_lanes_authored_label_empty(tmp_path):

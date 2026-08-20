@@ -353,6 +353,16 @@ def revert_keep_dependents(
     # `keep=None` keeps them all (today's behavior), an explicit set keeps only the named ids.
     kept = set(direct_dependents) | set(carry_tips.values()) if keep is None else set(keep)
 
+    # F97: an entity's anchor and trailing gap are *siblings*, so `upset_in` never reaches them and
+    # they would stay live after the entity dies -- the fold then leaves the dead symbol's blank
+    # lines in the file (`def other():\n    return 2\n\n\n\n`). `plan_subtraction` sweeps them
+    # (F35) and the docstring above promises this route is equivalent to `plan_revert` when nothing
+    # is kept, so it has to sweep them too. Only for the ops actually dropped: a *kept* dependent
+    # still needs its own gap and its own place in the file.
+    from sgt.core.subtract import layout_ops_of
+
+    full_removed = set(full_removed) | layout_ops_of(set(full_removed) - kept, by_id, ideal.op_ids)
+
     hollows = []
     kept_blast = [dep_id for dep_id in direct_dependents if dep_id in kept]
     for dep_id in kept_blast:

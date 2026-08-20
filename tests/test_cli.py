@@ -215,9 +215,14 @@ def test_revert_then_restore_roundtrip(tmp_path, capsys):
 
 def test_revert_unknown_ref_fails_with_message(tmp_path, monkeypatch, capsys):
     # An unresolved ref now falls to the NL rung (`_resolve_via_intent`) once every deterministic
-    # rung fails; force it offline so this stays the deterministic-failure case it always was,
-    # independent of whether some earlier test in the same process populated OPENAI_API_KEY.
+    # rung fails; force it offline so this stays the deterministic-failure case it always was.
+    # Offline means every credential `config.resolve_api_key` consults, not just `OPENAI_API_KEY`:
+    # any test whose code path calls `load_env(".")` imports this repo's real `.env` -- a Claude
+    # `SGT_MODEL` and an `ANTHROPIC_AUTH_TOKEN` -- into `os.environ` for the rest of the process, so
+    # deleting the one variable left these assertions passing or failing by collection order.
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     _seed(tmp_path, 1)
     assert _in(tmp_path, ["revert", "nope::nothing"]) == 1
     assert "✗" in capsys.readouterr().out
@@ -387,6 +392,8 @@ def test_revert_nl_feature_candidate_routes_through_feature_plan(tmp_path, monke
 
 def test_revert_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     _seed(tmp_path, 2)
     capsys.readouterr()
 
@@ -416,6 +423,8 @@ def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path,
 
 def test_restore_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     _seed(tmp_path, 2)
     assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
     capsys.readouterr()

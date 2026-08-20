@@ -120,6 +120,29 @@ def _preview(
     )
 
 
+def _invalid_ideal_reason(after_ids, ops: list[Op], declared) -> str:
+    """Why `Ideal.from_ops` refused, in the reader's terms. F39's second collateral defect: that
+    exception carries `sorted(ids)` -- the whole *proposed* set, thousands of 64-hex ids on a real
+    repository and never the offending one -- and the refusal used to print it verbatim. Name the
+    symbol whose chain forked, or the edit that lost its prerequisites."""
+    ids = frozenset(after_ids)
+    forked = order.forks(ops, ids)
+    if forked:
+        sym, a, b = forked[0]
+        more = f" (+{len(forked) - 1} more symbol(s))" if len(forked) > 1 else ""
+        return (f"would leave two live versions of {sym}: {a[:8]} and {b[:8]} both claim the same "
+                f"next version, refused{more}")
+    ungrounded = sorted(ids - order._grounded(ids, ops, declared))
+    if ungrounded:
+        more = f" (+{len(ungrounded) - 1} more)" if len(ungrounded) > 1 else ""
+        by_id = {op.id: op for op in ops}
+        syms = sorted(by_id[ungrounded[0]].footprint) if ungrounded[0] in by_id else []
+        where = f" ({syms[0]})" if syms else ""
+        return (f"would include {ungrounded[0][:8]}{where} without the edit(s) it was built on, "
+                f"refused{more}")
+    return "would leave an invalid ideal, refused"
+
+
 def _validated(
     verb: str, target: str, before_ids, after_ids, ops: list[Op],
     declared: frozenset[tuple[str, str]],
@@ -128,9 +151,9 @@ def _validated(
     downward-closure violation becomes a refusal (`ok=False, forked=True`), never a bad commit."""
     try:
         Ideal.from_ops(after_ids, ops, declared)
-    except ValueError as e:
+    except ValueError:
         return _preview(verb, target, before_ids, before_ids, ops, ok=False, forked=True,
-                        message=f"would leave an invalid (forked) ideal, refused: {e}")
+                        message=_invalid_ideal_reason(after_ids, ops, declared))
     return _preview(verb, target, before_ids, after_ids, ops)
 
 
@@ -157,9 +180,9 @@ def _plan_removal(
     all_ops = ops + list(plan.new_ops)
     try:
         Ideal.from_ops(plan.after_ids, all_ops, declared)
-    except ValueError as e:
+    except ValueError:
         return _preview(verb, tag, ideal.op_ids, ideal.op_ids, ops, ok=False, forked=True,
-                        message=f"would leave an invalid (forked) ideal, refused: {e}")
+                        message=_invalid_ideal_reason(plan.after_ids, all_ops, declared))
     base = _preview(verb, tag, ideal.op_ids, plan.after_ids, all_ops, message=plan.message)
     return VerbPreview(
         ok=True, verb=verb, target=tag, before_ids=base.before_ids, after_ids=base.after_ids,
@@ -217,13 +240,44 @@ def plan_restore(repo: str | Path, target: str) -> VerbPreview:
             ghosts = sorted(op.id for op in ops if target in op.footprint and op.id not in ideal.op_ids)
             if ghosts:
                 op_id, err, source_ids = ghosts[-1], "", frozenset(ids)
+            else:
+                # `resolve_target`'s reason is written for `revert` ("not live in the ideal"), which
+                # is the *premise* of a restore, not an objection to it (F94). Nothing live and no
+                # ghost means the store never recorded this symbol at all -- say that.
+                err = f"no recorded version of {target!r} — nothing in this history to restore"
         else:
             matches = sorted(oid for oid in ids if oid.startswith(target))
             if len(matches) == 1:
                 op_id, err, source_ids = matches[0], "", frozenset(ids)
     if err:
         return _preview("restore", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
-    after = ideal.op_ids | order.downset_in(op_id, source_ids, ops, declared)
+    added = order.downset_in(op_id, source_ids, ops, declared)
+    # Layout facts ride with the entity in both directions. `plan_subtraction` removes an entity's
+    # trailing gap and anchor along with it (F35); restoring the entity has to bring them back, or
+    # the fold has no separator to place and composes `    return 2def revived():`. They are
+    # siblings, so the downset does not reach them -- pull them in with their own prerequisites.
+    from sgt.core.subtract import layout_ops_of
+
+    by_id = {op.id: op for op in ops}
+    # One chain per layout symbol, and only for symbols the result does not already ground. F39:
+    # `_repair_layout` mints an anchor/residue repair with `before=None` whenever a removal leaves
+    # that symbol no live tip, so a symbol removed and reborn owns several chain *heads* in the
+    # store -- legal there (the store is a forest of versions), fatal inside an ideal. On the
+    # whole-store rung above, taking every sibling match therefore forked the chain and `_validated`
+    # refused a restore whose bytes were sitting in the store the whole time: the WP-V4 sweep hit
+    # that as a file left at 1 byte with no documented command able to bring it back. The deepest
+    # candidate is the tip of one chain and its downset is that chain, never a second head.
+    grounded = order.frontier(ideal.op_ids | added, ops)
+    reach = {oid: order.downset_in(oid, source_ids, ops, declared)
+             for oid in layout_ops_of(added, by_id, source_ids)}
+    pick: dict[str, str] = {}
+    for oid in sorted(reach, key=lambda o: (-len(reach[o]), o)):
+        for sym in by_id[oid].footprint:
+            if sym not in grounded:
+                pick.setdefault(sym, oid)
+    for oid in dict.fromkeys(pick.values()):
+        added = added | reach[oid]
+    after = ideal.op_ids | added
     return _validated("restore", target, ideal.op_ids, after, ops, declared)
 
 

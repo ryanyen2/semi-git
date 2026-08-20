@@ -164,7 +164,22 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         view = _project_verb_preview(repo, preview)
         if extra:
             view = {**view, **extra}
-        return _emit_json(view) if as_json else _print_verb_view(view)
+        # F124. `--emit --json` is the dry run and plain `--json` applies, which is the contract the
+        # extension and the tests here depend on -- but the two emitted the same keys, so a machine
+        # caller could not tell the preview it asked for from the mutation it caused.
+        view = {"applied": False, **view}
+        # F129. The projection carries the consequence *summary* (`so_what`, `fallout`, `carry_count`)
+        # and none of the subtraction report, which only the apply view hand-built -- so the two
+        # warnings a developer is supposed to read *before* deciding arrived only in the result of the
+        # mutation, and a dry run named neither. Same four keys as the apply view below, off the same
+        # preview object, so the two formats of the preview and the result all agree.
+        view = {**view, **_subtraction_fields(preview)}
+        if as_json:
+            return _emit_json(view)
+        rc = _print_verb_view(view)
+        for line in _subtraction_report(preview):
+            print(line)
+        return rc
 
     # Plain-text apply: the confirm step draws the feedforward inline -- the same before/after
     # `sgt log` region the edit lands in (`render_verb_preview_lines`) -- in the normal terminal
@@ -204,8 +219,12 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             verbs.apply(repo, preview)
         except DirtyWorkingTreeError as e:
             return _dirty_refusal(e, as_json)
-        print(f"  ✓ {preview.verb} applied — {len(preview.removed)} edit(s) removed, "
-              f"{len(preview.added)} added. (`sgt undo` reverses this.)")
+        if _changed_nothing(preview):
+            print(f"  · {preview.verb} changed nothing — no edit left the ideal and no file moved. "
+                  f"(nothing was recorded, so there is nothing to reverse.)")
+        else:
+            print(f"  ✓ {preview.verb} applied — {_applied_magnitude(preview)}. "
+                  f"(`sgt undo` reverses this.)")
         for line in _subtraction_report(preview):
             print(line)
         for line in gap_lines:
@@ -213,20 +232,20 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         return 0
 
     gap = _restore_gap(repo, preview) if preview.ok and preview.verb == "restore" else None
+    applied = False
     if preview.ok:
         try:
             verbs.apply(repo, preview)
         except DirtyWorkingTreeError as e:
             return _dirty_refusal(e, as_json)
+        applied = True
     view = {
+        "applied": applied,
         "ok": preview.ok, "verb": preview.verb, "target": preview.target,
         "removed": sorted(preview.removed), "added": sorted(preview.added),
         "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
         "message": preview.message,
-        "subtracted_symbols": list(getattr(preview, "subtracted_symbols", ())),
-        "pruned_symbols": list(getattr(preview, "pruned_symbols", ())),
-        "kept_conflicts": list(getattr(preview, "kept_conflicts", ())),
-        "broken_references": list(getattr(preview, "broken_references", ())),
+        **_subtraction_fields(preview),
     }
     if gap:
         # Machine consumers (the extension, MCP) get the same warning the
@@ -235,7 +254,13 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         view["restore_gap"] = gap
     if extra:
         view = {**view, **extra}
-    return _emit_json(view) if as_json else _print_verb_view(view)
+    if not as_json:
+        return _print_verb_view(view)
+    # `_emit_json` keys its exit status off an `error` field this view does not carry, so a refusal
+    # rendered here exited 0 while saying `"ok": false` -- a machine caller reading the exit code saw
+    # a refusal as a success. Report the refusal in the status too.
+    _emit_json(view)
+    return 0 if preview.ok else 1
 
 
 def _restore_gap(repo: str, preview) -> dict | None:
@@ -320,6 +345,39 @@ def _restore_gap_report(repo: str, preview) -> list[str]:
         f" does not bring back{': ' + shown if shown else ''}",
         "    `sgt undo` reverses that revert whole, if that is what you meant.",
     ]
+
+def _changed_nothing(preview) -> bool:
+    """F33. A revert whose removal is entirely held by later work removes no op, adds none, and
+    splices nothing -- so `verbs.apply` appends no journal event. The apply line used to promise
+    "`sgt undo` reverses this" anyway, and undo, finding no event of its own, pops the *previous*
+    save and silently drops that edit. Don't offer an undo for an edit that was never recorded."""
+    return not preview.removed and not preview.added and not [
+        s for s in preview.affected_symbols if "::__" not in s
+    ]
+
+
+def _applied_magnitude(preview) -> str:
+    """What the applied edit actually changed. A revert realized as a forward subtraction removes no
+    whole op (`sgt.core.subtract` splices instead), so the op counts read "0 edit(s) removed, 5
+    added" for a revert that rewrote a function and dropped a test -- the number said no-op while
+    the files moved. `restore`'s "N added" is the real magnitude of a restore, so it is untouched."""
+    removed, added = len(preview.removed), len(preview.added)
+    if preview.verb == "revert" and not removed:
+        syms = [s for s in preview.affected_symbols if "::__" not in s]
+        return f"{len(syms)} symbol(s) changed, no whole edit removed"
+    return f"{removed} edit(s) removed, {added} added"
+
+
+def _subtraction_fields(preview) -> dict:
+    """The four subtraction-report keys, read off the preview. One accessor because the `--emit` view
+    and the apply view are built in different places and drifted apart for eight months (F129): the
+    preview carried none of these and the result of the mutation carried all four."""
+    return {
+        "subtracted_symbols": list(getattr(preview, "subtracted_symbols", ())),
+        "pruned_symbols": list(getattr(preview, "pruned_symbols", ())),
+        "kept_conflicts": list(getattr(preview, "kept_conflicts", ())),
+        "broken_references": list(getattr(preview, "broken_references", ())),
+    }
 
 
 def _subtraction_report(preview) -> list[str]:
@@ -447,7 +505,13 @@ def _kernel_edit_verb(
                     explained = _explain_restore_block(repo, target, as_json)
                     if explained is not None:
                         return explained
-                return _no_feature_match(repo, cmd, target, as_json)
+                if not _names_a_stored_op(repo, target):
+                    return _no_feature_match(repo, cmd, target, as_json)
+                # F39's collateral defect: the hex names an op the store *is* holding and this verb
+                # cannot apply it -- `_explain_restore_block` returns None for every reason other
+                # than a competing live sibling, and a `revert` refusal never had a rung here at
+                # all. `_no_feature_match` would deny the op exists and send the reader looking for
+                # a feature; fall through to the planner's own reason instead.
     else:
         preview = plan_single(repo, target)
         if not preview.ok:
@@ -455,11 +519,17 @@ def _kernel_edit_verb(
             if resolved_feature is not None:
                 focus_fid = resolved_feature[1]
                 preview = plan_feature(repo, target)
-            else:
+            elif "::" not in target:
                 ledgered = _resolve_via_ledger(repo, cmd, target, emit, as_json, yes)
                 if ledgered is not None:
                     return ledgered
                 return _resolve_via_intent(repo, cmd, target, as_json, yes)
+            # F94, F91's defect one rung down: a `file::Symbol` target is a deterministic reference,
+            # not prose, so the NL rung cannot improve on it and its refusal ("set OPENAI_API_KEY to
+            # enable natural-language targets") names a remedy that would not help. Fall through with
+            # the planner's own reason instead -- the same fall-through the handle-shaped branch
+            # takes. This is the rung WP-V4's recoverability ladder uses, so every refusal it
+            # recorded blamed a missing key where a true reason had already been computed.
 
     if cmd == "restore" and preview.ok and not preview.added and "::" in target:
         # "restores 0 op" is an honest set answer but a useless human one: the symbol is already
@@ -545,6 +615,15 @@ def _live_and_ghosts(repo: str, symbol: str):
     tip = order.frontier(ideal.op_ids, ops).get(symbol)
     ghosts = sorted(op.id for op in ops if symbol in op.footprint and op.id not in ideal.op_ids)
     return tip, ghosts
+
+
+def _names_a_stored_op(repo: str, target: str) -> bool:
+    """Does this hex handle name an op the store holds? One that does is not a typo or a stale
+    handle, so a verb that cannot apply it owes the reader its own refusal rather than
+    `_no_feature_match`'s denial that the id exists."""
+    from sgt.core import opindex
+
+    return any(op.id == target or op.id.startswith(target) for op in opindex.index_ops(repo))
 
 
 def _explain_restore_block(repo: str, target: str, as_json: bool) -> int | None:
@@ -773,6 +852,9 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
         {
             "ref": preview.target, "kind": cand.kind, "rationale": cand.rationale,
             "removed": len(preview.removed), "added": len(preview.added),
+            # Same reason as `_applied_magnitude`: a candidate whose revert is a subtraction removes
+            # no whole op, and "would remove 0 op(s)" read as "this candidate does nothing".
+            "cost": _applied_magnitude(preview),
             "reinvoke": f"sgt {cmd} {preview.target}",
         }
         for cand, preview in survivors
@@ -786,7 +868,7 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
     print(f"? [{cmd}] {target!r} did not resolve; did you mean:")
     for i, c in enumerate(candidates_view, 1):
         print(f"  {i}. {c['ref']} ({c['kind']}) — {c['rationale']}")
-        print(f"     would remove {c['removed']} op(s), add {c['added']} op(s)")
+        print(f"     would apply — {c['cost']}")
         print(f"     re-invoke: {c['reinvoke']}")
     return 2
 

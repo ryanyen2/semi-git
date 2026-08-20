@@ -483,13 +483,25 @@ def _state_banner(states: dict | None, *, color: bool) -> list[str]:
     if not states:
         return []
     out: list[str] = []
-    forks = states.get("forks") or []
+    all_forks = states.get("forks") or []
+    # F82: a fork whose tips were mined under two MINER_VERSIONs is the same commit sitting in the
+    # store twice, not two people editing one symbol. It costs the ideal just as much, so it stays
+    # visible -- but `sgt resolve <symbol>` cannot close it and offering one per symbol is busywork
+    # against a wrong diagnosis (612 hand-merges on sgt's own repo). One line, the real remedy.
+    forks = [f for f in all_forks if not f.get("cross_version")]
+    stale = [f for f in all_forks if f.get("cross_version")]
     if forks:
         out.append(_sgr(_RED, f" {_FORK} {len(forks)} open fork(s) — divergent edits to one symbol:",
                         color=color))
         for f in forks:
             remedy = f"sgt resolve {f.get('symbol', '?')}"
             out.append(_dim(f"     {f.get('symbol', '?')}  →  {remedy}", color=color))
+    if stale:
+        out.append(_sgr(_AMBER, f" {_FORK} {len(stale)} fork(s) are two mining generations of the "
+                                f"same commit, not edits — the store mixes miner versions:",
+                        color=color))
+        out.append(_dim("     →  sgt advanced migrate ops-v3   (unifies the store; "
+                        "`sgt advanced fsck` shows the versions present)", color=color))
     drafts = [d for d in (states.get("rewrites") or {}).get("drafts", []) if d.get("verb") == "merge-op"]
     if drafts:
         out.append(_sgr(_AMBER, f" {_MERGE} {len(drafts)} pending merge-op draft(s):", color=color))
@@ -1112,6 +1124,7 @@ def render_graph_lines(
     chip_avail = max(20, (term_cols or (bar_prefix + bar_width + 60)) - chip_indent)
 
     lanes_shown = 0
+    drew_meta = False
     total_lanes = len(layout["lanes"])
     for row in range(layout["row_count"]):
         if lanes_shown >= max_rows:
@@ -1132,12 +1145,23 @@ def render_graph_lines(
             marker = "▸" if is_sel else " "
             raw = lane_label(l)
             # Pad the handle to a fixed width by its *visible* length -- it carries colour escapes,
-            # so `ljust` would count those and under-pad. A meta lane's handle is short (`N9`) and a
-            # feature's is the 8-char hex, and leaving that unpadded shifted the label, the bar, and
-            # the chip line by up to six columns per row. That was the misalignment: not the bars
-            # themselves, but everything ahead of them starting in a different place on each row.
-            handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = the minimal unique prefix
-            handle += " " * max(0, _HANDLE_W - min(_HANDLE_W, len(fid[2:] if fid.startswith("f-") else fid)))
+            # so `ljust` would count those and under-pad. Leaving that unpadded shifted the label, the
+            # bar, and the chip line by up to six columns per row. That was the misalignment: not the
+            # bars themselves, but everything ahead of them starting in a different place on each row.
+            #
+            # A meta lane gets `▾` instead of its id, because its id is not a handle. A collapsed
+            # subsystem is `N<k>`, the DFS counter `tree._register` mints -- positional, so it moves
+            # whenever the tree reshapes -- and `resolve_feature` matches leaves only, so `sgt show N2`
+            # answered "not a known feature, checkpoint, op, or symbol" for a token this column had
+            # just offered as copy-paste. The row is a fold, not a feature; it is reached by name
+            # (`--focus`, in the legend), so the column shows the fold and stops claiming an id.
+            if l["is_meta"]:
+                drew_meta = True
+                handle = dim("folded".ljust(_HANDLE_W))
+            else:
+                handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = minimal unique prefix
+                handle += " " * max(0, _HANDLE_W - min(_HANDLE_W,
+                                                       len(fid[2:] if fid.startswith("f-") else fid)))
             label = _ellipsize(raw, title_w - 1).ljust(title_w)  # cap + ellipsize a long label
             bar = time_bar(l["cars"], hexc, bar_width)
             row_s = (f"   {marker}{paint(hexc, glyph)} {handle} "
@@ -1194,6 +1218,8 @@ def render_graph_lines(
               "   ·   @n chips (line below each bar) = the checkpoints (rewind by @n)")
     if forecast_w:
         legend += f"   ·   past {_NOW_RULE} = planned, not built yet"
+    if drew_meta:
+        legend += '   ·   ◈ folded = a group of features; open it with `sgt log --focus "<its name>"`'
     lines.append(dim(legend))
     lines.extend(_state_banner(states, color=color))
     return lines
@@ -1357,12 +1383,17 @@ def render_verb_preview_lines(
     frame_hint = "" if frame == "after" else "  · showing before"
     syms = [s for s in preview_view.get("affected_symbols", []) if "::__" not in s]
     sym_note = f" across {len(syms)} symbol(s)" if syms else ""
+    # A revert whose edit is shared with later work is spliced out of the live code rather than
+    # removed as an op, so the op count is 0 while the file changes (`sgt.core.subtract`). Leading
+    # with "removes 0 edit(s)" made the feedforward read as a no-op right before it applied.
+    magnitude = (f"changes {len(syms)} symbol(s)"
+                 if verb == "revert" and not n_op and syms
+                 else f"{verbword} {n_op} edit(s){sym_note}")
     shown_files = sorted(files)[:4]
     file_note = ", ".join(shown_files) + (f" +{len(files) - 4} more" if len(files) > 4 else "")
-    lines.append(_dim(f" {verbword} {n_op} edit(s){sym_note} · "
-                      f"{len(files)} file(s): {file_note}{frame_hint}"
+    lines.append(_dim(f" {magnitude} · {len(files)} file(s): {file_note}{frame_hint}"
                       if files else
-                      f" {verbword} {n_op} edit(s){sym_note} · no file changes{frame_hint}",
+                      f" {magnitude} · no file changes{frame_hint}",
                       color=color))
     return lines
 

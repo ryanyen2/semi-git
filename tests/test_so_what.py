@@ -196,3 +196,30 @@ def test_a_resolve_with_no_draft_reports_why_it_cannot_run_yet():
     assert so_what_for(pview) == (
         "Can't resolve api.py::route yet — no drafted reconciliation."
     )
+
+
+def test_a_revert_with_carry_and_foundation_dependents_does_not_claim_nothing_depends_on_it():
+    """F128. `n` counts only `blast` fallout, because `_fallout_rows` deliberately excludes `carry`
+    (mechanical) and `foundation` (locked prerequisite) -- they need no decision. That exclusion is the
+    design; the sentence built on it was a falsehood. The same preview that printed
+    `dependents: 1 auto-repoint (carry), 1 prerequisite(s) locked (foundation)` in the terminal told a
+    machine caller `Nothing depends on it — clean revert`, with `carry_count: 1` sitting in the same
+    dict, and the repo's own golden fixture for `revert c.py::qux --emit --json` carries a foundation
+    row under that sentence. Counts, not symbols: naming the carried symbols is still out."""
+    pview = _revert(
+        carry_count=1,
+        frontier=[{"op_id": "op1", "bucket": "carry"}, {"op_id": "op2", "bucket": "foundation"}],
+    )
+    line = so_what_for(pview)
+    assert "Nothing depends on it" not in line, line
+    assert line == (
+        "Removes a.py::foo. No dependent needs a decision — 1 repoint automatically, "
+        "1 prerequisite locked. Undo-able."
+    ), line
+
+
+def test_a_revert_with_no_frontier_at_all_still_says_nothing_depends_on_it():
+    """The clean case has to stay clean, or F128's fix costs the sentence its meaning."""
+    assert so_what_for(_revert(frontier=[], carry_count=0)) == (
+        "Removes a.py::foo. Nothing depends on it — clean revert. Undo-able."
+    )

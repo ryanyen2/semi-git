@@ -614,7 +614,8 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     the caller's kept op-ids (no store reads), so the TUI can call it on every toggle. `primary`
     leads with the `file::symbol` the user named when the target is one (not an alphabetically-first
     dependent from the up-set closure); when the target is an op-id/feature ref it falls back to a
-    touched symbol, then to the raw target. Carry is never named."""
+    touched symbol, then to the raw target. Carried symbols are never named, though a clean revert reports how many
+    of them repoint (F128)."""
     verb = projected.get("verb", "")
     target = projected.get("target")
     # `__anchor__`/`__residue__` are the miner's own bookkeeping symbols, and they sort ahead of
@@ -677,6 +678,20 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
 
     if verb == "revert":
         if n == 0:
+            # F128. `n` is blast-only by design (`_fallout_rows` excludes carry and foundation --
+            # neither needs a decision), but "Nothing depends on it" is a claim about dependents and
+            # not about decisions, and it was false whenever either bucket was populated: the same
+            # preview printed `dependents: 1 auto-repoint (carry), 1 prerequisite(s) locked` in the
+            # terminal while telling a machine caller nothing depended on the target, with
+            # `carry_count` contradicting it in the same dict. Counts only -- the symbols stay unnamed.
+            frontier = projected.get("frontier") or []
+            carry = sum(1 for r in frontier if r.get("bucket") == "carry")
+            found = sum(1 for r in frontier if r.get("bucket") == "foundation")
+            if carry or found:
+                parts = ([f"{carry} repoint automatically"] if carry else []) + \
+                        ([f"{found} prerequisite{'s' if found != 1 else ''} locked"] if found else [])
+                return (f"Removes {primary}. No dependent needs a decision — "
+                        f"{', '.join(parts)}. {undo}")
             return f"Removes {primary}. Nothing depends on it — clean revert. {undo}"
         kept_clause = f", keeping {n_kept}" if n_kept else ""
         return f"{primary} will break — {n_break} dependent(s) to re-draft{kept_clause}. {undo}"
@@ -2034,7 +2049,17 @@ def _open_fork_records(repo) -> list:
     so they never surface. This also cleans records persisted *before* the write-side filter landed
     (`_record_parked_forks` is union-only and never removes), and drops any record whose tip is no
     longer in the store (`Store.get` -> None). Decodes only the two tip ops per record -- no full
-    `all_ops()` scan."""
+    `all_ops()` scan.
+
+    Stamps each surviving record with `cross_version`: True when its two tips were mined under
+    *different* MINER_VERSIONs (F82). A version bump re-mines history but nothing evicts the previous
+    generation, so the same commit can sit in the store twice; the two generations disagree about a
+    symbol's after-state and collide on its `before_version`. `fork_free` drops both tips and their
+    up-sets exactly as for a real divergence -- all 612 records on sgt's own store, costing 91% of the
+    ideal -- so these must stay visible. But nobody edited anything and no hand-merge closes them:
+    the only remedy is `sgt advanced migrate ops-v3`. Stamped here rather than in one caller because
+    three surfaces read this list (`forks_view`, `status_view`, `now_view`) and each phrased it
+    itself -- the flag has to arrive with the record or a surface silently keeps the old wording."""
     from sgt import state
     from sgt.core.order import resolvable_forks
     from sgt.core.store import Store
@@ -2051,7 +2076,13 @@ def _open_fork_records(repo) -> list:
             [(r["symbol"], r["tips"][0], r["tips"][1]) for r in valid], by_id
         )
     }
-    return [r for r in valid if (r["symbol"], r["tips"][0], r["tips"][1]) in keep]
+    out = []
+    for r in valid:
+        if (r["symbol"], r["tips"][0], r["tips"][1]) not in keep:
+            continue
+        versions = {op.miner_version for op in (by_id[t] for t in r["tips"]) if op is not None}
+        out.append({**r, "cross_version": len(versions) > 1})
+    return out
 
 
 def forks_view(repo) -> dict:
@@ -2061,7 +2092,8 @@ def forks_view(repo) -> dict:
     There's no single "current" line span to add beyond that: both tips are, by construction,
     excluded from every verb-visible ideal, so a resolution UI that needs each tip's own content
     calls `fork_detail_view` instead. Filtered to resolvable forks via `_open_fork_records` (light
-    per-tip store reads); empty (`{"open": 0, "forks": []}`) when there are none."""
+    per-tip store reads, each carrying `cross_version`); empty (`{"open": 0, "forks": []}`) when there
+    are none."""
     records = _open_fork_records(repo)
     return {
         "open": len(records),
@@ -2640,9 +2672,8 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
         # thing left to say is why that rung didn't claim it -- three different situations that all
         # produce the same refusal, and the user can only act on the difference. The flat "not a
         # known feature, checkpoint, op, or symbol" is what dead-ended this verb six times out of
-        # ten in the pilot, and it named none of them.
-        looks_like_commit = bool(re.fullmatch(r"[0-9a-f]{4,40}", target.strip()))
-        if looks_like_commit:
+        # ten in the pilot, and it named none of them. Reads only, like the general miss below.
+        if re.fullmatch(r"[0-9a-f]{4,40}", target.strip()):
             return {
                 "ok": False, "target": target, "kind": None,
                 "message": (
@@ -2658,18 +2689,35 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
             }
         return {
             "ok": False, "target": target, "kind": None,
-            "message": f"{target!r} is not a known feature, checkpoint, op, symbol, or save",
+            # `show` matches ids and exact labels; it never reaches the NL resolver (pinned by
+            # `test_show_never_calls_the_nl_resolver`), so a phrase misses here even when it would
+            # resolve elsewhere. Saying that is the difference between "you have no such feature" and
+            # "this verb does not look things up that way" -- and the miss branch used to close that
+            # gap by offering `sgt revert <the same phrase>`, i.e. answering "what is this?" with a
+            # verb that resolves by meaning and then acts on the guess, with no `--dry-run` to make
+            # taking the suggestion safe. A read that failed must only offer reads.
+            "message": f"{target!r} is not a known feature, checkpoint, op, or symbol "
+                       f"(ids and exact labels only — `show` does not resolve a phrase)",
             "next": [
                 {"cmd": "sgt log", "why": "browse what you did, newest first"},
                 {"cmd": "sgt log --tree", "why": "the feature tree, with each feature's handle"},
-                {"cmd": f"sgt revert {target}", "why": "if this was a phrase, revert resolves it by meaning"},
             ],
         }
 
-    ops = sorted(found.op_ids)
-    symbols, files = _show_footprint(repo, found.op_ids)
+    # A symbol selection's `op_ids` is deliberately a single op -- its frontier tip -- because that is
+    # the op a `revert` of the symbol takes, and `resolve` guarantees "an id `show` accepts is exactly
+    # an id `revert` accepts". As an *extent*, the tip alone is the wrong answer: `sgt show
+    # coursecraft/cli.py::cmd_search` reported `1 edit` and named the commit that last *rewrote*
+    # cmd_search (`extract Repository class for persistence`) where `git log -S"def cmd_search"` names
+    # the one that introduced it (`add course search`). "When did this land, and what else happened to
+    # it" is the question `show <symbol>` exists to answer, so extent and provenance run over the
+    # symbol's whole live history while consequence and the revert offer stay on the tip.
+    is_symbol = found.kind == "symbol"
+    extent = _symbol_history(repo, found.target) if is_symbol else found.op_ids
+    ops = sorted(extent)
+    symbols, files = _show_footprint(repo, extent, only=found.target if is_symbol else None)
     consequences = _show_consequences(repo, found, core_verbs, symbol_limit)
-    provenance = _show_provenance(repo, found.op_ids, save_limit)
+    provenance = _show_provenance(repo, extent, save_limit)
     return {
         "ok": True,
         "kind": found.kind,
@@ -2719,10 +2767,17 @@ def _show_handle(found) -> str:
     return found.target
 
 
-def _show_footprint(repo, op_ids) -> tuple[list[str], list[str]]:
+def _show_footprint(repo, op_ids, *, only: str | None = None) -> tuple[list[str], list[str]]:
     """(symbols, files) the selection's ops touch. Bookkeeping sentinels (`__residue__`/`__anchor__`)
     are dropped: they are how the miner represents the parts of a file *around* the symbols, so
-    counting them would inflate "what this touched" with entries no user recognizes."""
+    counting them would inflate "what this touched" with entries no user recognizes.
+
+    `only` narrows the answer to one symbol, for a symbol selection. An op's footprint is
+    many-symbols-to-one (one edit can rewrite several symbols across several files), so unfiltered
+    this reported `17 symbols in 3 files` for a one-symbol query -- the co-edited symbols of the ops
+    that happened to carry it, presented as the symbol's own extent. They are a real and interesting
+    fact, but they are not what was asked, and no other field in the view is co-edited work, so
+    showing them here read as the answer."""
     from sgt.core import opindex
 
     wanted = frozenset(op_ids)
@@ -2731,8 +2786,24 @@ def _show_footprint(repo, op_ids) -> tuple[list[str], list[str]]:
         if op.id in wanted:
             symbols.update(s for s in op.footprint
                            if "__residue__" not in s and "__anchor__" not in s)
+    if only is not None:
+        symbols &= {only}
     files = sorted({s.partition("::")[0] for s in symbols})
     return sorted(symbols), files
+
+
+def _symbol_history(repo, symbol: str) -> frozenset[str]:
+    """Every *live* op that wrote `symbol` -- the symbol's history as it currently stands.
+
+    Restricted to the ideal's op set on purpose: an op a user has already reverted is not part of the
+    answer to "what happened to this", and listing the commit behind it as a save would offer a
+    provenance the code no longer has. Read-only -- `lens.current_ideal`, never `get`, because `show`
+    must not mine (a read a user repeats before a mutating verb must not change what it describes)."""
+    from sgt.core import lens, opindex
+
+    live = lens.current_ideal(repo).op_ids
+    return frozenset(op.id for op in opindex.index_ops(repo)
+                     if op.id in live and symbol in op.footprint)
 
 
 def _show_feature_ref(repo, found) -> dict | None:
@@ -2812,6 +2883,30 @@ def _show_consequences(repo, found, core_verbs, symbol_limit: int = 12) -> dict:
     }
 
 
+def revert_cost(consequences: dict) -> str:
+    """The one truthful magnitude for a revert, shared by `sgt show`'s consequence line and its
+    `next:` footer.
+
+    A revert whose target edit is *shared* with later work removes no whole op: `plan_subtraction`
+    splices the removal into the live code instead, so `removes` is 0 while files change on disk.
+    Reporting that count as the headline printed "removes 0 edits" for a revert that rewrote a
+    function and deleted a test -- the silent-no-op read (a command that says it did nothing and
+    did something) this exists to prevent. When no op comes out, the honest magnitude is how many
+    symbols the plan rewrites."""
+    removes, dependents = consequences["removes"], consequences["dependents"]
+    if removes:
+        cost = f"removes {removes} edit" + ("s" if removes != 1 else "")
+        return cost + (f", {dependents} of them work built on top" if dependents else "")
+    changed = consequences.get("affected_symbol_count", 0)
+    if changed:
+        # Deliberately "changes", not "rewrites": a subtraction splices some symbols and removes
+        # others outright (`subtracted_symbols` vs `pruned_symbols`), and only the revert flow
+        # itself prints that breakdown. One word that is true of both beats a precise-sounding
+        # one that is wrong for half of them.
+        return f"changes {changed} symbol" + ("s" if changed != 1 else "")
+    return "changes nothing"
+
+
 def _show_next(found, consequences: dict) -> list[dict]:
     """Runnable next steps for this kind of selection. Every `cmd` here is a real, currently-spelled
     verb at its current path -- the P0-A rule: a suggestion that silently no-ops is worse than no
@@ -2862,11 +2957,7 @@ def _show_next(found, consequences: dict) -> list[dict]:
     # still true and worth reading (it is how entangled this save is), and `log --focus` is the
     # route from it to a unit revert *does* take, so the number is not a dead end.
     if consequences.get("live_op_count") and found.kind != "save":
-        removes, dependents = consequences["removes"], consequences["dependents"]
-        cost = f"removes {removes} edit" + ("s" if removes != 1 else "")
-        if dependents:
-            cost += f", {dependents} of them work built on top"
-        steps.append({"cmd": f"sgt revert {token}", "why": cost})
+        steps.append({"cmd": f"sgt revert {token}", "why": revert_cost(consequences)})
     return steps
 
 

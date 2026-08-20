@@ -194,6 +194,23 @@ def _save_sync_cache(repo: Path, table: dict[str, dict]) -> None:
     state.save_json_if_changed(repo, "sync_cache", table)
 
 
+def _store_digest(ops) -> str:
+    """A digest of the op store's id set, cached beside the fingerprint below.
+
+    The gate needs this separately because the ideal is a function of the *whole store*, not only of
+    the ids it happened to cache, and `_sync_fingerprint` cannot see the store: it covers HEAD, the
+    dirty working tree, and the persisted ideal entry. Backward backfill appends ops while moving none
+    of those three, so before this, store growth could not invalidate the memo -- once `reached_genesis`
+    flipped, the ideal was frozen for good, even though later chunks had landed the very producer ops
+    that would ground what an earlier chunk had to drop (F68 layer 1). Costs one pass over ids the
+    callers have already loaded."""
+    h = hashlib.sha256()
+    for oid in sorted(op.id for op in ops):
+        h.update(oid.encode())
+        h.update(b"\x00")
+    return h.hexdigest()
+
+
 def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry) -> str | None:
     """The fingerprint the no-op gate compares. None (git couldn't compute the dirty digest) means
     'don't gate -- mine'. `ideal_entry` is the persisted ideal id-list for this ref, so an explicit
@@ -240,7 +257,10 @@ def cached_map_is_current(repo: str | Path) -> bool:
         cached = _load_sync_cache(repo).get(key)
         if fp is None or cached is None or cached.get("fp") != fp:
             return False
-        return frozenset(cached.get("ids", [])) <= {op.id for op in opindex.index_ops(repo)}
+        index_ops = opindex.index_ops(repo)
+        if cached.get("store") != _store_digest(index_ops):
+            return False
+        return frozenset(cached.get("ids", [])) <= {op.id for op in index_ops}
     except Exception:
         return False
 
@@ -666,15 +686,30 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
             # surfaced a fork updated the ideal but not through this function). No re-mining.
             cached_ids = frozenset(cached.get("ids", []))
             index_ops = opindex.index_ops(repo)
-            # The fingerprint covers HEAD, the working tree, and the persisted ideal entry -- but
-            # NOT the `.sgt/ops` store, which a `git switch` can swap underneath us: ops committed
-            # on one branch and absent on another are removed by the checkout, while the gitignored
-            # ideal table (and this cache) survive it and keep pointing at the vanished op ids. That
-            # leaves the gate's HEAD/tree/ideal-entry fingerprint unchanged, so a blind short-circuit
-            # would hand back a cached ideal whose ops are no longer materialized -- `Ideal.from_ops`
-            # then rejects it. Only gate when every cached id is still in the index; otherwise fall
-            # through to a full sync, which re-mines the ref and reduces the stale set to what survives.
-            if cached_ids <= {op.id for op in index_ops}:
+            # The fingerprint covers HEAD, the working tree, and the persisted ideal entry -- but NOT
+            # the `.sgt/ops` store, which moves underneath us in *both* directions, so the store's own
+            # id set has to be part of the gate.
+            #
+            # Ops can vanish: a `git switch` removes ops committed on one branch and absent on another,
+            # while the gitignored ideal table (and this cache) survive the checkout and keep pointing
+            # at ids that are no longer materialized -- `Ideal.from_ops` then rejects them.
+            #
+            # And ops can appear, which is the direction this gate originally missed (F68 layer 1).
+            # Backward backfill appends ops without touching HEAD, the tree, or the ideal entry, so the
+            # fingerprint stayed put while the store grew. The old subset test asked whether the cached
+            # answer was still *constructible*, which growth can never falsify -- but the question the
+            # gate has to answer is whether it is still *best*, and a chunk that dropped an ungrounded
+            # op becomes wrong the moment a later chunk lands that op's producer. Once `reached_genesis`
+            # flipped, nothing recomputed and the ideal was frozen permanently; on the evaluation corpus
+            # that cost ~17 points of byte-exact reconstruction at the median.
+            #
+            # Requiring the digest to be *equal* covers both directions at once, and subsumes the subset
+            # test (an unchanged store still contains everything cached from it) -- the subset check is
+            # kept anyway because it is the cheaper of the two failure reports. A cache entry written
+            # before this field existed has no `"store"` key, compares unequal, and takes the miss: one
+            # extra sync, no migration.
+            if (cached_ids <= {op.id for op in index_ops}
+                    and cached.get("store") == _store_digest(index_ops)):
                 _ensure_fidelity(repo, gb, key, cached_ids, index_ops)
                 return _validated_from_ops(repo, cached_ids, index_ops)
 
@@ -833,8 +868,35 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # a new sha re-adds the op via `new_committed_ids`, but the exclusion subtracts it right back out,
     # so it can no longer silently resurrect (F11/F20). Before, the union-only reconciliation had no
     # way to represent "excluded though back in history" and the op came back.
+    # Whether this ref's backward walk is finished, as of *after* this chunk's work. Hoisted above the
+    # migration below, which must not run mid-backfill, and reused by the gate refresh at the end.
+    reached_genesis = new_backfill_state.get("reached_genesis", False) or not (
+        has_backfill_record or new_backfill_state.get("genesis_frontier") is not None
+    )
+
     exclusions_table = load_exclusions(repo)
-    if already_seeded and key not in exclusions_table:
+    # F70. The migration below reads `reduce(provenance) − base_ids` as evidence of a revert. That
+    # inference is only sound when `base_ids` is this ref's *complete* ideal minus its reverts, and
+    # under chunked mining it usually is not: mid-walk `base_ids` is only "the ideal so far", so
+    # everything older than the chunk boundary is unmined, not reverted. Turning that into exclusions
+    # is unrecoverable -- they are append-only, so those ops are subtracted from every future ideal
+    # forever, which is precisely the drop F68's seed widening exists to repair.
+    # Two conditions make the premise true, and both are needed. `reached_genesis`: the walk is done,
+    # so history is fully mined. `not new_committed_ids`: this call added no committed op *under*
+    # `base_ids`, so the two sides of the difference were computed over the same store. Gating on
+    # `reached_genesis` alone is not just insufficient, it is worse than no gate: the migration then
+    # lands on the chunk that finishes the walk, where the store is complete but `base_ids` is still
+    # the previous chunk's short answer, making `implied` maximal (measured: 26 of 30 groundable ops
+    # admitted, against 28 ungated). With both, the migration waits for the next warm sync, by which
+    # point the seed widening has already restored `base_ids` and the difference is empty.
+    # This still converges for the case the migration is actually for -- a pre-exclusion-era store,
+    # whose reverts survive only as absences. Such a store has no backfill record, so it mines nothing
+    # on the first call after upgrade and migrates immediately; one that does backfill migrates on the
+    # first quiet sync after. The check is re-evaluated every sync until it fires, so deferring only
+    # costs calls. The one ref it never reaches is one whose backfill is permanently capped -- that
+    # leaves a pre-existing revert un-migrated, which is strictly better than minting reverts nobody
+    # asked for.
+    if already_seeded and key not in exclusions_table and reached_genesis and not new_committed_ids:
         # Migrate an existing repo whose reverts were recorded only as *absences* in the base set
         # into explicit exclusions, so the switch to exclusion-subtracted ideals does not resurrect a
         # pre-existing revert on the first history rewrite. A genuine revert is an op that would
@@ -857,7 +919,20 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # cold contains add/delete/re-add forks and predecessors squashed out of this ref, so the raw
     # union is not directly constructible -- persisting it unreduced would leave an invalid
     # `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
-    seed = (base_ids | new_committed_ids) - exclusions.live()
+    # F68 layer 2: `base_ids` is the *previous reduced answer*, so a drop it made is invisible here.
+    # During a chunked backward walk an op whose producer is older than the chunk boundary is genuinely
+    # ungrounded at that moment and reduction drops it -- correctly. But the next chunk sees it in
+    # neither `base_ids` nor `new_committed_ids`, so the drop is carried forward even once the producer
+    # lands, and the ideal converges to something strictly smaller than the finished store can ground.
+    # Re-offering history's own reduced ideal repairs it. This cannot resurrect a revert: exclusions are
+    # subtracted right below, which is exactly the case they exist for, and `_committed_ids_by_provenance`
+    # is already reduced, so it contributes no fork tips or ungrounded ops of its own.
+    # Gated rather than unconditional because it costs a second reduction: a past drop can only have
+    # become groundable if ops arrived, so a warm sync that mined nothing skips it (and the no-op gate
+    # above usually skips the sync entirely).
+    regroundable = already_seeded and (backfill_in_progress or bool(new_committed_ids))
+    seed = (base_ids | new_committed_ids
+            | (_committed_ids_by_provenance(gb, store) if regroundable else set())) - exclusions.live()
     committed_ids = set(order.reduce_to_ideal(seed, all_ops))
 
     # (4) Checkpoint: the witness, the ideal table, and the backfill state must each land
@@ -911,14 +986,12 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # Only when we're in the stable state the gate checks for (forward-current, backfill complete):
     # caching mid-backfill would let the gate skip the remaining backward chunks. Recompute the
     # fingerprint against the *new* ideal entry (this sync may have changed it).
-    reached_genesis = new_backfill_state.get("reached_genesis", False) or not (
-        has_backfill_record or new_backfill_state.get("genesis_frontier") is not None
-    )
     if treat_as_root is None and new_witness == head and reached_genesis:
         fp = _sync_fingerprint(gb, head, sorted(committed_ids))
         if fp is not None:
             table = _load_sync_cache(repo)
-            table[key] = {"fp": fp, "ids": sorted(result.op_ids)}
+            table[key] = {"fp": fp, "ids": sorted(result.op_ids),
+                          "store": _store_digest(all_ops)}
             _save_sync_cache(repo, table)
     return result
 
@@ -1307,10 +1380,16 @@ def _outside_delta_drift(repo: Path, materialized: dict[str, bytes], delta_files
 
 
 def _tracked_paths(repo: Path) -> list[str]:
+    """Tracked paths, NUL-delimited (F72). Plain `ls-files` C-quotes any path containing non-ASCII
+    bytes, and the quoted literal names nothing on disk -- so the `is_file()` guard in `_status_paths`
+    silently dropped it and the path fell out of `backstop_kept`, `unmanaged`, and `drift` alike. A
+    file sgt cannot reproduce was then reported as nothing at all. `-z` emits raw bytes instead.
+    Symlink and gitlink entries stay in the list: `unmanaged` is built from the symlinks, and a
+    gitlink's path is a directory, which the callers' own `is_file()` checks already exclude."""
     proc = subprocess.run(
-        ["git", "-C", str(repo), "ls-files"], capture_output=True, text=True, check=True
+        ["git", "-C", str(repo), "ls-files", "-z"], capture_output=True, text=True, check=True
     )
-    return [line for line in proc.stdout.splitlines() if line]
+    return [path for path in proc.stdout.split("\x00") if path]
 
 
 def _writes_through_symlink(repo: Path, path: str) -> bool:

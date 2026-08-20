@@ -67,44 +67,83 @@ def test_hub_symbol_stripped_from_cochange_but_not_structural(tmp_path):
 
 def test_scope_edges_group_symbols_by_conventional_commit_scope():
     """A pure-function test against hand-built ops -- scope grouping is a fact about
-    (op.provenance -> commit subject -> declared scope), independent of mining internals."""
+    (op -> commit subject -> declared scope), independent of mining internals."""
     op1 = make_op(
         {"a.py::foo": (None, "v1"), "b.py::bar": (None, "v2")},
         {"a.py::foo": b"1", "b.py::bar": b"2"},
-        provenance=("sha1",),
     )
-    op2 = make_op(
-        {"c.py::baz": (None, "v3")}, {"c.py::baz": b"3"}, provenance=("sha2",),
-    )
+    op2 = make_op({"c.py::baz": (None, "v3")}, {"c.py::baz": b"3"})
     subjects = {"sha1": "feat(core): add foo and bar", "sha2": "feat(other): add baz"}
     nodes = {"a.py::foo", "b.py::bar", "c.py::baz"}
 
-    edges = cluster.scope_edges([op1, op2], subjects, nodes, hubs=set())
+    edges = cluster.scope_edges(
+        [op1, op2], subjects, nodes, hubs=set(), sha_of={op1.id: "sha1", op2.id: "sha2"},
+    )
 
     assert edges == {("a.py::foo", "b.py::bar"): 10.0}
 
 
-def test_commit_edges_bind_symbols_sharing_a_provenance_sha():
+def test_commit_edges_bind_symbols_sharing_a_commit():
     """Co-commit recovers what U2's untangling strips: two single-symbol ops from the SAME commit
     changed together, so they get an edge; an op from another commit is disjoint."""
-    op1 = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"}, provenance=("sha1",))
-    op2 = make_op({"b.py::bar": (None, "v2")}, {"b.py::bar": b"2"}, provenance=("sha1",))
-    op3 = make_op({"c.py::baz": (None, "v3")}, {"c.py::baz": b"3"}, provenance=("sha2",))
+    op1 = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"})
+    op2 = make_op({"b.py::bar": (None, "v2")}, {"b.py::bar": b"2"})
+    op3 = make_op({"c.py::baz": (None, "v3")}, {"c.py::baz": b"3"})
     nodes = {"a.py::foo", "b.py::bar", "c.py::baz"}
+    sha_of = {op1.id: "sha1", op2.id: "sha1", op3.id: "sha2"}
 
-    edges = cluster.commit_edges([op1, op2, op3], nodes, hubs=set())
+    edges = cluster.commit_edges([op1, op2, op3], nodes, hubs=set(), sha_of=sha_of)
 
     assert edges == {("a.py::foo", "b.py::bar"): 1.0}  # scale/(size-1) = 1/1
 
 
 def test_commit_edges_exclude_hubs_and_mega_commits():
-    a = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"}, provenance=("s",))
-    hub = make_op({"hub.py::h": (None, "v2")}, {"hub.py::h": b"2"}, provenance=("s",))
-    assert cluster.commit_edges([a, hub], {"a.py::foo", "hub.py::h"}, hubs={"hub.py::h"}) == {}
+    a = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"})
+    hub = make_op({"hub.py::h": (None, "v2")}, {"hub.py::h": b"2"})
+    same = {a.id: "s", hub.id: "s"}
+    assert cluster.commit_edges(
+        [a, hub], {"a.py::foo", "hub.py::h"}, hubs={"hub.py::h"}, sha_of=same) == {}
 
-    ops = [make_op({f"f{i}.py::x": (None, "v")}, {f"f{i}.py::x": b"1"}, provenance=("s",)) for i in range(5)]
+    ops = [make_op({f"f{i}.py::x": (None, "v")}, {f"f{i}.py::x": b"1"}) for i in range(5)]
     nodes = {f"f{i}.py::x" for i in range(5)}
-    assert cluster.commit_edges(ops, nodes, hubs=set(), max_commit=4) == {}  # 5-symbol commit > cap
+    sha_of = {op.id: "s" for op in ops}
+    # 5-symbol commit > cap
+    assert cluster.commit_edges(ops, nodes, hubs=set(), max_commit=4, sha_of=sha_of) == {}
+
+
+def test_signals_bind_work_that_was_saved_through_sgt(tmp_path):
+    """The co-commit and scope signals read *which commit an op happened in*. Work saved through
+    sgt (`get` on a dirty tree, then `put`) mines its ops as pending -- empty `provenance`, the
+    witnessing commit recorded only in that commit's `Sgt-Op:` trailers. Keying the signals off
+    `op.provenance` therefore made them blind to exactly the histories sgt itself produces: in the
+    study repos 366 of 370 ops carried no provenance, so both signals were near-empty and the
+    clustering ran on structure and file paths alone. `opindex.earliest_commit_sha` is the one rule
+    the time-aware projections already share, and the signals now read it too."""
+    from sgt.core.lens import put
+    from sgt.lens import tree
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("seed")
+    get(repo)
+
+    # One episode, saved through sgt: two unrelated symbols, no call between them and not in the
+    # same file, so a co-commit edge is the only thing that can bind them.
+    (repo / "b.py").write_text("def beta():\n    return 2\n", encoding="utf-8")
+    (repo / "c.py").write_text("def gamma():\n    return 3\n", encoding="utf-8")
+    ideal = get(repo)
+    put(repo, ideal, "feat(queue): add beta and gamma together")
+
+    # No re-mine after the save: `put` advanced the witness past its own commit, so this is where a
+    # saved repo *stays* -- the study repos sat at 366 unattributed ops through 26 commits and a
+    # later `get()` never healed them.
+    ops = Store(repo).all_ops()
+    assert [o for o in ops if not o.provenance], "fixture must contain pending (saved) ops"
+
+    _nodes, fused, _hubs = tree.fused_graph_with_hubs(repo, ops, ideal)
+
+    assert fused.get(("b.py::beta", "c.py::gamma"), 0) > 0
 
 
 def test_path_edges_bind_symbols_in_the_same_file_and_respect_hubs_and_cap():
