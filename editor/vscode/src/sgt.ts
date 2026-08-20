@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
+import { failureDetail, isSpawnFailure, mutationArgs } from "./cliSeam";
 import {
   BlameView,
   ComposeView,
@@ -197,20 +198,16 @@ export class Sgt {
       });
       return stdout;
     } catch (err: any) {
-      // A spawn-level failure means we never reached the CLI at all, so there is no stderr to
-      // report and the errno is the whole story. Distinguish it from a CLI that ran and failed:
-      // the two need completely different fixes, and conflating them is what makes "the sidebar
-      // is empty" so hard to diagnose.
-      const spawnFailed =
-        !err.killed &&
-        !(err.stderr || "").trim() &&
-        ["ENOENT", "ENOTDIR", "EACCES"].includes(err.code);
-      const detail = err.killed
-        ? `timed out after ${timeout}ms (mining/rebuild likely still in progress -- try again once it finishes)`
-        : spawnFailed
-          ? `could not run the sgt CLI at '${this.bin()}' (${err.code})`
-          : (err.stderr || "").trim() || err.message;
-      this.out.appendLine(`sgt ${args.join(" ")} failed: ${detail}`);
+      // F126. Which of the two streams the explanation is on, and how much of it to show, is
+      // `failureDetail`'s decision -- it is testable there and was untested here. The channel gets
+      // both streams whole, so the cap `failureDetail` applies for the modal never loses anything.
+      const detail = failureDetail(err, this.bin(), timeout);
+      const spawnFailed = isSpawnFailure(err);
+      this.out.appendLine(
+        `sgt ${args.join(" ")} failed (exit ${err.code}): ${detail}` +
+          (err.stdout ? `\n--- stdout ---\n${err.stdout}` : "") +
+          (err.stderr ? `\n--- stderr ---\n${err.stderr}` : ""),
+      );
       if (spawnFailed) this.reportMissingCli(err.code);
       throw new Error(detail);
     } finally {
@@ -259,19 +256,15 @@ export class Sgt {
   // each kept `carry` dependent repoints mechanically for free. An empty keep set is a plain
   // full-upset revert that commits immediately. Returns the human report.
   revertKeep(sel: string, keepOpIds: string[]): Promise<string> {
-    if (keepOpIds.length === 0) return this.confirmedMutate(["revert", sel]);
-    return this.confirmedMutate(["revert", sel, "--keep", keepOpIds.join(",")]);
+    if (keepOpIds.length === 0) return this.mutate(["revert", sel]);
+    return this.mutate(["revert", sel, "--keep", keepOpIds.join(",")]);
   }
 
-  // The union closure a multi-select induces (`sgt feature select <feature>... --json` →
-  // selection_view): the feature ids, direct + closure op counts, and the ops pulled in from other
-  // features. Feeds the workbench's multi-select "selection" card + closure paint (Stage C), and
-  // the batch preview its "Revert all" confirms against. A report-only read.
-  // The bare `sgt select` spelling this used to call was re-homed under `feature` and now answers
-  // with a "no longer exists — run: sgt feature select" stub on stderr, which the extension saw as
-  // a failed read: the selection card only ever showed that migration notice.
+  // The union closure a multi-select induces (`sgt select <feature>... --json` → selection_view):
+  // the feature ids, direct + closure op counts, and the ops pulled in from other features. Feeds
+  // the workbench's multi-select "selection" card + closure paint (Stage C). A report-only read.
   select(refs: string[]): Promise<SelectionView> {
-    return this.json<SelectionView>(["feature", "select", ...refs, "--json"]);
+    return this.json<SelectionView>(["select", ...refs, "--json"]);
   }
 
   // Active plan sessions + the pure checkpoint preview (plan U14). A read, not a rebuild —
@@ -478,23 +471,10 @@ export class Sgt {
     return this.json<FindView>(["find", query, "--json"], 60_000);
   }
 
-  // Mutations return the human report; surface it verbatim.
+  // Mutations return the human report; surface it verbatim. `mutationArgs` supplies the `--yes` the
+  // tty gate needs (F125) -- see `cliSeam.ts` for why it belongs here and not at the call sites.
   async mutate(args: string[], timeout = 30_000): Promise<string> {
-    return this.run(args, timeout);
-  }
-
-  /**
-   * A mutation the user has already agreed to in a modal.
-   *
-   * `revert` and `restore` ask before they act. On a terminal that is a y/N
-   * prompt; with no terminal to ask on -- which is every call from here -- the
-   * CLI prints the preview and exits 2. `execFile` reports a non-zero exit as a
-   * failure, so every revert and restore from the editor ended in "Command
-   * failed" after the user had clicked Apply, having changed nothing. `--yes`
-   * is the CLI's own way of saying the asking already happened.
-   */
-  async confirmedMutate(args: string[], timeout = 30_000): Promise<string> {
-    return this.run(args.includes("--yes") ? args : [...args, "--yes"], timeout);
+    return this.run(mutationArgs(args), timeout);
   }
 }
 

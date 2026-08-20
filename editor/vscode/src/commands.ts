@@ -66,8 +66,9 @@ async function applyMutation(
   }
   try {
     // The modal above is the confirmation, so the CLI must not go looking for
-    // another one it has no terminal to ask on.
-    const report = await store.sgt.confirmedMutate(args);
+    // another one it has no terminal to ask on. `mutate` passes the `--yes` that
+    // says so -- see `mutationArgs` in cliSeam.ts.
+    const report = await store.sgt.mutate(args);
     store.invalidate();
     showMutationReport(report);
   } catch (e: any) {
