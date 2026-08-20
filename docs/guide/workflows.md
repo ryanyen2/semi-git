@@ -126,7 +126,7 @@ back to a plain-English target.
 $ sgt revert "the caching layer"
 ? [revert] 'the caching layer' did not resolve; did you mean:
   1. cache.py::get_cached (symbol) — the only caching-related function in the diff
-     would remove 1 op(s), add 0 op(s)
+     would apply — 1 edit(s) removed, 0 added
      re-invoke: sgt revert cache.py::get_cached
 ```
 

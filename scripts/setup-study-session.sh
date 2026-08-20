@@ -42,6 +42,12 @@ echo "Setting up $participant: $condition condition, $project."
 mkdir -p "$workspace/notes" "$workspace/bin"
 cp -R "$source_repo" "$workspace/work"
 
+# The .env in the study project holds our API key. make-study-bundle.sh already
+# strips it from remote bundles; the in-person path copied it straight into the
+# participant's workspace, where `sgt` would also pick it up and quietly bill a
+# rebuild to us. Same rule, same place in the flow.
+rm -f "$workspace/work/.env"
+
 echo "Building the test environment."
 (
     cd "$workspace/work"
@@ -62,14 +68,44 @@ exec "$workspace/toolenv/bin/sgt" "\$@"
 WRAPPER
     chmod +x "$workspace/bin/sgt"
 
-    echo "Refreshing the history view. This takes about 30 seconds."
-    # A fresh copy shows a provisional set of features that collapses to a
-    # different, smaller set the first time anything refreshes, and two features
-    # get renamed in place. Doing it now means the participant sees one stable
-    # set for the whole session.
-    (cd "$workspace/work" && "$workspace/bin/sgt" log --refresh >/dev/null 2>&1)
+    # The shipped fixture already has its history view built, every feature label
+    # written by the LLM. Nothing here rebuilds it. A rebuild on this machine
+    # would need a credential the bundle deliberately does not carry, and without
+    # one the task-relevant features come back as raw symbol lists -- so a rebuild
+    # here would quietly change what the participant is asked to read. Check that
+    # the fixture matches the installed code instead, and stop if it does not.
+    echo "Checking the shipped history view matches the installed sgt."
+    if ! "$workspace/toolenv/bin/python" - "$workspace/work" <<'CHECK'
+import json, sys
+from pathlib import Path
+from sgt.lens.cluster import SIGNALS_VERSION
+work = Path(sys.argv[1])
+tree = json.loads((work / ".sgt/tree/tree.json").read_text())["data"]
+built = str(tree.get("signals_version"))
+if built != str(SIGNALS_VERSION):
+    sys.exit(f"  fixture was built at signals_version {built}, installed sgt is at "
+             f"{SIGNALS_VERSION}. The first refresh would regroup every feature, so the "
+             f"participant would not see the fixture. Rebuild the fixture with a credential.")
+cache = json.loads((work / ".sgt/local/label_cache.json").read_text())["data"]
+fallback = sorted(k for k, v in cache.items() if v.get("source") != "llm")
+if fallback:
+    sys.exit(f"  {len(fallback)} feature label(s) are fallbacks, not real labels: "
+             f"{', '.join(fallback[:3])}. Rebuild the fixture with a credential.")
+print(f"  {len(tree['nodes'])} nodes, {len(cache)} labels, signals_version {built}")
+CHECK
+    then
+        echo "Do not run the session until this is fixed." >&2
+        exit 1
+    fi
 
+    # A commit sha alone does not name the code that got installed: a dirty
+    # working tree installs something no commit contains. Record the uncommitted
+    # part too, so a session is traceable to the exact source.
     build="$(cd "$SGT_SOURCE" && git rev-parse --short HEAD)"
+    dirty="$(cd "$SGT_SOURCE" && { git status --porcelain; git diff HEAD; })"
+    if [ -n "$dirty" ]; then
+        build="$build+$(printf '%s' "$dirty" | shasum -a 256 | cut -c1-12)"
+    fi
     echo "$build" > "$workspace/notes/sgt-build.txt"
     echo "sgt build recorded: $build"
 fi
