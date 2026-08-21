@@ -89,6 +89,24 @@ def test_cars_carry_captured_words():
     assert car["words"] == ["remove all completed tasks"]
 
 
+def test_cars_carry_whether_a_revert_took_them_out_of_head():
+    """The JS twin of `test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live`. A revert leaves a
+    chapter in the store and takes it out of the ideal, so both timelines have to be able to draw a
+    rewound chapter as rewound instead of redrawing it as live. `presentOpCount` of `None` -- an
+    unreadable ideal, or a payload written before the field existed -- is no claim, and must not read
+    as removed."""
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _grid(("A", 0), ("A", 1), ("A", 2))
+    live = _seg("A", 0, ["o0"], 0, 0)
+    gone = _seg("A", 1, ["o1"], 1, 1)
+    unknown = _seg("A", 2, ["o2"], 2, 2)  # no `present_op_count` key at all
+    live["present_op_count"], gone["present_op_count"] = 1, 0
+
+    cars = _run(m, hist, [live, gone, unknown])["laneById"]["A"]["cars"]
+    assert [c["reverted"] for c in cars] == [False, True, False]
+    assert [c["presentOpCount"] for c in cars] == [1, 0, None]
+
+
 def test_sub_bins_group_a_cars_ops_by_commit_index():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     hist = _grid(("A", 5), ("A", 5), ("A", 6))

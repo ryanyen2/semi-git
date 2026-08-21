@@ -22,6 +22,7 @@ import {
   HistoryView,
   IntentView,
   LandCandidateResult,
+  UnstageResult,
   LandReport,
   MapView,
   MergeResult,
@@ -41,6 +42,7 @@ import {
   StatusView,
   SwitchResult,
   SyncReport,
+  UndoPreview,
   UndoResult,
 } from "./types";
 
@@ -405,6 +407,13 @@ export class Sgt {
     return this.json<LandCandidateResult>(args);
   }
 
+  // A staged candidate has exactly two exits and this is the other one, so it sits next to Land:
+  // any surface that offers one and not the other leaves the user in a state whose only escape is
+  // the terminal (every materializing verb refuses while a stage is live).
+  abandonCandidate(): Promise<UnstageResult> {
+    return this.json<UnstageResult>(["advanced", "unstage", "--json"]);
+  }
+
   sessionsView(): Promise<SessionsView> {
     return this.json<SessionsView>(["session", "status", "--json"]);
   }
@@ -445,6 +454,14 @@ export class Sgt {
 
   undo(): Promise<UndoResult> {
     return this.json<UndoResult>(["undo", "--json"]);
+  }
+
+  // What the next undo would do, without doing it. A terminal gets this for free -- `sgt undo`
+  // prints it and asks -- but that gate is tty-only, and the extension never is, so the confirm
+  // dialog here is the only thing between a click and a re-materialized ideal. It cannot ask the
+  // question honestly without this.
+  undoPreview(): Promise<UndoPreview> {
+    return this.json<UndoPreview>(["undo", "--emit", "--json"]);
   }
 
   // git-bridge verbs: real network I/O + CAS retry loops, given the longer timeout.

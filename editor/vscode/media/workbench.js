@@ -98,15 +98,29 @@ function computeGraphLayout(map, grid, opts) {
 
   // Aggregate ops -> op count + first/last commit + the sorted commit list (renderers bin it into a
   // density strip at their own column resolution). Lanes with no ops at this frontier don't exist
-  // yet -- dropped, so scrubbing left empties the timeline.
+  // yet -- dropped, so scrubbing left empties the timeline. Dropped too: a lane whose features hold
+  // no symbols of their own, because a cluster whose ops touch only the residue/anchor sentinels is
+  // not something anyone can act on -- `sgt show` answers it with "0 symbols in 0 files" and
+  // reverting it removes nothing. The terminal has applied that filter for a while
+  // (`sgt/tui/graph.py`, `_print_map_tree`) and this surface did not, which is one of the reasons
+  // the workbench, the sidebar and `sgt log --map` listed different features for the same repo.
   const lanes = [];
   for (const v of visible) {
+    // Husks leave the leaf SET, not just the listing: `(N)` on a folded row and a header's `N feat`
+    // are leaf counts, so a husk counted inside a fold promises rows that opening it does not
+    // deliver. A node carrying no `own_symbols` key at all is unknown, not empty -- treat it as
+    // present, the same way the Python filter's `("?",)` default does.
+    const leaves = v.leaves.filter((leaf) => {
+      const own = (byId[leaf] || {}).own_symbols;
+      return own == null || own.length > 0;
+    });
+    if (!leaves.length) continue;
     const commits = [];
-    for (const leaf of v.leaves) for (const op of opsByFeature[leaf] || []) commits.push(op.commit_index);
+    for (const leaf of leaves) for (const op of opsByFeature[leaf] || []) commits.push(op.commit_index);
     if (!commits.length) continue;
     commits.sort((a, b) => a - b);
     lanes.push({
-      ...v, opCount: commits.length, firstCommit: commits[0], lastCommit: commits[commits.length - 1], commits,
+      ...v, leaves, opCount: commits.length, firstCommit: commits[0], lastCommit: commits[commits.length - 1], commits,
     });
   }
   const laneById = {};
@@ -191,7 +205,13 @@ function computeGraphLayout(map, grid, opts) {
 
   let row = 0;
   const headers = [];
+  const emitted = new Set();
   function emit(id, depth) {
+    // The map is a DAG, so the same node can be reached down two paths. `visit` above gives it one
+    // lane; give it one row too, or the second visit overwrites `row` and leaves a blank line where
+    // the first one was.
+    if (emitted.has(id)) return;
+    emitted.add(id);
     const lane = laneById[id];
     if (lane) { // a feature leaf or a collapsed-subsystem meta-lane -- one row, no recursion
       lane.row = row++;
@@ -262,6 +282,14 @@ function computeSegmentLayout(map, grid, segments, opts) {
         cars.push({
           featureId: leaf, segIndex: seg.seg_index, checkpoint: seg.checkpoint, label: seg.intent,
           opCount: seg.op_count, tier: seg.tier, source: seg.source,
+          // Whether this chapter's ops are still in HEAD's ideal (`present_op_count`, from
+          // `sgt.api._segments_out`). A revert leaves the chapter in the store and takes it out of
+          // the ideal, so a client reading only the store cannot tell a rewound chapter from a live
+          // one -- the inspector listed a reverted checkpoint with a working rewind button on it.
+          // `null` (an unreadable ideal, or a payload written before the field existed) is no claim
+          // and must not read as removed.
+          presentOpCount: seg.present_op_count == null ? null : seg.present_op_count,
+          reverted: seg.present_op_count === 0,
           firstIndex: seg.first_index, lastIndex: seg.last_index,
           subBins: [...bins.entries()].sort((a, b) => a[0] - b[0]),
           isFuture: seg.first_index > frontier,
@@ -531,6 +559,7 @@ function episodeRailLayout(epView) {
   const offscreenAbove = document.getElementById("offscreenAbove");
   const offscreenBelow = document.getElementById("offscreenBelow");
   const previewContext = document.getElementById("previewContext"); // "＋N unchanged" context tally
+  const armedBanner = document.getElementById("armedBanner"); // the armed merge/move mode, stated
   const previewRefusal = document.getElementById("previewRefusal"); // blocked-restore remedies overlay
   const viewSeg = document.getElementById("viewSeg"); // segmented Timeline│Rail control
   const plansChip = document.getElementById("plansChip"); // consolidated "Plans M/N" chip + popover trigger
@@ -730,6 +759,68 @@ function episodeRailLayout(epView) {
     saveState();
   }
 
+  // The three "nowhere to attach" signals -- unplanned drift, unplaced forks, and reverted work whose
+  // symbol is off disk -- as one chip each. This was one merged chip: one glyph string, one merged
+  // tooltip, and one click that resolved a fork however you aimed. A chip is a hit target, so the
+  // thing a click does has to be the thing the reader pointed at -- clicking `░4` to ask about
+  // reverted work and landing in fork resolution is the wrong action, not a shortcut. Only the chip
+  // that has an action carries a `symbol`, and only it says so in its tooltip.
+  function signalChips(drift, forks, gap) {
+    // Name a few whole and count the rest: a list silently cut at 4 understates the scope of the very
+    // thing the chip exists to disclose. Same rule the terminal's gap note follows.
+    const cap = (items, n) => {
+      const keep = items.slice(0, n);
+      const left = items.length - keep.length;
+      return keep.concat(left ? [`+${left} more`] : []).join(", ");
+    };
+    const chips = [];
+    if (drift.length) {
+      chips.push({
+        glyph: `◇${drift.length}`,
+        title: `${drift.length} edit(s) outside any plan\n` +
+               cap(drift.map((e) => (e.footprint || []).join(", ")), 4),
+      });
+    }
+    if (forks.length) {
+      const rest = forks.length - 1;
+      chips.push({
+        glyph: `⑂${forks.length}`,
+        symbol: forks[0].symbol,
+        // Which one the click takes was unknowable before: the tooltip listed all N and opened the
+        // first. It names the one it will open, and counts the others as still waiting.
+        title: `click to resolve the fork in ${forks[0].symbol}` +
+               (rest ? `\n+${rest} more fork(s) after this one` : ""),
+      });
+    }
+    const goneN = (gap && gap.op_count) || 0;
+    if (goneN) {
+      chips.push({
+        glyph: `░${goneN}`,
+        title: `${goneN} reverted edit(s) sit in no lane: ` + cap(gap.symbols || [], 4) +
+               "\n`sgt undo` reverses the whole revert; `sgt restore <symbol>` brings one back",
+      });
+    }
+    return chips;
+  }
+
+  // The Save/Undo pair, derived from whichever verb is running in the host. They had no in-flight
+  // state at all, so the only feedback was the toast at the end -- and a reader who sees nothing
+  // clicks again. Both go inert while either one runs, not just the one clicked: they mutate the
+  // same ideal, so an undo fired mid-save is a race the reader did not mean to start. Only the
+  // running one changes its label, because the other is unavailable rather than busy.
+  //
+  // This was a Save/Commit/Undo trio. `sgt save` mines and commits in one verb, so the middle
+  // button's label promised a step the first had already taken, while the command it ran
+  // (`advanced commit`) lands a staged rewrite candidate and otherwise refuses -- drawn permanently
+  // for a state that is rare and gated. Landing moved into the Working-changes card, where the state
+  // is visible and the oracle gate can be shown instead of arriving as a failure after the click.
+  function loopButtonState(busy) {
+    return [["save", "Save", "Saving…"], ["undo", "Undo", "Undoing…"]].map(([verb, idle, running]) => ({
+      verb, label: busy === verb ? running : idle, disabled: busy !== null,
+    }));
+  }
+  // ---- end-signals
+
   function renderTitlebar() {
     // ── Nav zone: composition + segmented view control ──────────────────────────────────────────
     compositionBtn.textContent = `${state.compositionLabel || "HEAD"} ▾`;
@@ -757,17 +848,30 @@ function episodeRailLayout(epView) {
     plansChip.querySelector(".plans-label").textContent = `Plans ${totalMatched}/${totalSteps}`;
     if (!plansPopover.hidden) renderPlansPopover(); // keep an open popover in sync with fresh state
 
-    // Drift/forks with no matching row have nowhere on the rail to attach -- one compact indicator
-    // rather than the signal being dropped silently.
-    const driftN = driftMarks.unplaced.length;
-    const forkN = forkMarks.unplaced.length;
-    driftChip.hidden = !(driftN || forkN);
-    driftChip.textContent = [driftN ? `◇${driftN}` : "", forkN ? `⑂${forkN}` : ""].filter(Boolean).join(" ");
-    driftChip.title = [
-      ...driftMarks.unplaced.map((e) => `unplanned: ${e.footprint.join(", ")}`),
-      ...forkMarks.unplaced.map((f) => `unplaced fork: ${f.symbol}`),
-    ].join("\n");
-    driftChip.onclick = forkN ? () => vscode.postMessage({ type: "resolveFork", symbol: forkMarks.unplaced[0].symbol }) : null;
+    // Drift/forks with no matching row have nowhere on the rail to attach -- a compact indicator
+    // rather than the signal being dropped silently. Reverted work belongs here for the same reason:
+    // clustering keeps only alive symbols, so a reverted symbol's ops lose their leaf and with it
+    // their cell and their chapter, and every lane on the rail then draws whole while the code is off
+    // disk. `░` is the glyph the terminal map and the revert preview both spend on removal, so the
+    // three surfaces name one state one way.
+    const chips = signalChips(driftMarks.unplaced, forkMarks.unplaced,
+                              grid.reverted_unaccounted || { op_count: 0, symbols: [] });
+    driftChip.hidden = chips.length === 0;
+    driftChip.replaceChildren();
+    for (const c of chips) {
+      const el = document.createElement("span");
+      el.className = "sig-chip";
+      el.textContent = c.glyph;
+      el.title = c.title;
+      // The only actionable chip is the one that says so, and it now looks it: the click has been
+      // here all along under `cursor: default` with a tooltip that never mentioned it, which is an
+      // action no reader could find.
+      if (c.symbol) {
+        el.dataset.action = "resolveFork";
+        el.addEventListener("click", () => vscode.postMessage({ type: "resolveFork", symbol: c.symbol }));
+      }
+      driftChip.appendChild(el);
+    }
 
     // ── Actions zone: inspector toggle (Save/Commit/Undo are wired once at init) ─────────────────
     inspectorToggle.textContent = state.inspectorCollapsed ? "◨" : "◧";
@@ -895,6 +999,12 @@ function episodeRailLayout(epView) {
     const drift = (compose.status && compose.status.drift) || { paths: [] };
     const dpaths = (drift.paths || []).length;
     if (dpaths) parts.push(`⚠ ${dpaths} uncommitted`);
+    // Staged paths used to land in that count and be described as uncommitted edits. They are the
+    // opposite: a rewrite of ops already recorded, and while one is live every materializing verb
+    // refuses -- which makes it the single most useful thing this always-visible line can carry.
+    if ((compose.status && compose.status.staged && compose.status.staged.paths || []).length) {
+      parts.push("⧗ staged rewrite");
+    }
     el.textContent = parts.join("  ·  ");
   }
 
@@ -1034,18 +1144,28 @@ function episodeRailLayout(epView) {
         // its commits, up to two. `sgt feature why <sha>` carries the full text + resume handle.
         ((car.words && car.words.length)
           ? "\n" + car.words.slice(0, 2).map((w) => `“${w}”`).join("\n") : "") +
-        `\nRewind: sgt revert ${car.checkpoint}`;
-      wrap.appendChild(mk("rect", {
+        (car.reverted
+          ? `\nReverted — restore: sgt restore ${car.checkpoint}`
+          : `\nRewind: sgt revert ${car.checkpoint}`);
+      // A reverted car is drawn hollow in its own identity hue: the edits are still recorded and
+      // still addressable (`sgt restore`), they are just no longer in the ideal, so the car has to
+      // stay in place and read as emptied rather than vanish or redraw as live. The inline stroke
+      // is needed because `.gcar` sets `stroke: var(--bg)`, which a class rule cannot override
+      // per-lane.
+      const carRect = mk("rect", {
         x, y: barY, width: w, height: GANTT.barH, rx: 3,
         class: "gcar" + (car.tier === "thematic" ? " gcar-thematic" : "") + (isBig ? " gcar-big-rect" : "") +
+          (car.reverted ? " gcar-reverted" : "") +
           (landing && i === cars.length - 1 ? " gcar-landing" : ""),
         fill: color, "data-checkpoint": car.checkpoint,
-      }, [mk("title", { text: tip })]));
+      }, [mk("title", { text: tip })]);
+      if (car.reverted) carRect.style.stroke = color;
+      wrap.appendChild(carRect);
       // Within-car density texture: the chapter's own per-commit runs, opacity by sqrt(count /
       // that chapter's own max) -- a single-commit car (the common case) has nothing to spread
       // across, so it's left as one flat fill rather than one bright sliver + dead space.
       const bins = car.subBins && car.subBins.length ? car.subBins : [];
-      if (bins.length > 1 && w >= 6) {
+      if (bins.length > 1 && w >= 6 && !car.reverted) {  // density cells would repaint a hollow car solid
         const cellW = w / bins.length;
         const localMax = Math.max(1, ...bins.map((b) => b[1]));
         for (let j = 0; j < bins.length; j++) {
@@ -1073,7 +1193,9 @@ function episodeRailLayout(epView) {
       // unit), distinct from a row/label click that picks the whole feature. stopPropagation keeps
       // it from bubbling up to the lane's feature-select handler.
       wrap.addEventListener("click", (ev) => selectCar(car, l.id, ev));
-      wrap.addEventListener("mouseenter", () => { if (!armedVerb) previewAndBlast("revert", [car.checkpoint]); });
+      wrap.addEventListener("mouseenter", () => {
+        if (!armedVerb) onHoverIntent(() => previewAndBlast("revert", [car.checkpoint]));
+      });
       g.appendChild(wrap);
       cursor = x + w + GANTT.carGap;
       lastRight = x + w;
@@ -1793,10 +1915,21 @@ function episodeRailLayout(epView) {
       // live-preview the real op-count/member delta it would produce, via the same blast paint.
       clearGhosts();
       if (id !== armedVerb.feature) {
+        // A collapsed subsystem is a meta-lane, not a leaf feature, so no feature verb can take it as
+        // a target. It used to receive the candidate outline anyway -- a false affordance -- preview
+        // as silence, and fail on click. The layout already knows, so answer here rather than
+        // round-tripping to be refused. Esc first, because while armed a lane click confirms the
+        // verb and cannot expand anything.
+        if (((layout.laneById || {})[id] || {}).isMeta) {
+          showRefusal("That's a collapsed subsystem, not a feature.",
+                      ["Esc · expand it, then pick a feature inside"]);
+          return;
+        }
+        renderArmedBanner(); // the previous candidate's answer is stale the moment the cursor moves
         rail.querySelectorAll(".glane").forEach((el) => {
           if (el.getAttribute("data-id") === id) el.classList.add("ghost-target");
         });
-        previewArmed(id);
+        onHoverIntent(() => previewArmed(id));
       }
       return;
     }
@@ -1813,12 +1946,52 @@ function episodeRailLayout(epView) {
     markAxisSpan(svg, id); // brighten the time columns this lane spans
   }
 
+  // ---- armed-result
+  // The moment of choice had the weakest preview in this file. While arming, `previewAndBlast`
+  // deliberately skips the deep-dim morph (it would fight the crosshair field) and falls back to the
+  // flat ghost paint -- which colours two lanes and says nothing about what the pair becomes. The
+  // banner keeps asking its question ("into which lane?"), worded identically whichever candidate is
+  // under the cursor, so the reader was choosing a target from role paint alone. Both numbers that
+  // answer it are already in the payload and were being thrown away, the same way split's `groups`
+  // were: merge's `op_count`/`member_count` are the *combined* totals -- the lane that results.
+  function armedResultText(verb, res, sourceLabel, targetLabel, targetOps) {
+    if (!res || !res.ok) return null; // setPreviewContext(null) hides the pill; inventing a sentence
+                                      // here would describe a result the backend just refused
+    const name = (l) => `"${l || "that lane"}"`;
+    const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+    if (verb === "merge") {
+      const ops = res.op_count, mem = res.member_count;
+      return `→ ${name(targetLabel)}: `
+        + (ops ? `one lane of ${plural(ops, "edit")}` : "one lane")
+        + (mem ? ` · ${plural(mem, "symbol")}` : "")
+        + `, and ${name(sourceLabel)} is gone.`;
+    }
+    const moved = (res.op_ids || []).length;
+    return `→ ${name(targetLabel)}: ${plural(moved, "edit")} land here (${targetOps} → ${targetOps + moved}); `
+      + `${name(sourceLabel)} keeps its symbols and leaves the graph.`;
+  }
+  // ---- end-armed-result
+
   function previewArmed(targetId) {
     const { verb, feature } = armedVerb;
+    const src = byId(feature), tgt = byId(targetId);
+    const targetOps = ((layout.laneById || {})[targetId] || {}).opCount || 0;
+    const say = (res) => {
+      // Both endpoints, named explicitly rather than read off the payload. `merge`'s preview reports
+      // `affected: []` (metadata-only, so no blast/foundation direction applies), which made
+      // `classifyAffected` paint the candidate alone and leave the lane that is about to cease
+      // existing unmarked -- the one lane whose fate the choice is about. For `move` this is the same
+      // classification its rows already produce, since every op being moved comes from this feature.
+      paintClosure({ target: targetId, blast: [feature], foundation: [] });
+      // The sentence goes in the banner, not the bottom-right pill: while the cursor is out on a lane
+      // the pill is peripheral, and the answer belongs where the question was asked. One locus, so
+      // choosing a target does not mean reading two corners of the pane.
+      renderArmedBanner(armedResultText(verb, res, src && src.label, tgt && tgt.label, targetOps));
+    };
     if (verb === "merge") {
-      previewAndBlast("merge", [targetId, feature]);
+      previewAndBlast("merge", [targetId, feature], say);
     } else if (verb === "move") {
-      previewAndBlast("move", [...opIdsFor(feature), targetId]);
+      previewAndBlast("move", [...opIdsFor(feature), targetId], say);
     }
   }
 
@@ -1972,14 +2145,58 @@ function episodeRailLayout(epView) {
     render();
   }
 
+  // ---- hover-intent
+  // Every hover preview shells out: the host runs `sgt <verb> --emit` in a subprocess to compute the
+  // consequence. Fired straight off `mouseenter` that meant one process per row *crossed* -- a sweep
+  // down forty lanes to reach the fortieth started forty of them, and every result that landed
+  // painted, so the consequence flickered through each row on the way to the one being asked about.
+  // Resting on a row is the intent; crossing it is not. One timer, restarted on each enter and
+  // cancelled on each leave, so only the row under a settled cursor costs anything.
+  const HOVER_INTENT_MS = 130;
+  let hoverTimer = null;
+
+  function cancelHoverIntent() {
+    if (hoverTimer !== null) {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+  }
+
+  function onHoverIntent(fn) {
+    cancelHoverIntent();
+    hoverTimer = setTimeout(() => {
+      hoverTimer = null;
+      fn();
+    }, HOVER_INTENT_MS);
+  }
+  // ---- end-hover-intent
+
+  // ---- armed-banner
+  // "Merge into…" and "Move ops…" arm a mode: the next lane click is a target, not a selection. The
+  // only sign of that mode was `cursor: crosshair` on the lanes -- a mode that never states itself,
+  // which is how a reader who looked away comes back, clicks a lane meaning to select it, and merges
+  // two features instead. The banner says which verb is waiting, on what, what a click does now, and
+  // the way out.
+  function armedBannerText(armed, label) {
+    if (!armed) return null;
+    const subject = `"${label || armed.feature}"`;
+    const what = armed.verb === "merge"
+      ? `Merge ${subject} into which lane?`
+      : `Move ${subject}'s edits into which lane?`;
+    return `${what}  ·  click one, or Esc to cancel`;
+  }
+  // ---- end-armed-banner
+
   function clearGhosts() {
     rail.querySelectorAll(
       ".glane.ghost-blast, .glane.ghost-target, .glane.ghost-foundation, " +
       ".rail-row.ghost-blast, .rail-row.ghost-target, .rail-row.ghost-foundation").forEach((el) => {
       el.classList.remove("ghost-blast", "ghost-target", "ghost-foundation");
     });
+    cancelHoverIntent(); // a preview still waiting out the hover delay is abandoned here too
     clearOffscreenPills();
-    clearPreviewRefusal(); // a blocked-restore overlay clears on the same mouseleave path
+    clearPreviewRefusal(); // a refusal overlay clears on the same mouseleave path
+    setPreviewContext(null); // ...as does a sentence pill set without a morph behind it (split)
     exitPreviewMode(); // a held Focus & Morph overlay tears down on the same mouseleave path
   }
 
@@ -1993,16 +2210,26 @@ function episodeRailLayout(epView) {
   // ok, do nothing otherwise. The target is args[0] (revert/restore take one feature). When the
   // backend hands back a `focus` subgraph (a feature map is built) and we're not mid-arming, use the
   // richer deep-dim morph; otherwise fall back to the flat three-role ghost paint.
-  function previewAndBlast(verb, args) {
+  // `say` is the armed path's only addition: a function(res) called after the paint. Only
+  // `previewArmed` passes one, because it is the only caller whose two operands are both known at
+  // hover time and therefore the only one that can name the result.
+  function previewAndBlast(verb, args, say) {
     requestPreview(verb, args, (res) => {
       if (!res || !res.ok) {
         // A blocked restore -- the symbol has a competing live version, so sgt refuses. Surface the
         // two ways out in the preview overlay instead of silently doing nothing.
         if (verb === "restore" && res && res.forked) showRestoreRefusal(res, args[0]);
+        // `say` marks the armed path, whose whole purpose is telling good targets from bad before the
+        // click. Everything it refuses used to preview as silence -- indistinguishable from a preview
+        // still in flight -- and then fail in a toast after the choice was already made.
+        else if (say) showRefusal((res && res.message) || `Can't ${verb} into that lane.`);
         return;
       }
+      // `say` is set only by the armed path (every other caller is guarded by `!armedVerb`), and that
+      // path paints its own two endpoints -- see `previewArmed`.
+      if (say) { say(res); return; }
       const focus = res.focus;
-      if (!armedVerb && focus && focus.nodes && focus.nodes.length) {
+      if (focus && focus.nodes && focus.nodes.length) {
         enterPreviewMode(focus, args[0]);
       } else {
         paintClosure(classifyAffected(res, args[0]));
@@ -2208,6 +2435,13 @@ function episodeRailLayout(epView) {
     // Each of these takes over the code(I) slot with a read-only view of a DIFFERENT frontier
     // than the one the action bar above still previews/applies against -- composition-preview
     // (hovering the composition QuickPick), then the playhead, then the ordinary selection.
+    // A staged candidate blocks `save`/`switch`/every materializing verb, so it outranks whatever is
+    // selected: drawn first and drawn always, not just in the idle "home" state below. Drift keeps
+    // the home-only placement -- an invitation to record, which can wait until the reader is idle --
+    // but a state that makes the next click fail cannot be behind a selection.
+    const stagedNow = compose.status && compose.status.staged && compose.status.staged.any;
+    if (stagedNow) renderWorkingChangesCard();
+
     if (compositionPreviewActive != null) {
       renderCompositionPreviewPanel(node && node.kind === "feature" ? node : null);
     } else if (playheadCommitIndex != null) {
@@ -2217,13 +2451,12 @@ function episodeRailLayout(epView) {
     } else if (!node && !step && !session) {
       // The panel's "home" state: nothing selected, not scrubbing. Surface the uncommitted work
       // as a record-and-save card so the primary daily action is one click from an idle view.
-      renderWorkingChangesCard();
+      // Guarded: a staged candidate already drew this card above, and drawing it twice would put two
+      // Abandon buttons on screen.
+      if (!stagedNow) renderWorkingChangesCard();
     }
   }
 
-  // Working changes = files that differ from the recorded ideal (`status.drift`), i.e. edits not
-  // yet mined into ops. This is the "record what I just did, fast" affordance the titlebar's Save
-  // button had no context for -- here you see WHAT would be recorded before recording it.
   // The multi-select union-closure card (Stage C): "N features -> M ops in closure", the OTHER
   // features that selection pulls in (the blast beyond the direct pick), the selected lanes as
   // deselectable chips, and a Revert-all action. The VS Code parallel of the TUI's frontier
@@ -2321,60 +2554,129 @@ function episodeRailLayout(epView) {
     paintBlast((view.pulled || []).map((p) => p.feature_id).filter((f) => f && !direct.has(f)));
   }
 
-  function renderWorkingChangesCard() {
-    const drift = (compose.status && compose.status.drift) || { any: false, paths: [] };
+  // ---- working-changes
+  // What the card says about a tree that is not clean, which is two different situations the old
+  // card conflated into one. Split out as a pure function because the conflation was the bug and a
+  // test can hold this shape but not the DOM: `status.drift` used to carry staged paths too, so a
+  // staged rewrite candidate was titled "Working changes", explained as "edits not yet recorded",
+  // and offered a Save that `lens.put`'s staged guard refuses -- the one button drawn was the one
+  // that could not run. The two states want opposite sentences: drift is bytes the ideal has never
+  // seen (Save records them), a candidate is bytes that *replace* recorded ops (landing swaps them
+  // in, and only once the oracle agrees the rewrite preserved behavior).
+  function workingChangesCard(status, rewrite) {
+    const staged = (status && status.staged) || { any: false, paths: [] };
+    const drift = (status && status.drift) || { any: false, paths: [] };
+    const candidate = (rewrite && rewrite.staged) || null;
+    if (staged.any) {
+      // Keyed on `status.staged` alone, not on the candidate projection as well. The two come from
+      // different view functions, so a refresh can deliver the paths without the detail -- and the
+      // fallback then has to be a staged card with less to say, never the drift card, because a tree
+      // holding a candidate is the one tree that must not be described as clean or as savable.
+      const verb = candidate && candidate.verb;
+      const n = candidate && candidate.op_count;
+      // The oracle verdict is the *candidate's*, not the current ideal's, so it cannot be read off
+      // the titlebar chip. Naming the gate is the whole point: unshown, it arrives as a refusal
+      // after the click, and a refusal after the click teaches nothing about why.
+      const gate = (candidate && candidate.oracle_status) || "pending";
+      const abandon = { verb: "unstage", label: "Abandon", hint: "sgt advanced unstage — discard the candidate" };
+      return {
+        state: "staged",
+        title: verb ? `Staged · ${verb}` : "Staged rewrite",
+        why: (n ? `${n} recorded op(s) rewritten, ` : "A rewrite of recorded ops, ")
+          + "on disk and not yet in the ideal. Landing replaces those ops; abandoning discards the "
+          + "rewrite and restores the recorded bytes.",
+        paths: staged.paths || [],
+        gate: gate === "pass"
+          ? "Oracle passed — safe to land."
+          : `Oracle ${gate} — landing is blocked until it passes.`,
+        actions: gate === "pass"
+          ? [{ verb: "land", label: "Land", primary: true,
+               hint: "sgt advanced commit — replace those ops in the ideal" },
+             abandon]
+          : [{ verb: "oracle", label: "Check", primary: true,
+               hint: "sgt advanced oracle run — verify the rewrite preserved behavior" },
+             { verb: "land", label: "Land", disabled: true,
+               hint: `oracle is ${gate}; landing a rewrite it has not passed needs an override` },
+             abandon],
+      };
+    }
     const paths = drift.paths || [];
+    if (!paths.length) return { state: "clean", title: "Working changes", clean: "Clean — everything is recorded." };
+    return {
+      state: "drift",
+      title: `Working changes · ${paths.length}`,
+      // `sgt save` mines *and* commits, so this is one action and not the Save/Commit pair the card
+      // used to draw. The second button shipped a promise the daily loop had already kept.
+      why: "Edits the ideal has not seen. Save records them as ops and commits.",
+      paths,
+      actions: [{ verb: "save", label: "Save ⏎", primary: true, hint: "sgt save — record these changes as ops" }],
+    };
+  }
+
+  const CARD_MESSAGE = {
+    land: { type: "landCandidate" },
+    save: { type: "dailyLoop", verb: "save" },
+    oracle: { type: "runOracle" },
+    // Not `applyVerb`: that switch is feature verbs only and answers anything else by throwing
+    // `unknown feature verb`. Its own message type, because abandoning asks for confirmation first.
+    unstage: { type: "abandonCandidate" },
+  };
+
+  // ---- end-working-changes
+
+  function renderWorkingChangesCard() {
+    const card = workingChangesCard(compose.status, compose.rewrite);
     const wrap = document.createElement("div");
     wrap.className = "changes-card";
+    wrap.dataset.state = card.state;
 
     const h = document.createElement("div");
     h.className = "detail-title";
-    h.textContent = paths.length ? `Working changes · ${paths.length}` : "Working changes";
+    h.textContent = card.title;
     wrap.appendChild(h);
 
-    if (!paths.length) {
-      wrap.appendChild(statusLine("Clean — everything is recorded.", ""));
+    if (card.clean) {
+      wrap.appendChild(statusLine(card.clean, ""));
       inspector.appendChild(wrap);
       return;
     }
 
     const sub = document.createElement("div");
     sub.className = "detail-why";
-    sub.textContent = "Edits not yet recorded as ops. Save to checkpoint them into the ideal.";
+    sub.textContent = card.why;
     wrap.appendChild(sub);
 
     const list = document.createElement("div");
     list.className = "changes-list";
     const CAP = 12;
-    for (const p of paths.slice(0, CAP)) {
+    for (const p of card.paths.slice(0, CAP)) {
       const row = document.createElement("div");
       row.className = "changes-file";
       row.textContent = p;
       row.title = p;
       list.appendChild(row);
     }
-    if (paths.length > CAP) {
+    if (card.paths.length > CAP) {
       const more = document.createElement("div");
       more.className = "changes-more";
-      more.textContent = `+${paths.length - CAP} more`;
+      more.textContent = `+${card.paths.length - CAP} more`;
       list.appendChild(more);
     }
     wrap.appendChild(list);
 
+    if (card.gate) wrap.appendChild(statusLine(card.gate, card.gate.startsWith("Oracle passed") ? "ok" : "warn"));
+
     const bar = document.createElement("div");
     bar.className = "action-bar";
-    const save = document.createElement("button");
-    save.className = "action primary";
-    save.textContent = "Save ⏎";
-    save.title = "sgt save — record these changes as ops";
-    save.addEventListener("click", () => vscode.postMessage({ type: "dailyLoop", verb: "save" }));
-    bar.appendChild(save);
-    const commit = document.createElement("button");
-    commit.className = "action";
-    commit.textContent = "Commit";
-    commit.title = "sgt commit — land the recorded ideal as a git commit";
-    commit.addEventListener("click", () => vscode.postMessage({ type: "dailyLoop", verb: "commit" }));
-    bar.appendChild(commit);
+    for (const a of card.actions) {
+      const btn = document.createElement("button");
+      btn.className = "action" + (a.primary ? " primary" : "");
+      btn.textContent = a.label;
+      btn.title = a.hint;
+      btn.disabled = !!a.disabled;
+      if (!a.disabled) btn.addEventListener("click", () => vscode.postMessage(CARD_MESSAGE[a.verb]));
+      bar.appendChild(btn);
+    }
     wrap.appendChild(bar);
 
     inspector.appendChild(wrap);
@@ -2760,15 +3062,27 @@ function episodeRailLayout(epView) {
     const head = document.createElement("div");
     head.className = "checkpoints-head";
     const built = segs.some((s) => s.source === "llm");
-    head.textContent = `Checkpoints · ${segs.length}` + (built ? "" : "  (run sgt intent build to name)");
+    // A reverted chapter stays on this list -- it is still recorded and still addressable, and a
+    // restore needs it named -- so the head says how many are gone rather than quietly shrinking.
+    const nGone = segs.filter((s) => s.present_op_count === 0).length;
+    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} reverted` : "") +
+      (built ? "" : "  (run sgt intent build to name)");
     wrap.appendChild(head);
 
     for (const seg of segs) {
+      // `present_op_count` is how many of the chapter's ops are still in HEAD's ideal. `null` (an
+      // unreadable ideal, or an older payload) is no claim and must not read as reverted.
+      const gone = seg.present_op_count === 0;
+      const partial = seg.present_op_count != null && seg.present_op_count > 0 &&
+        seg.present_op_count < seg.op_count;
       const row = document.createElement("div");
-      row.className = "checkpoint" + (seg.novelty <= 0.2 ? " trivial" : "") +
+      row.className = "checkpoint" + (seg.novelty <= 0.2 ? " trivial" : "") + (gone ? " reverted" : "") +
         (seg.checkpoint === state.selectedCheckpoint ? " selected" : "");
       row.dataset.checkpoint = seg.checkpoint;
-      row.title = `${seg.rationale} · ${seg.tier}\nRewind: sgt revert ${seg.checkpoint}`;
+      row.title = `${seg.rationale} · ${seg.tier}\n` + (gone
+        ? `Reverted — restore: sgt restore ${seg.checkpoint}`
+        : (partial ? `${seg.op_count - seg.present_op_count} of ${seg.op_count} edit(s) reverted\n` : "") +
+          `Rewind: sgt revert ${seg.checkpoint}`);
       row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
 
       const dot = document.createElement("span");
@@ -2781,19 +3095,26 @@ function episodeRailLayout(epView) {
       label.textContent = seg.intent;
       row.appendChild(label);
 
+      // One button, whichever direction is actually available. Before this the row offered `⤺`
+      // even on an already-reverted chapter, where a second revert can only report "no change" --
+      // a button that looks live and does nothing. A reverted chapter's one useful move is the
+      // inverse, and it is addressable by the same `<feature>@<n>` handle.
       const rewind = document.createElement("button");
       rewind.className = "checkpoint-rewind";
-      rewind.textContent = "⤺";
-      rewind.title = `Rewind "${seg.intent}"`;
+      rewind.textContent = gone ? "⤻" : "⤺";
+      rewind.title = gone ? `Restore "${seg.intent}"` : `Rewind "${seg.intent}"`;
       rewind.addEventListener("click", (e) => {
         e.stopPropagation();
-        vscode.postMessage({ type: "revertCheckpoint", ref: seg.checkpoint, label: seg.intent });
+        vscode.postMessage({
+          type: gone ? "restoreCheckpoint" : "revertCheckpoint", ref: seg.checkpoint, label: seg.intent,
+        });
       });
       row.appendChild(rewind);
 
-      // Hover a checkpoint -> preview the exact ops it covers as a revert blast on the timeline,
-      // reusing the same closure-paint path every other revert-hover uses.
-      row.addEventListener("mouseenter", () => previewAndBlast("revert", [seg.checkpoint]));
+      // Hover a checkpoint -> preview the exact ops the available move covers as a blast on the
+      // timeline, reusing the same closure-paint path every other revert/restore hover uses.
+      row.addEventListener("mouseenter", () =>
+        onHoverIntent(() => previewAndBlast(gone ? "restore" : "revert", [seg.checkpoint])));
       row.addEventListener("mouseleave", () => clearGhosts());
       wrap.appendChild(row);
     }
@@ -2808,7 +3129,7 @@ function episodeRailLayout(epView) {
       const b = document.createElement("button");
       b.textContent = label;
       b.className = "action";
-      b.addEventListener("mouseenter", () => previewAction(verb, id));
+      b.addEventListener("mouseenter", () => onHoverIntent(() => previewAction(verb, id)));
       b.addEventListener("mouseleave", () => clearGhosts());
       b.addEventListener("click", () => triggerAction(verb, id));
       return b;
@@ -2822,8 +3143,54 @@ function episodeRailLayout(epView) {
     return bar;
   }
 
+  // ---- arm-preview
+  // Why these three verbs need a preview of their own. Merge, move and rename each ask a question
+  // before they do anything -- which lane? what label? -- so the hover that arms one has no second
+  // operand and cannot round-trip to `sgt preview`, which is why all three previewed nothing. But the
+  // half that does not depend on the answer is the half that decides *which verb to pick*: what
+  // becomes of the lane under the cursor. Merge ends it. Move empties it -- and `computeLayout` drops
+  // a lane with no ops (`if (!commits.length) continue`), so the feature survives in the tree while
+  // vanishing from this view, a result visually identical to the merge the reader did not choose.
+  // Feedback that confirms the wrong operation removes the reason to check it, so the difference has
+  // to be legible before the click, not after. Rename changes no edits, symbols or lanes, and saying
+  // so is what makes it usable as a first move rather than something as consequential as revert.
+  function armPreviewText(verb, node, opCount) {
+    const label = (node && node.label) || "this feature";
+    const symbols = ((node && node.own_symbols) || []).length;
+    const edits = `${opCount} edit${opCount === 1 ? "" : "s"}`;
+    const syms = `${symbols} symbol${symbols === 1 ? "" : "s"}`;
+    if (verb === "rename") {
+      // `target`, not `blast`: blast means "this lane loses ops" everywhere else in this file, and a
+      // rename loses nothing. The role is the reassurance -- the sentence only spells it out.
+      return { role: "target",
+               message: `Rename · label only — "${label}" keeps its ${edits} and ${syms}; nothing moves.` };
+    }
+    if (verb === "merge") {
+      return {
+        role: "blast",
+        message: `Merge · pick a lane to fold "${label}" into — its ${edits} and ${syms} move there `
+          + "and this lane stops existing.",
+      };
+    }
+    return {
+      role: "blast",
+      message: `Move · pick a lane to take all ${edits} — "${label}" keeps its ${syms} but, with no `
+        + "edits left, leaves the graph until it is edited again.",
+    };
+  }
+  // ---- end-arm-preview
+
   function previewAction(verb, id) {
-    if (verb === "rename" || verb === "merge" || verb === "move") return; // needs a target/label first
+    // merge/move/rename have no target or label yet, so this is the pre-target half: paint the one
+    // lane whose fate is already decided, and say it. `previewArmed` replaces this with the real
+    // two-operand `sgt preview` round-trip once a candidate target is under the cursor.
+    if (verb === "rename" || verb === "merge" || verb === "move") {
+      const say = armPreviewText(verb, byId(id), opIdsFor(id).length);
+      paintClosure(say.role === "target" ? { target: id, blast: [], foundation: [] }
+                                        : { target: null, blast: [id], foundation: [] });
+      setPreviewContext(say.message);
+      return;
+    }
     if (verb === "revert" || verb === "restore") previewAndBlast(verb, [id]);
     // Split has no `sgt preview split` branch server-side by design (`sgt split <feature>` with
     // no `--apply` already *is* that preview -- a second path would duplicate it), so this can't
@@ -2831,16 +3198,55 @@ function episodeRailLayout(epView) {
     if (verb === "split") previewSplit(id);
   }
 
+  // ---- split-preview
+  // What a split preview says. Split exists for one situation: a lane is carrying two pieces of work
+  // that only look like one, and the reader has to decide whether *this* cut is the right place to
+  // separate them. That decision is entirely about which symbols end up on which side -- and the
+  // groups that answer it were computed, returned, and thrown away. The preview painted one amber
+  // row and nothing else, which told the reader what they already knew from having hovered it.
+  //
+  // Two further things it got wrong. `groups.length > 1` reads like a guard but is vacuous: split is
+  // always binary (`lens/verbs.py plan_split` folds >2 communities into exactly 2), so an ok preview
+  // always passes it. And the case it silently dropped -- a feature with no cut in it -- is the
+  // interesting half of the feedforward, rendered identically to a preview still in flight.
+  function splitPreviewText(res) {
+    if (!res || !res.ok || !Array.isArray(res.groups) || res.groups.length !== 2) {
+      return { kind: "refused", message: (res && res.message) || "Can't split this feature." };
+    }
+    const [keep, off] = res.groups;
+    // Name a few whole and count the rest. Both sides arrive complete here, so unlike undo's
+    // upstream-capped symbol list the remainder is a number this payload can be right about.
+    const named = off.slice(0, 3).join(", ");
+    const rest = off.length - 3;
+    return {
+      kind: "split",
+      // Same frame the terminal's own split preview uses ("splits in two", keep / new), so the two
+      // surfaces describe one operation in one vocabulary. Both counts, because a lopsided cut is
+      // the thing a reader wants to catch; then the new side by name, because that is the proposal
+      // under judgement -- what stays is the feature they already know.
+      message: `splits in two · keeps ${keep.length}, new ${off.length}: ` +
+               named + (rest > 0 ? `, +${rest} more` : ""),
+    };
+  }
+  // ---- end-split-preview
+
   function previewSplit(id) {
     const seq = ++previewSeq;
     vscode.postMessage({ type: "previewSplit", featureId: id, seq });
     pendingPreview = {
       seq,
       onResult: (res) => {
-        // A split has no "affected other features" (unlike merge/move/revert) -- it only ever
-        // touches the row being split, into `res.groups.length` pieces -- so the same amber
-        // blast-radius treatment paints just this one row rather than a set of other rows.
-        if (res && res.ok && Array.isArray(res.groups) && res.groups.length > 1) paintBlast([id]);
+        const say = splitPreviewText(res);
+        if (say.kind === "refused") {
+          showRefusal(say.message);
+          return;
+        }
+        // `ghost-target`, not `ghost-blast`. Split removes nothing, and `ghost-blast` is the channel
+        // that means "this lane loses ops" everywhere else in this file -- the one visual with an
+        // established meaning, used to say something it does not mean. A split has exactly one
+        // participant, so the target role is the whole truth about which rows change.
+        paintClosure({ target: id, blast: [], foundation: [] });
+        setPreviewContext(say.message);
       },
     };
   }
@@ -2909,10 +3315,7 @@ function episodeRailLayout(epView) {
       }
     }
     renderOffscreenPills(lit);
-    if (focus.context_count > 0) {
-      previewContext.hidden = false;
-      previewContext.textContent = `＋${focus.context_count} unchanged`;
-    }
+    if (focus.context_count > 0) setPreviewContext(`＋${focus.context_count} unchanged`);
   }
 
   function exitPreviewMode() {
@@ -2932,8 +3335,16 @@ function episodeRailLayout(epView) {
       }
       c.classList.remove("preview-delta", "losing", "gaining");
     });
-    previewContext.hidden = true;
+    setPreviewContext(null);
     clearOffscreenPills();
+  }
+
+  // The one preview-scoped sentence, wherever it comes from. Two writers and one clearer of the same
+  // element, and the clearer cannot live in `exitPreviewMode` alone -- that early-returns unless a
+  // Focus & Morph overlay is live, so a pill set by the lighter ghost path would stay on screen.
+  function setPreviewContext(text) {
+    previewContext.hidden = text === null;
+    previewContext.textContent = text || "";
   }
 
   // A blocked-restore overlay: sgt refuses to restore a symbol that has a competing live version
@@ -2944,19 +3355,25 @@ function episodeRailLayout(epView) {
   function showRestoreRefusal(res, fallbackId) {
     const sym = res.target && String(res.target).includes("::") ? res.target
       : (res.affected_symbols && res.affected_symbols[0]) || res.target || fallbackId;
+    showRefusal(res.message || "Can't restore — this symbol has a competing live version.",
+                ["swap · revert the live tip, then restore", `reconcile · sgt resolve ${sym}`]);
+  }
+
+  // The refusal card: a head, plus a remedy line per way out. A blocked restore has two; a feature
+  // with no cut in it has none -- the refusal is the whole answer, and saying it is the point. It
+  // used to say nothing at all for split, which reads as "still thinking" rather than "no".
+  function showRefusal(message, remedies = []) {
     previewRefusal.innerHTML = "";
     const head = document.createElement("div");
     head.className = "refusal-head";
-    head.textContent = res.message || "Can't restore — this symbol has a competing live version.";
+    head.textContent = message;
     previewRefusal.appendChild(head);
-    const swap = document.createElement("div");
-    swap.className = "refusal-remedy";
-    swap.textContent = "swap · revert the live tip, then restore";
-    previewRefusal.appendChild(swap);
-    const rec = document.createElement("div");
-    rec.className = "refusal-remedy";
-    rec.textContent = `reconcile · sgt resolve ${sym}`;
-    previewRefusal.appendChild(rec);
+    for (const text of remedies) {
+      const line = document.createElement("div");
+      line.className = "refusal-remedy";
+      line.textContent = text;
+      previewRefusal.appendChild(line);
+    }
     previewRefusal.hidden = false;
   }
 
@@ -3016,6 +3433,20 @@ function episodeRailLayout(epView) {
     offscreenBelow.hidden = true;
   }
 
+  function renderArmedBanner(answer) {
+    if (!armedBanner) return;
+    const n = armedVerb && byId(armedVerb.feature);
+    const text = armedBannerText(armedVerb, n && n.label);
+    armedBanner.hidden = text === null;
+    // Two elements, not one string with a newline: the standing question and the answer for *this*
+    // candidate carry different weight, and the answer is the half the eye should land on. Same
+    // primary/secondary pairing the refusal card uses for its head and remedies.
+    armedBanner.textContent = "";
+    if (text === null) return;
+    armedBanner.appendChild(el("div", "armed-q", text));
+    if (answer) armedBanner.appendChild(el("div", "armed-a", answer));
+  }
+
   function triggerAction(verb, id) {
     if (verb === "rename") {
       vscode.postMessage({ type: "renamePrompt", feature: id });
@@ -3024,6 +3455,7 @@ function episodeRailLayout(epView) {
     if (verb === "merge" || verb === "move") {
       armedVerb = { verb, feature: id };
       rail.classList.add("arming");
+      renderArmedBanner();
       return;
     }
     if (verb === "split" || verb === "revert" || verb === "restore") {
@@ -3035,6 +3467,7 @@ function episodeRailLayout(epView) {
     const { verb, feature } = armedVerb;
     armedVerb = null;
     rail.classList.remove("arming");
+    renderArmedBanner();
     clearGhosts();
     if (targetId === feature) return;
     if (verb === "merge") {
@@ -3090,16 +3523,40 @@ function episodeRailLayout(epView) {
     render(); // re-measures the rail against the now-full width via the ResizeObserver too
   });
 
-  const saveBtn = document.getElementById("saveBtn");
-  const commitBtn = document.getElementById("commitBtn");
-  const undoBtn = document.getElementById("undoBtn");
-  saveBtn.addEventListener("click", () => vscode.postMessage({ type: "dailyLoop", verb: "save" }));
-  commitBtn.addEventListener("click", () => vscode.postMessage({ type: "dailyLoop", verb: "commit" }));
-  undoBtn.addEventListener("click", () => vscode.postMessage({ type: "dailyLoop", verb: "undo" }));
+  const loopBtns = {
+    save: document.getElementById("saveBtn"),
+    undo: document.getElementById("undoBtn"),
+  };
+  let loopBusy = null; // the daily-loop verb running in the host, or null
+
+  function renderLoopButtons() {
+    for (const b of loopButtonState(loopBusy)) {
+      loopBtns[b.verb].textContent = b.label;
+      loopBtns[b.verb].disabled = b.disabled;
+    }
+  }
+
+  for (const verb of Object.keys(loopBtns)) {
+    loopBtns[verb].addEventListener("click", () => {
+      // Set busy on the click, not on the host's answer: a round trip is long enough for a second
+      // click to land, and that second click is the thing this state exists to stop.
+      loopBusy = verb;
+      renderLoopButtons();
+      vscode.postMessage({ type: "dailyLoop", verb });
+    });
+  }
 
   window.addEventListener("message", (event) => {
     const msg = event.data;
     if (msg.type === "state") {
+      // A fresh composition means the mutation landed (`store.invalidate()` pushes this), so the
+      // buttons come back here as well as on the host's own end signal -- whichever arrives first.
+      // The end signal is the backstop for the paths that never reach a mutation: a cancelled
+      // dialog, "nothing to save", a failure.
+      if (loopBusy !== null) {
+        loopBusy = null;
+        renderLoopButtons();
+      }
       compose = msg.compose || compose;
       history = compose.history || { commits: [], ops: [] };
       grid = compose.grid || { commits: [], cells: [] };
@@ -3168,6 +3625,9 @@ function episodeRailLayout(epView) {
       showAgentAction(msg);
     } else if (msg.type === "revealFeature") {
       revealFeature(msg.featureId);
+    } else if (msg.type === "loopBusy") {
+      loopBusy = msg.verb || null;
+      renderLoopButtons();
     } else if (msg.type === "error") {
       inspector.innerHTML = "";
       inspector.appendChild(statusLine(msg.message, "error"));
@@ -3179,6 +3639,7 @@ function episodeRailLayout(epView) {
     if (armedVerb) {
       armedVerb = null;
       rail.classList.remove("arming");
+      renderArmedBanner();
       clearGhosts();
       return;
     }

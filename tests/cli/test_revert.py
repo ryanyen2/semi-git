@@ -185,6 +185,76 @@ def test_revert_non_tty_without_yes_exits_2_and_applies_nothing(tmp_path, capsys
 # 2-minute LLM rung (the hang the user reported: `sgt revert f-00aa` waited ~2 minutes then errored).
 
 
+def test_a_reverted_checkpoint_can_be_restored_by_the_same_handle(tmp_path, capsys, monkeypatch):
+    """`sgt revert <feature>@<n>` is the rewind the map and the checkpoint detail both tell users to
+    type, so `sgt restore <feature>@<n>` has to be the way back. It was not: `restore` never entered
+    the checkpoint branch, so the handle fell through every deterministic rung to the NL rung and
+    exited with `could not resolve ... set OPENAI_API_KEY` -- a one-way door out of the only rewind
+    unit the UI advertises, and the checkpoint detail's own remedy line pointed straight at it. The
+    round trip has to land the same op-set it removed."""
+    _no_llm(monkeypatch)
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    from sgt.api import segments_view
+
+    feat = _revertable_feature(repo)
+    assert feat is not None
+    segs = [s for s in segments_view(repo) if s["feature_id"] == feat]
+    assert segs, "the spanning lane should cut at least one chapter"
+    ckpt = segs[-1]["checkpoint"]
+
+    before = current_ideal(repo).op_ids
+    assert _in(repo, ["revert", ckpt, "--yes"]) == 0
+    rewound = current_ideal(repo).op_ids
+    assert rewound < before
+
+    capsys.readouterr()
+    assert _in(repo, ["restore", ckpt, "--yes"]) == 0
+    assert "applied" in capsys.readouterr().out
+    assert current_ideal(repo).op_ids == before  # exactly what the revert took, back
+
+
+def test_the_restore_gap_warning_is_printed_once_under_yes_and_twice_around_a_confirm(
+        tmp_path, monkeypatch, capsys):
+    """`_restore_gap_report` is printed before the confirm and again after the apply, so a warning
+    about work that stays gone survives a long preview scroll. `--yes` removes the confirm between
+    them, and the two identical lines then landed two lines apart, reading as two separate problems.
+    Faked here rather than provoked: no corpus fixture has the cross-op dependency a real gap needs,
+    and the defect is in this function's control flow, not in the gap walk."""
+    _no_llm(monkeypatch)
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    fid = _revertable_feature(repo)
+    monkeypatch.setattr("sgt.cli.ideal_edit._restore_gap_report", lambda repo, preview: ["  ⚠ GAP"])
+
+    capsys.readouterr()
+    _in(repo, ["restore", fid, "--yes"])
+    assert capsys.readouterr().out.count("⚠ GAP") == 1
+
+    _in(repo, ["revert", fid, "--yes"])
+    capsys.readouterr()
+    _make_tty(monkeypatch, "y")  # a confirm scrolls the preview away, so the repeat earns its place
+    _in(repo, ["restore", fid])
+    assert capsys.readouterr().out.count("⚠ GAP") == 2
+
+
+def test_restoring_a_checkpoint_that_was_never_reverted_changes_nothing(tmp_path, capsys, monkeypatch):
+    """The no-op has to be honest rather than silent-successful: a live checkpoint has nothing to
+    bring back, and saying so is the whole answer. It must not report an apply it did not make."""
+    _no_llm(monkeypatch)
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    from sgt.api import segments_view
+
+    feat = _revertable_feature(repo)
+    ckpt = [s for s in segments_view(repo) if s["feature_id"] == feat][-1]["checkpoint"]
+
+    before = current_ideal(repo).op_ids
+    assert _in(repo, ["restore", ckpt, "--yes"]) == 0
+    assert current_ideal(repo).op_ids == before
+    assert "changed nothing" in capsys.readouterr().out
+
+
 def _no_llm(monkeypatch):
     """Guard: fail loudly if the LLM NL rung is ever reached for a handle-shaped target."""
     from sgt.cli import ideal_edit
@@ -803,3 +873,51 @@ def test_the_dry_run_carries_the_two_consequence_reports(tmp_path, capsys, monke
 
     _in(repo, ["revert", "m.py::helper", "--emit"])
     assert "still references removed code" in capsys.readouterr().out
+
+
+def test_reverting_a_save_sha_says_it_is_a_save_and_names_the_features_it_touched(tmp_path, capsys):
+    """The pilot's dead end. `sgt save` prints the commit it made, so the obvious next move after a
+    save you regret is `sgt revert <that sha>` -- and a bare hex is handle-shaped, so it fell to
+    `_no_feature_match`, which denied the id exists and pointed at `sgt log --map`. The map never
+    shows save shas, so the one pointer given cannot resolve the one id typed: a name the tool
+    itself printed reads as unknown. The sha names a save, and the answer says so and names the
+    moves that do work."""
+    repo = tmp_path / "saved"
+    corpus._init(repo)
+    corpus._write(repo, "cart.py", "def total(items):\n    return sum(items)\n")
+    corpus._commit(repo, "the cart", 1)
+    corpus._write(repo, "cart.py", "def total(items):\n    return sum(items)\n\ndef tax(t):\n    return t * 0.2\n")
+    sha = corpus._commit(repo, "add the cart tax", 2)
+    get(repo)  # mine the history, as any read of the repo would
+    lensmap.build_map(repo)
+
+    rc = _in(repo, ["revert", sha[:7]])
+    out = capsys.readouterr().out
+
+    assert rc == 2
+    assert "no feature matches" not in out, f"the sha names a save, and the CLI denies it:\n{out}"
+    assert "save" in out and sha[:7] in out, out
+    assert "add the cart tax" in out, f"the refusal doesn't say which save:\n{out}"
+    assert re.search(r"sgt revert [0-9a-f]{4,}\s{2,}\S", out), (
+        f"the refusal names no feature to revert instead:\n{out}")
+    assert "sgt undo" in out and f"sgt why {sha[:7]}" in out, out
+
+
+def test_reverting_a_save_sha_answers_json_consumers_with_the_same_features(tmp_path, capsys):
+    """`--json` is the extension's only channel: a refusal whose `candidates` are empty renders as a
+    bare "Cannot revert X." there, which is the same dead end one surface further from a terminal."""
+    repo = tmp_path / "saved-json"
+    corpus._init(repo)
+    corpus._write(repo, "cart.py", "def total(items):\n    return sum(items)\n")
+    corpus._commit(repo, "the cart", 1)
+    corpus._write(repo, "cart.py", "def total(items):\n    return sum(items)\n\ndef tax(t):\n    return t * 0.2\n")
+    sha = corpus._commit(repo, "add the cart tax", 2)
+    get(repo)  # mine the history, as any read of the repo would
+    lensmap.build_map(repo)
+
+    rc = _in(repo, ["revert", sha[:7], "--json"])
+    view = json.loads(capsys.readouterr().out)
+
+    assert rc == 2 and view["ok"] is False
+    assert "save" in view["message"]
+    assert view["candidates"], f"no feature offered to a JSON consumer: {view}"

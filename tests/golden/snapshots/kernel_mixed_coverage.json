@@ -187,6 +187,10 @@
       "configured": false,
       "status": "unconfigured"
     },
+    "staged": {
+      "any": false,
+      "paths": []
+    },
     "symbols": 10,
     "sync_status": {
       "complete": true,

@@ -133,6 +133,38 @@ def test_nested_subsystems_indent_by_depth_in_tree_order():
     assert headers["R"]["opCount"] == 3 and headers["R"]["laneCount"] == 3  # rolls up all 3 features
 
 
+def test_feature_with_no_own_symbols_is_dropped_like_the_terminal_drops_it():
+    """One drop rule, honoured on every surface. A feature whose ops touch only the residue/anchor
+    sentinels has nothing to act on: `sgt show` reports "0 symbols in 0 files" and reverting it
+    removes nothing. The terminal has dropped those rows for a while and this layout did not, so the
+    workbench listed features the map didn't (and vice versa) for one and the same repo."""
+    husk = _node("HUSK", None, [])
+    husk["own_symbols"] = []
+    real = _node("REAL", None, [])
+    real["own_symbols"] = ["a.py::f"]
+    m = {"roots": ["HUSK", "REAL"], "nodes": [husk, real], "edges": []}
+    out = _run(m, _grid(("HUSK", 0), ("REAL", 1)))
+    assert [l["id"] for l in out["lanes"]] == ["REAL"]
+
+
+def test_a_husk_is_not_counted_in_the_group_it_was_dropped_from():
+    """The count has to obey the drop rule too -- the same contract `tests/tui/test_graph.py` holds
+    `graph_layout` to. `(N)` on a folded row and a header's `N feat` are both leaf counts, so a husk
+    left in the leaf set makes the fold promise rows that opening it does not deliver."""
+    husk, real = _node("HUSK", "N0", []), _node("REAL_IN", "N0", [])
+    husk["own_symbols"], real["own_symbols"] = [], ["a.py::f"]
+    m = {"roots": ["N0"],
+         "nodes": [_node("N0", None, ["HUSK", "REAL_IN"], kind="subsystem"), husk, real],
+         "edges": []}
+    grid = _grid(("HUSK", 0), ("REAL_IN", 1))
+    folded = _run(m, grid, opts={"collapsed": ["N0"]})
+    assert [l["id"] for l in folded["lanes"]] == ["N0"]
+    assert folded["lanes"][0]["leaves"] == ["REAL_IN"]
+    opened = _run(m, grid)
+    assert [l["id"] for l in opened["lanes"]] == ["REAL_IN"]
+    assert opened["headers"][0]["laneCount"] == 1
+
+
 def test_collapsed_subsystem_is_one_meta_lane_rolling_up_descendant_grid():
     m = {"roots": ["N0"],
          "nodes": [_node("N0", None, ["F1", "F2"], kind="subsystem"),

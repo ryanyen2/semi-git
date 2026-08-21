@@ -30,9 +30,14 @@ jobs:
           VERSION="${TAG#v}"
           PY=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
           EXT=$(node -p "require('./editor/vscode/package.json').version")
-          echo "tag=$VERSION python=$PY extension=$EXT"
-          if [ "$VERSION" != "$PY" ] || [ "$VERSION" != "$EXT" ]; then
-            echo "::error::version mismatch. Tag says $VERSION, pyproject says $PY, extension says $EXT."
+          # sgt/__init__.py is the third copy. Nothing imports it -- `sgt --version`
+          # reads installed package metadata -- so it drifts without anyone noticing,
+          # and the number it drifts to is the one printed by any tool that does read
+          # it later. Checking it here costs a line and stops that.
+          INIT=$(grep -m1 '^__version__' sgt/__init__.py | cut -d'"' -f2)
+          echo "tag=$VERSION python=$PY extension=$EXT init=$INIT"
+          if [ "$VERSION" != "$PY" ] || [ "$VERSION" != "$EXT" ] || [ "$VERSION" != "$INIT" ]; then
+            echo "::error::version mismatch. Tag says $VERSION, pyproject says $PY, extension says $EXT, sgt/__init__.py says $INIT."
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

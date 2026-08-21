@@ -121,7 +121,7 @@ def _feature_move(repo: str, ops: list[str], target: str | None, as_json: bool =
     from sgt.lens import verbs as lens_verbs
 
     if not ops or not target:
-        print("usage: sgt move [--json] <op>... --to <feature>")
+        print("usage: sgt feature regroup move [--json] <op>... --to <feature>")
         return 2
     preview = lens_verbs.plan_move(repo, ops, target)
     if not preview.ok:
@@ -142,7 +142,7 @@ def _feature_split(repo: str, feature: str | None, do_apply: bool, as_json: bool
     from sgt.lens import verbs as lens_verbs
 
     if not feature:
-        print("usage: sgt split [--json] <feature> [--apply]")
+        print("usage: sgt feature regroup split [--json] <feature> [--apply]")
         return 2
     preview = lens_verbs.plan_split(repo, feature)
     if not preview.ok:

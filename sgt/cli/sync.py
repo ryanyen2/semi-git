@@ -173,7 +173,7 @@ def _land_branch(repo: str, branch: str, as_json: bool) -> int:
 
     print(f"✗ land {report.branch}: {report.blocked_reason}")
     for sym, a, b in report.forks:
-        print(f"    {sym}: sgt merge-op {a[:8]} {b[:8]}")
+        print(f"    {sym}: sgt advanced merge-op {a[:8]} {b[:8]}")
     if report.advisory:
         print(f"    ⚠ {report.advisory}")
     return 1
@@ -320,7 +320,7 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
         print(f"    ⚠ {len(report.forks)} OPEN FORK(S) — forked symbol(s) sit at the common ancestor "
               f"until resolved:")
         for sym, a, b in report.forks:
-            print(f"      {sym}: sgt merge-op {a[:8]} {b[:8]}")
+            print(f"      {sym}: sgt advanced merge-op {a[:8]} {b[:8]}")
     if report.pin_contradictions:
         print(f"    ⚠ {len(report.pin_contradictions)} pin contradiction(s):")
         for c in report.pin_contradictions:

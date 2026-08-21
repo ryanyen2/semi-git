@@ -159,7 +159,7 @@ def _land(repo, propose, pid, subset, as_json) -> int:
         return 0
     print(f"✗ propose land {report.branch}: {report.blocked_reason}")
     for sym, a, b in report.forks:
-        print(f"    {sym}: sgt merge-op {a[:8]} {b[:8]}")
+        print(f"    {sym}: sgt advanced merge-op {a[:8]} {b[:8]}")
     return 1
 
 

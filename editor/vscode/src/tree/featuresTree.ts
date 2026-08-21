@@ -4,6 +4,7 @@
 
 import * as vscode from "vscode";
 import { colorForNode } from "../color";
+import { isVisibleNode } from "../mapFilter";
 import { Store } from "../store";
 import { MapNode } from "../types";
 
@@ -60,7 +61,14 @@ export class FeaturesTreeProvider implements vscode.TreeDataProvider<MapNode>, v
       return [];
     }
     const ids = node ? node.children : map.roots;
-    return ids.map((id) => this.store.node(id)).filter((n): n is MapNode => !!n);
+    // Same drop rule the terminal map and the workbench timeline apply: a husk leaf (no symbols of
+    // its own) and any subsystem left holding only husks are not listed. Without it this tree was the
+    // one surface still showing features `sgt log --map` did not, which is most of why the sidebar,
+    // the workbench and the terminal could not be read against each other.
+    const nodeOf = (id: string) => this.store.node(id);
+    return ids
+      .map(nodeOf)
+      .filter((n): n is MapNode => !!n && isVisibleNode(n, nodeOf));
   }
 
   // `map_view` nodes carry their own `parent` id, so no separate index is needed for `reveal()`.

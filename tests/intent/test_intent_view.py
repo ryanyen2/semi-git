@@ -88,8 +88,11 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
     s = segs[0]
     assert set(s) == {
         "feature_id", "feature_label", "seg_index", "checkpoint", "intent", "rationale",
-        "op_ids", "op_count", "commit_shas", "words", "first_index", "last_index", "novelty",
-        "tier", "source",
+        # `present_op_count` is how many of `op_ids` are still in HEAD's ideal: a revert takes ops
+        # out of the ideal and leaves them in the store, so a chapter the user reverted has to be
+        # kept and *say* it is gone rather than silently shrink its `op_count`.
+        "op_ids", "op_count", "present_op_count", "commit_shas", "words", "first_index",
+        "last_index", "novelty", "tier", "source",
     }
     assert s["checkpoint"] == "F-A@0"
     assert s["feature_label"] == "Foo Feature"

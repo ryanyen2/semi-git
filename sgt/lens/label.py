@@ -251,6 +251,11 @@ class Labeler:
         # succeed after that, so every remaining entry falls back without attempting a call --
         # the difference between one failure and one per batch on a keyless repo.
         self._client_unavailable = False
+        # Subsystem names already handed out by `_adopt_super` this process, so two sibling
+        # subsystems can't both inherit one name. Keyed by LABEL, not by cache key: an adoption
+        # writes a second entry carrying the same name, and that copy is adoptable in turn -- so
+        # guarding the source key alone let the name walk down a chain of siblings anyway.
+        self._claimed_supers: set[str] = set()
 
     def _note_failure(self, exc: Exception) -> None:
         """First time an LLM call fails on *credentials*, note it once on stderr -- worded so it
@@ -259,19 +264,31 @@ class Labeler:
         concurrent batches (a few features fall back, the rest are fine). It reports the affected
         calls, not "labeling disabled", and points at the fix only *if* the graph is broadly
         terse."""
+        if self._auth_warned:
+            return
+        self._auth_warned = True
+        # EVERY failure warns, not only credential-shaped ones. The gate used to match on
+        # auth/permission/401/credential wording, and a spent key answers `429 insufficient_quota /
+        # credit_balance_exhausted` -- which matched none of it. So on the study fixture every refresh
+        # replaced real names with symbol lists and printed NOTHING: the graph renamed itself between
+        # two reads of the same repo with no way to tell why. Silent degradation is the failure this
+        # warning exists for; narrowing it to one cause defeated it.
+        import sys
         name, msg = type(exc).__name__.lower(), str(exc).lower()
-        # "No LLM credential found" (`config.get_client`) is a plain RuntimeError, so match the
-        # message too: without it the most common cause of terse names -- no key configured at all
-        # -- was the one case that explained itself to nobody.
-        is_auth = ("auth" in name or "permission" in name or "401" in msg
-                   or ("invalid" in msg and "token" in msg) or "credential" in msg)
-        if is_auth and not self._auth_warned:
-            self._auth_warned = True
-            import sys
-            print(f"⚠ an LLM labeling call was rejected ({type(exc).__name__}); those features use "
-                  "terse fallback names. If the whole graph is terse, the key is missing or stale — "
-                  "set OPENAI_API_KEY (or ANTHROPIC_AUTH_TOKEN for a Claude model), then "
-                  "`sgt log --rebuild`.", file=sys.stderr)
+        detail = " ".join(str(exc).split())[:200]  # the API's own words, one line, length-capped
+        if "quota" in msg or "credit" in msg or "billing" in msg:
+            fix = "the account is out of credit — top it up or point SGT_MODEL at another provider"
+        elif ("auth" in name or "permission" in name or "401" in msg or "credential" in msg
+              or ("invalid" in msg and "token" in msg)):
+            fix = ("the key is missing or stale — set OPENAI_API_KEY (or ANTHROPIC_AUTH_TOKEN for a "
+                   "Claude model)")
+        elif "ratelimit" in name or "429" in msg:
+            fix = "rate-limited — the next `sgt log --rebuild` retries what fell back"
+        else:
+            fix = "unexpected — rerun with `sgt log --rebuild` once the cause is cleared"
+        print(f"⚠ an LLM labeling call failed ({type(exc).__name__}: {detail}); those features keep "
+              f"their previous name where there was one and use terse fallback names otherwise. If "
+              f"the graph is broadly terse, {fix}.", file=sys.stderr)
 
     @property
     def client(self):
@@ -292,6 +309,17 @@ class Labeler:
             self._note_failure(e)
             return None
 
+    @staticmethod
+    def _stamp_anchor(entry: dict, members: list[str], weights: dict | None) -> None:
+        """Record the member set this entry's name was earned on -- the anchor both reuse paths
+        compare against. A leaf also keeps its legacy member-hash; a super is marked as one so
+        `_adopt_super` only ever matches subsystem entries against subsystem entries."""
+        entry["gen_members"] = sorted(members)
+        if weights is not None:
+            entry["member_hash"] = _key(members)
+        else:
+            entry["kind"] = "super"
+
     def _fallback_entry(self, key: str, members: list[str], now: float | None = None) -> dict:
         """A fallback cache entry carrying its own next-retry time. `attempts` counts consecutive
         failures for this key so the backoff grows, and is reset by any later successful label."""
@@ -299,8 +327,22 @@ class Labeler:
         attempts = int(prior.get("attempts", 0)) + 1 if prior.get("source") == "fallback" else 1
         delay = min(FALLBACK_RETRY_BASE_SECONDS * (2 ** (attempts - 1)), FALLBACK_RETRY_MAX_SECONDS)
         out = fallback_label(members)
-        return {**out.model_dump(), "source": "fallback", "attempts": attempts,
-                "retry_after": (now if now is not None else time.time()) + delay}
+        entry = {**out.model_dump(), "source": "fallback", "attempts": attempts,
+                 "retry_after": (now if now is not None else time.time()) + delay}
+        # A name this key already EARNED outlives a failed retry. The entry still counts as a
+        # fallback (so the backoff runs and a later read tries again), it just carries the real name
+        # instead of a symbol list. Without this, one spent-credit refresh renamed every feature that
+        # happened to be up for relabeling -- the LLM had already named them, and a network blip was
+        # enough to throw those names away and print `Command Line Interface Conference CLI ID
+        # Allocation README.m` in their place.
+        if prior.get("source") == "llm" and prior.get("label"):
+            entry["label"] = prior["label"]
+            entry["rationale"] = prior.get("rationale", "")
+            entry["carried"] = "llm"
+        for k in ("gen_members", "member_hash", "kind"):
+            if k in prior:  # keep the drift anchor + entry kind a later retry compares against
+                entry.setdefault(k, prior[k])
+        return entry
 
     def _request(self, prompt: str) -> FeatureLabel:
         # `reasoning={"effort": "low"}`: naming a cluster is one-shot structured extraction that
@@ -393,9 +435,11 @@ class Labeler:
     def super_request(
         self, child_labels: list[str], files: list[str],
     ) -> tuple[str, str, list[str], None]:
-        """``(key, prompt, members, None)`` for `label_many` -- content-keyed exact reuse, mirrors
-        `label_super()`. The ``None`` weights slot marks a super entry (no graded drift budget):
-        stabilizing leaf labels stabilizes the super cascade for free (super keys are child labels)."""
+        """``(key, prompt, members, None)`` for `label_many` -- mirrors `label_super()`. The ``None``
+        weights slot marks a super entry: its key is content (child labels + files), so unlike a leaf
+        it has no id to key on and a membership change necessarily lands on a NEW key. `_cache_lookup`
+        therefore re-finds a super by member drift instead of by key (Greene member-set matching one
+        level up), which is what keeps a subsystem's name across an ordinary save."""
         key = _key(["\x01super", *child_labels, *files])
         return key, _super_prompt(child_labels, files), [*child_labels, *files], None
 
@@ -417,7 +461,7 @@ class Labeler:
                 and time.time() < cached.get("retry_after", 0)):
             return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
         if cached is not None and cached.get("source") == "llm":
-            if weights is None:  # super: content-keyed, exact match is identity
+            if weights is None:  # super: exact content match, the cheap identity
                 return FeatureLabel(label=cached["label"], rationale=cached["rationale"])
             gen = cached.get("gen_members")
             if gen is None or _weighted_jaccard(set(members), set(gen), weights) >= TAU_LABEL:
@@ -431,7 +475,43 @@ class Labeler:
                     "gen_members": sorted(members), "member_hash": _key(members),
                 }
                 return FeatureLabel(label=legacy["label"], rationale=legacy["rationale"])
+        if cached is None and weights is None:  # super miss: re-find it by drift, not by key
+            return self._adopt_super(key, members)
         return None
+
+    def _adopt_super(self, key: str, members: list[str]) -> FeatureLabel | None:
+        """The closest prior subsystem label within `TAU_LABEL` drift of `members`, re-keyed onto this
+        entry -- or ``None`` to relabel.
+
+        A subsystem has no stable id to key a cache entry on: its node id is a positional DFS counter
+        that moves whenever the tree reshapes, so the key is content (its children's labels + files).
+        That made every subsystem name content-addressed and exact-match-only, so ANY membership change
+        was a cache miss: one `sgt save` that added a feature to a subsystem renamed the subsystem, and
+        with no credit on the key the new name was a symbol list. This is the same graded reuse leaves
+        get, with the member-set match standing in for the id -- a subsystem that gained or lost a
+        child is still that subsystem, and keeps its name.
+
+        One name is adopted at most once per process, so two sibling subsystems can never both
+        inherit the same name; the loser relabels."""
+        best, best_score = None, TAU_LABEL
+        cur = set(members)
+        for k, v in sorted(self.cache.items()):
+            if (k == key or v.get("kind") != "super" or v.get("source") != "llm"
+                    or v.get("label") in self._claimed_supers):
+                continue
+            gen = v.get("gen_members")
+            if not gen:
+                continue
+            score = _weighted_jaccard(cur, set(gen), {})
+            if score >= best_score:  # >= so an equal-scoring later key can't be dropped silently
+                best, best_score = (k, v), score
+        if best is None:
+            return None
+        _src_key, entry = best
+        self._claimed_supers.add(entry["label"])
+        self.cache[key] = {"label": entry["label"], "rationale": entry["rationale"], "source": "llm",
+                           "kind": "super", "gen_members": sorted(members)}
+        return FeatureLabel(label=entry["label"], rationale=entry["rationale"])
 
     def label_many(
         self, entries: list[tuple[str, str, list[str], dict[str, float] | None]],
@@ -462,9 +542,7 @@ class Labeler:
                 key, _prompt, members, weights = entries[global_i]
                 with self._lock:
                     entry = self._fallback_entry(key, members)
-                    if weights is not None:
-                        entry["gen_members"] = sorted(members)
-                        entry["member_hash"] = _key(members)
+                    self._stamp_anchor(entry, members, weights)
                     self.cache[key] = entry
                 results[global_i] = FeatureLabel(label=entry["label"], rationale=entry["rationale"])
 
@@ -490,16 +568,12 @@ class Labeler:
                 if out is None:  # the model dropped/misindexed this slot -- fall back just this one
                     with self._lock:
                         entry = self._fallback_entry(key, members)
-                        if weights is not None:
-                            entry["gen_members"] = sorted(members)
-                            entry["member_hash"] = _key(members)
+                        self._stamp_anchor(entry, members, weights)
                         self.cache[key] = entry
                     results[global_i] = FeatureLabel(label=entry["label"], rationale=entry["rationale"])
                     continue
                 entry = {**out.model_dump(), "source": "llm"}
-                if weights is not None:  # leaf: anchor the drift budget at this generation
-                    entry["gen_members"] = sorted(members)
-                    entry["member_hash"] = _key(members)
+                self._stamp_anchor(entry, members, weights)
                 with self._lock:
                     self.cache[key] = entry
                 results[global_i] = out

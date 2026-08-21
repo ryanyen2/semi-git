@@ -178,7 +178,7 @@ def publish(repo: str | Path, ideal: Ideal | None = None, by: str | None = None)
         ideal = lens.current_ideal(repo)
     record = verdict_for(repo, ideal)
     if record is None:
-        raise ValueError("no verdict recorded for this ideal; run `sgt oracle run` first")
+        raise ValueError("no verdict recorded for this ideal; run `sgt advanced oracle run` first")
     key = ideal_key(ideal)
     fingerprint = _runner_fingerprint(by)
     body = {

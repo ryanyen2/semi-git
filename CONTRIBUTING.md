@@ -52,11 +52,12 @@ there rather than reaching a user.
 A release is one tag push. Everything else is automated in
 [.github/workflows/release.yml](.github/workflows/release.yml).
 
-First, bump the version in both places. They have to match, because the release run compares them
+First, bump the version in all three places. They have to match, because the release run compares them
 against the tag and stops if they disagree.
 
 - `pyproject.toml`, the `version` field.
 - `editor/vscode/package.json`, the `version` field.
+- `sgt/__init__.py`, the `__version__` field.
 
 Then commit, tag, and push.
 

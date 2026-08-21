@@ -160,6 +160,10 @@
       "configured": false,
       "status": "unconfigured"
     },
+    "staged": {
+      "any": false,
+      "paths": []
+    },
     "symbols": 4,
     "sync_status": {
       "complete": true,

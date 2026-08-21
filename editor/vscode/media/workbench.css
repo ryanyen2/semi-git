@@ -460,6 +460,18 @@ svg.railsvg {
   stroke-dasharray: 2 2;
 }
 
+/* A chapter a revert took out of the ideal. Its edits are still recorded and still addressable
+   (`sgt restore <feature>@<n>`) -- only the ideal dropped them -- so the car keeps its slot in time
+   and its identity hue and reads as emptied. That is the SVG counterpart of the terminal map's `\u2591`,
+   which is also the glyph the revert preview spends on removal: one state, one vocabulary, two
+   surfaces. The hue stroke arrives inline from the lane color (see `.gcar`, which sets stroke to the
+   background). */
+.gcar-reverted {
+  fill-opacity: 0.06;
+  stroke-width: 1px;
+  stroke-opacity: 0.75;
+}
+
 /* The "big event" of a lane -- its fattest chapter -- reads brighter than its siblings so the most
    consequential edit in a feature's history stands out without a second hue. */
 .gcar-big-rect {
@@ -801,11 +813,16 @@ svg.railsvg {
   stroke-width: 2px;
 }
 
-/* Context tally, pinned bottom-right like the off-screen pills: how many features stay unchanged. */
+/* Pinned bottom-right like the off-screen pills. It began as a context tally ("N unchanged") and now
+   also carries a preview's one-sentence consequence (split's cut, and the pre-target half of
+   merge/move/rename), which is why it needs a width bound: those sentences run past 140 characters,
+   and unbounded shrink-to-fit stretched the pill into a thin ribbon across the pane. */
 .preview-context-pill {
   position: absolute;
   right: 12px;
   bottom: 8px;
+  max-width: min(52ch, calc(100% - 24px));
+  line-height: 1.45;
   z-index: 5;
   background: var(--panel-bg);
   color: var(--dim);
@@ -818,6 +835,41 @@ svg.railsvg {
 
 .preview-context-pill[hidden] {
   display: none;
+}
+
+/* The armed merge/move mode, stated. Same top-centered card the refusal overlay uses -- both are
+   "read this before you click again" -- in the --accent channel, because this is a live mode waiting
+   on the reader rather than something that went wrong. `pointer-events: none` so the one thing it
+   asks for (a lane click) is never the thing it blocks. */
+.armed-banner {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: min(90%, 460px);
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 4px 12px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.armed-banner[hidden] {
+  display: none;
+}
+
+/* The live answer, under the standing question. Dim mono 11px is this file's established
+   "secondary detail inside a card" weight (see .refusal-remedy), so the pairing reads as one card
+   with a lead and a detail rather than two competing messages. */
+.armed-banner .armed-a {
+  margin-top: 3px;
+  color: var(--dim);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 /* Blocked-restore overlay: a competing live version refuses the restore. A quiet centered card that
@@ -1107,6 +1159,21 @@ svg.railsvg {
   color: var(--dim);
   cursor: default;
   font-variant-numeric: tabular-nums;
+}
+
+/* One chip per signal, so a click lands on the glyph the reader aimed at. Only a chip with an
+   action gets an actionable look -- the rest stay inert text, which is what they are. */
+.sig-chip + .sig-chip {
+  margin-left: 6px;
+}
+
+.sig-chip[data-action] {
+  cursor: pointer;
+}
+
+.sig-chip[data-action]:hover {
+  color: var(--fg);
+  text-decoration: underline;
 }
 
 /* The plans popover: a dropdown of per-session rows, anchored under the status zone. */
@@ -1452,6 +1519,18 @@ svg.railsvg {
 
 .checkpoint.trivial {
   opacity: 0.75;
+}
+
+/* A chapter a revert took out of the ideal. It keeps its row -- it is still recorded and a restore
+   needs it named -- and its label reads struck-through, the same "was here, taken out" claim the
+   gantt makes with a hollow car and the terminal map with `\u2591`. */
+.checkpoint.reverted .checkpoint-label {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.checkpoint.reverted .checkpoint-dot {
+  color: var(--dim);
 }
 
 .checkpoint-dot {

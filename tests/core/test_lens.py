@@ -599,6 +599,30 @@ def test_put_refuses_to_clobber_an_unabsorbed_dirty_edit(tmp_path):
     assert (repo / "a.py").read_bytes() == b"def foo():\n    return 2\n"  # tree left untouched
 
 
+def test_a_dirty_ignored_tier_file_does_not_block_a_materializing_edit(tmp_path):
+    """A tracked path sgt deliberately never mines -- a dot-path, a gitignored path, a lockfile:
+    the `ignored` tier -- is outside sgt's remit, not a path the ideal dropped. `code()` never
+    produces it, so the old guard read "tracked but absent from `materialized`" as "the ideal
+    deletes this" and refused every `put()` while it was dirty. One uncommitted `.gitignore` line
+    then blocked `save`, `undo`, `revert --yes` and `restore` alike, and the remedy the error named
+    (`sgt save`) answered `nothing to save` because an ignored path mints no op -- a loop with no
+    way out that does not go through git."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (repo / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    gb.commit_all("add foo and a gitignore")
+    baseline = get(repo)
+
+    (repo / ".gitignore").write_text("__pycache__/\n.DS_Store\n", encoding="utf-8")  # dirty, unminable
+
+    put(repo, baseline, message="an edit while the gitignore is dirty")
+
+    # The fold neither refused nor touched it: an ignored path is sgt's to leave alone entirely.
+    assert (repo / ".gitignore").read_text(encoding="utf-8") == "__pycache__/\n.DS_Store\n"
+    assert (repo / "a.py").is_file()
+
+
 def test_put_refuses_to_roll_back_committed_drift_outside_the_edit_delta(tmp_path):
     """Phase-0 0.1 (F7/F9): a one-symbol edit's fold rewrites *every* covered path, so a file whose
     committed on-disk bytes drifted from sgt's recorded ideal (a merge/cherry-pick the miner

@@ -867,9 +867,13 @@ def _project_feature_preview(repo, verb: str, preview) -> dict:
     carries a short human `summary` (resolved labels, counts, the split groups) the pane renders in
     place of the code rail. Only call on an `ok` preview -- a refusal is handled by the CLI's
     `_fail_preview` before this point."""
+    from collections import Counter
+
     from sgt.lens.tree import load as load_tree
 
-    nodes = (load_tree(repo) or {}).get("nodes", {})
+    tree_result = load_tree(repo) or {}
+    nodes = tree_result.get("nodes", {})
+    op_leaf = tree_result.get("op_leaf", {})
 
     def label(fid: str) -> str:
         return (nodes.get(fid) or {}).get("label") or fid[:8]
@@ -884,6 +888,20 @@ def _project_feature_preview(repo, verb: str, preview) -> dict:
     elif verb == "move":
         primary = label(preview.target_id)
         summary = [f"{len(preview.op_ids)} op(s) → {primary}"]
+        # Which lane loses them, and whether it loses all of them. `move` named only the destination,
+        # while `merge` has always named both sides ("absorb X → Y") -- and the source is the half a
+        # reader has to judge: a lane emptied of every op is dropped from the graph (the husk filter in
+        # `sgt log --map`, and `computeLayout` in the workbench), so the feature survives in the tree
+        # while vanishing from every view. That result is indistinguishable from the `merge` the reader
+        # did not choose, which makes the feedback confirm the wrong operation.
+        moving = Counter(leaf for op in preview.op_ids if (leaf := op_leaf.get(op)) is not None)
+        held = Counter(op_leaf.values())
+        for src, n in sorted(moving.items()):
+            if src == preview.target_id:
+                continue
+            left = held[src] - n
+            tail = "" if left else " — emptied, leaves the graph until it is edited again"
+            summary.append(f"from {label(src)}: {n} of {held[src]} op(s), {left} left{tail}")
     elif verb == "split":
         primary = label(preview.feature_id)
         g0, g1 = preview.groups or ((), ())
@@ -1088,8 +1106,9 @@ def resolve_apply_preview_view(repo, symbol: str) -> dict:
 def rewrite_view(repo) -> dict:
     """U11's review surface: every registered-but-unfulfilled rewrite draft (`merge-op`/
     `split-op`/`transplant`/`revert --keep-dependents`) with its hollow ops' symbol/kind/intent,
-    plus the currently staged candidate ideal (if `sgt fulfill` has run) with its oracle verdict --
-    the thing `sgt land` is gated on (R14). `None` for ``staged`` means nothing is staged."""
+    plus the currently staged candidate ideal (if `sgt advanced fulfill` has run) with its oracle
+    verdict -- the thing `sgt advanced commit` is gated on (R14). `None` for ``staged`` means nothing
+    is staged."""
     from sgt.core import opindex, oracle, rewrite
     from sgt.core.ideal import Ideal
     from sgt.core.store import Store
@@ -1516,6 +1535,8 @@ def grid_view(repo) -> dict:
         },
         "ghosts": _grid_ghosts(repo, set(features)),
         "partial_commits": sorted(partial_indices),
+        "reverted_unaccounted": _reverted_unaccounted(
+            repo, {oid for c in cells.values() for oid in c["op_ids"]}),
         # `commit_count` is the time axis's length -- every op's `commit_index` refers to it, so it
         # must keep counting sgt's own materialization commits. `save_count` is what a person means
         # by "how many saves": the same axis minus sgt's plumbing. Keeping both is what stops the
@@ -1526,6 +1547,72 @@ def grid_view(repo) -> dict:
         "op_count": sum(len(c["op_ids"]) for c in cells.values()),
         "feature_count": len(features),
     }
+
+
+def _reverted_unaccounted(repo, shown: set[str]) -> dict:
+    """Code a user's own revert took away that no lane and no chapter can draw.
+
+    `build_map` clusters *alive* symbols, so a reverted symbol belongs to no leaf: its ops lose their
+    `op_leaf` entry on the next rebuild, and with it their cell and their chapter. Every remaining
+    chapter then reads `present_op_count == op_count` and every lane draws solid while the code is
+    still missing from disk -- a read layer asserting a state the working tree contradicts, which is
+    the one failure this project cannot afford on a verb that moves files. A partial restore is where
+    it bites: `sgt restore` itself warns "the earlier revert also removed N op(s) this restore does
+    not bring back", and the very next `sgt log` drew the feature whole.
+
+    Two filters decide the claim, and both are load-bearing because the first version of this had
+    neither and cried "1565 reverted edit(s)" on a repo nobody had ever reverted.
+
+    *Source.* The ops come from the applied `ideal_edit` events in the operation log -- the record of
+    what a user's edit actually removed (`prior - result` per event, which `sgt undo` pops, so an
+    undone revert stops being claimed). Deriving them instead from `ideal_for_ref(HEAD) -
+    current_ideal` conflates an edit with a disagreement: `current_ideal` trusts the persisted table
+    and `ideal_for_ref` rescans provenance, so an ordinary earlier derivation reads as a mass revert.
+
+    *Consequence.* An op leaving the ideal does not mean code left the tree -- a rewrite (`sgt edit`)
+    removes an op and adds its replacement over the same symbol. So a symbol is only reported when no
+    op still in the ideal covers it, which is the same fact a reader can check on disk. Sentinels stay
+    out of `symbols` (`__anchor__`/`__residue__` name whitespace, not code a person recognizes) and
+    `op_count` counts only the ops carrying a reported symbol, so the number and the names agree."""
+    from sgt.core import oplog, opindex
+    from sgt.core.lens import current_ideal
+
+    edited_away: set[str] = set()
+    for events in oplog.load(repo).values():
+        for e in events:
+            if e.get("kind") == "ideal_edit" and e.get("applied"):
+                edited_away |= set(e.get("ideal") or []) - set(e.get("result") or [])
+    if not edited_away:
+        return {"op_count": 0, "symbols": []}  # the common case: nothing was ever ideal-edited here
+    ideal = current_ideal(repo).op_ids
+    absent = edited_away - ideal - shown
+    if not absent:
+        return {"op_count": 0, "symbols": []}
+    by_id = {op.id: op for op in opindex.index_ops(repo)}  # footprints suffice; no bytes needed
+    live = {s for oid in ideal if oid in by_id for s in by_id[oid].footprint}
+    gone = {s for oid in absent if oid in by_id for s in by_id[oid].footprint} - live
+    named = sorted(s for s in gone if "__residue__" not in s and "__anchor__" not in s)
+    carriers = [oid for oid in absent if oid in by_id and set(by_id[oid].footprint) & gone]
+    return {"op_count": len(carriers), "symbols": named}
+
+
+def _checkpoint_preview(repo, verb: str, target: str):
+    """`target` as an intent-segment checkpoint, planned exactly as `sgt revert`/`sgt restore` plan
+    it, or `None` when it does not name one (so the caller falls through to the feature planners).
+    One resolution path for both surfaces: a hover that previewed a checkpoint differently from the
+    command that applies it would be a preview of something else."""
+    from sgt.core import verbs as core_verbs
+    from sgt.intent.segment import resolve_checkpoint
+    from sgt.select import resolve as select_resolve
+
+    if not select_resolve.is_checkpoint_shaped(target):
+        return None
+    resolved = resolve_checkpoint(repo, target)
+    if resolved is None:
+        return None
+    op_ids, _label = resolved
+    return (core_verbs.plan_revert_op_set(repo, target, op_ids) if verb == "revert"
+            else core_verbs.plan_restore_op_set(repo, target, op_ids))
 
 
 def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
@@ -1612,8 +1699,17 @@ def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
     if verb in ("revert", "restore"):
         if len(args) != 1:
             return {"error": f"{verb} requires <feature>"}
-        plan_fn = lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
-        preview = plan_fn(repo, args[0])
+        # A `<feature>@<n>` / `<feature>:<slug>` checkpoint, resolved to its op-set through the same
+        # two planners `sgt revert`/`sgt restore` run on it (see `sgt/cli/ideal_edit.py`). The
+        # checkpoint is the rewind unit both timelines tell users to click, and the workbench's
+        # checkpoint hover asks this view to preview one -- resolving it as a feature id instead
+        # answered `feature ... not found; run `sgt log --refresh`` on every such hover, a dead
+        # preview whose remedy could not help, since nothing was stale.
+        preview = _checkpoint_preview(repo, verb, args[0])
+        if preview is None:
+            plan_fn = (lens_verbs.plan_revert_feature if verb == "revert"
+                       else lens_verbs.plan_restore_feature)
+            preview = plan_fn(repo, args[0])
         affected = []
         if preview.ok:
             tree_result = tree_mod.load(repo)
@@ -2396,6 +2492,7 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     (`group.tier`, KTD3) and a `novelty` weight, so a client can dim trivial chapters. Flat,
     sorted by `(feature_id, seg_index)`, for a stable projection."""
     from sgt import state
+    from sgt.core.lens import current_ideal
     from sgt.intent import group
     from sgt.intent import segment as seg_mod
 
@@ -2404,6 +2501,14 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     label_pins = state.load_json(repo, "intent_segment_pins", default={})
     runs_by_feature = seg_mod.feature_runs(repo, op_leaf)
     words_for = _commit_words_join(repo)
+    # Which of a chapter's ops are still in HEAD's ideal. A revert removes ops from the ideal and
+    # leaves them in the store -- that asymmetry is what makes `sgt restore` possible -- so the
+    # chapter list must keep a reverted chapter and *say* it is gone. `current_ideal` (not
+    # `ideal_for_ref`) is the read that reflects an explicit ideal edit; a provenance scan alone
+    # cannot represent "still in git history, excluded from the ideal". An empty ideal means the
+    # ref is unborn or unmined, which is no claim about any chapter, so `present_op_count` is
+    # `None` there and a renderer must not read it as "removed".
+    head_op_ids = current_ideal(repo).op_ids
 
     out: list[dict] = []
     for feature_id in sorted(runs_by_feature):
@@ -2436,6 +2541,7 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
                 "rationale": s.rationale,
                 "op_ids": sorted(s.op_ids),
                 "op_count": s.op_count,
+                "present_op_count": (len(s.op_ids & head_op_ids) if head_op_ids else None),
                 "commit_shas": list(s.commit_shas),
                 "words": words,
                 "first_index": s.first_index,
@@ -2963,7 +3069,7 @@ def _show_next(found, consequences: dict) -> list[dict]:
 
 def compose_view(repo, *, full: bool = False) -> dict:
     """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
-    `sessions`/`trust`/`intent`/`save_preview`, the current ideal's oracle verdict, and a lightweight
+    `sessions`/`trust`/`intent`/`rewrite`/`save_preview`, the current ideal's oracle verdict, and a lightweight
     open-proposal list, each delegated to its own view function with no reshaping. Collapses what
     would otherwise be ~9 separate `sgt <verb> --json` shell-outs (each a fresh process) into one
     call -- the single biggest responsiveness win for a UI that refreshes on every `.sgt/` change.
@@ -2994,6 +3100,10 @@ def compose_view(repo, *, full: bool = False) -> dict:
         "sessions": sessions_view(repo),
         "trust": trust_view(repo, full=full),
         "intent": intent_view(repo),
+        # `status["staged"]` says *which paths* carry a staged candidate; this says *what it is* --
+        # verb, op count, and the oracle verdict landing is gated on. A surface needs both to offer
+        # Land honestly, and without the gate it draws a button that can only fail.
+        "rewrite": rewrite_view(repo),
         "save_preview": save_preview_view(repo),
         "oracle_verdict": verdict_for(repo, current_ideal(repo)),
         "proposals": proposals,
@@ -3192,7 +3302,14 @@ def status_view(repo) -> dict:
 
     from sgt.core.lens import materialization_skips
 
-    drift = _drift_paths_by_hash(repo, path_hashes)
+    divergent = _drift_paths_by_hash(repo, path_hashes)
+    # A live stage (U6) deliberately leaves an uncommitted rewrite candidate on the working tree, so
+    # a path whose disk bytes differ from the committed ideal is that candidate -- planned
+    # divergence, classified `staged` and never `drift`. `fsck_tree` has drawn this distinction
+    # since U6; this projection is the one every *surface* reads, and without the same rule the
+    # workbench called a staged candidate "Working changes" and offered a Save that `put` refuses.
+    staged_paths = divergent if state_mod.load_json(repo, "staged", default=None) is not None else []
+    drift = [] if staged_paths else divergent
     # `path_hashes` stands in for the materialized dict: the skips read consults it for path
     # MEMBERSHIP only (which tracked paths the ideal doesn't cover). `None` as `all_ops`: the
     # backstop read folds the *maximal* ideal -- let it load (path-restricted) images itself
@@ -3213,6 +3330,7 @@ def status_view(repo) -> dict:
             "status": overall_status(st["oracle_verdict"]) if st["oracle_configured"] else "unconfigured",
         },
         "drift": {"any": bool(drift), "paths": drift},
+        "staged": {"any": bool(staged_paths), "paths": staged_paths},
         # R3/R4: paths a materializing verb refuses to touch -- symlinks (unmanaged) and files the
         # current ideal dropped whose live bytes no valid ideal can regenerate (backstop-kept).
         "unmanaged": skips["unmanaged"],

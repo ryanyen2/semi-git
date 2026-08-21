@@ -227,8 +227,12 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
                   f"(`sgt undo` reverses this.)")
         for line in _subtraction_report(preview):
             print(line)
-        for line in gap_lines:
-            print(line)
+        # Repeated after the apply only when a confirm scrolled the preview away. Under `--yes` there
+        # is no prompt between the two prints, so the same warning landed twice, two lines apart, and
+        # a warning about work that stays gone reads as two separate problems when it repeats.
+        if not yes:
+            for line in gap_lines:
+                print(line)
         return 0
 
     gap = _restore_gap(repo, preview) if preview.ok and preview.verb == "restore" else None
@@ -448,17 +452,22 @@ def _kernel_edit_verb(
     get(repo)  # mine-on-contact before planning/applying the edit (R9)
 
     # A `<feature>@<n>` or `<feature>:<slug>` checkpoint (the intent-segment rewind unit): resolve
-    # it to its deterministic op-set and run the exact same op-set revert `sgt intent revert` uses
-    # (KTD6). Tried first for `revert` because `@`/`:` name a checkpoint unambiguously; a non-match
-    # returns None and falls through. restore has no op-set counterpart, so it never enters here.
-    if cmd == "revert" and select_resolve.is_checkpoint_shaped(target):
+    # it to its deterministic op-set and run the exact same op-set edit `sgt intent revert` uses
+    # (KTD6). Tried first because `@`/`:` name a checkpoint unambiguously; a non-match returns None
+    # and falls through. Both verbs enter here: `@n` is the rewind unit the map and the checkpoint
+    # detail tell users to type, so a rewind whose inverse could not be addressed the same way was a
+    # one-way door -- `sgt restore <feature>@<n>` used to fall past every deterministic rung to the
+    # NL one and exit `could not resolve ... set OPENAI_API_KEY`.
+    if select_resolve.is_checkpoint_shaped(target):
         from sgt.intent.segment import resolve_checkpoint
 
         resolved = resolve_checkpoint(repo, target)
         if resolved is not None:
             op_ids, label = resolved
-            preview = verbs.plan_revert_op_set(repo, target, op_ids,
-                                               take_dependents=take_dependents)
+            preview = (verbs.plan_revert_op_set(repo, target, op_ids,
+                                                take_dependents=take_dependents)
+                       if cmd == "revert" else
+                       verbs.plan_restore_op_set(repo, target, op_ids))
             # The feedforward focus is the feature the checkpoint's ops belong to (all ops in one
             # segment share a feature); pick any target op and read its leaf feature.
             from sgt.lens.tree import load as load_tree
@@ -551,6 +560,41 @@ def _kernel_edit_verb(
     return _emit_verb_result(repo, preview, emit, as_json, yes=yes, focus_fid=focus_fid)
 
 
+def _save_named_by(repo: str, target: str) -> tuple[str, str, list[tuple[str, str]]] | None:
+    """``(short sha, subject, [(handle, label)])`` when `target` names a *save* -- a commit in this
+    branch's history -- listing the features whose ops that save recorded. ``None`` when it names no
+    commit here, so the caller's handle ladder continues.
+
+    `sgt save` prints the sha of the commit it just made, which makes `sgt revert <that sha>` the
+    obvious next move after a save you regret. A bare hex is handle-shaped, so it lands in
+    `_no_feature_match` and used to be answered with "no feature matches handle '<sha>' -- run `sgt
+    log --map`": the map lists feature handles and never save shas, so the one pointer offered
+    cannot resolve the one id typed, and a name sgt itself printed reads back as unknown."""
+    from sgt.core import opindex
+    from sgt.lens.tree import load as load_tree
+    from sgt.store.gitbind import GitBinding
+
+    gb = GitBinding(repo)
+    if not gb.is_repo():
+        return None
+    full = gb.rev_parse(target)
+    if full is None:
+        return None
+    rows = gb.history()
+    subject = next((subj for sha, _parent, subj in rows if sha == full), None)
+    if subject is None:
+        return None  # resolves to an object, but not to a commit on this history
+    tree = load_tree(repo) or {}
+    op_leaf, nodes = tree.get("op_leaf", {}), tree.get("nodes", {})
+    sha_of = opindex.earliest_commit_sha(gb, rows, opindex.index_ops(repo))
+    fids = {op_leaf[oid] for oid, sha in sha_of.items() if sha == full and oid in op_leaf}
+    feats = sorted(
+        ((fid[2:] if fid.startswith("f-") else fid)[:8], nodes.get(fid, {}).get("label", fid))
+        for fid in fids
+    )
+    return full[:7], subject.strip(), feats
+
+
 def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
     """A handle-shaped target (`f-`/bare-hex) that resolved to no *unique* feature -- a typo, a stale
     id, or a too-short (ambiguous) prefix. Answer deterministically and instantly (no LLM): list the
@@ -567,6 +611,9 @@ def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
         (nid for nid, nd in nodes.items() if not nd["children"] and body(nid).startswith(bare)),
         key=lambda nid: nodes[nid].get("label", nid),
     )
+    save = _save_named_by(repo, target) if not hits else None
+    if save is not None:
+        return _revert_a_save(cmd, target, save, as_json)
     if as_json:
         import json
 
@@ -589,6 +636,46 @@ def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
     print(f"? [{cmd}] {target!r} is an ambiguous handle; did you mean:")
     for nid in hits[:8]:
         print(f"  sgt {cmd} {body(nid)[:8]}   {nodes[nid].get('label', nid)}")
+    return 2
+
+
+def _revert_a_save(cmd: str, target: str, save: tuple[str, str, list[tuple[str, str]]],
+                   as_json: bool) -> int:
+    """The refusal for a save sha: say what the sha is, then name the moves that do work -- one
+    `sgt <cmd> <handle>` per feature that save recorded, plus `sgt undo` (step the last save back)
+    and `sgt why <sha>` (what it was for). Exit 2 like every other unresolved target."""
+    sha, subject, feats = save
+    if feats:
+        # The message is self-contained: the extension shows `view.message` and nothing else, so
+        # "the features are listed" would name a listing that surface does not render. `candidates`
+        # still carries them all, for a consumer that can.
+        named = "; ".join(f"{label} ({ref})" for ref, label in feats[:3])
+        more = f"; and {len(feats) - 3} more" if len(feats) > 3 else ""
+        message = (f"{target!r} is a save ({subject!r}), not a feature handle -- {cmd} takes one "
+                   f"feature or symbol at a time. It recorded: {named}{more}. "
+                   f"`sgt undo` steps the most recent save back.")
+    else:
+        message = (f"{target!r} is a save ({subject!r}), not a feature handle, and it recorded no "
+                   f"feature ops -- try `sgt undo` to step the most recent save back")
+    if as_json:
+        import json
+
+        print(json.dumps({"ok": False, "verb": cmd, "target": target, "message": message,
+                          "candidates": [{"ref": ref, "label": label} for ref, label in feats]},
+                         indent=2))
+        return 2
+    print(f"? [{cmd}] {target!r} is a save, not a feature handle: {subject!r}")
+    if feats:
+        print(f"  a save is a point in time; `{cmd}` takes what it changed, one feature at a time:")
+        for ref, label in feats[:8]:
+            print(f"    sgt {cmd} {ref}   {label}")
+        if len(feats) > 8:
+            print(f"    ... and {len(feats) - 8} more (`sgt log --map`)")
+    else:
+        print("  it recorded no feature ops.")
+    print("  or:")
+    print("    sgt undo            step the most recent save back")
+    print(f"    sgt why {sha}     what that save was for")
     return 2
 
 
