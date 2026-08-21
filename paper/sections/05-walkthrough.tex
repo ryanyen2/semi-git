@@ -126,11 +126,11 @@ on it, and \cmd{sgt log --focus 4a1c9e02} names both.
 \noindent
 The developer never asked for these two stretches. \sgt{} cut the work where their
 words changed, which in this repository is where one request ended and the next
-began, and either half is addressable on its own, so
+began. Either half is addressable on its own:
 \cmd{sgt revert "Rate Limiting:sliding-window"} takes Thursday's work off and
 leaves Monday's four edits in place. The bar beside each name puts that checkpoint's
 edits in their place in the history, read left to right, with a middle dot where a
-span of the history holds none of them, so the terminal spends four characters on the
+span of the history holds none of them. The terminal spends four characters on the
 encoding Figure~\ref{fig:two-records} spends a panel on. The three forms under
 \cmd{operate} are printed because people on our own team found that a stretch of work
 had a name and then stopped, not knowing what would accept it.
@@ -157,9 +157,9 @@ week ago comes out from under a change made yesterday. Two functions existed onl
 the cache and come out with it, which empties \sym{cache.py} and removes the file,
 while \sym{db.py::query} loses the parameter the cache added and goes back to the
 text it had at 14:02. The three functions in the last line are row accessors the agent
-rewrote during its rename, and it pointed all three at \sym{get\_cached} while it
-was in there, so their edits belong to a request the developer is keeping and name
-a function the revert deletes. \sgt{} names them and proceeds, because whether the
+rewrote during its rename. The agent pointed all three at \sym{get\_cached} while
+working in that code, so their edits belong to a request the developer is keeping
+yet name a function the revert deletes. \sgt{} names them and proceeds, because whether the
 repair is deleting three call sites or reverting the rename as well is a
 question about the developer's intent, which the recorded edits cannot answer.
 
@@ -261,9 +261,9 @@ The developer picked \cmd{e}, merged the two by hand in about thirty seconds, an
 \sgt{} ran the project's test command before including the result. We are not going to
 claim the textual merge would have been wrong here, because it would most likely have
 been right, and \sgt{} charged thirty seconds and one interruption to establish that.
-We designed for the case where the merge is wrong---one edit adding an early return and
-the other edit's new code sitting below it---with the test run that would have caught it
-happening on a branch nobody has pushed yet. A developer who merges often and reads
+We designed for the case where the merge is wrong---one edit adding an early return
+and the other edit's new code sitting below it, unreachable. The test run that
+would have caught it happens here, on a branch nobody has pushed yet. A developer who merges often and reads
 carefully pays thirty seconds for a certainty they already had; the design bets that
 when the developer did not write either version of the function, they do not read
 carefully enough for the certainty to be free, and the evidence in

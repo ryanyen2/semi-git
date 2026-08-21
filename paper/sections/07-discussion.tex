@@ -147,12 +147,12 @@ everything the store has a record for, hold no function for anything to be filed
 under.
 
 So the limit is the repository's composition. Calling it a parser problem let us describe a fixed property of software as though it were a defect we could fix. Go and Rust have
-functions, a tree-sitter grammar plus a decision about which node kinds count as
+functions. A tree-sitter grammar plus a decision about which node kinds count as
 one is a day of work per language, and we would take both tomorrow. It would not
-move that share at all, because there is no Go and no Rust in it. What is in it is
+move that share at all, because there is no Go and no Rust in this repository. What is in it is
 prose, configuration, and generated files, in a proportion no repository of this kind
-escapes, and a change to four lines of a deployment manifest has no function for the
-developer's request to be filed under no matter how many grammars we ship. Every operation in Section~\ref{sec:design}
+escapes. A change to four lines of a deployment manifest has no function to file the
+developer's request under, no matter how many grammars we ship. Every operation in Section~\ref{sec:design}
 still runs on those files, at git's grain, and none of them gets sharper than
 \cmd{git revert} would be. A reader deciding whether to adopt \sgt{} should ask how
 much of the work they need to \emph{take apart} happens inside functions, which is a
@@ -402,7 +402,7 @@ categories without any acceptance step from the developer. The merge command
 exists to repair this, but a developer who does not know the pieces exist cannot
 know they need merging. Surfacing the mismatch---showing, at save time, which
 features the tool proposes and asking the developer to confirm---is the fix this
-design has not yet built, and building it requires interrupting the save flow,
+design has not yet built. Building it requires interrupting the save flow,
 which is the forcing-function cost the fork rule already pays. That fix also
 contradicts Section~\ref{sec:names}'s own premise: Shipman and Marshall showed
 that systems requiring users to formalise their work get
@@ -524,8 +524,8 @@ for got a name derived from the code.
 
 Half of that record we do take, and the half we take is the half a vendor cannot
 spoil. Where the developer's agent is Claude Code, \sgt{} installs a hook on
-prompt submission and stores every sentence the developer typed, with its time, so
-the words that named the work are on disk before any code exists and \cmd{sgt now}
+prompt submission and stores every sentence the developer typed, with its time.
+The words that named the work are on disk before any code exists, and \cmd{sgt now}
 answers with what was asked for rather than with a count of edits. That is twenty
 lines and one vendor's hook interface, and the same twenty lines have to be
 written again for the next agent, which is the price we decided we could pay,
@@ -535,7 +535,7 @@ cannot make yesterday's sentence wrong.
 The half we do not take is the agent's account of which functions each request
 touched, and the reason is that a record of that kind is a claim about the files
 which we would have to either trust or check. Trusting it puts the correctness of
-a revert inside a transcript nobody validated against the code, and Tang et
+a revert inside a transcript nobody validated against the code. Tang et
 al.'s finding that inaccurate self-reporting accounts for 22.6\% of all
 developer--agent misalignment episodes---rising even as other failure classes
 decline~\cite{tang2026agentfailures}---says directly how often that trust would

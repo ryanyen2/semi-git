@@ -80,7 +80,20 @@ earlier~\cite{parnin2011}. The bottleneck is reconstructing the
 and what the developer intended to do next. An agent session produces code the
 developer never held that simulation for, so resumption does not mean rebuilding
 a model that decayed; it means constructing a model that never existed, at a
-cost the fifteen-minute figure only lower-bounds. Bainbridge identified this
+cost the fifteen-minute figure only lower-bounds. Xia et al.\ measured the
+steady-state version of the same cost by instrumenting 78 professional
+developers at work and found they spend roughly 58\% of their time on program
+comprehension rather than on writing or modifying
+code~\cite{xia2018}. That figure is the budget the whole shift is drawn against:
+if comprehension already consumes the majority of a developer's day, then code
+arriving faster than comprehension can keep up does not free time---it moves the
+work from writing into understanding, where it was already the larger half.
+Sillito et al.\ catalogued what that time is actually spent on, identifying 44
+distinct questions developers ask while making a change and finding that the
+hardest of them concern relationships between pieces of code rather than the
+pieces themselves~\cite{sillito2008}. Their catalogue was compiled about code
+the developer's own team had written, and every question in it becomes harder
+when the author is a process that has exited. Bainbridge identified this
 structure in 1983: automation removes the need for a skill, the skill degrades
 through disuse, and when the automation fails the operator needs exactly the
 skill that has degraded~\cite{bainbridge1983}. The irony applies here directly.
@@ -278,6 +291,19 @@ this is the cheapest correct design available, because the person running
 decomposition into the repository would have meant maintaining a second structure
 that could disagree with the first.
 
+The commit does carry one field meant to hold intent, and it is worth saying why
+we do not build on it. Tian et al.\ examined what makes a commit message good and
+found that most messages in practice document neither what changed nor why,
+supplying at best one of the two~\cite{tian2022}. The message is optional prose
+written after the fact by someone under time pressure, so it degrades exactly
+when the history gets long enough to need it. A tool that reads commit messages
+as its provenance record inherits that variance, which is why \sgt{} treats the
+request that preceded the code as the anchor and uses the message only to name
+what the coupling signal has already grouped. This also sets the ceiling on what
+\sgt{} recovers from a colleague who never ran it (Section~\ref{sec:colleague}):
+their grain comes back from parsing, and their vocabulary comes back only as far
+as their commit messages carry it.
+
 Darcs takes the other option and records a version as a patch that adds and
 removes lines in a stated context~\cite{roundy2005}. Patches that do not depend on
 each other commute, so a user can pull the third patch in a series without the
@@ -388,6 +414,28 @@ Where semistructured merge combines two edits to one
 method as soon as it can see they touch different lines, \sgt{} stops and asks a
 person, and Section~\ref{sec:forkoff} concedes that a repository with one person in
 it is the wrong place to have tested that rule.
+
+The strongest case against stopping comes from a literature built on the opposite
+commitment. Conflict-free replicated data types guarantee that concurrent edits
+converge to one state without asking anybody, by constraining the operations so
+that any order of application yields the same result~\cite{shapiro2011}, and the
+approach has been carried into collaborative text and rich-text
+editing~\cite{litt2022}. A CRDT would eliminate the fork rule's entire cost: no
+queue, no interruption, no 18-fold amplification. We decline it because
+convergence and correctness are different guarantees, and Kleppmann et al.\
+demonstrated the gap directly: text CRDTs that satisfy convergence still produce
+\emph{interleaving anomalies}, where two users' concurrent insertions are merged
+into a sequence neither of them wrote and that means something neither
+intended~\cite{kleppmann2019}. Every replica agrees on the result, and the result
+is wrong. For prose an interleaved sentence is embarrassing; for code an
+interleaved function body is a program that compiles and does something nobody
+asked for, filed under a provenance record that says both requests succeeded.
+That failure is the silent success of Section~\ref{sec:discussion-synthesis}
+promoted to a guarantee: the system's own consistency model certifies the state
+as correct. A developer who did not write either version---the developer this
+paper is about---has no way to detect it. So the fork rule buys the one property
+convergence cannot supply, which is that every function in the repository was
+chosen by a person, and Section~\ref{sec:fork} states the price.
 
 \subsection{Recovering a decomposition after the fact}
 
@@ -531,3 +579,6 @@ typed three sentences and received fourteen functions can act on one sentence
 without manually reconstructing which functions it covers. That combination is what
 Section~\ref{sec:design} describes, what Section~\ref{sec:walkthrough}
 demonstrates, and what the remainder of the paper evaluates.
+Section~\ref{sec:comparison} returns to the five systems above once the evaluation
+data exists, and compares them on what each one's failures cost rather than on
+what each one promises.

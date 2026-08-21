@@ -111,10 +111,10 @@ would remain, names the functions whose text would change, and asks
 preview and declines, so a revert nobody watched does not happen. The safety
 property (no mutation without confirmation) held throughout the evaluation; the
 \emph{information} property did not. During the evaluation the machine-readable
-preview omitted the subtraction report entirely and its one-line summary asserted
+preview omitted the subtraction report entirely, and its one-line summary asserted
 ``nothing depends on it'' while its own payload carried a non-zero dependent
-count, so an agent that checked the preview to decide whether to confirm was given
-less information than a developer reading the terminal.
+count. An agent that checked the preview to decide whether to confirm was
+therefore given less information than a developer reading the terminal.
 
 Three requests wrote \sym{api.py::handle}, and in Figure~\ref{fig:model} it carries
 an edit from the rate limiter, one from the cache, and one from the retry policy, in
@@ -145,10 +145,10 @@ Section~\ref{sec:grain}, which requires a globally unique function name, so on
 repositories where short names recur (monorepos, projects with many modules) the
 warning is structurally absent and the developer's test suite is the only oracle.
 Across the evaluation corpus, 6.7\% of records carry any reference edge (the
-per-repository range is 0.0--20.5\%), so the dependency-based refusal in
-Section~\ref{sec:walkthrough}'s Wednesday scenario represents a capability most
-records cannot trigger; a repository whose function names are not globally unique
-sees none of it. The cost of the default is that after the merge the shared function is text the
+per-repository range is 0.0--20.5\%). The dependency-based refusal in
+Section~\ref{sec:walkthrough}'s Wednesday scenario therefore represents a
+capability most records cannot trigger: a repository whose function names are not
+globally unique sees none of it. The cost of the default is that after the merge the shared function is text the
 developer has not read, and their test suite decides whether the revert was
 correct. Naming the function before the revert runs is as far as we are willing
 to go on the developer's behalf.
@@ -188,9 +188,9 @@ recorded beside the resolution, so the next person to read that function finds o
 why it looks the way it does.
 
 A developer pays for this by being stopped in cases where the merge would have been
-fine, and in one of those cases \sgt{} stops for nothing at all, since deleting a
+fine. In one of those cases \sgt{} stops for nothing at all: deleting a
 function and adding it back with byte-identical content in two places produces two
-versions from one parent and \sgt{} treats content that agrees exactly as a
+versions from one parent, and \sgt{} treats content that agrees exactly as a
 disagreement. The design is a fail-stop commitment in Schlichting and Schneider's
 sense~\cite{schlichting1983}: the system converts a potentially-wrong state (a
 textual merge whose correctness nobody has verified) into a detectable halt (the
@@ -205,8 +205,8 @@ never been chosen by anybody, and the next revert that touches it would be opera
 text whose provenance is a program's guess rather than a person's act.
 
 We hold the commitment loosely, because a
-developer who merges thirty branches a day would reasonably weigh the two the other
-way, and for them the current design is worse. The 18$\times$ amplification
+developer who merges thirty branches a day would reasonably weigh correctness
+against availability the other way, and for them the current design is worse. The 18$\times$ amplification
 Section~\ref{sec:session-rate} reports is the measured cost of choosing correctness
 over availability at this grain, and a tool builder facing the same choice should
 treat that number as a lower bound on what fail-stop costs at the function level.
@@ -426,12 +426,12 @@ the absence is the common case, not a rare failure. The 7\% that do resolve tend
 be cross-module calls (a handler calling a cache function in another file, a test
 importing a fixture), which are precisely the dependencies whose absence would break
 the code silently---so the coverage is thin but concentrated on the cases where a
-human would not have noticed the dependency either. Where resolution is absent, the
-developer's test suite is the only oracle, and \sgt{} says so in the revert output
-(``still references removed code'') only when it can, which on most repositories is
-never. The implication for adoption is blunt: a developer whose repository has few
-cross-module calls will never see a dependency warning, and will discover that the
-tool offers no protection there only when a revert breaks something silently.
+human would not have noticed the dependency either. The revert output's warning
+(``still references removed code'') can only fire when resolution succeeded, which
+on most repositories is never. The implication for adoption is blunt: a developer
+whose repository has few cross-module calls will never see a dependency warning,
+and will discover that the tool offers no protection there only when a revert
+breaks something silently.
 
 A reader should treat the dependency display as a bonus that fires
 occasionally rather than a guarantee the design rests on; the design rests on set

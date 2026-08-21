@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex main"] 1787335345.74729 "main.aux" "main.bbl" "main" 1787335351.07285 0
+["bibtex main"] 1787336438.79031 "main.aux" "main.bbl" "main" 1787336477.95156 0
   "./refs.bib" 1787332544.34165 59719 eed9fa81ceb838abf27cc55c7b59ab5e ""
   "/Users/ryanyen2/Library/texmf/bibtex/bst/acmart/ACM-Reference-Format.bst" 1780431951 93560 7091f2b0543d2c8bfe2e82ce5d54a029 ""
-  "main.aux" 1787335350.79318 43737 059ab53da94068400486a61c7251058c "pdflatex"
+  "main.aux" 1787336477.71046 44250 db296bc2a1a4f4e7b1870d18fb4c9779 "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1787335345.79438 "/Users/ryanyen2/repos/semi-git/paper/main.tex" "main.pdf" "main" 1787335351.07312 0
+["pdflatex"] 1787336473.36853 "/Users/ryanyen2/repos/semi-git/paper/main.tex" "main.pdf" "main" 1787336477.95178 0
   "/Users/ryanyen2/Library/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1786456914 184408 ce3c6773d98527dd305648b8a01dfb97 ""
   "/Users/ryanyen2/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/tctt0800.525pk" 1786426792.74119 6432 24c5ad5c8c5ff61c8d1018538386a7af ""
   "/Users/ryanyen2/Library/texmf/fonts/enc/dvips/inconsolata/i4-t1-4.enc" 1558214095 7693 0f2dce6d313c82989ec3a67fc24df2a0 ""
@@ -306,22 +306,22 @@
   "figures/fig5-fork.tex" 1787239693.4083 6340 46fcb6897cab11f4ca1425c7a836d9ec ""
   "figures/fig6-fork-cost.tex" 1787273606.02142 5298 29874e0981332e389ae653cebc5853b3 ""
   "figures/fig7-decomposition.tex" 1787241511.35526 4557 7cef5b1cb23a1fb203558137c91b122f ""
-  "main.aux" 1787335350.79318 43737 059ab53da94068400486a61c7251058c "pdflatex"
-  "main.bbl" 1787335345.79062 85277 69382120fb49ef8ef88c46d92dcec776 "bibtex main"
-  "main.out" 1787335350.79528 18104 7dc071e22c5e336be114b7682c1139f5 "pdflatex"
+  "main.aux" 1787336477.71046 44250 db296bc2a1a4f4e7b1870d18fb4c9779 "pdflatex"
+  "main.bbl" 1787336438.82996 88931 c56031dbadaadbc8b33545103fb9be34 "bibtex main"
+  "main.out" 1787336477.71285 18104 7dc071e22c5e336be114b7682c1139f5 "pdflatex"
   "main.tex" 1787313296.58509 1530 6639a3aca2a91dab9d384b6a3a0e50c2 ""
   "preamble.tex" 1787313296.58541 18372 8464658e03cc2ce6528ef6138d2326d7 ""
   "sections/00-abstract.tex" 1787322644.75738 1140 7026c14136644bf54e56f185b488c057 ""
-  "sections/01-intro.tex" 1787315267.4798 12542 ec5f4a3c76bc1bdd109b4ade90b8df2e ""
-  "sections/02-related.tex" 1787328753.33717 38167 93ed95aef34ed8e08d0a66faa111ecc0 ""
-  "sections/03-scenarios.tex" 1787313296.58815 10843 4c7a48c8ca3e629c9f6daebfa2c519cc ""
-  "sections/04-design.tex" 1787326626.83691 30210 cdbae78d0acb6159a4b16f74675b70a1 ""
-  "sections/05-walkthrough.tex" 1787313296.58913 15628 ee3601e361755baf5bc6bfeed057d6b0 ""
-  "sections/06-study.tex" 1787320816.75354 19260 64a3d5c524678ada98a048e0aea76f8a ""
-  "sections/06b-findings.tex" 1787335341.19196 53419 1c2cfe3535afc5855132f5c3e3895ceb ""
-  "sections/07-discussion.tex" 1787333876.40742 38956 8dfff40f27e732eecb66e5aebe9be981 ""
-  "sections/07-pilot.tex" 1787313296.59044 37865 a091f7cfa0c491ed98abb97086f7cfff ""
-  "sections/07b-discussion.tex" 1787332512.12581 82043 0c7509511d940fdf5aac0993574d4831 ""
+  "sections/01-intro.tex" 1787336357.43495 12575 438912a08b35b8bbc3fb06912ba14a4b ""
+  "sections/02-related.tex" 1787336409.40589 41864 2e0becf15b41af642febeb252c16e35e ""
+  "sections/03-scenarios.tex" 1787335768.59238 11053 ee0565e0014b4747a2a5a49d0bbb40bd ""
+  "sections/04-design.tex" 1787336400.26886 30177 4bafcf50e24411124606a40e844f7447 ""
+  "sections/05-walkthrough.tex" 1787336473.11415 15637 9b2c71391fb7b7c76b57a03d49109aa6 ""
+  "sections/06-study.tex" 1787335824.29705 19346 42dd13808183079582c638fce32e3657 ""
+  "sections/06b-findings.tex" 1787336118.69817 53857 7591573234b862a0d34c5daee6b283c6 ""
+  "sections/07-discussion.tex" 1787336074.80954 38948 26cec2252849157ba0333417e7aa672a ""
+  "sections/07-pilot.tex" 1787336020.42961 37790 37b015c1811edca345a743f907dab39f ""
+  "sections/07b-discussion.tex" 1787336434.42873 81822 483247e1edac5e1ba1d5d5040102786d ""
   "sections/08-conclusion.tex" 1787328672.73986 9434 6ff20602b7a9f99ebe7c93274113a29f ""
   (generated)
   "main.aux"

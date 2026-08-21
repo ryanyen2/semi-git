@@ -42,7 +42,7 @@ The procedure follows the shape of the claim. We walk a repository's history one
 commit at a time, mine each commit into records, rebuild every file from the set of
 records that commit's state implies, and compare the result against the blob git
 holds, byte for byte. A repository passes at a commit only if every file matches, so a
-single differing byte in a single file is a failure at that commit, and we will report
+single differing byte in a single file is a failure at that commit. We report
 the fraction of files that rebuild rather than an average over repositories, because a
 developer cares whether their file comes back and not whether most files do. The
 corpus is open source Python and TypeScript repositories chosen for length of history
@@ -74,11 +74,11 @@ and the files the agent touched while carrying it out. We mine each repository w
 reading any transcript, derive a reference grouping from the transcripts alone, and
 then ask two things of every request in the session: how much of what that request
 produced comes back when the developer names it, and how much else comes with it.
-Those are the two ways a revert disappoints the person who ran it, the edit it missed
+Those are the two ways a revert disappoints the person who ran it: the edit it missed
 and left sitting in the file, and the edit belonging to a different request that it
-carried off as well. They fail asymmetrically, and the second is worse, because a
-developer who is handed too little notices when the code still runs the way it did and
-a developer who is handed too much has already lost work they meant to keep.
+carried off. They fail asymmetrically, and the second is worse. A
+developer who is handed too little notices when the code still runs the way it did. A
+developer who is handed too much has already lost work they meant to keep.
 
 We expect the shared helper to be where this measurement goes wrong, because
 Section~\ref{sec:names} predicts it and fifty-seven days of daily use have not
@@ -161,11 +161,11 @@ receives a five-thousand-line Python service, the transcript of the session that
 produced its most recent hour of work, and three tasks that name one request from
 that transcript and ask for it to be moved or removed without disturbing the other
 two. This is the state of the developer in Section~\ref{sec:scenarios} a week
-later, and it is also the state of the developer who picks up a colleague's branch
+later, and it is also the state of a developer who picks up a colleague's branch
 on a Monday. The arrangement matters because it gives every participant the same
-starting knowledge: participants who direct the agent themselves each remember a
-different amount of what came back, and that uncontrolled remembering is the
-variable whose absence the paper claims matters.
+starting knowledge. If participants directed the agent themselves, each would
+remember a different amount of what came back, and that uncontrolled remembering
+is the variable whose absence the paper claims matters.
 
 \paragraph{Participants and counterbalancing.}
 We recruit twelve developers who use a coding agent as part of their ordinary
@@ -245,8 +245,9 @@ confidently misleads rather than one that merely fails to help.
 No published evaluation of a history tool reports whether a consequence
 preview moves a developer's expectation toward the truth. Every prior evaluation
 (Gitless, Azurite, Replay) reports completion time, success, and preference.
-\texttt{gain} is what the tool is for, and it is where a wrong label can make us
-lose rather than tie.
+We measure \texttt{gain} because it is what the tool is for: the claim is not
+that the tool saves time but that it changes what the developer knows before
+acting, and a wrong label can make us lose rather than tie.
 
 \smallskip
 \noindent The second row of Table~\ref{tab:measures} is what matters on the
@@ -280,9 +281,9 @@ participants receive is a different version from the one the pilots ran.
 
 \subsection{What none of this would tell us}
 
-Only the first of the three claims can be pushed past by running more of the same,
-since adding repositories to Section~\ref{sec:eval-exact} sharpens that number and
-nothing else here improves with volume.
+Only the first of the three claims improves by running more of the same:
+adding repositories to Section~\ref{sec:eval-exact} sharpens that number.
+The other two hit ceilings that more data cannot move.
 
 A recorded request is a sentence, and a sentence is less than an intention.
 A developer who types \emph{make the price lookup faster} holds a view of what

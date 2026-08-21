@@ -6,7 +6,7 @@ what they got right, and what they said---in that order, because the primary
 measure (Section~\ref{sec:eval-study}) is errors a participant does not notice,
 and everything else is context for interpreting that number. A tool that helps a
 developer finish faster while leaving hidden damage is worse than one that slows
-them down and catches it, because the developer who submits with confidence has
+them down and catches it. The developer who submits with confidence has
 spent their verification budget and will not look again.
 
 Mozannar et al.\ modelled this budget formally: the dominant cost in AI-assisted
@@ -158,12 +158,12 @@ shows how those three phases distribute over normalised request time.
 \placeholder{Git mean, sgt mean, difference, CI.}
 The verification ratio is the proportion of actions in the ``verify'' category
 (running tests, reading diffs, inspecting output) relative to all actions within
-a request. The direction of this measure is ambiguous by design: a higher ratio
+a request. The direction of this measure is ambiguous by design. A higher ratio
 in sgt could mean the preview gave participants something concrete to check
-(supporting appropriate reliance), or it could mean the tool's unfamiliarity
-forced more checking (friction). A lower ratio in sgt could mean participants
-trusted the consequence display and skipped verification (efficient trust, or
-dangerous complacency). The self-report item q14 (accepted unreviewed work,
+(appropriate reliance), or it could mean the tool's unfamiliarity
+forced more checking (friction). A lower ratio could mean participants
+trusted the consequence display and skipped verification---efficient trust, or
+dangerous complacency. The self-report item q14 (accepted unreviewed work,
 reversed; Section~\ref{sec:findings-perception})
 disambiguates: if verification drops AND q14 rises, participants skipped checks
 they felt they should have made.
@@ -186,8 +186,8 @@ writes ``revert f-7ab21c'' (level~3) instead of ``undo the waitlist stuff''
 delegated navigation to sgt and therefore never acquired the vocabulary
 themselves---specificity should fall, which is the scaffolding-removal concern
 Kazemitabaar et al.\ measured in learners~\cite{kazemitabaar2025}. The
-distinction matters for the design's long-term effect: a tool that raises
-specificity is augmenting the developer's coordination with the assistant; a
+distinction matters for the design's long-term effect. A tool that raises
+specificity is augmenting the developer's coordination with the assistant. A
 tool that lowers it is creating a dependency the developer cannot sustain when
 the tool is absent.
 \placeholder{Report which direction holds and connect to the vocabulary theme
@@ -240,9 +240,10 @@ are scent: proximal cues that predict what an operation will reveal before the
 developer commits to it. The n-gram analysis tests this directly. If the sgt
 condition shows fewer search$\to$search cycles and more
 history\_op$\to$verify sequences, the tool enriched the history record as a
-foraging patch---developers spend less time in between-patch navigation and
-more in within-patch exploitation, which is the 35\% of maintenance time Ko
-et al.\ measured as pure navigation cost~\cite{ko2006}.
+foraging patch: developers spend less time in between-patch navigation and
+more in within-patch exploitation. Ko et al.\ measured that navigation accounts
+for 35\% of maintenance time~\cite{ko2006}, so reducing it is not a minor
+convenience but a structural change in how the developer spends their session.
 
 Two further patterns would be informative. First,
 inspect$\to$history\_op in sgt would mean that seeing the record's structure
@@ -264,15 +265,14 @@ it against the code, and revise. In the sgt condition, the attribution answers
 it directly: the developer reads the feature label, confirms or renames, and
 moves to the next question. The observable difference is a shift from \emph{generative} inquiry
 (conjectures, with their risk of wrong turns) to \emph{verificatory} inquiry
-(checking a provided answer), which shows up as fewer search events and a
-different sequence structure. The telemetry can distinguish these: generative
+(checking a provided answer). The telemetry can distinguish these: generative
 inquiry shows up as search$\to$search$\to$inspect sequences where the
 developer builds understanding incrementally; verificatory inquiry shows up as
 inspect$\to$history\_op, where a single inspection provides enough confidence
 to act. If the sgt condition shifts the balance toward verification while
 maintaining accuracy, the tool's attribution is doing what Letovsky's model says
 a programmer's own memory does when reading code they wrote themselves: supplying
-answers to the questions before the search has to generate them.
+answers to provenance questions before the search has to generate them.
 
 \subsection{What the two conditions felt like}
 \label{sec:findings-perception}
@@ -295,8 +295,8 @@ answers to the questions before the search has to generate them.
 
 The HLAC battery (History Legibility and Agent Collaboration) asked fourteen
 7-point items after each half, grouped into four blocks.
-No validated scale exists for history comprehension in AI-assisted development;
-general trust-in-automation instruments~\cite{jian2000} measure disposition
+No validated scale exists for history comprehension in AI-assisted development.
+General trust-in-automation instruments~\cite{jian2000} measure disposition
 toward automated systems but cannot distinguish provenance legibility from
 consequence awareness from retained mental model, which are the three mechanisms
 this paper claims.  We therefore wrote items that map one-to-one to specific
@@ -439,9 +439,11 @@ multi-select test this directly: ``not being sure what it had done'' (trust
 erosion surviving from the pilot's strongest finding) and ``it grouped or named
 things in ways I disagreed with'' (commitment~4, inferred names, costing more
 than the pilots predicted). If either appears at high frequency while the
-outcome measures favour sgt, the tool is useful and unwanted---which is
-Bu\c{c}inca et al.'s finding for the most effective cognitive forcing
-functions, restated as a product problem~\cite{bucinca2021}.
+outcome measures favour sgt, the tool is useful and unwanted. Bu\c{c}inca
+et al.\ found the same pattern for the most effective cognitive forcing
+functions~\cite{bucinca2021}: the intervention that helps most is also the one
+developers resist, because its cost is experienced while its benefit is
+invisible.
 
 \paragraph{Exit interview: thematic analysis.}
 After the preference items, each participant answered three open questions: what
@@ -539,8 +541,8 @@ feature names is proposing a shared vocabulary for a codebase---the same
 function Furnas et al.\ showed designers cannot predict for their
 users~\cite{furnas1987}. If a developer adopts the tool's names into their
 prompts, those names become the vocabulary through which they and the assistant
-coordinate about the code. The tool has then changed how the developer talks about what they are
-doing, which is a stronger form of value than a faster workflow.
+coordinate about the code. The tool has then changed how the developer talks
+about what they are doing, not merely how fast they do it.
 
 \placeholder{If q11 improved and prompt specificity is higher in sgt, the
 tool's vocabulary entered the developer's prompts --- they used feature names to
@@ -579,19 +581,24 @@ sentinels) pointing at records that are no longer present, and the rebuild
 produces invalid output from valid arithmetic. This is commitment~2 (set-based
 versions) failing at the seam it was designed to hide: files are rebuilt from
 sets of edits, and the rebuild is exact only when every piece of metadata that
-governs placement is consistent with the set it reads. The remaining ten write failures shared a different cause---one worth naming
+governs placement is consistent with the set it reads. The remaining ten write failures shared a different cause, one worth naming
 as a class: the silent success. A command reports that it finished, or a view
 displays a confident summary, and neither did what it claimed. A revert printed ``removes 0 edits'' and
 then rewrote two files. A feature named \texttt{Waitlist Queue} held the CLI
 scaffold and no waitlist code, sitting one row above the real waitlist. A
 save recorded 366 of 370 operations with no provenance because the clustering
-signal read a field that the save path never populated---the quality degraded
-specifically on the workflow the study asks participants to use.
-Ten instances of this pattern surfaced across the preparation, all
-recoverable (via \cmd{undo} in every case), all telling the developer something false about what to do next.
+signal read a field that the save path never populated. In each case the quality degraded
+on the workflow the study asks participants to use, and the tool's own output
+gave no sign that anything was wrong.
+Eight of those ten are silent successes in the strict sense---a command whose
+report was affirmative and whose effect was not what the report named---and they
+are the eight this paper counts as the self-reporting class throughout. All eight
+were recoverable through \cmd{undo}, and all eight told the developer something
+false about what to do next.
 The common mechanism is that a tool whose entire pitch is legible consequences
-can produce illegible consequences from correct internal arithmetic: every
-number was computed honestly, and the sentence it was placed into was wrong.
+can produce illegible consequences from correct internal arithmetic. Every
+number was computed honestly, and the sentence those numbers were placed into
+was wrong.
 
 The silent-success class is architecturally distinct from a crash. A crash
 teaches the developer something true about the system's limits: this operation
@@ -607,14 +614,14 @@ self-reporting failures to a context already saturated with them is compounding
 the ecosystem's dominant residual failure mode rather than compensating for it.
 Shen and Tamkin found that the skill most degraded by AI assistance
 is debugging---the ability to recognise when code is wrong and
-why~\cite{shen2026skills}---and a tool that undermines that same skill by
-confirming a wrong state as correct is compounding the very deficit it was
+why~\cite{shen2026skills}. A tool that undermines that same skill by
+confirming a wrong state as correct is compounding the deficit it was
 built to address. A version control system that exists because the developer
 can no longer hold a model of what the agent wrote must not itself produce
-states the developer cannot distinguish from correct ones, because the
-developer's degraded capacity to detect wrongness is the tool's entire
-reason for existing. The gap between the twelve metadata failures (which
-produce visibly wrong output: code that does not parse) and the ten
+states the developer cannot distinguish from correct ones. The developer's
+degraded capacity to detect wrongness is the tool's entire
+reason for existing, and the silent success exploits that same capacity. The gap between the twelve metadata failures (which
+produce visibly wrong output: code that does not parse) and the eight
 silent-success failures (which produce invisibly wrong output: code that
 parses but does not do what the report claimed) is therefore not a severity
 spectrum but a category boundary: the first class fails safely, the second
@@ -654,7 +661,7 @@ of producing a file that silently disagrees with the tool's last report. The
 and the developer has no way of predicting which one will not without running
 the verification the tool was built to replace. The gap between the two numbers
 is the gap between ``it usually works'' and ``I cannot trust any single result
-without checking,'' and the second is what governs adoption. Four of the five
+without checking.'' Adoption depends on the second framing, not the first. Four of the five
 real (non-fixture) repositories produced at least one violation, so the rate
 is not an artefact of adversarial synthetic inputs.
 
@@ -681,8 +688,8 @@ because their symbols live in different directories, with no interior node
 uniting them. In eico, F32 accounts for 11 of 30 coded disagreements. The
 fix is structural: a merge pass that detects identically-labelled sibling
 leaves would eliminate it without changing any clustering parameter. That it
-was not implemented before the evaluation is evidence that the evaluation
-found a defect the developer's own use did not surface---precisely the role
+was not implemented before the evaluation matters: the evaluation found a
+defect the developer's own use did not surface, which is the role
 the transcript corpus was designed to play.
 
 The thematic pattern across both repositories reflects back on a design choice
@@ -720,10 +727,10 @@ about the measurement. On August~15, a derivability check that had passed eight
 times was re-run after a fix, and the result improved so sharply that the
 evaluator stopped trusting it. Comparing the trees revealed that the fixture
 shipped at signals version~3 while the census copies in \texttt{/tmp} had been
-rebuilt at version~2---34 leaves where the fixture had 21, every feature label
-the check sequences typed existing only in the rebuilt copy, and not one of the
-twelve recorded command sequences capable of running against the shipped
-artefact. The census, every derivability check, and the stop-gate result all
+rebuilt at version~2. The rebuilt copy contained 34 leaves where the fixture had
+21, every feature label the check sequences typed existed only in the rebuilt
+copy, and not one of the twelve recorded command sequences was capable of
+running against the shipped artefact. The census, every derivability check, and the stop-gate result all
 described an artefact that existed in \texttt{/tmp} and nowhere a participant
 would encounter.
 
@@ -754,7 +761,7 @@ asks ``is this the same artefact?'' rather than ``is this number consistent?''
 For a CHI audience the finding connects to Sedlmair et al.'s methodological
 reflection on evaluation in visualization research~\cite{sedlmair2012}: the
 hardest threats to validity are not the ones that make a result look bad but
-the ones that make it look good by accident, because no incentive exists to
+the ones that make it look good by accident. No incentive exists to
 investigate a passing check. Every one of the evaluation journal's withdrawn
 results was a result that passed.
 
@@ -820,9 +827,10 @@ seen. It cannot measure whether the same tool changes how the developer works
 over weeks---whether the names enter their vocabulary, whether the attribution
 shifts how they prompt the agent, whether the consequence preview changes what
 they are willing to attempt. Those are the effects that would make the tool
-worth its learning cost, and a two-hour session can detect none of them. What it
-can detect is whether the tool's mechanisms reach the developer at all on first
-contact, and the pilot showed that they can: one participant adopted the
-attribution immediately and rephrased the revert as a punch list within twenty
-minutes. The study cannot tell us whether that adoption persists, deepens, or
-disappears once the session ends and the researcher leaves the room.
+worth its learning cost, and a two-hour session can detect none of them. What a
+two-hour session can detect is whether the tool's mechanisms reach the developer
+at all on first contact. The pilot showed that they can: one participant adopted
+the attribution immediately and rephrased the revert as a punch list within
+twenty minutes. Whether that adoption persists, deepens, or disappears once
+the session ends and the researcher leaves the room is a question only a
+longitudinal deployment can answer.

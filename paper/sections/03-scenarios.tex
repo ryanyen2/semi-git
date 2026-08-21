@@ -80,7 +80,9 @@ Git can follow one function at a time:
 The developer runs the first command four times---once per function they
 believe was involved---and assembles the answers manually. Because the set of
 functions belonging to ``rate limiting'' has no name in git, nothing checks
-whether four is the right count or whether a fifth function was missed.
+whether four is the right count or whether a fifth function was missed. The
+developer's confidence in their answer is invisible to the tool, and so is
+their error.
 
 The question being answered---``why is this code this way?''---is among the
 hardest developers face~\cite{latoza2010}, and understanding prior
@@ -133,7 +135,8 @@ carries its line-level dependencies, so moving it requires no manual
 reapplication (Section~\ref{sec:related}). The export code, however, calls a
 helper that the rate limiter introduced---a function-level dependency that no
 line-level record captures. The developer discovers this only when the release
-branch fails to build.
+branch fails to build, because the failure is a missing definition rather than
+a merge conflict, and nothing in the cherry-pick warned them.
 
 \smallskip\noindent\emph{The operation.} Carry a named set of edits and its
 dependencies to another branch, and be told before the operation which dependencies
