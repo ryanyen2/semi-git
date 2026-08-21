@@ -5,6 +5,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { ForkResolutionPanel } from "./forkResolution";
+import { hasOwnSymbols } from "./mapFilter";
 import { PlanDiffProvider, showPlanQuickPick } from "./plan";
 import { PreviewProvider } from "./preview";
 import { Store } from "./store";
@@ -21,7 +22,9 @@ async function pickFeature(store: Store, provided?: string): Promise<string | un
   } catch {
     return undefined;
   }
-  const features = map.nodes.filter((n) => n.kind === "feature");
+  // Husks excluded: a feature whose ops touch only sentinels reverts to nothing, so offering it here
+  // is the silent-success shape (a named target that succeeds while doing nothing).
+  const features = map.nodes.filter((n) => n.kind === "feature" && hasOwnSymbols(n));
   const pick = await vscode.window.showQuickPick(
     features.map((n) => ({ label: n.label || n.id, description: `${n.op_count} op(s) · ${n.id}`, id: n.id })),
     { placeHolder: "Pick a feature" }

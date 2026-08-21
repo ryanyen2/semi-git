@@ -37,7 +37,7 @@ def fetch(repo: Path, gb: GitBinding, remote: str | None, branch: str | None) ->
     lens.get(repo)  # absorb local reality first (R9)
     if not gb.is_clean():
         raise lens.DirtyWorkingTreeError(
-            "sgt sync requires a clean working tree -- `sgt put` or commit first"
+            "sgt sync requires a clean working tree -- `sgt save` or commit first"
         )
 
     remote = remote or gb.default_remote()

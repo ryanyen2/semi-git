@@ -21,6 +21,8 @@ Two things live here, both small and both *data*:
 
 from __future__ import annotations
 
+import argparse
+
 from ._common import _emit_json, _fail, _fail_json
 
 # D2 routing table (design doc §1): git subcommand -> the sgt verb that owns that job. A subcommand
@@ -79,6 +81,10 @@ def register(subs, parent) -> None:
     sv.set_defaults(func=_cmd_save)
 
     uv = subs.add_parser("undo", parents=[parent])
+    # The same hidden machine dry-run `revert`/`restore` carry: report what the next undo would do
+    # and apply nothing. A tty gets this report for free as `undo`'s confirm step; before this flag
+    # a non-tty caller (the extension, MCP) had no way to ask the question, only to take the action.
+    uv.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     uv.add_argument("--force", action="store_true",
                     help="drop work committed after the edit being undone (0.2c) -- undo normally "
                          "refuses when its snapshot restore would clobber an intervening raw commit")
@@ -96,7 +102,7 @@ def _cmd_save(args) -> int:
 
 
 def _cmd_undo(args) -> int:
-    return _undo(".", args.as_json, force=args.force)
+    return _undo(".", args.as_json, force=args.force, emit=args.emit)
 
 
 def _switch(repo: str, branch: str, as_json: bool) -> int:
@@ -645,7 +651,22 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
     return 0
 
 
-def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
+def _undo_preview_lines(pv: dict) -> list[str]:
+    """One undo preview rendered for a human: what is being reversed, what comes back, what goes,
+    and the symbols by name. One place, because `undo`'s tty confirm and `--emit`'s plain text are
+    the same question asked by different callers, and two copies of it would drift."""
+    lines = [f"undo: {pv['message']}"]
+    if pv["restored"]:
+        lines.append(f"  brings back {len(pv['restored'])} edit(s)")
+    if pv["dropped"]:
+        lines.append(f"  drops {len(pv['dropped'])} edit(s) made since")
+    if pv["symbols"]:
+        lines.append(f"  touches {', '.join(pv['symbols'][:6])}"
+                     + (" …" if len(pv["symbols"]) > 6 else ""))
+    return lines
+
+
+def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) -> int:
     """`sgt undo` (D3, R7): invert the last mutating operation. Walks the *unified* operation log
     (U8/KTD6) reverse-chronologically -- popping the tail event and applying its inverse, whatever
     its kind: an ideal edit re-materializes its prior ideal, a feature reorg restores its snapshot,
@@ -662,19 +683,25 @@ def _undo(repo: str, as_json: bool, *, force: bool = False) -> int:
     # (`--json` and non-interactive callers apply immediately, the machine contract).
     import sys as _sys
 
+    if emit:
+        # `applied: False` for the same reason the ideal-edit verbs stamp it (F124): the dry run and
+        # the mutation both answer `ok`, so without it a machine caller cannot tell the report it
+        # asked for from the change it caused. An `ok: False` here is a *successful* report of a
+        # refusal, so the exit status stays 0 -- nothing failed, and nothing was touched.
+        pv = oplog.preview(repo, force=force)
+        if as_json:
+            return _emit_json({"applied": False, **pv})
+        for line in _undo_preview_lines(pv):
+            print(line)
+        return 0
+
     if not as_json and _sys.stdin.isatty() and _sys.stdout.isatty():
         pv = oplog.preview(repo, force=force)
         if pv["kind"] is not None:
             if not pv["ok"]:
                 return _fail(pv["message"])  # the refusal IS the message; don't say it twice
-            print(f"undo: {pv['message']}")
-            if pv["restored"]:
-                print(f"  brings back {len(pv['restored'])} edit(s)")
-            if pv["dropped"]:
-                print(f"  drops {len(pv['dropped'])} edit(s) made since")
-            if pv["symbols"]:
-                print(f"  touches {', '.join(pv['symbols'][:6])}"
-                      + (" …" if len(pv["symbols"]) > 6 else ""))
+            for line in _undo_preview_lines(pv):
+                print(line)
             try:
                 reply = input("apply this undo? [y/N] ").strip().lower()
             except EOFError:

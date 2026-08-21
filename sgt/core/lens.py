@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sgt import state
-from sgt.core import opindex, order
+from sgt.core import opindex, order, tiers
 from sgt.core.fold import code
 from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
@@ -1153,12 +1153,14 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal",
     gb = GitBinding(repo)
     # A staged rewrite candidate deliberately leaves the tree dirty (U6). `put`'s `get()` would
     # re-mine those un-landed bytes and its fold would clobber them, committing a mixture -- so any
-    # materializing edit refuses while a stage is live. `sgt land` commits the candidate directly
-    # (`commit_materialized`, which does not call `get`); `sgt unstage` abandons it.
+    # materializing edit refuses while a stage is live. `sgt advanced commit` lands it directly
+    # (`rewrite.land` -> `commit_materialized`, which does not call `get`); `sgt advanced unstage`
+    # abandons it. Both remedies are spelled at their real CLI paths here because this comment is
+    # where the refusal below got its wording, and both spellings it inherited were wrong.
     if state.load_json(repo, "staged", default=None) is not None:
         raise DirtyWorkingTreeError(
-            "a rewrite candidate is staged -- `sgt land` to commit it or `sgt unstage` to abandon "
-            "it before another materializing edit"
+            "a rewrite candidate is staged -- `sgt advanced commit` to land it or "
+            "`sgt advanced unstage` to abandon it before another materializing edit"
         )
     get(repo)  # absorb any dirty tree / foreign commit first (R9)
     store = Store(repo)
@@ -1334,11 +1336,14 @@ def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes])
     conflict. `.sgt/` is skipped -- it's sgt's own state, not codebase content `put()` owns."""
     head = gb.head()
     tracked = set(_tracked_paths(repo))
+    ignored_tier = _outside_sgts_remit(repo)
 
     conflicts: set[str] = set()
     for path in set(materialized) | tracked:
         if path.startswith(".sgt/") or _writes_through_symlink(repo, path):
             continue  # symlinks are unmanaged (R3) -- never read/written through here either
+        if path not in materialized and ignored_tier(path):
+            continue  # sgt never mines it, so the fold never writes or deletes it -- not a conflict
         full = repo / path
         on_disk = full.read_bytes() if full.is_file() else None
         committed = gb.blob_bytes(head, path) if head is not None else None
@@ -1377,6 +1382,23 @@ def _outside_delta_drift(repo: Path, materialized: dict[str, bytes], delta_files
         if data != on_disk:
             drift.add(path)
     return drift
+
+
+def _outside_sgts_remit(repo: Path) -> "callable":
+    """A predicate for paths sgt deliberately never mines -- the `ignored` tier: dot-paths
+    (`.gitignore`, `.github/workflows/ci.yml`), gitignored paths, `.sgtignore` matches. `code()`
+    cannot produce such a path, which is not the same fact as the ideal having dropped it, and the
+    difference is the whole of this predicate: the fold must neither delete one nor refuse because
+    one is dirty. Reading them as ideal-excluded made a single uncommitted `.gitignore` line block
+    `save`, `undo`, `revert --yes` and `restore` at once, and the remedy the error named (`sgt
+    save`) reported `nothing to save`, because an ignored path mints no op -- so the only way out
+    ran through git, which is the tool sgt is meant to stand in front of. An `entity`/`opaque`
+    override in `.sgt/tiers.json` force-includes a path, and `resolve_tier` honours it here too, so
+    a deliberately-included dotfile keeps the guard.
+
+    The config is read once per fold; the returned closure is called per path."""
+    cfg = tiers.load_tiers(repo)
+    return lambda path: tiers.resolve_tier(path, cfg) == "ignored"
 
 
 def _tracked_paths(repo: Path) -> list[str]:
@@ -1536,9 +1558,11 @@ def _write_working_tree(
         full.parent.mkdir(parents=True, exist_ok=True)
         full.write_bytes(data)
 
+    ignored_tier = _outside_sgts_remit(repo)
     to_delete = [
         p for p in tracked
         if p not in materialized and not p.startswith(".sgt/") and (repo / p).is_file()
+        and not ignored_tier(p)  # never mined, so its absence from the ideal means nothing
     ]
     backstop_kept: list[str] = []
     reproducible: dict[str, bytes] | None = None

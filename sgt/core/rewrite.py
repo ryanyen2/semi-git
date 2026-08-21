@@ -811,26 +811,27 @@ def land(
     commits them *directly* (`lens.commit_materialized`) rather than re-mining the deliberately
     dirty tree through `lens.put` -- then `record_ideal` so the edit survives the next `get()`.
     Refuses a *stale* stage (a tree edited or synced since `fulfill`, U6) before gating, so a
-    mixture can never be committed; abandon it with `sgt unstage`."""
+    mixture can never be committed; abandon it with `sgt advanced unstage`."""
     repo = Path(repo)
     record = _load_staged(repo)
     if record is None:
-        raise RewriteError("nothing staged -- run `sgt fulfill` first")
+        raise RewriteError("nothing staged -- run `sgt advanced fulfill` first")
     ops = Store(repo).all_ops()
     candidate = Ideal.from_ops(frozenset(record["op_ids"]), ops)
 
     stale = _stale_paths(repo, candidate, ops)
     if stale:
         raise RewriteError(
-            f"staged candidate is stale -- {', '.join(stale)} changed since `sgt fulfill`; "
-            f"re-fulfill, or `sgt unstage` to abandon it (refusing to land a mixture)"
+            f"staged candidate is stale -- {', '.join(stale)} changed since `sgt advanced fulfill`; "
+            f"re-fulfill, or `sgt advanced unstage` to abandon it (refusing to land a mixture)"
         )
 
     status = oracle.overall_status(oracle.verdict_for(repo, candidate))
     if status != "pass":
         if override is None:
             raise RewriteError(
-                f"cannot land: oracle verdict is {status!r} -- run `sgt oracle run`, or land with an override"
+                f"cannot land: oracle verdict is {status!r} -- run `sgt advanced oracle run`, "
+                "or land with an override"
             )
         status_, reason, by = override
         rec = oracle.override(repo, status_, reason, by, ideal=candidate)

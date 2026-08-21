@@ -14,6 +14,10 @@ export interface MapNode {
   // can exclude a feature's own production file when its members span dirs, so file filters union
   // the member file-set with the dir prefix.
   members: string[];
+  // What this feature's OWN ops touch, sentinels excluded (sgt.api.map_view) -- the set `sgt show`
+  // counts, which is not `members` (the clustering's assignment). A leaf with an empty one is a husk:
+  // nothing to show and nothing a revert would remove, so listing surfaces drop it (`mapFilter.ts`).
+  own_symbols?: string[];
   why: string;
   split_reason: string | null;
   // Present (an `af-` id) only when this leaf is claimed by a user-authored feature; absent for
@@ -123,6 +127,10 @@ export interface StatusView {
   coverage_fraction: number;
   oracle: { configured: boolean; status: "pending" | "pass" | "fail" | "unconfigured" };
   drift: { any: boolean; paths: string[] };
+  // Paths carrying a staged rewrite candidate (U6): planned divergence, disjoint from `drift`.
+  // `fsck --tree` has drawn this line since U6; this view only started drawing it when the workbench
+  // was found titling a candidate "Working changes" and offering a Save the lens refuses.
+  staged: { any: boolean; paths: string[] };
   unmanaged: string[];
   backstop_kept: string[];
   forks: { open: number; records: ForkRecord[] };
@@ -521,6 +529,11 @@ export interface GridView {
   features: Record<string, { label: string; op_count: number }>;
   ghosts: unknown[];
   partial_commits: number[];
+  // Work a revert took out of the ideal that no cell holds. Clustering keeps only alive symbols, so
+  // a reverted symbol's ops lose their leaf and with it their cell and their chapter -- every lane
+  // then draws whole while the code is off disk. These ops have no row by construction, so a surface
+  // has to name them out of band (the drift/fork indicator does, alongside its other unplaced marks).
+  reverted_unaccounted?: { op_count: number; symbols: string[] };
   commit_count: number;
   op_count: number;
   feature_count: number;
@@ -542,6 +555,27 @@ export interface SavePreviewView {
   total_op_count: number;
 }
 
+// `sgt advanced rewrite status --json` (plan U11), also bundled into `ComposeView`. `staged` is the
+// candidate awaiting a landing decision, `null` when there is none; its `oracle_status` is the gate
+// `sgt advanced commit` refuses on, and is the candidate's own verdict rather than the current
+// ideal's -- so a surface offering Land has to read it here, not off the titlebar oracle chip.
+export interface RewriteView {
+  drafts: {
+    draft_id: string;
+    verb: string;
+    target: string;
+    message: string;
+    hollow_ops: { id: string; symbol: string; kind: string; intent: string }[];
+  }[];
+  staged: {
+    verb: string;
+    target: string;
+    op_count: number;
+    oracle_verdict: OracleVerdict;
+    oracle_status: "pending" | "pass" | "fail";
+  } | null;
+}
+
 export interface ComposeView {
   map: MapView;
   history: HistoryView;
@@ -552,6 +586,7 @@ export interface ComposeView {
   sessions: SessionsView;
   trust: TrustView;
   intent: IntentView;
+  rewrite: RewriteView;
   save_preview: SavePreviewView;
   oracle_verdict: OracleVerdict;
   proposals: ComposeProposalSummary[];
@@ -649,6 +684,20 @@ export interface UndoResult {
   error?: string;
 }
 
+// `sgt undo --emit --json` (oplog.preview): what the next undo *would* do. `ok: false` means undo
+// would refuse -- the F3 guard's "this would drop work committed since" -- and `applied` is always
+// false, which is how a caller tells this report apart from the mutation's own `ok: true`.
+export interface UndoPreview {
+  applied: false;
+  ok: boolean;
+  kind: string | null;
+  message: string;
+  restored: string[];
+  dropped: string[];
+  symbols: string[];
+  error?: string;
+}
+
 // `sgt merge-op <a> <b>` / `split-op <op>` / `transplant <op>... --onto <ref>` (plan U11, R14) --
 // all three share this printer, drafting a hollow op for a human/agent to fulfill.
 export interface RewriteDraft {
@@ -669,12 +718,20 @@ export interface FulfillResult {
   op_ids?: string[];
 }
 
-// `sgt commit [--json]` (plan U11): commits the staged rewrite candidate. Distinct from
+// `sgt advanced commit [--json]` (plan U11): commits the staged rewrite candidate. Distinct from
 // `sgt land <branch> --json` (`LandReport`, the U23 CAS shared-branch advance). Same caveat as
 // `FulfillResult` -- a refusal prints plain text even with `--json`.
 export interface LandCandidateResult {
   ok: boolean;
   sha?: string;
+}
+
+// `sgt advanced unstage --json` (plan U6): the other exit from a staged candidate -- drop it and
+// restore the committed ideal to the working tree. `op_ids` is what was restored, not what was
+// discarded, which is why the toast counts ops rather than claiming a number of ops lost.
+export interface UnstageResult {
+  ok: boolean;
+  op_ids?: string[];
 }
 
 // `sgt propose publish <id> [--remote origin] --json` (plan U32, D7).

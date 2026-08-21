@@ -110,7 +110,7 @@ def _print_draft(draft, as_json: bool) -> int:
         print(f"    draft: {draft.draft_id}")
         for hid in draft.hollow_ids:
             print(f"    hollow: {hid[:12]}")
-        print(f"    edit the working tree, then: sgt fulfill {draft.draft_id} --from-tree")
+        print(f"    edit the working tree, then: sgt advanced fulfill {draft.draft_id} --from-tree")
     return 0
 
 
@@ -141,7 +141,7 @@ def _repair(repo: str, draft_id: str | None, as_json: bool) -> int:
     from sgt.repair.loop import repair
 
     if not draft_id:
-        print("usage: sgt repair <draft-id>")
+        print("usage: sgt advanced repair <draft-id>")
         return 2
     draft = rewrite.resolve_draft(repo, draft_id)
     if draft is None:
@@ -158,7 +158,7 @@ def _merge_op(repo: str, tips: list[str], intent: str | None, as_json: bool) -> 
     from sgt.core.lens import get
 
     if len(tips) < 2:
-        print('usage: sgt merge-op <tip_a> <tip_b> [--intent "..."]')
+        print('usage: sgt advanced merge-op <tip_a> <tip_b> [--intent "..."]')
         return 2
     get(repo)
     draft = rewrite.merge_op(repo, tips[0], tips[1], intent=intent)
@@ -171,7 +171,7 @@ def _split_op(repo: str, op: str | None, intent: str | None, as_json: bool) -> i
     from sgt.core.lens import get
 
     if not op:
-        print('usage: sgt split-op <op-id> [--intent "..."]')
+        print('usage: sgt advanced split-op <op-id> [--intent "..."]')
         return 2
     get(repo)
     draft = rewrite.split_op(repo, op, intent=intent)
@@ -185,7 +185,7 @@ def _transplant(repo: str, ops: list[str], onto: str | None, intent: str | None,
     from sgt.core.lens import get
 
     if not ops or not onto:
-        print('usage: sgt transplant <op-id>... --onto <ref> [--intent "..."]')
+        print('usage: sgt advanced transplant <op-id>... --onto <ref> [--intent "..."]')
         return 2
     get(repo)
     draft = rewrite.transplant(repo, ops, onto, intent=intent)
@@ -215,7 +215,7 @@ def _fulfill(repo: str, draft_id: str | None, from_tree: bool, as_json: bool) ->
     from sgt.core import rewrite
 
     if not draft_id:
-        print("usage: sgt fulfill <draft-id> --from-tree")
+        print("usage: sgt advanced fulfill <draft-id> --from-tree")
         return 2
     from sgt.core.lens import DirtyWorkingTreeError
 
@@ -232,12 +232,12 @@ def _fulfill(repo: str, draft_id: str | None, from_tree: bool, as_json: bool) ->
     if as_json:
         return _emit_json({"ok": True, "op_ids": sorted(candidate.op_ids)})
     print(f"✓ staged {len(candidate.op_ids)} op(s) to the working tree (uncommitted) — "
-          "run `sgt oracle run` then `sgt commit`")
+          "run `sgt advanced oracle run` then `sgt advanced commit`")
     return 0
 
 
 def _unstage(repo: str, as_json: bool) -> int:
-    """`sgt unstage` (plan U6): abandon the staged rewrite candidate — restore the committed ideal
+    """`sgt advanced unstage` (plan U6): abandon the staged rewrite candidate — restore the committed ideal
     to the working tree and drop `staged.json`, so `switch`/`save`/other edits work again."""
     from sgt.core import rewrite
 

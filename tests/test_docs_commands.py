@@ -48,6 +48,29 @@ def test_the_checker_catches_a_rehomed_verb_and_an_invented_one(tmp_path):
     assert "sgt log" not in quoted, "a verb that dispatches must not be reported"
 
 
+def test_a_stale_command_inside_a_code_block_is_caught(tmp_path):
+    """Fenced blocks were the blind spot, and they are where the instructions actually are: the
+    study sheets put every command a participant types into one, and the pilot's participant typed
+    them literally with a facilitator watching. Checking only backticked prose meant a sheet could
+    go stale in exactly the form someone copies while this test stayed green."""
+    doc = tmp_path / "sheet.md"
+    doc.write_text(
+        "## Look around\n"
+        "\n"
+        "```\n"
+        "sgt log --map     one row per feature, across time\n"
+        "sgt fsck          check the store\n"
+        "```\n",
+        encoding="utf-8",
+    )
+
+    quoted = {q for _p, _l, q, _r in check([str(doc)])}
+    assert "sgt fsck" in quoted, "a re-homed verb inside a code block must be reported"
+    assert "sgt log" not in quoted, (
+        "the gloss column is prose, not arguments -- `sgt log --map     one row per feature` "
+        f"must not be read as a command with arguments: {quoted}")
+
+
 def test_prose_about_a_removed_verb_is_not_flagged(tmp_path):
     """Docs legitimately *mention* old spellings when explaining a rename or an absence. Flagging
     those would push writers toward deleting the explanation, which is the opposite of useful."""

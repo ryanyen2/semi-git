@@ -357,6 +357,140 @@ def test_graded_reuse_lazily_adopts_legacy_member_hash_entry(tmp_path, monkeypat
     assert labeler.cache[fid]["gen_members"] == sorted(members)
 
 
+def test_a_subsystem_keeps_its_name_when_a_save_adds_a_feature_to_it(tmp_path, monkeypatch):
+    """A subsystem has no stable id to key on -- its node id is a positional DFS counter -- so its
+    cache key is content (child labels + files) and ANY membership change lands on a new key. That
+    made every ordinary `sgt save` rename the subsystem it touched: the pilot's five subsystems all
+    changed names between two reads of one repo. The entry is re-found by member drift instead, the
+    same graded reuse leaves get, with the member-set match standing in for the id."""
+    calls: list[int] = []
+
+    class _CountingResponses:
+        def parse(self, **kwargs):
+            n = kwargs["input"].count("=== Group ")
+            calls.append(n)
+            idx = len(calls)
+            batch = label_mod._FeatureLabelBatch(items=[
+                label_mod._BatchItem(index=i, label=f"Subsystem {idx}", rationale="r")
+                for i in range(n)
+            ])
+            return _FakeResponse(output_parsed=batch, usage=_FakeUsage(1, 1))
+
+    class _CountingClient:
+        def __init__(self):
+            self.responses = _CountingResponses()
+
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _CountingClient())
+    labeler = label_mod.Labeler(tmp_path)
+
+    def name_for(kids):
+        return labeler.label_many([labeler.super_request(kids, ["confplan/cli.py"])])[0].label
+
+    first = name_for(["Waitlist Queue", "Seat Notices", "Queue Promotion"])
+    # One save adds a fourth feature under the subsystem -> a different key, same subsystem.
+    assert name_for(["Waitlist Queue", "Seat Notices", "Queue Promotion", "Agenda Export"]) == first
+    assert calls == [1]  # named once, then re-found without paying for it again
+
+
+def test_a_subsystem_that_became_something_else_is_renamed(tmp_path, monkeypatch):
+    """The drift budget is a budget, not a freeze: past `TAU_LABEL` the subsystem is relabeled, so a
+    stale name can't outlive the thing it named."""
+    outs = iter(["Waitlist Queue", "Room Scheduling"])
+
+    class _R:
+        def parse(self, **kwargs):
+            n = kwargs["input"].count("=== Group ")
+            label = next(outs)
+            return _FakeResponse(
+                output_parsed=label_mod._FeatureLabelBatch(items=[
+                    label_mod._BatchItem(index=i, label=label, rationale="r") for i in range(n)]),
+                usage=_FakeUsage(1, 1))
+
+    class _C:
+        def __init__(self):
+            self.responses = _R()
+
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _C())
+    labeler = label_mod.Labeler(tmp_path)
+    name = lambda kids: labeler.label_many([labeler.super_request(kids, ["a.py"])])[0].label
+
+    assert name(["Waitlist Queue", "Seat Notices"]) == "Waitlist Queue"
+    assert name(["Room Grid", "Slot Matching", "Two Day Agenda"]) == "Room Scheduling"
+
+
+def test_two_sibling_subsystems_cannot_both_inherit_one_name(tmp_path, monkeypatch):
+    """Adoption is one-to-one. Without that guard a split subsystem would hand the same name to both
+    halves, and two rows on the map would read as the same thing."""
+    seen: list[str] = []
+
+    class _R:
+        def parse(self, **kwargs):
+            n = kwargs["input"].count("=== Group ")
+            seen.append("call")
+            return _FakeResponse(
+                output_parsed=label_mod._FeatureLabelBatch(items=[
+                    label_mod._BatchItem(index=i, label=f"Named {len(seen)}", rationale="r")
+                    for i in range(n)]),
+                usage=_FakeUsage(1, 1))
+
+    class _C:
+        def __init__(self):
+            self.responses = _R()
+
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _C())
+    labeler = label_mod.Labeler(tmp_path)
+    name = lambda kids: labeler.label_many([labeler.super_request(kids, ["a.py"])])[0].label
+
+    original = name(["A", "B", "C", "D"])
+    half_one = name(["A", "B", "C"])   # adopts the original entry
+    half_two = name(["A", "B", "D"])   # would adopt the same one -- must relabel instead
+    assert half_one == original and half_two != original
+
+
+def test_a_failed_relabel_keeps_the_name_the_feature_already_earned(tmp_path, monkeypatch):
+    """A transient LLM failure must not replace a real name with a symbol list. It used to: the
+    entry was overwritten with `fallback_label(members)` outright, so one refresh on a spent
+    credential renamed every feature that happened to be up for relabeling."""
+    fake = label_mod.FeatureLabel(label="Waitlist Queue", rationale="Queues attendees.")
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake))
+    labeler = label_mod.Labeler(tmp_path)
+    fid = "f-0003"
+    assert labeler.label_many([labeler.leaf_request(fid, ["a", "b", "c", "d"])])[0].label == "Waitlist Queue"
+
+    # Drift past the budget forces a relabel, and the relabel fails (the credential ran dry).
+    class _Dry:
+        class responses:
+            @staticmethod
+            def parse(**kwargs):
+                raise RuntimeError("Error code: 429 - insufficient_quota, credit_balance_exhausted")
+
+    labeler._client = _Dry()
+    out = labeler.label_many([labeler.leaf_request(fid, ["w", "x", "y", "z"])])[0]
+
+    assert out.label == "Waitlist Queue"                    # the earned name stands
+    assert labeler.cache[fid]["source"] == "fallback"        # ...but the retry backoff still runs
+    assert labeler.cache[fid]["carried"] == "llm"
+
+
+def test_a_spent_credential_says_so_instead_of_renaming_the_graph_in_silence(tmp_path, monkeypatch, capsys):
+    """The warning gate matched auth/permission/401/credential wording only, and a spent key answers
+    `429 insufficient_quota`, which matched none of it -- so the study fixture's labels turned into
+    symbol lists on every refresh with an empty stderr. Any failure warns now."""
+    class _Dry:
+        class responses:
+            @staticmethod
+            def parse(**kwargs):
+                raise RuntimeError("Error code: 429 - {'type': 'insufficient_quota', "
+                                   "'code': 'credit_balance_exhausted'}")
+
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _Dry())
+    labeler = label_mod.Labeler(tmp_path)
+    labeler.label_many([labeler.leaf_request("f-0004", ["sgt/a.py::foo"])])
+
+    err = capsys.readouterr().err
+    assert "insufficient_quota" in err and "out of credit" in err
+
+
 def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path, monkeypatch):
     """Regression: `build_map` used to label the tree but never `save()` the labeler, so the
     member-hash cache was rebuilt cold on every run -- a second `sgt map` re-called the (non-

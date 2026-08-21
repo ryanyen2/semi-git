@@ -36,7 +36,7 @@ def _edit(repo: str, selection_tokens: list[str], intent: str | None, do_repair:
     from sgt.lens import select
 
     if not selection_tokens:
-        print("usage: sgt edit <selection> [--repair] [--intent \"...\"]")
+        print("usage: sgt advanced edit <selection> [--repair] [--intent \"...\"]")
         return 2
     get(repo)  # mine-on-contact before resolving/planning the edit (R9)
 

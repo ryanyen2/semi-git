@@ -157,6 +157,38 @@ def _validated(
     return _preview(verb, target, before_ids, after_ids, ops)
 
 
+def _with_layout_siblings(added, ops: list[Op], before_ids, source_ids,
+                          declared: frozenset[tuple[str, str]]):
+    """`added` plus the layout ops (gap/anchor) of every entity it brings back. Layout facts ride
+    with the entity in both directions: `plan_subtraction` removes an entity's trailing gap and
+    anchor along with it (F35), so restoring the entity has to bring them back, or the fold has no
+    separator to place and composes `    return 2def revived():`. They are siblings, so the downset
+    does not reach them -- pull them in with their own prerequisites.
+
+    One chain per layout symbol, and only for symbols the result does not already ground. F39:
+    `_repair_layout` mints an anchor/residue repair with `before=None` whenever a removal leaves
+    that symbol no live tip, so a symbol removed and reborn owns several chain *heads* in the
+    store -- legal there (the store is a forest of versions), fatal inside an ideal. Taking every
+    sibling match therefore forked the chain and `_validated` refused a restore whose bytes were
+    sitting in the store the whole time: the WP-V4 sweep hit that as a file left at 1 byte with no
+    documented command able to bring it back. The deepest candidate is the tip of one chain and its
+    downset is that chain, never a second head."""
+    from sgt.core.subtract import layout_ops_of
+
+    by_id = {op.id: op for op in ops}
+    grounded = order.frontier(before_ids | added, ops)
+    reach = {oid: order.downset_in(oid, source_ids, ops, declared)
+             for oid in layout_ops_of(added, by_id, source_ids)}
+    pick: dict[str, str] = {}
+    for oid in sorted(reach, key=lambda o: (-len(reach[o]), o)):
+        for sym in by_id[oid].footprint:
+            if sym not in grounded:
+                pick.setdefault(sym, oid)
+    for oid in dict.fromkeys(pick.values()):
+        added = added | reach[oid]
+    return added
+
+
 # -- plans (pure) ---------------------------------------------------------------------------------
 
 def _plan_removal(
@@ -251,34 +283,9 @@ def plan_restore(repo: str | Path, target: str) -> VerbPreview:
                 op_id, err, source_ids = matches[0], "", frozenset(ids)
     if err:
         return _preview("restore", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
-    added = order.downset_in(op_id, source_ids, ops, declared)
-    # Layout facts ride with the entity in both directions. `plan_subtraction` removes an entity's
-    # trailing gap and anchor along with it (F35); restoring the entity has to bring them back, or
-    # the fold has no separator to place and composes `    return 2def revived():`. They are
-    # siblings, so the downset does not reach them -- pull them in with their own prerequisites.
-    from sgt.core.subtract import layout_ops_of
-
-    by_id = {op.id: op for op in ops}
-    # One chain per layout symbol, and only for symbols the result does not already ground. F39:
-    # `_repair_layout` mints an anchor/residue repair with `before=None` whenever a removal leaves
-    # that symbol no live tip, so a symbol removed and reborn owns several chain *heads* in the
-    # store -- legal there (the store is a forest of versions), fatal inside an ideal. On the
-    # whole-store rung above, taking every sibling match therefore forked the chain and `_validated`
-    # refused a restore whose bytes were sitting in the store the whole time: the WP-V4 sweep hit
-    # that as a file left at 1 byte with no documented command able to bring it back. The deepest
-    # candidate is the tip of one chain and its downset is that chain, never a second head.
-    grounded = order.frontier(ideal.op_ids | added, ops)
-    reach = {oid: order.downset_in(oid, source_ids, ops, declared)
-             for oid in layout_ops_of(added, by_id, source_ids)}
-    pick: dict[str, str] = {}
-    for oid in sorted(reach, key=lambda o: (-len(reach[o]), o)):
-        for sym in by_id[oid].footprint:
-            if sym not in grounded:
-                pick.setdefault(sym, oid)
-    for oid in dict.fromkeys(pick.values()):
-        added = added | reach[oid]
-    after = ideal.op_ids | added
-    return _validated("restore", target, ideal.op_ids, after, ops, declared)
+    added = _with_layout_siblings(order.downset_in(op_id, source_ids, ops, declared),
+                                  ops, ideal.op_ids, source_ids, declared)
+    return _validated("restore", target, ideal.op_ids, ideal.op_ids | added, ops, declared)
 
 
 def plan_cherry_pick(repo: str | Path, target: str, source_ref: str) -> VerbPreview:
@@ -333,6 +340,29 @@ def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str], *,
 
     return _plan_removal(repo, "revert", tag, op_ids, ops, ideal, declared,
                          take_dependents=take_dependents)
+
+
+def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> VerbPreview:
+    """`plan_revert_op_set`'s inverse: re-admit an already-resolved op-set X as the exact ideal edit
+    `I ∪ downset_in_many(X)` against the full provenance ideal (`HEAD`, which still holds reverted
+    ops -- that asymmetry between store and ideal is what makes any restore possible). This exists
+    because `<feature>@<n>` is the rewind unit the map and the checkpoint detail both tell users to
+    type, and a rewind whose inverse cannot be addressed the same way is a one-way door: before this,
+    `sgt restore <feature>@<n>` fell through every deterministic rung to the natural-language one and
+    exited `could not resolve ... set OPENAI_API_KEY`.
+
+    Ops already in the ideal are dropped from X first, so a live checkpoint reports `no change`
+    rather than an apply it did not make. `tag` is a human-facing label for the preview only."""
+    ops, ideal, declared = _load(repo)
+    source = lens.ideal_for_ref(repo, "HEAD")
+    op_ids = frozenset(op_ids) - ideal.op_ids
+    if not op_ids:
+        return _preview("restore", tag, ideal.op_ids, ideal.op_ids, ops,
+                        message=f"{tag}: already in the current ideal; no change")
+
+    added = _with_layout_siblings(order.downset_in_many(op_ids, source.op_ids, ops, declared),
+                                  ops, ideal.op_ids, source.op_ids, declared)
+    return _validated("restore", tag, ideal.op_ids, ideal.op_ids | added, ops, declared)
 
 
 def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:

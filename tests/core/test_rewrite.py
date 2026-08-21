@@ -764,6 +764,105 @@ def test_fsck_tree_classifies_a_staged_candidate_as_staged_not_drift(tmp_path):
     assert result["drift"] == []
 
 
+def test_status_view_classifies_a_staged_candidate_the_same_way_fsck_does(tmp_path):
+    """`fsck --tree` has drawn the staged/drift distinction since U6, but `status_view` -- the
+    projection every *surface* actually reads (`sgt log --summary`, MCP, the workbench's
+    Working-changes card) -- compared disk bytes against the committed ideal with no notion of a live
+    stage. So it reported planned divergence as unrecorded drift, and the workbench titled a staged
+    candidate "Working changes", said "Save to checkpoint them into the ideal", and offered a Save
+    that `lens.put`'s staged guard refuses. Two projections answering the same question differently
+    is the bug; the surfaces were faithfully rendering the one that was wrong."""
+    from sgt.api import status_view
+    from sgt.core.lens import fsck_tree
+
+    repo = _stage_a_merge_op(tmp_path)
+    staged = fsck_tree(repo)["staged"]
+    assert staged, "fixture must leave a staged candidate on disk"
+
+    view = status_view(repo)
+    assert view["staged"] == {"any": True, "paths": staged}
+    assert view["drift"] == {"any": False, "paths": []}
+
+
+def test_status_view_still_reports_drift_when_nothing_is_staged(tmp_path):
+    """The other half of the contract: excluding staged paths must not blind the view to a real
+    edit. Without a live stage the same divergent bytes are drift, exactly as before."""
+    from sgt.api import status_view
+
+    repo = _stage_a_merge_op(tmp_path)
+    rewrite.unstage(repo)
+    (repo / "slugify.py").write_text("def slugify(s):\n    return 'edited'\n", encoding="utf-8")
+
+    view = status_view(repo)
+    assert view["drift"] == {"any": True, "paths": ["slugify.py"]}
+    assert view["staged"] == {"any": False, "paths": []}
+
+
+def test_log_summary_says_a_candidate_is_staged_instead_of_in_sync(tmp_path, capsys):
+    """`sgt log --summary` is the terminal's answer to "where am I", and over a staged candidate it
+    gave two wrong answers in a row. While `status_view` counted the candidate as drift it printed
+    "1 file(s) on disk differ from the recorded state -- `sgt save` absorbs them", and `save` refuses
+    while a stage is live; once the paths were classified `staged` it printed "✓ in sync" over a tree
+    where every materializing verb refuses. Silence is the worse of the two: the first at least told
+    you something had happened. So the summary names the state and both its exits, which is also the
+    only place a terminal user learns the state exists at all."""
+    import os
+
+    from sgt.cli import main
+
+    repo = _stage_a_merge_op(tmp_path)
+    cwd = os.getcwd()
+    os.chdir(repo)
+    try:
+        assert main(["log", "--summary"]) == 0
+    finally:
+        os.chdir(cwd)
+    out = capsys.readouterr().out
+
+    assert "in sync" not in out, "a tree holding an unlanded candidate is not in sync"
+    assert "sgt save" not in out, "`save` refuses while a stage is live; advising it is a dead end"
+    assert "staged" in out and "slugify.py" in out
+    assert "sgt advanced commit" in out and "sgt advanced unstage" in out
+
+
+def test_the_staged_refusal_names_remedies_that_actually_run(tmp_path):
+    """The guard that blocks a materializing edit while a candidate is staged is the one place a
+    user meets this state, so its two remedies are their whole next move -- and both were wrong
+    spellings. `sgt unstage` moved under `advanced`, and `sgt land` is a *different* verb (the U23
+    shared-branch CAS advance, which `cli/__init__.py` documents as "deliberately not named
+    `commit`"), so following that advice gets you an error demanding a branch rather than a
+    committed candidate. Same contract `tests/test_show.py` holds `show_view`'s suggestions to."""
+    import re
+
+    from scripts.check_docs_commands import unrunnable
+
+    from sgt.core import lens
+
+    repo = _stage_a_merge_op(tmp_path)
+    try:
+        lens.put(repo, lens.current_ideal(repo))
+        assert False, "expected `put` to refuse while a candidate is staged"
+    except lens.DirtyWorkingTreeError as e:
+        message = str(e)
+
+    # The other refusal a staged candidate can produce: land a stage the tree has drifted out
+    # from under. It offered the same dead `sgt unstage`, so both belong to one contract.
+    (repo / "slugify.py").write_text("def slugify(s):\n    return 'X'\n", encoding="utf-8")
+    try:
+        rewrite.land(repo, override=("pass", "reviewed", "rev"))
+        assert False, "expected a staleness refusal"
+    except rewrite.RewriteError as e:
+        stale_message = str(e)
+
+    for text in (message, stale_message):
+        quoted = re.findall(r"`(sgt [^`]+)`", text)
+        assert quoted, f"the refusal names no remedy at all: {text!r}"
+        for command in quoted:
+            assert unrunnable(command) is None, f"{command!r}: {unrunnable(command)}"
+    # A runnable verb is not enough -- it has to be the one that lands the candidate.
+    assert "advanced commit" in message
+
+
 # -- U6: the review's end-to-end reproduction (two-clone sync fork) ------------------------------
 
 def _init_bare(root):

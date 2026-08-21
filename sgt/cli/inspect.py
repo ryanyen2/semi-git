@@ -739,6 +739,16 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
         n = len(view["drift"]["paths"])
         print(f"  ⚠ {n} file(s) on disk differ from the recorded state — `sgt save` absorbs them")
         print(f"      {clip(view['drift']['paths'])}")
+    if view["staged"]["any"]:
+        # These paths used to be counted in the drift line above, whose remedy is `sgt save` -- and
+        # `save` refuses while a stage is live, so the summary's one piece of advice was a dead end.
+        # Classifying them `staged` fixed the wrong word and left silence in its place ("✓ in sync"
+        # over a tree where every materializing verb refuses), which is worse. Named with both exits
+        # because this line is where a terminal reader finds out the state exists.
+        print(f"  ⧗ {len(view['staged']['paths'])} file(s) hold a staged rewrite candidate — not "
+              f"recorded yet, and edits are blocked until it is resolved")
+        print(f"      {clip(view['staged']['paths'])}")
+        print("      `sgt advanced commit` lands it · `sgt advanced unstage` abandons it")
     if view.get("backstop_kept"):
         print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s) — left on disk (not "
               f"deleted); repair the chain (`sgt advanced fsck --tree`) to materialize them")
@@ -746,7 +756,7 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
     if view.get("unmanaged"):
         print(f"  ⚠ {len(view['unmanaged'])} unmanaged path(s) (symlinks, untouched): "
               f"{clip(view['unmanaged'])}")
-    if not view["drift"]["any"] and not view["forks"]["open"]:
+    if not view["drift"]["any"] and not view["staged"]["any"] and not view["forks"]["open"]:
         print("  ✓ in sync")
     _print_residual(repo, full)
     return 0
@@ -855,6 +865,15 @@ def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
         print(f"  ⚠ {view['forks']['open']} open fork(s)")
     if status["drift"]["any"]:
         print(f"  ⚠ drift: {', '.join(status['drift']['paths'])}")
+    if status["staged"]["any"]:
+        # These paths used to be counted as drift, which was the wrong word for them and also the only
+        # word: a staged candidate blocks `save`/`switch`/every materializing verb, so a summary that
+        # omits it leaves the next refusal unexplained. Named with its two exits for the same reason
+        # the refusal names them -- this line is where a reader learns the state exists.
+        staged = view["rewrite"]["staged"]
+        verb = f" ({staged['verb']})" if staged else ""
+        print(f"  ⧗ staged rewrite{verb}: {', '.join(status['staged']['paths'])}")
+        print("    `sgt advanced commit` to land it, `sgt advanced unstage` to abandon it")
     if view["sessions"]["sessions"]:
         print(f"  {len(view['sessions']['sessions'])} active session(s)")
     if view["proposals"]:

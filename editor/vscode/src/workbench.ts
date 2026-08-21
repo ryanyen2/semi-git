@@ -137,8 +137,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     </div>
     <div id="titlebarActions" class="titlebar-actions">
       <button id="inspectorToggle" title="Hide detail panel">◧</button>
-      <button id="saveBtn" class="btn-primary" title="sgt save">Save</button>
-      <button id="commitBtn" title="sgt commit">Commit</button>
+      <button id="saveBtn" class="btn-primary" title="sgt save — record and commit">Save</button>
       <button id="undoBtn" title="sgt undo">Undo</button>
     </div>
     <div id="plansPopover" class="plans-popover" hidden></div>
@@ -149,6 +148,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
     <div id="previewContext" class="preview-context-pill" hidden></div>
     <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
+    <div id="armedBanner" class="armed-banner" hidden></div>
     <div id="inspector"></div>
   </div>
   <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
@@ -240,6 +240,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "revertCheckpoint":
         await this.revertCheckpoint(msg.ref);
         return;
+      case "restoreCheckpoint":
+        await this.restoreCheckpoint(msg.ref);
+        return;
       case "applyVerb":
         await this.apply(msg.verb, msg.args);
         return;
@@ -263,6 +266,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case "overrideOracle":
         await this.overrideOracle();
+        return;
+      case "landCandidate":
+        await this.landCandidate();
+        return;
+      case "abandonCandidate":
+        await this.abandonCandidate();
         return;
       case "dailyLoop":
         await this.dailyLoop(msg.verb);
@@ -417,6 +426,18 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     await vscode.commands.executeCommand("sgt.revert", ref);
   }
 
+  // The inverse, reached from the same row: once a chapter is reverted, the only move it still
+  // affords is coming back, and it is addressable by the same `<feature>@<n>` handle (see
+  // `plan_restore_op_set`). Routed to `sgt.restore` for the same reason the revert is routed to
+  // `sgt.revert` -- that command previews before it applies, so the GUI is never weaker than the
+  // CLI on a verb that moves files.
+  private async restoreCheckpoint(ref: string): Promise<void> {
+    if (!ref) {
+      return;
+    }
+    await vscode.commands.executeCommand("sgt.restore", ref);
+  }
+
   private async renamePrompt(feature: string): Promise<void> {
     const label = await vscode.window.showInputBox({ prompt: `New label for ${feature}` });
     if (label) {
@@ -474,24 +495,68 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  // The compact titlebar action group (Save/Commit/Undo): reuse the existing palette commands
-  // rather than re-implementing their confirm/mutate/invalidate/report sequence here, same as
-  // `apply("revert", ...)` reuses `sgt.revert` above.
-  private async dailyLoop(verb: "save" | "commit" | "undo"): Promise<void> {
-    if (verb === "save") {
-      await vscode.commands.executeCommand("sgt.save");
-      return;
-    }
-    if (verb === "undo") {
-      await vscode.commands.executeCommand("sgt.undo");
-      return;
-    }
+  // Landing is one of a staged candidate's two exits, and it used to be the titlebar's "Commit" --
+  // a button that was wrong in both directions at once. `sgt save` mines *and* commits, so a Commit
+  // beside Save promised a step Save had already taken; and what it actually ran was `advanced
+  // commit`, which lands a staged rewrite candidate and otherwise refuses with "nothing staged". So
+  // the daily loop's third button was either redundant or an error toast, never a useful action --
+  // drawn permanently for a state that is rare and gated. It now lives in the Working-changes card,
+  // which draws it only when a candidate exists and enables it only once the oracle has passed:
+  // the gate the refusal used to deliver *after* the click.
+  private async landCandidate(): Promise<void> {
     try {
       const result = await this.store.sgt.landCandidate();
       this.store.invalidate();
-      vscode.window.showInformationMessage(result.ok ? `✓ committed ${(result.sha || "").slice(0, 12)}` : "Commit failed.");
+      vscode.window.showInformationMessage(
+        result.ok ? `✓ landed ${(result.sha || "").slice(0, 12)}` : "Landing failed."
+      );
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
+    }
+  }
+
+  // The other exit. Abandoning discards a candidate the user built by hand-editing the tree and
+  // nothing in sgt can bring it back (`unstage` drops `staged.json` and restores the committed ideal
+  // over the top), so it asks first. The detail names what survives rather than what is lost: the
+  // ops the rewrite was *of* are still recorded, which is the fact that makes the choice safe.
+  private async abandonCandidate(): Promise<void> {
+    const ok = await vscode.window.showWarningMessage(
+      "Abandon the staged rewrite candidate?",
+      {
+        modal: true,
+        detail: "The hand-edited bytes are discarded and the recorded ideal is restored to the "
+          + "working tree. The ops the rewrite was of are untouched.",
+      },
+      "Abandon"
+    );
+    if (ok !== "Abandon") {
+      return;
+    }
+    try {
+      const result = await this.store.sgt.abandonCandidate();
+      this.store.invalidate();
+      vscode.window.showInformationMessage(
+        result.ok
+          ? `✓ abandoned; restored ${(result.op_ids || []).length} recorded op(s) to the tree`
+          : "Abandon failed."
+      );
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+    }
+  }
+
+  // The compact titlebar action group (Save/Undo): reuse the existing palette commands rather than
+  // re-implementing their confirm/mutate/invalidate/report sequence here, same as
+  // `apply("revert", ...)` reuses `sgt.revert` above.
+  // The webview goes inert while one of these runs (loopButtonState in workbench.js). It sets that
+  // state on the click and clears it on the `state` push the mutation triggers; this end signal is
+  // what clears it on the paths that never reach a mutation -- a cancelled dialog, "nothing to
+  // save" -- where no fresh composition is ever pushed.
+  private async dailyLoop(verb: "save" | "undo"): Promise<void> {
+    try {
+      await vscode.commands.executeCommand(verb === "save" ? "sgt.save" : "sgt.undo");
+    } finally {
+      void this.view?.webview.postMessage({ type: "loopBusy", verb: null });
     }
   }
 

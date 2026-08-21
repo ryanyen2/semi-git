@@ -13,8 +13,10 @@ import pytest
 
 from sgt.tui.graph import (
     _NOW_RULE,
+    _chips,
     _forecast_band,
     _min_unique_prefixes,
+    _reverted_gap_note,
     _state_banner,
     graph_layout,
     render_collab_preview_lines,
@@ -108,6 +110,133 @@ def test_expanded_subsystem_makes_a_header_over_its_lanes():
     assert hd["row"] < min(out["node_by_id"][f]["row"] for f in ("F1", "F2"))
 
 
+def test_feature_with_no_own_symbols_is_dropped_and_a_husk_only_subsystem_with_it():
+    """The drop rule, stated once here so the JS counterpart (`tests/test_graph_layout.py`) can be
+    held to the same one: a feature whose ops touch only sentinels draws no lane, and a subsystem
+    left with nothing but husks draws no header."""
+    husk, real = _node("HUSK", "N0", []), _node("REAL", None, [])
+    husk["own_symbols"], real["own_symbols"] = [], ["a.py::f"]
+    m = {"roots": ["N0", "REAL"],
+         "nodes": [_node("N0", None, ["HUSK"], kind="subsystem"), husk, real], "edges": []}
+    out = graph_layout(m, _grid(("HUSK", 0), ("REAL", 1)))
+    assert [l["id"] for l in out["lanes"]] == ["REAL"]
+    assert out["headers"] == []
+
+
+def test_the_subsystem_count_does_not_change_when_a_row_is_folded():
+    """The twin of the feature count's own fix, one field over. A collapsed subsystem leaves
+    `headers` and becomes a meta-LANE, so counting headers made the repo lose subsystems every time
+    a row folded: the default map (which folds every leaf subsystem) printed `1 subsystem(s)` where
+    `--focus`, which folds nothing, printed `4` for the same repo at the same moment. Those are two
+    headers a reader is explicitly told to move between, so the disagreement reads as one of the two
+    views being wrong about what the codebase contains."""
+    m = {"roots": ["R"],
+         "nodes": [_node("R", None, ["S1", "S2"], kind="subsystem"),
+                   _node("S1", "R", ["f1"], kind="subsystem"), _node("f1", "S1", []),
+                   _node("S2", "R", ["f2"], kind="subsystem"), _node("f2", "S2", [])],
+         "edges": []}
+    grid = _grid(("f1", 0), ("f2", 1))
+    opened = render_graph_lines(m, grid, color=False)[0]
+    folded = render_graph_lines(m, grid, color=False, collapsed=("S1", "S2"))[0]
+    assert "3 subsystem(s)" in opened and "3 subsystem(s)" in folded
+    assert "2 feature(s)" in opened and "2 feature(s)" in folded  # the count already held
+
+
+def test_a_husk_is_not_counted_in_the_group_it_was_dropped_from():
+    """Dropping a husk from the listing has to drop it from the count too. `Name (N)` on a folded row
+    and the header's `N feature(s)` are both `len(leaves)`, so a husk left in the leaf set made the
+    map promise rows that opening the fold does not deliver -- and put the map's headline total four
+    features above the same repo's `sgt log --tree` on the pilot fixture."""
+    husk, real = _node("HUSK", "N0", []), _node("REAL_IN", "N0", [])
+    husk["own_symbols"], real["own_symbols"] = [], ["a.py::f"]
+    m = {"roots": ["N0"],
+         "nodes": [_node("N0", None, ["HUSK", "REAL_IN"], kind="subsystem"), husk, real],
+         "edges": []}
+    folded = graph_layout(m, _grid(("HUSK", 0), ("REAL_IN", 1)), collapsed={"N0"})
+    assert [l["id"] for l in folded["lanes"]] == ["N0"]
+    assert folded["lanes"][0]["leaves"] == ["REAL_IN"]  # the count the `(N)` suffix prints
+    # Open the same group: exactly the leaves the fold claimed, no more and no fewer.
+    opened = graph_layout(m, _grid(("HUSK", 0), ("REAL_IN", 1)))
+    assert [l["id"] for l in opened["lanes"]] == ["REAL_IN"]
+    assert opened["headers"][0]["lane_count"] == 1
+
+
+def test_nested_subsystems_indent_by_depth_in_tree_order():
+    """Rows follow TREE order and carry their nesting depth -- the same contract
+    `tests/test_graph_layout.py` holds `computeGraphLayout` to. A flat group list sorted globally by
+    first appearance printed a nested subsystem wherever its first commit fell, routinely *above* the
+    header of the parent containing it, which is why `sgt log --map` could not be matched against the
+    workbench or the sidebar on the pilot's repo."""
+    m = {"roots": ["R"],
+         "nodes": [_node("R", None, ["S", "F0"], kind="subsystem"),
+                   _node("S", "R", ["F1", "F2"], kind="subsystem"),
+                   _node("F1", "S", []), _node("F2", "S", []), _node("F0", "R", [])],
+         "edges": []}
+    # F1 born first (0) so S sorts before the later-born F0 (5) within R.
+    out = graph_layout(m, _grid(("F1", 0), ("F2", 10), ("F0", 5)))
+    headers = {h["collapsed_id"]: h for h in out["headers"]}
+    assert headers["R"]["depth"] == 0 and headers["S"]["depth"] == 1  # S nests under R
+    lanes = out["node_by_id"]
+    assert lanes["F1"]["depth"] == 2 and lanes["F2"]["depth"] == 2  # features under the nested S
+    assert lanes["F0"]["depth"] == 1  # a direct feature of R
+    assert headers["R"]["row"] < headers["S"]["row"] < lanes["F1"]["row"] < lanes["F0"]["row"]
+    assert headers["R"]["op_count"] == 3 and headers["R"]["lane_count"] == 3  # rolls up all 3
+
+
+def test_a_collapsed_child_subsystem_counts_its_features_in_the_parents_header():
+    """A header's `lane_count` is a count of FEATURES, not of rows. It used to be `len(lane_objs)`, so
+    a parent sitting above a collapsed child reported that whole child as one feature and disagreed
+    with the workbench and the sidebar about the size of the same group."""
+    m = {"roots": ["R"],
+         "nodes": [_node("R", None, ["S"], kind="subsystem"),
+                   _node("S", "R", ["F1", "F2"], kind="subsystem"),
+                   _node("F1", "S", []), _node("F2", "S", [])],
+         "edges": []}
+    out = graph_layout(m, _grid(("F1", 0), ("F2", 10)), collapsed=["S"])
+    assert [l["id"] for l in out["lanes"]] == ["S"]  # S folded to one meta-lane...
+    hd = out["headers"][0]
+    assert hd["collapsed_id"] == "R" and hd["lane_count"] == 2  # ...but R still says 2 features
+
+
+def test_nesting_is_drawn_inside_the_title_column_so_the_commit_axis_stays_aligned():
+    """The indent goes in the label field, never ahead of it: every row's density bar starts at the
+    same column, so the shared commit axis is a straight line down the page."""
+    m = {"roots": ["R"],
+         "nodes": [_node("R", None, ["S", "F0"], kind="subsystem"),
+                   _node("S", "R", ["F1"], kind="subsystem"),
+                   _node("F1", "S", []), _node("F0", "R", [])],
+         "edges": []}
+    lines = render_graph_lines(m, _grid(("F1", 0), ("F0", 20)), color=False, bar_width=12)
+    rows = [ln for ln in lines if "●" in ln]
+    assert len(rows) == 2
+    # Fixed geometry: the label field is padded back to the same total width whatever the indent, so
+    # every row is the same length and the density bar occupies the same columns on all of them.
+    assert len({len(ln) for ln in rows}) == 1
+    assert len({ln.index("●") for ln in rows}) == 1
+    nested = next(ln for ln in rows if "● F1" in ln)
+    flat = next(ln for ln in rows if "● F0" in ln)
+    assert nested.rindex("F1") == flat.rindex("F0") + 2  # the deeper lane's label steps in by 2
+    hdrs = [ln for ln in lines if "▾" in ln]
+    assert hdrs[0].index("▾") < hdrs[1].index("▾")   # and so does the nested header
+
+
+def test_a_feature_in_no_subsystem_sits_left_of_one_that_is_in_a_group():
+    """A save lands in no subsystem until the next regrouping, and this view drew it at the same
+    column as the members of the band above it -- so a just-saved feature read as belonging to a
+    subsystem it is not in, which is exactly the row a pilot participant could not find. `sgt log
+    --tree` and the workbench both indent from the root; this row now does too."""
+    m = {"roots": ["R", "LOOSE"],
+         "nodes": [_node("R", None, ["F1"], kind="subsystem"),
+                   _node("F1", "R", []), _node("LOOSE", None, [])],
+         "edges": []}
+    lines = render_graph_lines(m, _grid(("F1", 0), ("LOOSE", 20)), color=False, bar_width=12)
+    rows = [ln for ln in lines if "●" in ln]
+    member = next(ln for ln in rows if "F1" in ln)
+    loose = next(ln for ln in rows if "LOOSE" in ln)
+    assert member.rindex("F1") == loose.rindex("LOOSE") + 2  # the filed one steps in, the loose one doesn't
+    assert len({len(ln) for ln in rows}) == 1  # and the commit axis stays aligned
+
+
 def test_collapsed_subsystem_rolls_up_descendant_ops():
     m = {"roots": ["N0"],
          "nodes": [_node("N0", None, ["F1", "F2"], kind="subsystem"),
@@ -172,6 +301,35 @@ def test_focus_view_caps_the_words_shown_per_chapter():
     assert "+2 more" in body
 
 
+def test_reverted_work_no_lane_can_draw_is_named_on_screen():
+    """`grid_view["reverted_unaccounted"]` is work a revert took out of the ideal that clustering left
+    in no lane and no chapter (a reverted symbol is no member of any leaf). Every chapter then reads
+    fully present and every lane draws solid while the code is missing from disk. The header has to
+    say so, because nothing else on the screen can: the whole point is that these ops have no row."""
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _grid(("A", 0))
+    hist["reverted_unaccounted"] = {"op_count": 4, "symbols": ["cart.py::apply_coupon"]}
+    segs = [_seg("A", 0, ["o0"], 0, 0)]
+
+    for body in ("\n".join(render_graph_lines(m, hist, segs, color=False)),
+                 "\n".join(render_graph_lines(m, hist, segs, focus="A", color=False))):
+        assert "4 reverted edit(s)" in body
+        assert "cart.py::apply_coupon" in body
+
+
+def test_no_reverted_work_note_when_every_edit_has_a_lane():
+    """Silent in the ordinary case -- and silent for a client whose payload predates the field, which
+    is no claim either way rather than a report of zero."""
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _grid(("A", 0))
+    segs = [_seg("A", 0, ["o0"], 0, 0)]
+    body = "\n".join(render_graph_lines(m, hist, segs, color=False))
+    assert "reverted edit(s)" not in body
+
+    hist["reverted_unaccounted"] = {"op_count": 0, "symbols": []}
+    assert "reverted edit(s)" not in "\n".join(render_graph_lines(m, hist, segs, color=False))
+
+
 def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     hist = _grid(("A", 0), ("A", 1), ("A", 2))
@@ -182,6 +340,47 @@ def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
     assert [c["label"] for c in cars] == ["first", "second"]
     assert cars[0]["checkpoint"] == "A@0" and cars[0]["op_count"] == 2
     assert cars[0]["tier"] == "co-changed" and cars[0]["source"] == "fallback"
+
+
+def test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live():
+    """A revert takes a chapter's ops out of the ideal and leaves them in the store -- the asymmetry
+    `sgt restore` needs -- so the checkpoint detail must keep the chapter and say it is gone. It used
+    to redraw it identically: same solid bar, same `3 checkpoint(s)`, no marker, so the one screen
+    that prints the `@n` handles told a user who had just reverted that nothing had happened. `░` is
+    the glyph the revert preview already spends on removal, and `sgt restore` is the way back, so
+    both belong on the row. A chapter with only *some* of its ops reverted says so as a count rather
+    than picking one of the two extremes."""
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _grid(("A", 0), ("A", 1), ("A", 2))
+    live = _seg("A", 0, ["o0"], 0, 0, label="kept")
+    gone = _seg("A", 1, ["o1"], 1, 1, label="rewound")
+    part = _seg("A", 2, ["o2", "o3"], 2, 2, label="half")
+    live["present_op_count"], gone["present_op_count"], part["present_op_count"] = 1, 0, 1
+
+    cars = segment_layout(m, hist, [live, gone, part])["node_by_id"]["A"]["cars"]
+    assert [c["reverted"] for c in cars] == [False, True, False]
+
+    body = "\n".join(render_graph_lines(m, hist, [live, gone, part], focus="A", color=False))
+    assert "3 checkpoint(s)" in body and "1 reverted" in body   # the count still counts them
+    rewound = next(l for l in body.splitlines() if "rewound" in l)
+    assert "░" in rewound and "█" not in rewound                # removed, in the preview's own glyph
+    assert "reverted" in rewound and "sgt restore A@1" in rewound
+    kept = next(l for l in body.splitlines() if "kept" in l)
+    assert "█" in kept and "░" not in kept
+    assert "1 of 2 edit(s) reverted" in next(l for l in body.splitlines() if "half" in l)
+
+
+def test_a_checkpoint_with_no_presence_claim_is_drawn_as_live():
+    """`present_op_count` is `None` when the ideal could not be read -- an unborn or unmined ref --
+    and every client that predates the field omits it. Absence of a claim is not a claim of removal:
+    the row draws exactly as it always did, because guessing "reverted" from a missing key would
+    turn an unmined repo into a screen full of phantom rewinds."""
+    m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
+    hist = _grid(("A", 0))
+    seg = _seg("A", 0, ["o0"], 0, 0, label="unknown")  # `_seg` omits `present_op_count` entirely
+    assert segment_layout(m, hist, [seg])["node_by_id"]["A"]["cars"][0]["reverted"] is False
+    body = "\n".join(render_graph_lines(m, hist, [seg], focus="A", color=False))
+    assert "reverted" not in body and "sgt restore" not in body
 
 
 def test_sub_bins_group_a_cars_ops_by_commit_index():
@@ -675,6 +874,36 @@ def test_resolve_focus_group_returns_none_for_a_single_feature_so_caller_uses_th
     assert resolve_focus_group("nope", _sub_map(), {"commits": [], "cells": []}) is None
 
 
+def test_a_name_that_is_both_a_feature_and_a_theme_resolves_to_the_feature():
+    """A theme is minted per save and labelled with the save message, so any feature still carrying
+    its save-message label collides by construction -- on the pilot fixture, 11 of 17 feature names
+    were also theme names. The theme used to win, so `sgt log --focus "agenda export"` answered with
+    a save rail for whatever features that theme's commits touched, and the feature's own checkpoint
+    detail -- the `@n` handles the map's chips tell you to rewind by, and the only screen that
+    prints them -- was unreachable for two thirds of the map. `--focus`'s metavar is FEATURE and two
+    footers advertise it as "its checkpoints", so the feature is what the name must resolve to."""
+    m = _sub_map()
+    grid = {"commits": [{"sha": "shaX", "index": 5}], "cells": [{"feature_id": "fa", "commit_index": 5}]}
+    themes = {"t1": {"label": "Wire Codec", "atom_shas": ["shaX"]}}  # same name as feature `fa`
+    assert resolve_focus_group("Wire Codec", m, grid, themes) is None
+    assert resolve_focus_group("wire codec", m, grid, themes) is None  # and case-insensitively
+    # A theme name that is NOT a feature name still resolves, so the group view is intact.
+    themes["t2"] = {"label": "Realtime", "atom_shas": ["shaX"]}
+    assert resolve_focus_group("realtime", m, grid, themes)["kind"] == "theme"
+
+
+def test_a_name_that_is_both_a_feature_and_a_subsystem_resolves_to_the_feature():
+    """Promoting a lone feature to its own subsystem gives the two the same label, and the fixture
+    had one. The feature detail is the more specific of the two readings and the one `--focus`
+    documents, so it wins; the subsystem stays reachable by its id, which the two never share."""
+    m = {"nodes": [
+        {"id": "N9", "kind": "subsystem", "label": "Slot Grid", "children": ["fz"]},
+        {"id": "fz", "kind": "feature", "label": "Slot Grid", "members": ["s9"]},
+    ]}
+    assert resolve_focus_group("Slot Grid", m, {"commits": [], "cells": []}) is None
+    assert resolve_focus_group("N9", m, {"commits": [], "cells": []})["kind"] == "subsystem"
+
+
 def _rail_grid():
     def cell(f, c, oid):
         return {"feature_id": f, "commit_index": c, "op_ids": [oid], "op_count": 1,
@@ -683,6 +912,21 @@ def _rail_grid():
                         {"index": 1, "sha": "s1", "subject": "add bus"},
                         {"index": 2, "sha": "s2", "subject": "add rga"}],
             "cells": [cell("fa", 0, "o0"), cell("fb", 1, "o1"), cell("fc", 2, "o2")]}
+
+
+def test_rail_names_reverted_work_no_lane_can_show():
+    """The default `sgt log` is the screen a reader lands on, and it is a lane view like the map: a
+    reverted symbol belongs to no leaf, so its ops lose their cell and every lane on the rail draws
+    whole while the code is off disk. The map header already says so; saying it on only the second
+    screen means the first one still reads as a completed codebase."""
+    m = {"nodes": [{"id": "fa", "label": "Wire"}]}
+    grid = _rail_grid()
+    grid["reverted_unaccounted"] = {"op_count": 4, "symbols": ["cart.py::apply_coupon"]}
+    text = "\n".join(render_rail_lines(m, grid, color=False))
+    assert "4 reverted edit(s)" in text
+    assert "cart.py::apply_coupon" in text
+    # and silent when there is nothing to disclose (or nothing claimed)
+    assert "reverted edit(s)" not in "\n".join(render_rail_lines(m, _rail_grid(), color=False))
 
 
 def test_render_rail_only_features_scopes_the_vertical_tree_to_the_group():
@@ -841,9 +1085,12 @@ def test_render_save_list_without_topology_has_no_spine():
 
 
 def test_render_save_list_bounds_chips_so_a_wide_save_does_not_wrap():
+    """The claim is the bound, not the ellipsis: a save touching six wide-labelled features must not
+    produce a row that overruns the terminal. How the chips give way is `_chips`' business (it now
+    prefers dropping a name into `+N` over half-naming several), so asserting `…` here would pin a
+    mechanism this test does not exist to protect."""
     lines = render_save_list_lines(_wide_map(6), _wide_grid(6), color=False)
     row = next(l for l in lines if "big save" in l)
-    assert "…" in row          # a long label was ellipsized to a bounded chip
     assert "+" in row           # features past the width budget collapsed into a +N counter
     assert len(row) <= 130      # bounded -- no terminal-overrunning row
 
@@ -852,7 +1099,136 @@ def test_render_rail_also_bounds_wide_chips():
     """The wrapping fix applies to the opt-in lane rail too (shared `_chips` budget)."""
     lines = render_rail_lines(_wide_map(6), _wide_grid(6), color=False)
     row = next(l for l in lines if "big save" in l)
-    assert "…" in row and "+" in row
+    assert "+" in row and len(row) <= 130
+
+
+def test_rail_rows_fit_the_terminal_instead_of_wrapping_the_lanes():
+    """Measured on a real repo in an 80-column terminal: every row of the *default* view came out
+    109-189 columns and wrapped, which folds the lane gutter onto a second line and destroys the one
+    thing the rail is for -- a recurring feature reading as one unbroken vertical line. `--map` has
+    fitted its bar to the terminal all along for exactly this reason, so the first screen was the only
+    one that did not. Rows are what must fit: the subject keeps priority over the chips, because the
+    subject is how a reader identifies the save at all."""
+    m = {"nodes": [{"id": f, "label": f"Feature {f.upper()} With A Long Name"} for f in ("fa", "fb", "fc")]}
+    grid = _rail_grid()
+    grid["cells"] = [{"feature_id": f, "commit_index": i, "op_ids": [f"o{i}"], "op_count": 1,
+                      "kinds": {"add": 1}, "fidelity": "full"} for i, f in enumerate(("fa", "fb", "fc"))]
+    rows = [l for l in render_rail_lines(m, grid, color=False, width=80) if " c0 " in l or " c1 " in l]
+    assert rows, "no save rows rendered"
+    for row in rows:
+        assert len(row) <= 80, f"{len(row)}: {row}"
+    assert any("add wire" in r or "add wire"[:6] in r for r in rows), rows
+
+
+def test_nothing_on_the_rail_overruns_the_terminal_width():
+    """The live-repo shape the first fit pass missed. With a wide lane gutter the fixed columns leave
+    ~12 for the chips, and `_chips` admitted its first name regardless of the budget (ellipsizing it
+    to 22), so rows still came out 94 wide at 80 columns and still wrapped. A budget that is not a
+    bound is decoration. The prose lines were worse -- the legend measured 181 columns and the `next:`
+    footer 190 -- and a wrapped legend is where a reader learns this header is not worth reading.
+
+    So the claim is the whole screen, not the rows: nothing the rail prints may exceed the width it
+    was given, because one wrapped line folds the gutter and breaks the vertical line the view exists
+    to draw."""
+    n = 18
+    m = {"nodes": [{"id": f"f{i}", "label": f"Semantic Versioning Architecture {i}"} for i in range(n)]}
+    commits = [{"index": c, "sha": f"sha{c:04d}",
+                "subject": "feat(intent): surface the plan intake ledger"} for c in range(n)]
+    cells = [{"feature_id": f"f{i}", "commit_index": c, "op_ids": [f"o{c}-{i}"], "op_count": 1,
+              "kinds": {"add": 1}, "fidelity": "full"}
+             for c in range(n) for i in {c, (c + 1) % n}]  # every feature touched twice -> its own lane
+    grid = {"commits": commits, "cells": cells}
+    topology = {"mainline": {f"sha{c:04d}" for c in range(0, n, 2)}, "merges": {"sha0003"}}
+    lines = render_rail_lines(m, grid, color=False, width=80, topology=topology)
+    over = [(len(l), l) for l in lines if len(l) > 80]
+    assert not over, over
+    # and the subject still survives whole enough to tell one save from another
+    assert any("feat(intent)" in l for l in lines), lines
+
+
+def test_chips_spend_the_budget_on_whole_names_before_truncating_several():
+    """A truncated feature name is often unidentifiable -- on a real repo this column read
+    `Semantic Versioning… · Operation Match… · +13`, three half-names where the reader can identify
+    none of them. The budget is the same either way, so spend it on names that survive: admit a label
+    only if it fits whole, and let the rest roll into the `+N` that was already going to be there.
+    This is the rule `_forecast_cards` already follows -- name a thing or count it, never half-name
+    it -- so the two columns now read by one law."""
+    m = {"nodes": [{"id": "fa", "label": "Semantic Versioning Architecture"},
+                   {"id": "fb", "label": "Deterministic Operation Synthesis"},
+                   {"id": "fc", "label": "Intent Clustering & Visualization"}]}
+    grid = _rail_grid()
+    grid["cells"] = [{"feature_id": f, "commit_index": 0, "op_ids": [f"o{i}"], "op_count": 3 - i,
+                      "kinds": {"add": 1}, "fidelity": "full"} for i, f in enumerate(("fa", "fb", "fc"))]
+    row = next(l for l in render_rail_lines(m, grid, color=False) if "add wire" in l)
+
+    assert "Semantic Versioning Architecture" in row, row   # the main feature, named in full
+    assert "…" not in row, row                              # nothing half-named
+    assert "+2" in row, row                                 # and the rest counted, not mangled
+
+
+def test_chips_half_name_the_main_feature_rather_than_showing_a_bare_count():
+    """When the budget cannot fit one whole name, the cell still names the main feature and counts the
+    rest. The alternative -- a bare `+15` -- is the same cell for fifteen different states, and it is
+    what an 80-column `sgt log --saves` printed on every row of a real repo. One hint plus a count is
+    one name, so the whole-name rule ("never half-name *several*") is intact."""
+    m = {"nodes": [{"id": f"f{i}", "label": f"Semantic Versioning Architecture {i}"} for i in range(4)]}
+    r = {"feature": "f0", "features": {f"f{i}": 3 - i for i in range(4)}}
+    cell = _chips(r, {n["id"]: n["label"] for n in m["nodes"]}, color=False, budget=24)
+    assert cell.startswith("Semantic Versioni"), cell   # the main feature, identifiable
+    assert cell.endswith("+3"), cell                    # the other three counted
+    assert len(cell) <= 24, cell
+
+    # ...but below the width where a truncated name identifies anything, the count alone is honest.
+    tight = _chips(r, {n["id"]: n["label"] for n in m["nodes"]}, color=False, budget=10)
+    assert tight == "+4", tight
+
+
+def test_gap_note_names_the_symbols_whole_and_wraps_them():
+    """A qualified symbol name runs ~36 columns, so the flat `syms[:4]` this note started with measured
+    110 and wrapped wherever the terminal chose. `sgt restore` takes a name the reader has to read back
+    off this screen exactly -- a clipped one is a command they cannot type -- so the names are never
+    truncated: they move to their own wrapped lines, and a long list is capped and counted."""
+    syms = [f"services/checkout.py::apply_coupon_{i}" for i in range(9)]
+    lines = _reverted_gap_note({"op_count": 12, "symbols": syms}, 80)
+    assert not [l for l in lines if len(l) > 80], lines
+    text = "\n".join(lines)
+    assert "services/checkout.py::apply_coupon_0" in text   # whole, not clipped
+    assert "+3 more" in text                                # past the cap, counted
+    assert "apply_coupon_8" not in text
+    # one short name still rides on the count line, where it costs no extra row
+    one = _reverted_gap_note({"op_count": 4, "symbols": ["cart.py::apply_coupon"]}, 80)
+    assert one[0].endswith("below: cart.py::apply_coupon"), one
+
+
+def test_the_save_list_fits_the_terminal_too():
+    """The lane-less list had the same defect as the rail, on the screen beside it: 39 of its 44 rows
+    overran an 80-column terminal, because each renderer bounded its chips against a constant instead
+    of against the terminal. Unlike the rail it keeps a chip floor -- it has no lane gutter, so the
+    chips are the only thing on the row that says which feature a save belongs to."""
+    n = 8
+    m = {"nodes": [{"id": f"f{i}", "label": f"Semantic Versioning Architecture {i}"} for i in range(n)]}
+    grid = {"commits": [{"index": c, "sha": f"sha{c:04d}",
+                         "subject": "feat(intent): surface the aligned plan intake ledger"}
+                        for c in range(n)],
+            "cells": [{"feature_id": f"f{i}", "commit_index": c, "op_ids": [f"o{c}-{i}"],
+                       "op_count": 1, "kinds": {"add": 1}, "fidelity": "full"}
+                      for c in range(n) for i in {c, (c + 1) % n}]}
+    lines = render_save_list_lines(m, grid, color=False, width=80,
+                                   topology={"mainline": {f"sha{c:04d}" for c in range(0, n, 2)}})
+    assert not [(len(l), l) for l in lines if len(l) > 80]
+    rows = [l for l in lines if " c1 " in l or " c2 " in l]
+    assert rows and all("Semantic Versioni" in r for r in rows), rows  # attribution survives the fit
+
+
+def test_chips_still_ellipsize_when_even_the_main_name_cannot_fit():
+    """The fallback has to stay: one name that overruns the budget is still better ellipsized than
+    dropped, because a `+1` alone would tell the reader nothing about what they are looking at."""
+    m = {"nodes": [{"id": "fa", "label": "x" * 80}]}
+    grid = _rail_grid()
+    grid["cells"] = [{"feature_id": "fa", "commit_index": 0, "op_ids": ["o0"], "op_count": 1,
+                      "kinds": {"add": 1}, "fidelity": "full"}]
+    row = next(l for l in render_rail_lines(m, grid, color=False) if "add wire" in l)
+    assert "…" in row and "xxx" in row
 
 
 def test_render_rail_group_focus_hides_out_of_group_plan_ghosts():

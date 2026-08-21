@@ -393,6 +393,48 @@ def test_grid_view_omits_unattributed_ops_before_a_tree_is_built(tmp_path):
     assert v["partial_commits"] == []
 
 
+def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
+    """A reverted checkpoint stays in the history -- that is what makes `sgt restore` possible -- so
+    the chapter list must keep it and say it is gone, not drop it and not show it as live. Before
+    this field the only screen that prints the `@n` handles rewound the ops and then redrew the
+    chapter exactly as before: same solid bar, same `N checkpoint(s)`, nothing to distinguish the
+    chapter whose code had just left the working tree from the two beside it that were still in it.
+    `present_op_count` is the count of the chapter's ops still in HEAD's ideal, so a client can draw
+    the removal the revert preview already draws; `None` means the ideal could not be read (an unborn
+    or unmined ref), which a renderer must read as "no claim", never as "removed"."""
+    from sgt.api import segments_view
+    from sgt.core import verbs
+
+    gb, _ = init_store(tmp_path)
+    for i in range(3):
+        body = "".join(f"def f{j}():\n    return {j}\n\n\n" for j in range(i + 1))
+        (tmp_path / "a.py").write_text(body, encoding="utf-8")
+        gb.commit_all(f"feat(s{i}): step {i}")  # a fresh scope each time -> a fresh chapter
+    get(tmp_path)
+    from sgt.lens import tree
+    ops = Store(tmp_path).all_ops()
+    nodes = {"F-A": {"parent": None, "children": [], "members": [f"a.py::f{j}" for j in range(3)],
+                     "size": 3, "dir": "", "label": "Steps"}}
+    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"], "max_depth": 0,
+                         "op_leaf": tree.assign_ops_to_leaves(nodes, ops),
+                         "cannot_link_moves": [], "identity_events": []})
+
+    before = segments_view(tmp_path)
+    assert len(before) >= 2, "distinct scopes should cut distinct chapters"
+    assert all(s["present_op_count"] == s["op_count"] for s in before)  # nothing reverted yet
+
+    last = before[-1]
+    # The same op-set revert `sgt revert <feature>@<n>` runs (sgt.intent.segment's docstring).
+    verbs.apply(tmp_path, verbs.plan_revert_op_set(tmp_path, last["checkpoint"],
+                                                  frozenset(last["op_ids"])))
+
+    after = {s["checkpoint"]: s for s in segments_view(tmp_path)}
+    assert last["checkpoint"] in after, "a reverted chapter stays listed -- restore needs it"
+    assert after[last["checkpoint"]]["present_op_count"] == 0
+    for s in before[:-1]:
+        assert after[s["checkpoint"]]["present_op_count"] == s["op_count"]  # untouched chapters
+
+
 def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_path):
     """U1's fidelity field reads "full" for every cell until U2's producer records a real drop --
     forward-compatible, not a stub: `partial_commits` is empty and no cell is "partial"."""
@@ -404,6 +446,70 @@ def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_pa
     v = grid_view(repo)
     assert v["partial_commits"] == []
     assert all(c["fidelity"] == "full" for c in v["cells"])
+
+
+def _is_code_symbol(footprint: str) -> bool:
+    """A `file::symbol` footprint naming real code -- not a whole-file op (`config.yaml`) and not a
+    layout sentinel (`a.py::__anchor__::foo`), neither of which a person would recognize as missing."""
+    return "::" in footprint and "__" not in footprint.split("::", 1)[1]
+
+
+def test_grid_view_names_reverted_work_no_lane_can_show(tmp_path):
+    """The false-green this closes: `build_map` clusters *alive* symbols, so a reverted symbol's ops
+    belong to no leaf, drop out of `op_leaf`, and therefore out of every cell and every chapter. The
+    grid then draws each chapter solid and each lane whole while the code is still missing from disk
+    -- a read layer asserting a state the working tree contradicts. Ops the ideal excludes that no
+    cell accounts for are reported instead of dropped, so a surface can say what it cannot draw."""
+    from sgt.api import grid_view
+    from sgt.core import verbs
+    from sgt.lens.map import build_map
+
+    repo = _mined(tmp_path, "linear_history")
+    build_map(repo)
+    assert grid_view(repo)["reverted_unaccounted"]["op_count"] == 0  # nothing reverted yet
+
+    ops = Store(repo).all_ops()
+    victim = sorted(
+        (op for op in ops if any(_is_code_symbol(s) for s in op.footprint)), key=lambda op: op.id,
+    )[-1]
+    verbs.apply(repo, verbs.plan_revert_op_set(repo, "victim", frozenset({victim.id})))
+    build_map(repo)  # the rebuild that orphans the reverted symbol's ops
+
+    gap = grid_view(repo)["reverted_unaccounted"]
+    shown = {oid for c in grid_view(repo)["cells"] for oid in c["op_ids"]}
+    assert victim.id not in shown, "this test only means anything if the rebuild dropped the op"
+    assert gap["op_count"] >= 1
+    assert any(_is_code_symbol(s) for s in gap["symbols"]), gap["symbols"]
+
+
+def test_a_stale_ideal_table_is_not_read_as_a_revert(tmp_path):
+    """The false alarm this closes. The note was derived from `ideal_for_ref(HEAD) - current_ideal`,
+    but those two disagree for reasons that are nobody's edit: `current_ideal` trusts the persisted
+    table while `ideal_for_ref` rescans provenance, so a table written by an earlier derivation reads
+    as 1500-odd "reverted edits" on a repo where nothing was ever reverted -- measured on this repo's
+    own history. A warning that fires when nothing happened teaches a reader to ignore the warning,
+    which costs more than the case it was built for. The claim is only ever about work a *user edit*
+    removed, so the ops come from the applied `ideal_edit` events in the operation log."""
+    from sgt import api
+    from sgt.api import grid_view
+    from sgt.core import lens
+    from sgt.lens.map import build_map
+    from sgt.store.gitbind import GitBinding
+
+    repo = _mined(tmp_path, "linear_history")
+    build_map(repo)
+    ideal = lens.current_ideal(repo)
+    victim = sorted(op.id for op in Store(repo).all_ops() if op.id in ideal.op_ids)[-1]
+    # A table narrower than a fresh provenance scan, with nothing journaled -- exactly the shape a
+    # derivation leaves, and the shape the old formula mistook for a revert.
+    lens.record_ideal(repo, lens.Ideal(frozenset(ideal.op_ids - {victim})),
+                      GitBinding(repo).head(), journal=False)
+    build_map(repo)
+
+    # `shown=set()` on purpose: the question is whether the *source* of the claim is a user edit, so
+    # no cell may be left to absorb the disagreement. With the old formula this returns the victim.
+    assert api._reverted_unaccounted(repo, set())["op_count"] == 0
+    assert grid_view(repo)["reverted_unaccounted"]["op_count"] == 0
 
 
 def test_coupling_flags_a_shared_residue_removal():
@@ -503,7 +609,9 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
     """`compose_view` is purely additive glue: each key is exactly what calling the underlying
     view function directly would return, plus the current ideal's oracle verdict and an
     open-proposal list -- a workbench refresh in one call instead of ~9 shell-outs."""
-    from sgt.api import drift_view as _drift, forks_view, intent_view, sessions_view, status_view
+    from sgt.api import (
+        drift_view as _drift, forks_view, intent_view, rewrite_view, sessions_view, status_view,
+    )
     from sgt.core.lens import current_ideal
     from sgt.core.oracle import verdict_for
 
@@ -512,7 +620,7 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
 
     assert set(v) == {
         "map", "history", "status", "forks", "plan", "drift", "sessions", "trust", "intent",
-        "save_preview", "oracle_verdict", "proposals",
+        "rewrite", "save_preview", "oracle_verdict", "proposals",
     }
     assert v["map"] == map_view(repo)
     assert v["history"] == history_view(repo)
@@ -523,6 +631,7 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
     assert v["sessions"] == sessions_view(repo)
     assert v["trust"] == trust_view(repo)
     assert v["intent"] == intent_view(repo)
+    assert v["rewrite"] == rewrite_view(repo)
     assert v["save_preview"] == save_preview_view(repo)
     assert v["oracle_verdict"] == verdict_for(repo, current_ideal(repo))
     assert v["proposals"] == []  # nothing proposed in this fixture

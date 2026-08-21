@@ -424,6 +424,35 @@ def test_feature_verb_preview_view_move_reports_source_and_target_affected(tmp_p
     assert preview["affected_features"] == sorted([source, target])
 
 
+def test_the_move_summary_names_the_lane_that_loses_the_ops(tmp_path):
+    """`move`'s summary was `N op(s) -> <target>` -- the destination and nothing else. The source is
+    the half a reader has to judge, because a lane emptied of every op is dropped from the graph (the
+    husk filter in `sgt log --map`, and `computeLayout` in the workbench), so the feature survives in
+    the tree while vanishing from every view. That result is indistinguishable from the `merge` the
+    reader did not choose, and it was disclosed nowhere. `merge`'s own summary has always named both
+    sides ("absorb X -> Y")."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    split_result = _split_into_two(repo)
+    source, target = sorted(nid for nid, nd in split_result["nodes"].items() if not nd["children"])
+    from_source = [op for op, leaf in split_result["op_leaf"].items() if leaf == source]
+    assert len(from_source) > 1  # need a partial move as well as a total one
+
+    def summary(op_refs):
+        preview = verbs.plan_move(repo, op_refs, target)
+        assert preview.ok
+        return "\n".join(api._project_feature_preview(repo, "move", preview)["summary"])
+
+    partial = summary(from_source[:1])
+    assert "from " in partial
+    assert f"{len(from_source) - 1} left" in partial
+    assert "leaves the graph" not in partial  # ops remain, so the lane stays
+
+    total = summary(from_source)
+    assert "0 left" in total
+    assert "leaves the graph" in total  # the disclosure the whole line exists for
+
+
 def test_feature_verb_preview_view_revert_reports_every_affected_feature(tmp_path):
     repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
     get(repo)
@@ -460,6 +489,27 @@ def test_feature_verb_preview_view_revert_ripples_across_a_second_feature(tmp_pa
     assert preview["ok"]
     assert other in preview["affected_features"]
     assert reverted in preview["affected_features"]
+
+
+def test_feature_verb_preview_view_previews_a_checkpoint_the_same_way_it_reverts_one(tmp_path):
+    """`<feature>@<n>` is the rewind unit both timelines tell users to click, and the workbench's
+    checkpoint hover asks this view to preview it. Resolving it as a feature id instead made every
+    such hover come back `ok: false, feature ... not found; run \u0060sgt log --refresh\u0060` -- a dead
+    hover whose remedy could not help, since nothing was stale. The preview has to name the same
+    op-set `sgt revert <feature>@<n>` removes."""
+    from sgt.api import segments_view
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    lensmap.build_map(repo)
+    segs = [s for s in segments_view(repo) if s["op_ids"]]
+    if not segs:
+        pytest.skip("this fixture cut no intent segments -- no checkpoint to preview")
+    seg = segs[-1]
+
+    preview = api.feature_verb_preview_view(repo, "revert", seg["checkpoint"])
+    assert preview["ok"], preview["message"]
+    assert set(seg["op_ids"]) <= set(preview["removed"])
 
 
 def test_project_feature_preview_merge_carries_summary_and_metadata_so_what(tmp_path):

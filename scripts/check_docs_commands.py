@@ -27,9 +27,13 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-# Where we ship prose that tells someone (or something) to run a command.
+# Where we ship prose that tells someone (or something) to run a command. The study materials are
+# on this list because they are the most literal instructions we hand anyone: a participant types
+# them verbatim, with a facilitator watching, and has no way to tell a renamed verb from a tool that
+# cannot do the thing. `web/src/study/content.ts` is the same two sheets served as a web page, so it
+# drifts the same way and independently.
 DEFAULT_TARGETS = ("sgt/agent_assets/skills", "docs/guide", "README.md", "CONTRIBUTING.md",
-                   "CLAUDE.md")
+                   "CLAUDE.md", "docs/study/materials", "web/src/study/content.ts")
 
 # A backticked sgt command: `sgt log --map`, `sgt feature regroup merge <a> <b>`. Stops at the first
 # token that isn't a plain word/flag, so placeholders (`<ref>`, `"text"`) end the verb path cleanly.
@@ -200,6 +204,28 @@ def unrunnable(command: str) -> str | None:
     return f"{bad[0]} is not a flag of that verb" if bad else None
 
 
+def _fenced_as_quoted(line: str) -> str:
+    """A command inside a fenced code block, rewritten as if it were backticked, so the two regexes
+    above find it unchanged. Empty string when the line holds no command.
+
+    Fenced blocks were invisible to this check, and they are where instructions actually live: the
+    study sheets put every command a participant types in one, and the prose around it names those
+    same verbs in backticks only sometimes. A sheet could therefore go stale in the one form someone
+    copies while passing here.
+
+    The sheets write a command in a left column and its gloss in a right one (`sgt log --map     one
+    row per feature`), so the command ends at the first run of two or more spaces, or at a comment.
+    """
+    # A `.ts` sheet holds the same markdown inside a template literal, where every backtick is
+    # escaped -- so unescape before reading the line as markdown.
+    body = line.strip().replace("\\`", "`")
+    if body.startswith("$ "):
+        body = body[2:].lstrip()
+    if not body.startswith("sgt ") and body != "sgt":
+        return ""
+    return "`" + re.split(r"\s{2,}|\s+#", body, maxsplit=1)[0]
+
+
 def _iter_files(targets):
     for target in targets:
         path = REPO / target if not pathlib.Path(target).is_absolute() else pathlib.Path(target)
@@ -220,7 +246,16 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
         lines = original.splitlines(keepends=True)
         changed = False
 
-        for i, line in enumerate(lines, start=1):
+        in_fence = False
+        for i, raw_line in enumerate(lines, start=1):
+            if raw_line.strip().replace("\\`", "`").startswith("```"):
+                in_fence = not in_fence
+                continue
+            # Inside a fence the command is bare; scan a backticked rewrite of it so both regexes
+            # work as written. `--fix` skips these: the line has no backtick to rewrite.
+            line = _fenced_as_quoted(raw_line) if in_fence else raw_line
+            if not line:
+                continue
             # Markdown prose wraps, so an exemption phrase ("...has no command-line entry point")
             # routinely lands on the line after the command it qualifies. Test the sentence-ish
             # window around the match rather than the single line.
@@ -243,7 +278,7 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
                 replacement = _replacement(verb, routing, renamed)
                 quoted = f"sgt {' '.join(tokens)}"
                 findings.append((_display(path), i, quoted, replacement))
-                if fix and replacement is not None:
+                if fix and replacement is not None and not in_fence:
                     # Replace just the verb, keeping whatever arguments followed it.
                     rest = " ".join(tokens[1:])
                     fixed = f"`{replacement}" + (f" {rest}" if rest else "")
@@ -280,12 +315,18 @@ def main(argv=None) -> int:
         print("✓ every quoted sgt command dispatches")
         return 0
 
-    verb = "rewrote" if args.fix else "found"
-    print(f"✗ {verb} {len(findings)} command(s) that do not dispatch:\n")
+    print(f"✗ found {len(findings)} command(s) that do not dispatch:\n")
     for path, line, quoted, replacement in findings:
         fix_note = f"  ->  {replacement}" if replacement else "  ->  no such verb"
         print(f"  {path}:{line}  `{quoted}`{fix_note}")
-    if not args.fix:
+    if args.fix:
+        # Not "rewrote N": the count includes findings `--fix` deliberately left alone (a bad flag,
+        # a verb with no computable replacement, anything inside a code block), and claiming a
+        # rewrite that did not happen is the one thing a checker must not do.
+        print("\nRe-homed commands in prose were rewritten. Commands inside code blocks are "
+              "reported only: there is no backtick to rewrite, and the lines around them usually "
+              "need editing too.")
+    else:
         print("\nRe-run with --fix to rewrite the ones that have a computable replacement.")
     return 1
 

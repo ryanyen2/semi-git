@@ -9,7 +9,8 @@
 
 import * as vscode from "vscode";
 import { Store } from "./store";
-import { SaveFeature } from "./types";
+import { SaveFeature, UndoPreview } from "./types";
+import { undoConfirmText } from "./undoConfirm";
 
 // One feature's clause in the save attribution toast: its label (or "NEW unnamed feature" for a lane
 // the save just minted), plus the first symbol it touched and a "+N" for the rest.
@@ -69,6 +70,12 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
 
   reg("sgt.save", async () => {
     const message = await vscode.window.showInputBox({ prompt: "Commit message (optional)" });
+    // Esc aborts, the way it does at every other "(optional)" prompt in this file. It used to save
+    // anyway, which made this the one dialog where backing out of it still mutated the repo. Enter on
+    // an empty box is still how you save without a message -- that returns "", not undefined.
+    if (message === undefined) {
+      return;
+    }
     try {
       const result = await store.sgt.save(message || undefined);
       store.invalidate();
@@ -112,7 +119,30 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
   });
 
   reg("sgt.undo", async () => {
-    const ok = await vscode.window.showWarningMessage("Undo the last operation?", { modal: true }, "Undo");
+    // "Undo the last operation?" was the whole of this dialog: it asked for consent to reverse an
+    // operation without saying which one, so the answer was a guess about what the user last did.
+    // Undo is what you reach for when something has already gone wrong, which is the worst moment
+    // to be asked blind -- and everything the question needs is known in advance. `sgt undo --emit`
+    // reports it: the kind of operation being reversed, the edits coming back, the edits going away,
+    // and the symbols by name. Same report `sgt undo` prints at a terminal before its own [y/N].
+    let pv: UndoPreview;
+    try {
+      pv = await store.sgt.undoPreview();
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    const say = undoConfirmText(pv);
+    if (say.kind === "nothing") {
+      vscode.window.showInformationMessage(say.message);
+      return;
+    }
+    if (say.kind === "refused") {
+      vscode.window.showWarningMessage(say.message, { modal: true });
+      return;
+    }
+    const ok = await vscode.window.showWarningMessage(
+      say.message, { modal: true, detail: say.detail }, "Undo");
     if (ok !== "Undo") {
       return;
     }

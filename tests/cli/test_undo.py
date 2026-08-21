@@ -136,3 +136,50 @@ def test_undo_refuses_when_it_would_clobber_a_raw_commit_and_force_overrides(tmp
     assert _in(repo, ["undo", "--force"]) == 0  # opt in to dropping baz
     assert b"def bar" in (repo / "a.py").read_bytes()  # revert undone
     assert b"def baz" not in (repo / "a.py").read_bytes()  # baz dropped as forced
+
+
+def test_emit_says_what_undo_would_reverse_without_reversing_it(tmp_path, capsys):
+    """`sgt undo --emit`: the dry run every other ideal-edit verb already has.
+
+    `oplog.preview` has always known what the next undo would do, but the only thing that read it
+    was `undo`'s own tty confirm -- so a non-tty caller (the VS Code extension, MCP) could not ask
+    the question at all, only take the action. `--emit` is the same hidden machine dry-run
+    `revert`/`restore` expose, so the caller that has to draw a confirm dialog can name what will
+    happen in it."""
+    repo = tmp_path / "repo"
+    _seed(repo)
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)
+    assert b"def bar" not in (repo / "a.py").read_bytes()
+
+    capsys.readouterr()
+    assert _in(repo, ["undo", "--emit", "--json"]) == 0
+    view = json.loads(capsys.readouterr().out)
+    assert view["ok"] is True
+    assert view["kind"] == "ideal_edit"
+    assert view["restored"], "the revert's op comes back -- the preview has to say so"
+    assert any("bar" in s for s in view["symbols"])
+    # A dry run that mutates is not a dry run.
+    assert b"def bar" not in (repo / "a.py").read_bytes()
+
+
+def test_emit_reports_the_refusal_before_the_undo_is_attempted(tmp_path, capsys):
+    """The F3 casualty (0.2c) is decided from state that is already known, so `--emit` reports it as
+    `ok: false` up front rather than leaving the caller to discover it from a failed mutation."""
+    repo = tmp_path / "repo"
+    gb = _seed(repo)
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    verbs.revert(repo, bar.id)
+    (repo / "a.py").write_text(
+        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
+    )
+    gb.commit_all("RAW: add baz (no sgt)")
+    lens.get(repo)
+
+    capsys.readouterr()
+    assert _in(repo, ["undo", "--emit", "--json"]) == 0  # the report succeeded; the undo would not
+    view = json.loads(capsys.readouterr().out)
+    assert view["ok"] is False
+    assert "baz" in view["message"]
+    assert b"def baz" in (repo / "a.py").read_bytes()
+    assert b"def bar" not in (repo / "a.py").read_bytes()

@@ -90,7 +90,7 @@ def _select(repo: str, features: list[str], as_json: bool) -> int:
             print(f"    {arrow}{hop['op_id']}")
     if view["hub"]:
         print(f"  ⚠ hub: {view['hub']['symbol']} pulled in {view['hub']['pulled_op_count']} op(s) "
-              "-- consider `sgt split` or `sgt identity split`")
+              "-- consider `sgt feature regroup split` or `sgt advanced identity split`")
     return 0
 
 
