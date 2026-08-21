@@ -9,7 +9,7 @@
 
 import type { GroundTruth, RequestId } from '../lib/types'
 import { PROJECTS } from '../lib/types'
-import { requestById } from './tasks'
+import { BEHAVIOURS, requestById } from './tasks'
 
 /**
  * Why this is stricter than "is it a JSON object with the right top-level keys".
@@ -38,7 +38,38 @@ export function validateGroundTruth(parsed: GroundTruth): void {
   }
 
   for (const [requestId, entry] of Object.entries(parsed.requestKeys)) {
-    const asked = requestById(requestId as RequestId)?.choices ?? []
+    const spec = requestById(requestId as RequestId)
+
+    // A reach trial with no key scores by set overlap against nothing, so every
+    // participant gets zero and the run looks like a hard trial rather than a
+    // missing answer. An id the trial does not offer is worse than absent: it can
+    // never be ticked, so it is a guaranteed miss that lowers everyone's score by
+    // the same amount and leaves the ranking intact.
+    if (spec?.reach) {
+      if (!entry.reach || entry.reach.length === 0) {
+        throw new Error(
+          `That key has no reach answer for ${requestId}, so the prediction trial ` +
+            'would score every participant zero. Regenerate it with ' +
+            'scripts/study/measure_reach_key.py.',
+        )
+      }
+      const offered = BEHAVIOURS.map((b) => b.id)
+      const unknown = entry.reach.filter((id) => !offered.includes(id))
+      if (unknown.length > 0) {
+        throw new Error(
+          `That key answers ${requestId} with behaviours the trial does not offer: ` +
+            `${unknown.join(', ')}. The key and the behaviour list have drifted apart.`,
+        )
+      }
+      if (entry.reach.length === offered.length) {
+        throw new Error(
+          `That key says ${requestId} reaches all ${offered.length} behaviours, which ` +
+            'ticking everything would score perfectly. It looks like a placeholder.',
+        )
+      }
+    }
+
+    const asked = spec?.choices ?? []
     if (asked.length === 0) continue
     if (!entry.choices) {
       throw new Error(`That key has no closed-question answers for ${requestId}.`)

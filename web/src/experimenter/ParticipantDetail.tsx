@@ -23,7 +23,7 @@ import type {
 import { REQUESTS, requestById } from '../study/tasks'
 import { HLAC, instrumentById } from '../study/instruments'
 import { gitExpertise, tlxScore, umuxLiteScore } from '../lib/stats'
-import { analyzeParticipant, choiceKeyFrom } from '../analysis/pipeline'
+import { analyzeParticipant, keysFrom } from '../analysis/pipeline'
 import { Callout, Empty, Tabs, fmtAgo, fmtDuration } from '../ui/bits'
 import { CATEGORY_COLOR } from '../charts/theme'
 import { CATEGORY_LABEL } from '../study/taxonomy'
@@ -503,7 +503,7 @@ function RequestCard({
   // here: there is no judgement left to make, and a checkbox next to a lookup
   // is an invitation to disagree with it. Shown so the facilitator can see what
   // was answered without opening Firestore.
-  const wanted = choiceKeyFrom(truth)[req.requestId]?.[req.project] ?? null
+  const wanted = keysFrom(truth).choices[req.requestId]?.[req.project] ?? null
   const rightCount =
     wanted && spec
       ? spec.choices.filter((q) => req.choices?.[q.id] === wanted[q.id]).length

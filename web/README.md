@@ -63,16 +63,23 @@ npm run build
 Run the whole study against local emulators, with an orange banner on every page
 so it cannot be confused with a session:
 
+The Firestore emulator is a Java program, and the error it gives when Java is
+missing names Java without saying where yours is. Homebrew's `openjdk` is
+keg-only, so installing it does not put `java` on your PATH:
+
 ```bash
-# terminal 1: Firestore. The bundled emulator jar runs on Java 17; recent
-# firebase-tools refuses to launch it below Java 21, so call it directly.
-java -jar ~/.cache/firebase/emulators/cloud-firestore-emulator-v*.jar \
-    --host=127.0.0.1 --port=8080
+brew install openjdk                          # if you have not already
+export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+java -version                                 # should print a version, not a link to java.com
+```
+
+Then two terminals:
+
+```bash
+# terminal 1: Firestore and Auth together
+firebase emulators:start --only firestore,auth --project sem-git
 
 # terminal 2
-firebase emulators:start --only auth --project sem-git
-
-# terminal 3
 VITE_USE_EMULATOR=1 npm run dev
 ```
 
@@ -82,7 +89,7 @@ build-time constant, so it is compiled out of a production bundle entirely.
 ### Tests
 
 ```bash
-npm test                                     # needs the Firestore emulator up
+npm test                                     # needs the Firestore emulator up (see above)
 FIGURE_OUT=/tmp/figs npm test                # also writes the figures to look at
 ```
 

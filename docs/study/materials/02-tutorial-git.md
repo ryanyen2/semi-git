@@ -10,6 +10,8 @@ Run `study-practice`. It puts you in a throwaway copy of a small shopping cart p
 
 It has four pieces: `cart.py` (adding and removing things, and the total), `discount.py` (a percentage off, or a coupon code), `receipt.py` (printing a receipt), and `shipping.py` (what postage costs). Sixteen commits, and `python -m pytest -q` passes.
 
+Every command on this sheet runs in the practice copy, and those four files only exist there. If `ls` shows anything else, you are in the real project: run `study-practice` and try again.
+
 ## 1. The editor first
 
 ```

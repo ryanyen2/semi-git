@@ -1,4 +1,4 @@
-import { interpolateBrBG } from 'd3'
+import { interpolateBrBG } from 'd3-scale-chromatic'
 import type { Category } from '../study/taxonomy'
 import type { Condition } from '../lib/types'
 

@@ -1,13 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
 import { orderBy } from 'firebase/firestore'
 import { fetchParticipantBundle, isPilot, useLiveCollection, useLiveDoc } from '../lib/db'
-import type { Condition, GroundTruth, Participant, RequestId } from '../lib/types'
-import { buildDataset, choiceKeyFrom, conditionValue, halfOf, type Dataset } from '../analysis/pipeline'
+import type { Condition, GroundTruth, Participant } from '../lib/types'
+import { buildDataset, conditionValue, halfOf, keysFrom, type Dataset } from '../analysis/pipeline'
 import { compareNgrams, conditionTotals, strips, timeProfile } from '../analysis/ngram'
 import { demoDataset } from '../analysis/demo'
+import { figure2Panels } from '../analysis/figures'
 import { HLAC } from '../study/instruments'
 import { LikertDiverging, type LikertResponse } from '../charts/LikertDiverging'
-import { PairedEstimation, type PairedPanel } from '../charts/PairedEstimation'
+import { PairedEstimation } from '../charts/PairedEstimation'
 import { ProcessSignature } from '../charts/ProcessSignature'
 import { downloadCsv, downloadPng, downloadSvg } from '../lib/svgExport'
 import { pairedEstimate } from '../lib/stats'
@@ -56,7 +57,7 @@ export function Results() {
           }
         }),
       )
-      setDataset(buildDataset(bundles.filter((b) => b.participant), choiceKeyFrom(truth)))
+      setDataset(buildDataset(bundles.filter((b) => b.participant), keysFrom(truth)))
     } finally {
       setLoading(false)
     }
@@ -356,63 +357,14 @@ function Figure1({ dataset }: { dataset: Dataset }) {
 
 function Figure2({ dataset }: { dataset: Dataset }) {
   const ref = useRef<SVGSVGElement>(null)
-
-  const panels: PairedPanel[] = useMemo(() => {
-    const build = (
-      id: string,
-      title: string,
-      subtitle: string,
-      pick: (p: Dataset['participants'][number], c: Condition) => number,
-      higherIsBetter: boolean,
-      domain?: [number, number],
-      unit?: string,
-    ): PairedPanel => ({
-      id,
-      title,
-      subtitle,
-      higherIsBetter,
-      domain,
-      unit,
-      values: dataset.participants.map((p) => ({
-        pid: p.pid,
-        label: p.label,
-        git: pick(p, 'git'),
-        sgt: pick(p, 'sgt'),
-      })),
-    })
-
-    const scoreOf = (rs: RequestId[]) => (p: Dataset['participants'][number], c: Condition) =>
-      conditionValue(p, c, (m) => m.score, 'sum', rs)
-
-    return [
-      build(
-        'r1',
-        'R1 provenance',
-        'find when, why, and what it belonged to',
-        (p, c) => conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
-        true,
-        [0, 3],
-        'questions right',
-      ),
-      build('r23', 'R2+R3 removal', 'take the waitlist out, keep drops', scoreOf(['r2', 'r3']), true, [0, 4], 'rubric points'),
-      build(
-        'damage',
-        'Collateral damage',
-        'tests broken outside the target',
-        (p, c) => conditionValue(p, c, (m) => m.collateralDamage, 'sum'),
-        false,
-        undefined,
-        'failing tests',
-      ),
-    ]
-  }, [dataset])
+  const panels = useMemo(() => figure2Panels(dataset), [dataset])
 
   return (
     <FigureFrame
       id="fig2-outcomes"
       title="Figure 2 · What people managed to do"
       svgRef={ref}
-      caption="Every participant appears twice, joined by a line. Thick bars are condition means. Below each panel, the paired mean difference with its bootstrap distribution and 95% studentized interval on its own axis, anchored at zero. Collateral damage is plotted with the axis inverted, so up is better in all three panels."
+      caption="Every participant appears twice, joined by a line. Thick bars are condition means. Below each panel, the paired mean difference with its bootstrap distribution and 95% studentized interval on its own axis, anchored at zero. The two prediction panels average the pair of trials, whose answer sets were built to differ in size so that ticking more boxes cannot raise both. Collateral damage is plotted with the axis inverted, so up is better in every panel."
     >
       <PairedEstimation ref={ref} panels={panels} order={ORDER} />
     </FigureFrame>

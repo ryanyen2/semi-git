@@ -11,9 +11,16 @@ import {
   useLiveCollection,
   writeDraft,
 } from '../../lib/db'
-import type { PauseInterval, Project, RequestDoc, RequestId } from '../../lib/types'
+import type { PauseInterval, Project, ReachStage, RequestDoc, RequestId } from '../../lib/types'
 import { blockFor, type Step } from '../../study/flow'
-import { BLOCK_CAP_MIN, SCENARIO, taskCards, type ChoiceQuestion } from '../../study/tasks'
+import {
+  BEHAVIOURS,
+  BLOCK_CAP_MIN,
+  SCENARIO,
+  taskCards,
+  type ChoiceQuestion,
+  type ReachTrial,
+} from '../../study/tasks'
 import { TASK_PREAMBLE } from '../../study/content'
 import { Callout, Countdown, fmtClock, useCountdown } from '../../ui/bits'
 import { Markdown } from '../../ui/Markdown'
@@ -164,7 +171,13 @@ function TaskCardView({
   const project = block.project
   const lead = card.requests[0]
   const leadDoc = docFor(lead.id)
-  const capMs = (card.capMin ?? 0) * 60_000
+  const reach = lead.reach
+  // A reach card runs two stage clocks of its own, and the card cap is their sum.
+  // Showing both would put two countdowns on one card disagreeing about how long
+  // is left, so the card's is suppressed and the stage's is the only one. `hitCap`
+  // follows the same rule: with no card clock there is no card cap to hit, and
+  // whether a stage ran out is recorded in the stage.
+  const capMs = reach ? 0 : (card.capMin ?? 0) * 60_000
   const [now, setNow] = useState(Date.now())
   const [pauseOpen, setPauseOpen] = useState(false)
 
@@ -295,6 +308,15 @@ function TaskCardView({
         </div>
         {card.requests.map((r) => {
           const d = docFor(r.id)
+          if (r.reach && d?.stages) {
+            const n = (s?: { picks: string[] }) => s?.picks.length ?? 0
+            return (
+              <div key={r.id} className="small muted" style={{ marginTop: '0.75rem' }}>
+                First answer {n(d.stages.blind)} of {BEHAVIOURS.length}, final answer{' '}
+                {n(d.stages.checked)} of {BEHAVIOURS.length}.
+              </div>
+            )
+          }
           if (!r.choices.length || !d?.choices) return null
           return (
             <div key={r.id} className="small" style={{ marginTop: '0.75rem' }}>
@@ -351,6 +373,17 @@ function TaskCardView({
                 </div>
               )}
             </div>
+            {r.reach && (
+              <ReachAnswers
+                pid={pid}
+                half={half}
+                request={r.id}
+                doc={docFor(r.id)}
+                trial={r.reach}
+                project={project}
+                onFinish={() => finishCard('done')}
+              />
+            )}
             {r.choices.length > 0 && (
               <ChoiceAnswers
                 pid={pid}
@@ -370,9 +403,13 @@ function TaskCardView({
 
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div className="row tight">
-          <button className="btn primary" onClick={() => finishCard('done')}>
-            Mark done
-          </button>
+          {/* A reach card's own buttons submit it: "Mark done" beside them would be a
+              second way to end the trial that skips writing the stage. */}
+          {!reach && (
+            <button className="btn primary" onClick={() => finishCard('done')}>
+              Mark done
+            </button>
+          )}
           <button className="btn" onClick={() => finishCard('partial')}>
             Stop here
           </button>
@@ -382,26 +419,32 @@ function TaskCardView({
             </button>
           )}
         </div>
-        <div className="row tight">
-          {pauseOpen ? (
-            <>
-              {PAUSE_REASONS.map(([reason, label]) => (
-                <button key={reason} className="btn sm" onClick={() => togglePause(reason)}>
-                  {label}
+        {/* No pause on a reach card. The blind minute is the control that makes
+            `blind` mean "at a glance", and a pause button beside it is a way to
+            take ten minutes over it instead. Four minutes is short enough to sit
+            through; anything that goes wrong is "Stop here". */}
+        {!reach && (
+          <div className="row tight">
+            {pauseOpen ? (
+              <>
+                {PAUSE_REASONS.map(([reason, label]) => (
+                  <button key={reason} className="btn sm" onClick={() => togglePause(reason)}>
+                    {label}
+                  </button>
+                ))}
+                <button className="btn sm ghost" onClick={() => setPauseOpen(false)}>
+                  Cancel
                 </button>
-              ))}
-              <button className="btn sm ghost" onClick={() => setPauseOpen(false)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            !activePause && (
-              <button className="btn ghost sm" onClick={() => setPauseOpen(true)}>
-                Pause the clock
-              </button>
-            )
-          )}
-        </div>
+              </>
+            ) : (
+              !activePause && (
+                <button className="btn ghost sm" onClick={() => setPauseOpen(true)}>
+                  Pause the clock
+                </button>
+              )
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -505,46 +548,384 @@ function ChoiceAnswers({
         </div>
       ))}
       {wantsConfidence && (
-        <div style={{ marginTop: '0.5rem' }}>
-          <div className="field-label">How sure are you?</div>
-          <div className="row" style={{ flexWrap: 'nowrap', gap: '0.75rem' }}>
+        <ConfidenceSlider
+          value={confidence}
+          onChange={(v) => {
+            setConfidence(v)
+            setDirty(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Shared because both places that ask it have the same hazard: touching the thumb
+ * where it already sits fires no change event, so a participant who means exactly
+ * 50 leaves no answer at all. Confidence is half of the calibration measure, and
+ * losing it quietly is worse than losing it loudly, so `onPointerDown` commits the
+ * midpoint and an unanswered slider says so in words.
+ */
+function ConfidenceSlider({
+  value,
+  onChange,
+  label = 'How sure are you?',
+}: {
+  value: number | null
+  onChange: (v: number) => void
+  label?: string
+}) {
+  return (
+    <div style={{ marginTop: '0.5rem' }}>
+      <div className="field-label">{label}</div>
+      <div className="row" style={{ flexWrap: 'nowrap', gap: '0.75rem' }}>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={value ?? 50}
+          aria-label="Confidence"
+          aria-valuetext={value == null ? 'not answered yet' : String(value)}
+          style={value == null ? { opacity: 0.72 } : undefined}
+          onChange={(e) => onChange(Number(e.target.value))}
+          onPointerDown={() => {
+            if (value == null) onChange(50)
+          }}
+        />
+        <span className="tlx-value" style={value == null ? { color: 'var(--faint)' } : undefined}>
+          {value == null ? '–' : value}
+        </span>
+      </div>
+      <div className="anchors">
+        <span>Guessing</span>
+        <span>Certain</span>
+      </div>
+      {value == null && (
+        <div className="tiny faint">Not answered yet — click anywhere on the line.</div>
+      )}
+    </div>
+  )
+}
+
+/** The five states a reach trial passes through, in order. */
+type ReachPhase = 'intro' | 'blind' | 'rateBlind' | 'checked' | 'rateChecked'
+
+/**
+ * The two-stage reach trial: tick the behaviours this piece of work reaches, once
+ * from the representation alone and once after checking properly.
+ *
+ * Why five states rather than one form with two columns. The measurement is the
+ * difference between the two answers, and that only means anything if the first
+ * one was committed before the second was possible -- a single form lets a
+ * participant fill in the "blind" column after looking, in good faith, and there
+ * is nothing in the data afterwards that shows they did. So the blind answer is
+ * written to the server before the checked stage opens, and the blind grid is
+ * read-only from that point on.
+ *
+ * Why confidence is rated after each stage's clock has stopped. Rating inside the
+ * minute would spend the minute, and the minute is there to bound reading, not to
+ * price a slider.
+ *
+ * Why the checked stage starts from the blind picks rather than empty. They are
+ * revising a prediction, not making an unrelated second one, and re-ticking twelve
+ * boxes from scratch would spend the stage on data entry. It anchors them, which
+ * makes `gain` harder to earn rather than easier -- the conservative direction for
+ * the claim it supports.
+ */
+function ReachAnswers({
+  pid,
+  half,
+  request,
+  doc,
+  trial,
+  project,
+  onFinish,
+}: {
+  pid: string
+  half: 1 | 2
+  request: RequestId
+  doc: RequestDoc | undefined
+  trial: ReachTrial
+  project: Project
+  onFinish: () => void
+}) {
+  // The draft carries what the server does not yet have: the picks in progress and
+  // the blind stage's deadline. A reload inside the minute would otherwise have no
+  // origin to count from and would silently restart the clock.
+  const key = draftKey(pid, 'reach', `${request}-h${half}`)
+  type Draft = { phase: ReachPhase; picks: string[]; endsAt: number | null }
+
+  // Recovery order matters, and one order is wrong in a way nothing would report:
+  // resuming to `checked` because a blind stage exists skips the rating in between,
+  // so the blind confidence is lost for good and the calibration measure quietly
+  // has a hole in it. An unrated blind stage therefore resumes at its rating.
+  const [phase, setPhase] = useState<ReachPhase>(() => {
+    if (doc?.stages?.checked) return 'rateChecked'
+    if (doc?.stages?.blind) return doc.stages.blind.confidence == null ? 'rateBlind' : 'checked'
+    return readDraft<Draft>(key)?.value.phase ?? 'intro'
+  })
+  // Draft first: it is written on every change, so it is never older than the
+  // server's copy, and during the checked stage it is the only copy of the edits.
+  const [picks, setPicks] = useState<string[]>(
+    () => readDraft<Draft>(key)?.value.picks ?? doc?.stages?.blind?.picks ?? [],
+  )
+  const [confidence, setConfidence] = useState<number | null>(null)
+  const [endsAt, setEndsAt] = useState<number | null>(
+    () => readDraft<Draft>(key)?.value.endsAt ?? null,
+  )
+
+  useEffect(() => {
+    writeDraft(key, { phase, picks, endsAt } satisfies Draft)
+  }, [key, phase, picks, endsAt])
+
+  // One ticking clock, owned by whichever stage is running.
+  const [now, setNow] = useState(Date.now())
+  const running = phase === 'blind' || phase === 'checked'
+  useEffect(() => {
+    if (!running) return
+    const t = window.setInterval(() => setNow(Date.now()), 250)
+    return () => window.clearInterval(t)
+  }, [running])
+  const capMs = (phase === 'blind' ? trial.blindSec : trial.checkedSec) * 1000
+  const remaining = endsAt ? endsAt - now : capMs
+
+  /**
+   * Time in the stage is derived from the deadline rather than from a start held in
+   * state, so a reload mid-stage resumes with the elapsed time intact instead of
+   * counting again from zero. `merge: true` merges nested maps, so writing one
+   * stage leaves the other alone and no stale local copy has to be spread in.
+   */
+  const buildStage = useCallback(
+    (stage: 'blind' | 'checked', at: number, deadline: number | null, conf: number | null) => {
+      const spanMs = (stage === 'blind' ? trial.blindSec : trial.checkedSec) * 1000
+      return {
+        picks,
+        confidence: conf,
+        submittedAt: at,
+        activeMs: deadline ? Math.max(0, Math.min(spanMs, spanMs - (deadline - at))) : 0,
+      } satisfies ReachStage
+    },
+    [picks, trial.blindSec, trial.checkedSec],
+  )
+
+  const write = useCallback(
+    (stage: 'blind' | 'checked', value: ReachStage) =>
+      patchRequest(pid, request, half, { stages: { [stage]: value } }),
+    [pid, request, half],
+  )
+
+  /**
+   * The blind stage as written, kept so the rating that follows can be added to it
+   * without recomputing the timing. Recomputing is what introduced the bug this
+   * replaces: it folded the seconds spent moving the confidence slider into
+   * `activeMs`, and `activeMs` is what says whether the blind answer was read off
+   * the representation or reasoned out from general knowledge.
+   */
+  const [blindStage, setBlindStage] = useState<ReachStage | null>(doc?.stages?.blind ?? null)
+
+  const submitBlind = useCallback(
+    (at: number) => {
+      const value = buildStage('blind', at, endsAt, null)
+      setBlindStage(value)
+      void write('blind', value)
+    },
+    [buildStage, endsAt, write],
+  )
+
+  // The minute is hard. Whatever is ticked when it runs out is the blind answer,
+  // which is the point: an answer improved after the deadline is not a blind one.
+  useEffect(() => {
+    if (phase !== 'blind' || !endsAt || now < endsAt) return
+    setPhase('rateBlind')
+    submitBlind(endsAt)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, endsAt, now])
+
+  useFlushOnHide(() => {
+    writeDraft(key, { phase, picks, endsAt } satisfies Draft)
+  })
+
+  function toggle(id: string) {
+    setPicks((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const grid = (editable: boolean) => (
+    <div className="grid-2" style={{ marginTop: '0.75rem' }}>
+      {BEHAVIOURS.map((b) => {
+        const on = picks.includes(b.id)
+        return (
+          <label
+            key={b.id}
+            className={`check${on ? ' on' : ''}`}
+            style={editable ? undefined : { cursor: 'default', opacity: on ? 1 : 0.55 }}
+          >
             <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={confidence ?? 50}
-              aria-label="Confidence"
-              aria-valuetext={confidence == null ? 'not answered yet' : String(confidence)}
-              style={confidence == null ? { opacity: 0.72 } : undefined}
-              onChange={(e) => {
-                setConfidence(Number(e.target.value))
-                setDirty(true)
-              }}
-              // Touching the thumb where it already sits fires no change event,
-              // so a participant who means exactly 50 would otherwise leave no
-              // answer at all. Confidence is half of the calibration measure;
-              // losing it quietly would be worse than losing it loudly.
-              onPointerDown={() => {
-                if (confidence == null) {
-                  setConfidence(50)
-                  setDirty(true)
-                }
-              }}
+              type="checkbox"
+              checked={on}
+              disabled={!editable}
+              onChange={() => toggle(b.id)}
             />
-            <span className="tlx-value" style={confidence == null ? { color: 'var(--faint)' } : undefined}>
-              {confidence == null ? '–' : confidence}
+            <span>
+              {b.label[project]}
+              <br />
+              <code className="tiny">{b.command[project]}</code>
             </span>
+          </label>
+        )
+      })}
+    </div>
+  )
+
+  const counted = (
+    <div className="small muted tabular">
+      {picks.length} of {BEHAVIOURS.length} ticked
+    </div>
+  )
+
+  if (phase === 'intro') {
+    return (
+      <div className="stack tight" style={{ marginTop: '1rem' }}>
+        <Callout kind="accent" title={`First answer: ${trial.blindSec} seconds on the clock`}>
+          Tick what you can already tell from what is in front of you. Do not open the project
+          yet. The clock starts when you press the button, runs for{' '}
+          <strong>{trial.blindSec} seconds</strong>, and submits whatever is ticked when it ends.
+          Then you get {Math.round(trial.checkedSec / 60)} minutes to check properly and change
+          your mind. Getting the first one wrong is expected — the difference between the two is
+          what we are measuring.
+        </Callout>
+        {grid(false)}
+        <div>
+          <button
+            className="btn primary"
+            onClick={() => {
+              const t = Date.now()
+              setEndsAt(t + trial.blindSec * 1000)
+              setNow(t)
+              setPhase('blind')
+            }}
+          >
+            Start the {trial.blindSec} seconds
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'blind') {
+    return (
+      <div className="stack tight" style={{ marginTop: '1rem' }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="field-label" style={{ margin: 0 }}>
+            First answer — from what you can see
           </div>
-          <div className="anchors">
-            <span>Guessing</span>
-            <span>Certain</span>
-          </div>
+          <Countdown remaining={remaining} capMs={capMs} />
+        </div>
+        {grid(true)}
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <button
+            className="btn primary"
+            onClick={() => {
+              setPhase('rateBlind')
+              submitBlind(Date.now())
+            }}
+          >
+            Lock this in
+          </button>
+          {counted}
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'rateBlind') {
+    return (
+      <div className="stack tight" style={{ marginTop: '1rem' }}>
+        <div className="field-label">Your first answer is in — {picks.length} ticked</div>
+        {grid(false)}
+        <ConfidenceSlider
+          label="How sure are you of that first answer?"
+          value={confidence}
+          onChange={setConfidence}
+        />
+        <div>
+          <button
+            className="btn primary"
+            disabled={confidence == null}
+            onClick={() => {
+              const t = Date.now()
+              if (blindStage) void write('blind', { ...blindStage, confidence })
+              setConfidence(null)
+              setEndsAt(t + trial.checkedSec * 1000)
+              setNow(t)
+              setPhase('checked')
+            }}
+          >
+            Now go and check
+          </button>
           {confidence == null && (
-            <div className="tiny faint">Not answered yet — click anywhere on the line.</div>
+            <span className="small muted" style={{ marginLeft: '0.75rem' }}>
+              Rate it first.
+            </span>
           )}
         </div>
-      )}
+      </div>
+    )
+  }
+
+  if (phase === 'checked') {
+    return (
+      <div className="stack tight" style={{ marginTop: '1rem' }}>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="field-label" style={{ margin: 0 }}>
+            Now check properly, and change whatever you got wrong
+          </div>
+          <Countdown remaining={remaining} capMs={capMs} />
+        </div>
+        <Callout kind="soft" title="What you may use">
+          Anything that does not change the project: read the history, read the code, run the app,
+          ask the assistant. Changing nothing is fine — so is changing all twelve.
+        </Callout>
+        {grid(true)}
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <button className="btn primary" onClick={() => setPhase('rateChecked')}>
+            That is my answer
+          </button>
+          {counted}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="stack tight" style={{ marginTop: '1rem' }}>
+      <div className="field-label">Final answer — {picks.length} ticked</div>
+      {grid(false)}
+      <ConfidenceSlider
+        label="How sure are you now?"
+        value={confidence}
+        onChange={setConfidence}
+      />
+      <div>
+        <button
+          className="btn primary"
+          disabled={confidence == null}
+          onClick={() => {
+            void (async () => {
+              await write('checked', buildStage('checked', Date.now(), endsAt, confidence))
+              onFinish()
+            })()
+          }}
+        >
+          Submit and finish this one
+        </button>
+        {confidence == null && (
+          <span className="small muted" style={{ marginLeft: '0.75rem' }}>
+            Rate it first.
+          </span>
+        )}
+      </div>
     </div>
   )
 }

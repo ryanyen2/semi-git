@@ -13,7 +13,7 @@ import type { Dataset, HalfSummary, ParticipantAnalysis, RequestMetrics } from '
 import { blocksForGroup, groupForOrdinal } from '../study/flow'
 import { HLAC } from '../study/instruments'
 
-const REQUEST_IDS = ['r1', 'r2', 'r3'] as const
+const REQUEST_IDS = ['r1', 'f1', 'f2', 'r2', 'r3'] as const
 
 /** Rough transition weights, different enough between conditions to be visible. */
 const CHAINS: Record<Condition, Partial<Record<Category, Partial<Record<Category, number>>>>> = {
@@ -134,7 +134,33 @@ export function demoDataset(seed = 4242): Dataset {
         const choiceScore = closed ? clamp(Math.round(score * 1.4 + gauss() * 0.5), 0, 3) : null
         const confidence = clamp(Math.round(55 + score * 12 + gauss() * 14), 0, 100)
 
+        // The prediction trials. Both arms can reach the truth by checking, so the
+        // two conditions separate mostly on the blind stage and therefore on `gain`
+        // -- which is the shape the figures have to be able to draw, including the
+        // case where it is absent. f1's key holds one behaviour and f2's holds four,
+        // so a wrong tick costs more on f1: that asymmetry is the response-bias
+        // control and it should be visible in demo data too.
+        const trial = rid === 'f1' || rid === 'f2'
+        const blindF1 = trial
+          ? clamp(0.24 + (sgt ? 0.2 : 0) + ability * 0.12 + gauss() * 0.14, 0, 1)
+          : 0
+        const checkedF1 = trial ? clamp(blindF1 + 0.3 + ability * 0.1 + gauss() * 0.16, 0, 1) : 0
+        const reach = trial
+          ? {
+              blind: blindF1,
+              checked: checkedF1,
+              gain: checkedF1 - blindF1,
+              blindConfidence: clamp(Math.round(48 + blindF1 * 40 + gauss() * 12), 0, 100),
+              checkedConfidence: clamp(Math.round(64 + checkedF1 * 30 + gauss() * 10), 0, 100),
+              blindActiveMs: clamp(38_000 + gauss() * 12_000, 8_000, 60_000),
+              blindPicked: Math.round(clamp(3 + gauss() * 2, 0, 12)),
+              checkedPicked: Math.round(clamp((rid === 'f1' ? 2 : 4) + gauss() * 1.5, 0, 12)),
+              outOf: rid === 'f1' ? 1 : 4,
+            }
+          : null
+
         requests.push({
+          reach,
           requestId: rid,
           half: block.half,
           condition: block.condition,

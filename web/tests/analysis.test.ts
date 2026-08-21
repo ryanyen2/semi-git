@@ -6,7 +6,13 @@
 
 import { describe, expect, it } from 'vitest'
 import type { EventDoc, Participant, RequestDoc } from '../src/lib/types'
-import { analyzeParticipant, buildDataset, conditionValue } from '../src/analysis/pipeline'
+import {
+  analyzeParticipant,
+  buildDataset,
+  conditionValue,
+  reachMetricsFor,
+  setF1,
+} from '../src/analysis/pipeline'
 import { compareNgrams, countNgrams, strips, timeProfile } from '../src/analysis/ngram'
 import { classify, promptSpecificity } from '../src/study/taxonomy'
 import { pairedEstimate, tlxScore, umuxLiteScore, weightedLogOdds } from '../src/lib/stats'
@@ -191,7 +197,7 @@ describe('per-request measures', () => {
         events: [],
         scoring: [],
       },
-      { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } },
+      { choices: { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } }, reach: {} },
     )
     expect(a.requests[0].choiceScore).toBe(2)
     expect(a.requests[0].choiceOutOf).toBe(3)
@@ -241,7 +247,7 @@ describe('per-request measures', () => {
         events: [],
         scoring: [],
       },
-      { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } },
+      { choices: { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } }, reach: {} },
     )
     expect(a.requests[0].choiceScore).toBeNull()
     expect(a.requests[0].choiceOutOf).toBeNull()
@@ -565,5 +571,78 @@ describe('pilot records are separable from the study', () => {
     const filtered = buildDataset(withPilot)
     expect(filtered.participants.map((p) => p.label)).toEqual(only.participants.map((p) => p.label))
     expect(filtered.participants).toHaveLength(1)
+  })
+})
+
+// The prediction trials are scored by set overlap, and the choice of overlap
+// measure is doing real work: it is what stops "tick everything" from looking like
+// knowledge, and it is what makes a pair of trials with differently sized answers
+// a control on response bias rather than two unrelated scores.
+describe('reach scoring', () => {
+  const blindStage = (picks: string[], confidence = 50) => ({
+    picks,
+    confidence,
+    submittedAt: T0 + 60_000,
+    activeMs: 60_000,
+  })
+
+  it('gives a perfect set 1 and a miss 0', () => {
+    expect(setF1(['agenda'], ['agenda'])).toBe(1)
+    expect(setF1(['stats'], ['agenda'])).toBe(0)
+  })
+
+  it('scores an empty answer zero rather than crediting the eleven it left alone', () => {
+    // Agreement over twelve boxes would give this 11/12 and read as near-perfect
+    // knowledge of a piece of work the participant said nothing about.
+    expect(setF1([], ['agenda'])).toBe(0)
+  })
+
+  it('punishes ticking everything on both trials, which is what makes the pair a control', () => {
+    const all = ['register', 'cancel', 'queue', 'showQueue', 'promote', 'notices',
+      'search', 'agenda', 'rooms', 'stats', 'speaker', 'scheduleSession']
+    const narrow = ['agenda']                                  // f1: 1 of 12
+    const wide = ['register', 'rooms', 'promote', 'cancel']     // f2: 4 of 12
+
+    // Tick-everything beats nothing, and loses to a small partly-right answer on
+    // both trials. So there is no fixed number of ticks that does well on both:
+    // one wants a single box and the other wants four, and neither rewards volume.
+    expect(setF1(all, narrow)).toBeLessThan(setF1(['agenda', 'stats'], narrow))
+    expect(setF1(all, wide)).toBeLessThan(setF1(['register', 'rooms'], wide))
+  })
+
+  it('reports gain as the difference the checking made', () => {
+    const req = requestDoc({
+      requestId: 'f1',
+      stages: {
+        blind: blindStage(['agenda', 'stats', 'search'], 40),
+        checked: { picks: ['agenda'], confidence: 90, submittedAt: T0 + 240_000, activeMs: 180_000 },
+      },
+    })
+    const m = reachMetricsFor(req, { f1: ['agenda'] })!
+    expect(m.blind).toBeCloseTo(0.5)
+    expect(m.checked).toBe(1)
+    expect(m.gain).toBeCloseTo(0.5)
+    expect(m.blindConfidence).toBe(40)
+    expect(m.outOf).toBe(1)
+  })
+
+  it('scores a submitted stage that ticked nothing, and leaves an unsubmitted one alone', () => {
+    // The distinction the closed questions get wrong by construction: `choices` is
+    // seeded as `{}` when a request opens, so empty there means untouched. A stage
+    // document is only written when a stage is submitted -- by the participant or by
+    // the deadline -- so empty here means they looked and ticked nothing, which is a
+    // real wrong answer and has to count as one.
+    const answered = requestDoc({
+      requestId: 'f1',
+      stages: {
+        blind: blindStage([], 20),
+        checked: { picks: [], confidence: 30, submittedAt: T0 + 240_000, activeMs: 180_000 },
+      },
+    })
+    expect(reachMetricsFor(answered, { f1: ['agenda'] })!.blind).toBe(0)
+
+    const halfDone = requestDoc({ requestId: 'f1', stages: { blind: blindStage(['agenda']) } })
+    expect(reachMetricsFor(halfDone, { f1: ['agenda'] })).toBeNull()
+    expect(reachMetricsFor(answered, {})).toBeNull()
   })
 })

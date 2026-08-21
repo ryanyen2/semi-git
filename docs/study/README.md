@@ -104,7 +104,10 @@ machine) is in `scripts/study-bundle/`. Other scripts:
 | `make-practice-repo.sh` | Builds the throwaway warm-up repository for practice |
 | `setup-study-session.sh` | Prepares one workspace on a machine you control |
 | `score_study_repo.py` | Scores the removal request (checks whether the right code was removed) |
-| `study-bundle/tests/test_telemetry.py` | End-to-end test for the recording pipeline |
+| `study-bundle/tests/test_telemetry.py` | End-to-end test for the recording pipeline (needs the emulator) |
+| `study-bundle/tests/test_shim.py` | Checks that each recorded event is attributed to whoever caused it |
+| `study-bundle/tests/test_doctor.py` | Checks that the setup check runs the session's environment, not the machine's |
+| `study/measure_reach_key.py` | Measures the answer for the two prediction trials by running the behaviours |
 
 ## Current status
 
@@ -122,19 +125,25 @@ machine) is in `scripts/study-bundle/`. Other scripts:
 - Three pilots run (two sgt, one git), which found twelve tool defects and four
   study-design problems. All the defects are fixed.
 - The website: consent flow, background questionnaire, the project brief, the
-  practice sheets, per-request timing with an explicit pause, the three
-  post-half questionnaires (NASA-TLX, UMUX-Lite, and the history and agent
-  block), the end-of-session comparison block, live session monitoring, the
-  scoring interface, and the three paper figures with SVG export.
+  practice sheets, per-request timing with a pause the participant can take on
+  the three requests, the two prediction trials with their own two-stage clocks
+  and no pause, the three post-half questionnaires (NASA-TLX, UMUX-Lite, and
+  the history and agent block), the end-of-session comparison block, live
+  session monitoring, the scoring interface, and the three paper figures with
+  SVG export.
 - The participant bundle: one-command setup, an assistant profile isolated from
   the participant's own account and billing, prompt and command recording from
   the terminal, the editor and the assistant alike, and an upload pipeline that
   cannot lose or double-count events.
-- Tests: 81 in `web/` covering the Firestore security rules, the analysis
-  pipeline, and the chart components — 28 of those need the Firestore emulator
-  running and skip without it. The recording pipeline has its own end-to-end
-  test in `scripts/study-bundle/tests/test_telemetry.py`, which also needs the
-  emulator.
+- Tests: 107 in `web/` covering the Firestore security rules, the analysis
+  pipeline, the chart components, and the schedule the welcome page promises.
+  28 of those are the security rules and need the Firestore emulator. Without
+  it they skip, but the run still comes back red, so a red `npm test` is worth
+  reading before assuming something broke. `web/README.md` says how to start the
+  emulator, including the part where Homebrew's Java is not on your PATH.
+- The bundle has three test files of its own, all in
+  `scripts/study-bundle/tests/`: 36 checks on the recording pipeline end to end
+  (needs the emulator), 13 on event attribution, and 8 on the setup check.
 
 ### Not ready (needed before participant 1)
 

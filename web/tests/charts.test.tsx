@@ -17,6 +17,7 @@ import { conditionValue } from '../src/analysis/pipeline'
 import { HLAC } from '../src/study/instruments'
 import { LikertDiverging, type LikertResponse } from '../src/charts/LikertDiverging'
 import { PairedEstimation, type PairedPanel } from '../src/charts/PairedEstimation'
+import { figure2Panels } from '../src/analysis/figures'
 import { ProcessSignature } from '../src/charts/ProcessSignature'
 import type { Condition } from '../src/lib/types'
 
@@ -101,46 +102,10 @@ describe('Figure 1, the perception battery', () => {
 })
 
 describe('Figure 2, the outcomes', () => {
-  // Each panel carries the measure it is drawn from, rather than the figure
-  // picking one by position. Panels come and go as the requests change, and an
-  // index-based picker goes on rendering a plausible figure out of the wrong
-  // column when they do.
-  type Picker = (p: (typeof dataset.participants)[number], c: Condition) => number
-
-  const panels: PairedPanel[] = (
-    [
-      // R1's three questions are closed, so they are scored from the answer key
-      // rather than by a person: it has a count out of three and no rubric.
-      {
-        id: 'r1',
-        title: 'R1 provenance',
-        higherIsBetter: true,
-        domain: [0, 3],
-        pick: (p, c) => conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
-      },
-      {
-        id: 'r23',
-        title: 'R2+R3 removal',
-        higherIsBetter: true,
-        domain: [0, 4],
-        pick: (p, c) => conditionValue(p, c, (m) => m.score, 'sum', ['r2', 'r3']),
-      },
-      {
-        id: 'damage',
-        title: 'Collateral damage',
-        higherIsBetter: false,
-        pick: (p, c) => conditionValue(p, c, (m) => m.collateralDamage, 'sum'),
-      },
-    ] as Array<Omit<PairedPanel, 'values'> & { pick: Picker }>
-  ).map(({ pick, ...panel }) => ({
-    ...panel,
-    values: dataset.participants.map((p) => ({
-      pid: p.pid,
-      label: p.label,
-      git: pick(p, 'git'),
-      sgt: pick(p, 'sgt'),
-    })),
-  }))
+  // The real panel list, imported rather than restated: a copy here would go on
+  // rendering a publishable figure out of its own older set of outcomes, which is
+  // the one thing this file exists to rule out.
+  const panels = figure2Panels(dataset)
 
   it('renders a publishable SVG', () => {
     const svg = renderToStaticMarkup(<PairedEstimation ref={createRef()} panels={panels} order={ORDER} />)
