@@ -235,10 +235,16 @@ def main() -> int:
             # hooks in that profile record every prompt, and without this the
             # check writes one into the log that nobody typed.
             env["STUDY_NO_LOG"] = "1"
-            # Their own key must not leak into the study session. Removing it
-            # here is the difference between billing us and billing them.
-            env.pop("ANTHROPIC_API_KEY", None)
-            env.pop("ANTHROPIC_AUTH_TOKEN", None)
+            # Their own account must not leak into the study session. Removing
+            # the keys here is the difference between billing us and billing
+            # them; removing the base URL is what makes this check test the
+            # session at all. A machine set up to talk to a proxy sends the
+            # study's key there, the proxy will not take it, and the assistant
+            # retries until the timeout below -- with nothing wrong except this
+            # line. The same three names are unset in bin/study-shell and
+            # bin/study-code, and tests/test_doctor.py holds the lists together.
+            for leaked in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
+                env.pop(leaked, None)
             started = time.time()
             try:
                 # JSON, because the reply alone cannot tell us which model
@@ -283,7 +289,8 @@ def main() -> int:
                 checks.add(
                     "assistant_ping",
                     False,
-                    f"no answer in {PING_TIMEOUT}s, which usually means the key is wrong",
+                    f"no answer in {PING_TIMEOUT}s; check the network, then show "
+                    "this to your facilitator",
                 )
 
     # 9b. The editor, and the one extension this condition is allowed.
